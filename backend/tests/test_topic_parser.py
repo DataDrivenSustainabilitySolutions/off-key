@@ -3,101 +3,65 @@
 import pytest
 from off_key_mqtt_radar.topic_parser import TopicParser
 
+TOPIC = "telemetry/charger-1/TopLevelPart/SubMetricA"
 
-def test_extract_sensor_type_uses_full_hierarchy_by_default():
-    sensor = TopicParser.extract_sensor_type(
-        "telemetry/charger-1/TopLevelPart/SubMetricA"
+
+@pytest.mark.parametrize(
+    ("strategy", "expected"),
+    [
+        ("full_hierarchy", "TopLevelPart/SubMetricA"),
+        ("leaf", "SubMetricA"),
+        ("top_level", "TopLevelPart"),
+    ],
+)
+def test_extract_sensor_type_applies_the_key_strategy(strategy, expected):
+    assert TopicParser.extract_sensor_type(TOPIC, sensor_key_strategy=strategy) == (
+        expected
     )
-    assert sensor == "TopLevelPart/SubMetricA"
 
 
-def test_extract_sensor_type_supports_leaf_strategy():
-    sensor = TopicParser.extract_sensor_type(
-        "telemetry/charger-1/TopLevelPart/SubMetricA",
-        sensor_key_strategy="leaf",
-    )
-    assert sensor == "SubMetricA"
-
-
-def test_extract_sensor_type_supports_top_level_strategy():
-    sensor = TopicParser.extract_sensor_type(
-        "telemetry/charger-1/TopLevelPart/SubMetricA",
-        sensor_key_strategy="top_level",
-    )
-    assert sensor == "TopLevelPart"
-
-
-def test_derive_required_sensors_uses_full_hierarchy_default():
-    topics = [
-        "telemetry/+/TopLevelPart/SubMetricA",
-        "telemetry/+/TopLevelPart/SubMetricB",
-    ]
-    assert TopicParser.derive_required_sensors(topics) == {
-        "TopLevelPart/SubMetricA",
-        "TopLevelPart/SubMetricB",
-    }
-
-
-def test_derive_required_sensors_supports_leaf_strategy():
-    topics = [
-        "telemetry/+/TopLevelPart/SubMetricA",
-        "telemetry/+/TopLevelPart/SubMetricB",
-    ]
-    assert TopicParser.derive_required_sensors(topics, sensor_key_strategy="leaf") == {
-        "SubMetricA",
-        "SubMetricB",
-    }
-
-
-def test_derive_required_sensors_supports_top_level_strategy():
-    topics = [
-        "telemetry/+/TopLevelPart/SubMetricA",
-        "telemetry/+/TopLevelPart/SubMetricB",
-        "telemetry/+/OtherPart/SubMetricC",
-    ]
-    assert TopicParser.derive_required_sensors(
-        topics, sensor_key_strategy="top_level"
-    ) == {
-        "TopLevelPart",
-        "OtherPart",
-    }
-
-
-def test_derive_required_sensors_ignores_wildcard_tail_topics():
-    topics = [
-        "telemetry/+/#",
-        "telemetry/+/+",
-    ]
-    assert TopicParser.derive_required_sensors(topics) == set()
+def test_extract_sensor_type_defaults_to_the_full_hierarchy():
+    assert TopicParser.extract_sensor_type(TOPIC) == "TopLevelPart/SubMetricA"
 
 
 def test_extract_sensor_type_rejects_invalid_strategy():
     with pytest.raises(ValueError, match="sensor_key_strategy must be one of"):
-        TopicParser.extract_sensor_type(
-            "telemetry/charger-1/TopLevelPart/SubMetricA",
-            sensor_key_strategy="invalid",
-        )
+        TopicParser.extract_sensor_type(TOPIC, sensor_key_strategy="invalid")
 
 
-def test_extract_sensor_type_requires_device_namespace():
-    sensor = TopicParser.extract_sensor_type("charger/charger-1/legacy/TopLevelPart")
-    assert sensor is None
+@pytest.mark.parametrize(
+    ("topic", "payload"),
+    [
+        ("charger/charger-1/legacy/TopLevelPart", None),
+        (
+            "tenant-a/site-b/topic",
+            {"charger_id": "charger-from-payload", "telemetry_type": "metrics/v"},
+        ),
+    ],
+    ids=["outside_device_namespace", "payload_fallback_on_regex_miss"],
+)
+def test_sensor_and_charger_are_never_taken_from_unmatched_topics(topic, payload):
+    assert TopicParser.extract_sensor_type(topic, payload=payload) is None
+    assert TopicParser.extract_charger_id(topic, payload=payload) is None
 
 
-def test_extract_charger_id_rejects_payload_fallback_on_regex_miss():
-    charger_id = TopicParser.extract_charger_id(
-        "tenant-a/site-b/topic",
-        payload={"charger_id": "charger-from-payload", "telemetry_type": "voltage"},
-    )
-    assert charger_id is None
+@pytest.mark.parametrize(
+    ("strategy", "expected"),
+    [
+        ("full_hierarchy", {"TopLevelPart/SubMetricA", "OtherPart/SubMetricC"}),
+        ("leaf", {"SubMetricA", "SubMetricC"}),
+        ("top_level", {"TopLevelPart", "OtherPart"}),
+    ],
+)
+def test_derive_required_sensors_keys_explicit_topics_only(strategy, expected):
+    topics = [
+        "telemetry/+/TopLevelPart/SubMetricA",
+        "telemetry/+/OtherPart/SubMetricC",
+        # Wildcard tails cannot name a required sensor; invalid filters are ignored.
+        "telemetry/+/#",
+        "telemetry/+/+",
+        "telemetry/#",
+        "device/+/voltage",
+    ]
 
-
-def test_extract_sensor_type_rejects_payload_fallback_on_regex_miss():
-    sensor = TopicParser.extract_sensor_type(
-        "tenant-a/site-b/topic",
-        payload={
-            "charger_id": "charger-from-payload",
-            "telemetry_type": "metrics/voltage",
-        },
-    )
-    assert sensor is None
+    assert TopicParser.derive_required_sensors(topics, strategy) == expected

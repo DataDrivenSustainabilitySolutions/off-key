@@ -39,8 +39,19 @@ match. Unrelated catalog descriptions or components do not invalidate a revision
 reading bindings and processing graph. Its main actions are **Load template**,
 **Save template** and **Apply monitoring**. Users do not save drafts or publish
 revisions to start a service. Learning settings and component parameters stay in
-the graph inspector. Entity selection includes configured entities even when
-there is no recent traffic; collection and reading ownership still gate Apply.
+the graph inspector. Learning fields appear immediately when its panel opens;
+only advanced input-slot editing is collapsed. Entity selection includes configured
+entities even when there is no recent traffic; collection and reading ownership
+still gate Apply.
+
+Standard setups show a **Readings to monitor** checklist directly below the
+entity: uncheck unwanted readings to monitor any subset, such as AC1 and AC3.
+Select all available and Clear support larger entities; a service accepts up to
+100 readings. Selection changes the executable slots and bindings together and
+retains input IDs across removal, reselection and undo. Saved/custom templates
+keep explicit named input mappings, with Add reading and Remove on the setup
+page. Removing an input referenced by a processing component still requires
+fixing that component before validation and Apply can succeed.
 
 Load template reads the latest saved definition and layout, independently of any
 historical published revisions. Loading never changes the source template.

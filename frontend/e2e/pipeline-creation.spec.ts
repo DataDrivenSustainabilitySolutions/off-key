@@ -6,6 +6,68 @@ import { loginPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 
+test("selects only AC1 and AC3 and preserves named template mappings on desktop and mobile", async ({ page }, testInfo) => {
+  await loginPipelineWorkspace(page);
+  const token = (await accessToken(page))!;
+  const headers = { Authorization: `Bearer ${token}` };
+  const deviceId = randomUUID();
+  const templateIds = new Set<string>();
+  const endpoint = "/api/v1/monitors/pipelines";
+  try {
+    await addTestCharger(page.request, token, deviceId, deviceId, ["AC1", "AC2", "AC3"]);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await page.goto(`/?create=monitoring&target=${fixtureEntityId(deviceId)}`);
+    const setupUrl = page.url();
+    const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
+    await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Two phases ${deviceId}`);
+    await workbench.getByRole("checkbox", { name: "Monitor AC2", exact: true }).uncheck();
+    await expect(workbench.getByRole("checkbox", { name: "Monitor AC1", exact: true })).toBeChecked();
+    await expect(workbench.getByRole("checkbox", { name: "Monitor AC3", exact: true })).toBeChecked();
+    await workbench.getByRole("checkbox", { name: "Monitor AC1", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("creation-readings-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const name of ["AC1", "AC2", "AC3"]) {
+      const reading = workbench.getByRole("checkbox", { name: `Monitor ${name}`, exact: true });
+      await reading.scrollIntoViewIfNeeded(); await expect(reading).toBeInViewport({ ratio: 1 });
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("creation-readings-mobile.png"), fullPage: true });
+    await workbench.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
+    await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
+    await page.reload();
+    await expect(workbench.getByRole("checkbox", { name: "Monitor AC2", exact: true })).not.toBeChecked();
+    const template = await savePipelineTemplate(page, `Two phases template ${deviceId}`); templateIds.add(template.id);
+    expect(template.draft.input_slots?.map((slot) => slot.label)).toEqual(["AC1", "AC3"]);
+    const retainedIds = template.draft.input_slots!.map((slot) => slot.id);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await page.goto(`${new URL(setupUrl).origin}/?pipeline=${template.id}`);
+    const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+    await editor.getByRole("button", { name: "Choose monitoring inputs", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Search entities", exact: true }).fill(deviceId);
+    await page.getByRole("button", { name: new RegExp(deviceId) }).click();
+    await expect(editor.getByRole("combobox", { name: "Reading for AC1", exact: true })).toHaveValue(`${deviceId}:AC1`);
+    await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
+    await editor.getByRole("combobox", { name: "Add reading", exact: true }).selectOption(`${deviceId}:AC2`);
+    await expect(editor.getByRole("combobox", { name: "Reading for AC2", exact: true })).toHaveValue(`${deviceId}:AC2`);
+    await editor.getByRole("button", { name: "Remove reading for AC2", exact: true }).click();
+    const saved = await savePipelineTemplate(page);
+    expect(saved.id).toBe(template.id);
+    expect(saved.draft.input_slots?.map((slot) => slot.id)).toEqual(retainedIds);
+    await page.reload();
+    await expect(editor.getByRole("combobox", { name: "Reading for AC1", exact: true })).toHaveValue(`${deviceId}:AC1`);
+    await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
+    await expect(editor.getByRole("combobox", { name: "Reading for AC2", exact: true })).toHaveCount(0);
+  } finally {
+    for (const id of templateIds) {
+      const design = await (await page.request.get(`${endpoint}/${id}`, { headers })).json() as PipelineView;
+      const archived = await page.request.patch(`${endpoint}/${id}`, { headers,
+        data: { expected_version: design.version, name: design.name, description: design.description, archived: true } });
+      expect(archived.ok(), await archived.text()).toBe(true);
+    }
+    await removeTestCharger(page.request, token, deviceId);
+  }
+});
+
 test("keeps an unnamed graph dirty and undoable across template browsing", async ({ page }) => {
   await loginPipelineWorkspace(page);
   await page.setViewportSize({ width: 1600, height: 1100 });
@@ -140,7 +202,10 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await expect(templates).toBeHidden();
     await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Machine health");
     await openPipelineSettings(workbench, "Service");
-    await workbench.getByText("Input slots and learning settings", { exact: true }).click();
+    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"])
+      await expect(workbench.getByRole("spinbutton", { name, exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("creation-learning-desktop.png"), fullPage: true });
+    await workbench.getByText("Input slots", { exact: true }).click();
     await expect(workbench.getByRole("textbox", { name: "Unit for temperature", exact: true })).toHaveValue("°C");
     await expect(workbench.getByRole("textbox", { name: "Unit for voltage", exact: true })).toHaveCount(0);
     await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
@@ -152,6 +217,16 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: testInfo.outputPath("setup-mobile.png"), fullPage: true });
+    await openPipelineSettings(workbench, "Service");
+    for (const name of ["Detector learning updates before calibration", "Calibration observations", "Default random seed"]) {
+      const field = workbench.getByRole("spinbutton", { name, exact: true });
+      await expect(field).toBeVisible();
+      await field.scrollIntoViewIfNeeded();
+      await expect(field).toBeInViewport({ ratio: 1 });
+    }
+    await workbench.getByRole("spinbutton", { name: "Detector learning updates before calibration", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("creation-learning-mobile.png"), fullPage: true });
+    await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
     await workbench.getByRole("button", { name: "Load template", exact: true }).click();
     await expect(templates.getByRole("button", { name: `Use ${source.name}`, exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("templates-mobile.png"), fullPage: true });

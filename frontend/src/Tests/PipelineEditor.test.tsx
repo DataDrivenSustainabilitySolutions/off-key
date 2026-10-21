@@ -168,6 +168,61 @@ async function settings() { fireEvent.click(await screen.findByRole("button", { 
 async function saveDialog() { fireEvent.click(await screen.findByRole("button", { name: "Save template" })); return screen.findByRole("dialog"); }
 
 describe("simple monitoring setup", () => {
+  const phases: MonitoringTarget = { ...target, inputs: ["AC1", "AC2", "AC3"].map((label) => ({
+    ...target.inputs[0]!, stream: { ...target.inputs[0]!.stream, id: label, label },
+  })) };
+  const standardCatalog = { ...catalog, templates: [{ id: "adaptive_stream", name: "Adaptive stream", definition, layout: normalizeLayout() }] };
+
+  it("applies AC1 and AC3 directly, retaining the subset through navigation and undo", async () => {
+    const ui = <MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>;
+    const view = render(ui);
+    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Monitor AC2" }));
+    expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Undo graph change" }));
+    expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Redo graph change" }));
+    view.unmount(); render(ui);
+    expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
+    const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
+    expect(request.definition.input_slots).toEqual([{ id: "value", label: "AC1", unit: "A" }, { id: "input_3", label: "AC3", unit: "A" }]);
+    expect(request.bindings).toEqual({ value: "AC1", input_3: "AC3" });
+    expect(pipelinesApi.save).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
+  });
+
+  it("blocks an empty selection and excludes collection-off readings from Select all available", () => {
+    const unavailable = { ...phases, inputs: phases.inputs.map((input, index) => index === 1
+      ? { ...input, binding: { ...input.binding, policy: { ...input.binding.policy, mode: "off" as const } } } : input) };
+    render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[unavailable]} /></MemoryRouter>);
+    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
+    expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    expect(screen.getByText("Select at least one available reading to monitor.")).toBeTruthy();
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Select all available" }));
+    expect(screen.getByText("2 readings selected")).toBeTruthy();
+  });
+
+  it("removes and restores a named template input directly on the setup page", async () => {
+    const inputSlots = phases.inputs.map((input, index) => ({ id: `phase_${index + 1}`, label: input.stream.label, unit: "A" }));
+    render(<MemoryRouter><PipelineCreate {...props()} targets={[phases]}
+      initialDesign={{ ...pipeline(), draft: { ...definition, input_slots: inputSlots } }} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Remove reading for AC2" }));
+    expect(screen.queryByRole("combobox", { name: "Reading for AC2" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Add reading" }), { target: { value: "AC2" } });
+    expect((screen.getByRole("combobox", { name: "Reading for AC2" }) as HTMLSelectElement).value).toBe("AC2");
+    fireEvent.click(screen.getByRole("button", { name: "Undo graph change" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
+    const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
+    expect(request.definition.input_slots).toEqual([inputSlots[0], inputSlots[2]]);
+    expect(request.bindings).toEqual({ phase_1: "AC1", phase_3: "AC3" });
+  });
+
   it("tracks a replacement after its predecessor disappears from the active service list", async () => {
     const old: ActiveService = { id: "old", display_name: "Existing health", container_id: "worker", container_name: "worker", mqtt_topics: [], status: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };

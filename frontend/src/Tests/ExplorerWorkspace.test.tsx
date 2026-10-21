@@ -368,6 +368,8 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
     const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    // The service names its page; the rename control inside keeps its own label.
+    expect(within(details).getByRole("heading", { level: 1, name: "Room climate" })).toBeTruthy();
     fireEvent.click(within(details).getByRole("button", { name: "Rename service" }));
     fireEvent.change(within(details).getByRole("textbox", { name: "Rename service" }), { target: { value: "Climate monitor" } });
     fireEvent.blur(within(details).getByRole("textbox", { name: "Rename service" }));

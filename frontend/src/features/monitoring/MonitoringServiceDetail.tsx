@@ -71,7 +71,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   };
   return <section className="mn-detail" aria-label="Monitoring service details">
     <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current={name} />
-    <div className="mn-detail-header"><div><h1><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h1>
+    <div className="mn-detail-header"><div><h1 aria-label={name}><InlineName value={name} editable={canEdit} onSave={onRename} ariaLabel="Rename service" /></h1>
       <small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small></div>
       <div className="mn-detail-actions"><button className="mn-favourite ex-icon-button" aria-pressed={favourite} aria-label={favourite ? "Remove service from favourites" : "Add service to favourites"} onClick={onFavourite}><Star size={17} /></button>
         <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },

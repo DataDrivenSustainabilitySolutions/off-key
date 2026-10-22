@@ -12,6 +12,7 @@ import paho.mqtt.client as mqtt
 from off_key_core.config.env import load_env
 from off_key_core.config.logs import logger
 from off_key_core.config.validation import validate_settings
+from off_key_core.utils.mqtt_lifecycle import close_client
 
 from .config import SimulatorConfig, get_simulator_settings
 from .workshop import build_workshop_messages
@@ -89,8 +90,7 @@ class SimulatorService:
 
     async def stop(self) -> None:
         self._shutdown_event.set()
-        self._client.loop_stop()
-        self._client.disconnect()
+        await close_client(self._client)
         logger.info("MQTT simulator stopped")
 
     def request_shutdown(self) -> None:

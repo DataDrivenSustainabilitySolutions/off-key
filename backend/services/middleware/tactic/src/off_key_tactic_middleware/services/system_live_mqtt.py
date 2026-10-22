@@ -5,6 +5,7 @@ from threading import RLock
 from uuid import uuid4
 
 from off_key_core.schemas.system import SystemConnection
+from off_key_core.utils.mqtt_lifecycle import close_client_blocking
 from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
 from paho.mqtt.enums import CallbackAPIVersion
 from socks import SOCKS5
@@ -77,8 +78,7 @@ class LiveMqttWorker:
         with self.guard:
             self.stopping = True
             self.connected = False
-        self.client.disconnect()
-        self.client.loop_stop()
+        close_client_blocking(self.client)
 
     def update_topics(self, topics: list[str]) -> bool:
         """Change an observation scope without replacing a healthy MQTT socket."""

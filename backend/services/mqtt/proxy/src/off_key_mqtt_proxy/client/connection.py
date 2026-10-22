@@ -14,6 +14,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_lifecycle import close_client
 
 from ..config.config import MQTTConfig
 from .models import ConnectionState
@@ -81,7 +82,7 @@ class ConnectionManager:
             client_id = self.config.get_client_id()
 
             transport = self.config.transport
-            self._cleanup_failed_client()
+            await self._cleanup_failed_client()
             self.client = mqtt.Client(
                 client_id=client_id, transport=transport, reconnect_on_failure=False
             )
@@ -136,13 +137,17 @@ class ConnectionManager:
             except TimeoutError:
                 logger.error("MQTT connection timeout")
                 self.state = ConnectionState.FAILED
-                self._cleanup_failed_client()
+                await self._cleanup_failed_client()
                 return False
 
+        except asyncio.CancelledError:
+            self.state = ConnectionState.FAILED
+            await self._cleanup_failed_client()
+            raise
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             self.state = ConnectionState.FAILED
-            self._cleanup_failed_client()
+            await self._cleanup_failed_client()
             return False
 
     async def disconnect(self) -> None:
@@ -160,24 +165,22 @@ class ConnectionManager:
             with suppress(asyncio.CancelledError):
                 await self._reconnect_task
 
-        # Disconnect client
+        # Disconnect client; get_connection_info still reads the reference.
         if self.client:
-            self.client.loop_stop()
-            self.client.disconnect()
+            await close_client(self.client)
 
         # Clear event loop reference
         self._event_loop = None
 
         logger.info("MQTT client disconnected")
 
-    def _cleanup_failed_client(self) -> None:
+    async def _cleanup_failed_client(self) -> None:
         """Stop and discard a paho client that did not reach connected state."""
         if not self.client:
             return
         client, self.client = self.client, None
         try:
-            client.disconnect()
-            client.loop_stop()
+            await close_client(client)
         except Exception:
             logger.debug("Failed MQTT client cleanup raised", exc_info=True)
         finally:

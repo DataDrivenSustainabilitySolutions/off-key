@@ -17,6 +17,7 @@ from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
+from off_key_core.utils.mqtt_lifecycle import close_client
 from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
 from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
 from paho.mqtt.enums import CallbackAPIVersion
@@ -59,8 +60,7 @@ class SystemIngress:
             self.task = None
         await self._stop_workers()
         if self.output is not None:
-            await asyncio.to_thread(self.output.disconnect)
-            await asyncio.to_thread(self.output.loop_stop)
+            await close_client(self.output)
             self.output = None
 
     def _make_output(self):

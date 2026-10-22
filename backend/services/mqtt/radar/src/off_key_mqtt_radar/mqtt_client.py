@@ -20,6 +20,7 @@ import janus
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_lifecycle import close_client
 
 from .config.config import MQTTRadarConfig
 from .coverage import CoverageTracker
@@ -228,15 +229,7 @@ class RadarMQTTClient:
         self._pending_subscriptions.clear()
         self._confirmed_subscriptions.clear()
         if client is not None:
-            try:
-                client.disconnect()
-            finally:
-                await asyncio.to_thread(client.loop_stop)
-                # A TCP connect can finish after disconnect() saw no socket.
-                # Once the network thread has joined it cannot create another
-                # socket, and Paho can finish disconnecting synchronously.
-                if client.socket() is not None:
-                    client.disconnect()
+            await close_client(client)
 
     def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
         """Resolve the active connection attempt on the asyncio event loop."""

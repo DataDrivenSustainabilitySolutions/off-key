@@ -333,6 +333,7 @@ async def test_connect_clears_stale_connection_event(connection_manager):
     mock_client.loop_start = MagicMock()
     mock_client.loop_stop = MagicMock()
     mock_client.disconnect = MagicMock()
+    mock_client.socket.return_value = None  # Closed by the first disconnect.
     event_was_cleared = False
 
     async def fake_wait_for(awaitable, timeout):  # noqa: ASYNC109

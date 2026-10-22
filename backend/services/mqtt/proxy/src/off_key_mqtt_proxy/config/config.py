@@ -136,6 +136,14 @@ class MQTTConfig(BaseModel):
         )
 
 
+# MQTTConfig fields whose setting is not MQTT_<FIELD>.
+CONFIG_RENAMES = {
+    "enabled": "MQTT_TELEMETRY_ENABLED",
+    "mqtt_username": "MQTT_USERNAME",
+    "mqtt_api_key": "MQTT_APIKEY",
+}
+
+
 class MQTTSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
@@ -211,28 +219,10 @@ class MQTTSettings(BaseSettings):
     @property
     def config(self) -> MQTTConfig:
         return MQTTConfig(
-            broker_host=self.MQTT_BROKER_HOST,
-            broker_port=self.MQTT_BROKER_PORT,
-            use_tls=self.MQTT_USE_TLS,
-            ca_file=self.MQTT_CA_FILE,
-            transport=self.MQTT_TRANSPORT,
-            client_id_prefix=self.MQTT_CLIENT_ID_PREFIX,
-            use_auth=self.MQTT_USE_AUTH,
-            mqtt_username=self.MQTT_USERNAME,
-            mqtt_api_key=self.MQTT_APIKEY,
-            topic_regex=self.MQTT_TOPIC_REGEX,
-            enabled=self.MQTT_TELEMETRY_ENABLED,
-            batch_size=self.MQTT_BATCH_SIZE,
-            batch_timeout=self.MQTT_BATCH_TIMEOUT,
-            connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
-            max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
-            retry_base_delay=self.MQTT_RETRY_BASE_DELAY,
-            retry_max_delay=self.MQTT_RETRY_MAX_DELAY,
-            retry_exponential_base=self.MQTT_RETRY_EXPONENTIAL_BASE,
-            retry_jitter_enabled=self.MQTT_RETRY_JITTER_ENABLED,
-            retry_jitter_magnitude=self.MQTT_RETRY_JITTER_MAGNITUDE,
-            health_monitor_interval=self.MQTT_HEALTH_MONITOR_INTERVAL,
-            graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
+            **{
+                name: getattr(self, CONFIG_RENAMES.get(name, f"MQTT_{name.upper()}"))
+                for name in MQTTConfig.model_fields
+            }
         )
 
 

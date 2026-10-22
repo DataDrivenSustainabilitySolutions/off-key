@@ -8,7 +8,8 @@ RADAR orchestration settings, and service-specific parameters.
 """
 
 from enum import StrEnum
-from functools import lru_cache
+from functools import cached_property, lru_cache
+from typing import Annotated, Any
 
 from off_key_core.config.database import build_postgres_database_url
 from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
@@ -23,6 +24,7 @@ from off_key_core.config.resource_budget import (
 )
 from off_key_core.config.validation import Environment
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -31,6 +33,17 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _log_level(value: str) -> str:
+    if value.upper() not in LOG_LEVELS:
+        raise ValueError(f"Log level must be one of: {list(LOG_LEVELS)}")
+    return value.upper()
+
+
+LogLevel = Annotated[str, AfterValidator(_log_level)]
 
 
 class RadarWorkloadLifecycle(StrEnum):
@@ -134,7 +147,7 @@ class RadarDefaultsConfig(BaseModel):
 
     # Default Health Settings
     health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
-    log_level: str = "INFO"
+    log_level: LogLevel = "INFO"
     rate_limit_per_minute: int = Field(default=0, ge=0, le=100000)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -145,15 +158,6 @@ class RadarDefaultsConfig(BaseModel):
             self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
         )
         return self
-
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        """Validate log level"""
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_levels:
-            raise ValueError(f"Log level must be one of: {valid_levels}")
-        return v.upper()
 
 
 class TacticConfig(BaseModel):
@@ -192,7 +196,7 @@ class TacticConfig(BaseModel):
     pipeline_max_concurrent_transitions: int = Field(default=8, ge=1, le=64)
 
     # Logging Configuration
-    log_level: str = "INFO"
+    log_level: LogLevel = "INFO"
 
     # Status Reconciliation Configuration
     reconciliation_enabled: bool = True
@@ -213,19 +217,14 @@ class TacticConfig(BaseModel):
             )
         return self
 
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        """Validate log level"""
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in valid_levels:
-            raise ValueError(f"Log level must be one of: {valid_levels}")
-        return v.upper()
-
 
 # Defaulted config instances to centralize defaults across settings and runtime
 DEFAULT_DOCKER_CONFIG = DockerConfig()
 DEFAULT_RADAR_DEFAULTS = RadarDefaultsConfig()
+
+
+def _tactic_default(name: str) -> Any:
+    return TacticConfig.model_fields[name].default
 
 
 class TacticSettings(BaseSettings):
@@ -243,11 +242,11 @@ class TacticSettings(BaseSettings):
         return None if value == "" else value
 
     # Service Configuration
-    TACTIC_SERVICE_NAME: str = Field(default="tactic-middleware")
-    TACTIC_SERVICE_VERSION: str = Field(default="0.1.0")
-    TACTIC_HOST: str = Field(default="0.0.0.0")
-    TACTIC_PORT: int = Field(default=8000)
-    TACTIC_LOG_LEVEL: str = Field(default="INFO")
+    TACTIC_SERVICE_NAME: str = Field(default=_tactic_default("service_name"))
+    TACTIC_SERVICE_VERSION: str = Field(default=_tactic_default("service_version"))
+    TACTIC_HOST: str = Field(default=_tactic_default("host"))
+    TACTIC_PORT: int = Field(default=_tactic_default("port"))
+    TACTIC_LOG_LEVEL: str = Field(default=_tactic_default("log_level"))
     ENVIRONMENT: Environment = Field(default="development")
 
     # Docker API Configuration
@@ -295,7 +294,7 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.mqtt_use_auth
     )
-    TACTIC_RADAR_DEFAULT_MQTT_USERNAME: str = ""
+    TACTIC_RADAR_DEFAULT_MQTT_USERNAME: str = DEFAULT_RADAR_DEFAULTS.mqtt_username
     TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
     TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.memory_limit_mb
@@ -303,8 +302,12 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
     )
-    TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
-    TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: int = Field(default=65536, gt=0, le=1048576)
+    TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.max_queue_size, gt=0, le=10000
+    )
+    TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.max_payload_bytes, gt=0, le=1048576
+    )
     TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
         default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
     )
@@ -323,32 +326,44 @@ class TacticSettings(BaseSettings):
     TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
     )
-    TACTIC_RADAR_IMAGE: str = Field(
-        default="ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-radar:latest"
+    TACTIC_RADAR_IMAGE: str = Field(default=_tactic_default("radar_image"))
+    TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(
+        default=_tactic_default("radar_startup_grace_seconds")
     )
-    TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(default=5.0)
-    TACTIC_RADAR_STOP_TIMEOUT_SECONDS: float = Field(default=30.0, ge=1.0, le=300.0)
+    TACTIC_RADAR_STOP_TIMEOUT_SECONDS: float = Field(
+        default=_tactic_default("radar_stop_timeout_seconds"), ge=1.0, le=300.0
+    )
     TACTIC_RADAR_MAX_ACTIVE_MONITORS: int = Field(
         default=DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
         ge=1,
         le=10000,
     )
-    TACTIC_PIPELINE_AUTHORING_ENABLED: bool = True
+    TACTIC_PIPELINE_AUTHORING_ENABLED: bool = _tactic_default(
+        "pipeline_authoring_enabled"
+    )
     TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: float = Field(
-        default=90.0, ge=5.0, le=300.0
+        default=_tactic_default("pipeline_preflight_timeout_seconds"), ge=5.0, le=300.0
     )
     TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: float = Field(
-        default=120.0, ge=10.0, le=600.0
+        default=_tactic_default("pipeline_heartbeat_timeout_seconds"), ge=10.0, le=600.0
     )
-    TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: int = Field(default=2, ge=1, le=32)
-    TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(default=8, ge=1, le=64)
-
-    # Database Configuration
+    TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: int = Field(
+        default=_tactic_default("pipeline_max_concurrent_preflights"), ge=1, le=32
+    )
+    TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(
+        default=_tactic_default("pipeline_max_concurrent_transitions"), ge=1, le=64
+    )
 
     # Status Reconciliation Configuration
-    TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
-    TACTIC_RECONCILIATION_INTERVAL: int = Field(default=60)
-    TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(default=24)
+    TACTIC_RECONCILIATION_ENABLED: bool = Field(
+        default=_tactic_default("reconciliation_enabled")
+    )
+    TACTIC_RECONCILIATION_INTERVAL: int = Field(
+        default=_tactic_default("reconciliation_interval")
+    )
+    TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(
+        default=_tactic_default("terminal_service_retention_hours")
+    )
     TACTIC_RADAR_WORKLOAD_LIFECYCLE: str | None = Field(default=None)
 
     @staticmethod
@@ -394,71 +409,29 @@ class TacticSettings(BaseSettings):
 
         return RadarWorkloadLifecycle.EPHEMERAL
 
-    @property
+    def _section[M: BaseModel](self, model: type[M], prefix: str, **derived: Any) -> M:
+        """Build ``model`` from ``<prefix><FIELD>`` settings; ``derived`` fields
+        are computed from settings that do not map one to one."""
+        values = {
+            name: getattr(self, prefix + name.upper())
+            for name in model.model_fields
+            if name not in derived
+        }
+        return model(**values, **derived)
+
+    @cached_property
     def config(self) -> TacticConfig:
-        """
-        Create TacticConfig instance from environment settings.
-
-        Returns:
-            TacticConfig: Validated TACTIC service configuration
-        """
-        docker_config = DockerConfig(
-            api_url=self.TACTIC_DOCKER_API_URL,
-            api_port=self.TACTIC_DOCKER_API_PORT,
-            max_concurrent_calls=self.TACTIC_DOCKER_MAX_CONCURRENT_CALLS,
-            default_network=self.TACTIC_DOCKER_DEFAULT_NETWORK,
-            additional_networks=self._parse_additional_networks(),
-            default_restart_policy=self.TACTIC_DOCKER_DEFAULT_RESTART_POLICY,
-            default_restart_max_attempts=self.TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS,
-            default_memory_limit=self.TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT,
-            default_cpu_limit=self.TACTIC_DOCKER_DEFAULT_CPU_LIMIT,
-            default_memory_reservation=self.TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION,
-            default_cpu_reservation=self.TACTIC_DOCKER_DEFAULT_CPU_RESERVATION,
-            default_constraints=self._parse_default_constraints(),
-        )
-
-        radar_defaults_config = RadarDefaultsConfig(
-            mqtt_broker_host=self.TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST,
-            mqtt_broker_port=self.TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT,
-            mqtt_use_tls=self.TACTIC_RADAR_DEFAULT_MQTT_USE_TLS,
-            mqtt_client_id_prefix=self.TACTIC_RADAR_DEFAULT_MQTT_CLIENT_ID_PREFIX,
-            mqtt_use_auth=self.TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH,
-            mqtt_username=self.TACTIC_RADAR_DEFAULT_MQTT_USERNAME,
-            mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
-            memory_limit_mb=self.TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB,
-            checkpoint_interval=self.TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL,
-            max_queue_size=self.TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE,
-            max_payload_bytes=self.TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES,
-            db_write_enabled=self.TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED,
-            db_batch_size=self.TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE,
-            db_batch_timeout=self.TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT,
-            health_check_interval=self.TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL,
-            log_level=self.TACTIC_RADAR_DEFAULT_LOG_LEVEL,
-            rate_limit_per_minute=self.TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE,
-        )
-
-        return TacticConfig(
-            service_name=self.TACTIC_SERVICE_NAME,
-            service_version=self.TACTIC_SERVICE_VERSION,
-            host=self.TACTIC_HOST,
-            port=self.TACTIC_PORT,
-            docker=docker_config,
-            radar_defaults=radar_defaults_config,
-            radar_image=self.TACTIC_RADAR_IMAGE,
-            radar_startup_grace_seconds=self.TACTIC_RADAR_STARTUP_GRACE_SECONDS,
-            radar_stop_timeout_seconds=self.TACTIC_RADAR_STOP_TIMEOUT_SECONDS,
-            radar_max_active_monitors=self.TACTIC_RADAR_MAX_ACTIVE_MONITORS,
-            pipeline_authoring_enabled=self.TACTIC_PIPELINE_AUTHORING_ENABLED,
-            pipeline_preflight_timeout_seconds=self.TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS,
-            pipeline_heartbeat_timeout_seconds=self.TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS,
-            pipeline_max_concurrent_preflights=self.TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS,
-            pipeline_max_concurrent_transitions=self.TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS,
-            log_level=self.TACTIC_LOG_LEVEL,
-            reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
-            reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,
-            terminal_service_retention_hours=(
-                self.TACTIC_TERMINAL_SERVICE_RETENTION_HOURS
+        """Validated runtime configuration, built once per settings instance."""
+        return self._section(
+            TacticConfig,
+            "TACTIC_",
+            docker=self._section(
+                DockerConfig,
+                "TACTIC_DOCKER_",
+                additional_networks=self._parse_additional_networks(),
+                default_constraints=self._parse_default_constraints(),
             ),
+            radar_defaults=self._section(RadarDefaultsConfig, "TACTIC_RADAR_DEFAULT_"),
             radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
         )
 

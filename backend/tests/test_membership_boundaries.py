@@ -149,7 +149,6 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
                     method, path, headers={"X-Off-Key-Service-Key": "wrong"}, json={}
                 )
             ).status_code == 401
-    get_service_auth_settings.cache_clear()
 
 
 @pytest.mark.asyncio
@@ -301,7 +300,6 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
         "Authorization": "Bearer user",
         "X-Off-Key-Service-Key": "test-private-api-credential-123456789",
     }
-    get_service_auth_settings.cache_clear()
 
 
 @pytest.fixture

@@ -63,7 +63,6 @@ def facade(monkeypatch):
     client.base_url = "http://tactic"
     client._max_retries = 2
     yield client
-    get_service_auth_settings.cache_clear()
 
 
 def _attach(client, error):

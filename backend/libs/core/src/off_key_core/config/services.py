@@ -41,8 +41,3 @@ class ServiceEndpointsSettings(BaseSettings):
 def get_service_endpoints_settings() -> ServiceEndpointsSettings:
     """Return cached service endpoint settings."""
     return ServiceEndpointsSettings()
-
-
-def _clear_service_endpoints_settings_cache() -> None:
-    """Clear cached service endpoint settings."""
-    get_service_endpoints_settings.cache_clear()

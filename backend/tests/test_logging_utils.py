@@ -7,7 +7,6 @@ from contextlib import suppress
 from pathlib import Path
 
 import pytest
-from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import (
     JsonFormatter,
     KeyValueFormatter,
@@ -21,13 +20,6 @@ from off_key_core.config.logs import (
 from off_key_core.config.logs import (
     logger as core_logger,
 )
-
-
-@pytest.fixture(autouse=True)
-def clear_logging_settings_cache():
-    get_logging_settings.cache_clear()
-    yield
-    get_logging_settings.cache_clear()
 
 
 def test_json_formatter_includes_extra_fields():

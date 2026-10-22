@@ -9,11 +9,9 @@ from tests.support.env import EMAIL_ENVIRONMENT, set_environment
 
 
 @pytest.fixture(autouse=True)
-def clear_email_settings_cache():
-    get_email_settings.cache_clear()
+def clear_mail_caches():
     mail.reset_mail_runtime_caches()
     yield
-    get_email_settings.cache_clear()
     mail.reset_mail_runtime_caches()
 
 

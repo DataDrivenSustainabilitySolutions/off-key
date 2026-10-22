@@ -6,15 +6,6 @@ from off_key_core.config.validation import validate_environment, validate_settin
 from pydantic import BaseModel, ValidationError
 
 
-@pytest.fixture(autouse=True)
-def clear_core_settings_caches():
-    get_logging_settings.cache_clear()
-    get_runtime_settings.cache_clear()
-    yield
-    get_logging_settings.cache_clear()
-    get_runtime_settings.cache_clear()
-
-
 def test_runtime_settings_parse_debug_flag(monkeypatch):
     monkeypatch.setenv("DEBUG", "true")
     settings = get_runtime_settings()

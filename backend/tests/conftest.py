@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
 from tests.support.pipeline_database import pipeline_database  # noqa: F401
+from tests.support.runtime_cache import reset_settings_caches
 
 DATABASE_FIXTURES = frozenset({"disposable_database", "member_database"})
 
@@ -20,6 +21,18 @@ def pytest_collection_modifyitems(items):
     for item in items:
         if DATABASE_FIXTURES & set(getattr(item, "fixturenames", ())):
             item.add_marker(pytest.mark.postgres)
+
+
+@pytest.fixture(autouse=True)
+def fresh_settings():
+    """Read settings from each test's own environment.
+
+    It requests no monkeypatch, so its teardown runs after monkeypatch has
+    restored the environment.
+    """
+    reset_settings_caches()
+    yield
+    reset_settings_caches()
 
 
 # ============================================================================

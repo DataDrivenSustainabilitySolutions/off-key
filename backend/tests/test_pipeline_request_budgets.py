@@ -148,5 +148,3 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
         await task
         await tactic.close()
         limiter.reset()
-        get_auth_settings.cache_clear()
-        get_service_auth_settings.cache_clear()

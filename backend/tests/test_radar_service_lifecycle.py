@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from off_key_mqtt_radar import service as radar_service_module
 from off_key_mqtt_radar.database import DatabaseWriter
+from off_key_mqtt_radar.execution_errors import FatalExecutionError
 from off_key_mqtt_radar.health_monitor import HealthMonitor
 from off_key_mqtt_radar.service import RadarService
 
@@ -309,3 +310,31 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
     assert update["stage"] == "operational"
     assert json.loads(update["status_payload"])["processed_message_count"] == 2
     assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_failed_execution_stops_health_publication_without_errors(caplog):
+    """Quarantine publishes no heartbeat and leaves a valid recovery status."""
+    radar_service = object.__new__(RadarService)
+    writer = SimpleNamespace(
+        write_service_metrics=AsyncMock(),
+        get_health_status=lambda: {"status": "healthy"},
+    )
+    monitor = HealthMonitor()
+    monitor.start_time = datetime.now()
+    monitor.set_components(
+        database_writer=writer,
+        recovery_status=lambda: radar_service.recovery_status,
+    )
+    radar_service.health_monitor = monitor
+    radar_service.recovery_status = {"storage": "database", "restored": True}
+    radar_service.database_writer = None
+    radar_service.shutdown_event = asyncio.Event()
+
+    await radar_service._fail_execution(FatalExecutionError("model mutated"))
+    await monitor._perform_health_check()
+
+    assert radar_service.shutdown_event.is_set()
+    writer.write_service_metrics.assert_not_awaited()
+    assert "radar.health_check_failed" not in caplog.text
+    monitor.get_health_status()

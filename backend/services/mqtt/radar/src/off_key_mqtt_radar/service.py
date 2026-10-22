@@ -519,7 +519,8 @@ class RadarService:
         """Quarantine uncertain state before any asynchronous cleanup or I/O."""
         self._fatal_error = error
         self._checkpoint_ready = False
-        self.recovery_status["execution_failed"] = True
+        if self.health_monitor is not None:
+            self.health_monitor.suspend_publication()
         logger.error("event=radar.execution_state_uncertain error=%s", error)
         if (
             self.database_writer is not None

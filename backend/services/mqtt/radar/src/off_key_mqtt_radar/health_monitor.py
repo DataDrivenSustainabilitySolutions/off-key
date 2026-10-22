@@ -65,6 +65,7 @@ class HealthMonitor:
         self._memory_manager = None
         self._message_processor = None
         self._recovery_status: Callable[[], dict[str, Any]] | None = None
+        self._publication_suspended = False
 
         self._log_context = {"component": "health_monitor"}
         logging_settings = get_logging_settings()
@@ -141,8 +142,14 @@ class HealthMonitor:
                 exc_info=True,
             )
 
+    def suspend_publication(self) -> None:
+        """Publish no further heartbeat once execution state is uncertain."""
+        self._publication_suspended = True
+
     async def _perform_health_check(self) -> None:
         """Perform comprehensive health check."""
+        if self._publication_suspended:
+            return
         try:
             status = self.get_health_status()
 

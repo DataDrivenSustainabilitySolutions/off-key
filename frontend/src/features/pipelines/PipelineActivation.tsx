@@ -14,6 +14,7 @@ import type { PipelineDefinition, PipelineRevisionView } from "./contracts";
 import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
 import { strategyLabel } from "./semantics";
+import { readingOwnedElsewhere } from "./bindings";
 import {
   readActivationRequest,
   retainActivationRequest,
@@ -106,13 +107,7 @@ export function PipelineActivation({
   const [operation, setOperation] = useState<PipelineActivationView>();
   const key = useRef<string | null>(null);
   const target = targets.find((item) => item.id === targetId);
-  const active = new Set(
-    services
-      .filter((service) => service.status && service.id !== replaceService?.id)
-      .map((service) => service.id),
-  );
-  const owned = (readingId: string) =>
-    [...(byStream.get(readingId) ?? [])].some((id) => active.has(id));
+  const owned = readingOwnedElsewhere(services, byStream, replaceService?.id);
   const completeBindings =
     revision.definition.input_slots.every((slot) => {
       const reading = target?.inputs.find(

@@ -4,7 +4,11 @@ import { ApiRequestError } from "@/lib/api-client";
 import { clearNavigationDrafts, readStoredDraft } from "@/lib/navigation-draft";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { createApplySession, usePipelineApply } from "@/features/pipelines/applySession";
-import { bindingsReady, suggestBindings } from "@/features/pipelines/bindings";
+import {
+  bindingsReady, predecessorEntity, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings,
+} from "@/features/pipelines/bindings";
+import type { PipelineServiceView } from "@/features/pipelines/contracts";
+import type { ActiveService } from "@/types/monitoring";
 import { normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
 import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
@@ -105,3 +109,37 @@ describe("reading selection", () => {
     expect(bindingsReady([{ id: "one", label: "Voltage", unit: "V" }], target, { one: "a" }, () => false)).toBe(false);
   });
 });
+
+describe("replacement setup", () => {
+  const predecessor = (bindings: { slot_id: string; reading_id: string; entity_id: string }[]) =>
+    ({ run: { execution: { bindings } } }) as unknown as PipelineServiceView;
+  const targets = [
+    { id: "north", label: "North", inputs: [{ stream: { id: "a" } }] },
+    { id: "south", label: "South", inputs: [{ stream: { id: "b" } }] },
+  ] as unknown as MonitoringTarget[];
+
+  it("reads the predecessor's bindings and starting target", () => {
+    const old = predecessor([{ slot_id: "value", reading_id: "b", entity_id: "south" }]);
+    expect(previousBindings(old)).toEqual({ value: "b" });
+    expect(previousBindings(undefined)).toEqual({});
+    expect(predecessorEntity(old)).toBe("south");
+    expect(predecessorTarget(targets, old)).toBe("south");
+    expect(predecessorTarget(targets, undefined)).toBeUndefined();
+  });
+
+  it("follows a reading that moved entity since the predecessor ran", () => {
+    // The run recorded north, but reading a now belongs to south.
+    const moved = predecessor([{ slot_id: "value", reading_id: "a", entity_id: "north" }]);
+    const now = [{ ...targets[1]!, inputs: [{ stream: { id: "a" } }] }] as unknown as MonitoringTarget[];
+    expect(predecessorEntity(moved)).toBe("north");
+    expect(predecessorTarget(now, moved)).toBe("south");
+  });
+
+  it("counts only other active services as owners", () => {
+    const services = [{ id: "old", status: true }, { id: "stopped", status: false }, { id: "other", status: true }] as ActiveService[];
+    const byStream = new Map([["a", new Set(["old"])], ["b", new Set(["stopped"])], ["c", new Set(["other"])]]);
+    const owned = readingOwnedElsewhere(services, byStream, "old");
+    expect(["a", "b", "c", "d"].map(owned)).toEqual([false, false, true, false]);
+  });
+});
+

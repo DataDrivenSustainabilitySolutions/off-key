@@ -5,6 +5,8 @@ import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
 import type { MonitoringIndex } from "../monitoring/serviceModel";
 import { useCatalogue } from "../workspace/catalogue-context";
+import { collectionApplied } from "../catalogue/collectionRules";
+import { predecessorEntity } from "./bindings";
 import { pipelinesApi } from "./api";
 import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
@@ -47,6 +49,7 @@ export default function PipelineWorkspace({
   const predecessor = source?.id === sourceId ? source.view : undefined;
   const sourceError = source?.id === sourceId ? source.error : undefined;
   const replacement = services.find((service) => service.id === replacementId);
+  const collectionReady = collectionApplied(system.snapshot?.runtime);
   useEffect(() => {
     const controller = new AbortController();
     void pipelinesApi.catalog(controller.signal).then(
@@ -104,7 +107,7 @@ export default function PipelineWorkspace({
   if (!id) return <>
     {(error || sourceError) && <p role="alert" className="pl-error">{error || sourceError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
     <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}:${replacementId ? "replace" : "new"}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
-    services={services} byStream={index.byStream} collectionReady={system.snapshot?.runtime.collection?.status === "applied"}
+    services={services} byStream={index.byStream} collectionReady={collectionReady}
     initialDocument={sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
@@ -140,13 +143,11 @@ export default function PipelineWorkspace({
         initialTarget={
           initialTarget ??
           (replacement
-            ? predecessor?.run?.execution?.bindings[0]?.entity_id
+            ? predecessorEntity(predecessor)
             : undefined)
         }
         initialReading={contextReading}
-        collectionReady={
-          system.snapshot?.runtime.collection?.status === "applied"
-        }
+        collectionReady={collectionReady}
         revisionId={params.get("revision") ?? undefined}
         activationId={params.get("activation") ?? undefined}
         replaceService={replacement}

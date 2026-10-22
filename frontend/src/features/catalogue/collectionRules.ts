@@ -1,8 +1,7 @@
 import type { CollectionPolicy } from "@/types/collection";
 import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
-import type { SystemDocument, SystemRuntime } from "./systemTypes";
+import type { RuleScope, SystemDocument, SystemRuntime } from "./systemTypes";
 
-import type { RuleScope } from "./systemTypes";
 export type { RuleScope, CollectionRule, RuleEdit, RuleChange, PolicyOrigin } from "./systemTypes";
 export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.connection_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
 export const policyLabel = (policy?: CollectionPolicy) => !policy || policy.mode === "off" ? "Off" : policy.mode === "original" ? "Original rate" : `Sample · ${policy.interval_seconds}s`;
@@ -26,6 +25,9 @@ export function scopeReadingIds(index: NavigationIndex, node: ExplorerNode): str
   }
   return [...result];
 }
+
+/** Whether the collector has applied the current catalogue, so monitors can start. */
+export const collectionApplied = (runtime?: SystemRuntime) => runtime?.collection?.status === "applied";
 
 /** Whether an MQTT topic is the prefix itself or lies below it, segment by segment. */
 export const topicWithinPrefix = (topic: string, prefix: string) => topic === prefix || topic.startsWith(`${prefix}/`);

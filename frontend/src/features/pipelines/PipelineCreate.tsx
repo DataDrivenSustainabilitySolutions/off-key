@@ -26,7 +26,7 @@ import { PipelineInputBindings } from "./PipelineInputBindings";
 import { PipelineReadingPicker } from "./PipelineReadingPicker";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
-import { bindingsReady, suggestBindings } from "./bindings";
+import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
 import { strategyLabel } from "./semantics";
 
@@ -61,8 +61,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const sourceId = props.sourceService?.id ?? replaceId;
   const startingId = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")?.id ?? catalog.templates[0]?.id;
   const initial = useCallback((): CreationDraft => {
-    const targetId = initialTarget ?? targets.find((target) => target.inputs.some((input) =>
-      predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;
+    const targetId = initialTarget ?? predecessorTarget(targets, predecessor);
     const target = targets.find((item) => item.id === targetId);
     const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
@@ -71,7 +70,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
-        Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))) : starting.bindings };
+        previousBindings(predecessor)) : starting.bindings };
   }, [catalog, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
   const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
@@ -101,8 +100,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const target = targets.find((item) => item.id === draft.targetId);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
-  const active = new Set(props.services.filter((service) => service.status && service.id !== replaceService?.id).map((service) => service.id));
-  const owned = (id: string) => [...(props.byStream.get(id) ?? [])].some((service) => active.has(service));
+  const validateGraph = () => graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
+  const owned = readingOwnedElsewhere(props.services, props.byStream, replaceService?.id);
   const ready = bindingsReady(slots, target, bindings, owned);
   const dirty = session.isDirty();
   useUnsavedChanges(dirty && !locked);
@@ -132,7 +131,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     if (!ready || !props.collectionReady || props.activationBlocked) return;
     setChecking(true);
     try {
-      const result = await graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
+      const result = await validateGraph();
       if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceId ?? null });
@@ -217,7 +216,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
           <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
           <button type="button" disabled={checking} onClick={async () => {
-            try { await graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected)); setIssuesRequest((value) => value + 1); }
+            try { await validateGraph(); setIssuesRequest((value) => value + 1); }
             catch (reason) { setError(getErrorMessage(reason)); }
           }}><Check size={15} />Validate</button>
           {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {

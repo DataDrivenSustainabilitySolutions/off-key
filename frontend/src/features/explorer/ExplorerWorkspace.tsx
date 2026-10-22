@@ -5,7 +5,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { rememberNavigation } from "@/lib/navigation-draft";
 import { SystemLiveControls } from "../catalogue/SystemLiveControls";
-import { sourceHref } from "../catalogue/collectionRules";
+import { collectionApplied, sourceHref } from "../catalogue/collectionRules";
 import { MonitoringServiceList } from "../monitoring/MonitoringServiceList";
 import { monitoringNavigationKey, resetView } from "../monitoring/monitoringView";
 import { buildMonitoringIndex, serviceName, servicesForScope } from "../monitoring/serviceModel";
@@ -80,7 +80,7 @@ export function ExplorerWorkspace() {
         targets={monitoringIndex.targets} services={monitoring.services}
         initialTarget={initialTarget}
         initialReading={requestedReading ?? undefined} byStream={monitoringIndex.byStream}
-        collectionReady={system.snapshot?.runtime.collection?.status === "applied"} document={document}
+        collectionReady={collectionApplied(system.snapshot?.runtime)} document={document}
         draftKey={`service-setup:${userId}:${params.get("target") ?? ""}:${requestedReading ?? ""}`}
         onStarted={async id => { await monitoring.reload(); if (id) openService(id); else closeView(); }} onBack={closeView} />
         : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "An administrator can create monitoring services."}</p>}

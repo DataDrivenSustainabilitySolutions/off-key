@@ -23,6 +23,7 @@ from .execution_errors import FatalExecutionError, ObservationRejected
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
+from .runtime_checkpoint import ProcessorCheckpoint
 from .state_cache import AlignmentUpdate, SensorStateCache
 from .topic_parser import TopicParser
 
@@ -98,6 +99,15 @@ class MessageProcessor:
         self.last_alignment_status: str | None = None
 
         self._log_context = {"component": "message_processor"}
+
+    def export_counters(self) -> ProcessorCheckpoint:
+        return ProcessorCheckpoint.model_validate(
+            {name: getattr(self, name) for name in ProcessorCheckpoint.model_fields}
+        )
+
+    def restore_counters(self, counters: ProcessorCheckpoint) -> None:
+        for name, value in counters.model_dump().items():
+            setattr(self, name, value)
 
     def process_message_sync(self, message: MQTTMessage) -> AnomalyResult | None:
         """

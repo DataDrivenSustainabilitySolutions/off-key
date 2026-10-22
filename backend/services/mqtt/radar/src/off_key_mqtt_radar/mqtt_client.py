@@ -38,11 +38,13 @@ class RadarMQTTClient:
     - Rate limiting and error handling
     """
 
-    def __init__(self, config: MQTTRadarConfig):
+    def __init__(
+        self, config: MQTTRadarConfig, coverage: CoverageTracker | None = None
+    ):
         self.config = config
         self.client: mqtt.Client | None = None
         self.message_handler: Callable[[MQTTMessage], Awaitable[None]] | None = None
-        self.coverage = CoverageTracker()
+        self.coverage = coverage if coverage is not None else CoverageTracker()
 
         # Connection state
         self.is_connected = False

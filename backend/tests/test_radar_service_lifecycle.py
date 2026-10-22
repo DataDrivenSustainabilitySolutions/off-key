@@ -32,48 +32,74 @@ class _FakeDetector:
         }
 
 
+def _radar_service(monkeypatch) -> RadarService:
+    config = SimpleNamespace(
+        memory_limit_mb=500,
+        max_feature_count=100,
+        max_string_length=1000,
+        health_check_interval=30.0,
+        subscription_topics=["telemetry/+/#"],
+        sensor_key_strategy="full_hierarchy",
+        sensor_freshness_seconds=30.0,
+        observation_max_age_seconds=30.0,
+        observation_future_tolerance_seconds=5.0,
+        alignment_max_skew_seconds=5.0,
+    )
+    monkeypatch.setattr(
+        radar_service_module,
+        "get_radar_settings",
+        lambda: SimpleNamespace(config=config),
+    )
+    return RadarService()
+
+
 @pytest.mark.asyncio
 async def test_radar_service_run_reraises_startup_failure(monkeypatch):
-    radar_service = object.__new__(RadarService)
+    radar_service = _radar_service(monkeypatch)
     radar_service.start = AsyncMock(side_effect=RuntimeError("startup failed"))
     radar_service.stop = AsyncMock()
-    radar_service.shutdown_event = AsyncMock()
 
     monkeypatch.setattr(radar_service_module.signal, "signal", lambda *args: None)
 
     with pytest.raises(RuntimeError, match="startup failed"):
-        await RadarService.run(radar_service)
+        await radar_service.run()
 
     radar_service.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_radar_service_stop_cleans_up_partially_started_components():
-    radar_service = object.__new__(RadarService)
-    mqtt_client = SimpleNamespace(stop=AsyncMock())
-    database_writer = SimpleNamespace(stop=AsyncMock())
+async def test_radar_service_stop_cleans_up_partially_started_components(
+    monkeypatch,
+):
+    radar_service = _radar_service(monkeypatch)
+    stopped = []
 
-    radar_service.is_running = False
-    radar_service.shutdown_event = asyncio.Event()
-    radar_service._log_context = {}
-    radar_service.mqtt_client = mqtt_client
-    radar_service.detector = None
-    radar_service.database_writer = database_writer
-    radar_service.message_processor = None
-    radar_service.health_monitor = None
+    def component(name, error=None):
+        async def stop():
+            stopped.append(name)
+            if error is not None:
+                raise error
 
-    await RadarService.stop(radar_service)
+        return SimpleNamespace(stop=stop)
 
-    mqtt_client.stop.assert_awaited_once()
-    database_writer.stop.assert_awaited_once()
+    radar_service.health_monitor = component("health_monitor")
+    radar_service.mqtt_client = component("mqtt_client", RuntimeError("broker"))
+    radar_service.database_writer = component("database_writer")
+
+    await radar_service.stop()
+
+    # Ingestion stops first; a failing component does not skip the rest.
+    assert stopped == ["health_monitor", "mqtt_client", "database_writer"]
     assert radar_service.mqtt_client is None
     assert radar_service.database_writer is None
 
 
 @pytest.mark.asyncio
-async def test_cancelled_message_handler_finishes_processing_before_reraising():
+async def test_cancelled_message_handler_finishes_processing_before_reraising(
+    monkeypatch,
+):
     """Shutdown must not interrupt a message between model update and evidence."""
-    radar_service = object.__new__(RadarService)
+    radar_service = _radar_service(monkeypatch)
     started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def process(message):
@@ -311,9 +337,11 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_failed_execution_stops_health_publication_without_errors(caplog):
+async def test_failed_execution_stops_health_publication_without_errors(
+    caplog, monkeypatch
+):
     """Quarantine publishes no heartbeat and leaves a valid recovery status."""
-    radar_service = object.__new__(RadarService)
+    radar_service = _radar_service(monkeypatch)
     writer = SimpleNamespace(
         write_heartbeat=AsyncMock(),
         get_health_status=lambda: {"status": "healthy"},
@@ -326,8 +354,6 @@ async def test_failed_execution_stops_health_publication_without_errors(caplog):
     )
     radar_service.health_monitor = monitor
     radar_service.recovery_status = {"storage": "database", "restored": True}
-    radar_service.database_writer = None
-    radar_service.shutdown_event = asyncio.Event()
 
     await radar_service._fail_execution(FatalExecutionError("model mutated"))
     await monitor._perform_health_check()

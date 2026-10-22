@@ -124,7 +124,6 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
             replacement.mqtt_client.coverage.snapshot().model_dump(),
             replacement.detector.primary_service.processed_count,
             replacement.message_processor.export_observation_watermarks(),
-            replacement._restored_observation_watermarks,
         )
         assert replacement.recovery_status["restored"] is True
         assert replacement.detector.primary_service.processed_count == 7
@@ -222,6 +221,7 @@ async def test_managed_restore_requires_history_after_first_observation(
     worker = RadarService()
     worker._checkpoint_codec = codec
     worker.database_writer = writer
+    restored = None
     try:
         if processed_count:
             detector.process_data_point(
@@ -233,16 +233,15 @@ async def test_managed_restore_requires_history_after_first_observation(
         if processed_count:
             with pytest.raises(ValueError, match="missing observation replay history"):
                 await worker._setup_anomaly_detection()
-            assert worker.detector is None
-            assert worker._checkpoint_ready is False
         else:
-            await worker._setup_anomaly_detection()
-            assert worker.detector.primary_service.processed_count == 0
+            restored = await worker._setup_anomaly_detection()
+            assert restored.restored is True
+            assert restored.service.processed_count == 0
             assert worker.recovery_status["restored"] is True
     finally:
         detector.shutdown()
-        if worker.detector is not None:
-            worker.detector.primary_service.shutdown()
+        if restored is not None:
+            restored.service.shutdown()
         await engine.dispose()
         clear_radar_runtime_settings_cache()
 

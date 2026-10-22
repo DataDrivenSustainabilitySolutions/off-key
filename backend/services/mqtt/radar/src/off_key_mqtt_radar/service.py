@@ -14,7 +14,9 @@ import asyncio
 import signal
 import time
 from contextlib import suppress
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from off_key_core.config.logs import logger
 
@@ -22,6 +24,7 @@ from .adaptive_detector import AdaptiveStreamDetectionService
 from .admission import require_monitor_admission
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
+from .coverage import CoverageTracker
 from .database import (
     CheckpointOwnershipLost,
     DatabaseWriter,
@@ -44,6 +47,17 @@ from .runtime_checkpoint import (
 )
 from .state_cache import SensorStateCache
 from .topic_parser import TopicParser
+
+
+@dataclass
+class RestoredRuntime:
+    """Detector and processor state one start recovered, or a fresh detector."""
+
+    service: Any
+    processor: ProcessorCheckpoint | None = None
+    coverage: dict = field(default_factory=dict)
+    observation_watermarks: dict[str, dict[str, float]] = field(default_factory=dict)
+    restored: bool = False
 
 
 class RadarService:
@@ -81,6 +95,7 @@ class RadarService:
             sensor_freshness_seconds=self.config.sensor_freshness_seconds,
         )
         self.message_processor: MessageProcessor | None = None
+        self.coverage: CoverageTracker | None = None
 
         # Service state
         self.is_running = False
@@ -95,10 +110,6 @@ class RadarService:
         self._checkpoint_saved_monotonic = 0.0
         self._checkpoint_received_count = 0
         self._checkpoint_gap: tuple | None = None
-        self._restored_processor: ProcessorCheckpoint | None = None
-        self._restored_coverage: dict = {}
-        self._restored_observation_watermarks: dict[str, dict[str, float]] = {}
-        self._checkpoint_restored = False
         self._fatal_error: Exception | None = None
         self.recovery_status: dict = {"storage": "none", "restored": False}
 
@@ -149,12 +160,16 @@ class RadarService:
             if self.config.db_write_enabled:
                 await self._setup_database_writer()
 
-            # Initialize anomaly detection
-            await self._setup_anomaly_detection()
+            restored = await self._setup_anomaly_detection()
+            self.detector = DetectorHandle(restored.service)
+            self._checkpoint_ready = self._checkpoint_codec is not None
             self._detector_runtime = DetectorRuntime(self.detector)
             await self._detector_runtime.refresh()
 
-            # Initialize message processor
+            # One coverage ledger per start, shared by the MQTT client and processor.
+            self.coverage = CoverageTracker()
+            if restored.coverage:
+                self.coverage.restore(restored.coverage)
             self.message_processor = MessageProcessor(
                 detector=self.detector,
                 feature_validator=self.feature_validator,
@@ -162,20 +177,21 @@ class RadarService:
                 state_cache=self.state_cache,
                 required_sensors=self.required_sensors,
                 sensor_key_strategy=self.config.sensor_key_strategy,
+                coverage=self.coverage,
                 observation_max_age_seconds=self.config.observation_max_age_seconds,
                 sensor_freshness_seconds=self.config.sensor_freshness_seconds,
                 observation_future_tolerance_seconds=self.config.observation_future_tolerance_seconds,
             )
-            if self._restored_processor is not None:
-                for name, value in self._restored_processor.model_dump().items():
-                    setattr(self.message_processor, name, value)
+            if restored.processor is not None:
+                self.message_processor.restore_counters(restored.processor)
             self.message_processor.restore_observation_watermarks(
-                self._restored_observation_watermarks
+                restored.observation_watermarks
             )
 
             await self._checkpoint_if_due(force=True)
+            if restored.restored:
+                self.coverage.record_possible_gap("worker_restart")
 
-            # Initialize MQTT client
             await self._setup_mqtt_client()
             self._checkpoint_task = asyncio.create_task(self._checkpoint_loop())
 
@@ -241,38 +257,15 @@ class RadarService:
         self.is_running = False
         final_checkpoint_error = await self._stop_ingestion_and_checkpoint()
 
-        # Stop components in reverse order
-        components = [
-            ("detector_runtime", getattr(self, "_detector_runtime", None)),
-            ("detector", self.detector),
-            ("database_writer", self.database_writer),
-        ]
-
-        for component_name, component in components:
-            if component:
-                try:
-                    if hasattr(component, "stop"):
-                        await component.stop()
-                    elif hasattr(component, "cancel"):
-                        component.cancel()
-                        with suppress(asyncio.CancelledError):
-                            await component
-
-                    logger.debug(
-                        "event=radar.component_stopped component=%s", component_name
-                    )
-                except Exception as e:
-                    logger.error(
-                        "event=radar.component_stop_failed component=%s error=%s",
-                        component_name,
-                        str(e),
-                        exc_info=True,
-                    )
+        await self._stop_component("detector_runtime", self._detector_runtime)
+        await self._stop_component("detector", self.detector)
+        await self._stop_component("database_writer", self.database_writer)
 
         self.mqtt_client = None
         self.detector = None
         self.database_writer = None
         self.message_processor = None
+        self.coverage = None
         self._detector_runtime = None
 
         logger.info("RADAR service stopped")
@@ -281,21 +274,31 @@ class RadarService:
                 "RADAR final checkpoint failed"
             ) from final_checkpoint_error
 
+    @staticmethod
+    async def _stop_component(name: str, component: Any) -> None:
+        if component is None:
+            return
+        try:
+            await component.stop()
+            logger.debug("event=radar.component_stopped component=%s", name)
+        except Exception as error:
+            logger.error(
+                "event=radar.component_stop_failed component=%s error=%s",
+                name,
+                str(error),
+                exc_info=True,
+            )
+
     async def _stop_ingestion_and_checkpoint(self) -> Exception | None:
-        checkpoint_task = getattr(self, "_checkpoint_task", None)
-        if checkpoint_task:
-            checkpoint_task.cancel()
+        if self._checkpoint_task is not None:
+            self._checkpoint_task.cancel()
             with suppress(asyncio.CancelledError):
-                await checkpoint_task
+                await self._checkpoint_task
             self._checkpoint_task = None
         # Finish the in-flight handler before freezing the final detector state.
-        for component in (self.health_monitor, self.mqtt_client):
-            if component is not None:
-                try:
-                    await component.stop()
-                except Exception:
-                    logger.exception("event=radar.component_stop_failed")
-        if getattr(self, "_checkpoint_ready", False) and not isinstance(
+        await self._stop_component("health_monitor", self.health_monitor)
+        await self._stop_component("mqtt_client", self.mqtt_client)
+        if self._checkpoint_ready and not isinstance(
             self._fatal_error, FatalExecutionError
         ):
             try:
@@ -306,20 +309,16 @@ class RadarService:
                 return error
         return None
 
-    async def _setup_anomaly_detection(self):
-        """Initialize anomaly detection components.
-
-        Attempts to restore from a checkpoint if one exists for this service.
-        Otherwise creates a fresh instance.
-        """
+    async def _setup_anomaly_detection(self) -> RestoredRuntime:
+        """Restore the detector from this service's checkpoint, or start fresh."""
         logger.info("Setting up anomaly detection")
 
         anomaly_config = AnomalyDetectionConfig.model_validate(
             self.config.model_dump(include=set(AnomalyDetectionConfig.model_fields))
         )
         service_cls = self._detector_service_class(anomaly_config)
-        primary_service = None
-        codec = getattr(self, "_checkpoint_codec", None)
+        restored = None
+        codec = self._checkpoint_codec
         if codec is not None:
             record = await self.database_writer.load_checkpoint(codec.service_id)
             self.recovery_status = {
@@ -334,30 +333,26 @@ class RadarService:
                     raise ValueError(
                         "Managed checkpoint is missing observation replay history"
                     )
-                primary_service = service_cls.from_checkpoint_data(
-                    snapshot.detector, anomaly_config
+                restored = RestoredRuntime(
+                    service=service_cls.from_checkpoint_data(
+                        snapshot.detector, anomaly_config
+                    ),
+                    processor=snapshot.processor,
+                    coverage=snapshot.coverage.data,
+                    observation_watermarks=snapshot.observation_watermarks,
+                    restored=True,
                 )
-                self._restored_processor = snapshot.processor
-                self._restored_coverage = snapshot.coverage.data
-                self._restored_observation_watermarks = snapshot.observation_watermarks
-                self._checkpoint_restored = True
                 self.recovery_status.update(
                     restored_processed_count=record["processed_count"],
                     restored_saved_at=record["saved_at"].isoformat(),
                     input_recovery="live_only_with_possible_gap",
                 )
-            else:
-                primary_service = service_cls(anomaly_config)
-
-        if primary_service is None:
+        else:
             logger.info(
                 "Database writes disabled, starting fresh", extra=self._log_context
             )
-            primary_service = service_cls(anomaly_config)
-
-        self.detector = DetectorHandle(primary_service)
-        if codec is not None:
-            self._checkpoint_ready = True
+        if restored is None:
+            restored = RestoredRuntime(service=service_cls(anomaly_config))
 
         logger.info(
             "Anomaly detection setup complete with model: "
@@ -386,6 +381,7 @@ class RadarService:
                     "sensor_key_strategy": self.config.sensor_key_strategy,
                 },
             )
+        return restored
 
     async def _setup_database_writer(self):
         """Initialize database writer"""
@@ -406,14 +402,7 @@ class RadarService:
         """Initialize MQTT client and message handling"""
         logger.info("Setting up MQTT client")
 
-        self.mqtt_client = RadarMQTTClient(self.config)
-        coverage = getattr(self.mqtt_client, "coverage", None)
-        if coverage is not None:
-            if self._restored_coverage:
-                coverage.restore(self._restored_coverage)
-            if self._checkpoint_restored:
-                coverage.record_possible_gap("worker_restart")
-            self.message_processor.coverage = coverage
+        self.mqtt_client = RadarMQTTClient(self.config, coverage=self.coverage)
         self.mqtt_client.set_message_handler(self._handle_mqtt_message)
         await self.mqtt_client.start()
 
@@ -479,16 +468,14 @@ class RadarService:
             diagnostics = None
             coverage = None
             try:
-                runtime = getattr(self, "_detector_runtime", None)
-                if runtime is not None:
+                if self._detector_runtime is not None:
                     diagnostics = (
-                        runtime.get_health_info()
+                        self._detector_runtime.get_health_info()
                         .get("primary_service_stats", {})
                         .get("pipeline_state")
                     )
-                tracker = getattr(self.mqtt_client, "coverage", None)
-                if tracker is not None:
-                    coverage = tracker.snapshot().model_dump(mode="json")
+                if self.coverage is not None:
+                    coverage = self.coverage.snapshot().model_dump(mode="json")
             except Exception:
                 logger.exception("event=radar.final_failure_diagnostics_failed")
             await self._persist_execution_failure(error, diagnostics, coverage)
@@ -534,9 +521,8 @@ class RadarService:
         )
 
     async def _checkpoint_if_due(self, *, force: bool = False) -> None:
-        codec = getattr(self, "_checkpoint_codec", None)
         if (
-            codec is None
+            self._checkpoint_codec is None
             or not self._checkpoint_ready
             or isinstance(self._fatal_error, FatalExecutionError)
         ):
@@ -575,12 +561,7 @@ class RadarService:
             primary.processed_count - primary.last_checkpoint
             >= self.config.checkpoint_interval
         )
-        coverage = getattr(self.mqtt_client, "coverage", None)
-        coverage_state = (
-            coverage.snapshot().model_dump(mode="json")
-            if coverage is not None
-            else self._restored_coverage
-        )
+        coverage_state = self.coverage.snapshot().model_dump(mode="json")
         gap = (
             coverage_state.get("dropped_message_count", 0),
             coverage_state.get("possible_gap_count", 0),
@@ -603,12 +584,7 @@ class RadarService:
             or phase != self._checkpoint_phase
         ):
             return None
-        processor = ProcessorCheckpoint.model_validate(
-            {
-                name: getattr(self.message_processor, name)
-                for name in ProcessorCheckpoint.model_fields
-            }
-        )
+        processor = self.message_processor.export_counters()
         checkpoint = codec.encode(
             RuntimeCheckpoint(
                 detector=state,

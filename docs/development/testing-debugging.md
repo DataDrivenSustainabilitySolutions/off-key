@@ -17,10 +17,14 @@ Use this page when validating local changes, checking runtime health, or diagnos
 
 ```bash
 uv run --project backend ruff check .
+uv run --project backend ty check --project backend
 uv run --project backend python -m pytest -q
 ```
 
-Expected result: lint exits with status `0`, and tests complete without failures.
+Expected result: lint and the type check exit with status `0`, and tests
+complete without failures. The type check covers the packages listed under
+`[tool.ty.src]` in `backend/pyproject.toml`; RADAR joins once its lifecycle
+attributes are typed.
 
 ### RADAR production integration
 

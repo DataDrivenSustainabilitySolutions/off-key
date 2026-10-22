@@ -1,6 +1,6 @@
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import docker.errors
@@ -16,7 +16,7 @@ SWARM_TASK_SHUTDOWN_DONE = SWARM_TASK_DONE | {"completed"}
 SWARM_TASK_STARTUP_FAILED = SWARM_TASK_DONE | {"orphaned"}
 
 
-def latest_task_status(tasks: list[object]) -> dict | None:
+def latest_task_status(tasks: Sequence[object]) -> dict | None:
     """Return the Status mapping of the newest task, or None without tasks."""
     task_items = [task for task in tasks if isinstance(task, dict)]
     if not task_items:

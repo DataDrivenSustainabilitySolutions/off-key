@@ -5,6 +5,7 @@ import signal
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
+from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
@@ -41,7 +42,7 @@ class MQTTProxyService:
         self._prepared_revision = -1
         self._prepared_configuration: list | None = None
         self._generation = -1
-        self.state = {"status": "starting"}
+        self.state: dict[str, Any] = {"status": "starting"}
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
@@ -136,7 +137,7 @@ class MQTTProxyService:
             self.state["status"] = "applied"
         await self._save_status(snapshot.revision)
 
-    async def _save_status(self, revision: int) -> None:
+    async def _save_status(self, revision: int | None) -> None:
         self.state["checked_at"] = datetime.now(UTC).isoformat()
         self.state["counters"] = self.buffer.metrics()
         self.state["records_written"] = self.database_writer.total_records_written
@@ -305,6 +306,8 @@ class MQTTProxyService:
             loop.add_signal_handler(signum, self.shutdown_event.set)
         try:
             await self.start()
+            if self._task is None:
+                raise RuntimeError("Collection loop did not start")
             await self._task
         finally:
             await self.stop()

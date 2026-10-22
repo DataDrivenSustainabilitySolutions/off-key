@@ -178,6 +178,8 @@ class MQTTClient:
     async def _on_connected(self) -> None:
         """Called when connection is established"""
         client = self.connection_manager.client
+        if client is None:
+            raise RuntimeError("MQTT connected without a client")
         self._pending_publishes.clear()
         self.subscription_manager.set_client(client)
         self.message_handler.set_client(client)

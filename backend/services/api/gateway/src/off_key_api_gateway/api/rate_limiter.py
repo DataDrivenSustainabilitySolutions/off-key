@@ -1,5 +1,6 @@
 import ipaddress
 from functools import lru_cache
+from typing import cast
 
 from fastapi import Request, Response
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -69,5 +70,6 @@ def client_ip(request: Request) -> str:
 limiter = Limiter(key_func=client_ip)
 
 
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
-    return _rate_limit_exceeded_handler(request, exc)
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    # Registered for status 429, which only the limiter raises.
+    return _rate_limit_exceeded_handler(request, cast(RateLimitExceeded, exc))

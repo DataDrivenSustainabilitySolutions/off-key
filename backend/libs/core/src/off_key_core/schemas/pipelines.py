@@ -221,24 +221,27 @@ class PipelineValidationReport(PipelineModel):
     issues_truncated: bool = False
 
 
+FieldType = Literal[
+    "number",
+    "integer",
+    "boolean",
+    "string",
+    "enum",
+    "features",
+    "rename",
+    "number_pair",
+    "number_list",
+    "component",
+    "object",
+    "object_list",
+    "integer_adjacency",
+]
+
+
 class ComponentField(PipelineModel):
     name: str
     label: str
-    type: Literal[
-        "number",
-        "integer",
-        "boolean",
-        "string",
-        "enum",
-        "features",
-        "rename",
-        "number_pair",
-        "number_list",
-        "component",
-        "object",
-        "object_list",
-        "integer_adjacency",
-    ]
+    type: FieldType
     default: Any = None
     minimum: float | None = None
     maximum: float | None = None

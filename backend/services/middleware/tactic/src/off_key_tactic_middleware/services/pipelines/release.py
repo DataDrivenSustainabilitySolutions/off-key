@@ -87,10 +87,12 @@ async def prepare_release_monitors(session, operation, workloads):
         await session.commit()
         if config.pipeline is not None and not monitor.get("preflight"):
             config = RadarStartConfig.model_validate(monitor["config"])
+            pipeline, image = config.pipeline, config.runtime_image
+            if pipeline is None or image is None:
+                # _prepare_graph_run always writes both into the stored config.
+                raise RuntimeError("Prepared pipeline release lost its run or image")
             report = await PipelinePreflight(workloads).run(
-                f"release-{config.pipeline.run_id}",
-                config.pipeline,
-                config.runtime_image,
+                f"release-{pipeline.run_id}", pipeline, image
             )
             snapshots[index] = monitor | {"preflight": report}
             operation.monitors = list(snapshots)

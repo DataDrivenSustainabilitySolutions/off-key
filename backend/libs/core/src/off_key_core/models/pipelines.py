@@ -1,6 +1,7 @@
 """Public lightweight monitoring graph contracts and composition entry points."""
 
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from ..schemas.pipelines import BoundInput, PipelineDefinition
 from ..schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
@@ -25,7 +26,7 @@ def derive_monitoring_config(definition: PipelineDefinition):
     definition = compile_pipeline(definition).definition
     detector = next(node for node in definition.nodes if node.kind == "detector")
     policy = next(node for node in definition.nodes if node.kind == "policy")
-    common = dict(
+    common: dict[str, Any] = dict(
         model_type=detector.component.removeprefix("detector:"),
         model_params=detector.params,
         training_window_size=definition.settings.training_window_size,

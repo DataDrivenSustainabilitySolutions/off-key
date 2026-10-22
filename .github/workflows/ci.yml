@@ -34,6 +34,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Type check backend
+        # ty checks against Python 3.12 whichever interpreter runs it.
+        if: matrix.python == '3.12'
+        run: uv run --project backend ty check --project backend
+
       - name: Test backend
         run: uv run --project backend python -m pytest -q
 

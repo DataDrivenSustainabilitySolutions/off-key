@@ -213,7 +213,7 @@ def redact_query_params(
 def log_performance(
     operation: str,
     start_time: float,
-    logger_instance: logging.Logger | None = None,
+    logger_instance: "logging.Logger | LazyLogger | None" = None,
     slow_threshold_seconds: float = 1.0,
 ) -> None:
     """Log performance timing for operations."""

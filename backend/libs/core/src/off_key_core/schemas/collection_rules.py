@@ -37,9 +37,10 @@ class CollectionRuleScope(SystemModel):
             return stream.id == self.reading_id
         if self.kind == "broker":
             return True
-        return stream.topic == self.topic_prefix or stream.topic.startswith(
-            self.topic_prefix + "/"
-        )
+        prefix = self.topic_prefix
+        if prefix is None:
+            return False
+        return stream.topic == prefix or stream.topic.startswith(prefix + "/")
 
 
 class CollectionRule(SystemModel):

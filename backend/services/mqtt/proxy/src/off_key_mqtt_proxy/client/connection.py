@@ -7,9 +7,10 @@ TLS configuration, authentication, and automatic reconnection with backoff.
 
 import asyncio
 import ssl
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from datetime import datetime
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
@@ -29,8 +30,8 @@ class ConnectionManager:
     def __init__(
         self,
         config: MQTTConfig,
-        on_connected: Callable[[], Awaitable[None]] | None = None,
-        on_disconnected: Callable[[bool], Awaitable[None]] | None = None,
+        on_connected: Callable[[], Coroutine[Any, Any, None]] | None = None,
+        on_disconnected: Callable[[bool], Coroutine[Any, Any, None]] | None = None,
     ):
         self.config = config
         self.on_connected = on_connected

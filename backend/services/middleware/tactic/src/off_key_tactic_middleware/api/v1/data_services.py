@@ -6,6 +6,7 @@ invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -87,7 +88,8 @@ async def get_telemetry_data(
     after_event_timestamp: datetime | None = Query(None),
     paginated: bool = Query(False),
     service: TelemetryQueryService = Depends(get_telemetry_query_service),
-) -> list[TelemetryDataPoint] | TelemetryPaginatedResponse:
+) -> list[dict[str, Any]] | dict[str, Any]:
+    # response_model on the decorator validates and documents the payload.
     cursor_values = (after_created, after_event_timestamp)
     if any(value is not None for value in cursor_values) and not all(
         value is not None for value in cursor_values

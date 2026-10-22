@@ -6,6 +6,7 @@ management, message queuing, and thread-safe async coordination.
 """
 
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime
@@ -74,14 +75,14 @@ class MessageHandler:
         # Store event loop for async handlers
         if event_loop:
             self._event_loop = event_loop
-        elif asyncio.iscoroutinefunction(handler):
+        elif inspect.iscoroutinefunction(handler):
             try:
                 self._event_loop = asyncio.get_running_loop()
             except RuntimeError:
                 logger.warning("No event loop available for async message handler")
 
         # Initialize semaphore for async handlers to limit concurrency
-        if asyncio.iscoroutinefunction(handler) and self._event_loop:
+        if inspect.iscoroutinefunction(handler) and self._event_loop:
             self._ensure_async_workers()
 
     def clear_handler(self) -> None:
@@ -201,12 +202,14 @@ class MessageHandler:
 
     def _handle_user_callback(self, message: MQTTMessage) -> None:
         """Handle user-provided message callback (sync or async)"""
+        handler = self.message_handler
+        if handler is None:
+            return
         try:
-            if asyncio.iscoroutinefunction(self.message_handler):
+            if inspect.iscoroutinefunction(handler):
                 # Handle async callback
                 if self._event_loop and not self._event_loop.is_closed():
                     try:
-                        handler = self.message_handler
                         self._event_loop.call_soon_threadsafe(
                             self._enqueue_async_handler_work,
                             message,
@@ -220,7 +223,7 @@ class MessageHandler:
                     logger.error("Event loop not available for async message handler")
             else:
                 # Handle sync callback directly
-                self.message_handler(message)
+                handler(message)
 
         except Exception as e:
             self.handler_errors += 1

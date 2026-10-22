@@ -351,6 +351,8 @@ class Tactic:
         if after_timestamp is not None:
             params["after_timestamp"] = after_timestamp.isoformat()
         if after_created is not None:
+            if after_event_timestamp is None:
+                raise ValueError("after_created requires after_event_timestamp")
             params["after_created"] = after_created.isoformat()
             params["after_event_timestamp"] = after_event_timestamp.isoformat()
 

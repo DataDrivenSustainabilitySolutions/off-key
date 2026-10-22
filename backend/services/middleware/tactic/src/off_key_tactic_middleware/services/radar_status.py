@@ -41,7 +41,9 @@ def normalize_operational_status(service: MonitoringService) -> dict[str, Any]:
         "updated_at": updated_at,
         "is_stale": bool(raw_status.get("is_stale", False)),
     }
-    return RadarOperationalStatus(**payload).model_dump(mode="json", exclude_none=True)
+    return RadarOperationalStatus.model_validate(payload).model_dump(
+        mode="json", exclude_none=True
+    )
 
 
 def derive_operational_status(
@@ -113,7 +115,9 @@ def _override_operational_status(
         "updated_at": datetime.now(UTC),
         "is_stale": False,
     }
-    return RadarOperationalStatus(**payload).model_dump(mode="json", exclude_none=True)
+    return RadarOperationalStatus.model_validate(payload).model_dump(
+        mode="json", exclude_none=True
+    )
 
 
 def _mark_operational_status_stale(
@@ -121,4 +125,6 @@ def _mark_operational_status_stale(
     detail: str,
 ) -> dict[str, Any]:
     payload = {**status, "detail": detail, "is_stale": True}
-    return RadarOperationalStatus(**payload).model_dump(mode="json", exclude_none=True)
+    return RadarOperationalStatus.model_validate(payload).model_dump(
+        mode="json", exclude_none=True
+    )

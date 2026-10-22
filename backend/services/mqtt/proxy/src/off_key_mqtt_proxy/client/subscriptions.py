@@ -11,7 +11,7 @@ class SubscriptionManager:
         self.client: mqtt.Client | None = None
         self.subscriptions: set[str] = set()
         self.pending_subscriptions: set[str] = set()
-        self._acks: dict[tuple[str, int], asyncio.Future] = {}
+        self._acks: dict[tuple[str, int | None], asyncio.Future] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self.generation = 0
 

@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from ..schemas.pipelines import ComponentField
+from ..schemas.pipelines import ComponentField, FieldType
 
 Schema = dict[str, Any]
 SCALAR_TYPES = {"number", "integer", "boolean", "string"}
-SPECIAL_TYPES = {
+SPECIAL_TYPES: dict[str, FieldType] = {
     "features": "features",
     "mapping": "rename",
     "feature_range": "number_pair",
@@ -39,7 +39,7 @@ def _unwrap_nullable(schema: Schema, definitions: Schema) -> tuple[Schema, bool]
     return _resolve(choices[0], definitions), len(choices) != len(resolved["anyOf"])
 
 
-def _array_kind(schema: Schema, definitions: Schema) -> str:
+def _array_kind(schema: Schema, definitions: Schema) -> FieldType:
     fixed = schema.get("prefixItems", [])
     if len(fixed) == 2 and all(
         item.get("type") in {"number", "integer"} for item in fixed
@@ -55,7 +55,7 @@ def _array_kind(schema: Schema, definitions: Schema) -> str:
     )
 
 
-def _field_kind(name: str, schema: Schema, definitions: Schema) -> str:
+def _field_kind(name: str, schema: Schema, definitions: Schema) -> FieldType:
     if name in SPECIAL_TYPES:
         return SPECIAL_TYPES[name]
     if schema.get("enum") or "const" in schema:

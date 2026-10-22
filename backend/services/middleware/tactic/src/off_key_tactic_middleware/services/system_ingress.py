@@ -262,7 +262,7 @@ class SystemIngress:
                             "revision": row.revision,
                             "generation": self.generation,
                             "status": "applied"
-                            if self.output.is_connected()
+                            if self.output is not None and self.output.is_connected()
                             else "connecting",
                             "sources": sources,
                             "readings": {

@@ -84,9 +84,15 @@ updates:
       backend-python:
         patterns:
           - "*"
+        exclude-patterns:
+          - "ty"
         update-types:
           - "minor"
           - "patch"
+      # A ty bump that reports new diagnostics fails only its own PR.
+      typing-tools:
+        patterns:
+          - "ty"
 
   - package-ecosystem: "npm"
     directory: "/frontend"

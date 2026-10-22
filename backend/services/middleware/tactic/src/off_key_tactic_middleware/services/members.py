@@ -32,14 +32,18 @@ class MemberService:
                 raise AuthenticationError("Administrator access is no longer available")
 
     async def _admin_count(self) -> int:
-        return await self.session.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(
-                User.role == RoleEnum.admin,
-                User.is_active.is_(True),
-                User.is_verified.is_(True),
+        # COUNT never yields NULL; the fallback only satisfies the type.
+        return int(
+            await self.session.scalar(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    User.role == RoleEnum.admin,
+                    User.is_active.is_(True),
+                    User.is_verified.is_(True),
+                )
             )
+            or 0
         )
 
     async def list_members(self) -> list[User]:

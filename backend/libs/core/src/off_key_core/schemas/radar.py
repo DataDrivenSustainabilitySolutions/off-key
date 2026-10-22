@@ -529,7 +529,7 @@ def _calibration_betting_width(
     return 1
 
 
-def _default_martingale_trackers() -> list[PowerMartingaleTrackerConfig]:
+def _default_martingale_trackers() -> list[MartingaleTrackerConfig]:
     return [PowerMartingaleTrackerConfig(tracker_id="primary")]
 
 

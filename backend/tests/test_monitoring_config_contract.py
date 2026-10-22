@@ -1,6 +1,5 @@
 """Public validation and serialization of the shared RADAR launch contract."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -52,9 +51,8 @@ def test_invalid_start_returns_422_without_launching(
         path = "/v1/monitors/start"
     else:
         app.include_router(radar.router, prefix="/api/v1/orchestration")
-        app.dependency_overrides[radar.get_radar_orchestration_service] = lambda: (
-            SimpleNamespace(create_radar_service=launch)
-        )
+        app.dependency_overrides[radar.get_db_async] = lambda: None
+        monkeypatch.setattr(radar, "start_form_monitor", launch)
         path = "/api/v1/orchestration/radar/services/start/"
 
     with TestClient(app) as client:

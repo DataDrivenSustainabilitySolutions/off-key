@@ -108,7 +108,8 @@ test.describe("monitoring lifecycle smoke", () => {
       const serviceRow = page
         .getByRole("row")
         .filter({ hasText: containerName! });
-      await expect(serviceRow).toBeVisible({ timeout: 60_000 });
+      // The form waits until its pipeline activation has created the workload.
+      await expect(serviceRow).toBeVisible({ timeout: 240_000 });
 
       const stopResponsePromise = page.waitForResponse(
         (response) =>

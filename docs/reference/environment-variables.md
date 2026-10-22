@@ -145,7 +145,7 @@ unknown errors remain eligible for retry.
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR TLS default |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR authentication default |
 | `TACTIC_RADAR_WORKLOAD_LIFECYCLE` | `ephemeral` | `ephemeral` or `persistent` |
-| `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to use legacy creation while existing graph execution, inspection, stopping and release recovery remain available. |
+| `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to hide the workbench; the setup forms still start monitors as pipelines, and existing graph execution, inspection, stopping and release recovery remain available. |
 | `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
 | `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
 | `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |

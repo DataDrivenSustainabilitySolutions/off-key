@@ -138,7 +138,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const started = await startedResponse;
     expect(started.ok(), await started.text()).toBeTruthy();
     serviceId = ((await started.json()) as { service_id: string }).service_id;
-    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible();
+    // The form opens the service once its pipeline activation created the workload.
+    await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
     await page.getByRole("button", { name: "Rename service", exact: true }).click();
     const serviceName = page.getByRole("textbox", { name: "Rename service", exact: true });
     await serviceName.fill("Saved workspace monitor");

@@ -65,9 +65,9 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
     )
     expected = {
         "service_id": "svc-1",
-        "container_id": "ctr-1",
-        "container_name": "radar-charger-1",
-        "status": "running",
+        "activation_id": "activation-1",
+        "container_name": "pipeline-svc-1",
+        "status": "requested",
         "mqtt_topics": config.mqtt_topics,
     }
 

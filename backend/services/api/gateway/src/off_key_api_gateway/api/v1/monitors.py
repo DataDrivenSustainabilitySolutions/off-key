@@ -63,7 +63,7 @@ class MonitoringServiceConfig(RadarStartConfig):
 
 class ServiceResponse(BaseModel):
     service_id: str
-    container_id: str
+    activation_id: str
     container_name: str
     status: str
     mqtt_topics: list[str]
@@ -152,15 +152,13 @@ async def get_monitoring_chart_evidence(
     )
 
 
-@router.post("/start", response_model=ServiceResponse)
+@router.post("/start", response_model=ServiceResponse, status_code=202)
 @shared_limit_execute
 async def start_monitoring_service(
     request: Request,
     config: MonitoringServiceConfig,
 ):
-    """
-    Starts a new monitoring service container via TACTIC orchestration.
-    """
+    """Start a form-configured monitor; TACTIC runs it as a pipeline."""
     try:
         return await tactic.start_radar_service(config)
     except TacticError:

@@ -118,7 +118,7 @@ MQTT paths and JSON Pointer payload bindings.
 | --- | --- | --- | --- |
 | `GET` | `/monitors/all` | List services | `active_only`, `include_docker_status` |
 | `GET` | `/monitors` | Get one service | Exactly one of `container_name`, `container_id` |
-| `POST` | `/monitors/start` | Start a RADAR service | Monitoring configuration body |
+| `POST` | `/monitors/start` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
 | `DELETE` | `/monitors/stop` | Stop/remove a workload by container | Exactly one of `container_name`, `container_id` |
 | `DELETE` | `/monitors/{service_id}` | Delete a service record and backing workload | Path: `service_id` |
 | `GET` | `/monitors/models` | Discover available models | Optional `strategy` |
@@ -141,6 +141,13 @@ Omitting `monitoring` selects the default static baseline. The former top-level
 to `monitoring`. Mixing the two formats, conflicting model fields, and malformed
 configuration return HTTP 422. The gateway forwards only the canonical format to
 TACTIC.
+
+TACTIC converts the configuration into its equivalent graph, binds each topic to
+its selected numeric catalogue reading and submits a pipeline activation, even
+while the visual workbench is disabled. The HTTP 202 response carries
+`service_id`, `activation_id`, `container_name`, `status` (the activation phase)
+and `mqtt_topics`. Poll `/monitors/pipeline-activations/{activation_id}` until
+the service exists. Topics without a selected numeric reading return HTTP 422.
 
 Use `/monitors/models` as the source for valid model names and parameter schemas.
 
@@ -222,7 +229,7 @@ Health and readiness remain available without this service credential.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/orchestration/radar/services/` | List services |
-| `POST` | `/orchestration/radar/services/start/` | Start a service |
+| `POST` | `/orchestration/radar/services/start/` | Start a form-configured monitor as a pipeline activation |
 | `GET` | `/orchestration/radar/services/details/` | Get workload details |
 | `DELETE` | `/orchestration/radar/services/stop/` | Stop by container reference |
 | `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |

@@ -35,6 +35,7 @@ from off_key_core.schemas.pipelines import (
     PipelineServiceView,
     PipelineView,
 )
+from off_key_core.schemas.radar import RadarStartConfig
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import select
 
@@ -295,20 +296,29 @@ class PipelineLibrary:
         return layout
 
 
-def legacy_definition(config: dict) -> PipelineDefinition:
-    """Presentation of existing saved monitor semantics, never an implicit migration."""
-    from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+def legacy_inputs(config: RadarStartConfig) -> list[tuple[str, str]]:
+    """Sensor keys with their topics, in the sorted order form detectors use."""
+    from off_key_core.utils.mqtt_topics import (
+        derive_monitoring_sensor_keys,
+        normalize_static_monitoring_topics,
+    )
 
+    topics = normalize_static_monitoring_topics(config.mqtt_topics)
+    keys = derive_monitoring_sensor_keys(
+        topics, sensor_key_strategy=config.performance_config.sensor_key_strategy
+    )
+    return sorted(zip(keys, topics, strict=True))
+
+
+def legacy_definition(config: dict) -> PipelineDefinition:
+    """The graph equivalent of a form-configured monitor."""
     from .release import normalize_saved_launch
 
     # Read reviewed older launch schemas without changing their saved provenance.
     parsed = normalize_saved_launch(config)
-    keys = derive_monitoring_sensor_keys(
-        parsed.mqtt_topics,
-        sensor_key_strategy=parsed.performance_config.sensor_key_strategy,
-    )
     slots = [
-        {"id": f"input_{index + 1}", "label": key} for index, key in enumerate(keys)
+        {"id": f"input_{index + 1}", "label": key}
+        for index, (key, _) in enumerate(legacy_inputs(parsed))
     ]
     nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
     previous = "input"

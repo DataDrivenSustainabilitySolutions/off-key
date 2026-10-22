@@ -1,24 +1,29 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from off_key_core.db.base import get_db_async
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import RadarServiceLabel
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...domain import DomainError
 from ...provider import get_radar_orchestration_service
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from ...services.pipelines.forms import start_form_monitor
+from ..errors import http_error
 
 router = APIRouter()
 
 
 class RadarServiceResponse(BaseModel):
-    """Response model for RADAR service operations."""
+    """A form monitor accepted as a pipeline activation; its workload starts next."""
 
     service_id: str
-    container_id: str
+    activation_id: str
     container_name: str
     status: str
     mqtt_topics: list[str]
@@ -46,38 +51,26 @@ async def list_radar_services(
         ) from e
 
 
-@router.post("/radar/services/start/", response_model=RadarServiceResponse)
+@router.post(
+    "/radar/services/start/",
+    response_model=RadarServiceResponse,
+    status_code=202,
+)
 async def start_radar_service(
-    config: RadarConfig,
-    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    config: RadarConfig, session: AsyncSession = Depends(get_db_async)
 ):
-    """
-    Starts a new RADAR Docker service for anomaly detection on specified MQTT topics.
-
-    The RADAR service will:
-    - Subscribe to the specified MQTT topics
-    - Apply the configured ML model for anomaly detection
-    - Use the provided thresholds and performance settings
-    - Store results in the database
-    """
+    """Start a monitor configured with a setup form as an equivalent pipeline."""
     try:
-        radar_service = await service.create_radar_service(config)
-
-        return {
-            "service_id": radar_service.id,
-            "container_id": radar_service.container_id,
-            "container_name": radar_service.container_name,
-            "status": "running" if radar_service.status else "stopped",
-            "mqtt_topics": radar_service.mqtt_topic,
-        }
-    except DeploymentInProgressError:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start RADAR service: {e!s}"
-        ) from e
+        activation = await start_form_monitor(session, config)
+    except DomainError as exc:
+        raise http_error(exc) from exc
+    return {
+        "service_id": activation.service_id,
+        "activation_id": activation.id,
+        "container_name": f"pipeline-{activation.service_id}",
+        "status": activation.phase,
+        "mqtt_topics": config.mqtt_topics,
+    }
 
 
 @router.get("/radar/services/details/", response_model=dict[str, Any])

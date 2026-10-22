@@ -13,6 +13,7 @@ from off_key_core.db.models import (
     MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
+    PipelineRevision,
     PipelineRun,
     RadarRuntimeCheckpoint,
     SystemCollectionConfiguration,
@@ -617,3 +618,58 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
             ),
             session_factory=pipeline_database,
         )
+
+
+@pytest.mark.asyncio
+async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
+    pipeline_database, monkeypatch
+):
+    from off_key_core.schemas.radar import RadarStartConfig
+    from off_key_tactic_middleware.services.pipelines.forms import start_form_monitor
+
+    monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "false")
+    get_tactic_settings.cache_clear()
+    async with pipeline_database() as session:
+        catalog = (await read_collection_runtime(session)).catalog
+        topics = {
+            stream.definition.id: stream.accepted_topic
+            for stream in catalog.streams(selected_only=True)
+        }
+        config = RadarStartConfig(
+            container_name="radar-device",
+            mqtt_topics=[topics["temperature"], topics["current"]],
+            performance_config={"sensor_freshness_seconds": 12},
+        )
+        with pytest.raises(ConflictError, match="disabled"):
+            await PipelineActivations(session).apply(
+                PipelineApplyRequest(
+                    definition=pipeline_catalog().templates[0].definition,
+                    bindings={"value": "current"},
+                    display_name="Workbench",
+                    idempotency_key="workbench-off",
+                )
+            )
+        await session.rollback()
+        activation = await start_form_monitor(session, config)
+        run = await session.get(PipelineRun, activation.run_id)
+        launch = run.launch_config
+        assert launch["display_name"] == "radar-device"
+        assert launch["performance_config"]["sensor_freshness_seconds"] == 12
+        assert launch["container_name"] == f"pipeline-{activation.service_id}"
+        execution = PipelineExecutionConfig.model_validate(run.execution)
+        assert {item.reading_id for item in execution.bindings} == {
+            "current",
+            "temperature",
+        }
+        keys = [item.input_key for item in execution.bindings]
+        assert keys == sorted(keys)
+        design = await session.get(
+            MonitoringPipeline,
+            await session.scalar(
+                select(PipelineRevision.pipeline_id).where(
+                    PipelineRevision.id == run.revision_id
+                )
+            ),
+        )
+        assert design.description == "Created by the monitoring setup form"
+        assert (await PipelineLibrary(session).list()).items == []

@@ -118,8 +118,21 @@ class PipelineActivations:
         """Atomically snapshot, bind and reserve a directly configured service."""
         return await self._submit(request)
 
-    async def _submit(self, request: PipelineActivationRequest | PipelineApplyRequest):
-        require_authoring()
+    async def apply_form(
+        self, request: PipelineApplyRequest, performance: PerformanceConfig
+    ):
+        """Run a setup-form monitor as a pipeline, also while the workbench is off."""
+        return await self._submit(request, performance=performance, workbench=False)
+
+    async def _submit(
+        self,
+        request: PipelineActivationRequest | PipelineApplyRequest,
+        *,
+        performance: PerformanceConfig | None = None,
+        workbench: bool = True,
+    ):
+        if workbench:
+            require_authoring()
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
         request_hash = hashlib.sha256(
@@ -139,13 +152,16 @@ class PipelineActivations:
                 )
             return activation_view(existing)
         revision, design, definition = (
-            await self._snapshot(request)
+            await self._snapshot(
+                request,
+                description="" if workbench else "Created by the monitoring setup form",
+            )
             if isinstance(request, PipelineApplyRequest)
             else await self._published_design(request)
         )
         predecessor = await self._predecessor(request)
         performance, topics, bindings, snapshot = await self._bindings(
-            request, definition
+            request, definition, performance or PerformanceConfig()
         )
         claims = await self._claims(request, predecessor, topics)
         now = datetime.now(UTC)
@@ -210,7 +226,7 @@ class PipelineActivations:
         await self.session.commit()
         return activation_view(row)
 
-    async def _snapshot(self, request: PipelineApplyRequest):
+    async def _snapshot(self, request: PipelineApplyRequest, *, description: str):
         try:
             compiled = compile_pipeline(request.definition)
         except ValueError as exc:
@@ -220,7 +236,7 @@ class PipelineActivations:
         design = MonitoringPipeline(
             id=str(uuid4()),
             name=request.display_name,
-            description="",
+            description=description,
             archived=False,
             is_template=False,
             version=1,
@@ -286,7 +302,7 @@ class PipelineActivations:
             )
         return predecessor
 
-    async def _bindings(self, request, definition):
+    async def _bindings(self, request, definition, performance):
         snapshot = await read_collection_runtime(self.session)
         if (
             snapshot.collection.get("revision") != snapshot.revision
@@ -310,7 +326,6 @@ class PipelineActivations:
             raise ValidationError(
                 "Input bindings require selected numeric catalogue readings"
             ) from exc
-        performance = PerformanceConfig()
         topics = [selected[slot.id].accepted_topic for slot in definition.input_slots]
         keys = derive_monitoring_sensor_keys(
             topics, sensor_key_strategy=performance.sensor_key_strategy

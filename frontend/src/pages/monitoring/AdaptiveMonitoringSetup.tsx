@@ -1,8 +1,6 @@
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { API_CONFIG } from "@/lib/api-config";
-import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
@@ -21,6 +19,7 @@ import type { FieldErrors } from "./config";
 import { CONTROL_CLASS, HELP_CLASS, LABEL_CLASS } from "./formStyles";
 import { ConfigSection, FieldError } from "./MonitoringUi";
 import { ModelParameterFields } from "./ModelParameterFields";
+import { startFormMonitor } from "./startMonitor";
 
 interface Props {
   draftKey?: string;
@@ -107,12 +106,12 @@ export function AdaptiveMonitoringSetup({
     }
     setStarting(true);
     try {
-      const result = await apiUtils.post<{ service_id: string }>(API_CONFIG.ENDPOINTS.MONITORING.START,
-        { ...validation.request, ...(displayName ? { display_name: displayName } : {}) }, {
-        timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT,
+      const serviceId = await startFormMonitor({
+        ...validation.request,
+        ...(displayName ? { display_name: displayName } : {}),
       });
       toast.success("Adaptive monitoring service started.");
-      await onStarted(result?.service_id);
+      await onStarted(serviceId);
     } catch (error) {
       toast.error(`Failed to start adaptive monitoring: ${getErrorMessage(error)}`);
     } finally {

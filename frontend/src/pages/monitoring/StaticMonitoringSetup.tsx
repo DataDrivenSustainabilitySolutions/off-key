@@ -1,8 +1,6 @@
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { API_CONFIG } from "@/lib/api-config";
-import { apiUtils } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
@@ -19,6 +17,7 @@ import toast from "react-hot-toast";
 
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { SettingLabel } from "./SettingLabel";
+import { startFormMonitor } from "./startMonitor";
 import { AdvancedSettings } from "./AdvancedSettings";
 import {
   buildStaticMonitoringRequest,
@@ -129,13 +128,12 @@ export function StaticMonitoringSetup({
 
     setStarting(true);
     try {
-      const result = await apiUtils.post<{ service_id: string }>(
-        API_CONFIG.ENDPOINTS.MONITORING.START,
-        { ...validation.request, ...(displayName ? { display_name: displayName } : {}) },
-        { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT },
-      );
+      const serviceId = await startFormMonitor({
+        ...validation.request,
+        ...(displayName ? { display_name: displayName } : {}),
+      });
       toast.success("Static monitoring service started.");
-      await onStarted(result?.service_id);
+      await onStarted(serviceId);
     } catch (error) {
       toast.error(`Failed to start monitoring: ${getErrorMessage(error)}`);
     } finally {

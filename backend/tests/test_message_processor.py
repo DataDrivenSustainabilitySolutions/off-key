@@ -240,7 +240,7 @@ def test_message_processor_rejects_invalid_sensor_key_strategy():
 
 def test_detect_anomaly_uses_canonical_sample_timestamp():
     detector = MagicMock()
-    detector.process_with_resilience.return_value = AnomalyResult(
+    detector.process.return_value = AnomalyResult(
         anomaly_score=0.9,
         is_anomaly=True,
         severity="high",
@@ -291,7 +291,7 @@ def test_detect_anomaly_uses_canonical_sample_timestamp():
 @pytest.mark.asyncio
 async def test_process_message_aligns_evidence_to_payload_event_timestamp():
     detector = MagicMock()
-    detector.process_with_resilience.return_value = AnomalyResult(
+    detector.process.return_value = AnomalyResult(
         anomaly_score=0.1,
         is_anomaly=False,
         severity="low",

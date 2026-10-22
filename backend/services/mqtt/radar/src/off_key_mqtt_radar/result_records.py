@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 VALUE_TYPES = {
     "static_conformal": "conformal_pvalue",
     "adaptive_stream": "anomaly_score",
-    None: "tail_pvalue",
 }
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 
@@ -177,9 +176,7 @@ class ResultProjector:
             if bool(alignment_context.get("aligned_vector")):
                 return "ml_adaptive_stream_multivariate"
             return "ml_adaptive_stream_univariate"
-        if bool(alignment_context.get("aligned_vector")):
-            return "ml_tailprob_multivariate"
-        return "ml_tailprob_univariate"
+        raise ValueError("Result carries no detector context")
 
     @staticmethod
     def _derive_anomaly_value(result: AnomalyResult) -> float:
@@ -190,13 +187,6 @@ class ResultProjector:
             conformal_pvalue = float(conformal_pvalue)
             if math.isfinite(conformal_pvalue):
                 return conformal_pvalue
-
-        score_window = (result.context or {}).get("score_window", {})
-        tail_pvalue = score_window.get("tail_pvalue")
-        if isinstance(tail_pvalue, int | float):
-            tail_pvalue = float(tail_pvalue)
-            if math.isfinite(tail_pvalue):
-                return tail_pvalue
         return float(result.anomaly_score)
 
     @staticmethod

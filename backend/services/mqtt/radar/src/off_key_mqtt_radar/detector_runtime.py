@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Any, TypeVar
 
+from .detector_handle import DetectorHandle
 from .execution_errors import FatalExecutionError
-from .resilience import ResilientAnomalyDetector
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class DetectorRuntime:
     they never race model mutation or wait for a long inference/serialization.
     """
 
-    def __init__(self, detector: ResilientAnomalyDetector):
+    def __init__(self, detector: DetectorHandle):
         self.detector = detector
         self._executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="radar-model"

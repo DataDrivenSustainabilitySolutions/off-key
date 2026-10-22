@@ -27,6 +27,7 @@ from .database import (
     DatabaseWriter,
 )
 from .detector import StaticConformalDetectionService
+from .detector_handle import DetectorHandle
 from .detector_runtime import DetectorRuntime
 from .execution_errors import FatalExecutionError
 from .feature_validation import TelemetryFeatureValidator
@@ -35,7 +36,6 @@ from .memory import MemoryManager
 from .message_processor import MessageProcessor
 from .models import MQTTMessage
 from .mqtt_client import RadarMQTTClient
-from .resilience import ResilientAnomalyDetector
 from .runtime_checkpoint import (
     CoverageCheckpoint,
     ProcessorCheckpoint,
@@ -63,7 +63,7 @@ class RadarService:
 
         # Core components
         self.mqtt_client: RadarMQTTClient | None = None
-        self.detector: ResilientAnomalyDetector | None = None
+        self.detector: DetectorHandle | None = None
         self.database_writer: DatabaseWriter | None = None
 
         # Supporting components
@@ -355,8 +355,7 @@ class RadarService:
             )
             primary_service = service_cls(anomaly_config)
 
-        # Create resilient detector (with fallback)
-        self.detector = ResilientAnomalyDetector(primary_service)
+        self.detector = DetectorHandle(primary_service)
         if codec is not None:
             self._checkpoint_ready = True
 

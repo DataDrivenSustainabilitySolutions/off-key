@@ -37,16 +37,10 @@ def _scope_records_to(monkeypatch, service_id):
 def _scored_result(
     *,
     aligned_vector: bool,
-    tail_pvalue,
     anomaly_score: float,
     conformal_pvalue=None,
     required_sensors=None,
 ) -> AnomalyResult:
-    detector_context = (
-        {"static_conformal": {"p_value": conformal_pvalue}}
-        if conformal_pvalue is not None
-        else {"score_window": {"tail_pvalue": tail_pvalue}}
-    )
     return AnomalyResult(
         anomaly_score=anomaly_score,
         is_anomaly=True,
@@ -57,7 +51,7 @@ def _scored_result(
         topic="telemetry/charger-1/sine",
         charger_id="charger-1",
         context={
-            **detector_context,
+            "static_conformal": {"p_value": conformal_pvalue},
             "alignment": {
                 "aligned_vector": aligned_vector,
                 "required_sensors": required_sensors,
@@ -662,38 +656,29 @@ async def test_cancellation_during_preparation_retains_snapshot(
         pytest.param(
             _scored_result(
                 aligned_vector=True,
-                tail_pvalue=0.0042,
+                conformal_pvalue=0.0042,
                 anomaly_score=0.018,
                 required_sensors=["L1", "L2"],
             ),
             {
-                "anomaly_type": "ml_tailprob_multivariate",
-                "anomaly_value": 0.0042,
-                "value_type": "tail_pvalue",
                 "telemetry_type": MULTIVARIATE_TELEMETRY_TYPE,
                 "sensor_set": ["L1", "L2"],
             },
-            id="tail-multivariate",
+            id="multivariate-sensor-set",
         ),
         pytest.param(
-            _scored_result(aligned_vector=False, tail_pvalue=0.01, anomaly_score=0.02),
+            _scored_result(aligned_vector=False, anomaly_score=0.011),
             {
-                "anomaly_type": "ml_tailprob_univariate",
-                "anomaly_value": 0.01,
+                "anomaly_type": "ml_conformal_static_univariate",
+                "anomaly_value": 0.011,
                 "telemetry_type": "sine",
                 "sensor_set": ["sine"],
             },
-            id="tail-univariate",
-        ),
-        pytest.param(
-            _scored_result(aligned_vector=False, tail_pvalue=None, anomaly_score=0.011),
-            {"anomaly_type": "ml_tailprob_univariate", "anomaly_value": 0.011},
-            id="score-fallback",
+            id="score-without-p-value",
         ),
         pytest.param(
             _scored_result(
                 aligned_vector=True,
-                tail_pvalue=None,
                 conformal_pvalue=0.002,
                 anomaly_score=0.002,
             ),
@@ -707,7 +692,6 @@ async def test_cancellation_during_preparation_retains_snapshot(
         pytest.param(
             _scored_result(
                 aligned_vector=False,
-                tail_pvalue=None,
                 conformal_pvalue=0.003,
                 anomaly_score=0.003,
             ),
@@ -730,7 +714,9 @@ def test_projected_anomaly_records_carry_detector_semantics(result, projection):
 @pytest.mark.parametrize("service_id", [None, "monitor-1", "monitor-2"])
 def test_build_records_scopes_alarm_and_identity_to_monitor(monkeypatch, service_id):
     _scope_records_to(monkeypatch, service_id)
-    result = _scored_result(aligned_vector=True, tail_pvalue=0.001, anomaly_score=0.01)
+    result = _scored_result(
+        aligned_vector=True, conformal_pvalue=0.001, anomaly_score=0.01
+    )
     [anomaly], [identity] = ResultProjector()._build_records([result])
     assert anomaly["service_id"] == identity["service_id"] == (service_id or "")
 
@@ -741,14 +727,16 @@ async def test_retry_batch_persists_value_type(monkeypatch):
     session = AsyncMock()
     writer = _retrying_writer(session)
     batch_snapshot = [
-        _scored_result(aligned_vector=False, tail_pvalue=0.0042, anomaly_score=0.02)
+        _scored_result(
+            aligned_vector=False, conformal_pvalue=0.0042, anomaly_score=0.02
+        )
     ]
 
     await writer._retry_failed_batch(batch_snapshot=batch_snapshot)
 
     first_insert_stmt = session.execute.await_args_list[0].args[0]
     first_row = first_insert_stmt._multi_values[0][0]
-    assert first_row["value_type"] == "tail_pvalue"
+    assert first_row["value_type"] == "conformal_pvalue"
 
 
 @pytest.mark.asyncio
@@ -758,7 +746,7 @@ async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, ca
     session.execute.side_effect = RuntimeError("db down")
     writer = _retrying_writer(session)
     retry_batch = [
-        _scored_result(aligned_vector=False, tail_pvalue=0.001, anomaly_score=0.02)
+        _scored_result(aligned_vector=False, conformal_pvalue=0.001, anomaly_score=0.02)
     ]
 
     with caplog.at_level("ERROR"):
@@ -798,7 +786,9 @@ async def test_retry_only_requeues_uncommitted_chunks(
     start = datetime.now(UTC)
     results = [
         replace(
-            _scored_result(aligned_vector=False, tail_pvalue=0.001, anomaly_score=0.02),
+            _scored_result(
+                aligned_vector=False, conformal_pvalue=0.001, anomaly_score=0.02
+            ),
             timestamp=start + timedelta(seconds=index),
         )
         for index in range(11)
@@ -835,7 +825,7 @@ async def test_flush_batch_requeues_snapshot_when_writing_or_retrying_fails(
 ):
     writer = _retrying_writer()
     anomaly = _scored_result(
-        aligned_vector=False, tail_pvalue=0.002, anomaly_score=0.02
+        aligned_vector=False, conformal_pvalue=0.002, anomaly_score=0.02
     )
     writer.write_queue = [anomaly]
     writer._execute_upsert = AsyncMock(side_effect=write_error)

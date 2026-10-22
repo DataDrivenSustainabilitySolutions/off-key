@@ -97,23 +97,6 @@ def test_missing_or_silent_inputs_degrade_health_without_a_new_callback():
     assert _health(tracker).metrics["operational_status"]["stage"] == "operational"
 
 
-def test_primary_fallback_does_not_advance_successful_inference():
-    clock = [100.0]
-    tracker = ActivityTracker({"a"}, clock=lambda: clock[0])
-    _input(tracker, "a", clock[0])
-    tracker.record_result(_result())
-    initial = tracker.snapshot()
-    clock[0] = 106.0
-    _input(tracker, "a", clock[0])
-    tracker.record_result(_result(fallback_reason="model failed"))
-    current = tracker.snapshot()
-    assert current["last_processed_at"] == initial["last_processed_at"]
-    assert current["last_inference_at"] == initial["last_inference_at"]
-    activity = _health(tracker).metrics["activity"]
-    assert activity["inference_stalled"]
-    assert not activity["inputs_stalled"]
-
-
 def test_restored_counts_wait_for_real_runtime_inference():
     clock = [100.0]
     tracker = ActivityTracker({"a", "b"}, clock=lambda: clock[0])

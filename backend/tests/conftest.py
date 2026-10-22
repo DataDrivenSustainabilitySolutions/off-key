@@ -29,7 +29,7 @@ def sample_anomaly_result():
         raw_data={"cpu_usage": 95.5},
         topic="telemetry/charger-001/cpu",
         charger_id="charger-001",
-        context={"processing_time_ms": 5.2},
+        context={"static_conformal": {"phase": "ready", "p_value": 0.01}},
     )
 
 

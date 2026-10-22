@@ -69,8 +69,6 @@ class ActivityTracker:
 
     def record_result(self, result: AnomalyResult) -> None:
         context = result.context or {}
-        if context.get("fallback_reason") or context.get("service_state") == "failed":
-            return
         event = _ActivityEvent(datetime.now(UTC), self._clock())
         with self._lock:
             self._last_processed = event

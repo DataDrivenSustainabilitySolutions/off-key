@@ -8,9 +8,9 @@ import pytest
 from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
+from off_key_mqtt_radar.detector_handle import DetectorHandle
 from off_key_mqtt_radar.detector_runtime import DetectorRuntime
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
-from off_key_mqtt_radar.resilience import ResilientAnomalyDetector
 
 
 async def test_network_thread_burst_is_bounded_while_event_loop_cannot_run():
@@ -68,7 +68,7 @@ async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsi
             )
         ),
     )
-    wrapped = ResilientAnomalyDetector(detector)
+    wrapped = DetectorHandle(detector)
     runtime = DetectorRuntime(wrapped)
     threads = set()
     ticks = 0
@@ -82,7 +82,7 @@ async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsi
 
     def process(index):
         threads.add(threading.get_ident())
-        return wrapped.process_with_resilience({"x": float(index % 7)})
+        return wrapped.process({"x": float(index % 7)})
 
     ticker = asyncio.create_task(heartbeat())
     try:
@@ -137,7 +137,7 @@ async def test_diagnostic_failure_preserves_inference_and_original_exception(
     monkeypatch, failure_boundary
 ):
     detector = StaticConformalDetectionService(MQTTRadarConfig())
-    wrapped = ResilientAnomalyDetector(detector)
+    wrapped = DetectorHandle(detector)
     runtime = DetectorRuntime(wrapped)
     try:
         await runtime.refresh()
@@ -153,7 +153,7 @@ async def test_diagnostic_failure_preserves_inference_and_original_exception(
             return original_health() | {"uncopyable": UncopyableDiagnostic()}
 
         monkeypatch.setattr(wrapped, "get_health_info", broken_health)
-        result = await runtime.call(wrapped.process_with_resilience, {"x": 1.0})
+        result = await runtime.call(wrapped.process, {"x": 1.0})
         assert result.context["static_conformal"]["phase"] == "collecting"
         assert detector.processed_count == 1
         health = runtime.get_health_info()

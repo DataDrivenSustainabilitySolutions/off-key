@@ -11,8 +11,8 @@ from off_key_mqtt_radar.detector import (
     StaticConformalDetectionService,
     StaticConformalState,
 )
+from off_key_mqtt_radar.detector_handle import DetectorHandle
 from off_key_mqtt_radar.martingales import MartingaleAlarmController
-from off_key_mqtt_radar.resilience import ResilientAnomalyDetector
 
 
 class FakeConformalDetector:
@@ -235,7 +235,7 @@ def test_static_health_poll_completes_finished_background_training(monkeypatch):
         (FakeConformalDetector(p_value=0.5), service._create_alarm_controller())
     )
 
-    health_info = ResilientAnomalyDetector(service).get_health_info()
+    health_info = DetectorHandle(service).get_health_info()
 
     assert health_info["primary_service_stats"]["state"] == "ready"
     assert service.state == StaticConformalState.READY

@@ -17,11 +17,11 @@ from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .activity import ActivityTracker
 from .coverage import CoverageTracker
+from .detector_handle import DetectorHandle
 from .execution_errors import FatalExecutionError, ObservationRejected
 from .feature_validation import TelemetryFeatureValidator
 from .memory import MemoryManager
 from .models import AnomalyResult, MQTTMessage
-from .resilience import ResilientAnomalyDetector
 from .state_cache import AlignmentUpdate, SensorStateCache
 from .topic_parser import TopicParser
 
@@ -53,7 +53,7 @@ class MessageProcessor:
 
     def __init__(
         self,
-        detector: ResilientAnomalyDetector,
+        detector: DetectorHandle,
         feature_validator: TelemetryFeatureValidator,
         memory_manager: MemoryManager,
         state_cache: SensorStateCache | None = None,
@@ -167,8 +167,6 @@ class MessageProcessor:
                 charger_id,
                 alignment_context=alignment_context,
             )
-            if (result.context or {}).get("fallback_reason"):
-                self._record_coverage_drop("detector_fallback")
             self.activity.record_result(result)
 
             # Step 6: Update metrics
@@ -181,7 +179,7 @@ class MessageProcessor:
 
         except FatalExecutionError:
             self.error_count += 1
-            self._record_coverage_drop("fatal_pipeline_execution")
+            self._record_coverage_drop("fatal_execution")
             raise
         except ObservationRejected:
             self.error_count += 1
@@ -427,7 +425,7 @@ class MessageProcessor:
         alignment_context: dict[str, Any] | None = None,
     ) -> AnomalyResult:
         """Run the anomaly detector and return result."""
-        result = self.detector.process_with_resilience(
+        result = self.detector.process(
             features, topic=message.topic, charger_id=charger_id
         )
         result.context = result.context or {}
@@ -477,20 +475,12 @@ class MessageProcessor:
 
         # Log all anomalies
         if result.is_anomaly:
-            score_window = (result.context or {}).get("score_window", {})
             alignment_context = (result.context or {}).get("alignment", {})
-            tail_pvalue = score_window.get("tail_pvalue")
-            reference_count = score_window.get("reference_count")
-            min_samples = score_window.get("min_samples")
-            model_ready = score_window.get("model_ready")
-            learn_skipped = score_window.get("learn_skipped")
             sensor_ages = alignment_context.get("sensor_ages", {})
             if result.severity in ["high", "critical"]:
                 logger.warning(
-                    "event=radar.anomaly_detected score=%.3f "
-                    "tail_pvalue=%s severity=%s charger=%s",
+                    "event=radar.anomaly_detected score=%.3f severity=%s charger=%s",
                     result.anomaly_score,
-                    tail_pvalue,
                     result.severity,
                     result.charger_id,
                     extra={
@@ -499,11 +489,6 @@ class MessageProcessor:
                         "severity": result.severity,
                         "topic": result.topic,
                         "charger_id": result.charger_id,
-                        "tail_pvalue": tail_pvalue,
-                        "reference_count": reference_count,
-                        "min_samples": min_samples,
-                        "model_ready": model_ready,
-                        "learn_skipped": learn_skipped,
                         "sensor_ages": sensor_ages,
                         "alignment_status": alignment_context.get("alignment_status"),
                         "canonical_sample_timestamp": (result.context or {}).get(
@@ -513,10 +498,8 @@ class MessageProcessor:
                 )
             else:
                 logger.debug(
-                    "event=radar.anomaly_detected score=%.3f "
-                    "tail_pvalue=%s severity=%s charger=%s",
+                    "event=radar.anomaly_detected score=%.3f severity=%s charger=%s",
                     result.anomaly_score,
-                    tail_pvalue,
                     result.severity,
                     result.charger_id,
                     extra={
@@ -524,11 +507,6 @@ class MessageProcessor:
                         "anomaly_score": result.anomaly_score,
                         "severity": result.severity,
                         "charger_id": result.charger_id,
-                        "tail_pvalue": tail_pvalue,
-                        "reference_count": reference_count,
-                        "min_samples": min_samples,
-                        "model_ready": model_ready,
-                        "learn_skipped": learn_skipped,
                         "sensor_ages": sensor_ages,
                         "alignment_status": alignment_context.get("alignment_status"),
                         "canonical_sample_timestamp": (result.context or {}).get(

@@ -1,13 +1,14 @@
-"""Tests for detector resilience, input validation, and memory utilities."""
+"""Tests for the detector handle, input validation, and memory utilities."""
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
+from off_key_mqtt_radar.detector_handle import DetectorHandle
+from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
 from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
 from off_key_mqtt_radar.memory import MemoryManager
 from off_key_mqtt_radar.models import AnomalyResult
-from off_key_mqtt_radar.resilience import ResilientAnomalyDetector, ServiceState
 
 
 def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:
@@ -41,94 +42,44 @@ class _DetectorDouble:
         return {"strategy": "static_baseline"}
 
 
-class TestResilientAnomalyDetector:
-    def test_success_uses_primary_static_service(self):
+class TestDetectorHandle:
+    def test_success_returns_the_primary_result(self):
         primary = _DetectorDouble(_result(0.7))
-        detector = ResilientAnomalyDetector(primary)
 
-        result = detector.process_with_resilience({"value": 2.0})
+        result = DetectorHandle(primary).process({"value": 2.0})
 
         assert result.anomaly_score == 0.7
-        assert detector.circuit_breaker_open is False
 
-    def test_diagnostic_fallback_never_generates_an_alarm(self):
-        primary = _DetectorDouble(error=RuntimeError("model error"))
-        detector = ResilientAnomalyDetector(primary)
+    def test_detector_error_ends_the_execution(self):
+        error = RuntimeError("model error")
+        detector = DetectorHandle(_DetectorDouble(error=error))
 
-        result = detector.process_with_resilience({"value": 100.0})
+        with pytest.raises(FatalExecutionError, match="model error") as captured:
+            detector.process({"value": 100.0})
 
-        assert result.is_anomaly is False
-        assert result.severity == "unknown"
-        assert result.context["fallback_reason"] == "model error"
-        assert result.context["model_used"] == "statistical"
-        assert detector.error_count == 1
+        assert captured.value.__cause__ is error
 
-    def test_circuit_breaker_opens_on_repeated_errors(self):
-        primary = _DetectorDouble(error=RuntimeError("model error"))
-        detector = ResilientAnomalyDetector(primary)
+    @pytest.mark.parametrize(
+        "error",
+        [FatalExecutionError("fenced"), ObservationRejected("bad observation")],
+    )
+    def test_explicit_execution_outcomes_pass_through(self, error):
+        detector = DetectorHandle(_DetectorDouble(error=error))
 
-        for _ in range(11):
-            detector.process_with_resilience({"value": 1.0})
+        with pytest.raises(type(error)) as captured:
+            detector.process({"value": 1.0})
 
-        assert detector.circuit_breaker_open is True
-        assert detector.state == ServiceState.DEGRADED
-
-    def test_successful_traffic_ages_out_isolated_errors(self):
-        primary = _DetectorDouble()
-        detector = ResilientAnomalyDetector(primary)
-        for _ in range(11):
-            primary.error = None
-            for _ in range(1000):
-                detector.process_with_resilience({"value": 1.0})
-            primary.error = RuntimeError("isolated error")
-            detector.process_with_resilience({"value": 1.0})
-        assert detector.circuit_breaker_open is False
-        assert detector.get_health_info()["recent_error_rate"] == 0.01
-        assert len(detector.recent_outcomes) == 100
-
-    def test_timeout_recovery_starts_a_fresh_error_window(self, monkeypatch):
-        now = [100.0]
-        monkeypatch.setattr(
-            "off_key_mqtt_radar.resilience.time.monotonic", lambda: now[0]
-        )
-        primary = _DetectorDouble(error=RuntimeError("burst"))
-        detector = ResilientAnomalyDetector(primary)
-        for _ in range(11):
-            detector.process_with_resilience({"value": 1.0})
-        assert detector.circuit_breaker_open
-        primary.error = None
-        result = detector.process_with_resilience({"value": 1.0})
-        assert result.context["fallback_reason"] == "circuit_breaker"
-        now[0] += detector.circuit_breaker_timeout + 1
-        assert detector.process_with_resilience({"value": 1.0}) is primary.result
-        assert detector.recent_error_rate == 0
-        primary.error = RuntimeError("new isolated error")
-        detector.process_with_resilience({"value": 1.0})
-        assert not detector.circuit_breaker_open
-        assert detector.recent_error_rate == 0.01
-
-    def test_failure_budget_and_rate_use_the_same_window(self):
-        primary = _DetectorDouble(error=RuntimeError("burst"))
-        detector = ResilientAnomalyDetector(primary)
-        for _ in range(10):
-            detector.process_with_resilience({"value": 1.0})
-        assert not detector.circuit_breaker_open
-        assert detector.get_health_info()["recent_error_rate"] == 0.1
-        primary.error = None
-        for _ in range(100):
-            detector.process_with_resilience({"value": 1.0})
-        assert detector.recent_error_rate == 0
+        assert captured.value is error
 
     def test_health_refreshes_background_training_state(self):
         primary = _DetectorDouble()
-        detector = ResilientAnomalyDetector(primary)
+        detector = DetectorHandle(primary)
 
         health = detector.get_health_info()
 
         primary.refresh_background_state.assert_called_once_with()
         assert health["state"] == "healthy"
         assert health["primary_service_stats"]["strategy"] == "static_baseline"
-        assert health["uptime_seconds"] >= 0
 
 
 class TestTelemetryFeatureValidator:

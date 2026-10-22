@@ -26,12 +26,11 @@ TRUTH_TABLE = [
     ({ADAPTIVE: {"phase": "ready"}}, ADAPTIVE, False),
     ({ADAPTIVE: ["operational"]}, None, False),
     ({STATIC: {"phase": "operational"}}, STATIC, False),
-    ({"score_window": {"tail_pvalue": 0.5}}, None, False),
+    ({}, None, False),
 ]
 VALUE_TYPES = {
     STATIC: "conformal_pvalue",
     ADAPTIVE: "anomaly_score",
-    None: "tail_pvalue",
 }
 
 
@@ -54,13 +53,18 @@ def test_every_consumer_agrees_on_inference(context, strategy, inference):
     result = _result(context)
     tracker = ActivityTracker(set())
     tracker.record_result(result)
-    (record,), _ = ResultProjector()._build_records([result])
 
     assert strategy_context_key(context) == strategy
     assert inference_key(context) == (strategy if inference else None)
     assert result.should_persist is inference
     assert (tracker.snapshot()["last_inference_at"] is not None) is inference
-    assert record["value_type"] == VALUE_TYPES[strategy]
+    if strategy is None:
+        # No detector produces such a result; the projector rejects it.
+        with pytest.raises(ValueError, match="no detector context"):
+            ResultProjector()._build_records([result])
+    else:
+        (record,), _ = ResultProjector()._build_records([result])
+        assert record["value_type"] == VALUE_TYPES[strategy]
 
 
 def test_anomalies_persist_whatever_their_phase():

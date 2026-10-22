@@ -28,6 +28,8 @@ export function ExplorerWorkspace() {
     preferences, toggleFavourite, openEditor, selectSource, sectionHref } = useCatalogue();
   const requestedService = params.get("service");
   const requestedReading = params.get("reading") ?? undefined;
+  const initialTarget = params.get("target")
+    ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined);
   const creating = params.get("create") === "monitoring";
   const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
   const pipelineView = !!params.get("pipeline") || params.get("view") === "pipelines" || creating && monitoring.authoringEnabled;
@@ -90,12 +92,12 @@ export function ExplorerWorkspace() {
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p> : selectionMissing && !pipelineView ? <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>
       : pipelineView ? <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}
-        initialTarget={params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined)} initialReading={requestedReading ?? undefined}
+        initialTarget={initialTarget} initialReading={requestedReading ?? undefined}
         onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>
       : creating ? <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
-        {system.canEdit ? <ServiceCreate key={`${params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : "")}:${requestedReading ?? ""}`}
+        {system.canEdit ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
           targets={monitoringIndex.targets} services={monitoring.services}
-          initialTarget={params.get("target") ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined)}
+          initialTarget={initialTarget}
           initialReading={requestedReading ?? undefined} byStream={monitoringIndex.byStream}
           collectionReady={system.snapshot?.runtime.collection?.status === "applied"} document={document}
           draftKey={`service-setup:${userId}:${params.get("target") ?? ""}:${requestedReading ?? ""}`}

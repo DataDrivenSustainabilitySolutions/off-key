@@ -1,6 +1,7 @@
+import { WORKSPACE_PATHS } from "@/components/application-navigation";
 import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
 
-export const isWorkspacePath = (path: string) => path === "/" || path === "/sources" || path === "/anomalies";
+export const isWorkspacePath = (path: string) => WORKSPACE_PATHS.includes(path);
 
 /** Resolve old deep links and the shared selection against the same catalogue. */
 export function catalogueSelection(index: NavigationIndex, params: URLSearchParams) {

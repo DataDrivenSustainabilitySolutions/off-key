@@ -14,6 +14,8 @@ export const workspaceNavItems: ApplicationNavItem[] = [
   { href: "/anomalies", label: "Reporting", icon: AlertTriangle },
 ];
 
+export const WORKSPACE_PATHS = workspaceNavItems.map(item => item.href);
+
 export function isActiveApplicationPath(pathname: string, href: string) {
   if (href === "/") return pathname === "/" || pathname.startsWith("/monitoring/");
   // Entity details are opened from Reporting events.

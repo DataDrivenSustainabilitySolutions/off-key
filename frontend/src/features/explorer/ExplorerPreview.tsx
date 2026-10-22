@@ -21,7 +21,6 @@ type Props = {
   onRename: (kind: SystemEntityKind, id: string, label: string) => Promise<void>;
   onEdit: (kind: SystemEntityKind, id: string) => void;
   onClose: () => void;
-  children?: ReactNode;
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
@@ -66,7 +65,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, children, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -205,7 +204,6 @@ export default function ExplorerPreview({
         <div><strong>{number.format(topicCount)}</strong><span>MQTT topics</span></div>
         {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
       </div>}
-      {children}
       {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Definition">
         <details><summary>Definition</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{details}</details>
       </section> : <section className="ex-preview-details" aria-label="Definition">

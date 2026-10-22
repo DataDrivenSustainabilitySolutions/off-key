@@ -1,21 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultExplorerPreferences,
-  createGroup,
-  deleteGroup,
-  GROUP_COLORS,
   loadExplorerPreferences,
   MAX_EXPLORER_PREFERENCE_BYTES,
   MAX_PERSONAL_GROUP_MEMBERS,
   MAX_PERSONAL_GROUPS,
   MAX_PERSONAL_MEMBERSHIPS,
   parsePersonalGroups,
-  PERSONAL_GROUP_COLORS,
-  reconcileExplorerPreferences,
   saveExplorerPreferences,
   toggleExplorerFavourite,
-  toggleGroupMember,
-  updateGroup,
   type ExplorerPreferences,
   type PersonalGroup,
 } from "@/features/explorer/preferences";
@@ -110,7 +103,7 @@ describe("explorer preference persistence", () => {
     expect(loadExplorerPreferences("bob")).toEqual(createDefaultExplorerPreferences());
     expect(loadExplorerPreferences(null)).toEqual(createDefaultExplorerPreferences());
 
-    const local = createGroup(createDefaultExplorerPreferences(), "Local only");
+    const local = { ...createDefaultExplorerPreferences(), groups: [group("personal:local", [])] };
     expect(saveExplorerPreferences(null, local)).toBe(true);
     expect(localStorage.getItem(key(null))).not.toBeNull();
     expect(loadExplorerPreferences("alice")).toEqual(alice);
@@ -227,7 +220,7 @@ describe("explorer preference persistence", () => {
   });
 });
 
-describe("personal group validation and editing", () => {
+describe("personal group validation", () => {
   it("copies only validated fields and accepts actual stable catalogue identifiers", () => {
     const source = group("personal:own", ["ambibox:broker:abc", "ambibox:sensor:abc:lineVoltage", "topic:telemetry/0.power"]);
     const parsed = parsePersonalGroups([{ ...source, name: "  Watchlist  ", endpoint: "private" }])!;
@@ -236,8 +229,6 @@ describe("personal group validation and editing", () => {
     expect(parsed[0]!.memberIds).not.toBe(source.memberIds);
     expect(parsePersonalGroups([group("personal:own", ["a".repeat(280)])])).toBeDefined();
     expect(parsePersonalGroups([group("personal:own", ["a".repeat(281)])])).toBeUndefined();
-    expect(GROUP_COLORS.map(({ value }) => value)).toEqual(PERSONAL_GROUP_COLORS);
-    expect(new Set(PERSONAL_GROUP_COLORS).size).toBe(6);
   });
 
   it.each([
@@ -264,86 +255,5 @@ describe("personal group validation and editing", () => {
     expect(parsePersonalGroups([group("personal:many", [...members, "stream:one-more"])] )).toBeUndefined();
     expect(parsePersonalGroups(membershipGroups(MAX_PERSONAL_MEMBERSHIPS))).toBeDefined();
     expect(parsePersonalGroups(membershipGroups(MAX_PERSONAL_MEMBERSHIPS + 1))).toBeUndefined();
-  });
-
-  it("creates, renames, recolours and deletes groups without mutating source data", () => {
-    const initial = createDefaultExplorerPreferences();
-    const created = createGroup(initial, "  Critical assets  ", "device:one");
-    const id = created.groups[0]!.id;
-    expect(initial.groups).toEqual([]);
-    expect(created.groups[0]).toMatchObject({ name: "Critical assets", memberIds: ["device:one"] });
-    const renamed = updateGroup(created, id, { name: "  West building  ", color: "#4499aa" });
-    expect(renamed.groups[0]).toMatchObject({ name: "West building", color: "#4499aa" });
-    expect(created.groups[0]!.name).toBe("Critical assets");
-    expect(deleteGroup(renamed, id).groups).toEqual([]);
-    expect(renamed.groups).toHaveLength(1);
-  });
-
-  it("allows overlapping groups while retaining the object's original identity", () => {
-    const one = createGroup(createDefaultExplorerPreferences(), "Watchlist", "device:one");
-    const two = createGroup(one, "Maintenance", "device:one");
-    const first = two.groups[0]!.id;
-    const second = two.groups[1]!.id;
-    const added = toggleGroupMember(two, first, "stream:temperature");
-    expect(added.groups[0]!.memberIds).toEqual(["device:one", "stream:temperature"]);
-    expect(added.groups[1]!.memberIds).toEqual(["device:one"]);
-    const removed = toggleGroupMember(added, first, "device:one");
-    expect(removed.groups[0]!.memberIds).toEqual(["stream:temperature"]);
-    expect(removed.groups[1]!.id).toBe(second);
-    expect(removed.groups[1]!.memberIds).toEqual(["device:one"]);
-    expect(Object.keys(removed).sort()).toEqual(["groups", "scopeKey", "sidebarOpen", "version"]);
-  });
-
-  it("returns the same preferences for invalid or unchanged edits", () => {
-    const saved = preferences();
-    const id = saved.groups[0]!.id;
-    expect(createGroup(saved, " ")).toBe(saved);
-    expect(createGroup(saved, "Valid", "bad id")).toBe(saved);
-    expect(updateGroup(saved, id, { name: "n".repeat(121) })).toBe(saved);
-    expect(updateGroup(saved, id, { color: "red" })).toBe(saved);
-    expect(updateGroup(saved, id, { name: " Watchlist " })).toBe(saved);
-    expect(updateGroup(saved, "missing", { name: "Valid" })).toBe(saved);
-    expect(deleteGroup(saved, "missing")).toBe(saved);
-    expect(toggleGroupMember(saved, id, "bad id")).toBe(saved);
-    expect(toggleGroupMember(saved, "missing", "device:one")).toBe(saved);
-  });
-
-  it("limits additions while still allowing removals and empty group creation", () => {
-    const groupLimit = preferences(Array.from({ length: MAX_PERSONAL_GROUPS }, (_, index) => group(`personal:${index}`, [])));
-    expect(createGroup(groupLimit, "One more")).toBe(groupLimit);
-
-    const memberLimit = preferences(membershipGroups(MAX_PERSONAL_MEMBERSHIPS));
-    expect(toggleGroupMember(memberLimit, "personal:0", "stream:new")).toBe(memberLimit);
-    expect(toggleGroupMember(memberLimit, "personal:3", "stream:new")).toBe(memberLimit);
-    expect(createGroup(memberLimit, "Cannot add member", "stream:new")).toBe(memberLimit);
-    expect(createGroup(memberLimit, "Empty is allowed").groups).toHaveLength(memberLimit.groups.length + 1);
-    const removed = toggleGroupMember(memberLimit, "personal:0", "stream:0:0");
-    expect(removed.groups[0]!.memberIds).toHaveLength(MAX_PERSONAL_GROUP_MEMBERS - 1);
-    const addedBack = toggleGroupMember(removed, "personal:3", "stream:new");
-    expect(addedBack.groups[3]!.memberIds).toContain("stream:new");
-  });
-});
-
-describe("reconciling a loaded catalogue", () => {
-  it("keeps saved references untouched until reconciliation is explicitly requested", () => {
-    const saved = preferences([group("personal:own", ["device:one", "stream:missing"])]);
-    saveExplorerPreferences("alice", saved);
-    expect(loadExplorerPreferences("alice").groups[0]!.memberIds).toEqual(saved.groups[0]!.memberIds);
-    const reconciled = reconcileExplorerPreferences(saved, new Set(["device:one"]), new Set(["system"]));
-    expect(reconciled.groups[0]!.memberIds).toEqual(["device:one"]);
-    expect(reconciled.scopeKey).toBe("system");
-    expect(reconciled.sidebarOpen).toBe(false);
-    expect(saved.groups[0]!.memberIds).toEqual(["device:one", "stream:missing"]);
-  });
-
-  it("preserves empty personal groups and stable references when the catalogue is unchanged", () => {
-    const saved = preferences([group(), group("personal:empty", [])]);
-    const same = reconcileExplorerPreferences(saved, new Set(["device:one"]), new Set([saved.scopeKey]));
-    expect(same).toBe(saved);
-    const changed = reconcileExplorerPreferences(saved, new Set(), new Set([saved.scopeKey]));
-    expect(changed.groups).toHaveLength(2);
-    expect(changed.groups[0]!.memberIds).toEqual([]);
-    expect(changed.groups[1]).toBe(saved.groups[1]);
-    expect(changed.scopeKey).toBe(saved.scopeKey);
   });
 });

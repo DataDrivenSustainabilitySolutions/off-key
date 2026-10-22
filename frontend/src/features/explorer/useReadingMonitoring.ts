@@ -117,19 +117,14 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
       }));
       monitoringTimer = setTimeout(() => void pollMonitoring(), INTERVALS.DETAILS_UPDATE);
     };
-    const connect = async () => {
-      try {
-        if (context.binding) binding = context.binding;
-
-        if (binding) { void pollTelemetry(); void pollMonitoring(); }
-        else cache.update(context.key, () => ({ data: { ...EMPTY_READING_HISTORY, loading: false } }));
-      } catch {
-        if (!signal.aborted) cache.update(context.key, entry => ({ ...entry, data: { ...entry.data, loading: false, error: "Monitoring history is unavailable." } }));
-      }
+    const connect = () => {
+      if (context.binding) binding = context.binding;
+      if (binding) { void pollTelemetry(); void pollMonitoring(); }
+      else cache.update(context.key, () => ({ data: { ...EMPTY_READING_HISTORY, loading: false } }));
     };
     const onVisibility = () => { if (!document.hidden) { void pollTelemetry(); void pollMonitoring(); } };
     document.addEventListener("visibilitychange", onVisibility);
-    void connect();
+    connect();
     return () => {
       controller.abort();
       clearTimeout(telemetryTimer);

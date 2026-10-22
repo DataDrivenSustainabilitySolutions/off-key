@@ -5,6 +5,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "./AppHeader";
 import { CatalogueToggle } from "./CatalogueToggle";
 import { WorkspaceNavigation } from "./WorkspaceNavigation";
+import { WORKSPACE_PATHS } from "./application-navigation";
 import { CatalogueProvider } from "@/features/workspace/CatalogueProvider";
 import { CatalogueDialogs } from "@/features/workspace/CatalogueDialogs";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
@@ -44,7 +45,7 @@ function WorkspaceFrame() {
   }, [mobile, mobileOpen, preferences.sidebarOpen, setPreferences]);
   return <div className={`ex-shell app-catalogue-shell${!mobile && !preferences.sidebarOpen ? " ex-sidebar-hidden" : ""}`}
     style={{ "--ex-sidebar-width": `${preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}px` } as CSSProperties}>
-    <AppHeader navigation={<WorkspaceNavigation hrefs={Object.fromEntries(["/", "/sources", "/anomalies"].map(path => [path, sectionHref(path)]))} />} />
+    <AppHeader navigation={<WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} />} />
     <div className="app-catalogue-workspace">
       {!mobile && <aside className="ex-sidebar-dock app-catalogue-sidebar" inert={!preferences.sidebarOpen} aria-hidden={!preferences.sidebarOpen}>
         <div className="app-catalogue-sidebar-content"><WorkspaceCatalogue /></div>

@@ -48,8 +48,11 @@ skip unless their environment is set) and run `npm run test:coverage` in `fronte
 which writes an HTML report to `frontend/coverage/`.
 
 The frontend build type-checks application, Node tooling, unit tests, and Playwright
-tests before producing the Vite bundle. Run `npm run test:e2e` against a running
-Compose stack; CI's deployment smoke workflow performs that full-system check.
+tests before producing the Vite bundle. Run the browser journeys against a running
+Compose stack, in two separate invocations because they need different TACTIC
+settings: `npm run test:e2e` covers the default lanes and needs
+`TACTIC_PIPELINE_AUTHORING_ENABLED=false`, and `npm run test:e2e:pipelines` covers the
+visual-pipeline lane and needs it `true`. CI's deployment smoke workflow runs both.
 
 ## Documentation
 

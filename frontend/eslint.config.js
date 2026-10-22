@@ -47,4 +47,10 @@ export default tseslint.config(
     plugins: { layers },
     rules: { 'layers/allowed-imports': 'error' },
   },
+  {
+    // Application code logs through clientLogger, which redacts and gates by environment.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/logger.ts', 'src/Tests/**'],
+    rules: { 'no-console': 'error' },
+  },
 )

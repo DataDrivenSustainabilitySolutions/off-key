@@ -141,7 +141,7 @@ jobs:
             --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
-            npx --no-install playwright test --project=pipeline-workspace --no-deps
+            npm run test:e2e:pipelines
 
       - name: Save visual language review evidence
         if: always()

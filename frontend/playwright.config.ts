@@ -13,6 +13,11 @@ const chromiumUse = {
   ...(chromiumChannel ? { channel: chromiumChannel } : {}),
 };
 
+const SETUP_FILES = /.*\.setup\.ts/;
+const SYSTEM_SPECS = /system-workspace\.spec\.ts/;
+// These journeys need TACTIC_PIPELINE_AUTHORING_ENABLED=true; the others need it false.
+const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -44,7 +49,7 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/, /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/],
+      testIgnore: [SETUP_FILES, SYSTEM_SPECS, PIPELINE_SPECS],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
@@ -53,7 +58,7 @@ export default defineConfig({
     },
     {
       name: "pipeline-workspace",
-      testMatch: /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/,
+      testMatch: PIPELINE_SPECS,
       // Every journey signs in afresh; a previous invocation's output is disposable.
       use: {
         ...chromiumUse,
@@ -63,7 +68,7 @@ export default defineConfig({
     },
     {
       name: "system-workspace",
-      testMatch: /system-workspace\.spec\.ts/,
+      testMatch: SYSTEM_SPECS,
       use: { ...chromiumUse, storageState: authStateFile },
       // Keep mutations of the shared fixture catalogue sequential.
       dependencies: ["chromium"],

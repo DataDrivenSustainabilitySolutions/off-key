@@ -3,17 +3,17 @@
 import asyncio
 import signal
 
-from off_key_core.config.env import load_env
+from off_key_core.config.bootstrap import start_service
 from off_key_core.config.logs import logger
-from off_key_core.config.validation import validate_settings
 
 from .config import get_simulator_settings
 from .service import SimulatorService
 
 
 async def main() -> None:
-    load_env()
-    validate_settings(
+    start_service(
+        "mqtt-simulator",
+        None,
         [("mqtt_simulator", lambda: get_simulator_settings().config)],
         context="MQTT simulator configuration",
     )

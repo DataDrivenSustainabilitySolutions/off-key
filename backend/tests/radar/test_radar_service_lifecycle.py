@@ -359,3 +359,16 @@ async def test_failed_execution_stops_health_publication_without_errors(
     writer.write_heartbeat.assert_not_awaited()
     assert "radar.health_check_failed" not in caplog.text
     monitor.get_health_status()
+
+
+@pytest.mark.asyncio
+async def test_messages_after_a_fatal_error_are_dropped_unprocessed(monkeypatch):
+    radar_service = _radar_service(monkeypatch)
+    process = AsyncMock()
+    monkeypatch.setattr(radar_service, "_process_locked_message", process)
+
+    await radar_service._handle_mqtt_message(SimpleNamespace(topic="t"))
+    radar_service._fatal_error = FatalExecutionError("fenced")
+    await radar_service._handle_mqtt_message(SimpleNamespace(topic="t"))
+
+    process.assert_awaited_once()

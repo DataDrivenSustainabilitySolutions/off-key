@@ -5,7 +5,11 @@ import pickle
 import numpy as np
 import pytest
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import PipelineDefinition, PipelineExecutionConfig
+from off_key_core.schemas.pipelines import (
+    PipelineDefinition,
+    PipelineExecutionConfig,
+    PipelineRuntimeState,
+)
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
@@ -142,7 +146,7 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
         assert result.raw_data == {"sensor/z": 5, "sensor/a": 2}
         assert set(result.processed_features) == {"z", "a"}
         state = service.get_pipeline_state()
-        assert state["batch_training"]["frozen"]
+        assert PipelineRuntimeState.model_validate(state).batch_training.frozen
         assert (
             state["observation"]["passes"]["score"]["model"]["output"]
             == result.anomaly_score

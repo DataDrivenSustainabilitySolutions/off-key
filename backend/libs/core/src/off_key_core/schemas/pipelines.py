@@ -502,6 +502,81 @@ class PipelineWorkspace(PipelineModel):
     pipeline_state: dict[str, Any] | None = None
 
 
+class PipelineNodePreview(PipelineModel):
+    """One node's bounded inputs and output from a sampled observation pass."""
+
+    input: dict[str, float] | None
+    output: dict[str, float] | float | None
+    state: str
+    reason: str | None = None
+
+
+class PipelineObservationPasses(PipelineModel):
+    score: dict[str, PipelineNodePreview]
+    learn: dict[str, PipelineNodePreview]
+
+
+class PipelineObservation(PipelineModel):
+    sequence_number: int
+    timestamp: str
+    phase: str
+    input_timestamps: dict[str, str]
+    passes: PipelineObservationPasses
+
+
+class PipelineNodeRuntime(PipelineModel):
+    state: str
+    learn_count: int
+    score_count: int
+    learn_time_ns: int
+    score_time_ns: int
+    ready: bool
+    learned_updates: int | None
+    readiness_observed: int | None
+    readiness_required: int | None
+    readiness_reason: str | None
+    blocked_by: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class AdaptiveLearningState(PipelineModel):
+    state: str
+    model_updates: int
+    warmup_updates: int
+    warmup_required: int
+    ready: bool
+    reason: str | None
+
+
+class BatchTrainingState(PipelineModel):
+    state: str
+    training_samples: int
+    calibration_samples: int
+    frozen: bool
+
+
+class PipelineRuntimeState(PipelineModel):
+    """What RADAR reports about a running pipeline.
+
+    The workspace serves stored status JSON, so PipelineWorkspace keeps its
+    pipeline_state lenient; this model is the browser's type and RADAR's test
+    contract.
+    """
+
+    run_id: str
+    revision_id: str
+    fingerprint: str
+    captured_at: str
+    phase: str
+    sequence_number: int
+    nodes: dict[str, PipelineNodeRuntime]
+    observation: PipelineObservation | None
+    truncated: bool
+    diagnostic_errors: int
+    adaptive_learning: AdaptiveLearningState | None = None
+    batch_training: BatchTrainingState | None = None
+
+
 class StandardScalerParameters(PipelineModel):
     with_std: bool = True
 

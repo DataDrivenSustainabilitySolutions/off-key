@@ -6,6 +6,7 @@ import pickle
 from datetime import UTC, datetime
 
 import pytest
+from off_key_core.schemas.pipelines import PipelineRuntimeState
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamState
 from off_key_mqtt_radar.execution_errors import (
     FatalExecutionError,
@@ -268,6 +269,13 @@ def test_live_values_come_from_real_score_pass_with_original_metadata():
     assert observation["passes"]["score"]["model"]["output"] == result.anomaly_score
     assert snapshot["nodes"]["model"]["learn_count"] == 5
     assert "observation" not in service.get_model_info()
+    # The browser's PipelineState type is generated from this model.
+    assert PipelineRuntimeState.model_validate(snapshot).adaptive_learning is not None
+
+    service.diagnostics.limits = DiagnosticLimits(maximum_bytes=4096)
+    oversized = service.get_pipeline_state()
+    assert oversized["truncated"] and oversized["observation"] is None
+    PipelineRuntimeState.model_validate(oversized)
 
 
 def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):

@@ -5,6 +5,7 @@ import { API_CONFIG } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
 import type { PipelineWorkspace } from "@/types/pipelines.generated";
+import type { PipelineState } from "../pipelines/diagnostics";
 
 /** One status request for the workspace, no per-service Docker calls or telemetry subscriptions. */
 export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000, selectedServiceId?: string) {
@@ -34,5 +35,7 @@ export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000
     abort();
     setServices(previous => previous.filter(service => service.id !== id));
   }, [abort]);
-  return { services, ready, error, reload, rename, remove, authoringEnabled: workspace?.authoring_enabled ?? false, pipelineState: workspace?.selected_service_id === selectedServiceId ? workspace?.pipeline_state : undefined };
+  return { services, ready, error, reload, rename, remove, authoringEnabled: workspace?.authoring_enabled ?? false, pipelineState: workspace?.selected_service_id === selectedServiceId
+    // The workspace serves stored status JSON, so it stays untyped on the wire.
+    ? workspace?.pipeline_state as PipelineState | null | undefined : undefined };
 }

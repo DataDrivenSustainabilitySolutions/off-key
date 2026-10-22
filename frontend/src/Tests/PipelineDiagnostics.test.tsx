@@ -25,6 +25,10 @@ const state = (): PipelineState => ({
       learn_time_ns: 1_000_000,
       score_time_ns: 500_000,
       ready: true,
+      learned_updates: null,
+      readiness_observed: null,
+      readiness_required: null,
+      readiness_reason: null,
     },
   },
   observation: {
@@ -118,7 +122,6 @@ describe("pipeline execution inspection", () => {
   });
   it("omits learning updates until the runtime reports one", () => {
     const snapshot = state();
-    Object.assign(snapshot.nodes.scaler!, { learned_updates: null });
     render(<PipelineDiagnostics state={snapshot} selected="scaler" expectedRunId="run" />);
     expect(screen.queryByText("Successful learning updates")).toBeNull();
     expect(screen.queryByText(/include restored history/)).toBeNull();

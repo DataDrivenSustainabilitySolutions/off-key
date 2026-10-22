@@ -13,7 +13,6 @@ import { useMonitoringServices } from "../monitoring/useMonitoringServices";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
 import { withCatalogueSource } from "../workspace/catalogue-navigation";
-import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 import "../monitoring/monitoring.css";
 
 const Preview = lazy(() => import("./ExplorerPreview"));
@@ -88,7 +87,7 @@ export function ExplorerWorkspace() {
     if (requestedService && selectedService) return <Suspense fallback={<p className="ex-muted" role="status">Opening service…</p>}>
       <ServiceDetail key={selectedService.id} service={selectedService} inputs={monitoringIndex.inputs.get(selectedService.id) ?? []}
         document={document} historyCache={history} canEdit={system.canEdit} favourite={favourites.has(selectedService.id)}
-        pipelineState={monitoring.pipelineState as unknown as PipelineState | undefined} onFavourite={() => toggleFavourite("service", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
+        pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("service", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
         onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
     </Suspense>;
     // A retained run outlives its service row.

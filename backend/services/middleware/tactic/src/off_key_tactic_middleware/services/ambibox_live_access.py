@@ -6,7 +6,7 @@ from off_key_core.schemas.system import SystemConnection
 
 from ..config.collection import AmbiboxSettings
 from ..config.system_live import LiveCredential, LiveSocksProxy
-from .system_live_access import BrokerAccess
+from .broker_access import BrokerAccess
 
 
 class AmbiboxLiveAccess:

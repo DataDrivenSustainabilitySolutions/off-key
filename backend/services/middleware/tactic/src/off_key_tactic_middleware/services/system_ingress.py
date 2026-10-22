@@ -24,6 +24,7 @@ from sqlalchemy import select, text, update
 
 from ..config.config import get_tactic_settings
 from ..config.system_live import get_system_live_settings
+from .broker_access import resolve_broker
 from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker
 
@@ -115,40 +116,32 @@ class SystemIngress:
         access = self.access_resolver(connection) if self.access_resolver else None
         state = {"state": "connecting", "message": None}
         self.states[connection.id] = state
-        if not self.settings.allows_host(connection.host) and access is None:
+        resolved = resolve_broker(self.settings, connection, access)
+        if resolved == "host_not_allowed":
             state.update(
                 state="blocked",
                 message="Broker access is not configured by the operator.",
             )
             return
-        credential = self.settings.SYSTEM_LIVE_CREDENTIALS.get(
-            connection.credential_ref
-        )
-        if connection.credential_ref and credential is None:
+        if resolved == "credential_missing":
             state.update(
                 state="blocked",
                 message="Broker credentials are not configured by the operator.",
             )
             return
-        if credential is None and access:
-            credential = access.credential
-        proxy = self.settings.SYSTEM_LIVE_SOCKS_PROXIES.get(connection.host)
-        if proxy is None and access:
-            proxy = access.proxy
-        if access and access.require_tls:
-            connection = connection.model_copy(update={"tls": True})
+        connection = resolved.connection
         try:
             worker = LiveMqttWorker(
                 connection,
                 list(topics),
-                credential,
+                resolved.credential,
                 lambda topic, payload, retained: self._receive(
                     generation, connection.id, topic, payload, retained
                 ),
                 lambda phase, message: self._state(
                     generation, connection.id, phase, message
                 ),
-                proxy=proxy,
+                proxy=resolved.proxy,
             )
             self.workers.append(worker)
             worker.start()

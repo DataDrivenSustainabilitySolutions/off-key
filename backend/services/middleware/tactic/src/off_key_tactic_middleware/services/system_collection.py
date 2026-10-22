@@ -28,6 +28,7 @@ from ..config.collection import get_ambibox_settings
 from ..config.system_live import get_system_live_settings
 from ..domain import ConflictError, ValidationError
 from .ambibox_live_access import AmbiboxLiveAccess
+from .broker_access import resolve_broker
 from .collection_monitors import CollectionMonitorService
 from .collection_rule_edits import apply_rule_edits, policy_metadata
 
@@ -185,14 +186,12 @@ class SystemCollectionService:
         for connection in definition.document.connections:
             if connection.id not in selected:
                 continue
-            if not settings.allows_host(connection.host) and access(connection) is None:
+            resolved = resolve_broker(settings, connection, access(connection))
+            if resolved == "host_not_allowed":
                 raise ValidationError(
                     "A selected broker is outside the operator's broker allowlist."
                 )
-            if (
-                connection.credential_ref
-                and connection.credential_ref not in settings.SYSTEM_LIVE_CREDENTIALS
-            ):
+            if resolved == "credential_missing":
                 raise ValidationError(
                     "A selected broker's credential reference "
                     "is not configured by the operator."

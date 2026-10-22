@@ -13,6 +13,7 @@ from off_key_core.schemas.system import SystemSnapshot
 from off_key_core.utils.payload_decode import PayloadDecoder
 
 from ..config.system_live import SystemLiveSettings
+from .broker_access import ResolvedBroker, resolve_broker
 from .system_live_mqtt import LiveMqttWorker
 
 
@@ -408,20 +409,15 @@ class SystemLiveService:
             state.update(state="stopped", message="No streams use this connection.")
             return
         access = self.access_resolver(connection) if self.access_resolver else None
-        message = self._connection_block_reason(connection, access)
-        if message:
-            state.update(state="blocked", message=message)
+        resolved = self._resolve_connection(connection, access)
+        if isinstance(resolved, str):
+            state.update(state="blocked", message=resolved)
             return
-        credential = self.settings.SYSTEM_LIVE_CREDENTIALS.get(
-            connection.credential_ref
+        connection, credential, proxy = (
+            resolved.connection,
+            resolved.credential,
+            resolved.proxy,
         )
-        if credential is None and not connection.credential_ref and access:
-            credential = access.credential
-        proxy = self.settings.SYSTEM_LIVE_SOCKS_PROXIES.get(connection.host)
-        if proxy is None and access:
-            proxy = access.proxy
-        if access and access.require_tls:
-            connection = connection.model_copy(update={"tls": True})
         try:
             worker = self.worker_factory(
                 connection,
@@ -448,22 +444,21 @@ class SystemLiveService:
                 state="error", message="Could not initialize the broker connection."
             )
 
-    def _connection_block_reason(self, connection, access=None) -> str | None:
+    def _resolve_connection(self, connection, access) -> ResolvedBroker | str:
+        """Checks run in a fixed order: capacity, access, then topic fan-out."""
         if len(self.workers) >= self.settings.SYSTEM_LIVE_MAX_CONNECTIONS:
             return "The connection exceeds the concurrent broker limit."
-        if not self.settings.allows_host(connection.host) and access is None:
+        resolved = resolve_broker(self.settings, connection, access)
+        if resolved == "host_not_allowed":
             return "The broker is not in the operator's live host allowlist."
-        if (
-            connection.credential_ref
-            and connection.credential_ref not in self.settings.SYSTEM_LIVE_CREDENTIALS
-        ):
+        if resolved == "credential_missing":
             return "The connection's private credential reference is unavailable."
         if any(
             len(streams) > 64
             for streams in self.bindings.get(connection.id, {}).values()
         ):
             return "A topic exceeds the limit of 64 bound streams."
-        return None
+        return resolved
 
     def _connection_state(self, generation, connection_id, status, message) -> None:
         with self.guard:

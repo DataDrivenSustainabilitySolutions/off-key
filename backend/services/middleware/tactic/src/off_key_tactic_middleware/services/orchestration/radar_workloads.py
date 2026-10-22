@@ -5,7 +5,6 @@ Every deployment, local development included, runs RADAR as Swarm services.
 
 import asyncio
 from contextlib import suppress
-from functools import lru_cache
 from typing import Any
 
 import docker
@@ -27,10 +26,21 @@ MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
 
 
-@lru_cache(maxsize=1)
+_shared_async_docker: AsyncDocker | None = None
+
+
+def set_shared_async_docker(async_docker: AsyncDocker | None) -> None:
+    """Make the server's verified client the facade for every request path."""
+    global _shared_async_docker
+    _shared_async_docker = async_docker
+
+
 def get_async_docker() -> AsyncDocker:
-    """Create the shared Docker facade lazily."""
-    return AsyncDocker()
+    """Return the process-wide Docker facade, creating it outside the server."""
+    global _shared_async_docker
+    if _shared_async_docker is None:
+        _shared_async_docker = AsyncDocker()
+    return _shared_async_docker
 
 
 class RadarWorkloadManager:

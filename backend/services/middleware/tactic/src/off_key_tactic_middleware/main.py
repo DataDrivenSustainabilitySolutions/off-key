@@ -34,6 +34,10 @@ from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
 from .services.ambibox_live_access import AmbiboxLiveAccess
 from .services.orchestration.radar import RadarOrchestrationService
+from .services.orchestration.radar_workloads import (
+    RadarWorkloadManager,
+    set_shared_async_docker,
+)
 from .services.reconciliation import RadarStatusReconciliationService
 from .services.system import SystemService
 from .services.system_live import SystemLiveService
@@ -69,6 +73,9 @@ async def _connect_docker(app: FastAPI) -> None:
         raise
 
     app.state.docker_client = docker_client
+    # Request paths, collection pauses and teardown share this client and its
+    # concurrency cap; the reconciliation sweep keeps its own (see below).
+    set_shared_async_docker(docker_client)
     logger.info("Docker connectivity verified")
 
 
@@ -78,6 +85,7 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
         logger.info("Status reconciliation disabled")
         return
 
+    # A separate client keeps the periodic sweep from starving request paths.
     reconciliation_service = RadarStatusReconciliationService(
         interval_seconds=config.reconciliation_interval,
         terminal_service_retention_hours=config.terminal_service_retention_hours,
@@ -134,6 +142,7 @@ async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
             logger.exception("Error closing Docker client")
         finally:
             app.state.docker_client = None
+            set_shared_async_docker(None)
 
 
 @asynccontextmanager
@@ -156,7 +165,6 @@ async def lifespan(app: FastAPI):
             )
 
         await _start_reconciliation(app, config)
-        from .services.orchestration.radar_workloads import RadarWorkloadManager
         from .services.pipelines.supervisor import PipelineActivationSupervisor
 
         app.state.pipeline_activation_supervisor = PipelineActivationSupervisor(

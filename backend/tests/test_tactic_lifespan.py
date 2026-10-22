@@ -9,6 +9,9 @@ from fastapi import FastAPI
 from off_key_tactic_middleware.config import RadarWorkloadLifecycle
 
 tactic_main = import_module("off_key_tactic_middleware.main")
+radar_workloads = import_module(
+    "off_key_tactic_middleware.services.orchestration.radar_workloads"
+)
 
 
 def _config() -> SimpleNamespace:
@@ -56,6 +59,8 @@ async def test_lifespan_releases_resources_when_serving_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="request handling failed"):
         async with tactic_main.lifespan(app):
             assert app.state.docker_client is docker_client
+            # Request paths reuse the verified client instead of opening their own.
+            assert radar_workloads.get_async_docker() is docker_client
             raise RuntimeError("request handling failed")
 
     reconciliation.start.assert_awaited_once()
@@ -64,6 +69,7 @@ async def test_lifespan_releases_resources_when_serving_raises(monkeypatch):
     assert teardown.await_args_list[1].kwargs["phase"] == "shutdown"
     docker_client.close.assert_called_once()
     assert app.state.docker_client is None
+    assert radar_workloads._shared_async_docker is None
 
 
 @pytest.mark.asyncio

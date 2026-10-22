@@ -48,6 +48,8 @@ class DockerConfig(BaseModel):
     # Docker API Connection
     api_url: str = "http://socket-proxy"
     api_port: int = Field(default=2375, ge=1, le=65535)
+    # Per client: the server shares one across request paths and the activation
+    # supervisor; the reconciliation sweep has its own.
     max_concurrent_calls: int = Field(default=5, ge=1, le=100)
 
     # Container Defaults

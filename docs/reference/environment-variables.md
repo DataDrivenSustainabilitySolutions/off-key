@@ -140,6 +140,7 @@ unknown errors remain eligible for retry.
 | --- | --- | --- |
 | `TACTIC_DOCKER_API_URL` | `http://socket-proxy` | Restricted Docker API proxy URL |
 | `TACTIC_DOCKER_API_PORT` | `2375` | Docker API proxy port |
+| `TACTIC_DOCKER_MAX_CONCURRENT_CALLS` | `5` | Concurrent Docker calls per client: one shared by requests and the activation supervisor, one for the reconciliation sweep |
 | `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads |
 | `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR broker port |
 | `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR TLS default |

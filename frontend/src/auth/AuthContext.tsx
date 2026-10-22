@@ -1,23 +1,23 @@
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from "react";
 import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
-import { getTokenPayload, getUserIdFromToken, parseNumericUserId } from "./token";
+import { getTokenPayload, getUserIdFromToken } from "./token";
 import { getCurrentMember, type Member } from "@/lib/member-api";
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  token: string | null;
   userId: number | null;
   isLoading: boolean;
   authError: string | null;
   retryAuthentication: () => void;
   member: Member | null;
   isAdmin: boolean;
-  login: (token: string, rememberMe?: boolean, userId?: unknown) => void;
+  login: (token: string, rememberMe?: boolean) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const RENEW_FAILED = "We couldn’t renew your session. Your saved login is still available.";
 
 const getStoredToken = () => tokenManager.getToken();
 const noServerToken = () => null;
@@ -45,7 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const token = useSyncExternalStore(subscribeToSession, getStoredToken, noServerToken);
   const [profile, setProfile] = useState<ProfileState | null>(null);
-  const [loginIdentity, setLoginIdentity] = useState<{ token: string; id: number | null } | null>(null);
   const [attempt, retryAuthentication] = useReducer((value: number) => value + 1, 0);
   const [restoreFailure, setRestoreFailure] = useState<number | null>(null);
   // Remembered access tokens are kept in memory; a new tab restores one from the cookie.
@@ -100,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       void refreshSession().catch((error: { status?: number }) => {
         if (!cancelled && error.status !== 401) {
-          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: "We couldn’t renew your session. Your saved login is still available." }));
+          setProfile(previous => ({ token, attempt, member: reusableMember(previous, token), error: RENEW_FAILED }));
         }
       });
     };
@@ -132,9 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
    * @param newToken JWT token
    * @param rememberMe If true, persist in localStorage; otherwise sessionStorage
    */
-  const login = (newToken: string, rememberMe = false, nextUserId?: unknown) => {
+  const login = (newToken: string, rememberMe = false) => {
     if (getUserIdFromToken(newToken) !== getUserIdFromToken(tokenManager.getToken() ?? "")) clearNavigationDrafts();
-    setLoginIdentity({ token: newToken, id: parseNumericUserId(nextUserId) });
     tokenManager.setToken(newToken, rememberMe);
   };
 
@@ -151,13 +149,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const expired = !!token && tokenManager.isTokenExpired(token);
   const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
   const restoreError = restoring && restoreFailure === attempt
-    ? "We couldn’t renew your session. Your saved login is still available." : null;
+    ? RENEW_FAILED : null;
   const authError = member ? null : resolved?.error ?? restoreError;
   const isLoading = (restoring && !restoreError)
     || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
   const isAuthenticated = !!token && !expired;
   const isAdmin = member?.role === "admin";
-  const userId = token ? getUserIdFromToken(token) ?? (loginIdentity?.token === token ? loginIdentity.id : null) : null;
+  const userId = token ? getUserIdFromToken(token) : null;
 
   useEffect(() => {
     // A remembered login restores its in-memory token after reload. Compare
@@ -172,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, token, userId, member, isAdmin, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, userId, member, isAdmin, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

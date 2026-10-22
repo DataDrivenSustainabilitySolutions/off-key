@@ -12,7 +12,6 @@ import { refreshSession, tokenManager } from '@/auth/session';
 import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
-export { tokenManager } from '@/auth/session';
 
 // Types for API responses
 export interface ApiError {

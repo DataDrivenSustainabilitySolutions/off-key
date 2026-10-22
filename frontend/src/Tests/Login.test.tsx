@@ -4,7 +4,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 import { AuthProvider } from "@/auth/AuthContext";
-import { tokenManager } from "@/lib/api-client";
+import { tokenManager } from "@/auth/session";
 import Login from "../pages/Login";
 
 const mockNavigate = vi.fn();

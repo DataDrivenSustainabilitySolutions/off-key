@@ -12,13 +12,10 @@ from off_key_core.schemas.radar import (
     StaticMartingaleConfig,
 )
 
+from .betting import betting_function
+
 _LOG_FLOAT_MAX = float(np.log(np.finfo(float).max))
 _SIMULATION_BATCH_SIZE = 256
-
-
-def _logsumexp_rows(values: np.ndarray) -> np.ndarray:
-    maxima = np.max(values, axis=1)
-    return maxima + np.log(np.sum(np.exp(values - maxima[:, None]), axis=1))
 
 
 def _simulate_split_conformal_p_values(
@@ -65,74 +62,17 @@ def _maximum_log_statistic(
     simulation_count, horizon = p_values.shape
     log_statistic = np.full(simulation_count, float("-inf"))
     maximum = np.full(simulation_count, float("-inf"))
-
-    if tracker.betting_function == "power":
-        epsilon = float(tracker.epsilon)
-        for step in range(horizon):
-            log_p = np.log(p_values[:, step])
-            log_increment = np.log(epsilon) + (epsilon - 1.0) * log_p
-            log_statistic = _update_alarm_statistic(
-                log_statistic,
-                log_increment,
-                tracker.alarm_statistic,
-            )
-            maximum = np.maximum(maximum, log_statistic)
-        return maximum
-
-    if tracker.betting_function == "simple_mixture":
-        epsilons = (
-            np.asarray(tracker.epsilons, dtype=float)
-            if tracker.epsilons is not None
-            else np.linspace(
-                float(tracker.min_epsilon),
-                1.0,
-                int(tracker.n_grid),
-            )
+    step = betting_function(tracker.betting_function).simulator(
+        tracker, simulation_count
+    )
+    for column in range(horizon):
+        log_statistic = _update_alarm_statistic(
+            log_statistic,
+            step(p_values[:, column]),
+            tracker.alarm_statistic,
         )
-        log_capitals = np.zeros((simulation_count, len(epsilons)))
-        previous_log_mixture = np.zeros(simulation_count)
-        for step in range(horizon):
-            log_p = np.log(p_values[:, step])[:, None]
-            log_capitals += np.log(epsilons) + (epsilons - 1.0) * log_p
-            current_log_mixture = _logsumexp_rows(log_capitals) - np.log(len(epsilons))
-            log_increment = current_log_mixture - previous_log_mixture
-            previous_log_mixture = current_log_mixture
-            log_statistic = _update_alarm_statistic(
-                log_statistic,
-                log_increment,
-                tracker.alarm_statistic,
-            )
-            maximum = np.maximum(maximum, log_statistic)
-        return maximum
-
-    if tracker.betting_function == "simple_jumper":
-        jump = float(tracker.jump)
-        epsilons = np.asarray([-1.0, 0.0, 1.0])
-        log_components = np.full(
-            (simulation_count, 3),
-            np.log(1.0 / 3.0),
-        )
-        log_stay = float("-inf") if jump == 1.0 else float(np.log1p(-jump))
-        log_jump = float(np.log(jump / 3.0))
-        for step in range(horizon):
-            previous_log_capital = _logsumexp_rows(log_components)
-            log_components = np.logaddexp(
-                log_stay + log_components,
-                log_jump + previous_log_capital[:, None],
-            )
-            betting_terms = 1.0 + epsilons * (p_values[:, step, None] - 0.5)
-            log_components += np.log(betting_terms)
-            current_log_capital = _logsumexp_rows(log_components)
-            log_increment = current_log_capital - previous_log_capital
-            log_statistic = _update_alarm_statistic(
-                log_statistic,
-                log_increment,
-                tracker.alarm_statistic,
-            )
-            maximum = np.maximum(maximum, log_statistic)
-        return maximum
-
-    raise ValueError(f"Unsupported betting function: {tracker.betting_function}")
+        maximum = np.maximum(maximum, log_statistic)
+    return maximum
 
 
 def _calibrated_threshold(

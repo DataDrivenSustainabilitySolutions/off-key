@@ -1,15 +1,24 @@
 """Tests for finite-horizon automatic martingale threshold calibration."""
 
+import pickle
+from typing import get_args
+
 import numpy as np
 import pytest
-from off_key_core.schemas.radar import StaticMartingaleConfig
+from off_key_core.schemas.radar import MartingaleTrackerConfig, StaticMartingaleConfig
 from off_key_mqtt_radar.alarm_calibration import (
     _calibrated_threshold,
     _maximum_log_statistic,
     _simulate_split_conformal_p_values,
     resolve_tracker_thresholds,
 )
+from off_key_mqtt_radar.betting import BETTING_FUNCTIONS
 from off_key_mqtt_radar.martingales import MartingaleAlarmController
+
+SCHEMA_BETTING_FUNCTIONS = sorted(
+    get_args(tracker.model_fields["betting_function"].annotation)[0]
+    for tracker in get_args(get_args(MartingaleTrackerConfig)[0])
+)
 
 
 def _automatic_tracker(
@@ -38,7 +47,7 @@ def _automatic_tracker(
     ("betting_function", "alarm_statistic"),
     [
         (betting_function, alarm_statistic)
-        for betting_function in ("power", "simple_mixture", "simple_jumper")
+        for betting_function in SCHEMA_BETTING_FUNCTIONS
         for alarm_statistic in ("cusum", "shiryaev_roberts")
     ],
 )
@@ -46,11 +55,7 @@ def test_vectorized_calibration_replays_native_martingale_recurrences(
     betting_function,
     alarm_statistic,
 ):
-    from nonconform.martingales import (
-        PowerMartingale,
-        SimpleJumperMartingale,
-        SimpleMixtureMartingale,
-    )
+    from nonconform.martingales import AlarmConfig
 
     config = StaticMartingaleConfig(
         trackers=[
@@ -77,15 +82,7 @@ def test_vectorized_calibration_replays_native_martingale_recurrences(
     actual = _maximum_log_statistic(p_values, tracker)
     expected = []
     for path in p_values:
-        if betting_function == "power":
-            native = PowerMartingale(epsilon=tracker.epsilon)
-        elif betting_function == "simple_mixture":
-            native = SimpleMixtureMartingale(
-                n_grid=tracker.n_grid,
-                min_epsilon=tracker.min_epsilon,
-            )
-        else:
-            native = SimpleJumperMartingale(jump=tracker.jump)
+        native = BETTING_FUNCTIONS[betting_function].build(tracker, AlarmConfig())
         expected.append(
             max(
                 getattr(native.update(float(p_value)), f"log_{alarm_statistic}")
@@ -94,6 +91,44 @@ def test_vectorized_calibration_replays_native_martingale_recurrences(
         )
 
     assert actual == pytest.approx(expected)
+
+
+def test_every_schema_betting_function_has_a_runtime_entry():
+    assert sorted(BETTING_FUNCTIONS) == SCHEMA_BETTING_FUNCTIONS
+
+
+@pytest.mark.parametrize("betting_function", SCHEMA_BETTING_FUNCTIONS)
+def test_tracker_pickles_hold_only_their_own_state(betting_function):
+    config = StaticMartingaleConfig(
+        trackers=[
+            {
+                **_automatic_tracker(
+                    tracker_id="primary",
+                    betting_function=betting_function,
+                    alarm_statistic="cusum",
+                ),
+                "threshold_config": {"mode": "manual", "value": 5.0},
+            }
+        ]
+    )
+    controller = MartingaleAlarmController.from_config(config)
+    controller.update(0.2)
+    tracker = controller.trackers[0]
+
+    # Checkpoints pickle these controllers; the attribute set is the contract.
+    assert sorted(vars(tracker)) == [
+        "_alarm_active",
+        "_martingale",
+        "alarm_count",
+        "config",
+        "tested_count",
+        "threshold",
+        "threshold_horizon",
+        "threshold_window_position",
+    ]
+    restored = pickle.loads(pickle.dumps(controller))
+    assert restored.update(0.01) == controller.update(0.01)
+    assert restored.tested_count == 2
 
 
 def test_threshold_resolution_is_deterministic_and_builds_mixed_ensemble():

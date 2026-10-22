@@ -340,7 +340,7 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
         configuration = RadarStartConfig.model_validate(cancelled.launch_config)
         preflight = PipelinePreflight(workloads)
         image = await preflight.resolve_image()
-        await preflight._create(third.id, configuration.pipeline, image, True)
+        await preflight._create(third.id, configuration.pipeline, image)
         await PreflightOrphans(session, workloads).sweep()
     with pytest.raises(docker.errors.NotFound):
         workloads.async_docker.client.services.get(f"radar-preflight-{third.id}")

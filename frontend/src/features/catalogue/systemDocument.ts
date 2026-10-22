@@ -9,6 +9,9 @@ import type {
 } from "./systemTypes";
 
 export const MAX_SYSTEM_BYTES = 1_048_576;
+export const DEFAULT_MQTT_PORT = 1883;
+export const DEFAULT_POLICY: CollectionPolicy = { mode: "off", interval_seconds: 10 };
+export const DEFAULT_GROUP_COLOR = "#397f74";
 const INVALID_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -75,7 +78,7 @@ function policy(value: unknown, path: string): CollectionPolicy {
   const item = object(value, path, ["mode", "interval_seconds"]);
   if (!["off", "original", "sample"].includes(String(item.mode)))
     fail(`${path}.mode`, "use off, original or sample");
-  const interval = item.interval_seconds ?? 10;
+  const interval = item.interval_seconds ?? DEFAULT_POLICY.interval_seconds;
   if (
     typeof interval !== "number" ||
     !Number.isInteger(interval) ||
@@ -107,7 +110,7 @@ function connection(value: unknown, index: number): SystemConnection {
   const transport = item.transport ?? "tcp";
   if (transport !== "tcp" && transport !== "websocket")
     fail(`${path}.transport`, "use tcp or websocket");
-  const port = item.port ?? 1883;
+  const port = item.port ?? DEFAULT_MQTT_PORT;
   if (
     typeof port !== "number" ||
     !Number.isInteger(port) ||
@@ -379,7 +382,7 @@ export function createEmptySystem(label = "My system"): SystemDocument {
     format: "aberration-system",
     schema_version: 1,
     label,
-    default_policy: { mode: "off", interval_seconds: 10 },
+    default_policy: { ...DEFAULT_POLICY },
     connections: [],
     devices: [],
     streams: [],
@@ -391,7 +394,7 @@ export function importSystemDocument(contents: string): SystemDocument {
   return parseSystemDocument(contents);
 }
 
-const collectionByKind = {
+export const collectionByKind = {
   connection: "connections",
   device: "devices",
   stream: "streams",
@@ -480,3 +483,48 @@ export function removeSystemEntity(
       })),
   });
 }
+
+export const ENTITY_NOUN = { connection: "connection", device: "device", stream: "stream", group: "collection" } as const;
+type SystemEntity = SystemConnection | SystemDevice | SystemStream | SystemGroup;
+
+/** A new, unsaved catalogue object with the editor's defaults. */
+export function newSystemEntity(document: SystemDocument, kind: SystemEntityKind): SystemEntity {
+  const identity = { id: `${kind}:${crypto.randomUUID()}`, label: `New ${ENTITY_NOUN[kind]}` };
+  switch (kind) {
+    case "connection":
+      return { ...identity, protocol: "mqtt", host: "", port: DEFAULT_MQTT_PORT, transport: "tcp", tls: false };
+    case "device":
+      return { ...identity, kind: "device", connection_id: document.connections[0]?.id };
+    case "stream":
+      return { ...identity, connection_id: document.connections[0]?.id ?? "", topic: "", value_type: "number",
+        category: "Other", policy: { ...DEFAULT_POLICY } };
+    case "group":
+      return { ...identity, color: DEFAULT_GROUP_COLOR, member_ids: [] };
+  }
+}
+
+/**
+ * Save one edited object: an existing one is replaced in place, a new one is
+ * appended. A group takes its members from every other group, and a device
+ * that moves broker takes along the readings that were on its old broker.
+ */
+export function upsertSystemEntity(baseline: SystemDocument, kind: SystemEntityKind, entity: SystemEntity): SystemDocument {
+  const key = collectionByKind[kind];
+  const collection = baseline[key] as SystemEntity[];
+  const exists = collection.some((item) => item.id === entity.id);
+  const values = exists ? collection.map((item) => (item.id === entity.id ? entity : item)) : [...collection, entity];
+  const candidate = { ...baseline, [key]: values };
+  if (kind === "group") {
+    const members = new Set((entity as SystemGroup).member_ids);
+    candidate.groups = (values as SystemGroup[]).map((item) => item.id === entity.id ? item
+      : { ...item, member_ids: item.member_ids.filter((id) => !members.has(id)) });
+  }
+  const device = entity as SystemDevice;
+  const previous = kind === "device" ? baseline.devices.find((item) => item.id === entity.id) : undefined;
+  if (previous && device.connection_id && device.connection_id !== previous.connection_id) {
+    candidate.streams = baseline.streams.map((item) => item.device_id === entity.id && item.connection_id === previous.connection_id
+      ? { ...item, connection_id: device.connection_id! } : item);
+  }
+  return validateSystemDocument(candidate);
+}
+

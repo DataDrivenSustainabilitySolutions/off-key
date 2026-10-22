@@ -27,13 +27,16 @@ export function scopeReadingIds(index: NavigationIndex, node: ExplorerNode): str
   return [...result];
 }
 
+/** Whether an MQTT topic is the prefix itself or lies below it, segment by segment. */
+export const topicWithinPrefix = (topic: string, prefix: string) => topic === prefix || topic.startsWith(`${prefix}/`);
+
 /** Recording rules operate on MQTT scopes, including every entity on that broker. */
 export function recordingScopeReadingIds(document: SystemDocument, node: ExplorerNode): string[] {
   const scope = scopeForNode(node);
   if (!scope) return [];
   return document.streams.filter(stream => stream.connection_id === scope.connection_id
     && (scope.kind === "broker" || scope.kind === "reading" && stream.id === scope.reading_id
-      || scope.kind === "topic" && (stream.topic === scope.topic_prefix || stream.topic.startsWith((scope.topic_prefix ?? "") + "/"))))
+      || scope.kind === "topic" && topicWithinPrefix(stream.topic, scope.topic_prefix ?? "")))
     .map(stream => stream.id);
 }
 

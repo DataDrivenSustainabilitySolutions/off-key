@@ -3,9 +3,13 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  collectionByKind,
+  DEFAULT_GROUP_COLOR,
+  ENTITY_NOUN,
+  newSystemEntity,
   removeSystemEntity,
   systemRemovalIds,
-  validateSystemDocument,
+  upsertSystemEntity,
 } from "./systemDocument";
 import type {
   SystemConnection,
@@ -28,58 +32,9 @@ type Props = {
   onSave: (document: SystemDocument, revision: number) => Promise<boolean>;
   onDone: () => void;
 };
-const plural = {
-  connection: "connections",
-  device: "devices",
-  stream: "streams",
-  group: "groups",
-} as const;
-const noun = {
-  connection: "connection",
-  device: "device",
-  stream: "stream",
-  group: "collection",
-};
-
-function initialEntity(
-  document: SystemDocument,
-  kind: SystemEntityKind,
-  id?: string,
-): Entity {
-  const saved = id && document[plural[kind]].find((entity) => entity.id === id);
-  if (saved) return structuredClone(saved);
-  const identity = {
-    id: `${kind}:${crypto.randomUUID()}`,
-    label: `New ${noun[kind]}`,
-  };
-  switch (kind) {
-    case "connection":
-      return {
-        ...identity,
-        protocol: "mqtt",
-        host: "",
-        port: 1883,
-        transport: "tcp",
-        tls: false,
-      };
-    case "device":
-      return {
-        ...identity,
-        kind: "device",
-        connection_id: document.connections[0]?.id,
-      };
-    case "stream":
-      return {
-        ...identity,
-        connection_id: document.connections[0]?.id ?? "",
-        topic: "",
-        value_type: "number",
-        category: "Other",
-        policy: { mode: "off", interval_seconds: 10 },
-      };
-    case "group":
-      return { ...identity, color: "#397f74", member_ids: [] };
-  }
+function initialEntity(document: SystemDocument, kind: SystemEntityKind, id?: string): Entity {
+  const saved = id && (document[collectionByKind[kind]] as Entity[]).find((entity) => entity.id === id);
+  return saved ? structuredClone(saved) : newSystemEntity(document, kind);
 }
 
 /** A structure edit keeps its original revision until the user reviews a conflict. */
@@ -147,38 +102,7 @@ export function SystemStructureEditor({
       let next: SystemDocument;
       if (remove && entityId)
         next = removeSystemEntity(baseline, kind, entityId, true);
-      else {
-        const key = plural[kind];
-        const exists = baseline[key].some((item) => item.id === entity.id);
-        const values = exists
-          ? baseline[key].map((item) => (item.id === entity.id ? entity : item))
-          : [...baseline[key], entity];
-        const candidate = { ...baseline, [key]: values };
-        if (kind === "group") {
-          const members = new Set(group.member_ids);
-          candidate.groups = (values as SystemGroup[]).map((item) =>
-            item.id === group.id
-              ? item
-              : {
-                  ...item,
-                  member_ids: item.member_ids.filter((id) => !members.has(id)),
-                },
-          );
-        }
-        if (
-          kind === "device" &&
-          device.connection_id &&
-          device.connection_id !== existingDevice?.connection_id
-        ) {
-          const movingIds = new Set(movingStreams.map((item) => item.id));
-          candidate.streams = baseline.streams.map((item) =>
-            movingIds.has(item.id)
-              ? { ...item, connection_id: device.connection_id! }
-              : item,
-          );
-        }
-        next = validateSystemDocument(candidate);
-      }
+      else next = upsertSystemEntity(baseline, kind, entity);
       if (await onSave(next, baseRevision)) onDone();
       else setFailed(true);
     } catch (failure) {
@@ -198,9 +122,9 @@ export function SystemStructureEditor({
     >
       <div className="sp-system-editor-heading">
         <span className="sp-overline">
-          {entityId ? "Edit" : "Add"} {noun[kind]}
+          {entityId ? "Edit" : "Add"} {ENTITY_NOUN[kind]}
         </span>
-        <h2>{entityId ? entity.label : `A new ${noun[kind]}.`}</h2>
+        <h2>{entityId ? entity.label : `A new ${ENTITY_NOUN[kind]}.`}</h2>
         <p className="sp-system-intro">
           Save the definition that describes your connected system.
         </p>
@@ -209,7 +133,7 @@ export function SystemStructureEditor({
         <label>
           Name
           <input
-            aria-label={`${noun[kind]} name`}
+            aria-label={`${ENTITY_NOUN[kind]} name`}
             maxLength={120}
             value={entity.label}
             onChange={(event) => update({ label: event.target.value })}
@@ -470,7 +394,7 @@ export function SystemStructureEditor({
               <input
                 aria-label="Collection colour"
                 type="color"
-                value={group.color ?? "#397f74"}
+                value={group.color ?? DEFAULT_GROUP_COLOR}
                 onChange={(event) => update({ color: event.target.value })}
               />
             </label>
@@ -538,7 +462,7 @@ export function SystemStructureEditor({
           {removing ? (
             <>
               <p>
-                Remove this {noun[kind]}
+                Remove this {ENTITY_NOUN[kind]}
                 {dependencies.length > 1
                   ? ` and ${dependencies.length - 1} dependent objects`
                   : ""}{" "}
@@ -569,7 +493,7 @@ export function SystemStructureEditor({
               disabled={disabled}
               onClick={() => setRemoving(true)}
             >
-              Remove {noun[kind]}
+              Remove {ENTITY_NOUN[kind]}
             </Button>
           )}
         </section>

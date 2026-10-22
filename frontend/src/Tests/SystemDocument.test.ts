@@ -2,6 +2,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createEmptySystem,
+  DEFAULT_GROUP_COLOR,
+  newSystemEntity,
+  upsertSystemEntity,
   importSystemDocument,
   parseSystemDocument,
   removeSystemEntity,
@@ -198,4 +201,56 @@ describe("domain agnostic saved systems", () => {
   });
 
 
+});
+
+describe("catalogue entity edits", () => {
+  const withSecondBroker = (): SystemDocument => {
+    const system = systemFixture();
+    system.connections.push({ ...system.connections[0]!, id: "connection:annex", label: "Annex broker" });
+    system.groups.push({ id: "group:annex", label: "Annex", color: "#123456", member_ids: [] });
+    return system;
+  };
+
+  it("creates new objects with the editor defaults", () => {
+    const system = systemFixture();
+    expect(newSystemEntity(system, "connection")).toMatchObject({ label: "New connection", port: 1883, transport: "tcp", tls: false });
+    expect(newSystemEntity(system, "device")).toMatchObject({ kind: "device", connection_id: "connection:workshop" });
+    expect(newSystemEntity(system, "stream")).toMatchObject({ connection_id: "connection:workshop", policy: { mode: "off", interval_seconds: 10 } });
+    expect(newSystemEntity(system, "group")).toMatchObject({ label: "New collection", color: DEFAULT_GROUP_COLOR, member_ids: [] });
+    expect(newSystemEntity(system, "stream").id).toMatch(/^stream:/);
+  });
+
+  it("replaces an existing object in place and appends a new one", () => {
+    const system = withSecondBroker();
+    const renamed = upsertSystemEntity(system, "connection", { ...system.connections[0]!, label: "Renamed" });
+    expect(renamed.connections.map(item => [item.id, item.label])).toEqual([
+      ["connection:workshop", "Renamed"], ["connection:annex", "Annex broker"],
+    ]);
+    const added = upsertSystemEntity(system, "device", { id: "device:new", label: "New", kind: "sensor" });
+    expect(added.devices.map(item => item.id)).toEqual(["device:oven", "device:probe", "device:new"]);
+  });
+
+  it("moves a device's readings on its old broker along with it", () => {
+    const system = withSecondBroker();
+    system.devices[1]!.connection_id = "connection:workshop";
+    const moved = upsertSystemEntity(system, "device", { ...system.devices[1]!, connection_id: "connection:annex" });
+    expect(moved.streams[0]).toMatchObject({ id: "stream:temperature", connection_id: "connection:annex", topic: "workshop/oven/measurements" });
+  });
+
+  it("keeps explicit reading bindings when a device leaves its broker", () => {
+    const system = systemFixture();
+    const detached = { ...system.devices[1]! };
+    delete detached.connection_id;
+    const saved = upsertSystemEntity(system, "device", detached);
+    expect(saved.devices[1]).not.toHaveProperty("connection_id");
+    expect(saved.streams[0]?.connection_id).toBe("connection:workshop");
+  });
+
+  it("moves group members out of every other group", () => {
+    const system = withSecondBroker();
+    const saved = upsertSystemEntity(system, "group", { ...system.groups[1]!, member_ids: ["stream:temperature"] });
+    expect(saved.groups.map(group => group.member_ids)).toEqual([
+      ["connection:workshop", "device:oven", "device:probe"], ["stream:temperature"],
+    ]);
+  });
 });

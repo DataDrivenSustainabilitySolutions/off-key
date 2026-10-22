@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import type { CollectionPolicy } from "@/types/collection";
 import { useState } from "react";
-import { originLabel, policyLabel, scopeKey, type RuleScope } from "./collectionRules";
+import { originLabel, policyLabel, scopeKey, topicWithinPrefix, type RuleScope } from "./collectionRules";
 import type { SystemDocument, SystemRuntime } from "./systemTypes";
 import type { useRecordingRules } from "./useRecordingRules";
 
@@ -20,7 +20,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const excluded = draft.pendingReadingIds(ids);
   const exceptions = (runtime?.collection_rules ?? []).filter(item => item.policy && scopeKey(item.scope) !== scopeKey(scope)
     && item.scope.connection_id === scope.connection_id && (scope.kind === "broker" || scope.kind === "topic"
-      && (item.scope.kind === "topic" ? item.scope.topic_prefix === scope.topic_prefix || item.scope.topic_prefix?.startsWith(`${scope.topic_prefix}/`)
+      && (item.scope.kind === "topic" ? topicWithinPrefix(item.scope.topic_prefix ?? "", scope.topic_prefix ?? "")
         : ids.includes(item.scope.reading_id ?? "")))).length;
   const change = (next: string, seconds = interval, future = rule?.include_future_readings ?? false) => {
     draft.edit(next === "inherit" ? { scope, operation: "inherit" } : { scope, operation: "set",

@@ -5,8 +5,6 @@ import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 
-test.setTimeout(180_000);
-
 async function createFixture(page: Page, count = 40) {
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeVisible();

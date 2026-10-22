@@ -162,8 +162,6 @@ const installMockApi = async (
         return fulfillJson(route, sensors);
       case `/v1/telemetry/${CHARGER_ID}/data`:
         return fulfillJson(route, incremental ? published ? [{ timestamp: timestamp(300), created: timestamp(301), value: 233 }] : [] : telemetry);
-      case "/v1/anomalies/count":
-        return fulfillJson(route, { count: anomalies.length });
       case "/v1/anomalies":
         return fulfillJson(route, [...anomalies, anomalies[0]]);
       case "/v1/monitors/all":

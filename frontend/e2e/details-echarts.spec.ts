@@ -129,9 +129,6 @@ const installDetailsApi = async (
   await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
     await route.fulfill({ json: telemetryTypes });
   });
-  await page.route("**/v1/anomalies/count*", async (route) => {
-    await route.fulfill({ json: anomalies.length });
-  });
   await page.route(`**/v1/anomalies?charger_id=${CHARGER_ID}*`, async (route) => {
     await route.fulfill({ json: anomalies });
   });

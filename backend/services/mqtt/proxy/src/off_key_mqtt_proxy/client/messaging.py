@@ -13,6 +13,7 @@ from datetime import datetime
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
+from off_key_core.schemas.collection_wire import MAX_ENVELOPE_BYTES
 
 from .models import MQTTMessage
 
@@ -150,8 +151,9 @@ class MessageHandler:
     def _on_message(self, client, userdata, msg):
         """MQTT message callback - processes incoming messages"""
         try:
-            # Allow JSON escaping and envelope metadata around a 4096-byte value.
-            if len(msg.payload) > 32 * 1024:
+            # Admit every envelope TACTIC can produce; the payload decoder then
+            # enforces the upstream payload limit itself.
+            if len(msg.payload) > MAX_ENVELOPE_BYTES:
                 self.handler_messages_dropped += 1
                 return
             message = MQTTMessage.from_mqtt_message(msg)

@@ -10,6 +10,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import pytest_asyncio
+from off_key_core.schemas.collection_wire import (
+    MAX_ENVELOPE_BYTES,
+    encode_ingress_envelope,
+)
+from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
 from off_key_mqtt_proxy.client.connection import ConnectionManager
 from off_key_mqtt_proxy.client.messaging import MessageHandler
 from off_key_mqtt_proxy.client.models import ConnectionState, MQTTMessage
@@ -205,7 +210,8 @@ async def test_messages_without_a_handler_are_queued_up_to_the_bound(
     for i in range(bound + 20):
         message_handler._on_message(None, None, _paho_message(f"test/topic/{i}"))
     # Oversized payloads are rejected before parsing or counting.
-    message_handler._on_message(None, None, _paho_message(payload=b"x" * 40_000))
+    oversized = b"x" * (MAX_ENVELOPE_BYTES + 1)
+    message_handler._on_message(None, None, _paho_message(payload=oversized))
 
     assert message_handler.messages_received == bound + 20
     assert message_handler.handler_messages_dropped == 1
@@ -361,3 +367,21 @@ async def test_connect_presents_configured_broker_credentials(use_auth):
         mock_client.username_pw_set.assert_called_once_with("ingest", "k")
     else:
         mock_client.username_pw_set.assert_not_called()
+
+
+async def test_largest_ingress_envelope_is_admitted_and_larger_ones_dropped(
+    message_handler,
+):
+    # A maximum-size upstream payload of control bytes is the worst JSON case.
+    envelope = encode_ingress_envelope("\x00" * MAX_PAYLOAD_BYTES, 1.0, False)
+    handler, received = _recorder()
+    message_handler.set_handler(handler, asyncio.get_running_loop())
+
+    message_handler._on_message(None, None, _paho_message(payload=envelope.encode()))
+    oversized = b" " * (MAX_ENVELOPE_BYTES + 1)
+    message_handler._on_message(None, None, _paho_message(payload=oversized))
+    await _drain(message_handler)
+
+    assert len(envelope.encode()) > 32 * 1024
+    assert len(received) == 1
+    assert message_handler.handler_messages_dropped == 1

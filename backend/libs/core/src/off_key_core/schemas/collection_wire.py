@@ -8,8 +8,14 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from ..utils.payload_decode import MAX_PAYLOAD_BYTES
+
 # Clock skew tolerated before an observation counts as coming from the future.
 FUTURE_TOLERANCE_SECONDS = 300
+
+# JSON escapes one payload byte to at most six characters (a control byte
+# becomes \u0000), so this bounds the envelope of any payload TACTIC forwards.
+MAX_ENVELOPE_BYTES = 6 * MAX_PAYLOAD_BYTES + 1024
 
 
 def encode_ingress_envelope(
@@ -47,4 +53,8 @@ def decode_ingress_envelope(envelope: Any) -> tuple[str, datetime, bool]:
     return payload, received_at, retained
 
 
-__all__ = ["decode_ingress_envelope", "encode_ingress_envelope"]
+__all__ = [
+    "MAX_ENVELOPE_BYTES",
+    "decode_ingress_envelope",
+    "encode_ingress_envelope",
+]

@@ -38,6 +38,7 @@ from off_key_tactic_middleware.services.orchestration import radar_environment
         {"model_params": {"n_estimators": "invalid"}},
         {"monitoring": {"strategy": "unsupported"}},
         {"monitoring": {"strategy": "static_baseline"}, "model_type": None},
+        {"mqtt_topics": ["telemetry/ /L1"]},
     ],
 )
 def test_invalid_start_returns_422_without_launching(

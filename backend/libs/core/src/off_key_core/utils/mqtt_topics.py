@@ -201,7 +201,12 @@ def normalize_static_monitoring_topics(topics: Iterable[str]) -> list[str]:
             "valid sensor assignments"
         )
     extractor = TopicMetadataExtractor()
-    charger_ids = {extractor.extract(topic).charger_id for topic in normalized}
+    charger_ids: set[str] = set()
+    for topic in normalized:
+        metadata = extractor.extract(topic)
+        if metadata is None:
+            raise ValueError(f"Cannot derive monitoring sensor metadata from '{topic}'")
+        charger_ids.add(metadata.charger_id)
     if len(charger_ids) != 1:
         raise ValueError(
             "A static monitoring service must belong to exactly one entity"

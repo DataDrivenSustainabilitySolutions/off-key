@@ -4,6 +4,7 @@ import pytest
 from off_key_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
     mqtt_topic_filters_overlap,
+    normalize_static_monitoring_topics,
     normalize_telemetry_topic_filters,
     validate_mqtt_topic_filter,
     validate_telemetry_topic_filter,
@@ -135,6 +136,11 @@ def test_rejects_monitoring_topic_filters_outside_device_namespace(topic):
 def test_rejects_invalid_monitoring_topic_filter_shapes(topic):
     with pytest.raises(ValueError):
         validate_telemetry_topic_filter(topic)
+
+
+def test_static_topics_reject_a_blank_entity_level():
+    with pytest.raises(ValueError, match="Cannot derive monitoring sensor metadata"):
+        normalize_static_monitoring_topics(["telemetry/ /voltageAc1"])
 
 
 @pytest.mark.parametrize(

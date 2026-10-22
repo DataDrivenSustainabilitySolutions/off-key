@@ -19,14 +19,29 @@ SYSTEM_TABLES = {
     "system_revisions",
     "system_collection_configuration",
 }
-SESSION_TABLES = {"remembered_sessions"}
-CHECKPOINT_TABLES = {"radar_runtime_checkpoints"}
-PIPELINE_TABLES = {
-    "monitoring_pipelines",
-    "monitoring_pipeline_revisions",
-    "monitoring_pipeline_runs",
-    "monitoring_pipeline_activations",
-}
+# Tables a database created before the ledger existed must already hold. Frozen
+# here instead of derived from the ORM, so a new table cannot silently change
+# which historical databases are adopted.
+PRE_LEDGER_TABLES = frozenset(
+    {
+        "anomalies",
+        "anomaly_identity",
+        "chargers",
+        "collection_bindings",
+        "collection_configuration",
+        "collection_revisions",
+        "collection_state",
+        "deployment_maintenance",
+        "favorites",
+        "model_registry",
+        "monitoring_evidence",
+        "mqtt_topics",
+        "services",
+        "telemetry",
+        "users",
+    }
+)
+BASELINE_TABLES = PRE_LEDGER_TABLES - {"deployment_maintenance"}
 
 
 def migration_files() -> dict[str, str]:
@@ -83,14 +98,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if (
-        application_tables
-        - SYSTEM_TABLES
-        - SESSION_TABLES
-        - CHECKPOINT_TABLES
-        - PIPELINE_TABLES
-        <= existing
-    ):
+    if existing >= PRE_LEDGER_TABLES:
         validate_existing_schema(connection, excluded_columns=excluded_columns)
         adopted = [
             "001_membership.sql",
@@ -101,14 +109,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             adopted.append("004_system_catalogue.sql")
         return adopted
     baseline = [
-        table
-        for table in Base.metadata.sorted_tables
-        if table.name
-        not in SYSTEM_TABLES
-        | SESSION_TABLES
-        | CHECKPOINT_TABLES
-        | PIPELINE_TABLES
-        | {"deployment_maintenance"}
+        table for table in Base.metadata.sorted_tables if table.name in BASELINE_TABLES
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")

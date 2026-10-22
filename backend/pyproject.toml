@@ -89,6 +89,14 @@ exclude = [
     "site-packages",
     "venv",
 ]
+# Migration 005's ledger checksum hashes these modules byte for byte, so no
+# formatter or autofix may touch them (see tests/test_migration_ledger.py).
+extend-exclude = [
+    "libs/core/src/off_key_core/db/catalogue_upgrade.py",
+    "libs/core/src/off_key_core/db/catalogue_v1.py",
+    "libs/core/src/off_key_core/db/catalogue_v1_models.py",
+]
+force-exclude = true
 
 [tool.ruff.lint]
 select = [

@@ -171,6 +171,15 @@ def validate_compatible_source(source, project):
     """A binary rollback never bypasses a changed migration or numeric contract."""
     compatibility = [
         Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
+        # Migration 005's checksum covers these converter modules too.
+        *(
+            Path("backend/libs/core/src/off_key_core/db") / name
+            for name in (
+                "catalogue_upgrade.py",
+                "catalogue_v1.py",
+                "catalogue_v1_models.py",
+            )
+        ),
     ]
     migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
     compatibility.extend(

@@ -1,20 +1,14 @@
 import type { RuleChange } from "./collectionRules";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ApiRequestError,
-  apiClient,
-  apiUtils,
-  type ApiRequestOptions,
-} from "@/lib/api-client";
+import { ApiRequestError, type ApiRequestOptions } from "@/lib/api-client";
+import { systemApi } from "./systemApi";
 import { renameSystemEntity, validateSystemDocument } from "./systemDocument";
 import type {
   SystemDocument,
   SystemEntityKind,
   SystemSnapshot,
-  SystemCollectionChange,
 } from "./systemTypes";
 
-export const SYSTEM_ENDPOINT = "/v1/system";
 export type SystemDocumentStatus =
   "loading" | "ready" | "read-only" | "sign-in-required" | "unavailable";
 type Options = {
@@ -128,7 +122,7 @@ export function useSystemDocument({
       error: "",
     }));
     try {
-      const snapshot = await apiUtils.get<SystemSnapshot>(SYSTEM_ENDPOINT, {
+      const snapshot = await systemApi.get({
         signal: controller.signal,
         redirectOnUnauthorized: false,
       });
@@ -166,7 +160,7 @@ export function useSystemDocument({
     runtimeController.current = controller;
     const context = generation.current;
     try {
-      const snapshot = await apiUtils.get<SystemSnapshot>(SYSTEM_ENDPOINT, { signal: controller.signal, redirectOnUnauthorized: false });
+      const snapshot = await systemApi.get({ signal: controller.signal, redirectOnUnauthorized: false });
       if (!controller.signal.aborted && context === generation.current && !busy.current) accept(snapshot, context);
     } catch { /* Keep the last acknowledged state; the controls can retry. */ }
     finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
@@ -231,8 +225,7 @@ export function useSystemDocument({
       let changedRevision = false;
       const streamIds = current.document.streams.filter(stream => !runtimeConnectionId || stream.connection_id === runtimeConnectionId).map(stream => stream.id);
       try {
-        const next = await apiUtils.post<{ revision: number; runtime: SystemSnapshot["runtime"] }>(`${SYSTEM_ENDPOINT}/collection/status`,
-          { stream_ids: streamIds }, { signal: controller.signal, redirectOnUnauthorized: false });
+        const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal, redirectOnUnauthorized: false });
         if (controller.signal.aborted || context !== generation.current || busy.current) return;
         changedRevision = next.revision !== latest.current?.revision;
         if (!changedRevision) updateRuntime(next, runtimeConnectionId);
@@ -305,14 +298,10 @@ export function useSystemDocument({
         redirectOnUnauthorized: false,
       };
       try {
-        const response = await apiClient.put<SystemSnapshot>(
-          SYSTEM_ENDPOINT,
-          { expected_revision: revision, document },
-          options,
-        );
+        const response = await systemApi.save(revision, document, options);
         if (controller.signal.aborted || context !== generation.current)
           return false;
-        return !!accept(response.data, context, true);
+        return !!accept(response, context, true);
       } catch (error) {
         if (controller.signal.aborted || context !== generation.current)
           return false;
@@ -370,7 +359,7 @@ export function useSystemDocument({
     [save],
   );
 
-  const applyCollection = useCallback(async (change: SystemCollectionChange | RuleChange): Promise<boolean> => {
+  const applyCollection = useCallback(async (change: RuleChange): Promise<boolean> => {
     if (busy.current || !permission.current || !latest.current) return false;
     busy.current = true;
     runtimeController.current?.abort();
@@ -381,9 +370,8 @@ export function useSystemDocument({
     saveController.current = controller;
     try {
       const options: ApiRequestOptions = { signal: controller.signal, redirectOnUnauthorized: false };
-      const response = await apiClient.put<SystemSnapshot>(`${SYSTEM_ENDPOINT}/collection`, change,
-        options);
-      return !controller.signal.aborted && !!accept(response.data, context, true);
+      const response = await systemApi.applyCollection(change, options);
+      return !controller.signal.aborted && !!accept(response, context, true);
     } catch (error) {
       if (!controller.signal.aborted && context === generation.current) {
         if (error instanceof ApiRequestError && error.status === 409) await refresh();

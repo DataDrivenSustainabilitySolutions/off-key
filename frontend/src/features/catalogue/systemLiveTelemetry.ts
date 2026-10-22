@@ -1,4 +1,4 @@
-import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
+import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import type { SystemDocument } from "./systemTypes";
 import type { Sample, LiveTelemetryStore, TelemetryMessage } from "./types";
 import type {
@@ -34,14 +34,12 @@ const transport: Transport = {
       { expected_revision: revision, stream_ids: streamIds },
       options,
     ),
-  renew: async (id, signal, streamIds) =>
-    (
-      await apiClient.put<LiveLease>(
-        `${SYSTEM_LIVE_ENDPOINT}/leases/${encodeURIComponent(id)}`,
-        { stream_ids: streamIds },
-        { ...options, signal },
-      )
-    ).data,
+  renew: (id, signal, streamIds) =>
+    apiUtils.put<LiveLease>(
+      `${SYSTEM_LIVE_ENDPOINT}/leases/${encodeURIComponent(id)}`,
+      { stream_ids: streamIds },
+      { ...options, signal },
+    ),
   read: (sequence, signal) =>
     apiUtils.get(SYSTEM_LIVE_ENDPOINT, {
       ...options,

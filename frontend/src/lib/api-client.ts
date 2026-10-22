@@ -162,8 +162,12 @@ export const apiUtils = {
   /**
    * Generic PUT request
    */
-  async put<T>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await apiClient.put<T>(endpoint, data);
+  async put<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ): Promise<T> {
+    const response = await apiClient.put<T>(endpoint, data, options);
     return response.data;
   },
 

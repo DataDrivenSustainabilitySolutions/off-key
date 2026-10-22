@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiUtils } from "@/lib/api-client";
+import { systemApi } from "./systemApi";
 import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "./collectionRules";
 import { scopeKey } from "./collectionRules";
 import type { SystemCollectionPreview, SystemSnapshot } from "./systemTypes";
@@ -39,7 +39,7 @@ export function useRecordingRules(snapshot: SystemSnapshot | null, broker: strin
     if (!request) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      void apiUtils.post<SystemCollectionPreview>("/v1/system/collection/preview", JSON.parse(requestKey),
+      void systemApi.previewCollection(JSON.parse(requestKey),
         { signal: controller.signal, redirectOnUnauthorized: false }).then(value => {
           if (!controller.signal.aborted) { setReview({ key: requestKey, preview: value }); setProblem(""); }
         }, error => {

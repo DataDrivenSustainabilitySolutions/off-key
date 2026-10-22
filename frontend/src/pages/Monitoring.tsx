@@ -16,6 +16,7 @@ import { Activity, Database } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { entityStreams } from "@/features/catalogue/entityStreams";
 import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -53,16 +54,18 @@ function Monitoring() {
 function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; initialReading?: string }) {
   const { isAdmin, isAuthenticated, userId } = useAuth();
   const [confirm, confirmation] = useConfirm();
-  const catalogue = useSystemDocument({ isAuthenticated, accountKey: userId });
-  const sensorLabels = useMemo(() => new Map((catalogue.document?.streams ?? []).flatMap((stream) => {
-    const binding = catalogue.snapshot?.runtime.bindings?.[stream.id];
-    return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream.label] as const] : [];
-  })), [catalogue.document, catalogue.snapshot, chargerId]);
+  // Inside the workspace the provider's catalogue is reused; standalone mounts load their own.
+  const provided = useOptionalCatalogue();
+  const own = useSystemDocument({ isAuthenticated: isAuthenticated && !provided, accountKey: userId });
+  const catalogue = provided?.system ?? own;
+  const streams = useMemo(() => entityStreams(catalogue.document, catalogue.snapshot?.runtime, chargerId),
+    [catalogue.document, catalogue.snapshot, chargerId]);
+  const sensorLabels = useMemo(() => new Map([...streams].map(([key, stream]) => [key, stream.label] as const)), [streams]);
   const entityName = useMemo(() => {
-    const stream = catalogue.document?.streams.find((item) => catalogue.snapshot?.runtime.bindings?.[item.id]?.entity_id === chargerId);
+    const stream = streams.values().next().value;
     return catalogue.document?.devices.find((item) => item.id === stream?.device_id)?.label
       ?? catalogue.document?.connections.find((item) => item.id === stream?.connection_id)?.label;
-  }, [catalogue.document, catalogue.snapshot, chargerId]);
+  }, [catalogue.document, streams]);
   useDocumentTitle(entityName ?? chargerId, "Monitoring");
   const data = useMonitoringData(chargerId);
   const sensorTypes = data.sensors.data;

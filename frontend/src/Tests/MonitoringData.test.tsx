@@ -1,10 +1,14 @@
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ isAdmin: true }) }));
+const auth = vi.hoisted(() => ({ value: { isAdmin: true } as { isAdmin: boolean; isAuthenticated?: boolean } }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth.value }));
 
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type { ApiRequestOptions } from "../lib/api-client";
+import { createEmptySystem } from "../features/catalogue/systemDocument";
+import type { SystemDocument, SystemRuntime } from "../features/catalogue/systemTypes";
+import { CatalogueContext, type CatalogueContextValue } from "../features/workspace/catalogue-context";
 import Monitoring from "../pages/Monitoring";
 import { useMonitoringData } from "../pages/monitoring/useMonitoringData";
 
@@ -32,6 +36,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  auth.value = { isAdmin: true };
   vi.useFakeTimers();
   get.mockImplementation(async (url) => url.includes("models") ? {} : []);
 });
@@ -52,6 +57,25 @@ it("shows only monitoring services assigned to the selected entity", async () =>
   render(<RouterProvider router={router} />);
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(screen.getByTestId("entity-services").textContent).toBe("selected-service");
+});
+
+it("reads entity names from the workspace catalogue instead of loading it again", async () => {
+  auth.value = { isAdmin: true, isAuthenticated: true };
+  const document: SystemDocument = { ...createEmptySystem(),
+    connections: [{ id: "broker", label: "Building broker", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false }],
+    devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
+    streams: [{ id: "temperature", label: "Air temperature", connection_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
+  };
+  const runtime = { bindings: { temperature: { connection_id: "broker", entity_id: "entity-A", telemetry_key: "temperature",
+    accepted_topic: "telemetry/entity-A/temperature", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
+  const catalogue = { system: { document, snapshot: { document, runtime }, status: "ready" } } as unknown as CatalogueContextValue;
+  const router = createMemoryRouter([
+    { path: "/monitoring/:chargerId", element: <Monitoring /> },
+  ], { initialEntries: ["/monitoring/entity-A"] });
+  render(<CatalogueContext.Provider value={catalogue}><RouterProvider router={router} /></CatalogueContext.Provider>);
+  await act(() => vi.advanceTimersByTimeAsync(10_000));
+  expect(window.document.title).toBe("Room station · Monitoring · Aberration");
+  expect(get.mock.calls.some(([url]) => url.startsWith("/v1/system"))).toBe(false);
 });
 
 it("isolates charger state and ignores an old response after navigation", async () => {

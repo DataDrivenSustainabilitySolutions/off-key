@@ -63,10 +63,12 @@ export const getAllTelemetryData = async (
   chargerId: string,
   signal?: AbortSignal,
   cursorByType?: ReadonlyMap<string, TelemetryCursor>,
+  // A loaded catalogue snapshot saves fetching /v1/system on every refresh.
+  catalogue?: Pick<SystemSnapshot, "document" | "runtime">,
 ): Promise<TelemetryTypeData[]> => {
   const [telemetryTypes, snapshot] = await Promise.all([
     getTelemetryTypes(chargerId, signal),
-    get<SystemSnapshot>("/v1/system", signal),
+    catalogue ?? get<SystemSnapshot>("/v1/system", signal),
   ]);
   const definitions = new Map(
     snapshot.document.streams.flatMap(stream => {

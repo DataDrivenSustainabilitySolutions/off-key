@@ -222,6 +222,8 @@ describe("<Details />", () => {
     const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
     expect(window.document.title).toBe("Room station · Reporting · Aberration");
+    // Reading labels come from the provider's snapshot instead of another /v1/system request.
+    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith("123", expect.any(AbortSignal), undefined, { document, runtime });
   });
 
   it("falls back to the recorded identity without a catalogue", async () => {

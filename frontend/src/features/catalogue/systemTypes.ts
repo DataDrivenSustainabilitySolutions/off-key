@@ -77,13 +77,6 @@ export type SystemReadingBinding = {
   policy: CollectionPolicy;
   policy_origin?: PolicyOrigin;
 };
-export type SystemCollectionChange = {
-  expected_revision: number;
-  expected_collection_revision: number;
-  stream_ids: string[];
-  policy: CollectionPolicy;
-  pause_affected_monitors?: boolean;
-};
 export type SystemCollectionPreview = {
   revision: number;
   collection_revision: number;

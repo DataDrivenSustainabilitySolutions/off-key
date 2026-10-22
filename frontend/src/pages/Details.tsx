@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Activity, Check, Link2, Unlink2 } from "lucide-react";
 
@@ -111,6 +111,13 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [now, setNow] = useState(() => Date.now());
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [telemetryUnavailable, setTelemetryUnavailable] = useState(false);
+  const catalogue = useOptionalCatalogue();
+  const snapshot = catalogue?.system.snapshot;
+  // Read by the poll without restarting it when the provider's snapshot refreshes.
+  const snapshotRef = useRef(snapshot);
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
 
   useEffect(() => {
     if (!chargerId) {
@@ -144,9 +151,17 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           pageSize: EVIDENCE_PAGE_SIZE,
         });
 
+      const loadedCatalogue = snapshotRef.current;
       const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
         await Promise.allSettled([
-          telemetryLoaded
+          loadedCatalogue
+            ? getAllTelemetryData(
+                chargerId,
+                controller.signal,
+                telemetryLoaded ? telemetryCursors : undefined,
+                loadedCatalogue,
+              )
+            : telemetryLoaded
             ? getAllTelemetryData(
                 chargerId,
                 controller.signal,
@@ -333,8 +348,6 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     toggleChartLink,
   } = useLinkedChartNavigation(allTelemetryData);
 
-  const catalogue = useOptionalCatalogue();
-  const snapshot = catalogue?.system.snapshot;
   const label = useMemo(() => {
     const name = reportLabels(snapshot?.document, snapshot?.runtime).entity(chargerId);
     return name === chargerId ? `Entity ${chargerId}` : name;

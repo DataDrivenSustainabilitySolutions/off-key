@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
 import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
+import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import Reporting from "@/pages/Anomalies";
@@ -19,7 +19,7 @@ vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme
 vi.mock("@/components/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
 vi.mock("@/lib/api-client", async (original) => {
   const actual = await original<typeof import("@/lib/api-client")>();
-  return { ...actual, apiUtils: { ...actual.apiUtils, get: vi.fn(), patch: vi.fn(), post: vi.fn(), delete: vi.fn() }, apiClient: { ...actual.apiClient, put: vi.fn() } };
+  return { ...actual, apiUtils: { ...actual.apiUtils, get: vi.fn(), patch: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } };
 });
 // jsdom has no viewport measurements; preserve row rendering and component keyboard handlers.
 vi.mock("@tanstack/react-virtual", () => ({
@@ -84,7 +84,7 @@ beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true; auth.isAdmin = false;
   clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
-  vi.mocked(apiClient.put).mockImplementation(async (_endpoint, payload) => ({ data: snapshot((payload as { document: SystemDocument }).document, 8) }));
+  vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(callback, 0));
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
@@ -145,7 +145,7 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.keyDown(search, { key: "Enter" });
     expect(picker.textContent).toContain("Building broker / Room station");
     expect(screen.queryByRole("dialog", { name: "Choose monitoring inputs" })).toBeNull();
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
 
@@ -169,7 +169,7 @@ describe("service-centred monitoring workspace", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
     expect(choices.getByText("No inputs receiving data.")).toBeTruthy();
     expect(picker.textContent).toContain("Building broker / Room station");
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("filters online topics without changing selection or search and restores hidden readings when disabled", async () => {
@@ -201,7 +201,7 @@ describe("service-centred monitoring workspace", () => {
     expect((search as HTMLInputElement).value).toBe("Relative humidity");
     expect(await sidebar.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(location);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
     expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/live/leases", expect.anything(), expect.anything());
   });
 
@@ -263,7 +263,7 @@ describe("service-centred monitoring workspace", () => {
       expect(within(sidebar).getByRole("button", { name: "Room station, open" }).getAttribute("aria-current")).toBe("true");
     }
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("switches through the upper-left links and restores the inspected monitor", async () => {
@@ -283,7 +283,7 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.click(back);
     await screen.findByRole("region", { name: "Monitoring service details" });
     expect(router.state.location.search).toBe("?service=service-one");
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("enables service setup when recording is acknowledged after a Sources detour", async () => {
@@ -303,7 +303,7 @@ describe("service-centred monitoring workspace", () => {
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByText("Waiting for collection to apply…")).toBeNull();
     expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("opens a recorded reading without requiring Connect or creating a preview lease", async () => {
@@ -324,7 +324,7 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.getByTestId("location").textContent).toBe("?service=service-one");
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors?container_name=monitor-service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
-    expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
   });
 
@@ -384,7 +384,7 @@ describe("service-centred monitoring workspace", () => {
     expect(within(setup).getByRole("button", { name: "Choose monitoring inputs" }).textContent).toContain("Room station");
     expect(within(setup).getByText("Enable collection for the readings this service will monitor.")).toBeTruthy();
     expect(within(setup).queryByRole("button", { name: "Start monitoring" })).toBeNull();
-    expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
   });
 });
 
@@ -396,7 +396,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("region", { name: "Reading preview" })).toBe(preview);
     await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(352));
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/system")).toHaveLength(1);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
     first.unmount();
     mount();
     await screen.findByRole("button", { name: "temperature, preview" });
@@ -419,7 +419,7 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("closes a linked entity without reopening it and reports missing stable IDs honestly", async () => {
@@ -432,7 +432,7 @@ describe("hierarchical explorer workspace", () => {
     mount("/?entity=missing");
     expect(await screen.findByText("Entity not found.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("provides application and account navigation without leaving catalogue changes or starting telemetry", async () => {
@@ -450,7 +450,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("menuitem", { name: "Preferences" }).getAttribute("aria-haspopup")).toBe("dialog");
     expect(screen.queryByRole("menuitem", { name: "Monitoring" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Entities" })).toBeNull();
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("loads the saved system and keeps the monitoring safe zone while entering hierarchy levels", async () => {
@@ -462,7 +462,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/workspace", expect.objectContaining({ redirectOnUnauthorized: false }));
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Back one level" }));
@@ -486,8 +486,8 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(input, { target: { value: "Room temperature" } });
     fireEvent.blur(input);
     await waitFor(() => expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature"));
-    expect(apiClient.put).toHaveBeenCalledOnce();
-    const request = vi.mocked(apiClient.put).mock.calls[0]!;
+    expect(apiUtils.put).toHaveBeenCalledOnce();
+    const request = vi.mocked(apiUtils.put).mock.calls[0]!;
     expect(request[0]).toBe("/v1/system");
     expect(request[1]).toMatchObject({ expected_revision: 7 });
     expect((request[1] as { document: SystemDocument }).document.streams.find((stream) => stream.id === "temperature"))
@@ -513,7 +513,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.getByRole("button", { name: "Air temperature, preview" }).getAttribute("aria-current")).toBe("true");
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).not.toBe("personal:watch"));
     expect(loadExplorerPreferences(1).groups).toEqual(groups);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const dialog = await screen.findByRole("dialog", { name: "Catalogue settings" });
@@ -526,7 +526,7 @@ describe("hierarchical explorer workspace", () => {
     await screen.findByText("Catalogue imported and saved.");
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(buildNavigationIndex(fixture()).rootKey));
     expect(loadExplorerPreferences(1).groups).toEqual(groups);
-    expect(apiClient.put).toHaveBeenCalledOnce();
+    expect(apiUtils.put).toHaveBeenCalledOnce();
   });
 
   it("restores navigation after reload and isolates it and personal groups when the account changes", async () => {
@@ -558,7 +558,7 @@ describe("hierarchical explorer workspace", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Add broker" })).toBeTruthy());
     expect((within(dialog).getByRole("button", { name: "Add broker" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(dialog).getByRole("button", { name: "Import file" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("lets read-only users inspect signals while disabling structural mutation", async () => {
@@ -569,7 +569,7 @@ describe("hierarchical explorer workspace", () => {
     expect((within(preview).getByRole("button", { name: "Edit structure" }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(preview).queryByText("Personal groups")).toBeNull();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false);
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("uses a mobile drawer, preserves its hierarchy when selecting a topic, and restores trigger focus", async () => {
@@ -641,7 +641,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor(imported)] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
-    expect(apiClient.put).toHaveBeenCalledExactlyOnceWith("/v1/system", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/system", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
@@ -655,12 +655,12 @@ describe("hierarchical explorer workspace", () => {
     mount(); await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor({ ...fixture(), label: "My draft" })] } });
-    vi.mocked(apiClient.put).mockRejectedValueOnce(new ApiRequestError("Conflict", 409));
+    vi.mocked(apiUtils.put).mockRejectedValueOnce(new ApiRequestError("Conflict", 409));
     vi.mocked(apiUtils.get).mockResolvedValue(snapshot({ ...fixture(), label: "Another editor's system" }, 8));
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText(/The catalogue was not imported/);
     fireEvent.click(screen.getByRole("button", { name: "Replace saved catalogue" }));
-    await waitFor(() => expect(apiClient.put).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
     expect(screen.queryByText("Catalogue imported and saved.")).toBeNull();
     expect(screen.getAllByText("Another editor's system").length).toBeGreaterThan(0);
     expect(screen.getByText("My draft")).toBeTruthy();

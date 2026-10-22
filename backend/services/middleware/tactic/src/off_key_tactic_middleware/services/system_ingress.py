@@ -64,21 +64,22 @@ class SystemIngress:
             self.output = None
 
     def _make_output(self):
-        defaults = get_tactic_settings().config.radar_defaults
+        endpoint = self.settings.collection_output_endpoint(
+            get_tactic_settings().config.radar_defaults
+        )
         client = Client(
             CallbackAPIVersion.VERSION2, client_id=f"aberration-ingress-{uuid4().hex}"
         )
         client.max_queued_messages_set(512)
         client.max_inflight_messages_set(32)
         client.reconnect_delay_set(1, 30)
-        if defaults.mqtt_use_auth:
+        if endpoint.password is not None:
             client.username_pw_set(
-                self.settings.SYSTEM_COLLECTION_MQTT_USERNAME or defaults.mqtt_username,
-                self.settings.SYSTEM_COLLECTION_MQTT_API_KEY.get_secret_value(),
+                endpoint.username, endpoint.password.get_secret_value()
             )
-        if defaults.mqtt_use_tls:
-            client.tls_set(ca_certs=self.settings.SYSTEM_COLLECTION_MQTT_CA_FILE)
-        client.connect_async(defaults.mqtt_broker_host, defaults.mqtt_broker_port, 30)
+        if endpoint.use_tls:
+            client.tls_set(ca_certs=endpoint.ca_file)
+        client.connect_async(endpoint.host, endpoint.port, 30)
         client.loop_start()
         return client
 

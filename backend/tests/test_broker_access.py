@@ -1,4 +1,6 @@
-"""One broker access resolution for live previews, collection ingress and saves."""
+"""Operator broker access for live previews, collection ingress and saves."""
+
+from types import SimpleNamespace
 
 import pytest
 from off_key_core.schemas.system import SystemConnection
@@ -125,3 +127,40 @@ async def test_live_checks_report_capacity_then_access_then_fanout(
         message,
     )
     assert [worker.connection.id for worker in service.workers] == ["broker"]
+
+
+@pytest.mark.parametrize(
+    ("use_auth", "use_tls", "collection_user", "username"),
+    [
+        (False, False, "collector", None),
+        (True, False, "", "radar-user"),
+        (True, True, "collector", "collector"),
+    ],
+)
+def test_collection_publisher_uses_the_radar_broker_and_its_own_account(
+    use_auth, use_tls, collection_user, username
+):
+    settings = SystemLiveSettings(
+        SYSTEM_COLLECTION_MQTT_USERNAME=collection_user,
+        SYSTEM_COLLECTION_MQTT_API_KEY="collection-key",
+        SYSTEM_COLLECTION_MQTT_CA_FILE="/run/secrets/ca.pem",
+    )
+    defaults = SimpleNamespace(
+        mqtt_broker_host="mqtt-proxy-broker",
+        mqtt_broker_port=8883,
+        mqtt_use_auth=use_auth,
+        mqtt_use_tls=use_tls,
+        mqtt_username="radar-user",
+    )
+
+    endpoint = settings.collection_output_endpoint(defaults)
+
+    assert (endpoint.host, endpoint.port, endpoint.use_tls) == (
+        "mqtt-proxy-broker",
+        8883,
+        use_tls,
+    )
+    assert endpoint.ca_file == "/run/secrets/ca.pem"
+    assert endpoint.username == username
+    assert (endpoint.password is not None) is use_auth
+    assert "collection-key" not in repr(endpoint)

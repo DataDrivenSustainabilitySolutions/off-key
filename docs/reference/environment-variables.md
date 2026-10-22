@@ -141,10 +141,10 @@ unknown errors remain eligible for retry.
 | `TACTIC_DOCKER_API_URL` | `http://socket-proxy` | Restricted Docker API proxy URL |
 | `TACTIC_DOCKER_API_PORT` | `2375` | Docker API proxy port |
 | `TACTIC_DOCKER_MAX_CONCURRENT_CALLS` | `5` | Concurrent Docker calls per client: one shared by requests and the activation supervisor, one for the reconciliation sweep |
-| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads |
-| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR broker port |
-| `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR TLS default |
-| `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR authentication default |
+| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads; TACTIC's collection publisher uses it too, so it must be the broker mqtt-proxy subscribes on (`MQTT_BROKER_HOST`) |
+| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR and collection publisher broker port |
+| `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR and collection publisher TLS |
+| `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR and collection publisher authentication; the publisher falls back to `TACTIC_RADAR_DEFAULT_MQTT_USERNAME` when `SYSTEM_COLLECTION_MQTT_USERNAME` is empty |
 | `TACTIC_RADAR_WORKLOAD_LIFECYCLE` | `ephemeral` | `ephemeral` or `persistent` |
 | `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to hide the workbench; the setup forms still start monitors as pipelines, and existing graph execution, inspection, stopping and release recovery remain available. |
 | `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
@@ -209,7 +209,7 @@ tested main commit. Images are recorded in the verified server release; local
 
 | Variable | Default / requirement | Purpose |
 | --- | --- | --- |
-| `SYSTEM_COLLECTION_ENABLED` | `false` in service defaults; enabled in deployments | Run persistent generic collection independently of previews |
+| `SYSTEM_COLLECTION_ENABLED` | `true` | Run persistent generic collection independently of previews |
 | `SYSTEM_LIVE_ENABLED` | `false` in service defaults | Permit temporary in-memory previews |
 | `SYSTEM_LIVE_ALLOWED_HOSTS` | Operator configuration | Allowed generic upstream brokers |
 | `SYSTEM_LIVE_DATA_SOURCE` | `broker` | `simulated` replaces upstream brokers with generated preview data |

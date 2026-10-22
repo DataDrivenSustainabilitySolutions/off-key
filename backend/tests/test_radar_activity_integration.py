@@ -130,16 +130,10 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
     )
     blocker_engine = create_async_engine(engine.url, pool_size=1, max_overflow=0)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
-        lambda: SimpleNamespace(SERVICE_ID="activity-writer"),
-    )
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
-        lambda: SimpleNamespace(SERVICE_ID="activity-writer"),
-    )
     config = MQTTRadarConfig(sensor_freshness_seconds=0.1, db_batch_timeout=0.05)
-    writer = DatabaseWriter(config, session_factory=sessions)
+    writer = DatabaseWriter(
+        config, session_factory=sessions, service_id="activity-writer"
+    )
     timestamp = datetime.now(UTC)
     result = AnomalyResult(
         anomaly_score=0.01,

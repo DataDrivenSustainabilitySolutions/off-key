@@ -11,10 +11,8 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
-    ForeignKeyConstraint,
     Index,
     Integer,
-    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     event,
@@ -42,7 +40,12 @@ from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration
 from .system import SystemRevision as SystemRevision
-from .table_contracts import monitoring_evidence_table, radar_runtime_checkpoints_table
+from .table_contracts import (
+    anomalies_table,
+    anomaly_identity_table,
+    monitoring_evidence_table,
+    radar_runtime_checkpoints_table,
+)
 
 
 class User(Base):
@@ -313,50 +316,13 @@ class Favorite(Base):
 
 
 class Anomaly(Base):
-    __tablename__ = "anomalies"
-
-    charger_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, index=True
-    )
-    telemetry_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    # Empty scope belongs to historical and manually created records. Monitor IDs
-    # stay in history after the monitor is deleted, so this is not a foreign key.
-    service_id: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=text("''")
-    )
-    anomaly_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    anomaly_value: Mapped[float] = mapped_column(Float, nullable=False, index=True)
-    # 'tail_pvalue' for rows written by the tail-probability detector.
-    # 'conformal_pvalue' for rows written by static conformal monitoring.
-    # 'zscore' for legacy rows written by the z-score heuristic.
-    # NULL for rows predating this column.
-    value_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Exact telemetry streams involved in this anomaly. Multivariate rows use this
-    # to highlight only the charts whose sensors contributed to the aligned vector.
-    # NULL means the row predates this column or the writer could not determine it.
-    sensor_set: Mapped[Any | None] = mapped_column(JSON, nullable=True)
-
-    __table_args__ = (
-        PrimaryKeyConstraint(
-            "charger_id", "timestamp", "telemetry_type", "service_id", name="pk_anomaly"
-        ),
-        # Composite indexes for common query patterns
-        Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
-        Index("idx_anomaly_charger_timestamp", "charger_id", "timestamp"),
-        Index(
-            "idx_anomaly_timestamp_desc",
-            "timestamp",
-            postgresql_using="btree",
-            postgresql_ops={"timestamp": "DESC"},
-        ),
-    )
+    __table__ = anomalies_table(Base.metadata)
 
 
 event.listen(
     Anomaly.__table__,
     "after_create",
-    DDL(f"SELECT create_hypertable('{Anomaly.__tablename__}', 'timestamp');"),
+    DDL(f"SELECT create_hypertable('{Anomaly.__table__.name}', 'timestamp');"),
 )
 
 
@@ -377,48 +343,4 @@ event.listen(
 
 
 class AnomalyIdentity(Base):
-    __tablename__ = "anomaly_identity"
-
-    anomaly_id: Mapped[str] = mapped_column(
-        Text,
-        primary_key=True,
-        nullable=False,
-        server_default=text("gen_random_uuid()::text"),
-    )
-    charger_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, index=True
-    )
-    telemetry_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
-    service_id: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=text("''")
-    )
-    created: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "charger_id",
-            "timestamp",
-            "telemetry_type",
-            "service_id",
-            name="uq_anomaly_identity_target",
-        ),
-        ForeignKeyConstraint(
-            ["charger_id", "timestamp", "telemetry_type", "service_id"],
-            [
-                "anomalies.charger_id",
-                "anomalies.timestamp",
-                "anomalies.telemetry_type",
-                "anomalies.service_id",
-            ],
-            ondelete="CASCADE",
-            name="fk_anomaly_identity_anomaly",
-        ),
-        Index(
-            "idx_anomaly_identity_charger_timestamp",
-            "charger_id",
-            "timestamp",
-        ),
-    )
+    __table__ = anomaly_identity_table(Base.metadata)

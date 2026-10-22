@@ -1,7 +1,6 @@
 """Exercise monitor alarm identity and upgrades against real TimescaleDB."""
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 from off_key_core.db.migrate import apply_migrations, migration_status
@@ -38,10 +37,6 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
             ("monitor-a", ["a", "b"]),
             ("monitor-b", ["c", "d"]),
         ):
-            monkeypatch.setattr(
-                "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
-                lambda service_id=service_id: SimpleNamespace(SERVICE_ID=service_id),
-            )
             result = AnomalyResult(
                 anomaly_score=0.001,
                 is_anomaly=True,
@@ -68,7 +63,9 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
                     },
                 },
             )
-            writer = DatabaseWriter(MQTTRadarConfig(), session_factory=sessions)
+            writer = DatabaseWriter(
+                MQTTRadarConfig(), session_factory=sessions, service_id=service_id
+            )
             for _ in range(2):
                 await writer.write_result(result)
                 await writer._flush_batch()

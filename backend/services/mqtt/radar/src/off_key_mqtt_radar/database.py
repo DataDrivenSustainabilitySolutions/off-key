@@ -1,12 +1,7 @@
-"""
-Database writer for RADAR service
+"""Batched anomaly, evidence and checkpoint writes for one RADAR worker.
 
-Handles batch writing of anomaly detection results to the database
-with error handling and performance optimization.
-
-Note: This module uses RADAR_DATABASE_URL environment variable directly
-to avoid depending on off_key_core.db.base which requires the full Settings
-class with 23+ environment variables.
+The session factory reads RADAR's own database settings rather than
+off_key_core.db.base, which needs the full application Settings.
 """
 
 import asyncio
@@ -18,71 +13,38 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from off_key_core.db.table_contracts import (
-    monitoring_evidence_table,
-    radar_runtime_checkpoints_table,
-)
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import (
-    JSON,
-    TIMESTAMP,
-    Column,
     CursorResult,
-    Float,
-    Table,
-    Text,
     select,
     text,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.schema import MetaData
 
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
-from .database_status import HEARTBEAT_UPDATE
+from .database_status import (
+    FAIL_PIPELINE_RUN,
+    FAIL_SERVICE_STATUS,
+    HEARTBEAT_UPDATE,
+    LOCK_SERVICE_ROW,
+    TERMINAL_RUN_EXISTS,
+)
 from .models import AnomalyResult
 from .result_records import PreparedResult, ResultProjector
+from .tables import (
+    ANOMALY_IDENTITY_TABLE,
+    ANOMALY_TABLE,
+    MONITORING_EVIDENCE_TABLE,
+    RUNTIME_CHECKPOINT_TABLE,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # Lazy-initialized async session factory
 _radar_async_session_factory: async_sessionmaker[AsyncSession] | None = None
-
-# Minimal table mapping used for anomaly inserts without importing
-# off_key_core.db.models.
-# Importing core models pulls off_key_core.db.base, which initializes global Settings
-# and fails in RADAR-only container contexts where non-RADAR env vars are absent.
-_anomaly_metadata = MetaData()
-ANOMALY_TABLE = Table(
-    "anomalies",
-    _anomaly_metadata,
-    Column("charger_id", Text, primary_key=True),
-    Column("timestamp", TIMESTAMP(timezone=True), primary_key=True),
-    Column("telemetry_type", Text, primary_key=True),
-    Column("service_id", Text, primary_key=True, server_default=text("''")),
-    Column("anomaly_type", Text, nullable=False),
-    Column("anomaly_value", Float, nullable=False),
-    Column("value_type", Text, nullable=True),
-    Column("sensor_set", JSON, nullable=True),
-)
-ANOMALY_IDENTITY_TABLE = Table(
-    "anomaly_identity",
-    _anomaly_metadata,
-    Column(
-        "anomaly_id",
-        Text,
-        primary_key=True,
-        server_default=text("gen_random_uuid()::text"),
-    ),
-    Column("charger_id", Text, nullable=False),
-    Column("timestamp", TIMESTAMP(timezone=True), nullable=False),
-    Column("telemetry_type", Text, nullable=False),
-    Column("service_id", Text, nullable=False, server_default=text("''")),
-)
-MONITORING_EVIDENCE_TABLE = monitoring_evidence_table(_anomaly_metadata)
-RUNTIME_CHECKPOINT_TABLE = radar_runtime_checkpoints_table(_anomaly_metadata)
 
 
 class CheckpointOwnershipLost(RuntimeError):
@@ -145,10 +107,16 @@ class DatabaseWriter:
         session_factory: async_sessionmaker[AsyncSession] | None = None,
         *,
         managed_checkpoints: bool = False,
+        service_id: str | None = None,
     ):
         self.config = config
         self.managed_checkpoints = managed_checkpoints
-        self.projector = ResultProjector()
+        self.service_id = (
+            service_id
+            if service_id is not None
+            else get_radar_checkpoint_settings().SERVICE_ID
+        )
+        self.projector = ResultProjector(self.service_id)
         self.total_rejected = 0
         # Session factory is created lazily to avoid requiring DB env vars
         # when database writing is disabled.
@@ -321,11 +289,7 @@ class DatabaseWriter:
             updated = cast(
                 CursorResult[Any],
                 await session.execute(
-                    text(
-                        "UPDATE monitoring_pipeline_runs SET status = 'failed', "
-                        "error = :error, ended_at = now() "
-                        "WHERE id = :run_id AND service_id = :service_id"
-                    ),
+                    FAIL_PIPELINE_RUN,
                     {
                         "error": error[:4000],
                         "run_id": execution.run_id,
@@ -336,12 +300,7 @@ class DatabaseWriter:
             if updated.rowcount != 1:
                 raise self._lose_checkpoint_ownership()
             await session.execute(
-                text(
-                    "UPDATE services SET operational_stage = 'failed', "
-                    "operational_status = CAST(:status AS jsonb), "
-                    "operational_updated_at = now() "
-                    "WHERE id = :service_id"
-                ),
+                FAIL_SERVICE_STATUS,
                 {"status": payload, "service_id": self._checkpoint_service_id},
             )
             await session.commit()
@@ -352,7 +311,9 @@ class DatabaseWriter:
             raise self._ownership_error
 
     def _bind_checkpoint_service(self, service_id: str) -> None:
-        if self._checkpoint_service_id not in (None, service_id):
+        if self._checkpoint_service_id not in (None, service_id) or (
+            self.managed_checkpoints and service_id != self.service_id
+        ):
             raise ValueError(
                 "Database writer cannot change checkpoint service identity"
             )
@@ -504,7 +465,7 @@ class DatabaseWriter:
         if not isinstance(status, dict):
             return
 
-        service_id = get_radar_checkpoint_settings().SERVICE_ID
+        service_id = self.service_id
         if not service_id:
             return
 
@@ -543,20 +504,10 @@ class DatabaseWriter:
         # for Service. A fatal writer still waiting for Service publishes last.
         # Never request a Run/checkpoint lock while owning Service. NO KEY UPDATE
         # also remains compatible with evidence/checkpoint foreign-key reads.
-        service = await session.scalar(
-            text("SELECT id FROM services WHERE id = :service_id FOR NO KEY UPDATE"),
-            {"service_id": service_id},
-        )
+        service = await session.scalar(LOCK_SERVICE_ROW, {"service_id": service_id})
         if service is None:
             raise self._lose_checkpoint_ownership()
-        terminal = await session.scalar(
-            text(
-                "SELECT EXISTS (SELECT 1 FROM monitoring_pipeline_runs "
-                "WHERE service_id = :service_id "
-                "AND (ended_at IS NOT NULL OR status = 'failed'))"
-            ),
-            {"service_id": service_id},
-        )
+        terminal = await session.scalar(TERMINAL_RUN_EXISTS, {"service_id": service_id})
         return not terminal
 
     async def _test_connection(self):

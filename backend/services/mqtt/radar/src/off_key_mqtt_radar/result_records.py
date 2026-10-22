@@ -137,7 +137,13 @@ class PreparedResult:
 
 
 class ResultProjector:
-    def __init__(self):
+    def __init__(self, service_id: str | None = None):
+        # Rows are scoped to one monitor; the worker's settings name it by default.
+        self.service_id = (
+            service_id
+            if service_id is not None
+            else get_radar_checkpoint_settings().SERVICE_ID
+        )
         self.topic_extractor = TopicMetadataExtractor()
 
     def prepare(self, result: AnomalyResult) -> PreparedResult:
@@ -263,7 +269,7 @@ class ResultProjector:
         self,
         results: list[AnomalyResult],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        service_id = get_radar_checkpoint_settings().SERVICE_ID or ""
+        service_id = self.service_id or ""
         anomaly_records = [
             {
                 "charger_id": result.charger_id or "unknown",
@@ -291,7 +297,7 @@ class ResultProjector:
     def _build_evidence_records(
         self, results: list[AnomalyResult]
     ) -> list[dict[str, Any]]:
-        service_id = get_radar_checkpoint_settings().SERVICE_ID
+        service_id = self.service_id
         if not service_id:
             return []
 

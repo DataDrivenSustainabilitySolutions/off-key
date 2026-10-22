@@ -4,16 +4,16 @@ import asyncio
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_mqtt_radar.database import ANOMALY_TABLE, DatabaseWriter
+from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.models import AnomalyResult
 from off_key_mqtt_radar.result_records import (
     MULTIVARIATE_TELEMETRY_TYPE,
     ResultProjector,
 )
+from off_key_mqtt_radar.tables import ANOMALY_TABLE
 
 
 def _with_input_reference(result, context: dict) -> dict:
@@ -25,13 +25,6 @@ def _with_input_reference(result, context: dict) -> dict:
             "input_timestamps": {"cpu": result.timestamp.isoformat()},
         },
     }
-
-
-def _scope_records_to(monkeypatch, service_id):
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.result_records.get_radar_checkpoint_settings",
-        lambda: SimpleNamespace(SERVICE_ID=service_id),
-    )
 
 
 def _scored_result(
@@ -197,7 +190,6 @@ async def test_in_flight_batch_counts_towards_capacity_and_stop_wakes_producers(
 def test_build_evidence_record_preserves_static_inference_context(
     db_config, sample_anomaly_result, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-static")
     result = replace(
         sample_anomaly_result,
         is_anomaly=False,
@@ -226,7 +218,9 @@ def test_build_evidence_record_preserves_static_inference_context(
             },
         },
     )
-    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer = DatabaseWriter(
+        db_config, session_factory=AsyncMock(), service_id="svc-static"
+    )
 
     records = writer.projector._build_evidence_records([result])
 
@@ -262,7 +256,6 @@ def test_build_evidence_record_preserves_static_inference_context(
 def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     db_config, sample_anomaly_result, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-adaptive")
     result = replace(
         sample_anomaly_result,
         anomaly_score=7.5,
@@ -287,7 +280,9 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
             },
         },
     )
-    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer = DatabaseWriter(
+        db_config, session_factory=AsyncMock(), service_id="svc-adaptive"
+    )
 
     [evidence] = writer.projector._build_evidence_records([result])
     [anomaly], _ = writer.projector._build_records([result])
@@ -317,7 +312,6 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
 def test_build_evidence_record_normalizes_infinite_values(
     db_config, sample_anomaly_result, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-static")
     result = replace(
         sample_anomaly_result,
         context=_with_input_reference(
@@ -340,7 +334,9 @@ def test_build_evidence_record_normalizes_infinite_values(
         ),
     )
 
-    writer = DatabaseWriter(db_config, session_factory=AsyncMock())
+    writer = DatabaseWriter(
+        db_config, session_factory=AsyncMock(), service_id="svc-static"
+    )
     record = writer.projector._build_evidence_records([result])[0]
 
     assert record["e_value"] is None
@@ -354,7 +350,6 @@ def test_build_evidence_record_normalizes_infinite_values(
 def test_build_evidence_record_preserves_generic_tracker_results(
     db_config, sample_anomaly_result, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-ensemble")
     tracker_result = {
         "tracker_id": "mixture-cusum",
         "betting_function": "simple_mixture",
@@ -406,7 +401,7 @@ def test_build_evidence_record_preserves_generic_tracker_results(
     )
 
     record = DatabaseWriter(
-        db_config, session_factory=AsyncMock()
+        db_config, session_factory=AsyncMock(), service_id="svc-ensemble"
     ).projector._build_evidence_records([result])[0]
     stored_tracker = record["tracker_results"][0]
 
@@ -424,7 +419,6 @@ def test_build_evidence_record_preserves_generic_tracker_results(
 async def test_flush_persists_ready_evidence_without_anomaly(
     db_config, sample_anomaly_result, mock_session_factory, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-static")
     result = replace(
         sample_anomaly_result,
         is_anomaly=False,
@@ -447,7 +441,9 @@ async def test_flush_persists_ready_evidence_without_anomaly(
             },
         ),
     )
-    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    writer = DatabaseWriter(
+        db_config, session_factory=mock_session_factory, service_id="svc-static"
+    )
     writer._execute_upsert = AsyncMock()
     writer._execute_evidence_upsert = AsyncMock()
     writer.write_queue.append(result)
@@ -466,7 +462,6 @@ async def test_flush_persists_ready_evidence_without_anomaly(
 def test_build_evidence_record_rejects_incomplete_input_references(
     db_config, sample_anomaly_result, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-static")
     result = replace(
         sample_anomaly_result,
         is_anomaly=False,
@@ -486,7 +481,7 @@ def test_build_evidence_record_rejects_incomplete_input_references(
     )
 
     records = DatabaseWriter(
-        db_config, session_factory=AsyncMock()
+        db_config, session_factory=AsyncMock(), service_id="svc-static"
     ).projector._build_evidence_records([result])
 
     assert records == []
@@ -496,7 +491,6 @@ def test_build_evidence_record_rejects_incomplete_input_references(
 async def test_missing_evidence_references_do_not_drop_alarm(
     db_config, sample_anomaly_result, mock_session_factory, monkeypatch
 ):
-    _scope_records_to(monkeypatch, "svc-static")
     result = replace(
         sample_anomaly_result,
         context={
@@ -509,7 +503,9 @@ async def test_missing_evidence_references_do_not_drop_alarm(
             },
         },
     )
-    writer = DatabaseWriter(db_config, session_factory=mock_session_factory)
+    writer = DatabaseWriter(
+        db_config, session_factory=mock_session_factory, service_id="svc-static"
+    )
     writer._execute_upsert = AsyncMock()
     writer._execute_evidence_upsert = AsyncMock()
     writer.write_queue.append(result)
@@ -713,11 +709,10 @@ def test_projected_anomaly_records_carry_detector_semantics(result, projection):
 
 @pytest.mark.parametrize("service_id", [None, "monitor-1", "monitor-2"])
 def test_build_records_scopes_alarm_and_identity_to_monitor(monkeypatch, service_id):
-    _scope_records_to(monkeypatch, service_id)
     result = _scored_result(
         aligned_vector=True, conformal_pvalue=0.001, anomaly_score=0.01
     )
-    [anomaly], [identity] = ResultProjector()._build_records([result])
+    [anomaly], [identity] = ResultProjector(service_id or "")._build_records([result])
     assert anomaly["service_id"] == identity["service_id"] == (service_id or "")
 
 

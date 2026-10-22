@@ -301,10 +301,7 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
     writer = DatabaseWriter(
         SimpleNamespace(db_write_enabled=True),
         session_factory=lambda: session,
-    )
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_checkpoint_settings",
-        lambda: SimpleNamespace(SERVICE_ID="svc-1"),
+        service_id="svc-1",
     )
 
     await writer.write_heartbeat(

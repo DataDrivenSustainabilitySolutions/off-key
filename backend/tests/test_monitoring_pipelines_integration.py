@@ -481,6 +481,7 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
         MQTTRadarConfig(pipeline=execution),
         session_factory=pipeline_database,
         managed_checkpoints=True,
+        service_id=activation.service_id,
     )
     original_checkpoint = await writer.load_checkpoint(activation.service_id)
     async with pipeline_database() as verifying:

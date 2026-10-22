@@ -20,7 +20,7 @@ const models = {
   pyod_iforest: { strategy: "static_baseline", parameters: { properties: {} } },
   aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } },
 };
-beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); 
+beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async (url: string) =>
     url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", service_id: "new-service" } : models);
   vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service", activation_id: "activation" });

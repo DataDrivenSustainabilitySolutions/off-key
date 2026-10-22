@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_core.schemas.system import SystemDocument
-from off_key_mqtt_simulator.__main__ import SimulatorService
 from off_key_mqtt_simulator.config import SimulatorSettings
+from off_key_mqtt_simulator.service import SimulatorService
 from off_key_mqtt_simulator.workshop import build_workshop_messages
 
 WORKSHOP_FIXTURE = (
@@ -97,7 +97,7 @@ async def test_run_transmits_workshop_only_when_enabled_without_changing_chargin
     async def end_after_tick(_):
         service.request_shutdown()
 
-    monkeypatch.setattr("off_key_mqtt_simulator.__main__.asyncio.sleep", end_after_tick)
+    monkeypatch.setattr("off_key_mqtt_simulator.service.asyncio.sleep", end_after_tick)
     await service.run()
     messages = {
         call.args[0]: json.loads(call.args[1])
@@ -129,7 +129,7 @@ async def test_run_transmits_workshop_only_when_enabled_without_changing_chargin
 def test_simulator_client_has_a_bounded_pending_publish_queue(monkeypatch):
     client = MagicMock()
     monkeypatch.setattr(
-        "off_key_mqtt_simulator.__main__.mqtt.Client", lambda **_: client
+        "off_key_mqtt_simulator.service.mqtt.Client", lambda **_: client
     )
     SimulatorService(SimulatorSettings(_env_file=None).config)
     client.max_queued_messages_set.assert_called_once_with(64)

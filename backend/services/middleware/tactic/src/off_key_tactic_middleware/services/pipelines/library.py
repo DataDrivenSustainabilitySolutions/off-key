@@ -17,6 +17,7 @@ from off_key_core.models.pipeline_reports import (
 )
 from off_key_core.models.pipelines import (
     compile_pipeline,
+    lower_form_monitor,
     pipeline_catalog_id,
     validate_pipeline,
 )
@@ -35,7 +36,6 @@ from off_key_core.schemas.pipelines import (
     PipelineServiceView,
     PipelineView,
 )
-from off_key_core.schemas.radar import RadarStartConfig
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import select
 
@@ -311,94 +311,9 @@ class PipelineLibrary:
         return layout
 
 
-def legacy_inputs(config: RadarStartConfig) -> list[tuple[str, str]]:
-    """Sensor keys with their topics, in the sorted order form detectors use."""
-    from off_key_core.utils.mqtt_topics import (
-        derive_monitoring_sensor_keys,
-        normalize_static_monitoring_topics,
-    )
-
-    topics = normalize_static_monitoring_topics(config.mqtt_topics)
-    keys = derive_monitoring_sensor_keys(
-        topics, sensor_key_strategy=config.performance_config.sensor_key_strategy
-    )
-    return sorted(zip(keys, topics, strict=True))
-
-
 def legacy_definition(config: dict) -> PipelineDefinition:
-    """The graph equivalent of a form-configured monitor."""
+    """The graph equivalent of a saved form-configured monitor."""
     from .release import normalize_saved_launch
 
     # Read reviewed older launch schemas without changing their saved provenance.
-    parsed = normalize_saved_launch(config)
-    slots = [
-        {"id": f"input_{index + 1}", "label": key}
-        for index, (key, _) in enumerate(legacy_inputs(parsed))
-    ]
-    nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
-    previous = "input"
-    edges = []
-    for index, step in enumerate(getattr(parsed.monitoring, "preprocessing_steps", [])):
-        params = step.model_dump(mode="json")
-        kind = params.pop("type")
-        node_id = f"transform_{index + 1}"
-        component = (
-            f"adaptive.{kind if kind != 'incremental_pca' else 'uncentered_pca'}"
-        )
-        nodes.append(
-            {
-                "id": node_id,
-                "kind": "transform",
-                "component": component,
-                "params": params,
-            }
-        )
-        edges.append({"source": previous, "target": node_id})
-        previous = node_id
-    policy = (
-        "policy.martingale"
-        if parsed.monitoring.strategy == "static_baseline"
-        else "policy.quantile"
-    )
-    policy_params = (
-        parsed.monitoring.martingale_config
-        if parsed.monitoring.strategy == "static_baseline"
-        else parsed.monitoring.threshold_config
-    )
-    nodes.extend(
-        [
-            {
-                "id": "detector",
-                "kind": "detector",
-                "component": f"detector:{parsed.monitoring.model_type}",
-                "params": parsed.monitoring.model_params,
-            },
-            {
-                "id": "policy",
-                "kind": "policy",
-                "component": policy,
-                "params": policy_params.model_dump(mode="json"),
-            },
-            {"id": "output", "kind": "output", "component": "output.evidence"},
-        ]
-    )
-    edges.extend(
-        [
-            {"source": previous, "target": "detector"},
-            {"source": "detector", "target": "policy"},
-            {"source": "policy", "target": "output"},
-        ]
-    )
-    return PipelineDefinition.model_validate(
-        {
-            "strategy": parsed.monitoring.strategy,
-            "input_slots": slots,
-            "nodes": nodes,
-            "edges": edges,
-            "settings": {
-                "training_window_size": parsed.monitoring.training_window_size,
-                "calibration_window_size": parsed.monitoring.calibration_window_size,
-                "seed": getattr(parsed.monitoring, "seed", 42),
-            },
-        }
-    )
+    return lower_form_monitor(normalize_saved_launch(config))

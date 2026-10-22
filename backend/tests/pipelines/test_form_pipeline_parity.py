@@ -4,15 +4,16 @@ from itertools import pairwise
 
 import numpy as np
 import pytest
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    execution_fingerprint,
+    form_inputs,
+)
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.service import RadarService
-from off_key_tactic_middleware.services.pipelines.library import (
-    legacy_definition,
-    legacy_inputs,
-)
+from off_key_tactic_middleware.services.pipelines.library import legacy_definition
 
 # Unsorted on purpose: form detectors order features by sensor key.
 TOPICS = ["telemetry/c1/L2", "telemetry/c1/L1"]
@@ -81,7 +82,7 @@ def detectors(form):
             input_key=key,
         )
         for slot, (key, topic) in zip(
-            definition.input_slots, legacy_inputs(config), strict=True
+            definition.input_slots, form_inputs(config), strict=True
         )
     ]
     execution = PipelineExecutionConfig(
@@ -97,7 +98,7 @@ def detectors(form):
         RadarService._detector_service_class(item)(item)
         for item in (form_config, pipeline_config)
     ]
-    return [key for key, _ in legacy_inputs(config)], services
+    return [key for key, _ in form_inputs(config)], services
 
 
 def trace(service, keys, count=140):

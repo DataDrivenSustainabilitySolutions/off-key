@@ -3,12 +3,13 @@
 from uuid import uuid4
 
 from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.models.pipelines import form_inputs
 from off_key_core.schemas.pipelines import PipelineActivationView, PipelineApplyRequest
 from off_key_core.schemas.radar import RadarStartConfig
 
 from ...domain import ValidationError
 from .activation import PipelineActivations
-from .library import legacy_definition, legacy_inputs
+from .library import legacy_definition
 
 
 async def start_form_monitor(
@@ -19,7 +20,7 @@ async def start_form_monitor(
         raise ValidationError("Apply pipeline designs through /pipelines/apply")
     try:
         definition = legacy_definition(config.model_dump(mode="json"))
-        inputs = legacy_inputs(config)
+        inputs = form_inputs(config)
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
     snapshot = await read_collection_runtime(session)

@@ -162,6 +162,41 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
     assert "schema_error" in result.context["static_conformal"]
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        StaticConformalState.COLLECTING,
+        StaticConformalState.CALIBRATING,
+        StaticConformalState.READY,
+    ],
+)
+def test_schema_mismatch_counts_without_buffering_or_changing_state(state):
+    service = StaticConformalDetectionService(_static_config())
+    service.conformal_detector = FakeConformalDetector()
+    service.alarm_controller = service._create_alarm_controller()
+    service.feature_keys = ["L1", "L2"]
+    service.state = state
+
+    result = service.process_data_point({"L1": 1.0, "L3": 2.0})
+    context = result.context["static_conformal"]
+
+    assert service.state == state
+    assert service.training_buffer == []
+    assert service.calibration_buffer == []
+    assert (service.processed_count, service.schema_mismatch_count) == (1, 1)
+    assert (result.anomaly_score, result.is_anomaly, result.severity) == (
+        1.0,
+        False,
+        "low",
+    )
+    assert result.processed_features is None
+    assert context["phase"] == "schema_mismatch"
+    assert context["schema_error"] == (
+        "feature schema mismatch missing=['L2'] extra=['L3']"
+    )
+    assert context["schema_mismatch_count"] == 1
+
+
 def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
     config = _static_config()
     service = StaticConformalDetectionService(config)

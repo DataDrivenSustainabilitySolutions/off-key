@@ -14,6 +14,7 @@ from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemDocument, SystemSnapshot, SystemStream
 from off_key_core.schemas.system_live import SystemLiveStart
 from off_key_core.utils.enum import RoleEnum
+from off_key_core.utils.payload_decode import decode_value
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.api.v1 import system_live as live_api
@@ -27,7 +28,6 @@ from off_key_tactic_middleware.services.system_live import (
     LiveSessionError,
     SystemLiveService,
 )
-from off_key_tactic_middleware.services.system_live_decode import decode_value
 from off_key_tactic_middleware.services.system_live_mqtt import LiveMqttWorker
 from socks import SOCKS5
 

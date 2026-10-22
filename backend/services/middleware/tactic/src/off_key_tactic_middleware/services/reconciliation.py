@@ -259,8 +259,6 @@ class RadarStatusReconciliationService:
             hours=self.terminal_service_retention_hours
         )
 
-    _coerce_utc = staticmethod(coerce_utc)
-
     @staticmethod
     async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
         await complete_stopped_runs(session, [service_id])

@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import RadarServiceLabel
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
@@ -30,7 +30,6 @@ class RadarServiceResponse(BaseModel):
 
 @router.get("/radar/services/", response_model=list[dict[str, Any]])
 async def list_radar_services(
-    request: Request,
     active_only: bool = False,
     include_docker_status: bool = False,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -53,7 +52,6 @@ async def list_radar_services(
 
 @router.post("/radar/services/start/", response_model=RadarServiceResponse)
 async def start_radar_service(
-    request: Request,
     config: RadarConfig,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
@@ -88,7 +86,6 @@ async def start_radar_service(
 
 @router.get("/radar/services/details/", response_model=dict[str, Any])
 async def get_radar_service_details(
-    request: Request,
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -125,7 +122,6 @@ async def get_radar_service_details(
 
 @router.delete("/radar/services/stop/")
 async def stop_radar_service(
-    request: Request,
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -172,7 +168,6 @@ async def stop_radar_service(
 
 @router.patch("/radar/services/{service_id}/label")
 async def rename_radar_service(
-    request: Request,
     service_id: str,
     change: RadarServiceLabel,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -184,7 +179,6 @@ async def rename_radar_service(
 
 @router.delete("/radar/services/{service_id}")
 async def delete_radar_service(
-    request: Request,
     service_id: str,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
@@ -217,7 +211,6 @@ async def delete_radar_service(
 
 @router.get("/radar/models/", response_model=list[dict[str, Any]])
 async def list_available_models(
-    request: Request,
     model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ):
     """

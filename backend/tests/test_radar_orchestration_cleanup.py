@@ -633,39 +633,32 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
 @pytest.mark.parametrize(
     ("service", "expected"),
     [
-        pytest.param(SWARM_UNAVAILABLE, "container-removed", id="swarm-only-error"),
-        pytest.param(MagicMock(id="svc-1"), "service-removed", id="service-present"),
+        pytest.param(SWARM_UNAVAILABLE, "container", id="swarm-only-error"),
+        pytest.param(MagicMock(id="svc-1"), "service", id="service-present"),
     ],
 )
-async def test_resolve_workload_operation_picks_service_or_container(service, expected):
-    fake_docker = _fake_docker(service=service, container=MagicMock(id="ctr-1"))
+async def test_find_workload_picks_service_or_container(service, expected):
+    container = MagicMock(id="ctr-1")
+    fake_docker = _fake_docker(service=service, container=container)
 
-    result = await RadarWorkloadManager(fake_docker).resolve_operation(
-        workload_id="ctr-1",
-        on_service=lambda _docker_service: "service-removed",
-        on_container=lambda _docker_container: "container-removed",
-    )
+    result = await RadarWorkloadManager(fake_docker).find("x")
 
-    assert result == expected
-    fake_docker.client.services.get.assert_called_once_with("ctr-1")
-    if expected == "container-removed":
-        fake_docker.client.containers.get.assert_called_once_with("ctr-1")
+    assert result is (container if expected == "container" else service)
+    fake_docker.client.services.get.assert_called_once_with("radar-x")
+    if expected == "container":
+        fake_docker.client.containers.get.assert_called_once_with("radar-x")
     else:
         fake_docker.client.containers.get.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_resolve_workload_operation_raises_for_non_swarm_api_error():
+async def test_find_workload_raises_for_non_swarm_api_error():
     fake_docker = _fake_docker(
         service=_engine_error("internal server error"), container=MagicMock()
     )
 
     with pytest.raises(docker.errors.APIError):
-        await RadarWorkloadManager(fake_docker).resolve_operation(
-            workload_id="ctr-1",
-            on_service=lambda _docker_service: "service-removed",
-            on_container=lambda _docker_container: "container-removed",
-        )
+        await RadarWorkloadManager(fake_docker).find("x")
 
     fake_docker.client.containers.get.assert_not_called()
 
@@ -703,7 +696,6 @@ async def test_create_radar_service_never_launches_before_intent_commit(
     service = _orchestrator(monkeypatch, session)
     service.workloads.create = AsyncMock(return_value=SimpleNamespace(id="workload-1"))
     service.workloads.validate_started = AsyncMock()
-    service.workloads.remove_after_failure = AsyncMock()
 
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.create_radar_service(
@@ -716,7 +708,6 @@ async def test_create_radar_service_never_launches_before_intent_commit(
 
     session.rollback.assert_awaited_once()
     service.workloads.create.assert_not_awaited()
-    service.workloads.remove_after_failure.assert_not_awaited()
 
 
 @pytest.mark.asyncio

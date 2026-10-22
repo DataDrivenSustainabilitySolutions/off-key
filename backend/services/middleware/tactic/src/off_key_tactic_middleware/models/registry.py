@@ -37,10 +37,6 @@ class ModelRegistryService:
     def __init__(self):
         self._initialized = False
 
-    @property
-    def initialized(self) -> bool:
-        return self._initialized
-
     async def initialize(
         self,
         max_retries: int = 30,

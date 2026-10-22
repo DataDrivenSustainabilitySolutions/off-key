@@ -386,7 +386,6 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     workloads.create = create
     workloads.ensure = create
     workloads.validate_started = AsyncMock()
-    workloads.remove_after_failure = AsyncMock()
     workloads.get_status_and_labels = AsyncMock(return_value=("running", {}))
     snapshot = SimpleNamespace(
         revision=1,

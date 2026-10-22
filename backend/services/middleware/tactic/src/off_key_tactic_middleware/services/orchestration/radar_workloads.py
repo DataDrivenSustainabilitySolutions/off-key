@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-from collections.abc import Callable
 from contextlib import suppress
 from functools import lru_cache
 from typing import Any
@@ -10,14 +9,12 @@ from typing import Any
 import docker
 from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
 from off_key_core.config.logs import logger
-from off_key_core.config.resource_budget import parse_memory_bytes
 
 from ...config.config import get_tactic_settings
 from ...facades.docker import (
     AsyncDocker,
     _extract_latest_workload_state,
     should_fallback_to_container,
-    with_workload_fallback,
 )
 from .radar_environment import (
     build_radar_config_fingerprint,
@@ -36,11 +33,6 @@ _swarm_manager_cache: tuple[bool, float] | None = None
 def get_async_docker() -> AsyncDocker:
     """Create the shared Docker facade lazily."""
     return AsyncDocker()
-
-
-def _parse_memory_string(memory_string: str) -> int:
-    """Validate legacy callers using the shared Docker quantity parser."""
-    return parse_memory_bytes(memory_string)
 
 
 class RadarWorkloadManager:
@@ -375,20 +367,6 @@ class RadarWorkloadManager:
             logs = str(raw_logs or "")
         return logs.strip()[-4000:]
 
-    async def resolve_operation(
-        self,
-        workload_id: str,
-        on_service: Callable[[Any], Any],
-        on_container: Callable[[Any], Any],
-    ) -> Any:
-        """Apply an operation to a Swarm service or fallback container."""
-        return await with_workload_fallback(
-            self.async_docker,
-            workload_id,
-            on_service=on_service,
-            on_container=on_container,
-        )
-
     async def remove(self, workload_id: str | None) -> bool:
         """Confirm task termination before releasing a workload's sensor claim."""
         if not workload_id:
@@ -466,24 +444,6 @@ class RadarWorkloadManager:
             raise RuntimeError(
                 "RADAR tasks have not stopped; the sensor claim is retained"
             ) from None
-
-    async def remove_after_failure(self, docker_workload: Any) -> None:
-        """Best-effort cleanup after persistence or startup fails."""
-        workload_id = getattr(docker_workload, "id", None)
-        if not workload_id:
-            return
-        try:
-            removed = await self.remove(workload_id)
-            logger.info(
-                "RADAR workload %s %s after failed service creation",
-                workload_id,
-                "removed" if removed else "already absent",
-            )
-        except Exception:
-            logger.exception(
-                "Failed to remove RADAR workload %s after service creation failure",
-                workload_id,
-            )
 
     @staticmethod
     def _managed_label_filters() -> dict[str, list[str]]:

@@ -11,6 +11,7 @@ from off_key_tactic_middleware.services.radar_status import (
 from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
 )
+from off_key_tactic_middleware.services.time_utils import coerce_utc
 
 from tests.support.docker import FakeAsyncDocker
 
@@ -225,25 +226,23 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
 
 
 def test_coerce_utc_parses_iso_utc_string():
-    assert RadarStatusReconciliationService._coerce_utc(
-        "2024-01-01T00:00:00Z"
-    ) == datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
+    assert coerce_utc("2024-01-01T00:00:00Z") == datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
 
 def test_coerce_utc_returns_none_on_invalid_value():
-    assert RadarStatusReconciliationService._coerce_utc("not-a-timestamp") is None
+    assert coerce_utc("not-a-timestamp") is None
 
 
 def test_coerce_utc_adds_utc_timezone_for_naive_datetime():
     naive = datetime(2024, 1, 1, 12, 0, 0)
-    coerce = RadarStatusReconciliationService._coerce_utc(naive)
+    coerce = coerce_utc(naive)
     assert coerce == naive.replace(tzinfo=UTC)
 
 
 def test_coerce_utc_converts_aware_timestamp_to_utc():
     local_tz = timezone(timedelta(hours=-8), name="PST")
     aware = datetime(2024, 1, 1, 12, 0, 0, tzinfo=local_tz)
-    coerce = RadarStatusReconciliationService._coerce_utc(aware)
+    coerce = coerce_utc(aware)
 
     assert coerce == datetime(2024, 1, 1, 20, 0, 0, tzinfo=UTC)
 

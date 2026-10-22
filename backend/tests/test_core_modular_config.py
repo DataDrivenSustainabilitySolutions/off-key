@@ -248,21 +248,12 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
     reset_runtime_caches_for_tests()
 
 
-def test_gateway_main_validation_specs_exclude_database():
-    project_root = Path(__file__).resolve().parents[1]
-    gateway_main = (
-        project_root
-        / "services"
-        / "api"
-        / "gateway"
-        / "src"
-        / "off_key_api_gateway"
-        / "main.py"
-    )
-    text = gateway_main.read_text(encoding="utf-8")
+def test_gateway_validation_specs_exclude_database():
+    from off_key_api_gateway.app import VALIDATION_SPECS
 
-    assert '("runtime", get_runtime_settings)' in text
-    assert '("database", get_database_settings)' not in text
+    names = [name for name, _ in VALIDATION_SPECS]
+    assert "runtime" in names
+    assert "database" not in names
 
 
 def test_no_canonical_config_imports_or_get_settings_calls():

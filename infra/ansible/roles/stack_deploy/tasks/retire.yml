@@ -11,7 +11,6 @@
       - "label=com.docker.stack.namespace={{ stack_name }}"
   register: production_stack_services
   changed_when: false
-  when: offkey_env == 'prod'
 
 # stack deploy keeps removed services; broad --prune could delete runtime workers.
 - name: Remove retired production services
@@ -21,5 +20,4 @@
     - mailpit
     - tailscale-dev-proxy
   when:
-    - offkey_env == 'prod'
     - (stack_name ~ '_' ~ item) in production_stack_services.stdout_lines

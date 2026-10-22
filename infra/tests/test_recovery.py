@@ -179,7 +179,7 @@ else:
             variables = {
                 "stack_dir": str(live),
                 "ambibox_backup_directory": str(backup),
-                "offkey_env": "dev",
+                "offkey_env": "prod",
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
             }

@@ -16,7 +16,6 @@
       register: manager_tailnet_status
       changed_when: false
       failed_when: false
-      when: offkey_env == 'prod'
 
     - name: Require a key when the production manager is not yet connected
       assert:
@@ -30,7 +29,6 @@
           {{ inventory_hostname }} is not connected to the management tailnet and
           ingress_ts_authkey in the production vault is empty. Add a valid reusable
           auth key there, or log this manager in interactively, then rerun provisioning.
-      when: offkey_env == 'prod'
 
     - name: Require the production Cloudflare Tunnel token before changing hosts
       assert:
@@ -41,7 +39,6 @@
           cloudflare_tunnel_token must be the eyJ... token for the existing
           production Cloudflare Tunnel. Retrieve it from Cloudflare and add it to the
           production vault before provisioning the replacement manager.
-      when: offkey_env == 'prod'
 
 - name: Bootstrap production managers before contacting workers
   hosts: swarm_manager
@@ -49,7 +46,6 @@
   any_errors_fatal: true
   tasks:
     - name: Prepare the production manager's management connection
-      when: offkey_env == 'prod'
       block:
         - name: Gather production manager facts
           setup:
@@ -74,21 +70,21 @@
   any_errors_fatal: true
   roles:
     - role: base
-      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+      when: inventory_hostname not in groups['swarm_manager']
 
 - name: Install Docker
   hosts: all
   any_errors_fatal: true
   roles:
     - role: docker_install
-      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+      when: inventory_hostname not in groups['swarm_manager']
 
 - name: Install Tailscale (OS-level management plane)
   hosts: all
   any_errors_fatal: true
   roles:
     - role: tailscale_install
-      when: offkey_env != 'prod' or inventory_hostname not in groups['swarm_manager']
+      when: inventory_hostname not in groups['swarm_manager']
 
 - name: Initialize Swarm manager
   hosts: swarm_manager

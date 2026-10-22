@@ -385,9 +385,6 @@ class DeploymentTests(unittest.TestCase):
         for name, result in self.results.items():
             with self.subTest(case=name):
                 config = result["config"]
-                if result["inputs"]["validation_environment"] != "prod":
-                    self.assertNotIn("cloudflared", config["services"])
-                    continue
                 tunnel = config["services"]["cloudflared"]
                 secret = tunnel["secrets"][0]
                 target = PurePosixPath("/run/secrets") / secret["target"]
@@ -701,8 +698,6 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(
                     forwarder["secrets"][0]["target"], "ambibox_gost_config.json"
                 )
-                if environment != "prod":
-                    self.assertNotIn("emqx_security_cfg", config.get("configs", {}))
                 rendered = json.dumps(config)
                 for value in self.results[environment]["inputs"][
                     "ambibox_access"

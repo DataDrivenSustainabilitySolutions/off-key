@@ -2,7 +2,6 @@
 # Called last by provision.yml and deploy.yml, after persistence restoration.
 # Read-only probes do not publish synthetic telemetry into the production catalog.
 - name: Verify the production application after the stack update and restore stage
-  when: offkey_env == 'prod'
   block:
     - name: Wait for all stack services to converge without a rollback
       command:

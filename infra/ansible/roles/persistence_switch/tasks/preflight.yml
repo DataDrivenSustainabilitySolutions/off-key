@@ -88,7 +88,6 @@
       once you have read the plan above.
     success_msg: "Persistence change confirmed for prod."
   when:
-    - offkey_env == 'prod'
     - persistence_flips | default([]) | length > 0
 
 - name: Initialise the cutover task map

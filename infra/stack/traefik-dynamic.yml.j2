@@ -19,7 +19,6 @@
 
 http:
   routers:
-{% if offkey_env == 'prod' %}
     landing:
       rule: "Host(`{{ ingress_base_domain }}`)"
       entryPoints: [web]
@@ -35,7 +34,6 @@ http:
       middlewares: [dashboard-redirect]
       service: noop@internal
 
-{% endif %}
     frontend:
       rule: "Host(`{{ frontend_hostname }}`)"
       entryPoints: [web]
@@ -71,12 +69,10 @@ http:
       service: api@internal
 
   services:
-{% if offkey_env == 'prod' %}
     landing:
       loadBalancer:
         servers:
           - url: "http://landing:80"
-{% endif %}
     frontend:
       loadBalancer:
         servers:
@@ -95,7 +91,6 @@ http:
           - url: "http://oauth2-proxy:4180"
 
   middlewares:
-{% if offkey_env == 'prod' %}
     dashboard-redirect:
       redirectRegex:
         regex: '^https?://[^/]+/(.*)'
@@ -111,7 +106,6 @@ http:
         contentTypeNosniff: true
         referrerPolicy: no-referrer
         contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-{% endif %}
     api-strip:
       stripPrefix:
         prefixes:

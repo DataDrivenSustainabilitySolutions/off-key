@@ -46,17 +46,17 @@ class NamedProjection:
 
 
 def detector_config(plan: ExecutionPlan) -> DetectorConfig:
-    from off_key_core.models.adaptive import ADAPTIVE_MODELS_BY_TYPE
+    from off_key_core.models.adaptive import (
+        ADAPTIVE_MODELS_BY_TYPE,
+        bind_detector_parameters,
+    )
 
     node = plan.nodes[plan.detector_id]
     model_type = node.component.removeprefix("detector:")
     definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
-    params = dict(node.params)
-    names = plan.output_features
-    for name in definition["bound_parameters"]:
-        params[name] = (
-            True if name == "abs_diff" else names[0] if name == "key" else names
-        )
+    params = bind_detector_parameters(
+        definition["bound_parameters"], node.params, plan.output_features
+    )
     config = DetectorConfig.from_mapping(
         {
             "version": 1,
@@ -66,7 +66,7 @@ def detector_config(plan: ExecutionPlan) -> DetectorConfig:
     capabilities = config.capabilities()
     if capabilities.higher_is_more_anomalous is not True:
         raise ValueError("Monitoring requires higher scores to mean more anomalous")
-    if not capabilities.feature_count.accepts(len(names)):
+    if not capabilities.feature_count.accepts(len(plan.output_features)):
         raise ValueError("Detector does not support the compiled feature count")
     return config
 

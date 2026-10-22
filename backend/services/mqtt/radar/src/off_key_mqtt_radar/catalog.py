@@ -15,7 +15,12 @@ from aberrant.catalog import (
     get_model_spec,
     get_similarity_engine_spec,
 )
-from off_key_core.models.adaptive import MODEL_DEFAULTS, MODEL_IDS, PARAMETER_LIMITS
+from off_key_core.models.adaptive import (
+    BOUND_PARAMETER_NAMES,
+    MODEL_DEFAULTS,
+    MODEL_IDS,
+    PARAMETER_LIMITS,
+)
 
 
 def constrain_retained_readiness(schema, spec, defaults):
@@ -73,7 +78,7 @@ def generate_catalog() -> dict:
         spec = get_model_spec(catalog_id)
         schema = spec.parameter_schema()
         properties = schema["properties"]
-        bound_parameters = sorted(set(properties) & {"key", "keys", "abs_diff"})
+        bound_parameters = sorted(set(properties) & set(BOUND_PARAMETER_NAMES))
         for name in bound_parameters:
             del properties[name]
         defaults = {

@@ -173,7 +173,11 @@ validation at startup. Models needing observer-, bucket-, or graph-based
 readiness cannot be added by simply editing the allowlist.
 
 `AdaptiveStreamConfig.detector_mapping()` produces the versioned Aberrant
-configuration, with a feature-schema guard first. RADAR constructs the pipeline
+configuration, with a feature-schema guard first. Pipeline monitors build the
+same configuration in `pipelines/adapters.py` (see
+[Monitoring pipelines](monitoring-pipelines.md)); both fill the detector's
+feature-bound parameters (`abs_diff`, `key`, `keys`) through
+`bind_detector_parameters` in `off_key_core.models.adaptive`. RADAR constructs the pipeline
 through `DetectorConfig`, then applies Offkey's explicit unit-interval input
 policy where required. Checkpoints contain the normalized configuration,
 configuration fingerprint, input keys, package version, and lifecycle state.

@@ -20,6 +20,7 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
+from off_key_core.models.adaptive import bind_detector_parameters
 from off_key_core.models.static import (
     get_static_model_definition,
     validate_static_model_params,
@@ -387,14 +388,9 @@ class AdaptiveStreamConfig(BaseModel):
                     f"component_{index}" for index in range(step.n_components)
                 ]
             transformers.append({"id": step.type, "params": params})
-        params = dict(self.model_params)
-        for name in definition["bound_parameters"]:
-            if name == "abs_diff":
-                params[name] = True
-            elif name == "key":
-                params[name] = current_keys[0] if current_keys else None
-            else:
-                params[name] = current_keys
+        params = bind_detector_parameters(
+            definition["bound_parameters"], self.model_params, current_keys
+        )
         return {
             "version": 1,
             "transformers": transformers,

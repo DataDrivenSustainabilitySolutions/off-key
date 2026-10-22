@@ -2,36 +2,27 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 from typing import Any
 
 from aberrant.compose import GraphPipeline
-from off_key_core.models.pipelines import execution_fingerprint
 
 from ..adaptive_detector import AdaptiveStreamDetectionService, AdaptiveStreamState
 from ..execution_errors import FatalExecutionError, ObservationRejected
 from ..models import inference_key
 from .adapters import adaptive_graph, detector_config
-from .diagnostics import PipelineDiagnostics
-from .plan import ExecutionPlan
+from .execution import PipelineExecutionMixin
 
 
-class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
+class AdaptivePipelineDetectionService(
+    PipelineExecutionMixin, AdaptiveStreamDetectionService
+):
     """Warm transforms without contaminating downstream models or calibration."""
 
     def __init__(self, config, checkpoint=None):
-        if config.pipeline is None:
-            raise ValueError("A bound pipeline configuration is required")
-        self.plan = ExecutionPlan(config.pipeline)
+        self._init_pipeline_execution(config)
         if self.plan.execution.definition.strategy != "adaptive_stream":
             raise ValueError("Adaptive execution requires an adaptive pipeline")
-        if config.pipeline.fingerprint != execution_fingerprint(
-            config.pipeline.definition, config.pipeline.bindings
-        ):
-            raise ValueError("Pipeline execution fingerprint does not match its design")
-        self.diagnostics = PipelineDiagnostics(config.pipeline)
-        self._execution_failed = False
         self._scored_features: dict[str, float] | None = None
         super().__init__(config, checkpoint)
         self._raw_unit_interval_slots = self._unit_interval_slots()
@@ -41,10 +32,9 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
 
     @staticmethod
     def _build_schema_signature(config):
-        legacy = AdaptiveStreamDetectionService._build_schema_signature(config)
-        return hashlib.sha256(
-            f"{legacy}:{config.pipeline.fingerprint}".encode()
-        ).hexdigest()
+        return PipelineExecutionMixin._pipeline_signature(
+            AdaptiveStreamDetectionService._build_schema_signature(config), config
+        )
 
     def _detector_config(self, feature_keys=None):
         return detector_config(self.plan)
@@ -82,11 +72,9 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
             self._execution_failed = True
             self.state = AdaptiveStreamState.FAILED
             self.training_error = str(error)
-            identifier = getattr(error, "node_id", self.plan.compiled.detector_id)
-            if identifier == "$model":
-                identifier = self.plan.compiled.detector_id
+            identifier = self._failure_node(error)
             self._diagnose(self.diagnostics.fail, identifier, error)
-            raise FatalExecutionError(str(error)) from error
+            raise FatalExecutionError(str(error), node_id=identifier) from error
         finally:
             self._diagnose(self.diagnostics.finish)
 
@@ -131,16 +119,12 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
 
     def _score(self, data):
         self._diagnose(self.diagnostics.select_pass, "score")
-        self._diagnose(
-            self.diagnostics.record, self.plan.compiled.source_id, data, data
-        )
+        self.diagnostics.record(self.plan.compiled.source_id, data, data)
         return super()._score(data)
 
     def _learn(self, data):
         self._diagnose(self.diagnostics.select_pass, "learn")
-        self._diagnose(
-            self.diagnostics.record, self.plan.compiled.source_id, data, data
-        )
+        self.diagnostics.record(self.plan.compiled.source_id, data, data)
         super()._learn(data)
         self._diagnose(
             self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
@@ -155,29 +139,19 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
         if inference_key(result.context) != "adaptive_stream":
             return
         self._diagnose(self.diagnostics.select_pass, "score")
-        self._diagnose(
-            self.diagnostics.record,
+        self.diagnostics.record(
             self.plan.compiled.policy_id,
             {"score": result.anomaly_score},
             float(result.is_anomaly),
         )
-        self._diagnose(
-            self.diagnostics.record,
+        self.diagnostics.record(
             self.plan.compiled.output_id,
             {"alarm": float(result.is_anomaly)},
             result.anomaly_score,
         )
 
-    def _diagnose(self, operation, *args):
-        try:
-            operation(*args)
-        except Exception:
-            self.diagnostics.errors += 1
-
-    def export_checkpoint(self):
-        if self._execution_failed or self.pipeline.failed:
-            raise FatalExecutionError("Failed pipeline state cannot be checkpointed")
-        return super().export_checkpoint()
+    def _pipeline_failed(self) -> bool:
+        return self.pipeline.failed
 
     def get_pipeline_state(self) -> dict[str, Any]:
         snapshot = self.diagnostics.snapshot()
@@ -190,11 +164,3 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
             "reason": self.pipeline.readiness.reason,
         }
         return snapshot
-
-    def attach_observation_metadata(self, timestamp, input_timestamps):
-        self._diagnose(
-            self.diagnostics.metadata,
-            self.processed_count,
-            timestamp,
-            input_timestamps,
-        )

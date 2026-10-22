@@ -84,12 +84,11 @@ class BatchFeatureGraph:
             available[node.id] = result
             if observer is not None and len(matrix) == 1:
                 inputs = result if node.kind == "merge" else current
-                _observe(
-                    observer,
+                observer.record(
                     node.id,
                     dict(zip(input_names, inputs[0], strict=True)),
                     dict(zip(self.plan.names(node.id), result[0], strict=True)),
-                    perf_counter_ns() - started,
+                    elapsed_ns=perf_counter_ns() - started,
                 )
             for parent in parents:
                 remaining[parent] -= 1
@@ -151,18 +150,10 @@ class FittedStaticPipeline:
         started = perf_counter_ns()
         result = self.conformal.compute_p_values(transformed)
         if self.observer is not None and len(transformed) == 1:
-            _observe(
-                self.observer,
+            self.observer.record(
                 self.graph.plan.compiled.detector_id,
                 self.last_features,
                 float(np.asarray(result).ravel()[0]),
-                perf_counter_ns() - started,
+                elapsed_ns=perf_counter_ns() - started,
             )
         return result
-
-
-def _observe(observer, identifier, inputs, output, elapsed_ns):
-    try:
-        observer.record(identifier, inputs, output, elapsed_ns=elapsed_ns)
-    except Exception:
-        observer.errors += 1

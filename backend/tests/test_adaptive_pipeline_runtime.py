@@ -210,8 +210,9 @@ def test_execution_failure_stops_model_and_blocks_checkpoint():
     for value in (1.0, 2.0, 3.0, 4.0):
         service.process_data_point({"reading_a": value})
     assert service.state == AdaptiveStreamState.OPERATIONAL
-    with pytest.raises(FatalExecutionError, match="positive"):
+    with pytest.raises(FatalExecutionError, match="positive") as failure:
         service.process_data_point({"reading_a": 0.0})
+    assert failure.value.node_id == "model"
     count = service.pipeline.model_updates
     assert service.state == AdaptiveStreamState.FAILED
     with pytest.raises(FatalExecutionError):

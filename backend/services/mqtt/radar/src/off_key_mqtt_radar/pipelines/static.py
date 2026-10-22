@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import math
 from time import perf_counter_ns
 
@@ -11,29 +10,24 @@ import numpy as np
 from ..detector import StaticConformalDetectionService, StaticConformalState
 from ..execution_errors import FatalExecutionError, ObservationRejected
 from .batch import BatchFeatureGraph, FittedStaticPipeline
-from .diagnostics import PipelineDiagnostics
-from .plan import ExecutionPlan
+from .execution import PipelineExecutionMixin
 
 
-class StaticPipelineDetectionService(StaticConformalDetectionService):
+class StaticPipelineDetectionService(
+    PipelineExecutionMixin, StaticConformalDetectionService
+):
     """Publish an independently fitted, frozen graph atomically with its model."""
 
     def __init__(self, config, checkpoint=None):
-        if config.pipeline is None:
-            raise ValueError("A bound pipeline configuration is required")
-        self.plan = ExecutionPlan(config.pipeline)
-        self.diagnostics = PipelineDiagnostics(config.pipeline)
-        self._execution_failed = False
+        self._init_pipeline_execution(config)
         super().__init__(config, checkpoint)
 
     @staticmethod
     def _build_schema_signature_from_config(config):
-        legacy = StaticConformalDetectionService._build_schema_signature_from_config(
-            config
+        return PipelineExecutionMixin._pipeline_signature(
+            StaticConformalDetectionService._build_schema_signature_from_config(config),
+            config,
         )
-        return hashlib.sha256(
-            f"{legacy}:{config.pipeline.fingerprint}".encode()
-        ).hexdigest()
 
     def _vectorize(self, data):
         return [data[name] for name in self.plan.names(self.plan.compiled.source_id)]
@@ -68,28 +62,21 @@ class StaticPipelineDetectionService(StaticConformalDetectionService):
             self.diagnostics.select_pass,
             "score" if self.state == StaticConformalState.READY else "learn",
         )
-        self._diagnose(
-            self.diagnostics.record, self.plan.compiled.source_id, bound, bound
-        )
+        self.diagnostics.record(self.plan.compiled.source_id, bound, bound)
         try:
             result = super().process_data_point(bound, topic, charger_id)
             result.raw_data = dict(data)
             if result.should_persist:
                 result.processed_features = self.conformal_detector.last_features
-                self._diagnose(
-                    self.diagnostics.record,
-                    self.plan.compiled.output_id,
-                    None,
-                    result.anomaly_score,
+                self.diagnostics.record(
+                    self.plan.compiled.output_id, None, result.anomaly_score
                 )
             return result
         except Exception as error:
             self._execution_failed = True
             self.state = StaticConformalState.FAILED
             self.training_error = str(error)
-            identifier = (
-                getattr(error, "node_id", None) or self.plan.compiled.detector_id
-            )
+            identifier = self._failure_node(error)
             self._diagnose(self.diagnostics.fail, identifier, error)
             raise FatalExecutionError(str(error), node_id=identifier) from error
         finally:
@@ -108,8 +95,7 @@ class StaticPipelineDetectionService(StaticConformalDetectionService):
             raise FatalExecutionError(
                 str(error), node_id=self.plan.compiled.policy_id
             ) from error
-        self._diagnose(
-            self.diagnostics.record,
+        self.diagnostics.record(
             self.plan.compiled.policy_id,
             {"p_value": p_value},
             float(context["alarm_fired"]),
@@ -134,8 +120,7 @@ class StaticPipelineDetectionService(StaticConformalDetectionService):
             self._execution_failed = True
             error = FatalExecutionError(
                 self.training_error or "Static pipeline fitting failed",
-                node_id=getattr(fitting_error, "node_id", None)
-                or self.plan.compiled.detector_id,
+                node_id=self._failure_node(fitting_error),
             )
             self._diagnose(self.diagnostics.fail, error.node_id, error)
             raise error
@@ -147,11 +132,6 @@ class StaticPipelineDetectionService(StaticConformalDetectionService):
             state="ready", ready=True
         )
 
-    def export_checkpoint(self):
-        if self._execution_failed:
-            raise FatalExecutionError("Failed pipeline state cannot be checkpointed")
-        return super().export_checkpoint()
-
     def get_pipeline_state(self):
         state = self.diagnostics.snapshot()
         state["phase"] = self.state.value
@@ -162,14 +142,3 @@ class StaticPipelineDetectionService(StaticConformalDetectionService):
             "frozen": self.state == StaticConformalState.READY,
         }
         return state
-
-    def attach_observation_metadata(self, timestamp, input_timestamps):
-        self._diagnose(
-            self.diagnostics.metadata, self.processed_count, timestamp, input_timestamps
-        )
-
-    def _diagnose(self, operation, *args, **kwargs):
-        try:
-            operation(*args, **kwargs)
-        except Exception:
-            self.diagnostics.errors += 1

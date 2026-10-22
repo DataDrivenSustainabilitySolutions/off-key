@@ -8,7 +8,7 @@ API while delegating responsibilities to specialized managers.
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -59,17 +59,8 @@ class MQTTClient:
         """Check if currently connected"""
         return self.connection_manager.is_connected
 
-    def set_message_handler(
-        self,
-        handler: Callable[[MQTTMessage], None]
-        | Callable[[MQTTMessage], Awaitable[None]],
-    ) -> None:
-        """
-        Set message handler callback
-
-        Args:
-            handler: Sync or async message handler function
-        """
+    def set_message_handler(self, handler: Callable[[MQTTMessage], None]) -> None:
+        """Route received messages to a synchronous, thread-safe callback."""
         self.message_handler.set_handler(handler)
 
     async def connect(self) -> bool:
@@ -84,10 +75,7 @@ class MQTTClient:
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
         await self.connection_manager.disconnect()
-        await self.message_handler.stop(
-            drain=True,
-            timeout_seconds=self.config.graceful_shutdown_timeout,
-        )
+        self.message_handler.clear_handler()
 
     async def subscribe(self, topic: str, qos: int | None = None) -> bool:
         """

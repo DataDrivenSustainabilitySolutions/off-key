@@ -4,12 +4,9 @@ Database Writer for MQTT Telemetry Data
 
 import asyncio
 import time
-from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
-from types import TracebackType
-from typing import Self
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
@@ -78,7 +75,6 @@ class DatabaseWriter:
         self.batch_size = config.batch_size
         self.batch_timeout = config.batch_timeout
         self.max_retries = 3
-        self.retry_delay = 1.0
 
         # Write queues
         self.pending_batch = WriteBatch()
@@ -95,10 +91,6 @@ class DatabaseWriter:
         self.write_latency_sum = 0.0
         self.write_latency_count = 0
 
-        # Charger status tracking
-        self.charger_last_seen: dict[str, datetime] = {}
-        self.charger_message_counts: dict[str, int] = defaultdict(int)
-
         # Background tasks
         self._writer_task: asyncio.Task[None] | None = None
         self._health_task: asyncio.Task[None] | None = None
@@ -110,17 +102,24 @@ class DatabaseWriter:
         # Logging context
         self._log_context = {"component": "database_writer", "service": "mqtt_proxy"}
 
-    async def __aenter__(self) -> Self:
-        await self.start()
-        return self
+    @property
+    def queued_records(self) -> int:
+        """Records accepted but not yet written."""
+        return self.pending_batch.size() + sum(
+            batch.size() for batch in self.processing_batches.values()
+        )
 
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        await self.stop()
+    @property
+    def queue_capacity(self) -> int:
+        """One pending plus one in-flight batch; see _trigger_batch_processing."""
+        return 2 * self.batch_size
+
+    @property
+    def is_retrying(self) -> bool:
+        return any(
+            batch.status in {WriteStatus.RETRYING, WriteStatus.FAILED}
+            for batch in self.processing_batches.values()
+        )
 
     async def start(self) -> None:
         """Start the database writer"""
@@ -162,9 +161,7 @@ class DatabaseWriter:
                 if not task.done():
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            unwritten = self.pending_batch.size() + sum(
-                batch.size() for batch in self.processing_batches.values()
-            )
+            unwritten = self.queued_records
             if unwritten:
                 logger.error(
                     "event=db_writer.shutdown_unwritten records_count=%s", unwritten
@@ -219,10 +216,6 @@ class DatabaseWriter:
             self.pending_batch.add_record(record)
             self.total_records_received += 1
             pending_batch_size = self.pending_batch.size()
-
-        # Update charger tracking
-        self.charger_last_seen[record.charger_id] = record.timestamp
-        self.charger_message_counts[record.charger_id] += 1
 
         # Log high-frequency messages intelligently
         if self.total_records_received % 100 == 0:
@@ -300,7 +293,6 @@ class DatabaseWriter:
                 batch.status = (
                     WriteStatus.PROCESSING if attempt == 0 else WriteStatus.RETRYING
                 )
-                batch.retry_count = attempt
 
                 if attempt > 0:
                     delay = self.config.get_jittered_backoff_delay(attempt - 1)
@@ -595,8 +587,6 @@ class DatabaseWriter:
                 batch.status is WriteStatus.FAILED
                 for batch in self.processing_batches.values()
             ),
-            unique_chargers_seen=len(self.charger_last_seen),
-            total_messages_by_charger=dict(self.charger_message_counts),
         )
 
     def get_health_status(self) -> WriterHealthStatus:
@@ -631,21 +621,5 @@ class DatabaseWriter:
 
         return WriterHealthStatus(
             status=status,
-            records_per_second=self._calculate_records_per_second(),
-            batches_per_minute=self._calculate_batches_per_minute(),
             performance=metrics,
         )
-
-    def _calculate_records_per_second(self) -> float:
-        """Calculate records per second rate"""
-        if self.write_latency_count > 0 and self.write_latency_sum > 0:
-            return round(self.total_records_written / self.write_latency_sum, 2)
-        return 0.0
-
-    def _calculate_batches_per_minute(self) -> float:
-        """Calculate batches per minute rate"""
-        if self.write_latency_count > 0 and self.write_latency_sum > 0:
-            return round(
-                (self.total_batches_processed / self.write_latency_sum) * 60, 2
-            )
-        return 0.0

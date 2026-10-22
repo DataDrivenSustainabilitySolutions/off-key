@@ -9,7 +9,12 @@ from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
-from off_key_mqtt_proxy.telemetry_models import ParseFailure, ParseSuccess, WriteBatch
+from off_key_mqtt_proxy.telemetry_models import (
+    ParseFailure,
+    ParseSuccess,
+    WriteBatch,
+    WriteStatus,
+)
 from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 
@@ -410,3 +415,27 @@ async def test_isolation_retains_only_unfinished_records_after_interruption(
     assert await writer._persist_owned_batch(batch) is True
     assert writer._process_batch.await_count == 2
     assert not batch.records
+
+
+def test_queue_reports_pending_and_in_flight_records_against_two_batches():
+    writer = _writer()
+    writer.pending_batch.add_record(_record())
+    writer.processing_batches["a"] = WriteBatch(records=[_record(), _record()])
+
+    assert writer.queued_records == 3
+    assert writer.queue_capacity == 200
+
+
+@pytest.mark.parametrize(
+    ("status", "retrying"),
+    [
+        (WriteStatus.PROCESSING, False),
+        (WriteStatus.RETRYING, True),
+        (WriteStatus.FAILED, True),
+    ],
+)
+def test_retrying_reflects_in_flight_batch_status(status, retrying):
+    writer = _writer()
+    writer.processing_batches["a"] = WriteBatch(status=status)
+
+    assert writer.is_retrying is retrying

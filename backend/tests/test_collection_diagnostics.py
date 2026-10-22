@@ -1,13 +1,23 @@
 from datetime import UTC, datetime
-from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy import collection_diagnostics as diagnostics_module
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
+from off_key_mqtt_proxy.telemetry import DatabaseWriter
 from off_key_mqtt_proxy.telemetry_models import WriteBatch, WriteStatus
 
 from .test_collection import message
 from .test_collection import runtime_catalog as catalog
+
+
+def _writer():
+    return DatabaseWriter(
+        MagicMock(batch_size=5, batch_timeout=1.0),
+        MagicMock(),
+        TopicMetadataExtractor(),
+    )
 
 
 def test_rates_measure_wall_time_and_recover_after_old_errors(monkeypatch):
@@ -16,13 +26,7 @@ def test_rates_measure_wall_time_and_recover_after_old_errors(monkeypatch):
     buffer = CollectionBuffer(original_capacity=3)
     configuration = catalog("original")
     buffer.configure(configuration, now=0)
-    writer = SimpleNamespace(
-        total_records_written=0,
-        last_successful_write_at=None,
-        pending_batch=WriteBatch(),
-        processing_batches={},
-        batch_size=5,
-    )
+    writer = _writer()
     diagnostics = CollectionDiagnostics(buffer, writer)
     assert diagnostics.snapshot(connected=True)["rates"]["received"] is None
     for value in range(10):
@@ -57,13 +61,7 @@ def test_rates_measure_wall_time_and_recover_after_old_errors(monkeypatch):
 def test_diagnostics_sampling_memory_is_bounded_under_frequent_polling(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr(diagnostics_module.time, "monotonic", lambda: clock[0])
-    writer = SimpleNamespace(
-        total_records_written=0,
-        last_successful_write_at=None,
-        pending_batch=WriteBatch(),
-        processing_batches={},
-        batch_size=5,
-    )
+    writer = _writer()
     diagnostics = CollectionDiagnostics(CollectionBuffer(), writer)
     for tick in range(10000):
         clock[0] = tick / 100

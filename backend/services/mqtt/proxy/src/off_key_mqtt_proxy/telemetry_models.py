@@ -1,7 +1,7 @@
 """Telemetry records, batches, and writer health results."""
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 
 from off_key_core.utils.enum import HealthStatus
@@ -20,15 +20,11 @@ class WriterPerformanceMetrics:
     pending_batch_size: int
     processing_batches_count: int
     failed_batches_count: int
-    unique_chargers_seen: int
-    total_messages_by_charger: dict[str, int]
 
 
 @dataclass(frozen=True, slots=True)
 class WriterHealthStatus:
     status: HealthStatus
-    records_per_second: float
-    batches_per_minute: float
     performance: WriterPerformanceMetrics
 
 
@@ -79,9 +75,7 @@ ParseResult = ParseSuccess | ParseFailure
 @dataclass(slots=True)
 class WriteBatch:
     records: list[TelemetryRecord] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     status: WriteStatus = WriteStatus.PENDING
-    retry_count: int = 0
     last_error: str | None = None
     failure_counted: bool = False
     isolate_records: bool = False

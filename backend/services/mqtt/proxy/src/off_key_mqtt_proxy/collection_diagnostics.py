@@ -6,7 +6,6 @@ from datetime import datetime
 
 from .collection_buffer import CollectionBuffer
 from .telemetry import DatabaseWriter
-from .telemetry_models import WriteStatus
 
 
 class CollectionDiagnostics:
@@ -45,7 +44,6 @@ class CollectionDiagnostics:
             )
             if timestamp is not None
         ]
-        batches = list(self.writer.processing_batches.values())
         return {
             "mqtt_connected": connected,
             "window_seconds": round(elapsed, 1),
@@ -57,11 +55,7 @@ class CollectionDiagnostics:
             "original_queue": counters["original_queue"],
             "original_capacity": counters["original_capacity"],
             "sample_slots": counters["sample_slots"],
-            "database_queue": self.writer.pending_batch.size()
-            + sum(batch.size() for batch in batches),
-            "database_capacity": 2 * self.writer.batch_size,
-            "database_retrying": any(
-                batch.status in {WriteStatus.RETRYING, WriteStatus.FAILED}
-                for batch in batches
-            ),
+            "database_queue": self.writer.queued_records,
+            "database_capacity": self.writer.queue_capacity,
+            "database_retrying": self.writer.is_retrying,
         }

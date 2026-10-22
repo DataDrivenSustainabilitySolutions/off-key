@@ -2,6 +2,7 @@
  * Time-related utilities for handling timestamps and date ranges
  */
 
+import { formatDateTime } from "./format-time";
 import { INTERVALS } from './constants';
 
 export interface TelemetryPoint {
@@ -132,7 +133,7 @@ export const formatLastSeen = (timestamp?: string | null): string => {
     return "Never";
   }
 
-  return date.toLocaleString();
+  return formatDateTime(date);
 };
 
 /**

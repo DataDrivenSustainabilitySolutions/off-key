@@ -37,6 +37,10 @@ import {
   mergeMonitoringChartEvidence,
 } from "@/lib/monitoring-chart";
 import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
+import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
+import { selectedSourceHref } from "@/features/workspace/catalogue-navigation";
+import { entitySource, reportLabels } from "@/features/workspace/reporting-scope";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EVIDENCE_PAGE_SIZE = 2000;
@@ -342,15 +346,28 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     toggleChartLink,
   } = useLinkedChartNavigation(allTelemetryData);
 
+  const catalogue = useOptionalCatalogue();
+  const snapshot = catalogue?.system.snapshot;
+  const label = useMemo(() => {
+    const name = reportLabels(snapshot?.document, snapshot?.runtime).entity(chargerId);
+    return name === chargerId ? `Entity ${chargerId}` : name;
+  }, [snapshot, chargerId]);
+  // Recorded entity ids are binding identities, so the catalogue node is found through the stream bindings.
+  const sourcesHref = useMemo(() => {
+    const node = catalogue && entitySource(catalogue.index, snapshot?.document, snapshot?.runtime, chargerId);
+    return selectedSourceHref("/sources", node);
+  }, [catalogue, snapshot, chargerId]);
+  useDocumentTitle(label, "Reporting");
+
   return (
     <>
       <PageShell>
         <PageHeader
-          title={`Entity ${chargerId}`}
+          title={label}
           actions={
             <>
               <Button variant="ghost" asChild>
-                <Link to={`/sources?entity=${encodeURIComponent(chargerId)}`}>View in Sources</Link>
+                <Link to={sourcesHref}>View in Sources</Link>
               </Button>
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}

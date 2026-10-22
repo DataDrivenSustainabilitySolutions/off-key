@@ -2,8 +2,10 @@ import { isRouteErrorResponse, Link, useRouteError } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { BrandHome } from "@/components/BrandHome";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export function RouteErrorPage({ notFound = false }: { notFound?: boolean }) {
+  useDocumentTitle(notFound ? "Page not found" : "Something went wrong");
   return (
     <main
       aria-labelledby="route-error-title"

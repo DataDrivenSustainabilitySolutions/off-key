@@ -7,6 +7,7 @@ import type { SystemDocument, SystemEntityKind, SystemRuntime } from "../catalog
 import { ExplorerHistoryChart } from "./ExplorerHistoryChart";
 import { readingHistoryKey, useReadingHistorySnapshot, type ReadingHistoryCache } from "./readingHistoryCache";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navigationIndex";
+import { formatExactDateTime } from "@/lib/format-time";
 
 type Props = {
   node: ExplorerNode;
@@ -26,6 +27,8 @@ type Props = {
   connectionStatusOnly?: boolean;
   favourite?: boolean;
   onFavourite?: (id: string) => void;
+  /** Keep the definition one click away where the page is about something else, such as monitoring. */
+  collapseDefinition?: boolean;
 };
 
 const phases: Record<LiveStatus["phase"], string> = {
@@ -34,9 +37,6 @@ const phases: Record<LiveStatus["phase"], string> = {
   error: "Unavailable", paused: "Paused",
 };
 const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
-const clock = new Intl.DateTimeFormat(undefined, {
-  year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
-});
 
 function Binding({ label, value }: { label: string; value: string }) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);
@@ -67,6 +67,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 
 export default function ExplorerPreview({
   node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, children, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
+  collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
   const streamsById = useMemo(() => new Map(document.streams.map((stream) => [stream.id, stream])), [document.streams]);
@@ -126,9 +127,35 @@ export default function ExplorerPreview({
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
     : liveLabel;
+  const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
+  const tone = active ? "positive" : label === "Unavailable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
   const problem = recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
+  const edit = node.entityKind && node.objectId && <button type="button" disabled={!canEdit || saving}
+    onClick={() => onEdit(node.entityKind!, node.objectId!)}><Pencil size={14} /> Edit structure</button>;
+  const details = <>
+    {stream && <dl><dt>Value type</dt><dd>{stream.value_type}</dd>
+      <dt>Category</dt><dd>{stream.category || "Other"}</dd>
+    </dl>}
+    {broker && <><dl><dt>Protocol</dt><dd>MQTT · {broker.transport === "websocket" ? "WebSocket" : "TCP"}</dd>
+      <dt>TLS</dt><dd>{broker.tls ? "Enabled" : "Disabled"}</dd>
+    </dl><Binding label="Endpoint" value={`${broker.host}:${broker.port}`} />
+      {broker.websocket_path && <Binding label="WebSocket path" value={broker.websocket_path} />}
+      <Binding label="Broker ID" value={broker.id} /></>}
+    {entity && <><dl><dt>Kind</dt><dd>{entity.kind}</dd>
+      <dt>Brokers</dt><dd>{entityBrokers.join(", ") || "Unassigned"}</dd>
+      {entity.parent_id && <><dt>Parent entity</dt><dd>{entitiesById.get(entity.parent_id)?.label ?? entity.parent_id}</dd></>}
+    </dl><Binding label="Entity ID" value={entity.id} /></>}
+    {(stream?.topic ?? node.topic) !== undefined && <Binding key={stream?.topic ?? node.topic}
+      label={stream || related.length > 0 ? "MQTT topic" : "Topic path"} value={(stream?.topic ?? node.topic)!} />}
+    {stream?.payload_pointer && <Binding key={stream.payload_pointer} label="Payload field" value={stream.payload_pointer} />}
+    {!stream && related.length > 0 && <div className="ex-preview-related">
+      <span>Configured readings</span>
+      <ul>{related.slice(0, 10).map((item) => <li key={item.id}>{item.label}<small>{item.unit || item.value_type}</small></li>)}</ul>
+      {related.length > 10 && <p className="ex-preview-note">{number.format(related.length - 10)} more readings. Browse them in the explorer.</p>}
+    </div>}
+  </>;
   return (
     <section className="ex-preview" aria-label={`${kind} preview`}>
       <header className="ex-preview-header">
@@ -152,8 +179,7 @@ export default function ExplorerPreview({
         </span>)}
       </nav>
       <div className="ex-preview-status" role="status">
-        <i className={(connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected") ? "active" : ""} />
-        <strong>{label}</strong>
+        <strong className={`mn-state mn-state--${tone}`}>{label}</strong>
         <span>{connectionStatusOnly ? "Broker connection" : recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history" : status.phase === "idle" ? "No live connection"
           : ["error", "blocked", "paused"].includes(status.phase) ? "Live connection inactive"
             : status.dataSource === "simulated" ? "Simulated data · memory only"
@@ -168,7 +194,7 @@ export default function ExplorerPreview({
             {latest != null && stream.unit && <small> {stream.unit}</small>}
           </strong>
           <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
-            : receivedAt ? `${useStoredSample ? "Observed" : "Received"} at ${clock.format(receivedAt)}` : "No value received yet"}</span>
+            : receivedAt ? `${useStoredSample ? "Observed" : "Received"} at ${formatExactDateTime(receivedAt)}` : "No value received yet"}</span>
         </div>
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
@@ -180,32 +206,11 @@ export default function ExplorerPreview({
         {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
       </div>}
       {children}
-      <section className="ex-preview-details" aria-label="Definition">
-        <div className="ex-preview-section-heading"><h3>Definition</h3>
-          {node.entityKind && node.objectId && <button type="button" disabled={!canEdit || saving}
-            onClick={() => onEdit(node.entityKind!, node.objectId!)}><Pencil size={14} /> Edit structure</button>}
-        </div>
-        {stream && <dl><dt>Value type</dt><dd>{stream.value_type}</dd>
-          <dt>Category</dt><dd>{stream.category || "Other"}</dd>
-        </dl>}
-        {broker && <><dl><dt>Protocol</dt><dd>MQTT · {broker.transport === "websocket" ? "WebSocket" : "TCP"}</dd>
-          <dt>TLS</dt><dd>{broker.tls ? "Enabled" : "Disabled"}</dd>
-        </dl><Binding label="Endpoint" value={`${broker.host}:${broker.port}`} />
-          {broker.websocket_path && <Binding label="WebSocket path" value={broker.websocket_path} />}
-          <Binding label="Broker ID" value={broker.id} /></>}
-        {entity && <><dl><dt>Kind</dt><dd>{entity.kind}</dd>
-          <dt>Brokers</dt><dd>{entityBrokers.join(", ") || "Unassigned"}</dd>
-          {entity.parent_id && <><dt>Parent entity</dt><dd>{entitiesById.get(entity.parent_id)?.label ?? entity.parent_id}</dd></>}
-        </dl><Binding label="Entity ID" value={entity.id} /></>}
-        {(stream?.topic ?? node.topic) !== undefined && <Binding key={stream?.topic ?? node.topic}
-          label={stream || related.length > 0 ? "MQTT topic" : "Topic path"} value={(stream?.topic ?? node.topic)!} />}
-        {stream?.payload_pointer && <Binding key={stream.payload_pointer} label="Payload field" value={stream.payload_pointer} />}
-        {!stream && related.length > 0 && <div className="ex-preview-related">
-          <span>Configured readings</span>
-          <ul>{related.slice(0, 10).map((item) => <li key={item.id}>{item.label}<small>{item.unit || item.value_type}</small></li>)}</ul>
-          {related.length > 10 && <p className="ex-preview-note">{number.format(related.length - 10)} more readings. Browse them in the explorer.</p>}
-        </div>}
-      </section>
+      {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Definition">
+        <details><summary>Definition</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{details}</details>
+      </section> : <section className="ex-preview-details" aria-label="Definition">
+        <div className="ex-preview-section-heading"><h3>Definition</h3>{edit}</div>{details}
+      </section>}
     </section>
   );
 }

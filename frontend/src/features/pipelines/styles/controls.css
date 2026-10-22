@@ -16,14 +16,21 @@
   flex-wrap: wrap;
 }
 
-.pl-header h2,
+.pl-header :is(h1, h2),
 .pl-header h3 {
   margin: 0 0 6px;
 }
 
-.pl-header h2 {
+.pl-header :is(h1, h2) {
   font-size: 22px;
   letter-spacing: -0.04em;
+}
+
+.pl-setup-header h1 {
+  font-size: 27px;
+  font-weight: 550;
+  line-height: 1.35;
+  letter-spacing: -0.035em;
 }
 
 .pl-header h3 {

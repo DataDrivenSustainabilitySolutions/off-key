@@ -152,7 +152,10 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const source = new URL(page.url()).searchParams.get("source");
     for (const section of ["Sources", "Reporting", "Monitoring"]) {
       await workspaces.getByRole("link", { name: section, exact: true }).click();
-      await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+      // The open service names its own page; the workspace becomes its breadcrumb.
+      await expect(section === "Monitoring"
+        ? page.getByRole("heading", { level: 1, name: "Saved workspace monitor", exact: true })
+        : page.getByRole("heading", { name: section, exact: true })).toBeVisible();
       expect(await catalogue!.evaluate(element => element.isConnected)).toBe(true);
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
     }
@@ -184,8 +187,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(monitoringHistory.getByRole("button", { name: "Live", exact: true })).toBeDisabled();
     await setAppearance(page, "Dark");
     await page.screenshot({ path: testInfo.outputPath("monitoring-shared-workspace.png") });
-    await page.getByRole("tab", { name: "Configuration", exact: true }).click();
-    await page.getByRole("button", { name: "Stop and remove service", exact: true }).click();
+    await page.getByRole("button", { name: "Service actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Stop and remove service", exact: true }).click();
     await page.getByRole("dialog", { name: "Stop and remove service?", exact: true }).getByRole("button", { name: "Remove service", exact: true }).click();
     await expect(page.getByRole("heading", { name: "No monitoring services", exact: true })).toBeVisible();
     serviceId = undefined;

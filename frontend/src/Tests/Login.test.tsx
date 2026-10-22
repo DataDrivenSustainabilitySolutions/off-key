@@ -87,7 +87,7 @@ describe("Login", () => {
       const email = screen.getByLabelText("Email") as HTMLInputElement;
       const password = screen.getByLabelText(/password/i, { selector: "input" }) as HTMLInputElement;
       expect(email.type).toBe("text");
-      expect(email.placeholder).toBe("Email");
+      expect(email.placeholder).toBe("admin");
       expect(email.inputMode).toBe("email");
       expect(email.autocomplete).toBe("username");
       expect(password.autocomplete).toBe("current-password");

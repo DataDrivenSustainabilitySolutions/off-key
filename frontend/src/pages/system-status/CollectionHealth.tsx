@@ -3,10 +3,19 @@ import { SectionPanel } from "@/components/DashboardLayout";
 import { apiUtils } from "@/lib/api-client";
 import { collectionDiagnosis, diagnosticsFresh } from "@/lib/collection-diagnostics";
 import { getErrorMessage } from "@/lib/errors";
+import { formatExactDateTime, formatRelativeTime } from "@/lib/format-time";
 import type { CollectionStatus } from "@/types/collection";
 
-const date = (value: string | null) =>
-  value ? new Date(value).toLocaleString() : "None since worker start";
+const date = (value: string | null, now: number) =>
+  value ? formatRelativeTime(value, now) : "None since worker start";
+const problems = new Set([
+  "Worker not reporting", "Disconnected", "Collection error", "Broker controller not reporting",
+  "Broker routes failed", "Broker disconnected", "Overloaded", "Invalid payloads",
+]);
+const idle = new Set(["Not configured", "Paused", "Ingress disabled"]);
+/** Diagnoses share the dot-and-label indicator used by services and brokers. */
+const tone = (title: string) => title === "Collecting" ? "positive"
+  : problems.has(title) ? "danger" : idle.has(title) ? "neutral" : "warning";
 const rate = (value: number | null) =>
   value === null ? "Measuring…" : `${value.toLocaleString()} /s`;
 const queueUsage = (size: number, capacity: number) =>
@@ -75,13 +84,13 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
     ["Original-rate queue", queueUsage(data.original_queue, data.original_capacity)],
     ["Database queue", queueUsage(data.database_queue, data.database_capacity)],
     ["Pending latest samples", data.sample_slots.toLocaleString()],
-    ["Last incoming message", date(data.last_received_at)],
-    ["Last telemetry/state commit", date(data.last_database_write_at)],
+    ["Last incoming message", date(data.last_received_at, now), data.last_received_at],
+    ["Last telemetry/state commit", date(data.last_database_write_at, now), data.last_database_write_at],
   ] : [];
 
   return (
     <>
-      <p className="font-medium" role="status">{title}</p>
+      <p className={`mn-state mn-state--${tone(title)} is-headline`} role="status">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{explanation}</p>
       {data && (
         <>
@@ -91,10 +100,10 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
             </p>
           )}
           <dl className="mt-4 grid gap-4 sm:grid-cols-3">
-            {measurements.map(([label, value]) => (
+            {measurements.map(([label, value, time]) => (
               <div key={label} className="min-w-0">
                 <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="mt-1 break-words text-sm font-medium">{value}</dd>
+                <dd className="mt-1 break-words text-sm font-medium" title={time ? formatExactDateTime(time) : undefined}>{value}</dd>
               </div>
             ))}
           </dl>

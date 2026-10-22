@@ -5,8 +5,8 @@ test.use({ locale: "en-US" });
 
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: "Application menu", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-  return page.getByRole("dialog", { name: "Settings", exact: true });
+  await page.getByRole("menuitem", { name: "Preferences", exact: true }).click();
+  return page.getByRole("dialog", { name: "Preferences", exact: true });
 }
 
 async function expectDialogFits(dialog: Locator) {
@@ -52,11 +52,11 @@ test("changes appearance without replacing the workspace and follows the device 
   await expect(page.locator("html")).toHaveClass("dark");
 
   // Tab and Shift+Tab stay in the modal while its workspace is inert.
-  await dialog.getByRole("button", { name: "Close settings" }).focus();
+  await dialog.getByRole("button", { name: "Close preferences" }).focus();
   await page.keyboard.press("Tab");
   await expect(dialog.getByRole("tab", { name: "Appearance" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect(dialog.getByRole("button", { name: "Close settings" })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Close preferences" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused();
@@ -70,7 +70,7 @@ test("changes appearance without replacing the workspace and follows the device 
   const reopened = await openSettings(page);
   await expect(reopened.getByRole("radio", { name: "Dark", exact: true })).toBeChecked();
   await reopened.getByRole("radio", { name: "Follow system", exact: true }).check();
-  await reopened.getByRole("button", { name: "Close settings" }).click();
+  await reopened.getByRole("button", { name: "Close preferences" }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveClass("light");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -88,11 +88,11 @@ test("keeps settings usable on small screens and across workspaces", async ({ pa
     await dialog.getByRole("radio", { name: "Light", exact: true }).check();
     await dialog.getByRole("radio", { name: "Follow system", exact: true }).check();
     await dialog.getByRole("radio", { name: "Follow system", exact: true }).scrollIntoViewIfNeeded();
-    await expect(dialog.getByRole("button", { name: "Close settings" })).toBeInViewport();
+    await expect(dialog.getByRole("button", { name: "Close preferences" })).toBeInViewport();
     await expectDialogFits(dialog);
     await dialog.screenshot({ path: testInfo.outputPath(`appearance-${width}x${height}.png`) });
     if (path === "/anomalies") await page.mouse.click(2, 2);
-    else await dialog.getByRole("button", { name: "Close settings" }).click();
+    else await dialog.getByRole("button", { name: "Close preferences" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page).toHaveURL(location);
   }
@@ -129,7 +129,7 @@ test("shows real system diagnostics on their own page and keeps old links workin
 
   const dialog = await openSettings(page);
   await expect(dialog.getByRole("heading", { name: "Appearance", exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await dialog.getByRole("button", { name: "Close preferences" }).click();
   await expect(page).toHaveURL(/\/system\/status$/);
   await page.goto("/account/settings");
   await expect(page).toHaveURL(/\/system\/status$/);

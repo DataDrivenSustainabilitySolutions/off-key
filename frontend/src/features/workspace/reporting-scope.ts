@@ -1,5 +1,6 @@
 import type { Anomaly } from "@/types/charger";
 import type { SystemDocument, SystemRuntime } from "../catalogue/systemTypes";
+import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
 
 /** Match recorded identities, independent of catalogue labels and MQTT topic names. */
 export function filterSourceReports(reports: Anomaly[], ids: readonly string[] | undefined, runtime?: SystemRuntime) {
@@ -40,4 +41,20 @@ export function reportLabels(document: SystemDocument | undefined, runtime?: Sys
     entity: (id: string) => entities.get(id) ?? id,
     reading: (entityId: string, key: string) => readings.get(`${entityId}\u0000${key}`) ?? key,
   };
+}
+
+/** The catalogue node that stands for a recorded entity, so that reports can be scoped to it. */
+export function entitySource(index: NavigationIndex, document: SystemDocument | undefined, runtime: SystemRuntime | undefined, entityId: string): ExplorerNode | undefined {
+  for (const stream of document?.streams ?? []) {
+    if (runtime?.bindings?.[stream.id]?.entity_id !== entityId) continue;
+    const nodes = (index.objectKeys.get(stream.device_id ?? stream.connection_id) ?? []).flatMap(key => index.nodes.get(key) ?? []);
+    const node = nodes.find(item => stream.device_id ? item.entityKind === "device" : item.kind === "connection");
+    if (node) return node;
+  }
+}
+
+/** The recorded entity behind a selected source, when the selection is exactly one entity. */
+export function selectedEntity(streamIds: readonly string[] | undefined, runtime: SystemRuntime | undefined) {
+  const ids = new Set((streamIds ?? []).flatMap(id => runtime?.bindings?.[id]?.entity_id ?? []));
+  return ids.size === 1 ? [...ids][0] : undefined;
 }

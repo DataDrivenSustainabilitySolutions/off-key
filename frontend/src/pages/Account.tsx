@@ -4,7 +4,9 @@ import { PageHeader, PageShell, SectionPanel } from "@/components/DashboardLayou
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useConfirm } from "@/hooks/use-confirm";
 import { RemoveMemberDialog } from "@/features/account/RemoveMemberDialog";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { getErrorMessage } from "@/lib/errors";
 import { getMembers, inviteMember, updateMember, type Member } from "@/lib/member-api";
 
@@ -13,6 +15,8 @@ export default function AccountPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Member["role"]>("user");
+  const [inviting, setInviting] = useState(false);
+  const [confirm, confirmation] = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -20,6 +24,7 @@ export default function AccountPage() {
   const removeTrigger = useRef<HTMLButtonElement | null>(null);
   const memberList = useRef<HTMLUListElement>(null);
   const reload = async () => setMembers(await getMembers());
+  useDocumentTitle("Account");
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -40,6 +45,7 @@ export default function AccountPage() {
       await inviteMember(email, role);
       setNotice("Invitation sent. The link expires in 48 hours.");
       setEmail("");
+      setInviting(false);
       await reload();
     } catch (error) {
       setError(getErrorMessage(error));
@@ -68,16 +74,14 @@ export default function AccountPage() {
   return (
     <>
       <PageShell>
-        <PageHeader title="Account" />
-        <SectionPanel title="Access control" help="Members can view organization data. Administrators also manage member access, collection, and monitoring.">
-          <p className="break-words text-sm">{member?.email} · {isAdmin ? "Administrator" : "Member"}</p>
-        </SectionPanel>
+        <PageHeader title="Account" description={`Signed in as ${member?.email ?? "…"} · ${isAdmin ? "Administrator" : "Member"}${isAdmin ? "" : ". Members can view organization data; an administrator manages access."}`} />
         {isAdmin && (
-          <SectionPanel title="Members" help="Keep at least one active administrator. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept.">
-            <form className="mb-6 grid gap-3 sm:flex sm:flex-wrap sm:items-end" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
+          <SectionPanel title="Members" help="Members can view organization data. Administrators also manage member access, collection, and monitoring. Keep at least one active administrator. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept."
+            actions={!inviting && <Button variant="outline" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}>
+            {inviting && <form className="mb-6 grid gap-3 border-b pb-6 sm:flex sm:flex-wrap sm:items-end" aria-label="Invite member" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
               <div className="grid min-w-0 gap-2 sm:w-72">
                 <Label htmlFor="member-email">Email</Label>
-                <Input id="member-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
+                <Input id="member-email" type="email" required autoFocus autoComplete="off" placeholder="name@company.com" value={email} onChange={(event) => setEmail(event.target.value)} />
               </div>
               <div className="grid gap-2 sm:w-44">
                 <Label htmlFor="member-role">Role</Label>
@@ -87,7 +91,8 @@ export default function AccountPage() {
                 </select>
               </div>
               <Button disabled={busy} type="submit" className="sm:h-11 md:h-9">Send invitation</Button>
-            </form>
+              <Button type="button" variant="ghost" disabled={busy} className="sm:h-11 md:h-9" onClick={() => { setInviting(false); setEmail(""); }}>Cancel</Button>
+            </form>}
             {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
             {notice && <p role="status" className="mb-4 text-sm">{notice}</p>}
             <ul ref={memberList} aria-label="Members" tabIndex={-1} className="divide-y">
@@ -103,8 +108,9 @@ export default function AccountPage() {
                       <option value="admin">Administrator</option>
                     </select>
                     {!target.is_verified && target.is_active && <Button variant="outline" disabled={busy} onClick={() => void invite(target.email, target.role)}>Resend invitation</Button>}
-                    <Button variant="outline" disabled={busy || target.id === member?.id} onClick={() => {
-                      if (target.is_active && !window.confirm(`Disable access for ${target.email}? Their sessions will stop working immediately.`)) return;
+                    <Button variant="outline" disabled={busy || target.id === member?.id} onClick={async () => {
+                      if (target.is_active && !await confirm({ title: "Disable access?", description: `${target.email} will be signed out and their sessions will stop working immediately.`,
+                        confirmLabel: "Disable access", destructive: true })) return;
                       void change(target, { is_active: !target.is_active });
                     }}>{target.is_active ? "Disable" : "Enable"}</Button>
                     {!target.is_active && <Button variant="outline" className="text-destructive hover:text-destructive" disabled={busy || target.id === member?.id} onClick={(event) => {
@@ -120,6 +126,7 @@ export default function AccountPage() {
           </SectionPanel>
         )}
       </PageShell>
+      {confirmation}
       {removalTarget && <RemoveMemberDialog member={removalTarget}
         onClose={() => setRemovalTarget(null)}
         onRemoved={() => {

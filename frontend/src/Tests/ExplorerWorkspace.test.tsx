@@ -13,7 +13,7 @@ import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemSnapshot } from "@/features/catalogue/systemTypes";
 
-const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true }));
+const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true, isAdmin: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/components/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
@@ -81,7 +81,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  auth.userId = 1; auth.isAuthenticated = true;
+  auth.userId = 1; auth.isAuthenticated = true; auth.isAdmin = false;
   localStorage.clear(); clearNavigationDrafts();
   vi.clearAllMocks();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
@@ -346,15 +346,30 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
   });
 
+  it("lists services needing attention first and counts each filter", async () => {
+    const failed = service("failed", "Zone sensors");
+    failed.operational_status = { ...failed.operational_status, stage: "failed" };
+    withServices([service("b", "Boiler"), failed, service("a", "Attic")]); mount();
+    await screen.findByRole("link", { name: "Zone sensors" });
+    const names = screen.getAllByRole("link").map(link => link.textContent).filter(name => ["Attic", "Boiler", "Zone sensors"].includes(name ?? ""));
+    expect(names).toEqual(["Zone sensors", "Attic", "Boiler"]);
+    const filters = within(screen.getByLabelText("Filter services"));
+    expect(filters.getByRole("button", { name: "All 3" })).toBeTruthy();
+    expect(filters.getByRole("button", { name: "Active 2" })).toBeTruthy();
+    expect(filters.getByRole("button", { name: "Attention 1" }).querySelector(".mn-filter-count.is-alert")).toBeTruthy();
+  });
+
   it("persists service favourites and quietly saves display names without changing workload identifiers", async () => {
     const saved = [service()]; withServices(saved);
     vi.mocked(apiUtils.patch).mockImplementation(async (_path, payload) => { saved[0] = { ...saved[0]!, ...(payload as { display_name: string }) }; return {}; });
     const view = mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add Room climate to favourites" }));
     await waitFor(() => expect(loadExplorerPreferences(1).favourites).toEqual([{ kind: "service", id: "service-one" }]));
-    fireEvent.click(screen.getByRole("button", { name: "Favourites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
     const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    // The service names its page; the rename control inside keeps its own label.
+    expect(within(details).getByRole("heading", { level: 1, name: "Room climate" })).toBeTruthy();
     fireEvent.click(within(details).getByRole("button", { name: "Rename service" }));
     fireEvent.change(within(details).getByRole("textbox", { name: "Rename service" }), { target: { value: "Climate monitor" } });
     fireEvent.blur(within(details).getByRole("textbox", { name: "Rename service" }));
@@ -363,7 +378,7 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.container_name).toBe("monitor-service-one");
     view.unmount(); mount();
     expect(await screen.findByRole("link", { name: "Climate monitor" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Favourites" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Favourites 1" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("region", { name: "Favourites" })).toBeNull();
   });
 
@@ -436,7 +451,7 @@ describe("hierarchical explorer workspace", () => {
     for (const [label, path] of [["Account", "/account"], ["System status", "/system/status"]]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
     }
-    expect(screen.getByRole("menuitem", { name: "Settings" }).getAttribute("aria-haspopup")).toBe("dialog");
+    expect(screen.getByRole("menuitem", { name: "Preferences" }).getAttribute("aria-haspopup")).toBe("dialog");
     expect(screen.queryByRole("menuitem", { name: "Monitoring" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Entities" })).toBeNull();
     expect(apiClient.put).not.toHaveBeenCalled();
@@ -653,5 +668,56 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByText("Catalogue imported and saved.")).toBeNull();
     expect(screen.getAllByText("Another editor's system").length).toBeGreaterThan(0);
     expect(screen.getByText("My draft")).toBeTruthy();
+  });
+});
+
+describe("reporting", () => {
+  const yesterday = () => { const date = new Date(); date.setDate(date.getDate() - 1); date.setHours(12, 0, 0, 0); return date.toISOString(); };
+  const reports = () => [
+    { anomaly_id: "old", charger_id: "room-input", timestamp: yesterday(), telemetry_type: "humidity", anomaly_type: "Humidity drift", anomaly_value: 0.02, value_type: "tail_pvalue", sensor_set: ["humidity"] },
+    { anomaly_id: "new", charger_id: "room-input", timestamp: new Date(Date.now() - 1000).toISOString(), telemetry_type: "temperature", anomaly_type: "Temperature spike", anomaly_value: 0.0005, value_type: "tail_pvalue", sensor_set: ["temperature"] },
+  ];
+  function withReports(items = reports()) {
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
+      : endpoint === "/v1/chargers/available" ? [{ charger_id: "room-input" }]
+        : endpoint.startsWith("/v1/anomalies?charger_id=room-input") ? items : []);
+  }
+
+  it("groups events by day under catalogue labels and narrows them with filters", async () => {
+    withReports(); mount("/anomalies");
+    const events = await screen.findByRole("region", { name: "Anomaly events" });
+    await within(events).findByText("Temperature spike");
+    const days = within(events).getAllByRole("rowgroup").map(group => group.querySelector(".rp-day th")?.textContent).filter(Boolean);
+    expect(days).toEqual(["Today", "Yesterday"]);
+    // Recorded identities read as catalogue names, newest first.
+    const rows = events.querySelectorAll(".rp-row");
+    expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
+    expect(rows[0]?.querySelector(".rp-entity")?.textContent).toBe("Room station");
+    expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
+    expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
+    fireEvent.change(within(events).getByRole("combobox", { name: "Signal" }), { target: { value: "0.001" } });
+    expect(within(events).getByRole("status").textContent).toBe("1 event");
+    expect(within(events).queryByText("Humidity drift")).toBeNull();
+    fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "room-input\u0000humidity" } });
+    expect(within(events).getByText("No events match these filters.", { exact: false })).toBeTruthy();
+    fireEvent.click(within(events).getAllByRole("button", { name: "Clear filters" })[0]!);
+    expect(within(events).getByRole("status").textContent).toBe("2 events");
+  });
+
+  it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {
+    auth.isAdmin = true;
+    withReports();
+    vi.mocked(apiUtils.delete).mockResolvedValue(undefined);
+    mount("/anomalies");
+    await screen.findByText("Temperature spike");
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
+    fireEvent.keyDown(menu!, { key: "Enter" });
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Show only Room station", "Entity readings", "Copy event ID", "Delete anomaly"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete anomaly" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete this anomaly?" });
+    expect(apiUtils.delete).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete anomaly" }));
+    await waitFor(() => expect(apiUtils.delete).toHaveBeenCalledExactlyOnceWith("/v1/anomalies/new"));
   });
 });

@@ -18,6 +18,8 @@ import toast from "react-hot-toast";
 import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 import { buildSensorClaims, mqttFiltersOverlap } from "./monitoring/config";
 import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
@@ -50,6 +52,7 @@ function Monitoring() {
 
 function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; initialReading?: string }) {
   const { isAdmin, isAuthenticated, userId } = useAuth();
+  const [confirm, confirmation] = useConfirm();
   const catalogue = useSystemDocument({ isAuthenticated, accountKey: userId });
   const sensorLabels = useMemo(() => new Map((catalogue.document?.streams ?? []).flatMap((stream) => {
     const binding = catalogue.snapshot?.runtime.bindings?.[stream.id];
@@ -60,6 +63,7 @@ function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; i
     return catalogue.document?.devices.find((item) => item.id === stream?.device_id)?.label
       ?? catalogue.document?.connections.find((item) => item.id === stream?.connection_id)?.label;
   }, [catalogue.document, catalogue.snapshot, chargerId]);
+  useDocumentTitle(entityName ?? chargerId, "Monitoring");
   const data = useMonitoringData(chargerId);
   const sensorTypes = data.sensors.data;
   const models = data.models.data;
@@ -105,7 +109,8 @@ function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; i
 
   const deleteService = async (service: ActiveService) => {
     const action = getServiceDeleteActionDisplay(service);
-    if (!window.confirm(action.confirmation)) return;
+    const label = action.ariaLabel[0]!.toUpperCase() + action.ariaLabel.slice(1);
+    if (!await confirm({ title: action.confirmation, description: "Collected history is retained.", confirmLabel: label, destructive: true })) return;
     try {
       await apiUtils.delete(
         API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id),
@@ -178,6 +183,7 @@ function ChargerMonitoring({ chargerId, initialReading }: { chargerId: string; i
           onDeleteService={isAdmin ? (service) => void deleteService(service) : undefined}
         />
       </PageShell>
+      {confirmation}
     </>
   );
 }

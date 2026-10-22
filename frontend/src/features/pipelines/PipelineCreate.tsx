@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { Check, LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { useConfirm } from "@/hooks/use-confirm";
 import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
@@ -34,6 +36,8 @@ export type PipelineSetupProps = {
   revisionId?: string;
   sourceService?: { id: string; replace: boolean };
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
+  /** Names where onBack leads, for the breadcrumb. */
+  backLabel?: string;
 };
 
 function startingSetup(catalog: PipelineCatalog, id?: string, target?: MonitoringTarget, reading?: string) {
@@ -49,6 +53,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const { catalog, targets, initialTarget, initialReading, initialDesign, initialDocument, replaceService, predecessor, onStarted } = props;
   const { userId } = useAuth();
   const { document: catalogueDocument } = useCatalogue();
+  const [confirm, confirmation] = useConfirm();
   const location = useLocation();
   const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
   const sourceId = props.sourceService?.id ?? replaceId;
@@ -139,9 +144,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
     finally { setArranging(false); }
   };
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
-    <button type="button" className="mn-back" disabled={busy} onClick={props.onBack}><ArrowLeft size={14} aria-hidden="true" />{initialDesign ? "Back" : "All services"}</button>
+    <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
+      current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
     <div className="pl-header pl-setup-header"><div>
-      <h2>{replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h2>
+      <h1>{replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h1>
       <p className="pl-help">Choose readings, adjust the flow, and apply. Save a template whenever you want to reuse it.</p>
     </div><div className="pl-actions pl-setup-actions">
       {canAuthor && <>
@@ -212,8 +218,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
             try { await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected)); setIssuesRequest((value) => value + 1); }
             catch (reason) { setError(getErrorMessage(reason)); }
           }}><Check size={15} />Validate</button>
-          {dirty && <button type="button" title="Reset to the initial configuration" onClick={() => {
-            if (!window.confirm("Discard this setup and start again?")) return;
+          {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
+            if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",
+              confirmLabel: "Discard and start again", destructive: true })) return;
             session.discard(initial()); graph.resetHistory(); select(undefined); graph.requestFit(); setAttempted(false);
           }}><RotateCcw size={15} />Reset</button>}
         </>}
@@ -222,5 +229,6 @@ export function PipelineCreate(props: PipelineSetupProps) {
           if (document.definition.input_slots !== slots) setDraft((previous) => ({ ...previous, startingId: undefined }));
         }} />} />
     </>
+    {confirmation}
   </section>;
 }

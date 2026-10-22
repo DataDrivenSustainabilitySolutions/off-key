@@ -117,7 +117,7 @@ const Login: React.FC = () => {
           <Input
             id="email"
             type={localAdminEmail ? "text" : "email"}
-            placeholder="Email"
+            placeholder={localAdminEmail ? "admin" : "name@company.com"}
             inputMode="email"
             autoComplete="username"
             value={email}
@@ -144,7 +144,6 @@ const Login: React.FC = () => {
             id="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
-            placeholder="Password"
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);

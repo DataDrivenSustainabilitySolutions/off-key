@@ -1,23 +1,23 @@
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PipelineCatalog } from "./contracts";
 import { PipelineDesignBrowser } from "./PipelineDesignBrowser";
 
 export function PipelineLibrary({
-  catalog, canEdit, onCreate, onOpen, onBack,
+  catalog, canEdit, onCreate, onOpen, onBack, backLabel = "Monitoring",
 }: {
   catalog: PipelineCatalog;
   canEdit: boolean;
   onCreate: () => void;
   onOpen: (id: string) => void;
   onBack: () => void;
+  backLabel?: string;
 }) {
   return <section className="pl-library" aria-label="Templates">
-    <button type="button" className="mn-back" onClick={onBack}>
-      <ArrowLeft size={14} />Back
-    </button>
+    <Breadcrumb steps={[{ label: backLabel, onClick: onBack }]} current="Templates" />
     <div className="pl-header">
       <div>
-        <h2>Templates</h2>
+        <h1>Templates</h1>
         <p className="pl-help">Reusable monitoring flows. Open a template to configure a service or update it.</p>
       </div>
       {canEdit && catalog.authoring_enabled && <button type="button" className="mn-primary" onClick={onCreate}>

@@ -7,6 +7,8 @@ import { navigationTrail, type ExplorerNode, type NavigationIndex } from "./navi
 import type { SystemGroup } from "../catalogue/systemTypes";
 import type { ReadingActivitySource } from "./readingActivity";
 
+const shortcutLabel = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl K";
+
 type Props = {
   index: NavigationIndex; scopeKey: string; rows: ExplorerRow[]; title: string;
   catalogueGroups: SystemGroup[]; query: string; resultsQuery?: string;
@@ -59,13 +61,14 @@ export function ExplorerSidebar(props: Props) {
       {props.onDismiss && <CatalogueToggle open className="catalogue-drawer-toggle" onClick={props.onDismiss} />}
     </div>
     <div className="ex-search"><Search size={15} aria-hidden="true" />
-      <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search catalogue" value={query}
+      <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search catalogue" value={query} aria-keyshortcuts="Control+K Meta+K"
         onChange={(event) => props.onQuery(event.target.value)} onKeyDown={(event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault(); search.current?.closest("nav")?.querySelector<HTMLButtonElement>("[data-row]")?.focus();
           }
           if (event.key === "Escape" && query) { event.preventDefault(); event.stopPropagation(); props.onQuery(""); }
         }} />
+      {!query && <kbd className="ex-search-key" aria-hidden="true">{shortcutLabel}</kbd>}
     </div>
     {!!props.favourites?.length && <section className="mn-sidebar-favourites" aria-label="Favourites"><span>Favourites</span>
       {props.favourites.map(item => <button key={`${item.kind}:${item.id}`} title={item.label} onClick={() => props.onFavourite?.(item.kind, item.id)}><Star size={13} /><span>{item.label}</span></button>)}
@@ -80,7 +83,8 @@ export function ExplorerSidebar(props: Props) {
         </Popover.Content></Popover.Portal>
       </Popover.Root>
     </div>}
-    <div className={`ex-level-heading${atRoot ? " is-root" : ""}`}>
+    {/* The level is where the sidebar stands; it reads as selected only when it is also the shown source. */}
+    <div className={`ex-level-heading${atRoot ? " is-root" : ""}${!atRoot && !query && selectedKey === scopeKey ? " is-selected" : ""}`}>
       {(scopeKey !== index.rootKey || query) && <button className="ex-back ex-icon-button" aria-label={query ? "Close search" : "Back one level"}
         onClick={props.onBack}><ArrowLeft size={16} /></button>}
       <div className="ex-level-title">

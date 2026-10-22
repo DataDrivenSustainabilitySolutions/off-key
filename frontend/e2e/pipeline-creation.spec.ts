@@ -90,7 +90,8 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
     .getByRole("button", { name: "Manage templates", exact: true }).click();
   const library = page.getByRole("region", { name: "Templates", exact: true });
   await expect(library).toBeVisible();
-  await library.getByRole("button", { name: "Back", exact: true }).click();
+  // The breadcrumb names the setup that the library was opened from.
+  await library.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "New service", exact: true }).click();
   await expect(name).toHaveValue(""); await expect.poll(position).toEqual(moved);
   const unloading = page.waitForEvent("dialog");
   const reload = page.evaluate(() => window.location.reload());
@@ -211,8 +212,8 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
     for (const theme of ["Light", "Dark"]) {
       await page.getByRole("button", { name: "Application menu", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-      await page.getByRole("radio", { name: theme, exact: true }).check(); await page.getByRole("button", { name: "Close settings", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Preferences", exact: true }).click();
+      await page.getByRole("radio", { name: theme, exact: true }).check(); await page.getByRole("button", { name: "Close preferences", exact: true }).click();
       await page.screenshot({ path: testInfo.outputPath(`setup-${theme.toLowerCase()}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });

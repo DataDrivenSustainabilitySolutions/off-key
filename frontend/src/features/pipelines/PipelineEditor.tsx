@@ -4,6 +4,7 @@ import { pipelinesApi } from "./api";
 import type { PipelineRevisionView, PipelineView } from "./contracts";
 import { PipelineCreate, type PipelineSetupProps } from "./PipelineCreate";
 import { PipelineActivation } from "./PipelineActivation";
+import { Breadcrumb } from "@/components/Breadcrumb";
 
 type Props = Omit<PipelineSetupProps, "initialDesign" | "initialDocument"> & {
   id: string; revisionId?: string; activationId?: string;
@@ -27,7 +28,7 @@ export default function PipelineEditor(props: Props) {
     return () => controller.abort();
   }, [props.id, props.revisionId, retry]);
   if (!pipeline || pipeline.id !== props.id || loadedRevision !== props.revisionId) return <section aria-label="Pipeline editor">
-    <button className="mn-back" onClick={props.onBack}>Back</button>
+    <Breadcrumb steps={[{ label: props.backLabel ?? "Templates", onClick: props.onBack }]} current="Template" />
     {error ? <p className="pl-error" role="alert">{error}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>
       : <p role="status">Loading template…</p>}
   </section>;

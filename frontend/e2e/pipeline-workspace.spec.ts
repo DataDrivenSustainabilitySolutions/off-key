@@ -789,11 +789,11 @@ test.describe("visual pipeline real infrastructure", () => {
         .getByRole("button", { name: "Application menu", exact: true })
         .click();
       await page
-        .getByRole("menuitem", { name: "Settings", exact: true })
+        .getByRole("menuitem", { name: "Preferences", exact: true })
         .click();
       await page.getByRole("radio", { name: "Dark", exact: true }).check();
       await page
-        .getByRole("button", { name: "Close settings", exact: true })
+        .getByRole("button", { name: "Close preferences", exact: true })
         .click();
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-dark.png"),

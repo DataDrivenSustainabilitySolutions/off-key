@@ -70,16 +70,19 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   };
   const loading = history.monitoring.loading || [...history.histories.values()].some(item => item.loading);
   const errors = [...new Set([history.monitoring.error, ...[...history.histories.values()].map(item => item.error)].filter(Boolean))];
+  // Both requests keep polling, so a failure clears itself once the service answers again.
+  const problem = errors.length ? `${errors.join(" ")} Retrying automatically.` : "";
+  const stage = service.operational_status.stage.replace(/_/g, " ");
   const panes = model.readings.length + model.secondarySeries.length;
   const latest = model.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
   return <section className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>Inputs and detection</h3>
-      <div className="ex-history-tools" role="group" aria-label="Chart controls">
+      {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
-      </div>
+      </div>}
     </div>
     <p className="mn-history-scope">{modelName && <strong>{modelName}</strong>}{inputs.length > 1
       ? `Joint result across all ${inputs.length} inputs. Display selection does not change detection.` : "Reading and detector result on one timeline."}</p>
@@ -95,18 +98,23 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     </details>}
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
-    {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${service.operational_status.stage.replace(/_/g, " ")} · Awaiting evaluated observations`}</p>}
-    {model.extent ? <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0} onKeyDown={navigate}
-      style={{ height: `${panes * 148 + 60}px` }}>
-      <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
-        className="mn-history-chart" />
-    </div> : <p className="mn-history-empty">{loading ? "Loading recorded inputs…" : "Waiting for recorded inputs and detector results."}</p>}
+    {model.extent ? <>
+      {!latest && <p className="ex-history-monitoring" role="status">{loading ? "Loading history…" : `Monitoring: ${stage} · Awaiting evaluated observations`}</p>}
+      <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0} onKeyDown={navigate}
+        style={{ height: `${panes * 148 + 60}px` }}>
+        <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
+          className="mn-history-chart" />
+      </div>
+    </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">
+      <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
+      {!loading && <span>{problem || `Monitoring is ${stage}. The chart appears with the first recorded inputs.`}</span>}
+    </div>}
     {latest && <output className="mn-history-result" aria-label="Latest detector result">
       <span>Latest {inputs.length > 1 ? "joint " : ""}result · {formatChartTime(latest.timeMs, timeZone, "tooltip")}</span>
       <strong>{model.secondarySeries[0]!.name}: {latest.value !== null ? formatNumber(latest.value) : latest.isInfinite ? "∞" : "unavailable"}</strong>
       <span>Threshold: {latest.threshold !== null ? formatNumber(latest.threshold) : "unavailable"} · {latest.alarmActive ? "Alarm active" : "Alarm inactive"}</span>
     </output>}
-    <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms. Each reading keeps its own scale.</p>
-    {errors.map(error => <p key={error} className="ex-preview-note" role="status">{error}</p>)}
+    {model.extent && <p className="mn-history-key">Dashed red: alarm threshold · Red lines: service alarms · Red dots: selected detector alarms. Each reading keeps its own scale.</p>}
+    {model.extent && problem && <p className="mn-history-problem" role="status">{problem}</p>}
   </section>;
 }

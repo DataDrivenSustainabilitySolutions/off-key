@@ -20,10 +20,7 @@ from off_key_tactic_middleware.services.pipelines.supervisor import (
     PipelineActivationSupervisor,
 )
 
-from . import test_monitoring_pipelines_integration as integration
-
-pipeline_database = integration.pipeline_database
-published_design = integration.published_design
+from tests.support.pipeline_database import published_design
 
 
 @pytest.mark.asyncio

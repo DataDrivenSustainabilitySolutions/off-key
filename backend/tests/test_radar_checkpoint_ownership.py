@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
@@ -20,30 +19,16 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.mqtt import observe, tiny_adaptive_monitoring
+
 pytestmark = pytest.mark.radar_integration
 
 
 def config():
     return MQTTRadarConfig(
         subscription_topics=["telemetry/entity/x"],
-        monitoring=AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={"k": 1, "window_size": 8, "warm_up": 1},
-            training_window_size=2,
-            calibration_window_size=3,
-        ),
+        monitoring=tiny_adaptive_monitoring(),
     )
-
-
-def observe(detector, value):
-    result = detector.process_data_point(
-        {"x": float(value)}, topic="telemetry/entity/x", charger_id="entity"
-    )
-    result.context["alignment"] = {
-        "aligned_vector": False,
-        "input_timestamps": {"x": result.timestamp.isoformat()},
-    }
-    return result
 
 
 def snapshot(codec, detector):

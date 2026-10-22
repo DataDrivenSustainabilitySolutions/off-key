@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
-from off_key_core.schemas.system import SystemDocument, SystemSnapshot, SystemStream
+from off_key_core.schemas.system import SystemStream
 from off_key_core.schemas.system_live import SystemLiveStart
 from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.payload_decode import decode_value
@@ -31,67 +31,7 @@ from off_key_tactic_middleware.services.system_live import (
 from off_key_tactic_middleware.services.system_live_mqtt import LiveMqttWorker
 from socks import SOCKS5
 
-
-def snapshot(revision=1, *, host="broker", credential_ref=None):
-    return SystemSnapshot(
-        revision=revision,
-        storage_origin="saved",
-        document=SystemDocument(
-            connections=[
-                {
-                    "id": "broker",
-                    "label": "MQTT",
-                    "host": host,
-                    "credential_ref": credential_ref,
-                }
-            ],
-            streams=[
-                {
-                    "id": "temperature",
-                    "label": "Temperature",
-                    "connection_id": "broker",
-                    "topic": "room/values",
-                    "payload_pointer": "/temperature",
-                }
-            ],
-        ),
-    )
-
-
-class FakeWorker:
-    def __init__(self, connection, topics, credential, message, state, *, proxy=None):
-        self.connection = connection
-        self.topics = topics
-        self.credential = credential
-        self.proxy = proxy
-        self.message = message
-        self.state = state
-        self.started = False
-        self.stopped = False
-
-    def start(self):
-        self.started = True
-        self.state("connected", None)
-
-    def stop(self):
-        self.stopped = True
-
-    def update_topics(self, topics):
-        self.topics = topics
-        return True
-
-
-def manager(**overrides):
-    settings = SystemLiveSettings(
-        SYSTEM_LIVE_ENABLED=True,
-        SYSTEM_LIVE_ALLOWED_HOSTS=["broker"],
-        **overrides,
-    )
-    now = [100.0]
-    service = SystemLiveService(
-        settings, worker_factory=FakeWorker, clock=lambda: now[0]
-    )
-    return service, now
+from tests.support.system_live import FakeWorker, manager, snapshot
 
 
 class UnavailableWorker(FakeWorker):

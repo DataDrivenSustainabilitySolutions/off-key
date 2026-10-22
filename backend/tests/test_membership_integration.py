@@ -34,20 +34,7 @@ from off_key_tactic_middleware.services.remembered_sessions import (
 from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env
-
-PASSWORD = "correct horse battery staple"
-
-
-async def bootstrap(sessions):
-    async with sessions() as session:
-        service = MemberService(session)
-        invitation = await service.invite(
-            MemberInvitation(email="admin@example.com", role="admin")
-        )
-        await service.accept_invitation(invitation["token"], PASSWORD)
-        return (
-            await session.scalar(select(User).where(User.email == "admin@example.com"))
-        ).id
+from tests.support.membership import PASSWORD, bootstrap
 
 
 @pytest.mark.asyncio

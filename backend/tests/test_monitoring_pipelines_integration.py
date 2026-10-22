@@ -5,9 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-import pytest_asyncio
 from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import (
     DeploymentMaintenance,
     MonitoringPipeline,
@@ -16,7 +14,6 @@ from off_key_core.db.models import (
     PipelineRevision,
     PipelineRun,
     RadarRuntimeCheckpoint,
-    SystemCollectionConfiguration,
 )
 from off_key_core.models.pipelines import pipeline_catalog
 from off_key_core.schemas.collection_policy import CollectionPolicy
@@ -28,11 +25,6 @@ from off_key_core.schemas.pipelines import (
     PipelineExecutionConfig,
     PipelineLayout,
     PipelinePublish,
-)
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
-    SystemCollectionDefinition,
-    build_bindings,
 )
 from off_key_mqtt_radar.admission import (
     RadarAdmissionSettings,
@@ -56,86 +48,9 @@ from off_key_tactic_middleware.services.system_collection import SystemCollectio
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.pipeline_database import published_design
+
 pytestmark = pytest.mark.radar_integration
-
-
-@pytest_asyncio.fixture
-async def pipeline_database(disposable_database, monkeypatch):
-    monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "true")
-    get_tactic_settings.cache_clear()
-    with disposable_database.begin() as connection:
-        apply_migrations(connection)
-    engine = create_async_engine(
-        disposable_database.url.set(drivername="postgresql+asyncpg")
-    )
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
-    document = SystemDocument.model_validate(
-        {
-            "connections": [{"id": "broker", "label": "Fixture", "host": "localhost"}],
-            "devices": [
-                {"id": "device", "label": "Device", "connection_id": "broker"},
-                {"id": "other", "label": "Other", "connection_id": "broker"},
-            ],
-            "streams": [
-                {
-                    "id": "current",
-                    "label": "Current",
-                    "connection_id": "broker",
-                    "device_id": "device",
-                    "topic": "fixture/current",
-                    "unit": "A",
-                },
-                {
-                    "id": "temperature",
-                    "label": "Temperature",
-                    "connection_id": "broker",
-                    "device_id": "device",
-                    "topic": "fixture/temperature",
-                    "unit": "C",
-                },
-                {
-                    "id": "other_current",
-                    "label": "Other current",
-                    "connection_id": "broker",
-                    "device_id": "other",
-                    "topic": "other/current",
-                    "unit": "A",
-                },
-            ],
-            "default_policy": {"mode": "original"},
-        }
-    )
-    definition = SystemCollectionDefinition(
-        document=document, bindings=build_bindings(document)
-    )
-    async with sessions.begin() as session:
-        session.add(
-            SystemCollectionConfiguration(
-                id=1,
-                revision=1,
-                document=definition.model_dump(mode="json"),
-                ingress_status={},
-                collection_status={"revision": 1, "status": "applied"},
-                updated_by="integration",
-            )
-        )
-    try:
-        yield sessions
-    finally:
-        await engine.dispose()
-        get_tactic_settings.cache_clear()
-
-
-async def published_design(session):
-    definition = pipeline_catalog().templates[0].definition
-    library = PipelineLibrary(session)
-    design = await library.create(
-        PipelineCreate(name="Integration graph", definition=definition)
-    )
-    revision = await library.publish(
-        design.id, PipelinePublish(expected_version=design.version)
-    )
-    return design, revision
 
 
 @pytest.mark.asyncio

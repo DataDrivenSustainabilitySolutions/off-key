@@ -30,11 +30,15 @@ from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services import system as system_service
 from pydantic import ValidationError
-from sqlalchemy import JSON, MetaData, create_engine, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from .test_collection import catalog
+from tests.support.collection import catalog
+from tests.support.system_document import (
+    AsyncSessionAdapter,
+    create_sqlite_tables,
+    document,
+)
 
 
 @pytest.mark.asyncio
@@ -74,56 +78,6 @@ async def test_scoped_status_returns_only_requested_reading_activity(monkeypatch
     service.latest_readings.assert_awaited_once_with(snapshot.runtime.bindings)
 
 
-class AsyncSessionAdapter:
-    """Use a real disposable SQLite database without an optional async driver."""
-
-    def __init__(self, session):
-        self.session = session
-
-    async def scalar(self, statement):
-        return self.session.scalar(statement)
-
-    async def scalars(self, statement):
-        return self.session.scalars(statement)
-
-    async def execute(self, statement, params=None):
-        return self.session.execute(statement, params)
-
-    def add(self, row):
-        self.session.add(row)
-
-    async def flush(self):
-        self.session.flush()
-
-
-def document():
-    return SystemDocument.model_validate(
-        {
-            "label": "Workshop",
-            "connections": [{"id": "broker-1", "label": "MQTT", "host": "localhost"}],
-            "devices": [{"id": "room-1", "label": "Office", "kind": "room"}],
-            "streams": [
-                {
-                    "id": "temperature-1",
-                    "label": "Temperature",
-                    "connection_id": "broker-1",
-                    "device_id": "room-1",
-                    "topic": "home/office/environment",
-                    "payload_pointer": "/readings/temperature",
-                    "unit": "°C",
-                }
-            ],
-            "groups": [
-                {
-                    "id": "group-1",
-                    "label": "Office",
-                    "member_ids": ["room-1", "temperature-1"],
-                }
-            ],
-        }
-    )
-
-
 @pytest.fixture
 def database(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'system.db'}")
@@ -136,13 +90,7 @@ def database(tmp_path, monkeypatch):
         SystemRevision.__table__,
         SystemCollectionConfiguration.__table__,
     ]
-    metadata = MetaData()
-    for original in tables:
-        table = original.to_metadata(metadata)
-        for column in table.columns:
-            if isinstance(column.type, JSONB):
-                column.type = JSON()
-    metadata.create_all(engine)
+    create_sqlite_tables(engine, tables)
     monkeypatch.setattr(system_service, "lock_collection_configuration", AsyncMock())
     monkeypatch.setattr(system_service, "require_application_writes", AsyncMock())
     yield engine

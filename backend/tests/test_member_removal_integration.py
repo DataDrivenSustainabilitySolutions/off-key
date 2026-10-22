@@ -27,8 +27,7 @@ from off_key_tactic_middleware.services.remembered_sessions import (
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
-
-from .test_membership_integration import PASSWORD, bootstrap
+from tests.support.membership import PASSWORD, bootstrap
 
 
 @pytest_asyncio.fixture

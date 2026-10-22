@@ -33,9 +33,8 @@ from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionServi
 from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 
+from tests.support.adaptive_pipeline import adaptive_pipeline_config
 from tests.support.mqtt import mqtt_broker, wait_until
-
-from .test_adaptive_pipeline_runtime import _config
 
 pytestmark = pytest.mark.radar_integration
 
@@ -45,7 +44,7 @@ SERVICE_ID = "pipeline-integration-service"
 @asynccontextmanager
 async def pipeline_environment(disposable_database, monkeypatch):
     """Bind real dependencies through the same environment contract as Swarm."""
-    execution = _config().pipeline.model_copy(deep=True)
+    execution = adaptive_pipeline_config().pipeline.model_copy(deep=True)
     for binding in execution.bindings:
         binding.input_key = binding.slot_id
     execution.fingerprint = execution_fingerprint(

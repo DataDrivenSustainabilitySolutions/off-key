@@ -8,8 +8,8 @@ from off_key_core.schemas.system import SystemConnection
 from off_key_tactic_middleware.services.system_live import LiveSessionError
 from off_key_tactic_middleware.services.system_live_mqtt import LiveMqttWorker
 
-from .test_system_live import manager as harness
-from .test_system_live import snapshot as configuration
+from tests.support.system_live import manager as harness
+from tests.support.system_live import snapshot as configuration
 
 
 @pytest.mark.asyncio

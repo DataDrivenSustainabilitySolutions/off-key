@@ -6,14 +6,7 @@ import pickle
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
-    BoundInput,
-    PipelineDefinition,
-    PipelineExecutionConfig,
-)
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamState
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
@@ -23,130 +16,9 @@ from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionServi
 from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 
+from tests.support.adaptive_pipeline import adaptive_pipeline_config
+
 pytestmark = pytest.mark.radar_integration
-
-
-def _config(
-    *,
-    model="aberrant_moving_covariance",
-    branched=True,
-    clipped=False,
-    model_params=None,
-):
-    slots = ["a", "b", "temperature"] if branched else ["a"]
-    nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
-    edges = []
-    if branched:
-        nodes.extend(
-            [
-                {
-                    "id": "selected",
-                    "kind": "transform",
-                    "component": "features.select",
-                    "params": {"features": ["a", "b"]},
-                },
-                {
-                    "id": "scaled",
-                    "kind": "transform",
-                    "component": "adaptive.min_max_scaler"
-                    if clipped
-                    else "adaptive.standard_scaler",
-                    "params": {"clip": True} if clipped else {},
-                },
-                {
-                    "id": "raw",
-                    "kind": "transform",
-                    "component": "features.select",
-                    "params": {"features": ["temperature"]},
-                },
-                {"id": "joined", "kind": "merge", "component": "features.merge"},
-            ]
-        )
-        edges.extend(
-            [
-                {"source": "input", "target": "selected"},
-                {"source": "selected", "target": "scaled"},
-                {"source": "input", "target": "raw"},
-                {"source": "raw", "target": "joined", "order": 1},
-            ]
-        )
-        if clipped:
-            edges.append({"source": "scaled", "target": "joined", "order": 0})
-        else:
-            nodes.append(
-                {
-                    "id": "pca",
-                    "kind": "transform",
-                    "component": "adaptive.uncentered_pca",
-                    "params": {"n_components": 1, "n0": 3},
-                }
-            )
-            edges.extend(
-                [
-                    {"source": "scaled", "target": "pca"},
-                    {"source": "pca", "target": "joined", "order": 0},
-                ]
-            )
-    params = (
-        {"n_trees": 1, "height": 2, "window_size": 2, "seed": 1}
-        if model == "aberrant_half_space_trees"
-        else {"window_size": 5}
-    )
-    if model_params is not None:
-        params = model_params
-    nodes.extend(
-        [
-            {
-                "id": "model",
-                "kind": "detector",
-                "component": f"detector:{model}",
-                "params": params,
-            },
-            {
-                "id": "policy",
-                "kind": "policy",
-                "component": "policy.quantile",
-                "params": {"quantile": 1.0},
-            },
-            {"id": "output", "kind": "output", "component": "output.evidence"},
-        ]
-    )
-    edges.extend(
-        [
-            {"source": "joined" if branched else "input", "target": "model"},
-            {"source": "model", "target": "policy"},
-            {"source": "policy", "target": "output"},
-        ]
-    )
-    definition = compile_pipeline(
-        PipelineDefinition.model_validate(
-            {
-                "strategy": "adaptive_stream",
-                "input_slots": [{"id": key, "label": key.title()} for key in slots],
-                "nodes": nodes,
-                "edges": edges,
-                "settings": {"training_window_size": 2, "calibration_window_size": 2},
-            }
-        )
-    ).definition
-    bindings = [
-        BoundInput(
-            slot_id=slot,
-            reading_id=f"reading-{slot}",
-            entity_id="charger",
-            accepted_topic=f"telemetry/charger/{slot}",
-            input_key=f"reading_{slot}",
-        )
-        for slot in slots
-    ]
-    execution = PipelineExecutionConfig(
-        definition=definition,
-        bindings=bindings,
-        run_id="run",
-        revision_id="revision",
-        fingerprint=execution_fingerprint(definition, bindings),
-    )
-    return AnomalyDetectionConfig(pipeline=execution, checkpoint_interval=1_000_000)
 
 
 def _point(index):
@@ -172,7 +44,7 @@ def _point(index):
 def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
     model, params, required
 ):
-    config = _config(model=model, branched=False, model_params=params)
+    config = adaptive_pipeline_config(model=model, branched=False, model_params=params)
     service = AdaptivePipelineDetectionService(config)
     for index in range(1, 12):
         result = service.process_data_point({"reading_a": float(index)})
@@ -184,7 +56,7 @@ def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
 
 
 def test_branched_monitor_matches_standalone_numeric_reference():
-    config = _config()
+    config = adaptive_pipeline_config()
     service = AdaptivePipelineDetectionService(config)
     reference, _ = adaptive_graph(ExecutionPlan(config.pipeline))
     states = []
@@ -215,7 +87,7 @@ def test_branched_monitor_matches_standalone_numeric_reference():
 
 
 def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
-    service = AdaptivePipelineDetectionService(_config())
+    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
     initial = service.get_pipeline_state()["nodes"]
     assert initial["pca"]["readiness_observed"] == 0
     assert initial["pca"]["readiness_required"] == 3
@@ -253,7 +125,7 @@ def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
 
 @pytest.mark.parametrize("processed", [2, 5, 7])
 def test_graph_checkpoints_restore_every_learning_phase(processed):
-    config = _config()
+    config = adaptive_pipeline_config()
     original = AdaptivePipelineDetectionService(config)
     for index in range(1, processed + 1):
         original.process_data_point(_point(index))
@@ -278,7 +150,7 @@ def test_graph_checkpoints_restore_every_learning_phase(processed):
     ],
 )
 def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
-    service = AdaptivePipelineDetectionService(_config())
+    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
     before = pickle.dumps(service.pipeline)
     with pytest.raises(ObservationRejected):
         service.process_data_point(invalid)
@@ -292,7 +164,7 @@ def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
 
 def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     service = AdaptivePipelineDetectionService(
-        _config(model="aberrant_half_space_trees", clipped=True),
+        adaptive_pipeline_config(model="aberrant_half_space_trees", clipped=True),
     )
     valid = {"reading_a": 100.0, "reading_b": -50.0, "reading_temperature": 0.5}
     service.process_data_point(valid)
@@ -313,7 +185,9 @@ def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     ],
 )
 def test_retained_history_blocks_calibration_until_reference_exists(model, ignored):
-    service = AdaptivePipelineDetectionService(_config(model=model, branched=False))
+    service = AdaptivePipelineDetectionService(
+        adaptive_pipeline_config(model=model, branched=False)
+    )
     for value in ignored:
         service.process_data_point({"reading_a": value})
     assert service.warmup_count == 2
@@ -329,7 +203,9 @@ def test_retained_history_blocks_calibration_until_reference_exists(model, ignor
 
 def test_execution_failure_stops_model_and_blocks_checkpoint():
     service = AdaptivePipelineDetectionService(
-        _config(model="aberrant_moving_geometric_average", branched=False),
+        adaptive_pipeline_config(
+            model="aberrant_moving_geometric_average", branched=False
+        ),
     )
     for value in (1.0, 2.0, 3.0, 4.0):
         service.process_data_point({"reading_a": value})
@@ -348,7 +224,7 @@ def test_execution_failure_stops_model_and_blocks_checkpoint():
 
 
 def test_live_values_come_from_real_score_pass_with_original_metadata():
-    service = AdaptivePipelineDetectionService(_config())
+    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
     service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)
     for index in range(1, 8):
         result = service.process_data_point(_point(index))
@@ -366,7 +242,7 @@ def test_live_values_come_from_real_score_pass_with_original_metadata():
 
 
 def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):
-    service = AdaptivePipelineDetectionService(_config())
+    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
 
     def broken(*args):
         raise RuntimeError("diagnostics failed")

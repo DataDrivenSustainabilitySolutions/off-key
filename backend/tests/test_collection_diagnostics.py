@@ -8,8 +8,8 @@ from off_key_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
 from off_key_mqtt_proxy.telemetry import DatabaseWriter
 from off_key_mqtt_proxy.telemetry_models import WriteBatch, WriteStatus
 
-from .test_collection import message
-from .test_collection import runtime_catalog as catalog
+from tests.support.collection import message
+from tests.support.collection import runtime_catalog as catalog
 
 
 def _writer():

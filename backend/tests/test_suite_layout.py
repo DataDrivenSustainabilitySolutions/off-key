@@ -47,3 +47,24 @@ def gated_modules():
 def test_gated_module_is_selected_by_its_lane(path, lanes):
     marks = module_marks(ast.parse(path.read_text()))
     assert lanes <= marks, f"{path.name} needs pytestmark {sorted(lanes - marks)}"
+
+
+def test_test_modules_share_code_only_through_support():
+    offenders = []
+    for path in sorted(TESTS.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ImportFrom) and node.level:
+                names = [node.module or "", *(alias.name for alias in node.names)]
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+                "tests."
+            ):
+                names = [node.module]
+            else:
+                continue
+            if any(
+                part.startswith("test_") for name in names for part in name.split(".")
+            ):
+                offenders.append(f"{path.relative_to(TESTS)}:{node.lineno}")
+    assert offenders == [], "Move shared helpers to tests/support: " + ", ".join(
+        offenders
+    )

@@ -1,12 +1,11 @@
 """Real PostgreSQL, signed membership and HTTP serialization of bounded reports."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from jose import jwt
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import PipelineRun, User
@@ -25,28 +24,10 @@ from off_key_tactic_middleware.api.v1.pipelines import router
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 
-from . import test_monitoring_pipelines_integration as pipeline_integration
-from .test_pipeline_report_bounds import maximum_definition
+from tests.support.maximum_pipeline import maximum_definition
+from tests.support.pipeline_database import membership_token
 
 pytestmark = pytest.mark.radar_integration
-
-pipeline_database = pipeline_integration.pipeline_database
-
-
-def membership_token(user):
-    settings = get_auth_settings()
-    return jwt.encode(
-        {
-            "sub": user.email,
-            "user_id": user.id,
-            "session_version": user.session_version,
-            "exp": datetime.now(UTC) + timedelta(minutes=5),
-            "iss": settings.JWT_ISSUER,
-            "aud": settings.JWT_AUDIENCE,
-        },
-        settings.JWT_SECRET.get_secret_value(),
-        algorithm=settings.ALGORITHM,
-    )
 
 
 def bound_execution(revision):

@@ -39,36 +39,36 @@ from off_key_tactic_middleware.services import system as system_module
 from off_key_tactic_middleware.services import system_collection as collection_module
 from off_key_tactic_middleware.services.system import SystemService
 from off_key_tactic_middleware.services.system_collection import SystemCollectionService
-from sqlalchemy import JSON, MetaData, create_engine, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from .test_collection import catalog
-from .test_system_configuration import AsyncSessionAdapter, document
+from tests.support.collection import catalog
+from tests.support.system_document import (
+    AsyncSessionAdapter,
+    create_sqlite_tables,
+    document,
+)
 
 
 @pytest.fixture
 def session(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'collection.db'}")
-    metadata = MetaData()
-    for model in (
-        SystemConfiguration,
-        SystemRevision,
-        SystemCollectionConfiguration,
-        CollectionConfiguration,
-        Charger,
-        CollectionBinding,
-        MonitoringService,
-        MonitoringPipeline,
-        PipelineRevision,
-        PipelineRun,
-        PipelineActivation,
-    ):
-        table = model.__table__.to_metadata(metadata)
-        for column in table.columns:
-            if isinstance(column.type, JSONB):
-                column.type = JSON()
-    metadata.create_all(engine)
+    create_sqlite_tables(
+        engine,
+        [
+            SystemConfiguration.__table__,
+            SystemRevision.__table__,
+            SystemCollectionConfiguration.__table__,
+            CollectionConfiguration.__table__,
+            Charger.__table__,
+            CollectionBinding.__table__,
+            MonitoringService.__table__,
+            MonitoringPipeline.__table__,
+            PipelineRevision.__table__,
+            PipelineRun.__table__,
+            PipelineActivation.__table__,
+        ],
+    )
     for module in (system_module, collection_module):
         monkeypatch.setattr(module, "lock_collection_configuration", AsyncMock())
         monkeypatch.setattr(module, "require_application_writes", AsyncMock())

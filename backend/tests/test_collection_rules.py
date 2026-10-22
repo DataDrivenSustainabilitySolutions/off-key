@@ -20,7 +20,7 @@ from off_key_tactic_middleware.services import system_collection as collection_m
 from off_key_tactic_middleware.services.collection_rule_edits import apply_rule_edits
 from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 
-from .test_system_configuration import document
+from tests.support.system_document import document
 
 
 def definition():

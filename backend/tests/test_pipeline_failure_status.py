@@ -24,11 +24,9 @@ from off_key_mqtt_radar.runtime_checkpoint import (
 from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
 from sqlalchemy import text
 
-from . import test_monitoring_pipelines_integration as monitoring_fixture
+from tests.support.pipeline_database import published_design
 
 pytestmark = pytest.mark.radar_integration
-
-pipeline_database = monitoring_fixture.pipeline_database
 
 
 @pytest_asyncio.fixture
@@ -37,7 +35,7 @@ async def signed_graph_writer(pipeline_database, monkeypatch):
         radar_database, "_radar_async_session_factory", pipeline_database
     )
     async with pipeline_database() as session:
-        _, revision = await monitoring_fixture.published_design(session)
+        _, revision = await published_design(session)
         activation = await PipelineActivations(session).submit(
             PipelineActivationRequest(
                 revision_id=revision.id,

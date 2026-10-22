@@ -7,7 +7,11 @@ from uuid import uuid4
 import pytest
 from off_key_core.db.models import MonitoringPipeline, PipelineRevision, PipelineRun
 from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
-from off_key_core.models.pipelines import compile_pipeline, pipeline_catalog_id
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    pipeline_catalog,
+    pipeline_catalog_id,
+)
 from off_key_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineCreate,
@@ -21,10 +25,8 @@ from off_key_tactic_middleware.services.pipelines.activation import PipelineActi
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy import event
 
-from . import test_monitoring_pipelines_integration as integration
-from .test_pipeline_report_bounds import maximum_definition
-
-pipeline_database = integration.pipeline_database
+from tests.support.maximum_pipeline import maximum_definition
+from tests.support.pipeline_database import published_design
 
 
 @pytest.mark.asyncio
@@ -69,7 +71,7 @@ async def test_shared_stop_transition_preserves_outcome_and_first_end_time(
 async def test_draft_metadata_and_graph_have_one_atomic_version(pipeline_database):
     async with pipeline_database() as session:
         library = PipelineLibrary(session)
-        design, _ = await integration.published_design(session)
+        design, _ = await published_design(session)
         changed = design.draft.model_copy(deep=True)
         changed.input_slots[0].label = "Updated input"
         saved = await library.save_draft(
@@ -115,7 +117,7 @@ async def test_published_compatibility_uses_executable_contracts(
     compiler = importlib.import_module("off_key_core.models.pipeline_compiler")
     components = catalog.pipeline_components
     async with pipeline_database() as session:
-        _, revision = await integration.published_design(session)
+        _, revision = await published_design(session)
 
         def cosmetic_components():
             result = components()
@@ -241,11 +243,7 @@ async def test_maximum_revision_and_run_histories_are_paged_without_executable_c
 async def test_library_search_and_pagination_select_only_summaries(pipeline_database):
     async with pipeline_database() as session:
         library = PipelineLibrary(session)
-        definition = (
-            integration.pipeline_catalog()
-            .templates[0]
-            .definition.model_dump(mode="json")
-        )
+        definition = pipeline_catalog().templates[0].definition.model_dump(mode="json")
         now = datetime.now(UTC)
         session.add_all(
             [

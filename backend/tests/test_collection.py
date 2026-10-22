@@ -1,70 +1,15 @@
 import asyncio
-from datetime import UTC, datetime
 
 import pytest
-from off_key_core.db.catalogue_upgrade import convert_definition
-from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog
 from off_key_core.db.catalogue_v1_models import (
     AmbiboxCatalog,
-    CatalogCharger,
-    CatalogSource,
-    CollectionPolicy,
-    SensorDefinition,
 )
-from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from pydantic import ValidationError
 
-
-def catalog(mode="sample", kind="number"):
-    return AmbiboxCatalog(
-        sources=[
-            CatalogSource(
-                label="Broker",
-                host="charger.ts.net",
-                chargers=[
-                    CatalogCharger(
-                        label="Charger",
-                        policy=CollectionPolicy(mode=mode, interval_seconds=10),
-                        sensors=[
-                            SensorDefinition(
-                                key="temperature",
-                                label="Temperature",
-                                value_type=kind,
-                                upstream_topic="device/evCharger/0/temperature",
-                            )
-                        ],
-                    )
-                ],
-            )
-        ]
-    )
-
-
-def runtime_catalog(mode="sample", kind="number"):
-    legacy = catalog(mode, kind)
-    result = convert_definition(adapt_ambibox_catalog(legacy), legacy)
-    result.generation = "test"
-    return result
-
-
-def message(configuration, value, *, retained=False, upstream_retained=False):
-    now = datetime.now(UTC)
-    return MQTTMessage(
-        configuration.streams()[0].ingress_topic,
-        {
-            "payload": value
-            if isinstance(value, str)
-            else __import__("json").dumps(value),
-            "received_at": int(now.timestamp() * 1000),
-            "upstream_retained": upstream_retained,
-        },
-        now,
-        0,
-        retained,
-    )
+from tests.support.collection import catalog, message, runtime_catalog
 
 
 def test_sampler_keeps_latest_new_observation_and_original_time_without_forward_fill():

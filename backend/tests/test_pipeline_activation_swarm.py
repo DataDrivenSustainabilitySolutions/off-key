@@ -39,11 +39,7 @@ from off_key_tactic_middleware.services.pipelines.preflight_cleanup import (
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
-from . import test_monitoring_pipelines_integration as pipeline_integration
-
 pytestmark = pytest.mark.radar_integration
-
-pipeline_database = pipeline_integration.pipeline_database
 
 
 class SwarmFixtureSettings(BaseSettings):

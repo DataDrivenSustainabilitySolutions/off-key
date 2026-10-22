@@ -10,6 +10,8 @@ import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
+from tests.support.pipeline_database import pipeline_database  # noqa: F401
+
 DATABASE_FIXTURES = frozenset({"disposable_database", "member_database"})
 
 

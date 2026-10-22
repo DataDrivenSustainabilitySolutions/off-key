@@ -17,12 +17,11 @@ from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import insert, select, text
 
+from tests.support.collection import catalog, runtime_catalog
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
 )
-
-from .test_collection import catalog, runtime_catalog
 
 
 def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_settings(

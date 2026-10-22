@@ -47,3 +47,15 @@ def tiny_adaptive_monitoring() -> AdaptiveStreamConfig:
         training_window_size=2,
         calibration_window_size=3,
     )
+
+
+def observe(detector, value):
+    """Score one single-sensor value with the alignment context RADAR records."""
+    result = detector.process_data_point(
+        {"x": float(value)}, topic="telemetry/entity/x", charger_id="entity"
+    )
+    result.context["alignment"] = {
+        "aligned_vector": False,
+        "input_timestamps": {"x": result.timestamp.isoformat()},
+    }
+    return result

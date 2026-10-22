@@ -22,10 +22,7 @@ from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from . import test_monitoring_pipelines_integration as integration
-from .test_pipeline_report_api import membership_token
-
-pipeline_database = integration.pipeline_database
+from tests.support.pipeline_database import membership_token
 
 
 @pytest.mark.asyncio

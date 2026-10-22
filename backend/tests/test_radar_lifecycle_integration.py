@@ -705,7 +705,7 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
     monkeypatch,
     concurrent_change,
 ):
-    from .test_system_configuration import document
+    from tests.support.system_document import document
 
     sessions = lifecycle_database
     workloads, owned = swarm_workloads

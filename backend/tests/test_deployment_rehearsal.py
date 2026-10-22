@@ -18,8 +18,11 @@ from paho.mqtt import publish
 from paho.mqtt.client import CallbackAPIVersion
 from paho.mqtt.client import Client as MQTTClient
 
-from .integration_catalogue import add_recorded_entity, remove_recorded_entity
-from .test_adaptive_lane_e2e import _wait_until_service_accepts_data
+from tests.support.deployment import wait_until_service_accepts_data
+from tests.support.integration_catalogue import (
+    add_recorded_entity,
+    remove_recorded_entity,
+)
 
 pytestmark = [
     pytest.mark.deployment,
@@ -140,7 +143,7 @@ class SavedGraph:
 
 def exercise_graph(client, entity, service_id, run_id, batch):
     """Send real source data and await one coherent operational observation."""
-    _wait_until_service_accepts_data(client, service_id)
+    wait_until_service_accepts_data(client, service_id)
     publisher = MQTTClient(
         CallbackAPIVersion.VERSION2, client_id=f"rehearsal-graph-{service_id}"
     )
@@ -422,7 +425,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 },
             )
             started.raise_for_status()
-            _wait_until_service_accepts_data(client, started.json()["service_id"])
+            wait_until_service_accepts_data(client, started.json()["service_id"])
             current_release = json.loads(
                 (directory / "production-release.json").read_text()
             )["release"]
@@ -495,7 +498,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 ]
                 assert len(workers) == 1
                 assert workers[0]["display_name"] == "Saved monitoring service"
-                _wait_until_service_accepts_data(client, workers[0]["id"])
+                wait_until_service_accepts_data(client, workers[0]["id"])
                 assert_graph_restored(
                     client, graph_entity, graph, monitors.json(), expected
                 )

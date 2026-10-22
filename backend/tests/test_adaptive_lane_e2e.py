@@ -59,7 +59,9 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             )
             response.raise_for_status()
             service_id = response.json()["service_id"]
-            wait_until_service_accepts_data(client, service_id)
+            wait_until_service_accepts_data(
+                client, service_id, activation_id=response.json()["activation_id"]
+            )
             publisher.connect(
                 os.getenv("E2E_SOURCE_MQTT_HOST", "localhost"),
                 int(os.getenv("E2E_SOURCE_MQTT_PORT", "1884")),

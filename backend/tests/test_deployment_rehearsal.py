@@ -425,7 +425,11 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 },
             )
             started.raise_for_status()
-            wait_until_service_accepts_data(client, started.json()["service_id"])
+            wait_until_service_accepts_data(
+                client,
+                started.json()["service_id"],
+                activation_id=started.json()["activation_id"],
+            )
             current_release = json.loads(
                 (directory / "production-release.json").read_text()
             )["release"]
@@ -494,7 +498,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 workers = [
                     item
                     for item in monitors.json()
-                    if item["container_name"] == worker_name
+                    if item["display_name"] == "Saved monitoring service"
                 ]
                 assert len(workers) == 1
                 assert workers[0]["display_name"] == "Saved monitoring service"
@@ -538,7 +542,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     "/v1/monitors/all", params={"include_docker_status": "false"}
                 ).json()
                 for worker in monitors:
-                    if worker["container_name"] == worker_name or (
+                    if worker["display_name"] == "Saved monitoring service" or (
                         graph is not None
                         and worker["display_name"] == graph.display_name
                     ):

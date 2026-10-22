@@ -10,7 +10,6 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
@@ -213,14 +212,7 @@ def create_app() -> FastAPI:
     async def deployment_in_progress(request: Request, exc: DeploymentInProgressError):
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
-    # Add CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Configure this properly for production
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # No CORS: browsers reach TACTIC only through the gateway, which owns it.
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.add_middleware(CorrelationIdMiddleware)
 

@@ -125,6 +125,20 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tactic_grants_no_cross_origin_access(monkeypatch):
+    """Browsers reach TACTIC only through the gateway, which owns CORS."""
+    monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/health", headers={"Origin": "https://evil.example"}
+        )
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_tactic_rejects_direct_business_requests_without_service_credential(
     monkeypatch,
 ):

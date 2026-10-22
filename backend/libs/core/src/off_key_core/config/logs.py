@@ -1,3 +1,11 @@
+"""Core logging: YAML configuration, correlation IDs, redaction and formatters.
+
+Convention: a message starts with ``event=<area>.<name>`` and carries its own
+``key=value`` pairs. Context passed as ``extra=`` is rendered too: as trailing
+``key=value`` pairs in text output and under ``extra`` in JSON output, with
+sensitive keys redacted in both.
+"""
+
 import contextvars
 import hashlib
 import ipaddress
@@ -25,7 +33,12 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     r"\b(password|token|secret|api[_-]?key|authorization|cookie|session|email|user|ip)\b",
     re.IGNORECASE,
 )
-_STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())
+# Formatter.format adds message and asctime; the filter adds correlation_id.
+_STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys()) | {
+    "message",
+    "asctime",
+    "correlation_id",
+}
 
 
 # Inbound IDs are echoed into logs and headers, so only plain tokens are kept.
@@ -43,6 +56,29 @@ class CorrelationFilter(logging.Filter):
     def filter(self, record):
         record.correlation_id = correlation_id.get() or "none"
         return True
+
+
+def _record_extras(record: logging.LogRecord) -> dict[str, Any]:
+    """Fields a call site passed through ``extra=``, redacted for the level."""
+    extra = {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
+    }
+    return redact_query_params(extra, level=record.levelno) if extra else {}
+
+
+class KeyValueFormatter(logging.Formatter):
+    """Text formatter that appends ``extra=`` context as ``key=value`` pairs."""
+
+    def formatMessage(self, record):
+        # Before any traceback, which Formatter.format appends afterwards.
+        formatted = super().formatMessage(record)
+        extra = _record_extras(record)
+        if not extra:
+            return formatted
+        pairs = " ".join(f"{key}={value}" for key, value in extra.items())
+        return f"{formatted} {pairs}"
 
 
 class JsonFormatter(logging.Formatter):
@@ -65,13 +101,9 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        extra = {
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
-        }
+        extra = _record_extras(record)
         if extra:
-            log_data["extra"] = redact_query_params(extra, level=record.levelno)
+            log_data["extra"] = extra
 
         return json.dumps(log_data, default=str)
 
@@ -80,7 +112,7 @@ class TruncatingFormatter(logging.Formatter):
     """Formatter that truncates long messages for stdout."""
 
     def __init__(self, base_format=None, truncate_length=40):
-        self.base_formatter = logging.Formatter(base_format) if base_format else None
+        self.base_formatter = KeyValueFormatter(base_format) if base_format else None
         self.truncate_length = truncate_length
 
     def format(self, record):

@@ -6,6 +6,7 @@ formatters:
     format: '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 
   detailed:
+    (): 'off_key_core.config.logs.KeyValueFormatter'
     format: '%(asctime)s - %(levelname)s - %(name)s - [CID: %(correlation_id)s] - %(message)s'
 
   json:

@@ -194,7 +194,7 @@ prevent startup.
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
-| `LOG_FORMAT` | `simple` | Supported log output format |
+| `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |
 | `LOG_PII_DEBUG_UNMASK` | `false` | Never enable in shared or production environments |
 | `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle (gateway only) |

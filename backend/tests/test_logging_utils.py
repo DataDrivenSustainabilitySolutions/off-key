@@ -2,6 +2,7 @@ import io
 import json
 import logging
 import logging.config
+import sys
 from contextlib import suppress
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import pytest
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import (
     JsonFormatter,
+    KeyValueFormatter,
+    TruncatingFormatter,
     _apply_log_format,
     _ensure_root_handlers,
     _expand_env_vars,
@@ -48,6 +51,45 @@ def test_json_formatter_includes_extra_fields():
     assert payload["correlation_id"] == "cid-123"
     assert payload["extra"]["component"] == "unit-test"
     assert payload["extra"]["service"] == "core"
+    assert "correlation_id" not in payload["extra"]
+
+
+def _record(**extra):
+    record = logging.LogRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=12,
+        msg="event=logging_test",
+        args=(),
+        exc_info=None,
+    )
+    record.correlation_id = "cid-123"
+    record.__dict__.update(extra)
+    return record
+
+
+def test_text_formatter_renders_redacted_extra_context_before_tracebacks():
+    formatter = KeyValueFormatter("[CID: %(correlation_id)s] - %(message)s")
+    try:
+        raise RuntimeError("boom")
+    except RuntimeError:
+        record = _record(broker="broker:1883", token="supersecrettoken123")
+        record.exc_info = sys.exc_info()
+
+    first, *traceback = formatter.format(record).splitlines()
+
+    assert first.startswith("[CID: cid-123] - event=logging_test broker=broker:1883 ")
+    assert "supersecrettoken123" not in first
+    assert "token=" in first
+    assert traceback[-1] == "RuntimeError: boom"
+    assert formatter.format(_record()) == "[CID: cid-123] - event=logging_test"
+
+
+def test_truncated_output_keeps_extra_context():
+    formatter = TruncatingFormatter("%(message)s", truncate_length=200)
+
+    assert formatter.format(_record(rows=3)) == "event=logging_test rows=3"
 
 
 def test_redact_query_params_masks_sensitive_fields():

@@ -8,13 +8,12 @@ from urllib.parse import urlsplit
 
 import pytest
 import yaml
-from httpx import ASGITransport, AsyncClient
-from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_db_sync import api as db_sync_api
 from off_key_mqtt_proxy.health_api import ProxyHealthApp
 from off_key_tactic_middleware.main import create_app
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
+from tests.support.http import asgi_client
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -80,7 +79,6 @@ def applications(monkeypatch):
         "off_key_core.config.env.load_dotenv", lambda *args, **kwargs: False
     )
     reset_runtime_caches_for_tests()
-    get_service_auth_settings.cache_clear()
     from off_key_api_gateway.main import app as gateway
 
     proxy = SimpleNamespace(
@@ -108,16 +106,13 @@ def applications(monkeypatch):
     )
     db_sync_api.set_sync_service(None)
     reset_runtime_caches_for_tests()
-    get_service_auth_settings.cache_clear()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name,path", _probes())
 async def test_probe_answers_ready_only_when_service_is_ready(applications, name, path):
     apps, set_ready = applications
-    async with AsyncClient(
-        transport=ASGITransport(app=apps[name]), base_url="http://test"
-    ) as client:
+    async with asgi_client(apps[name]) as client:
         set_ready[name](False)
         not_ready = await client.get(path)
         set_ready[name](True)

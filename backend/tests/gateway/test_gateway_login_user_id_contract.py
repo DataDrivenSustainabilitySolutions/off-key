@@ -1,11 +1,11 @@
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_core.config.auth import get_auth_settings
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 
 
 class _TacticLoginStub:
@@ -20,9 +20,7 @@ async def test_login_includes_server_assigned_id_and_session_version(monkeypatch
 
     app = FastAPI()
     app.include_router(auth_api.router)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         result = await client.post(
             "/login", json={"email": "user@example.com", "password": "correct-password"}
         )

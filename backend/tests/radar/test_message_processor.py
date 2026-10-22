@@ -173,28 +173,31 @@ def test_three_sensor_cadence_blocks_stale_vectors_until_the_slow_sensor_recover
         assert (alignment["alignment_status"], features) == (status, expected)
 
 
-def test_align_features_keeps_full_hierarchy_sensor_key():
+@pytest.mark.parametrize(
+    ("sensor_type", "data", "expected"),
+    [
+        pytest.param(
+            "TopLevelPart/SubMetricA",
+            {"value": 12.5, "quality": 1.0},
+            {"TopLevelPart/SubMetricA": 12.5},
+            id="keeps-full-hierarchy-key",
+        ),
+        pytest.param(
+            "voltage",
+            {"other_metric": 7.25, "another_metric": 9.5},
+            {"voltage": 7.25},
+            id="falls-back-to-first-value",
+        ),
+    ],
+)
+def test_align_features_names_the_feature_by_its_sensor(sensor_type, data, expected):
     processor = _build_processor(required_sensors=set(), state_cache=None)
 
     features, _ = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="TopLevelPart/SubMetricA",
-        data={"value": 12.5, "quality": 1.0},
+        charger_id="charger-1", sensor_type=sensor_type, data=data
     )
 
-    assert features == {"TopLevelPart/SubMetricA": 12.5}
-
-
-def test_align_features_falls_back_to_first_value_when_sensor_and_value_missing():
-    processor = _build_processor(required_sensors=set(), state_cache=None)
-
-    features, _ = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"other_metric": 7.25, "another_metric": 9.5},
-    )
-
-    assert features == {"voltage": 7.25}
+    assert features == expected
 
 
 def test_align_features_handles_empty_data_without_crashing():

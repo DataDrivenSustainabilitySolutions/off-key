@@ -4,7 +4,6 @@ import uuid
 
 import pytest
 from fastapi import FastAPI, Response
-from httpx import ASGITransport, AsyncClient
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import (
     CorrelationIdMiddleware,
@@ -13,6 +12,8 @@ from off_key_core.config.logs import (
 )
 from off_key_tactic_middleware.main import create_app
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from tests.support.http import asgi_client
 
 
 @pytest.fixture(autouse=True)
@@ -45,9 +46,7 @@ def _app() -> tuple[FastAPI, list]:
 
 
 async def _get(app, headers=None, url="/"):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         return await client.get(url, headers=headers)
 
 

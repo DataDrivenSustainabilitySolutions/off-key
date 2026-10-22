@@ -54,91 +54,48 @@ async def test_create_anomaly_returns_repository_identity_id():
     session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_create_anomaly_persists_explicit_value_type():
-    session = AsyncMock()
+async def persisted(**fields):
+    """The anomaly row AnomalyService hands to the repository for a payload."""
     repository = MagicMock()
     repository.add = AsyncMock(return_value="id-1")
-
-    service = AnomalyService(session, repository)
     payload = AnomalyCreateRequest(
-        charger_id="charger-1",
-        timestamp=datetime.now(UTC),
-        telemetry_type="voltage",
-        anomaly_type="ml_tailprob_univariate",
-        anomaly_value=0.0012,
-        value_type="tail_pvalue",
+        **{
+            "charger_id": "charger-1",
+            "timestamp": datetime.now(UTC),
+            "telemetry_type": "voltage",
+            "anomaly_value": 0.0012,
+        }
+        | fields
     )
+    await AnomalyService(AsyncMock(), repository).create_anomaly(payload=payload)
+    return repository.add.await_args.args[0]
 
-    await service.create_anomaly(payload=payload)
 
-    persisted = repository.add.await_args.args[0]
-    assert persisted.value_type == "tail_pvalue"
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("anomaly_type", "value_type", "expected"),
+    [
+        ("ml_tailprob_univariate", "tail_pvalue", "tail_pvalue"),
+        ("ml_tailprob_multivariate", None, "tail_pvalue"),
+        ("ml_conformal_static_multivariate", None, "conformal_pvalue"),
+    ],
+)
+async def test_create_anomaly_persists_explicit_or_derived_value_type(
+    anomaly_type, value_type, expected
+):
+    row = await persisted(anomaly_type=anomaly_type, value_type=value_type)
+    assert row.value_type == expected
 
 
 @pytest.mark.asyncio
 async def test_create_anomaly_persists_normalized_sensor_set():
-    session = AsyncMock()
-    repository = MagicMock()
-    repository.add = AsyncMock(return_value="id-1")
-
-    service = AnomalyService(session, repository)
-    payload = AnomalyCreateRequest(
-        charger_id="charger-1",
-        timestamp=datetime.now(UTC),
+    row = await persisted(
         telemetry_type="__multivariate__",
         anomaly_type="ml_conformal_static_multivariate",
-        anomaly_value=0.0012,
         value_type="conformal_pvalue",
         sensor_set=[" L1 ", "L2", "L1", ""],
     )
-
-    await service.create_anomaly(payload=payload)
-
-    persisted = repository.add.await_args.args[0]
-    assert persisted.sensor_set == ["L1", "L2"]
-
-
-@pytest.mark.asyncio
-async def test_create_anomaly_defaults_tail_pvalue_for_ml_tailprob():
-    session = AsyncMock()
-    repository = MagicMock()
-    repository.add = AsyncMock(return_value="id-1")
-
-    service = AnomalyService(session, repository)
-    payload = AnomalyCreateRequest(
-        charger_id="charger-1",
-        timestamp=datetime.now(UTC),
-        telemetry_type="voltage",
-        anomaly_type="ml_tailprob_multivariate",
-        anomaly_value=0.0023,
-    )
-
-    await service.create_anomaly(payload=payload)
-
-    persisted = repository.add.await_args.args[0]
-    assert persisted.value_type == "tail_pvalue"
-
-
-@pytest.mark.asyncio
-async def test_create_anomaly_defaults_conformal_pvalue_for_static_conformal():
-    session = AsyncMock()
-    repository = MagicMock()
-    repository.add = AsyncMock(return_value="id-1")
-
-    service = AnomalyService(session, repository)
-    payload = AnomalyCreateRequest(
-        charger_id="charger-1",
-        timestamp=datetime.now(UTC),
-        telemetry_type="__multivariate__",
-        anomaly_type="ml_conformal_static_multivariate",
-        anomaly_value=0.0023,
-    )
-
-    await service.create_anomaly(payload=payload)
-
-    persisted = repository.add.await_args.args[0]
-    assert persisted.value_type == "conformal_pvalue"
+    assert row.sensor_set == ["L1", "L2"]
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,6 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from httpx import ASGITransport, AsyncClient
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Charger, Favorite, RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
@@ -26,6 +25,7 @@ from off_key_tactic_middleware.services.accounts.remembered_sessions import (
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 from tests.support.membership import PASSWORD, bootstrap
 from tests.support.tokens import access_token
 
@@ -85,9 +85,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         )
         await session.commit()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=member_app(sessions)), base_url="http://test"
-    ) as client:
+    async with asgi_client(member_app(sessions)) as client:
         path = f"/api/v1/members/{user_id}"
         active = await client.delete(path, headers=admin_headers)
         assert active.status_code == 409
@@ -160,9 +158,7 @@ async def test_removal_requires_current_administrator_and_protects_active_accoun
         user_headers = {"Authorization": f"Bearer {access_token(user)}"}
         admin_headers = {"Authorization": f"Bearer {access_token(actor)}"}
 
-    async with AsyncClient(
-        transport=ASGITransport(app=member_app(sessions)), base_url="http://test"
-    ) as client:
+    async with asgi_client(member_app(sessions)) as client:
         path = f"/api/v1/members/{admin_id}"
         assert (await client.delete(path)).status_code == 401
         assert (await client.delete(path, headers=user_headers)).status_code == 403

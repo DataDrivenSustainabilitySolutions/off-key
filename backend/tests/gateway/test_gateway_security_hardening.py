@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 from fastapi import FastAPI, HTTPException
-from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.api import access
 from off_key_api_gateway.api.rate_limiter import client_ip
 from off_key_api_gateway.api.v1 import auth as auth_api
@@ -16,6 +15,7 @@ from off_key_core.schemas.user import UserLogin
 from off_key_tactic_middleware.services.accounts import users as users_module
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 
 
 def _request(peer, forwarded=None):
@@ -118,9 +118,7 @@ async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
     monkeypatch.setattr(auth_api, "tactic", _RotatingTactic())
     app = FastAPI()
     app.include_router(auth_api.router)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(auth_api.REMEMBERED_SESSION_COOKIE, "r" * 43)
         response = await client.post("/refresh", headers={"X-Off-Key-Session": "1"})
     assert response.status_code == 200
@@ -147,9 +145,7 @@ async def test_forgot_password_delivers_mail_after_responding(monkeypatch):
     app.include_router(auth_api.router)
     app.state.limiter = auth_api.limiter
     auth_api.limiter.reset()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         response = await client.post(
             "/forgot-password", json={"email": "member@example.com"}
         )

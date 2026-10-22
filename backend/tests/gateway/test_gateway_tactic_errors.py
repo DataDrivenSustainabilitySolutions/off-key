@@ -1,20 +1,17 @@
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI, HTTPException, status
-from httpx import ASGITransport, AsyncClient
-from off_key_api_gateway.api import access
+from fastapi import HTTPException, status
 from off_key_api_gateway.api.errors import (
     raise_tactic_http_error,
     tactic_error_detail,
 )
-from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
-from off_key_api_gateway.api.v1 import routes
+from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.facades import tactic as facade
 from off_key_api_gateway.facades.tactic import TacticError
-from off_key_core.schemas.members import MemberProfile
-from slowapi.errors import RateLimitExceeded
+
+from tests.support.gateway import gateway_app, member_profile
+from tests.support.http import asgi_client
 
 
 def test_tactic_error_detail_prefers_downstream_api_detail():
@@ -76,22 +73,8 @@ DOWNSTREAM_ERRORS = [
 
 
 @pytest.fixture
-def gateway_app():
-    app = FastAPI()
-    app.include_router(routes.router, prefix="/v1")
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-    member = MemberProfile(
-        id=17,
-        email="admin@example.com",
-        role="admin",
-        is_active=True,
-        is_verified=True,
-        created_at=datetime.now(UTC),
-    )
-    app.dependency_overrides[access.current_member] = lambda: member
-    limiter.reset()
-    yield app
+def gateway():
+    yield gateway_app(member_profile("admin"))
     limiter.reset()
 
 
@@ -100,9 +83,7 @@ def _fail_downstream(monkeypatch, error):
 
 
 async def _call(app, method, path, body):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         return await client.request(
             method, path, json=body, headers={"Authorization": "Bearer token"}
         )
@@ -112,11 +93,11 @@ async def _call(app, method, path, body):
 @pytest.mark.parametrize("error,status_code,detail", DOWNSTREAM_ERRORS)
 @pytest.mark.parametrize("method,path,body", ROUTES)
 async def test_downstream_failures_keep_status_and_detail(
-    gateway_app, monkeypatch, method, path, body, error, status_code, detail
+    gateway, monkeypatch, method, path, body, error, status_code, detail
 ):
     _fail_downstream(monkeypatch, error)
 
-    response = await _call(gateway_app, method, path, body)
+    response = await _call(gateway, method, path, body)
 
     assert (response.status_code, response.json()) == (
         status_code,
@@ -147,12 +128,12 @@ async def test_downstream_failures_keep_status_and_detail(
     ],
 )
 async def test_gateway_rewords_some_downstream_failures(
-    gateway_app, monkeypatch, method, path, body, upstream, detail
+    gateway, monkeypatch, method, path, body, upstream, detail
 ):
     error = TacticError("failed", status=upstream, body={"detail": "raw"})
     _fail_downstream(monkeypatch, error)
 
-    response = await _call(gateway_app, method, path, body)
+    response = await _call(gateway, method, path, body)
 
     expected = 409 if upstream == 400 else upstream
     assert (response.status_code, response.json()) == (expected, {"detail": detail})
@@ -160,11 +141,11 @@ async def test_gateway_rewords_some_downstream_failures(
 
 @pytest.mark.asyncio
 async def test_unsafe_pipeline_identifier_is_rejected_before_forwarding(
-    gateway_app, monkeypatch
+    gateway, monkeypatch
 ):
     _fail_downstream(monkeypatch, AssertionError("must not forward"))
 
-    response = await _call(gateway_app, "GET", "/v1/monitors/pipelines/a%5Cb", None)
+    response = await _call(gateway, "GET", "/v1/monitors/pipelines/a%5Cb", None)
 
     assert (response.status_code, response.json()) == (
         422,

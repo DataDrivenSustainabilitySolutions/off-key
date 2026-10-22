@@ -330,13 +330,15 @@ def test_unsupported_parameter_forms_fail_catalog_generation(schema):
 
 
 def test_control_plane_import_has_no_scientific_runtime():
+    """Launch schemas and the pipeline catalogue load without numerical runtimes."""
     subprocess.run(
         [
             sys.executable,
             "-c",
             "import sys; "
+            "from off_key_core.schemas.radar import AdaptiveStreamConfig; "
             "from off_key_core.models.pipelines import pipeline_catalog; "
-            "pipeline_catalog(); "
+            "AdaptiveStreamConfig(); pipeline_catalog(); "
             "modules = {'aberrant','numpy','scipy','faiss','pyod'}; "
             "assert not modules & sys.modules.keys()",
         ],

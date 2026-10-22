@@ -16,11 +16,9 @@ from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.validation import validate_settings
 from off_key_core.db import base as db_base
 from off_key_mqtt_radar.config.runtime import (
-    clear_radar_runtime_settings_cache,
     get_radar_database_settings,
 )
 from off_key_tactic_middleware.config import (
-    clear_tactic_settings_caches,
     get_radar_container_runtime_settings,
 )
 
@@ -41,15 +39,11 @@ def test_database_settings_parse_with_only_database_environment(monkeypatch):
     monkeypatch.setenv("POSTGRES_HOST", "localhost")
     monkeypatch.delenv("JWT_SECRET", raising=False)
 
-    reset_runtime_caches_for_tests()
-
     database = get_database_settings()
 
     assert database.POSTGRES_USER == "db_user"
     assert database.POSTGRES_HOST == "localhost"
     assert database.database_url.endswith("@localhost:5432/db_name")
-
-    reset_runtime_caches_for_tests()
 
 
 def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
@@ -60,27 +54,20 @@ def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
     monkeypatch.delenv("POSTGRES_PORT", raising=False)
     monkeypatch.delenv("POSTGRES_HOST", raising=False)
 
-    reset_runtime_caches_for_tests()
-
     auth = get_auth_settings()
 
     assert auth.ALGORITHM == "HS256"
     assert auth.ACCESS_TOKEN_EXPIRE_MINUTES == 30
     assert auth.SUPERUSER_MAIL == "admin@example.com"
 
-    reset_runtime_caches_for_tests()
-
 
 def test_telemetry_settings_does_not_use_sync_alias(monkeypatch):
     monkeypatch.setenv("SYNC_RETENTION_DAYS", "21")
     monkeypatch.delenv("TELEMETRY_RETENTION_DAYS", raising=False)
-    reset_runtime_caches_for_tests()
 
     telemetry = get_telemetry_settings()
 
     assert telemetry.retention_days == 14
-
-    reset_runtime_caches_for_tests()
 
 
 def test_db_engine_is_lazily_cached(monkeypatch):
@@ -134,13 +121,10 @@ def test_runtime_settings_only_carries_debug_flag(monkeypatch):
     monkeypatch.setenv("DEBUG", "false")
     monkeypatch.delenv("APP_NAME", raising=False)
 
-    reset_runtime_caches_for_tests()
     runtime = get_runtime_settings()
 
     assert runtime.DEBUG is False
     assert not hasattr(runtime, "CHARGER_API_PROVIDER")
-
-    reset_runtime_caches_for_tests()
 
 
 def test_database_url_encodes_reserved_url_component_characters():
@@ -172,10 +156,6 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
     monkeypatch.setenv("POSTGRES_HOST", "localhost")
     monkeypatch.delenv("RADAR_DATABASE_URL", raising=False)
 
-    reset_runtime_caches_for_tests()
-    clear_tactic_settings_caches()
-    clear_radar_runtime_settings_cache()
-
     core_async_url = get_database_settings().async_database_url
     tactic_runtime_url = get_radar_container_runtime_settings().radar_database_url
     radar_runtime_url = get_radar_database_settings().async_database_url
@@ -184,10 +164,6 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
     assert core_async_url == expected
     assert tactic_runtime_url == expected
     assert radar_runtime_url == expected
-
-    clear_tactic_settings_caches()
-    clear_radar_runtime_settings_cache()
-    reset_runtime_caches_for_tests()
 
 
 def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
@@ -207,8 +183,6 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
     monkeypatch.delenv("POSTGRES_PORT", raising=False)
     monkeypatch.delenv("POSTGRES_HOST", raising=False)
 
-    reset_runtime_caches_for_tests()
-
     validate_settings(
         [
             ("app", get_app_settings),
@@ -219,8 +193,6 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
         ],
         context="API gateway configuration",
     )
-
-    reset_runtime_caches_for_tests()
 
 
 def test_gateway_validation_specs_exclude_database():

@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
-import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from off_key_api_gateway.api.v1 import system as gateway
@@ -12,6 +11,7 @@ from off_key_tactic_middleware.api.v1 import system as collection
 from off_key_tactic_middleware.services.catalogue import system as system_service
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 from tests.support.tokens import access_token
 
 
@@ -42,9 +42,7 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
     app.include_router(collection.router)
     app.dependency_overrides[get_db_async] = lambda: session
     token = access_token(user, session_version=0)
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         assert (await client.get("/system/storage")).status_code == 401
         headers = {"Authorization": f"Bearer {token}"}
         assert (await client.get("/system/storage", headers=headers)).status_code == 401

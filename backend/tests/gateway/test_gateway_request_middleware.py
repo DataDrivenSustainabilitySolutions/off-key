@@ -4,9 +4,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, HTTPException
-from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.api import middleware
 from off_key_core.config.logging import get_logging_settings
+
+from tests.support.http import asgi_client
 
 
 @pytest.fixture
@@ -39,9 +40,7 @@ def _app(middleware_class) -> FastAPI:
 
 
 async def _get(app: FastAPI, url: str, headers=None):
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         return await client.get(url, headers=headers)
 
 

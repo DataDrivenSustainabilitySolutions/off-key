@@ -1,8 +1,6 @@
 """Catalog provenance, API metadata, and legacy configuration migration."""
 
 import json
-import subprocess
-import sys
 
 import pytest
 from aberrant import __version__
@@ -23,21 +21,6 @@ from off_key_tactic_middleware.api.v1.models import ModelInfo
 def test_generated_catalog_matches_pinned_runtime():
     assert ABERRANT_VERSION == __version__ == "1.3.0"
     assert generate_catalog() == CATALOG
-
-
-def test_shared_configuration_does_not_import_numerical_runtimes():
-    subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import sys; from off_key_core.schemas.radar import AdaptiveStreamConfig; "
-            "AdaptiveStreamConfig(); "
-            "assert not {'aberrant', 'numpy', 'scipy', 'faiss'} & sys.modules.keys()",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
 
 
 @pytest.mark.parametrize(

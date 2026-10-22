@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import APIRouter, FastAPI
-from httpx import ASGITransport, AsyncClient
 from off_key_core.db.base import get_db_async
 from off_key_tactic_middleware.api import collection_auth
 from off_key_tactic_middleware.api.v1 import data_services, members, pipelines, system
@@ -19,6 +18,8 @@ from off_key_tactic_middleware.domain import (
 from off_key_tactic_middleware.provider import get_user_service
 from off_key_tactic_middleware.services.catalogue.system import SystemService
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+
+from tests.support.http import asgi_client
 
 ERRORS = [
     (NotFoundError("missing"), 404, "missing"),
@@ -98,9 +99,7 @@ async def test_domain_errors_map_to_the_same_status_and_detail(
     monkeypatch.setattr(PipelineLibrary, "get", fail)
     method, path, body = ROUTES[route]
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         response = await client.request(method, path, json=body)
 
     assert (response.status_code, response.json()) == (status, {"detail": detail})

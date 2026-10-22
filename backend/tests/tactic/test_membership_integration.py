@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from httpx import ASGITransport, AsyncClient
 from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
@@ -33,6 +32,7 @@ from off_key_tactic_middleware.services.accounts.users import UserService
 from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 from tests.support.membership import PASSWORD, bootstrap
 from tests.support.tokens import access_token
 
@@ -155,9 +155,7 @@ async def test_remembered_sessions_obey_current_membership(member_database, chan
             app = FastAPI()
             app.include_router(members_router)
             app.dependency_overrides[member_service] = lambda: MemberService(session)
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
+            async with asgi_client(app) as client:
                 link = await client.post(
                     "/members/request-password-reset", json={"email": user.email}
                 )

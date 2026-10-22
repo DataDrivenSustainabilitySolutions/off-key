@@ -1,39 +1,27 @@
 """HTTP regressions for the public gateway and private TACTIC trust boundaries."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
 from off_key_api_gateway.api import access
-from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
+from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.api.v1 import auth, favorites, monitors
-from off_key_api_gateway.api.v1.routes import router
 from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.schemas.members import AcceptInvitation, MemberProfile
+from off_key_core.schemas.members import AcceptInvitation
 from off_key_tactic_middleware.main import create_app
 from pydantic import ValidationError
 
-PROFILE = MemberProfile(
-    id=17,
-    email="member@example.com",
-    role="user",
-    is_active=True,
-    is_verified=True,
-    created_at=datetime.now(UTC),
-)
+from tests.support.gateway import gateway_app, member_profile
+from tests.support.http import asgi_client
+
+PROFILE = member_profile(email="member@example.com")
 
 
 @pytest.fixture
 def gateway():
-    app = FastAPI()
-    app.include_router(router, prefix="/v1")
-    app.state.limiter = limiter
-    app.add_exception_handler(429, rate_limit_exceeded_handler)
-    limiter.reset()
-    yield app
+    yield gateway_app()
     limiter.reset()
 
 
@@ -52,9 +40,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
         "/system",
         "/members",
     )
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         for path in paths:
             assert (await client.get("/v1" + path)).status_code == 401
         remote.assert_not_awaited()
@@ -73,9 +59,7 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
     add = AsyncMock(return_value={"message": "Added"})
     monkeypatch.setattr(favorites.tactic, "get_user_favorites", get)
     monkeypatch.setattr(favorites.tactic, "add_user_favorite", add)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         response = await client.get("/v1/favorites?user_id=99")
         assert response.json() == ["charger-1"]
         get.assert_awaited_once_with(user_id=17)
@@ -116,9 +100,7 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
     )
     delete = AsyncMock(return_value={"status": "deleted"})
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", delete)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         response = await client.delete("/v1/monitors/example")
     assert response.status_code == 200
     delete.assert_awaited_once()
@@ -128,9 +110,7 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
 async def test_tactic_grants_no_cross_origin_access(monkeypatch):
     """Browsers reach TACTIC only through the gateway, which owns CORS."""
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
-    async with AsyncClient(
-        transport=ASGITransport(app=create_app()), base_url="http://test"
-    ) as client:
+    async with asgi_client(create_app()) as client:
         response = await client.get(
             "/health", headers={"Origin": "https://evil.example"}
         )
@@ -145,9 +125,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
     get_service_auth_settings.cache_clear()
     app = create_app()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with asgi_client(app) as client:
         assert (await client.get("/health")).status_code == 200
         for method, path in (
             ("DELETE", "/api/v1/members/19"),
@@ -179,9 +157,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
     if status != 204:
         remote.side_effect = TacticError("Cannot remove member", status=status)
     monkeypatch.setattr(members.tactic, "request", remote)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         response = await client.delete(
             "/v1/members/19", headers={"Authorization": "Bearer administrator"}
         )
@@ -200,9 +176,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
 async def test_anonymous_member_removal_cannot_reach_tactic(gateway, monkeypatch):
     remote = AsyncMock()
     monkeypatch.setattr(access.tactic, "request", remote)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         assert (await client.delete("/v1/members/19")).status_code == 401
     remote.assert_not_awaited()
 
@@ -216,9 +190,7 @@ async def test_password_reset_does_not_disclose_membership_and_login_is_limited(
     monkeypatch.setattr(auth, "send_password_reset_email", AsyncMock())
     authenticate = AsyncMock(side_effect=TacticError("Invalid credentials", status=401))
     monkeypatch.setattr(auth.tactic, "authenticate_user", authenticate)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         missing = await client.post(
             "/v1/auth/forgot-password", json={"email": "missing@example.com"}
         )
@@ -274,9 +246,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     )
     monkeypatch.setattr(favorites, "tactic", facade)
     monkeypatch.setattr(anomalies, "tactic", facade)
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         for identifier in (
             "../../99/favorites/charger-1",
             "../../../anomalies/1",
@@ -335,10 +305,7 @@ def _login(email=PROFILE.email):
 
 @pytest.mark.asyncio
 async def test_direct_clients_cannot_spoof_forwarded_addresses(failing_login):
-    async with AsyncClient(
-        transport=ASGITransport(app=failing_login, client=("203.0.113.5", 80)),
-        base_url="http://test",
-    ) as client:
+    async with asgi_client(failing_login, client=("203.0.113.5", 80)) as client:
         for number in range(10):
             response = await client.post(
                 "/v1/auth/login",
@@ -359,10 +326,7 @@ async def test_direct_clients_cannot_spoof_forwarded_addresses(failing_login):
 async def test_attackers_behind_the_proxy_cannot_lock_out_another_client(
     failing_login,
 ):
-    async with AsyncClient(
-        transport=ASGITransport(app=failing_login, client=("10.0.1.7", 80)),
-        base_url="http://test",
-    ) as client:
+    async with asgi_client(failing_login, client=("10.0.1.7", 80)) as client:
         # A client-supplied left-most entry is ignored; Traefik appends the peer.
         attacker = {"X-Forwarded-For": "198.51.100.1, 203.0.113.66"}
         for _ in range(10):
@@ -384,10 +348,7 @@ async def test_attackers_behind_the_proxy_cannot_lock_out_another_client(
 
 @pytest.mark.asyncio
 async def test_one_client_cannot_spray_guesses_across_accounts(failing_login):
-    async with AsyncClient(
-        transport=ASGITransport(app=failing_login, client=("10.0.1.7", 80)),
-        base_url="http://test",
-    ) as client:
+    async with asgi_client(failing_login, client=("10.0.1.7", 80)) as client:
         sprayer = {"X-Forwarded-For": "203.0.113.66"}
         for number in range(30):
             response = await client.post(
@@ -432,9 +393,7 @@ async def test_invalid_invitation_is_validation_error_and_remains_rate_limited(
             )
         },
     )()
-    async with AsyncClient(
-        transport=ASGITransport(app=internal), base_url="http://tactic"
-    ) as client:
+    async with asgi_client(internal, base_url="http://tactic") as client:
         response = await client.post(
             "/members/accept-invitation",
             json={"token": "t" * 43, "password": "long-enough-password"},
@@ -445,9 +404,7 @@ async def test_invalid_invitation_is_validation_error_and_remains_rate_limited(
         "request",
         AsyncMock(side_effect=TacticError("Invalid or expired invitation", status=422)),
     )
-    async with AsyncClient(
-        transport=ASGITransport(app=gateway), base_url="http://test"
-    ) as client:
+    async with asgi_client(gateway) as client:
         for _ in range(10):
             assert (
                 await client.post(

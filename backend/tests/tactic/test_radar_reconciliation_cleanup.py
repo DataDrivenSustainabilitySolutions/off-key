@@ -217,7 +217,10 @@ def test_coerce_utc_converts_aware_timestamp_to_utc():
     assert coerce == datetime(2024, 1, 1, 20, 0, 0, tzinfo=UTC)
 
 
-def test_is_purge_due_returns_true_when_reference_time_missing_and_retention_is_zero():
+@pytest.mark.parametrize(("retention_hours", "due"), [(0, True), (24, False)])
+def test_is_purge_due_without_reference_time_depends_only_on_zero_retention(
+    retention_hours, due
+):
     service = SimpleNamespace(
         id="missing-time",
         status=False,
@@ -225,22 +228,10 @@ def test_is_purge_due_returns_true_when_reference_time_missing_and_retention_is_
         created_at=None,
     )
     reconciler = RadarStatusReconciliationService(
-        terminal_service_retention_hours=0, async_docker=FakeAsyncDocker()
+        terminal_service_retention_hours=retention_hours,
+        async_docker=FakeAsyncDocker(),
     )
-    assert reconciler._is_purge_due(service) is True
-
-
-def test_is_purge_due_returns_false_when_reference_time_missing_and_retention_nonzero():
-    service = SimpleNamespace(
-        id="missing-time",
-        status=False,
-        operational_updated_at=None,
-        created_at=None,
-    )
-    reconciler = RadarStatusReconciliationService(
-        terminal_service_retention_hours=24, async_docker=FakeAsyncDocker()
-    )
-    assert reconciler._is_purge_due(service) is False
+    assert reconciler._is_purge_due(service) is due
 
 
 def test_mark_revived_from_terminal_stage_updates_operational_state():

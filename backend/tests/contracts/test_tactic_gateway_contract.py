@@ -6,7 +6,6 @@ from pathlib import Path
 
 import off_key_api_gateway
 import pytest
-from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_tactic_middleware.main import create_app
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
@@ -95,10 +94,8 @@ def tactic_routes():
             "off_key_core.config.env.load_dotenv", lambda *args, **kwargs: False
         )
         reset_runtime_caches_for_tests()
-        get_service_auth_settings.cache_clear()
         app = create_app()
         reset_runtime_caches_for_tests()
-        get_service_auth_settings.cache_clear()
     # TACTIC hides no route from its schema, so the schema lists them all.
     return {
         (method.upper(), path)

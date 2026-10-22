@@ -30,17 +30,12 @@ def test_email_settings_validate_and_normalize_alert_recipients(monkeypatch):
     ]
 
 
-def test_email_settings_reject_invalid_alert_recipient(monkeypatch):
+@pytest.mark.parametrize("recipients", ["admin@example.com,not-an-email", " , "])
+def test_email_settings_reject_invalid_or_empty_alert_recipients(
+    monkeypatch, recipients
+):
     set_environment(monkeypatch, EMAIL_ENVIRONMENT)
-    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com,not-an-email")
-
-    with pytest.raises(ValidationError):
-        get_email_settings()
-
-
-def test_email_settings_reject_empty_alert_recipients(monkeypatch):
-    set_environment(monkeypatch, EMAIL_ENVIRONMENT)
-    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", " , ")
+    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", recipients)
 
     with pytest.raises(ValidationError):
         get_email_settings()

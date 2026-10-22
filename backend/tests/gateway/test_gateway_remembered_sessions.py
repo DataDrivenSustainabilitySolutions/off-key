@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
 from jose import jwt
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.config.auth import get_auth_settings
 
 from tests.support.env import set_auth_env
+from tests.support.http import asgi_client
 
 TOKEN = "r" * 43
 COOKIE = auth_api.REMEMBERED_SESSION_COOKIE
@@ -60,9 +60,7 @@ def assert_short_access_token(response):
 @pytest.mark.asyncio
 async def test_remembered_login_sets_cookie_and_renews_short_access_token(session_api):
     app, tactic = session_api
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         response = await client.post("/login", json=LOGIN | {"remember_me": True})
         assert response.status_code == 200
         assert_short_access_token(response)
@@ -88,9 +86,7 @@ async def test_cookie_security_accommodates_only_loopback_http(
     session_api, base_url, secure
 ):
     app, _ = session_api
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url=base_url
-    ) as client:
+    async with asgi_client(app, base_url=base_url) as client:
         response = await client.post("/login", json=LOGIN | {"remember_me": True})
         assert ("Secure" in response.headers["set-cookie"]) is secure
 
@@ -98,9 +94,7 @@ async def test_cookie_security_accommodates_only_loopback_http(
 @pytest.mark.asyncio
 async def test_unchecked_login_ends_previous_remembered_session(session_api):
     app, tactic = session_api
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         await client.post("/login", json=LOGIN | {"remember_me": True})
         tactic.calls.clear()
         response = await client.post("/login", json=LOGIN)
@@ -116,9 +110,7 @@ async def test_unchecked_login_ends_previous_remembered_session(session_api):
 @pytest.mark.parametrize("cookie", [None, "malformed", "a" * 44])
 async def test_invalid_or_missing_cookie_requires_login(session_api, cookie):
     app, tactic = session_api
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         if cookie:
             client.cookies.set(COOKIE, cookie)
         response = await client.post("/refresh", headers=HEADERS)
@@ -132,9 +124,7 @@ async def test_invalid_or_missing_cookie_requires_login(session_api, cookie):
 async def test_refresh_only_clears_cookie_on_definitive_rejection(session_api, failure):
     app, tactic = session_api
     tactic.failure = failure
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(COOKIE, TOKEN)
         response = await client.post("/refresh", headers=HEADERS)
         assert response.status_code == failure
@@ -147,9 +137,7 @@ async def test_cookie_endpoints_reject_simple_cross_origin_requests(
     session_api, endpoint
 ):
     app, tactic = session_api
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(COOKIE, TOKEN)
         response = await client.post(endpoint)
         assert response.status_code == 403
@@ -161,9 +149,7 @@ async def test_cookie_endpoints_reject_simple_cross_origin_requests(
 async def test_logout_revokes_and_always_clears_browser_cookie(session_api, failure):
     app, tactic = session_api
     tactic.failure = failure
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="https://test"
-    ) as client:
+    async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(COOKIE, TOKEN)
         response = await client.post("/logout", headers=HEADERS)
         assert response.status_code == (503 if failure else 200)

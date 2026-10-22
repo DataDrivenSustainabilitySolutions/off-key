@@ -19,6 +19,8 @@ from tests.support.schema_baselines import (
     restore_retired_schema,
 )
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest.mark.asyncio
 async def test_independent_monitor_alarms_survive_retries_and_independent_deletion(

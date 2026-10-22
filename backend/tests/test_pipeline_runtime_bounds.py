@@ -12,6 +12,8 @@ from backend.scripts.benchmark_pipeline_runtime import (
 )
 from off_key_mqtt_radar.pipelines.diagnostics import PipelineDiagnostics
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest.mark.parametrize(
     "workload,edges", [("maximum_edges", 128), ("maximum_width", 63)]

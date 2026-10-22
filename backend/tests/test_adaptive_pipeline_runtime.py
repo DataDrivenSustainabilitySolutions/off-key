@@ -23,6 +23,8 @@ from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionServi
 from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 
+pytestmark = pytest.mark.radar_integration
+
 
 def _config(
     *,

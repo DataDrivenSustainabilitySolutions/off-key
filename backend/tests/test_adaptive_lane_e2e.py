@@ -10,10 +10,13 @@ from paho.mqtt.client import CallbackAPIVersion, Client
 
 from .integration_catalogue import add_recorded_entity, remove_recorded_entity
 
-pytestmark = pytest.mark.skipif(
-    os.getenv("RUN_ADAPTIVE_E2E") != "1",
-    reason="requires the Docker Gateway/TACTIC/RADAR/MQTT/PostgreSQL stack",
-)
+pytestmark = [
+    pytest.mark.deployment,
+    pytest.mark.skipif(
+        os.getenv("RUN_ADAPTIVE_E2E") != "1",
+        reason="requires the Docker Gateway/TACTIC/RADAR/MQTT/PostgreSQL stack",
+    ),
+]
 
 
 def _wait_until_service_accepts_data(

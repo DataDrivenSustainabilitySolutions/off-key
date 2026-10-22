@@ -105,43 +105,10 @@ jobs:
             --timeout=300 --timeout-method=thread -o faulthandler_timeout=60 \
             --durations=10 \
             --junitxml="$RUNNER_TEMP/radar-results.xml" \
-            backend/tests/test_radar_mqtt_integration.py \
-            backend/tests/test_monitor_anomaly_identity_integration.py \
-            backend/tests/test_radar_runtime_checkpoints.py \
-            backend/tests/test_radar_checkpoint_ownership.py \
-            backend/tests/test_radar_lifecycle_integration.py \
-            backend/tests/test_radar_activity_integration.py \
-            backend/tests/test_radar_bounded_runtime.py \
-            backend/tests/test_radar_resource_budget.py \
-            backend/tests/test_radar_observation_integration.py \
-            backend/tests/test_radar_observation_recovery.py \
-            backend/tests/test_radar_swarm_integration.py \
-            backend/tests/test_pipeline_contracts.py \
-            backend/tests/test_pipeline_report_bounds.py \
-            backend/tests/test_pipeline_report_api.py \
-            backend/tests/test_static_pipeline_runtime.py \
-            backend/tests/test_adaptive_pipeline_runtime.py \
-            backend/tests/test_pipeline_runtime_bounds.py \
-            backend/tests/test_pipeline_processing_integration.py \
-            backend/tests/test_pipeline_failure_status.py \
-            backend/tests/test_monitoring_pipelines_integration.py \
-            backend/tests/test_pipeline_activation_swarm.py
+            -m radar_integration
 
       - name: Require executed integration coverage without skips
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          cases = ET.parse(Path(os.environ["RUNNER_TEMP"]) / "radar-results.xml").findall(".//testcase")
-          if not cases:
-              raise SystemExit("RADAR integration executed no tests")
-          skipped = [case.get("name") for case in cases if case.find("skipped") is not None]
-          if skipped:
-              raise SystemExit("Skipped required RADAR integration tests: " + ", ".join(skipped))
-          print(f"Verified {len(cases)} RADAR integration tests with zero skips")
-          PY
+        run: python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/radar-results.xml" "RADAR integration"
 
       - name: Save RADAR integration test results
         if: always()

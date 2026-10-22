@@ -10,6 +10,16 @@ import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
+DATABASE_FIXTURES = frozenset({"disposable_database", "member_database"})
+
+
+def pytest_collection_modifyitems(items):
+    """Mark every test that reaches a database fixture, however indirectly."""
+    for item in items:
+        if DATABASE_FIXTURES & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.postgres)
+
+
 # ============================================================================
 # Sample Data Fixtures
 # ============================================================================

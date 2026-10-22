@@ -27,6 +27,8 @@ from sqlalchemy import insert, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+pytestmark = pytest.mark.radar_integration
+
 SECRET = b"disposable-integration-checkpoint-key"
 TEST_FILE = str(Path(__file__).resolve())
 

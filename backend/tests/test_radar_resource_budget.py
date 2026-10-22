@@ -32,6 +32,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest.mark.parametrize(
     "value", ["", "0", "0m", "-1m", "NaN", "inf", "bad", "1ib", "0.1b"]

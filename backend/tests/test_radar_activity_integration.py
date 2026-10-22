@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest.mark.asyncio
 async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(

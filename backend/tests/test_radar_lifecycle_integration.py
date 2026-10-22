@@ -51,6 +51,8 @@ from tests.support.schema_baselines import (
     restore_retired_schema,
 )
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest_asyncio.fixture
 async def lifecycle_database(disposable_database):

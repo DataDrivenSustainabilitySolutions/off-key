@@ -18,6 +18,8 @@ from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_core.utils.json_budget import fits_json_budget
 from starlette.responses import JSONResponse
 
+pytestmark = pytest.mark.radar_integration
+
 
 def maximum_definition():
     definition = pipeline_catalog().templates[1].definition.model_dump(mode="json")

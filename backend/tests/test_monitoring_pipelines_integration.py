@@ -56,6 +56,8 @@ from off_key_tactic_middleware.services.system_collection import SystemCollectio
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest_asyncio.fixture
 async def pipeline_database(disposable_database, monkeypatch):

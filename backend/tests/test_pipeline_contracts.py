@@ -13,6 +13,8 @@ from off_key_core.models.pipelines import (
 )
 from off_key_core.schemas.pipelines import BoundInput, PipelineDefinition
 
+pytestmark = pytest.mark.radar_integration
+
 
 def template(strategy="adaptive_stream"):
     return next(

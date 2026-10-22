@@ -12,6 +12,8 @@ from off_key_mqtt_radar.detector_handle import DetectorHandle
 from off_key_mqtt_radar.detector_runtime import DetectorRuntime
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
+pytestmark = pytest.mark.radar_integration
+
 
 async def test_network_thread_burst_is_bounded_while_event_loop_cannot_run():
     client = RadarMQTTClient(MQTTRadarConfig(max_queue_size=8))

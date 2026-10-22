@@ -130,14 +130,8 @@ jobs:
           export E2E_MQTT_USERNAME=offkey-radar
           E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
-          uv run --frozen --project backend python -m pytest backend/tests/test_adaptive_lane_e2e.py backend/tests/test_deployment_rehearsal.py -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
-          python3 - <<'PY'
-          import os, xml.etree.ElementTree as ET
-          from pathlib import Path
-          cases = ET.parse(Path(os.environ["OFFKEY_REHEARSAL_DIR"]) / "deployment-results.xml").findall(".//testcase")
-          if len(cases) != 2 or any(case.find("skipped") is not None for case in cases):
-              raise SystemExit("Both real deployment rehearsal tests must execute without skips")
-          PY
+          uv run --frozen --project backend python -m pytest -m deployment -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment rehearsal"
 
       - name: Verify visual pipelines against the production frontend and worker
         timeout-minutes: 15

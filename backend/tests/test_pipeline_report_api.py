@@ -28,6 +28,8 @@ from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from . import test_monitoring_pipelines_integration as pipeline_integration
 from .test_pipeline_report_bounds import maximum_definition
 
+pytestmark = pytest.mark.radar_integration
+
 pipeline_database = pipeline_integration.pipeline_database
 
 

@@ -21,10 +21,13 @@ from paho.mqtt.client import Client as MQTTClient
 from .integration_catalogue import add_recorded_entity, remove_recorded_entity
 from .test_adaptive_lane_e2e import _wait_until_service_accepts_data
 
-pytestmark = pytest.mark.skipif(
-    os.getenv("OFFKEY_DEPLOYMENT_REHEARSAL") != "1",
-    reason="requires the disposable production Swarm rehearsal",
-)
+pytestmark = [
+    pytest.mark.deployment,
+    pytest.mark.skipif(
+        os.getenv("OFFKEY_DEPLOYMENT_REHEARSAL") != "1",
+        reason="requires the disposable production Swarm rehearsal",
+    ),
+]
 
 
 def wait_for_measurement(client, entity, value):

@@ -12,6 +12,8 @@ from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
 from tests.support.mqtt import ANONYMOUS_ACCESS, mqtt_broker, wait_until
 
+pytestmark = pytest.mark.radar_integration
+
 
 async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads():
     topic = "telemetry/reconnect/value"

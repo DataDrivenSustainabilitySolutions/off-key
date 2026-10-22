@@ -16,6 +16,8 @@ from off_key_mqtt_radar.preflight import preflight
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+pytestmark = pytest.mark.radar_integration
+
 
 def execution(*, projection=False):
     nodes = [

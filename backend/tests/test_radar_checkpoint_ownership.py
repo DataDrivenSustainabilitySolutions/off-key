@@ -20,6 +20,8 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+pytestmark = pytest.mark.radar_integration
+
 
 def config():
     return MQTTRadarConfig(

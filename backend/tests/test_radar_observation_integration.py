@@ -13,6 +13,8 @@ from off_key_mqtt_radar.service import RadarService
 
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
+pytestmark = pytest.mark.radar_integration
+
 
 @pytest.mark.asyncio
 async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_future(

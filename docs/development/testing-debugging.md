@@ -38,6 +38,21 @@ job requires a nonempty JUnit report with zero skipped cases. Missing integratio
 prerequisites therefore fail that job; the general backend suite still supports
 optional integration skips for local development.
 
+Lanes select their tests by marker, never by file list:
+
+| Marker | Lane | Applied by |
+| --- | --- | --- |
+| `postgres` | MQTT collection integration (`-m "postgres and not radar_integration"`) | Automatically, for every test using `disposable_database` or `member_database` |
+| `radar_integration` | RADAR production integration | Module `pytestmark` |
+| `collection_stack` | MQTT collection integration, broker step | `collection_integration/environment.py` |
+| `deployment` | Deployment smoke rehearsal | Module `pytestmark` |
+
+Each lane fails on an empty report or a skipped case
+([`require_executed_tests.py`](../../.github/scripts/require_executed_tests.py)).
+`test_suite_layout.py` fails when a module reads a lane's environment gate
+without carrying that lane's marker, so a new integration test cannot silently
+skip everywhere.
+
 To reproduce on a dedicated local Docker engine, initialize Swarm and provide a
 disposable PostgreSQL server whose test role can create and drop databases. Set
 its host URL in `TEST_SCHEMA_DATABASE_URL`; tests create uniquely named databases.
@@ -52,18 +67,7 @@ docker pull eclipse-mosquitto:2.0
 docker build -f backend/Dockerfile -t "$TEST_RADAR_SWARM_IMAGE" \
   --build-arg SERVICE_NAME=off-key-mqtt-radar \
   --build-arg SERVICE_ROOT=services/mqtt/radar backend
-uv run --frozen --project backend python -m pytest -q --tb=short \
-  backend/tests/test_radar_mqtt_integration.py \
-  backend/tests/test_monitor_anomaly_identity_integration.py \
-  backend/tests/test_radar_runtime_checkpoints.py \
-  backend/tests/test_radar_checkpoint_ownership.py \
-  backend/tests/test_radar_lifecycle_integration.py \
-  backend/tests/test_radar_activity_integration.py \
-  backend/tests/test_radar_bounded_runtime.py \
-  backend/tests/test_radar_resource_budget.py \
-  backend/tests/test_radar_observation_integration.py \
-  backend/tests/test_radar_observation_recovery.py \
-  backend/tests/test_radar_swarm_integration.py
+uv run --frozen --project backend python -m pytest -q --tb=short -m radar_integration
 ```
 
 The two opt-in variables enable actual Docker lifecycle tests and current-image

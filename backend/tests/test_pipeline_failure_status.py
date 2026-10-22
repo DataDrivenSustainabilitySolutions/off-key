@@ -26,6 +26,8 @@ from sqlalchemy import text
 
 from . import test_monitoring_pipelines_integration as monitoring_fixture
 
+pytestmark = pytest.mark.radar_integration
+
 pipeline_database = monitoring_fixture.pipeline_database
 
 

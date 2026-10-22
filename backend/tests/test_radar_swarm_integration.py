@@ -21,10 +21,13 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 from sqlalchemy import create_engine, insert, text
 from sqlalchemy.exc import OperationalError
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("TEST_RADAR_SWARM_IMAGE"),
-    reason="Requires an explicitly built current RADAR image and local Swarm",
-)
+pytestmark = [
+    pytest.mark.radar_integration,
+    pytest.mark.skipif(
+        not os.getenv("TEST_RADAR_SWARM_IMAGE"),
+        reason="Requires an explicitly built current RADAR image and local Swarm",
+    ),
+]
 
 _CHECKPOINT_PROBE = """
 import asyncio

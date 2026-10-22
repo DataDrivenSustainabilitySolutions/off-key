@@ -62,7 +62,9 @@ jobs:
       - name: Test schema, retention, membership and release transactions
         env:
           TEST_SCHEMA_DATABASE_URL: postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test
-        run: uv run --project backend python -m pytest backend/tests/test_membership_integration.py backend/tests/test_release_maintenance.py backend/tests/test_schema_bootstrap_integration.py -q --tb=short
+        run: |
+          uv run --project backend python -m pytest -m "postgres and not radar_integration" -q --tb=short --junitxml="$RUNNER_TEMP/database-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/database-results.xml" "collection database"
 
       - name: Test routing, collection and recovery under load
         run: timeout 300 uv run --project backend python -m pytest backend/tests/collection_integration -q --tb=short

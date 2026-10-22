@@ -37,6 +37,8 @@ from tests.support.mqtt import mqtt_broker, wait_until
 
 from .test_adaptive_pipeline_runtime import _config
 
+pytestmark = pytest.mark.radar_integration
+
 SERVICE_ID = "pipeline-integration-service"
 
 

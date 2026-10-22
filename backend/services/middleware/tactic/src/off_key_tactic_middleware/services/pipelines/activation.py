@@ -22,6 +22,8 @@ from off_key_core.db.models import (
 )
 from off_key_core.db.pipeline_claims import (
     TERMINAL_ACTIVATION_PHASES,
+    claim_owners,
+    first_overlap,
     monitor_claim_condition,
     pending_activations,
 )
@@ -49,7 +51,6 @@ from off_key_core.schemas.radar import (
 from off_key_core.utils.json_budget import bounded_utf8_text
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
-    mqtt_topic_filters_overlap,
 )
 from sqlalchemy import select
 
@@ -396,12 +397,7 @@ class PipelineActivations:
         claims = sorted(
             set(topics) | set(predecessor.mqtt_topic if predecessor else [])
         )
-        if any(
-            mqtt_topic_filters_overlap(topic, claimed)
-            for item in pending
-            for topic in claims
-            for claimed in item.claim_topics
-        ):
+        if any(first_overlap(claims, item.claim_topics) for item in pending):
             raise ConflictError(
                 "A pending activation already reserves one or more inputs"
             )
@@ -414,18 +410,15 @@ class PipelineActivations:
         )
         if any(
             item.id != request.replace_service_id
-            and mqtt_topic_filters_overlap(topic, claimed)
+            and first_overlap(claims, item.mqtt_topic or [])
             for item in active
-            for topic in claims
-            for claimed in item.mqtt_topic
         ):
             raise ConflictError("A reading can belong to only one monitoring service")
-        owners = (
-            {item.id for item in active}
-            - {item.predecessor_service_id for item in pending}
-            - {request.replace_service_id}
+        owners = claim_owners(
+            active,
+            pending,
+            released=[request.replace_service_id] if request.replace_service_id else [],
         )
-        owners |= {item.service_id for item in pending}
         if len(owners) >= get_tactic_settings().config.radar_max_active_monitors:
             raise ConflictError(
                 "RADAR capacity reached; stop another monitor before activation"

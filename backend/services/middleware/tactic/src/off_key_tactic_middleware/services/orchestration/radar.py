@@ -10,7 +10,12 @@ from off_key_core.db.collection import (
 from off_key_core.db.collection_runtime import monitoring_collection_fingerprint
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import MonitoringService
-from off_key_core.db.pipeline_claims import monitor_claim_condition, pending_activations
+from off_key_core.db.pipeline_claims import (
+    claim_owners,
+    first_overlap,
+    monitor_claim_condition,
+    pending_activations,
+)
 from off_key_core.db.pipeline_locks import lock_execution_records
 from off_key_core.schemas.radar import (
     RadarOperationalStatus,
@@ -18,7 +23,6 @@ from off_key_core.schemas.radar import (
     validate_service_name,
 )
 from off_key_core.utils.mqtt_topics import (
-    mqtt_topic_filters_overlap,
     normalize_telemetry_topic_filters,
 )
 from sqlalchemy import select, text
@@ -249,13 +253,8 @@ class RadarOrchestrationService:
         active_services = await self._reconcile_active_topic_claims()
         activations = await self._pipeline_claims(mqtt_topics, activation_id)
         limit = get_tactic_settings().config.radar_max_active_monitors
-        activation_targets = {item.service_id for item in activations}
-        predecessor_ids = {item.predecessor_service_id for item in activations}
-        owner_ids = {
-            item.id for item in active_services if item.id not in predecessor_ids
-        } | activation_targets
         if (
-            len(owner_ids) >= limit
+            len(claim_owners(active_services, activations)) >= limit
             and activation_id is None
             and not any(
                 service.container_name == container_name for service in active_services
@@ -268,30 +267,24 @@ class RadarOrchestrationService:
         for active_service in active_services:
             if active_service.container_name == container_name:
                 continue
-            active_topics = active_service.mqtt_topic or []
-            for requested_topic in mqtt_topics:
-                for active_topic in active_topics:
-                    if mqtt_topic_filters_overlap(requested_topic, str(active_topic)):
-                        raise ValueError(
-                            f"MQTT topic '{requested_topic}' overlaps active service "
-                            f"'{active_service.container_name}' topic "
-                            f"'{active_topic}'. A sensor stream can belong to only "
-                            "one monitoring service."
-                        )
+            overlap = first_overlap(mqtt_topics, active_service.mqtt_topic or [])
+            if overlap is not None:
+                requested_topic, active_topic = overlap
+                raise ValueError(
+                    f"MQTT topic '{requested_topic}' overlaps active service "
+                    f"'{active_service.container_name}' topic "
+                    f"'{active_topic}'. A sensor stream can belong to only "
+                    "one monitoring service."
+                )
 
     async def _pipeline_claims(self, topics, activation_id):
         activations = await pending_activations(self.session)
-        for activation in activations:
-            if activation.id == activation_id:
-                continue
-            if any(
-                mqtt_topic_filters_overlap(requested, claimed)
-                for requested in topics
-                for claimed in activation.claim_topics
-            ):
-                raise ValueError(
-                    "A pending pipeline activation reserves requested inputs"
-                )
+        if any(
+            activation.id != activation_id
+            and first_overlap(topics, activation.claim_topics) is not None
+            for activation in activations
+        ):
+            raise ValueError("A pending pipeline activation reserves requested inputs")
         return activations
 
     async def _reconcile_active_topic_claims(self) -> list[MonitoringService]:

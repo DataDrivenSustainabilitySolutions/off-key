@@ -740,6 +740,24 @@ async def test_retry_batch_persists_value_type(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_retry_reuses_the_rows_projected_for_the_failed_flush(monkeypatch):
+    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    session = AsyncMock()
+    writer = _retrying_writer(session)
+    results = [
+        _scored_result(aligned_vector=False, conformal_pvalue=0.001, anomaly_score=0.02)
+    ]
+    prepared = [writer.projector.prepare(result) for result in results]
+    monkeypatch.setattr(
+        writer.projector, "prepare", MagicMock(side_effect=AssertionError("re-built"))
+    )
+
+    assert await writer._retry_failed_batch(batch_snapshot=results, prepared=prepared)
+    assert results == [] and prepared == []
+    assert writer.total_written == 1
+
+
+@pytest.mark.asyncio
 async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, caplog):
     monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
     session = AsyncMock()

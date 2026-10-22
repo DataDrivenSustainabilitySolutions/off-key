@@ -89,6 +89,15 @@ class CheckpointOwnershipLost(RuntimeError):
     """Another managed worker has advanced this service's durable snapshot."""
 
 
+def _rows(prepared: list[PreparedResult]):
+    """Flatten prepared results into anomaly, identity and evidence rows."""
+    return (
+        [row for item in prepared for row in item.anomalies],
+        [row for item in prepared for row in item.identities],
+        [row for item in prepared for row in item.evidence],
+    )
+
+
 def get_radar_async_session_factory() -> async_sessionmaker[AsyncSession]:
     """
     Get or create async session factory using RADAR_DATABASE_URL env var.
@@ -187,10 +196,6 @@ class DatabaseWriter:
         self._shutdown_event.clear()
         self._flush_event.clear()
 
-        # Initialize session factory lazily to avoid failing when disabled
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
-
         # Test database connection
         await self._test_connection()
 
@@ -267,9 +272,7 @@ class DatabaseWriter:
 
     async def load_checkpoint(self, service_id: str) -> dict[str, Any] | None:
         """Require the migrated durable store before a managed worker subscribes."""
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
-        async with self.session_factory() as session:
+        async with self._session() as session:
             result = await session.execute(
                 select(RUNTIME_CHECKPOINT_TABLE).where(
                     RUNTIME_CHECKPOINT_TABLE.c.service_id == service_id
@@ -302,8 +305,6 @@ class DatabaseWriter:
         execution = self.config.pipeline
         if execution is None:
             return
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
         status = {
             "stage": "failed",
             "error": error[:4000],
@@ -315,7 +316,7 @@ class DatabaseWriter:
             payload = json.dumps(status, allow_nan=False)
         except (ValueError, TypeError):
             payload = json.dumps({"stage": "failed", "error": error[:4000]})
-        async with self._flush_lock, self.session_factory() as session:
+        async with self._flush_lock, self._session() as session:
             await self._assert_checkpoint_ownership(session)
             updated = cast(
                 CursorResult[Any],
@@ -428,8 +429,6 @@ class DatabaseWriter:
         """
         if not self.config.db_write_enabled:
             raise RuntimeError("Database checkpoint storage requires database writes")
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
         async with self._flush_lock:
             self.raise_if_fenced()
             self._bind_checkpoint_service(checkpoint["service_id"])
@@ -443,26 +442,20 @@ class DatabaseWriter:
                     for result in pending
                     if result.should_persist
                 ]
-                anomalies = [row for item in prepared for row in item.anomalies]
-                identities = [row for item in prepared for row in item.identities]
-                evidence = [row for item in prepared for row in item.evidence]
+                anomalies, identities, evidence = _rows(prepared)
                 async with self._checkpoint_token_lock:
                     self._pending_checkpoint_signature = checkpoint["signature"]
-                async with self.session_factory() as session:
+                async with self._session() as session:
                     # Claim the next token before writing outputs. The row lock
                     # covers evidence too, so a replacement cannot overtake an
                     # old transaction that is still committing a batch.
                     await self._replace_checkpoint(session, checkpoint)
-                    await self._execute_upsert(session, anomalies, identities)
-                    await self._execute_evidence_upsert(session, evidence)
+                    await self._write_rows(session, anomalies, identities, evidence)
                     await session.commit()
                 async with self._checkpoint_token_lock:
                     self._checkpoint_signature = checkpoint["signature"]
                     self._checkpoint_loaded = True
-                self.total_written += len(anomalies)
-                self.total_evidence_written += len(evidence)
-                self.last_write_time = time.time()
-                self._complete_results(pending, bool(anomalies or evidence))
+                self._record_commit(pending, anomalies, evidence)
             except BaseException:
                 await self._requeue_results(pending)
                 self.total_errors += 1
@@ -480,13 +473,10 @@ class DatabaseWriter:
             return
 
         try:
-            if self.session_factory is None:
-                self.session_factory = get_radar_async_session_factory()
-
             # Freeze the accepted old/pending token pair for this heartbeat.
             # Checkpoint I/O does not hold this lock, so a blocked evidence
             # transaction still permits an independent health commit.
-            async with self._checkpoint_token_lock, self.session_factory() as session:
+            async with self._checkpoint_token_lock, self._session() as session:
                 await self._assert_checkpoint_ownership(session, lock=False)
                 await self._update_service_operational_status(
                     session, metrics.get("operational_status")
@@ -572,10 +562,7 @@ class DatabaseWriter:
     async def _test_connection(self):
         """Test database connection"""
         try:
-            if self.session_factory is None:
-                self.session_factory = get_radar_async_session_factory()
-
-            async with self.session_factory() as session:
+            async with self._session() as session:
                 # Simple test query
                 result = await session.execute(text("SELECT 1"))
                 result.fetchone()
@@ -677,8 +664,8 @@ class DatabaseWriter:
     async def _persist_snapshot(self, batch_snapshot: list[AnomalyResult]) -> None:
         """Retain ownership until a snapshot is written, rejected, or requeued."""
         try:
-            if self.session_factory is None:
-                self.session_factory = get_radar_async_session_factory()
+            # An unavailable database configuration keeps the snapshot queued.
+            self._factory()
             prepared = self._prepare_results(batch_snapshot)
         except asyncio.CancelledError:
             await self._requeue_results(batch_snapshot)
@@ -690,21 +677,18 @@ class DatabaseWriter:
             return
 
         persistence_candidates = [item.result for item in prepared]
-        anomaly_records = [row for item in prepared for row in item.anomalies]
-        identity_records = [row for item in prepared for row in item.identities]
-        evidence_records = [row for item in prepared for row in item.evidence]
+        anomaly_records, identity_records, evidence_records = _rows(prepared)
         batch_size = len(batch_snapshot)
         anomaly_count = len(anomaly_records)
         start_time = time.time()
 
         try:
             if anomaly_records or evidence_records:
-                async with self.session_factory() as session:
+                async with self._session() as session:
                     await self._assert_checkpoint_ownership(session)
-                    await self._execute_upsert(
-                        session, anomaly_records, identity_records
+                    await self._write_rows(
+                        session, anomaly_records, identity_records, evidence_records
                     )
-                    await self._execute_evidence_upsert(session, evidence_records)
                     await session.commit()
 
                     logger.info(
@@ -720,14 +704,11 @@ class DatabaseWriter:
                         },
                     )
 
-            # Update statistics
-            write_time = time.time() - start_time
-            self.write_times.append(write_time)
-            self.total_written += anomaly_count
-            self.total_evidence_written += len(evidence_records)
-            self.last_write_time = time.time()
-            self._complete_results(
-                persistence_candidates, bool(anomaly_records or evidence_records)
+            self._record_commit(
+                persistence_candidates,
+                anomaly_records,
+                evidence_records,
+                write_time=time.time() - start_time,
             )
 
         except asyncio.CancelledError:
@@ -745,11 +726,15 @@ class DatabaseWriter:
                 exc_info=True,
             )
             self.total_errors += 1
-            await self._retry_or_requeue(persistence_candidates)
+            await self._retry_or_requeue(persistence_candidates, prepared)
 
-    async def _retry_or_requeue(self, results: list[AnomalyResult]) -> None:
+    async def _retry_or_requeue(
+        self, results: list[AnomalyResult], prepared: list[PreparedResult]
+    ) -> None:
         try:
-            retry_succeeded = await self._retry_failed_batch(batch_snapshot=results)
+            retry_succeeded = await self._retry_failed_batch(
+                batch_snapshot=results, prepared=list(prepared)
+            )
             if not retry_succeeded:
                 await self._requeue_results(results)
         except (asyncio.CancelledError, CheckpointOwnershipLost):
@@ -802,50 +787,45 @@ class DatabaseWriter:
         async with self._queue_changed:
             self.write_queue = list(results) + self.write_queue
 
-    async def _retry_failed_batch(self, *, batch_snapshot: list[AnomalyResult]) -> bool:
+    async def _retry_failed_batch(
+        self,
+        *,
+        batch_snapshot: list[AnomalyResult],
+        prepared: list[PreparedResult] | None = None,
+    ) -> bool:
         """Retry writing failed batch with exponential backoff.
 
         Remove committed results from the snapshot so the outer flush only
-        requeues results that still need writing.
+        requeues results that still need writing. ``prepared`` holds the rows
+        already projected for each result, aligned with the snapshot.
         """
         max_retries = 3
         base_delay = 1.0
-
-        if self.session_factory is None:
-            self.session_factory = get_radar_async_session_factory()
+        if prepared is None:
+            prepared = [self.projector.prepare(result) for result in batch_snapshot]
 
         pending_index = 0
         # Process in chunks of 10
         while pending_index < len(batch_snapshot):
             retry_batch = batch_snapshot[pending_index : pending_index + 10]
+            anomaly_rows, identity_records, evidence_records = _rows(
+                prepared[pending_index : pending_index + 10]
+            )
             retry_delay = base_delay
             success = False
-            anomaly_records = self.projector._build_records(
-                [result for result in retry_batch if result.is_anomaly]
-            )
-            anomaly_rows, identity_records = anomaly_records
-            evidence_records = self.projector._build_evidence_records(retry_batch)
 
             for attempt in range(max_retries):
                 try:
                     await asyncio.sleep(retry_delay)
 
-                    async with self.session_factory() as session:
+                    async with self._session() as session:
                         await self._assert_checkpoint_ownership(session)
-                        await self._execute_upsert(
-                            session,
-                            anomaly_rows,
-                            identity_records,
+                        await self._write_rows(
+                            session, anomaly_rows, identity_records, evidence_records
                         )
-                        await self._execute_evidence_upsert(session, evidence_records)
                         await session.commit()
 
-                        self.total_written += len(anomaly_rows)
-                        self.total_evidence_written += len(evidence_records)
-                        self.last_write_time = time.time()
-                        self._complete_results(
-                            retry_batch, bool(anomaly_rows or evidence_records)
-                        )
+                        self._record_commit(retry_batch, anomaly_rows, evidence_records)
                         logger.info(
                             "event=radar.db_retry_batch_written count=%s",
                             len(retry_batch),
@@ -866,6 +846,7 @@ class DatabaseWriter:
 
             if success:
                 del batch_snapshot[pending_index : pending_index + len(retry_batch)]
+                del prepared[pending_index : pending_index + len(retry_batch)]
             else:
                 logger.error(
                     "event=radar.db_retry_exhausted requeued_count=%s max_retries=%s",
@@ -876,6 +857,26 @@ class DatabaseWriter:
                 pending_index += len(retry_batch)
 
         return not batch_snapshot
+
+    def _factory(self) -> async_sessionmaker[AsyncSession]:
+        if self.session_factory is None:
+            self.session_factory = get_radar_async_session_factory()
+        return self.session_factory
+
+    def _session(self) -> AsyncSession:
+        return self._factory()()
+
+    async def _write_rows(self, session, anomalies, identities, evidence) -> None:
+        await self._execute_upsert(session, anomalies, identities)
+        await self._execute_evidence_upsert(session, evidence)
+
+    def _record_commit(self, results, anomalies, evidence, *, write_time=None) -> None:
+        if write_time is not None:
+            self.write_times.append(write_time)
+        self.total_written += len(anomalies)
+        self.total_evidence_written += len(evidence)
+        self.last_write_time = time.time()
+        self._complete_results(results, bool(anomalies or evidence))
 
     def _complete_results(
         self, results: list[AnomalyResult], has_records: bool

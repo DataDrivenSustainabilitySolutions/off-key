@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           # Exercise the operator-disabled compatibility path before the visual lane.
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
-          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/health > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \
@@ -114,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
-          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/health > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           # Remembered sessions keep access tokens in memory; mint one from the cookie.
           E2E_SESSION_COOKIE="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const cookie=state.cookies.find(({name})=>name==='off_key_remembered_session')?.value; if (!cookie) { console.error('No remembered session cookie in the auth state'); process.exit(1); } process.stdout.write(cookie)")"
           echo "::add-mask::$E2E_SESSION_COOKIE"
@@ -134,7 +134,7 @@ jobs:
           set -euo pipefail
           trap 'docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null' EXIT
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
-          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/health > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \

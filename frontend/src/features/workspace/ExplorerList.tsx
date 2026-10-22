@@ -1,5 +1,5 @@
 import { useNow } from "@/hooks/use-now";
-import { useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
@@ -38,19 +38,23 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
   const hasIndicators = !!activity && items.some(item => isReadingLeaf(rows[item.index]!.node));
   const now = useNow(1000, hasIndicators);
   const previousKey = useRef(viewKey);
+  // Pending restoration survives re-renders of the same view (new rows, a clock
+  // tick) and is cancelled only by the next view change or unmount.
+  const restoration = useRef<number[]>([]);
+  useEffect(() => () => restoration.current.forEach(cancelAnimationFrame), []);
   useLayoutEffect(() => {
     if (previousKey.current !== viewKey) {
+      restoration.current.forEach(cancelAnimationFrame);
       const reveal = previousKey.current.startsWith("search:") || previousKey.current.startsWith("catalogue:");
       const revealIndex = reveal ? rows.findIndex((row) => row.node.key === selectedKey) : -1;
       previousKey.current = viewKey;
       const saved = positions.get(viewKey);
       const focusOrigin = document.activeElement;
-      let focusFrame = 0;
-      const frame = requestAnimationFrame(() => {
+      restoration.current = [requestAnimationFrame(() => {
         if (revealIndex >= 0) virtualizer.scrollToIndex(revealIndex, { align: "auto" });
         else virtualizer.scrollToOffset(saved?.offset ?? 0);
         if (viewKey.startsWith("search:")) return;
-        focusFrame = requestAnimationFrame(() => {
+        restoration.current = [requestAnimationFrame(() => {
           // A later focus choice takes precedence over deferred restoration.
           if (document.activeElement !== focusOrigin && document.activeElement !== document.body) return;
           const focusedIndex = revealIndex >= 0 ? revealIndex : rows.findIndex((row) => row.node.key === saved?.focused);
@@ -60,9 +64,8 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
           const targetIndex = visible.some((item) => item.index === focusedIndex) ? focusedIndex : visible[0]?.index;
           const target = targetIndex !== undefined ? scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${targetIndex}"]`) : null;
           target?.focus({ preventScroll: true });
-        });
-      });
-      return () => { cancelAnimationFrame(frame); cancelAnimationFrame(focusFrame); };
+        })];
+      })];
     }
   }, [viewKey, virtualizer, positions, rows, selectedKey]);
   const focusRow = (index: number) => {

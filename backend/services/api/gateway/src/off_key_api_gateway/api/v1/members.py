@@ -3,23 +3,20 @@ from off_key_core.config.logs import logger
 from off_key_core.schemas.members import MemberInvitation, MemberProfile, MemberUpdate
 from off_key_core.utils.mail import send_invitation_email
 
-from ...facades.tactic import TacticError, tactic
+from ...facades.tactic import tactic
 from ..access import current_member, require_admin
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 
 
 async def member_request(method, path, authorization, body=None):
-    try:
-        return await tactic._make_request(
-            method,
-            f"/api/v1/members{path}",
-            json_data=body,
-            headers={"Authorization": authorization},
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    return await tactic._make_request(
+        method,
+        f"/api/v1/members{path}",
+        json_data=body,
+        headers={"Authorization": authorization},
+    )
 
 
 @router.get("/me", response_model=MemberProfile)

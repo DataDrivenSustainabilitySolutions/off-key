@@ -24,10 +24,10 @@ from off_key_core.utils.mail import send_password_reset_email
 
 from ...facades.tactic import TacticError, tactic
 from ...services.auth import create_jwt
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 from ..rate_limiter import client_ip, limiter
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 REMEMBERED_SESSION_COOKIE = "off_key_remembered_session"
 # One budget per client address across every credential endpoint, so a single
 # source cannot spray guesses over many accounts or tokens.
@@ -157,14 +157,11 @@ async def register():
 async def accept_invitation(
     request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
 ):
-    try:
-        return await tactic._make_request(
-            "POST",
-            "/api/v1/members/accept-invitation",
-            json_data=invitation.model_dump(),
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    return await tactic._make_request(
+        "POST",
+        "/api/v1/members/accept-invitation",
+        json_data=invitation.model_dump(),
+    )
 
 
 @router.post("/login")
@@ -185,24 +182,21 @@ async def login(
                 user.email,
                 {"status": e.status},
             )
-        raise_tactic_http_error(e)
+        raise
 
     result = access_token_response(authenticated_user)
-    try:
-        await revoke_remembered_cookie(request)
-        if user.remember_me:
-            session = await tactic._make_request(
-                "POST",
-                "/api/v1/members/sessions",
-                headers={"Authorization": f"Bearer {result['access_token']}"},
-            )
-            set_session_cookie(
-                request, response, session["token"], REMEMBERED_SESSION_SECONDS
-            )
-        else:
-            clear_session_cookie(request, response)
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    await revoke_remembered_cookie(request)
+    if user.remember_me:
+        session = await tactic._make_request(
+            "POST",
+            "/api/v1/members/sessions",
+            headers={"Authorization": f"Bearer {result['access_token']}"},
+        )
+        set_session_cookie(
+            request, response, session["token"], REMEMBERED_SESSION_SECONDS
+        )
+    else:
+        clear_session_cookie(request, response)
 
     safe_email = redact_email(authenticated_user["email"])
     logger.info("event=auth.user_logged_in email=%s", safe_email)
@@ -231,7 +225,7 @@ async def refresh_session(request: Request, response: Response):
             return access_token_response(user)
         except TacticError as exc:
             if exc.status != 401:
-                raise_tactic_http_error(exc)
+                raise
     denied = JSONResponse({"detail": "Sign in to continue"}, status_code=401)
     clear_session_cookie(request, denied)
     return denied
@@ -275,14 +269,11 @@ async def forgot_password(
     background: BackgroundTasks,
     user: ForgotPasswordRequest = Depends(reset_email_attempt),
 ):
-    try:
-        result = await tactic._make_request(
-            "POST",
-            "/api/v1/members/request-password-reset",
-            json_data=user.model_dump(),
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    result = await tactic._make_request(
+        "POST",
+        "/api/v1/members/request-password-reset",
+        json_data=user.model_dump(),
+    )
     if result:
         # Deliver after responding so mail latency does not reveal the account.
         background.add_task(deliver_password_reset, result["email"], result["token"])
@@ -297,11 +288,8 @@ async def forgot_password(
 async def reset_password(
     request: Request, reset: PasswordReset = Depends(reset_attempt)
 ):
-    try:
-        return await tactic._make_request(
-            "POST",
-            "/api/v1/members/reset-password",
-            json_data=reset.model_dump(),
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    return await tactic._make_request(
+        "POST",
+        "/api/v1/members/reset-password",
+        json_data=reset.model_dump(),
+    )

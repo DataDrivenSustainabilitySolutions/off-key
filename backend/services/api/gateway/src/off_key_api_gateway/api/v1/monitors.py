@@ -10,11 +10,11 @@ from off_key_core.schemas.radar import (
 from pydantic import BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 from .pipelines import router as pipeline_router
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 router.include_router(pipeline_router)
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
@@ -104,14 +104,11 @@ async def get_monitoring_evidence(
     telemetry_type: str | None = None,
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
-    try:
-        return await tactic.get_monitoring_evidence(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-        )
-    except TacticError as error:
-        raise_tactic_http_error(error)
+    return await tactic.get_monitoring_evidence(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+    )
 
 
 @router.get("/evidence/chart", response_model=list[dict[str, Any]])
@@ -151,18 +148,15 @@ async def get_monitoring_chart_evidence(
             if after_timestamp.tzinfo is None
             else after_timestamp.astimezone(UTC)
         )
-    try:
-        return await tactic.get_monitoring_chart_evidence(
-            charger_id=charger_id,
-            service_id=service_id,
-            after_created=after_created,
-            after_timestamp=after_timestamp,
-            after_service_id=after_service_id,
-            after_sequence_number=after_sequence_number,
-            limit=limit,
-        )
-    except TacticError as error:
-        raise_tactic_http_error(error)
+    return await tactic.get_monitoring_chart_evidence(
+        charger_id=charger_id,
+        service_id=service_id,
+        after_created=after_created,
+        after_timestamp=after_timestamp,
+        after_service_id=after_service_id,
+        after_sequence_number=after_sequence_number,
+        limit=limit,
+    )
 
 
 @router.post("/start", response_model=ServiceResponse)
@@ -176,8 +170,8 @@ async def start_monitoring_service(
     """
     try:
         return await tactic.start_radar_service(config)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -268,8 +262,8 @@ async def stop_monitoring_service(
             "message": f"Container '{container_name or container_id}'"
             f" stopped successfully",
         }
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -283,10 +277,7 @@ async def stop_monitoring_service(
 async def rename_monitoring_service(
     request: Request, service_id: str, change: RadarServiceLabel
 ):
-    try:
-        return await tactic.rename_radar_service(service_id, change.display_name)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.rename_radar_service(service_id, change.display_name)
 
 
 @router.delete("/{service_id}")
@@ -309,8 +300,8 @@ async def delete_monitoring_service(request: Request, service_id: str):
             "service_id": service_id,
             "message": f"Service '{service_id}' deleted successfully",
         }
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -353,8 +344,8 @@ async def list_available_models_endpoint(
                 if model.get("strategy") == strategy
             }
         return normalized
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {e!s}"

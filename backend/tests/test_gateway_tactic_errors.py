@@ -155,3 +155,17 @@ async def test_gateway_rewords_some_downstream_failures(
 
     expected = 409 if upstream == 400 else upstream
     assert (response.status_code, response.json()) == (expected, {"detail": detail})
+
+
+@pytest.mark.asyncio
+async def test_unsafe_pipeline_identifier_is_rejected_before_forwarding(
+    gateway_app, monkeypatch
+):
+    _fail_downstream(monkeypatch, AssertionError("must not forward"))
+
+    response = await _call(gateway_app, "GET", "/v1/monitors/pipelines/a%5Cb", None)
+
+    assert (response.status_code, response.json()) == (
+        422,
+        {"detail": "Invalid resource identifier"},
+    )

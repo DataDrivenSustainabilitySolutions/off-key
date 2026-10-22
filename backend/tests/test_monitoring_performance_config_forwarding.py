@@ -213,12 +213,13 @@ async def test_gateway_stop_preserves_tactic_error_status():
         patch(
             "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
         ),
-        pytest.raises(HTTPException) as exc_info,
+        pytest.raises(TacticError) as exc_info,
     ):
         await inspect.unwrap(stop_monitoring_service)(
             request=_build_request(), container_name="missing", container_id=None
         )
-    assert exc_info.value.status_code == 404
+    # The route class turns it into the HTTP response; the catch-all must not.
+    assert exc_info.value.status == 404
 
 
 @pytest.mark.asyncio
@@ -275,12 +276,12 @@ async def test_gateway_delete_preserves_tactic_error_status():
             "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
             mock_delete,
         ),
-        pytest.raises(HTTPException) as exc_info,
+        pytest.raises(TacticError) as exc_info,
     ):
         await inspect.unwrap(delete_monitoring_service)(
             request=_build_request(), service_id="missing"
         )
-    assert exc_info.value.status_code == 404
+    assert exc_info.value.status == 404
 
 
 def _model_registry(validated_params=None):

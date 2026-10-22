@@ -28,9 +28,9 @@ from off_key_core.schemas.pipelines import (
     PipelineWorkspace,
 )
 
-from ...facades.tactic import TacticError, _path_segment, tactic
+from ...facades.tactic import _path_segment, tactic
 from ..access import current_member
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 
 
@@ -44,7 +44,7 @@ def member_key(request: Request) -> str:
     return request.state.pipeline_member_id
 
 
-router = APIRouter(dependencies=[Depends(member_scope)])
+router = APIRouter(dependencies=[Depends(member_scope)], route_class=TacticErrorRoute)
 read_limit = limiter.shared_limit(
     "120/minute", scope="pipeline-reads", key_func=member_key
 )
@@ -57,16 +57,13 @@ compile_limit = limiter.shared_limit(
 
 
 async def forward(request, method, path, body=None, params=None):
-    try:
-        return await tactic.pipeline_request(
-            method,
-            path,
-            authorization=request.headers["Authorization"],
-            body=body.model_dump(mode="json") if body is not None else None,
-            params=params,
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    return await tactic.pipeline_request(
+        method,
+        path,
+        authorization=request.headers["Authorization"],
+        body=body.model_dump(mode="json") if body is not None else None,
+        params=params,
+    )
 
 
 @router.post("/pipelines/apply", response_model=PipelineActivationView, status_code=202)

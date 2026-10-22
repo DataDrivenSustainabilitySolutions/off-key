@@ -6,9 +6,9 @@ from off_key_core.utils.mail import send_anomaly_alert_email
 from pydantic import BaseModel
 
 from ...facades.tactic import TacticError, tactic
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 
 
 class AnomalyCreatePayload(BaseModel):
@@ -23,10 +23,7 @@ class AnomalyCreatePayload(BaseModel):
 
 @router.get("/count")
 async def get_anomaly_count(since: datetime | None = None):
-    try:
-        return await tactic.get_anomaly_count(since=since)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.get_anomaly_count(since=since)
 
 
 @router.get("")
@@ -35,14 +32,11 @@ async def get_anomalies(
     telemetry_type: str | None = None,
     limit: int = 500,
 ):
-    try:
-        return await tactic.get_charger_anomalies(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-        )
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.get_charger_anomalies(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+    )
 
 
 @router.post("")
@@ -91,10 +85,7 @@ async def create_anomaly(
         "sensor_set": payload.sensor_set,
     }
 
-    try:
-        result = await tactic.create_anomaly(anomaly_data)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    result = await tactic.create_anomaly(anomaly_data)
 
     # Log anomaly detection
     logger.warning(
@@ -133,7 +124,7 @@ async def delete_anomaly(anomaly_id: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Anomaly not found",
             ) from e
-        raise_tactic_http_error(e)
+        raise
 
     logger.info(f"Anomaly deleted | Anomaly ID: {anomaly_id}")
 

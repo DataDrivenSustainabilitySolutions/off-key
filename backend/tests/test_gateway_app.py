@@ -8,6 +8,7 @@ from off_key_api_gateway.api.middleware import (
 )
 from off_key_api_gateway.app import build_app
 from off_key_core.config.app import AppSettings
+from off_key_core.config.logs import CorrelationIdMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -18,6 +19,7 @@ def test_middleware_runs_cors_first_and_request_logging_last():
 
     assert [middleware.cls for middleware in app.user_middleware] == [
         CORSMiddleware,
+        CorrelationIdMiddleware,
         GZipMiddleware,
         SlowAPIMiddleware,
         SecurityLoggingMiddleware,

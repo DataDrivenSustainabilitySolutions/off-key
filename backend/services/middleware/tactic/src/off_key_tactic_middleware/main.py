@@ -16,6 +16,7 @@ from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.env import load_env
 from off_key_core.config.logs import (
+    CorrelationIdMiddleware,
     load_yaml_config,
     log_startup_logging_configuration,
     logger,
@@ -221,6 +222,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+    app.add_middleware(CorrelationIdMiddleware)
 
     business = APIRouter(dependencies=[Depends(require_gateway)])
     business.include_router(

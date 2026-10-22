@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.schemas.radar import RadarStartConfig
@@ -101,6 +101,7 @@ class Tactic:
                     json=json_data,
                     params=normalized_params,
                     headers={
+                        **correlation_headers(),
                         **(headers or {}),
                         "X-Off-Key-Service-Key": (
                             get_service_auth_settings().INTERNAL_API_SECRET.get_secret_value()

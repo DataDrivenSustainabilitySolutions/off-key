@@ -8,6 +8,7 @@ import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from off_key_api_gateway.facades.tactic import Tactic, TacticError, path_segment
+from off_key_core.config.logs import correlation_id
 from off_key_core.config.service_auth import get_service_auth_settings
 
 SERVICE_KEY = "test-internal-service-secret-123456789"
@@ -31,6 +32,7 @@ async def serve(monkeypatch):
                 query=dict(request.query),
                 service_key=request.headers.get("X-Off-Key-Service-Key"),
                 authorization=request.headers.get("Authorization"),
+                correlation_id=request.headers.get("X-Correlation-ID"),
                 body=await request.json() if request.can_read_body else None,
             )
             return web.Response(status=status, text=text, content_type=content_type)
@@ -70,8 +72,20 @@ async def test_requests_carry_the_service_key_caller_credentials_and_clean_query
         "query": {"draft": "true", "archived": "false", "limit": "5"},
         "service_key": SERVICE_KEY,
         "authorization": "Bearer member-token",
+        "correlation_id": None,
         "body": {"label": "Line 1"},
     }
+
+
+async def test_requests_forward_the_current_correlation_id(serve):
+    facade, received = await serve()
+    token = correlation_id.set("request-123")
+    try:
+        await facade.request("GET", "/api/v1/system")
+    finally:
+        correlation_id.reset(token)
+
+    assert received["correlation_id"] == "request-123"
 
 
 @pytest.mark.parametrize(

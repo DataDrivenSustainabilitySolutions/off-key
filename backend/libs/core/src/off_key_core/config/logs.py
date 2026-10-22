@@ -6,6 +6,7 @@ import logging.config
 import os
 import re
 import time
+import uuid
 from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
@@ -25,6 +26,10 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())
+
+
+# Inbound IDs are echoed into logs and headers, so only plain tokens are kept.
+_CORRELATION_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 
 class LogFormat(Enum):
@@ -98,6 +103,59 @@ class TruncatingFormatter(logging.Formatter):
             return " - ".join([*prefix_parts, message_part])
 
         return formatted_msg
+
+
+class CorrelationIdMiddleware:
+    """Bind one correlation ID per HTTP request before any other middleware logs.
+
+    A valid inbound header is kept so a request carries one ID across services;
+    otherwise a new UUID is assigned. The response echoes the ID.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header = get_logging_settings().LOG_CORRELATION_HEADER.lower().encode("latin-1")
+        inbound = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope["headers"]
+                if name == header
+            ),
+            "",
+        )
+        request_id = (
+            inbound if _CORRELATION_ID_PATTERN.fullmatch(inbound) else str(uuid.uuid4())
+        )
+        token = correlation_id.set(request_id)
+
+        async def send_with_id(message) -> None:
+            if message["type"] == "http.response.start":
+                headers = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != header
+                ]
+                headers.append((header, request_id.encode("latin-1")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            correlation_id.reset(token)
+
+
+def correlation_headers() -> dict[str, str]:
+    """Headers that forward the current request's correlation ID downstream."""
+    request_id = correlation_id.get()
+    if request_id is None:
+        return {}
+    return {get_logging_settings().LOG_CORRELATION_HEADER: request_id}
 
 
 def set_correlation_id(request_id: str) -> None:

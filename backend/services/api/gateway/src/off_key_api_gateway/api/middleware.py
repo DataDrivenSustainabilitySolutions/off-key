@@ -1,5 +1,4 @@
 import time
-import uuid
 from collections.abc import Callable
 
 from fastapi import Request, Response
@@ -9,7 +8,6 @@ from off_key_core.config.logs import (
     logger,
     redact_ip_address,
     redact_query_params,
-    set_correlation_id,
 )
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -22,17 +20,11 @@ def _safe_user_agent(request: Request) -> str:
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware for request/response logging and correlation ID tracking."""
+    """Log each request; CorrelationIdMiddleware has already bound its ID."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         settings = get_logging_settings()
         start_time = time.time()
-
-        # Generate or extract correlation ID
-        correlation_id = request.headers.get(settings.LOG_CORRELATION_HEADER) or str(
-            uuid.uuid4()
-        )
-        set_correlation_id(correlation_id)
         method = request.method
         path = request.url.path
         safe_user_agent = _safe_user_agent(request)
@@ -72,9 +64,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 str(e),
             )
             raise
-
-        # Add correlation ID to response headers
-        response.headers[settings.LOG_CORRELATION_HEADER] = correlation_id
 
         return response
 

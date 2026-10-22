@@ -1,6 +1,5 @@
-"""Gateway request middleware: correlation IDs, redacted logs, security events."""
+"""Gateway request middleware: redacted logs and security events."""
 
-import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -46,14 +45,12 @@ async def _get(app: FastAPI, url: str, headers=None):
         return await client.get(url, headers=headers)
 
 
-async def test_request_log_echoes_or_assigns_a_correlation_id(log):
+async def test_request_log_records_performance_for_each_request(log):
     app = _app(middleware.LoggingMiddleware)
 
-    echoed = await _get(app, "/items", {"X-Correlation-ID": "request-123"})
-    assigned = await _get(app, "/items")
+    await _get(app, "/items")
+    await _get(app, "/items")
 
-    assert echoed.headers["X-Correlation-ID"] == "request-123"
-    assert uuid.UUID(assigned.headers["X-Correlation-ID"])
     assert middleware.log_performance.call_count == 2
 
 

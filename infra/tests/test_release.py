@@ -540,7 +540,10 @@ class ReleaseTests(unittest.TestCase):
     def test_new_database_needs_no_catalog_row_before_the_first_ui_save(self):
         snapshot = SimpleNamespace(
             revision=0,
-            catalog=SimpleNamespace(sources=[], streams=lambda **kwargs: []),
+            catalog=SimpleNamespace(
+                document=SimpleNamespace(connections=[]),
+                streams=lambda **kwargs: [],
+            ),
             collection={},
             ingress={},
         )
@@ -563,11 +566,13 @@ class ReleaseTests(unittest.TestCase):
         snapshot = SimpleNamespace(
             revision=9,
             catalog=SimpleNamespace(
-                sources=[
-                    SimpleNamespace(
-                        id="broker", label="Lab", host="source-broker", port=1883
-                    )
-                ],
+                document=SimpleNamespace(
+                    connections=[
+                        SimpleNamespace(
+                            id="broker", label="Lab", host="source-broker", port=1883
+                        )
+                    ]
+                ),
                 streams=lambda **kwargs: selected,
             ),
             collection={

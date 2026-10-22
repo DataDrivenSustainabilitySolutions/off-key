@@ -11,7 +11,7 @@ def check_collection(snapshot, now, ingress_enabled=True):
     selected = list(snapshot.catalog.streams(selected_only=True))
     # Before the first UI save there is no configuration row to hold heartbeats.
     # The caller has still verified the live collector, APIs and database query.
-    if snapshot.revision == 0 and not snapshot.catalog.sources:
+    if snapshot.revision == 0 and not snapshot.catalog.document.connections:
         return {"revision": 0, "selected_sensors": 0}
     workers = {"collection": snapshot.collection}
     if ingress_enabled:
@@ -29,7 +29,8 @@ def check_collection(snapshot, now, ingress_enabled=True):
             raise ValueError(f"{name} heartbeat is stale")
     if selected and not ingress_enabled:
         raise ValueError("Readings are selected but collection ingress is disabled")
-    sources = {str(source.id): source for source in snapshot.catalog.sources}
+    connections = snapshot.catalog.document.connections
+    sources = {str(source.id): source for source in connections}
     for source_id in sorted({str(stream.source_id) for stream in selected}):
         source = sources[source_id]
         broker = f"{source.label} ({source.host}:{source.port})"

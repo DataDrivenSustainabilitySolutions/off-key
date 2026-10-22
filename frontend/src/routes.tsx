@@ -16,14 +16,13 @@ export function createAppRoutes() {
   const Registration = lazy(() => import("@/pages/Registration"));
   const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
   const SystemStatus = lazy(() => import("@/pages/SystemStatus"));
-  const Verification = lazy(() => import("@/pages/Verification"));
   const MonitoringWorkspace = lazy(() => import("@/pages/MonitoringWorkspace"));
 
   return createRoutesFromElements(
     <Route errorElement={<RouteErrorBoundary />}>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
-      <Route path="/verify" element={<Verification />} />
+      <Route path="/verify" element={<Navigate to="/login" replace />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 

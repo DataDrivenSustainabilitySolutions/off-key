@@ -117,12 +117,6 @@ class UserRepository:
         )
         return result.scalars().first()
 
-    async def add(self, user: User) -> User:
-        self._session.add(user)
-        await self._session.flush()
-        await self._session.refresh(user)
-        return user
-
 
 class FavoriteRepository:
     """Persistence operations for favorites."""

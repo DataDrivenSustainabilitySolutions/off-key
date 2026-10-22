@@ -34,10 +34,7 @@ from ...schemas import (
     MonitoringEvidenceResponse,
     TelemetryDataPoint,
     TelemetryPaginatedResponse,
-    UserCreateRequest,
     UserLoginRequest,
-    UserPasswordUpdateRequest,
-    UserResponse,
 )
 from ...services.data import (
     AnomalyService,
@@ -163,54 +160,6 @@ async def authenticate_user(
         return await service.authenticate(
             email=login_data.email,
             password=login_data.password,
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
-
-
-@router.get("/users/{email}", response_model=UserResponse)
-async def get_user_by_email(
-    email: str,
-    service: UserService = Depends(get_user_service),
-) -> dict[str, object]:
-    try:
-        return await service.get_by_email(email=email)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
-
-
-@router.post("/users", response_model=UserResponse)
-async def create_user(
-    user_data: UserCreateRequest,
-    service: UserService = Depends(get_user_service),
-):
-    try:
-        return await service.create_user(payload=user_data)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
-
-
-@router.patch("/users/{email}/verify")
-async def verify_user_email(
-    email: str,
-    service: UserService = Depends(get_user_service),
-):
-    try:
-        return await service.verify_email(email=email)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
-
-
-@router.patch("/users/{email}/password")
-async def update_user_password(
-    email: str,
-    payload: UserPasswordUpdateRequest,
-    service: UserService = Depends(get_user_service),
-):
-    try:
-        return await service.update_password(
-            email=email,
-            new_password_hash=payload.new_password_hash,
         )
     except DomainError as exc:
         _raise_http_from_domain(exc)

@@ -14,8 +14,8 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 
 | Route | Purpose | Access |
 | --- | --- | --- |
-| `/register` | Create an account | Public |
-| `/verify` | Verify an email address | Public |
+| `/register` | Accept an invitation and set a password | Public |
+| `/verify` | Retired; redirects to `/login` | Public |
 | `/login` | Sign in | Public |
 | `/forgot-password` | Request a password reset | Public |
 | `/reset-password` | Set a new password with a reset token | Public |

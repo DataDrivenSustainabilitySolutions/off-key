@@ -207,10 +207,6 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/telemetry/{charger_id}/types` | Telemetry type list |
 | `GET` | `/data/telemetry/{charger_id}` | Telemetry points |
 | `POST` | `/data/auth/login` | Internal authentication check |
-| `GET` | `/data/users/{email}` | Read a user |
-| `POST` | `/data/users` | Create a user |
-| `PATCH` | `/data/users/{email}/verify` | Mark a user verified |
-| `PATCH` | `/data/users/{email}/password` | Update a password hash |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
 | `DELETE` | `/data/users/{user_id}/favorites/{charger_id}` | Remove a favourite |

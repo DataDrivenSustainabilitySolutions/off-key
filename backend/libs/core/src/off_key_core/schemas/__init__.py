@@ -18,10 +18,7 @@ from .radar import (
 )
 from .user import (
     ForgotPasswordRequest,
-    ResetPasswordRequest,
-    UserCreate,
     UserLogin,
-    UserVerification,
 )
 
 __all__ = [
@@ -36,12 +33,9 @@ __all__ = [
     "PerformanceConfig",
     "PowerMartingaleTrackerConfig",
     "RadarOperationalStatus",
-    "ResetPasswordRequest",
     "SimpleJumperMartingaleTrackerConfig",
     "SimpleMixtureMartingaleTrackerConfig",
     "StaticBaselineConfig",
     "StaticMartingaleConfig",
-    "UserCreate",
     "UserLogin",
-    "UserVerification",
 ]

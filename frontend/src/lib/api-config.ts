@@ -29,8 +29,6 @@ export const API_CONFIG = {
       LOGIN: '/v1/auth/login',
       REFRESH: '/v1/auth/refresh',
       LOGOUT: '/v1/auth/logout',
-      REGISTER: '/v1/auth/register',
-      VERIFY_EMAIL: '/v1/auth/verify-email',
       FORGOT_PASSWORD: '/v1/auth/forgot-password',
       RESET_PASSWORD: '/v1/auth/reset-password',
     },

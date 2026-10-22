@@ -388,49 +388,12 @@ class Tactic:
             params=params,
         )
 
-    async def get_user_by_email(self, email: str) -> dict[str, Any] | None:
-        """Get user by email from TACTIC data service."""
-        try:
-            return await self._make_request(
-                method="GET",
-                endpoint=f"/api/v1/data/users/{_path_segment(email)}",
-            )
-        except TacticError as e:
-            if e.status == 404:
-                return None
-            raise
-
-    async def create_user(self, user_data: dict[str, Any]) -> dict[str, Any]:
-        """Create user via TACTIC data service."""
-        return await self._make_request(
-            method="POST",
-            endpoint="/api/v1/data/users",
-            json_data=user_data,
-        )
-
     async def authenticate_user(self, email: str, password: str) -> dict[str, Any]:
         """Validate user credentials via TACTIC data service."""
         return await self._make_request(
             method="POST",
             endpoint="/api/v1/data/auth/login",
             json_data={"email": email, "password": password},
-        )
-
-    async def verify_user_email(self, email: str) -> dict[str, str]:
-        """Verify user email via TACTIC data service."""
-        return await self._make_request(
-            method="PATCH",
-            endpoint=f"/api/v1/data/users/{_path_segment(email)}/verify",
-        )
-
-    async def update_user_password(
-        self, email: str, new_password_hash: str
-    ) -> dict[str, str]:
-        """Update user password via TACTIC data service."""
-        return await self._make_request(
-            method="PATCH",
-            endpoint=f"/api/v1/data/users/{_path_segment(email)}/password",
-            json_data={"new_password_hash": new_password_hash},
         )
 
     async def get_user_favorites(self, user_id: int) -> list[str]:

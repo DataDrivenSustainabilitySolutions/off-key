@@ -138,7 +138,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
         for method, path in (
             ("DELETE", "/api/v1/members/19"),
             ("GET", "/api/v1/data/chargers"),
-            ("POST", "/api/v1/data/users"),
+            ("GET", "/api/v1/data/users/17/favorites"),
             ("POST", "/api/v1/data/auth/login"),
             ("GET", "/api/v1/system"),
             ("GET", "/api/v1/members/me"),

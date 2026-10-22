@@ -42,7 +42,6 @@ from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
 )
 from off_key_tactic_middleware.services.system import SystemService
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -733,7 +732,7 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
         saved = await SystemService(session).save(
             SystemChange(expected_revision=0, document=initial), actor="review"
         )
-        saved = await SystemCollectionService(session).apply(
+        saved = await SystemService(session).apply_collection(
             SystemCollectionChange(
                 expected_revision=saved.revision,
                 expected_collection_revision=saved.runtime.collection_revision,

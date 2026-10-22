@@ -101,7 +101,7 @@ async def apply_collection(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
-    snapshot = await SystemCollectionService(session).apply(change, actor=user.email)
+    snapshot = await SystemService(session).apply_collection(change, actor=user.email)
     return {**snapshot.model_dump(mode="json"), "can_edit": True}
 
 

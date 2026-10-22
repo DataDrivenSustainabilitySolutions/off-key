@@ -8,6 +8,7 @@ from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import Charger, CollectionBinding, MonitoringService
+from off_key_core.db.pipeline_claims import monitor_claim_condition, pending_activations
 from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
 from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.collection_rules import (
@@ -212,11 +213,6 @@ class SystemCollectionService:
         changed = self._changed_inputs(before, after)
         if not changed:
             return []
-        from off_key_core.db.pipeline_claims import (
-            monitor_claim_condition,
-            pending_activations,
-        )
-
         if any(
             changed.intersection(item.claim_topics)
             for item in await pending_activations(self.session)
@@ -234,36 +230,16 @@ class SystemCollectionService:
             if changed.intersection(item.mqtt_topic or [])
         ]
 
-    async def apply(self, change, *, actor):
-        await lock_collection_configuration(self.session)
-        await require_application_writes(self.session)
-        from off_key_core.schemas.system import SystemChange
-
-        from .system import SystemService
-
-        snapshot = await SystemService(self.session).read()
-        proposed, preview = await self.prepare(snapshot, change)
-        await self._protect_monitors(
-            preview.affected_monitors, change.pause_affected_monitors, proposed
-        )
-        await self.persist(proposed, actor=actor)
-        return await SystemService(self.session).save(
-            SystemChange(
-                expected_revision=snapshot.revision, document=proposed.document
-            ),
-            actor=actor,
-        )
-
     async def sync_structure(self, document, *, actor, pause_monitors=False):
         runtime, proposed = await self.current(document)
         if runtime_fingerprint(runtime.catalog) != runtime_fingerprint(proposed):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
-        await self._protect_monitors(affected, pause_monitors, proposed)
+        await self.protect_monitors(affected, pause_monitors, proposed)
         await self.persist(proposed, actor=actor)
         return proposed.document
 
-    async def _protect_monitors(self, affected, pause, proposed):
+    async def protect_monitors(self, affected, pause, proposed):
         if affected and not pause:
             raise ConflictError(
                 "This change affects running monitors. "

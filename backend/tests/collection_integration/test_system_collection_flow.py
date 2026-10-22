@@ -25,7 +25,6 @@ from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services import system_collection as collection_module
 from off_key_tactic_middleware.services import system_ingress as ingress_module
 from off_key_tactic_middleware.services.system import SystemService
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from off_key_tactic_middleware.services.system_live import SystemLiveService
 from paho.mqtt.client import CallbackAPIVersion, Client
 from paho.mqtt.publish import multiple, single
@@ -171,7 +170,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
     async def policy(ids, mode, interval=1):
         async with sessions.begin() as session:
             snapshot = await SystemService(session).read()
-            return await SystemCollectionService(session).apply(
+            return await SystemService(session).apply_collection(
                 SystemCollectionChange(
                     expected_revision=snapshot.revision,
                     expected_collection_revision=snapshot.runtime.collection_revision,
@@ -195,7 +194,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         assert not viewer.workers
         async with sessions.begin() as session:
             snapshot = await SystemService(session).read()
-            await SystemCollectionService(session).apply(
+            await SystemService(session).apply_collection(
                 SystemCollectionRuleChange(
                     expected_revision=snapshot.revision,
                     expected_collection_revision=snapshot.runtime.collection_revision,
@@ -262,7 +261,7 @@ async def test_generic_collection_is_independent_of_view_leases_and_stops_on_off
         assert all(topic != voltage_topic for topic, _ in accepted)
         async with sessions.begin() as session:
             snapshot = await SystemService(session).read()
-            await SystemCollectionService(session).apply(
+            await SystemService(session).apply_collection(
                 SystemCollectionRuleChange(
                     expected_revision=snapshot.revision,
                     expected_collection_revision=snapshot.runtime.collection_revision,

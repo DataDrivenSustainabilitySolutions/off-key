@@ -6,12 +6,14 @@ from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import CollectionState
 from off_key_core.db.system import SystemConfiguration, SystemRevision
+from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.system import (
     SystemChange,
     SystemDocument,
     SystemRuntime,
     SystemSnapshot,
 )
+from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,30 +73,58 @@ class SystemService:
     async def save(self, change: SystemChange, *, actor: str) -> SystemSnapshot:
         # Existing maintenance gating and the same advisory lock serialize all
         # system saves, including the first insert when there is no row to lock.
-        await lock_collection_configuration(self.session)
-        await require_application_writes(self.session)
-        row = await self.session.scalar(
-            select(SystemConfiguration)
-            .where(SystemConfiguration.id == 1)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        revision = row.revision if row is not None else 0
-        if revision != change.expected_revision:
-            raise ConflictError(
-                "The saved system changed. Reload it before saving edits."
-            )
+        revision = await self._locked_revision(change.expected_revision)
         normalized = await SystemCollectionService(self.session).sync_structure(
             change.document, actor=actor, pause_monitors=change.pause_affected_monitors
         )
-        # Monitor stops may have ended the preparation transaction to wait on
-        # Docker. Re-read under the reacquired catalogue lock before applying.
-        row = await self.session.scalar(
+        return await self._write_document(normalized, actor=actor, revision=revision)
+
+    async def apply_collection(
+        self,
+        change: SystemCollectionChange | SystemCollectionRuleChange,
+        *,
+        actor: str,
+    ) -> SystemSnapshot:
+        """Apply reading policies and save the catalogue they were prepared from."""
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        collection = SystemCollectionService(self.session)
+        snapshot = await self.read()
+        proposed, preview = await collection.prepare(snapshot, change)
+        await collection.protect_monitors(
+            preview.affected_monitors, change.pause_affected_monitors, proposed
+        )
+        await collection.persist(proposed, actor=actor)
+        revision = await self._locked_revision(snapshot.revision)
+        return await self._write_document(
+            proposed.document, actor=actor, revision=revision
+        )
+
+    async def _locked_revision(self, expected: int) -> int:
+        await lock_collection_configuration(self.session)
+        await require_application_writes(self.session)
+        row = await self._locked_row()
+        revision = row.revision if row is not None else 0
+        if revision != expected:
+            raise ConflictError(
+                "The saved system changed. Reload it before saving edits."
+            )
+        return revision
+
+    async def _locked_row(self) -> SystemConfiguration | None:
+        return await self.session.scalar(
             select(SystemConfiguration)
             .where(SystemConfiguration.id == 1)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
+
+    async def _write_document(
+        self, normalized: SystemDocument, *, actor: str, revision: int
+    ) -> SystemSnapshot:
+        # Monitor stops may have ended the preparation transaction to wait on
+        # Docker. Re-read under the reacquired catalogue lock before applying.
+        row = await self._locked_row()
         document = normalized.model_dump(mode="json")
         if row is not None and row.document == document:
             return await self.read()

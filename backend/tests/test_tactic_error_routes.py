@@ -18,9 +18,7 @@ from off_key_tactic_middleware.domain import (
 )
 from off_key_tactic_middleware.provider import get_user_service
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
-from off_key_tactic_middleware.services.system_collection import (
-    SystemCollectionService,
-)
+from off_key_tactic_middleware.services.system import SystemService
 
 ERRORS = [
     (NotFoundError("missing"), 404, "missing"),
@@ -96,7 +94,7 @@ async def test_domain_errors_map_to_the_same_status_and_detail(
 ):
     closed = []
     app, fail = _app(error, nested, closed)
-    monkeypatch.setattr(SystemCollectionService, "apply", fail)
+    monkeypatch.setattr(SystemService, "apply_collection", fail)
     monkeypatch.setattr(PipelineLibrary, "get", fail)
     method, path, body = ROUTES[route]
 

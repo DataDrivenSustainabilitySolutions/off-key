@@ -121,7 +121,7 @@ async def test_metadata_import_never_enables_recording_but_explicit_action_does(
     )
     assert session.session.get(SystemCollectionConfiguration, 1) is not None
     assert snapshot.runtime.bindings["temperature-1"]["policy"]["mode"] == "off"
-    snapshot = await SystemCollectionService(session).apply(
+    snapshot = await SystemService(session).apply_collection(
         change(snapshot), actor="test@example.com"
     )
     assert snapshot.document.default_policy.mode == "off"
@@ -133,13 +133,40 @@ async def test_metadata_import_never_enables_recording_but_explicit_action_does(
 
 
 @pytest.mark.asyncio
+async def test_collection_apply_writes_one_catalogue_and_collection_revision(session):
+    saved = await SystemService(session).save(
+        SystemChange(expected_revision=0, document=document()), actor="test@example.com"
+    )
+    collection_revision = saved.runtime.collection_revision
+    applied = await SystemService(session).apply_collection(
+        change(saved), actor="admin@example.com"
+    )
+    assert applied.revision == saved.revision + 1
+    assert applied.updated_by == "admin@example.com"
+    assert applied.runtime.collection_revision == collection_revision + 1
+    revisions = list(session.session.scalars(select(SystemRevision)))
+    assert [item.revision for item in revisions] == [1, 2]
+    assert revisions[-1].document == applied.document.model_dump(mode="json")
+    row = session.session.get(SystemCollectionConfiguration, 1)
+    assert row.updated_by == "admin@example.com"
+    assert row.ingress_status == {} and row.collection_status == {}
+    # The same policy again changes nothing: no catalogue or collection revision.
+    again = await SystemService(session).apply_collection(
+        change(applied), actor="admin@example.com"
+    )
+    assert again.revision == applied.revision
+    assert again.runtime.collection_revision == applied.runtime.collection_revision
+    assert len(list(session.session.scalars(select(SystemRevision)))) == 2
+
+
+@pytest.mark.asyncio
 async def test_new_imported_readings_stay_off_and_renames_keep_runtime_generation(
     session,
 ):
     snapshot = await SystemService(session).save(
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
-    snapshot = await SystemCollectionService(session).apply(
+    snapshot = await SystemService(session).apply_collection(
         change(snapshot), actor="test@example.com"
     )
     row = session.session.get(SystemCollectionConfiguration, 1)
@@ -175,9 +202,11 @@ async def test_stale_policy_change_cannot_overwrite_a_newer_decision(session):
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
     original = change(snapshot)
-    await SystemCollectionService(session).apply(original, actor="test@example.com")
+    await SystemService(session).apply_collection(original, actor="test@example.com")
     with pytest.raises(ConflictError, match="changed"):
-        await SystemCollectionService(session).apply(original, actor="test@example.com")
+        await SystemService(session).apply_collection(
+            original, actor="test@example.com"
+        )
 
 
 @pytest.mark.asyncio
@@ -185,7 +214,7 @@ async def test_collection_and_structure_changes_protect_active_monitor_inputs(se
     snapshot = await SystemService(session).save(
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
-    snapshot = await SystemCollectionService(session).apply(
+    snapshot = await SystemService(session).apply_collection(
         change(snapshot), actor="test@example.com"
     )
     topic = snapshot.runtime.bindings["temperature-1"]["accepted_topic"]
@@ -200,7 +229,7 @@ async def test_collection_and_structure_changes_protect_active_monitor_inputs(se
     )
     assert preview.affected_monitors == [{"id": "monitor", "name": "monitor"}]
     with pytest.raises(ConflictError, match="running monitors"):
-        await SystemCollectionService(session).apply(
+        await SystemService(session).apply_collection(
             change(snapshot, "off"), actor="test@example.com"
         )
     draft = snapshot.document.model_copy(deep=True)
@@ -321,7 +350,7 @@ async def test_scope_rules_survive_structure_edits_and_admit_only_approved_addit
     broker = CollectionRuleScope(kind="broker", connection_id="broker-1")
 
     async def apply(snapshot, edit):
-        return await SystemCollectionService(session).apply(
+        return await SystemService(session).apply_collection(
             SystemCollectionRuleChange(
                 expected_revision=snapshot.revision,
                 expected_collection_revision=snapshot.runtime.collection_revision,
@@ -402,7 +431,7 @@ async def test_future_rule_metadata_advances_revision_without_restarting_ingesti
     snapshot = await SystemService(session).save(
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
-    service = SystemCollectionService(session)
+    service = SystemService(session)
 
     def request(snapshot, future):
         return SystemCollectionRuleChange(
@@ -417,13 +446,17 @@ async def test_future_rule_metadata_advances_revision_without_restarting_ingesti
             ],
         )
 
-    first = await service.apply(request(snapshot, False), actor="test@example.com")
+    first = await service.apply_collection(
+        request(snapshot, False), actor="test@example.com"
+    )
     generation = (await read_collection_runtime(session)).catalog.generation
-    second = await service.apply(request(first, True), actor="test@example.com")
+    second = await service.apply_collection(
+        request(first, True), actor="test@example.com"
+    )
     assert second.runtime.collection_revision == first.runtime.collection_revision + 1
     assert (await read_collection_runtime(session)).catalog.generation == generation
     with pytest.raises(ConflictError):
-        await service.apply(request(first, False), actor="test@example.com")
+        await service.apply_collection(request(first, False), actor="test@example.com")
 
 
 @pytest.mark.asyncio
@@ -438,7 +471,6 @@ async def test_moving_an_admitted_reading_requires_review_and_keeps_overrides(
     )
 
     service = SystemService(session)
-    collection = SystemCollectionService(session)
     snapshot = await service.save(
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
@@ -448,7 +480,7 @@ async def test_moving_an_admitted_reading_requires_review_and_keeps_overrides(
     )
 
     async def apply(snapshot, edits):
-        return await collection.apply(
+        return await service.apply_collection(
             SystemCollectionRuleChange(
                 expected_revision=snapshot.revision,
                 expected_collection_revision=snapshot.runtime.collection_revision,

@@ -12,6 +12,7 @@ import { loadExplorerPreferences, saveExplorerPreferences, toggleExplorerFavouri
 import type { ListPosition } from "../explorer/ExplorerList";
 import { CatalogueContext, type CatalogueContextValue, type CatalogueDialog } from "./catalogue-context";
 import { catalogueSelection, hasCatalogueSelection, isWorkspacePath, selectedSourceHref, withCatalogueSource } from "./catalogue-navigation";
+import { monitoringNavigationKey } from "../monitoring/monitoringView";
 
 const empty = createEmptySystem();
 
@@ -101,7 +102,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     let href = path;
     if (path === "/" && location.pathname !== "/") {
       const returnTo = safeServiceReturn(params.get("returnTo"));
-      const remembered = navigationDraft(`monitoring:${userId}:url`, () => "/");
+      const remembered = navigationDraft(monitoringNavigationKey(userId), () => "/");
       const oldSource = catalogueSelection(index, new URL(remembered, "https://workspace.invalid").searchParams);
       if (returnTo !== "/") href = returnTo;
       else if (oldSource?.key === selected?.key) href = remembered;

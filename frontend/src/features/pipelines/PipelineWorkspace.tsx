@@ -10,6 +10,7 @@ import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
+import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary } from "../monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {
@@ -69,30 +70,9 @@ export default function PipelineWorkspace({
       });
     return () => controller.abort();
   }, [sourceId, retry]);
-  const open = (pipelineId: string, targetId?: string) => {
-    const next = new URLSearchParams(params);
-    next.set("pipeline", pipelineId);
-    if (params.get("view") === "pipelines") next.delete("create");
-    if (targetId) next.set("target", targetId);
-    next.delete("revision");
-    next.delete("activation");
-    next.delete("view");
-    setParams(next);
-  };
-  const create = () => {
-    const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "view", "replace", "from"].forEach((key) => next.delete(key));
-    next.set("create", "monitoring");
-    setParams(next);
-  };
-  const library = () => {
-    const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "replace"].forEach((key) =>
-      next.delete(key),
-    );
-    next.set("view", "pipelines");
-    setParams(next);
-  };
+  const open = (pipelineId: string, targetId?: string) => setParams(openPipeline(params, pipelineId, targetId));
+  const create = () => setParams(createPipeline(params));
+  const library = () => setParams(showLibrary(params));
   if (!catalog)
     return (
       <section aria-label="Pipelines">
@@ -143,11 +123,7 @@ export default function PipelineWorkspace({
           The requested predecessor is no longer available.{" "}
           <button
             type="button"
-            onClick={() => {
-              const next = new URLSearchParams(params);
-              next.delete("replace");
-              setParams(next);
-            }}
+            onClick={() => setParams(dropReplacement(params))}
           >
             Choose to start a new service instead
           </button>
@@ -184,18 +160,8 @@ export default function PipelineWorkspace({
         onBack={creating ? onBack : library}
         backLabel={creating ? "Monitoring" : "Templates"}
         onManage={library}
-        onRevision={(revision) => {
-          const next = new URLSearchParams(params);
-          if (revision) next.set("revision", revision);
-          else next.delete("revision");
-          next.delete("activation");
-          setParams(next);
-        }}
-        onOperation={(activation) => {
-          const next = new URLSearchParams(params);
-          next.set("activation", activation);
-          setParams(next);
-        }}
+        onRevision={(revision) => setParams(setRevision(params, revision))}
+        onOperation={(activation) => setParams(setActivation(params, activation))}
         onStarted={onStarted}
       />
     </>

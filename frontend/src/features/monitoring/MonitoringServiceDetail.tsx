@@ -13,6 +13,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { formatDateTime } from "@/lib/format-time";
 import { InlineName } from "../catalogue/InlineName";
 import { MonitoringHistory } from "./MonitoringHistory";
+import { chooseTab as withTab } from "./monitoringView";
 import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
 import type { SystemDocument } from "../catalogue/systemTypes";
 import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
@@ -52,11 +53,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     }, reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();
   }, [service.id, service.container_name, retry]);
-  const chooseTab = (next: string, streamId?: string) => {
-    const search = new URLSearchParams(params); search.set("tab", next);
-    if (streamId) search.set("stream", streamId); else if (next !== "evidence") search.delete("stream");
-    setParams(search);
-  };
+  const chooseTab = (next: string, streamId?: string) => setParams(withTab(params, next, streamId));
   const remove = async () => {
     setDeleting(true); setDeleteError("");
     try {

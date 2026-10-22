@@ -57,6 +57,10 @@ from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..orchestration.radar import RadarOrchestrationService
 from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
+from ..radar_status import (
+    PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS,
+    heartbeat_age_seconds,
+)
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
 
@@ -673,7 +677,8 @@ class PipelineActivations:
         healthy = (
             service is not None
             and service.operational_updated_at is not None
-            and (now - service.operational_updated_at).total_seconds() <= 30
+            and heartbeat_age_seconds(service.operational_updated_at, now)
+            <= PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS
             and first_heartbeat is not None
             and (
                 row.heartbeat_deadline is None

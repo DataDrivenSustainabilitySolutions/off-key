@@ -19,7 +19,14 @@ STOPPED_WORKLOAD_STATES = {
     "stopped",
 }
 TERMINAL_WORKLOAD_STATES = FAILED_WORKLOAD_STATES | STOPPED_WORKLOAD_STATES
+# RADAR's default health interval is far below both windows; a test pins that.
 RUNTIME_STATUS_STALE_AFTER_SECONDS = 120.0
+PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS = 30.0
+
+
+def heartbeat_age_seconds(updated_at: datetime, now: datetime | None = None) -> float:
+    """Seconds since a persisted runtime heartbeat."""
+    return ((now or datetime.now(UTC)) - updated_at).total_seconds()
 
 
 def normalize_operational_status(service: MonitoringService) -> dict[str, Any]:
@@ -82,10 +89,11 @@ def derive_operational_status(
         )
     # The cheap overview must age persisted heartbeats too. Checking freshness
     # does not require probing every workload in Docker.
-    if updated_at is not None:
-        age_seconds = (datetime.now(UTC) - updated_at).total_seconds()
-        if age_seconds > RUNTIME_STATUS_STALE_AFTER_SECONDS:
-            return _mark_operational_status_stale(status, "Runtime heartbeat is stale")
+    if (
+        updated_at is not None
+        and heartbeat_age_seconds(updated_at) > RUNTIME_STATUS_STALE_AFTER_SECONDS
+    ):
+        return _mark_operational_status_stale(status, "Runtime heartbeat is stale")
 
     return status
 

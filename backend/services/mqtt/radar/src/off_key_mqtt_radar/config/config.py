@@ -58,6 +58,11 @@ def load_configuration(custom_config_file: str | None = None):
     return None
 
 
+# Pipeline workers report at least this often; TACTIC's activation heartbeat
+# window must stay above it.
+PIPELINE_HEARTBEAT_INTERVAL_CAP = 5.0
+
+
 class AnomalyDetectionConfig(PerformanceConfig):
     """Configuration for anomaly detection models"""
 
@@ -105,7 +110,8 @@ class AnomalyDetectionConfig(PerformanceConfig):
         # A single publication serves workspace summaries and selected previews.
         if "health_check_interval" in cls.model_fields:
             result["health_check_interval"] = min(
-                result.get("health_check_interval", 5.0), 5.0
+                result.get("health_check_interval", PIPELINE_HEARTBEAT_INTERVAL_CAP),
+                PIPELINE_HEARTBEAT_INTERVAL_CAP,
             )
         return result
 

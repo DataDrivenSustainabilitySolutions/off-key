@@ -28,6 +28,10 @@ from .services.pipelines.release import (
     prepare_release_monitors,
     record_release_run,
 )
+from .services.radar_status import (
+    RUNTIME_STATUS_STALE_AFTER_SECONDS,
+    heartbeat_age_seconds,
+)
 
 
 def captured_configuration(name: str, environment: list[str]) -> dict:
@@ -315,8 +319,8 @@ async def verify_restarted(session, revision: str, *, lock: bool = False) -> dic
             or service is None
             or not service.status
             or service.operational_updated_at is None
-            or (datetime.now(UTC) - service.operational_updated_at).total_seconds()
-            > 120
+            or heartbeat_age_seconds(service.operational_updated_at)
+            > RUNTIME_STATUS_STALE_AFTER_SECONDS
             or service.operational_stage in {"failed", "stopped", "degraded"}
         ):
             raise ValueError(

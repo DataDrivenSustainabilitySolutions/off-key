@@ -10,17 +10,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
+from off_key_core.config.bootstrap import start_service
 from off_key_core.config.email import get_email_settings
-from off_key_core.config.env import load_env
 from off_key_core.config.logs import (
     CorrelationIdMiddleware,
-    load_yaml_config,
-    log_startup_logging_configuration,
     logger,
 )
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.config.validation import validate_settings
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -154,8 +151,10 @@ def build_app(app_settings: AppSettings) -> FastAPI:
 
 def create_app() -> FastAPI:
     """Load and validate configuration, configure logging and build the app."""
-    load_env()
-    validate_settings(VALIDATION_SPECS, context="API gateway configuration")
-    load_yaml_config(str(Path(__file__).parent / "config" / "logging.yaml"))
-    log_startup_logging_configuration("api-gateway")
+    start_service(
+        "api-gateway",
+        Path(__file__).parent / "config" / "logging.yaml",
+        VALIDATION_SPECS,
+        context="API gateway configuration",
+    )
     return build_app(get_app_settings())

@@ -167,10 +167,7 @@ def test_main_keeps_the_service_logging_config(monkeypatch):
     app = object()
     run = MagicMock()
     for name, value in {
-        "load_env": lambda: None,
-        "load_yaml_config": lambda path: None,
-        "log_startup_logging_configuration": lambda service: None,
-        "validate_settings": lambda *args, **kwargs: None,
+        "start_service": lambda *args, **kwargs: None,
         "get_tactic_settings": lambda: SimpleNamespace(config=config),
         "create_app": lambda: app,
     }.items():

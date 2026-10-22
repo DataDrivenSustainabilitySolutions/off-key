@@ -5,47 +5,34 @@ MQTT Real-Time Anomaly Detector for Analysis and Reporting
 """
 
 import asyncio
-import logging
 import sys
 from pathlib import Path
 
-from off_key_core.config.env import load_env
-from off_key_core.config.logs import (
-    load_yaml_config,
-    log_startup_logging_configuration,
-    logger,
-)
-from off_key_core.config.validation import validate_settings
+from off_key_core.config.bootstrap import start_service
+from off_key_core.config.logs import logger
 
 from .config.config import get_radar_settings, load_configuration
 from .config.runtime import get_radar_runtime_file_settings
 from .service import get_radar_service
 
 
-def setup_logging():
-    """Load RADAR logging YAML and silence noisy third-party libraries."""
-    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-    load_yaml_config(str(service_logging_config))
-    logging.getLogger("paho.mqtt").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
-
-
 async def main():
     """Main entry point for RADAR service"""
-    setup_logging()
-    log_startup_logging_configuration("mqtt-radar")
-    load_env()
-    runtime_file_settings = get_radar_runtime_file_settings()
-    config_file = load_configuration(runtime_file_settings.RADAR_CONFIG_FILE)
+    # The optional config file loads before logging, so it may set log levels.
+    config_file = start_service(
+        "mqtt-radar",
+        Path(__file__).parent / "config" / "logging.yaml",
+        [("radar", lambda: get_radar_settings().config)],
+        context="RADAR service configuration",
+        after_env=lambda: load_configuration(
+            get_radar_runtime_file_settings().RADAR_CONFIG_FILE
+        ),
+    )
     if config_file:
         logger.info(
             "event=radar.config_file_loaded path=%s changes_require_restart=true",
             config_file,
         )
-    validate_settings(
-        [("radar", lambda: get_radar_settings().config)],
-        context="RADAR service configuration",
-    )
 
     logger.info("event=radar.service_bootstrap_start")
     cfg = get_radar_settings().config

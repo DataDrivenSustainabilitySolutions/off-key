@@ -8,15 +8,10 @@ import asyncio
 from pathlib import Path
 
 import uvicorn
+from off_key_core.config.bootstrap import start_service
 from off_key_core.config.database import get_database_settings
-from off_key_core.config.env import load_env
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.logs import (
-    load_yaml_config,
-    log_startup_logging_configuration,
-    logger,
-)
-from off_key_core.config.validation import validate_settings
+from off_key_core.config.logs import logger
 from off_key_core.utils.tasks import run_until_first_exit
 
 from .api import app, set_sync_service
@@ -52,14 +47,9 @@ async def run_api_server(sync_service: SyncService):
 async def main():
     """Main entry point for database sync service"""
 
-    load_env()
-
-    # Initialize logging before validation so startup failures are structured.
-    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-    load_yaml_config(str(service_logging_config))
-    log_startup_logging_configuration("db-sync")
-
-    validate_settings(
+    start_service(
+        "db-sync",
+        Path(__file__).parent / "config" / "logging.yaml",
         [
             ("logging", get_logging_settings),
             ("database", get_database_settings),

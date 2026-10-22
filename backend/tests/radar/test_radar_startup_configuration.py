@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from off_key_core.config import bootstrap
 from off_key_mqtt_radar import __main__ as entrypoint
 from off_key_mqtt_radar.config.config import clear_radar_settings_cache
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
@@ -16,9 +17,9 @@ async def test_custom_file_applies_on_startup_and_next_restart(tmp_path, monkeyp
     config_file.write_text("RADAR_MQTT_BROKER_HOST=first-broker\n")
     monkeypatch.setenv("RADAR_CONFIG_FILE", str(config_file))
     monkeypatch.setenv("RADAR_MQTT_BROKER_HOST", "environment-broker")
-    monkeypatch.setattr(entrypoint, "setup_logging", lambda: None)
-    monkeypatch.setattr(entrypoint, "log_startup_logging_configuration", lambda _: None)
-    monkeypatch.setattr(entrypoint, "load_env", lambda: None)
+    monkeypatch.setattr(bootstrap, "load_env", lambda: None)
+    monkeypatch.setattr(bootstrap, "load_yaml_config", lambda _: None)
+    monkeypatch.setattr(bootstrap, "log_startup_logging_configuration", lambda _: None)
     services = []
 
     def construct_service():

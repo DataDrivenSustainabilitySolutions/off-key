@@ -13,15 +13,12 @@ from fastapi import APIRouter, Depends, FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from off_key_core.api_docs import router as api_docs_router
 from off_key_core.config.auth import get_auth_settings
-from off_key_core.config.env import load_env
+from off_key_core.config.bootstrap import start_service
 from off_key_core.config.logs import (
     CorrelationIdMiddleware,
-    load_yaml_config,
-    log_startup_logging_configuration,
     logger,
 )
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.config.validation import validate_settings
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
@@ -254,12 +251,9 @@ def create_app() -> FastAPI:
 
 def main() -> None:
     """Main entry point for the TACTIC middleware service."""
-    load_env()
-    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-    load_yaml_config(str(service_logging_config))
-    log_startup_logging_configuration("tactic")
-
-    validate_settings(
+    start_service(
+        "tactic",
+        Path(__file__).parent / "config" / "logging.yaml",
         [
             ("tactic", lambda: get_tactic_settings().config),
             ("auth", get_auth_settings),

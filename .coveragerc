@@ -3,6 +3,9 @@
 # Database, collection and Swarm lanes skip unless their environment is set.
 [run]
 branch = true
+# SQLAlchemy's asyncio layer switches greenlets; without this, lines are filed
+# under the wrong module.
+concurrency = thread,greenlet
 parallel = true
 relative_files = true
 # Count code that tests start in Python subprocesses as well.

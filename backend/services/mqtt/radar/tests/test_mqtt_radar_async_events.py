@@ -14,6 +14,8 @@ import pytest_asyncio
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.models import MQTTMessage
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
+from paho.mqtt.packettypes import PacketTypes
+from paho.mqtt.reasoncodes import ReasonCode
 
 
 @pytest.fixture
@@ -130,8 +132,9 @@ async def test_connect_completes_from_success_callback(config):
 async def test_connect_fails_from_refusal_callback(config):
     """A broker refusal fails immediately instead of waiting for a timeout."""
     paho_client = MagicMock()
+    refusal = ReasonCode(PacketTypes.CONNACK, "Not authorized")
     paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
-        paho_client, None, None, 5
+        paho_client, None, None, refusal
     )
     client = RadarMQTTClient(config)
 

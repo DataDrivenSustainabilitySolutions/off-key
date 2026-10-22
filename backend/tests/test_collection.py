@@ -1,6 +1,5 @@
 import asyncio
 import json
-import time
 from datetime import UTC, datetime
 
 import pytest
@@ -76,7 +75,7 @@ def test_invalid_numeric_payloads_are_rejected(value):
     [
         {"received_at": True},
         {"received_at": "1700000000000"},
-        {"received_at": (time.time() + 301) * 1000},
+        {"received_at": datetime(2100, 1, 1, tzinfo=UTC).timestamp() * 1000},
         {"upstream_retained": "false"},
         {"payload": 42},
         "not an envelope",

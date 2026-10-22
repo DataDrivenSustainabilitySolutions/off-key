@@ -14,6 +14,7 @@ from off_key_api_gateway.api.v1 import routes
 from off_key_api_gateway.facades import tactic as facade
 from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.schemas.members import MemberProfile
+from slowapi.errors import RateLimitExceeded
 
 
 def test_tactic_error_detail_prefers_downstream_api_detail():
@@ -69,6 +70,8 @@ ROUTES = [
 DOWNSTREAM_ERRORS = [
     (TacticError("failed", status=409, body={"detail": "claimed"}), 409, "claimed"),
     (TacticError("tactic unreachable"), 502, "tactic unreachable"),
+    # A TACTIC rate limit is forwarded, not answered by the gateway's limiter.
+    (TacticError("busy", status=429, body={"detail": "busy"}), 429, "busy"),
 ]
 
 
@@ -77,7 +80,7 @@ def gateway_app():
     app = FastAPI()
     app.include_router(routes.router, prefix="/v1")
     app.state.limiter = limiter
-    app.add_exception_handler(429, rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     member = MemberProfile(
         id=17,
         email="admin@example.com",

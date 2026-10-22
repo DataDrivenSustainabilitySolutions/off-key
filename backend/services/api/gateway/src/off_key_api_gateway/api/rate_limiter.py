@@ -71,5 +71,5 @@ limiter = Limiter(key_func=client_ip)
 
 
 def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
-    # Registered for status 429, which only the limiter raises.
+    # Registered for RateLimitExceeded only; Starlette types handlers by Exception.
     return _rate_limit_exceeded_handler(request, cast(RateLimitExceeded, exc))

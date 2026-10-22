@@ -12,9 +12,13 @@ from off_key_core.config.logs import (
     set_correlation_id,
 )
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
 
 from .rate_limiter import client_ip as forwarded_client_ip
+
+
+def _safe_user_agent(request: Request) -> str:
+    user_agent = request.headers.get("user-agent", "unknown")
+    return user_agent if len(user_agent) <= 120 else f"{user_agent[:117]}..."
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -31,10 +35,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         set_correlation_id(correlation_id)
         method = request.method
         path = request.url.path
-        user_agent = request.headers.get("user-agent", "unknown")
-        safe_user_agent = (
-            user_agent if len(user_agent) <= 120 else f"{user_agent[:117]}..."
-        )
+        safe_user_agent = _safe_user_agent(request)
         safe_query = redact_query_params(dict(request.query_params))
 
         try:
@@ -81,17 +82,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 class SecurityLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware for security event logging."""
 
-    def __init__(self, app: ASGIApp):
-        super().__init__(app)
-
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Log potential security events
         client_ip = redact_ip_address(forwarded_client_ip(request))
         path = request.url.path
-        user_agent = request.headers.get("user-agent", "unknown")
-        safe_user_agent = (
-            user_agent if len(user_agent) <= 120 else f"{user_agent[:117]}..."
-        )
+        safe_user_agent = _safe_user_agent(request)
 
         # Log suspicious patterns
         if self._is_suspicious_request(request):

@@ -22,6 +22,7 @@ from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
+from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -121,7 +122,9 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     app.include_router(api_docs_router)
 
     app.state.limiter = limiter
-    app.add_exception_handler(429, rate_limit_exceeded_handler)
+    # Only the gateway's own limiter answers with its headers; a 429 forwarded
+    # from TACTIC keeps TACTIC's detail through the normal HTTPException path.
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # Added innermost first: requests pass CORS, GZip, SlowAPI, security
     # logging and request logging in that order.

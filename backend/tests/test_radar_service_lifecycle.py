@@ -71,6 +71,31 @@ async def test_radar_service_stop_cleans_up_partially_started_components():
     assert radar_service.database_writer is None
 
 
+@pytest.mark.asyncio
+async def test_cancelled_message_handler_finishes_processing_before_reraising():
+    """Shutdown must not interrupt a message between model update and evidence."""
+    radar_service = object.__new__(RadarService)
+    started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def process(message):
+        started.set()
+        await release.wait()
+        finished.set()
+
+    radar_service._process_one_message = process
+    handler = asyncio.create_task(radar_service._handle_mqtt_message(object()))
+    await started.wait()
+
+    handler.cancel()
+    await asyncio.sleep(0)
+    assert not handler.done()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await handler
+    assert finished.is_set()
+
+
 @pytest.mark.parametrize(
     ("static_state", "expected_stage", "expected_progress"),
     [

@@ -122,25 +122,6 @@ class MessageHandler:
         self.message_handler = None
         self._event_loop = None
 
-    def get_queued_messages(self, count: int | None = None) -> list[MQTTMessage]:
-        """
-        Get messages from the queue
-
-        Args:
-            count: Number of messages to retrieve (all if None)
-
-        Returns:
-            List of queued messages
-        """
-        if count is None:
-            messages = self.message_queue.copy()
-            self.message_queue.clear()
-        else:
-            messages = self.message_queue[:count]
-            self.message_queue = self.message_queue[count:]
-
-        return messages
-
     def get_queue_size(self) -> int:
         """Get current message queue size"""
         return len(self.message_queue)
@@ -164,25 +145,6 @@ class MessageHandler:
             ),
             "handler_messages_dropped": self.handler_messages_dropped,
         }
-
-    def get_message_rate(self, connection_start_time: datetime | None = None) -> float:
-        """
-        Calculate message rate since connection started
-
-        Args:
-            connection_start_time: When connection was established
-
-        Returns:
-            Messages per second
-        """
-        if not connection_start_time or not self.last_message_time:
-            return 0.0
-
-        duration = (datetime.now() - connection_start_time).total_seconds()
-        if duration <= 0:
-            return 0.0
-
-        return self.messages_received / duration
 
     def _on_message(self, client, userdata, msg):
         """MQTT message callback - processes incoming messages"""

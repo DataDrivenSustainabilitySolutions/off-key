@@ -12,7 +12,6 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
-from off_key_core.utils.enum import HealthStatus
 
 
 class ConnectionState(Enum):
@@ -23,38 +22,6 @@ class ConnectionState(Enum):
     CONNECTED = "connected"
     RECONNECTING = "reconnecting"
     FAILED = "failed"
-
-
-@dataclass
-class ClientConnectionInfo:
-    """MQTT client connection information"""
-
-    state: str
-    broker_host: str
-    broker_port: int
-    client_id: str | None
-    connection_start_time: str | None
-    reconnect_attempts: int
-    subscriptions: list[str]
-    pending_subscriptions: list[str]
-    messages_sent: int
-
-
-@dataclass
-class ClientHealthStatus:
-    """MQTT client health status"""
-
-    status: HealthStatus
-    state: str
-    uptime_seconds: float
-    messages_received: int
-    messages_sent: int
-    message_rate: float
-    active_subscriptions: int
-    reconnect_attempts: int
-    queue_size: int
-    last_message_time: str | None
-    last_message_age_seconds: float | None
 
 
 @dataclass

@@ -18,7 +18,6 @@ from off_key_core.schemas.system_collection import runtime_fingerprint
 from sqlalchemy import case, delete, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .collection_buffer import CollectionBuffer
 from .collection_diagnostics import CollectionDiagnostics
@@ -29,12 +28,7 @@ from .telemetry import DatabaseWriter
 class MQTTProxyService:
     def __init__(self):
         self.config = get_mqtt_settings().config
-        auth = (
-            ApiKeyAuthHandler(self.config.mqtt_username, self.config.mqtt_api_key)
-            if self.config.use_auth
-            else None
-        )
-        self.mqtt_client = MQTTClient(self.config, auth)
+        self.mqtt_client = MQTTClient(self.config)
         self.buffer = CollectionBuffer(self.config.max_message_queue_size)
         self.mqtt_client.set_message_handler(self.buffer.receive)
         self.session_factory = get_async_session_local()

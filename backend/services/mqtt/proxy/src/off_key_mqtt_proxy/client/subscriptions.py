@@ -76,9 +76,6 @@ class SubscriptionManager:
     def get_all_topics(self) -> set[str]:
         return self.subscriptions | self.pending_subscriptions
 
-    def get_subscription_count(self) -> int:
-        return len(self.subscriptions)
-
     def _ack(self, client, operation: str, mid: int, success: bool) -> None:
         def finish():
             future = self._acks.get((operation, mid))

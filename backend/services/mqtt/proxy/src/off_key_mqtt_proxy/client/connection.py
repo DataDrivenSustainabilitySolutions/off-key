@@ -14,7 +14,6 @@ from datetime import datetime
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
 
-from ..auth import ApiKeyAuthError, ApiKeyAuthHandler
 from ..config.config import MQTTConfig
 from .models import ConnectionState
 
@@ -30,19 +29,16 @@ class ConnectionManager:
     def __init__(
         self,
         config: MQTTConfig,
-        auth_handler: ApiKeyAuthHandler | None = None,
         on_connected: Callable[[], Awaitable[None]] | None = None,
         on_disconnected: Callable[[bool], Awaitable[None]] | None = None,
     ):
         self.config = config
-        self.auth_handler = auth_handler
         self.on_connected = on_connected
         self.on_disconnected = on_disconnected
 
         # Connection state
         self.state = ConnectionState.DISCONNECTED
         self.client: mqtt.Client | None = None
-        self.last_connection_attempt = 0
         self.reconnect_attempts = 0
         self.connection_start_time: datetime | None = None
 
@@ -56,11 +52,6 @@ class ConnectionManager:
     def is_connected(self) -> bool:
         """Check if currently connected"""
         return self.state == ConnectionState.CONNECTED
-
-    @property
-    def is_shutdown(self) -> bool:
-        """Check if shutdown has been requested"""
-        return self._shutdown_event.is_set()
 
     async def connect(self) -> bool:
         """
@@ -101,10 +92,10 @@ class ConnectionManager:
                 context = ssl.create_default_context(cafile=self.config.ca_file)
                 self.client.tls_set_context(context)
 
-            # Set authentication if auth handler is provided
-            if self.auth_handler:
-                username, password = await self.auth_handler.get_mqtt_credentials()
-                self.client.username_pw_set(username, password)
+            if self.config.use_auth:
+                self.client.username_pw_set(
+                    self.config.mqtt_username, self.config.mqtt_api_key
+                )
 
             # Set callbacks
             self.client.on_connect = self._on_connect
@@ -147,11 +138,6 @@ class ConnectionManager:
                 self._cleanup_failed_client()
                 return False
 
-        except ApiKeyAuthError as e:
-            logger.error(f"API-Key authentication error: {e}")
-            self.state = ConnectionState.FAILED
-            self._cleanup_failed_client()
-            return False
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             self.state = ConnectionState.FAILED
@@ -195,27 +181,6 @@ class ConnectionManager:
             logger.debug("Failed MQTT client cleanup raised", exc_info=True)
         finally:
             self.client = None
-
-    def get_connection_info(self) -> dict:
-        """Get connection information for monitoring"""
-        return {
-            "state": self.state.value,
-            "broker_host": self.config.broker_host,
-            "broker_port": self.config.broker_port,
-            "client_id": self.client.client_id if self.client else None,
-            "connection_start_time": (
-                self.connection_start_time.isoformat()
-                if self.connection_start_time
-                else None
-            ),
-            "reconnect_attempts": self.reconnect_attempts,
-        }
-
-    def get_uptime_seconds(self) -> float:
-        """Get connection uptime in seconds"""
-        if not self.connection_start_time:
-            return 0
-        return (datetime.now() - self.connection_start_time).total_seconds()
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connection callback"""

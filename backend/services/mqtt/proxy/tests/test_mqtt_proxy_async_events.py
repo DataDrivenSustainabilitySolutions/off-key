@@ -6,7 +6,7 @@ reconnect scheduling of the message handler and connection manager.
 
 import asyncio
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -215,35 +215,9 @@ async def test_messages_without_a_handler_are_queued_up_to_the_bound(
     assert message_handler.handler_messages_dropped == 1
     assert isinstance(message_handler.last_message_time, datetime)
     assert message_handler.get_queue_size() == bound
-    first_two = message_handler.get_queued_messages(2)
-    rest = message_handler.get_queued_messages()
-    assert [m.topic for m in first_two + rest] == [
+    assert [m.topic for m in message_handler.message_queue] == [
         f"test/topic/{i}" for i in range(bound)
     ]
-    assert message_handler.get_queue_size() == 0
-
-
-@pytest.mark.parametrize(
-    ("connected_seconds_ago", "has_messages", "expected"),
-    [(10, True, 0.5), (None, True, 0.0), (10, False, 0.0), (-10, True, 0.0)],
-    ids=["rate", "not_connected", "no_messages", "clock_skew"],
-)
-def test_message_rate_is_messages_per_connected_second(
-    connected_seconds_ago, has_messages, expected
-):
-    message_handler = MessageHandler()
-    message_handler.messages_received = 5
-    if has_messages:
-        message_handler.last_message_time = datetime.now()
-    connected_at = (
-        None
-        if connected_seconds_ago is None
-        else datetime.now() - timedelta(seconds=connected_seconds_ago)
-    )
-
-    rate = message_handler.get_message_rate(connected_at)
-
-    assert rate == pytest.approx(expected, rel=0.05)
 
 
 async def test_metrics_report_completed_async_work(message_handler):
@@ -379,3 +353,30 @@ async def test_connect_clears_stale_connection_event(connection_manager):
     assert event_was_cleared, "_connection_event should be cleared before wait"
     mock_client.loop_stop.assert_called_once()
     mock_client.disconnect.assert_called_once()
+
+
+@pytest.mark.parametrize("use_auth", [True, False])
+async def test_connect_presents_configured_broker_credentials(use_auth):
+    config = MQTTSettings().config.model_copy(
+        update={"use_auth": use_auth, "mqtt_username": "ingest", "mqtt_api_key": "k"}
+    )
+    manager = ConnectionManager(config)
+    mock_client = MagicMock()
+
+    async def fake_wait_for(awaitable, timeout):  # noqa: ASYNC109
+        awaitable.close()
+        raise TimeoutError
+
+    with (
+        patch(
+            "off_key_mqtt_proxy.client.connection.mqtt.Client",
+            return_value=mock_client,
+        ),
+        patch("asyncio.wait_for", side_effect=fake_wait_for),
+    ):
+        assert await manager.connect() is False
+
+    if use_auth:
+        mock_client.username_pw_set.assert_called_once_with("ingest", "k")
+    else:
+        mock_client.username_pw_set.assert_not_called()

@@ -10,10 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import PipelineDefinition, PipelineExecutionConfig
 from off_key_core.schemas.radar import RadarStartConfig
-from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
 from off_key_mqtt_radar.admission import RadarAdmissionSettings
 from off_key_mqtt_radar.config.config import RadarSettings
 from off_key_mqtt_radar.config.runtime import (
@@ -28,6 +25,8 @@ from off_key_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_environment,
 )
 from pydantic import SecretStr
+
+from tests.support.pipelines import minimal_static_execution
 
 MODULE = "off_key_tactic_middleware.services.orchestration.radar_environment"
 RADAR_SETTINGS = (
@@ -92,52 +91,10 @@ def _adaptive_config():
 
 
 def _pipeline_config():
-    definition = compile_pipeline(
-        PipelineDefinition.model_validate(
-            dict(
-                strategy="static_baseline",
-                input_slots=[dict(id="a", label="Power")],
-                nodes=[
-                    dict(id="input", kind="source", component="source.aligned"),
-                    dict(
-                        id="model",
-                        kind="detector",
-                        component="detector:pyod_iforest",
-                        params={"n_estimators": 10},
-                    ),
-                    dict(id="policy", kind="policy", component="policy.martingale"),
-                    dict(id="output", kind="output", component="output.evidence"),
-                ],
-                edges=[
-                    dict(source="input", target="model"),
-                    dict(source="model", target="policy"),
-                    dict(source="policy", target="output"),
-                ],
-                settings=dict(training_window_size=20, calibration_window_size=5),
-            )
-        )
-    ).definition
-    bindings = [
-        dict(
-            slot_id="a",
-            reading_id="r-a",
-            entity_id="entity",
-            accepted_topic="telemetry/entity/a",
-            input_key=derive_monitoring_sensor_keys(
-                ["telemetry/entity/a"], sensor_key_strategy="full_hierarchy"
-            )[0],
-        )
-    ]
     return RadarStartConfig(
         container_name="radar-pipeline",
         mqtt_topics=["telemetry/entity/a"],
-        pipeline=PipelineExecutionConfig(
-            definition=definition,
-            bindings=bindings,
-            fingerprint=execution_fingerprint(definition, bindings),
-            revision_id="revision",
-            run_id="run",
-        ),
+        pipeline=minimal_static_execution(),
     )
 
 

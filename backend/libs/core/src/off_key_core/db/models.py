@@ -1,10 +1,12 @@
+from datetime import datetime
+from typing import Any
+
 from sqlalchemy import (
     DDL,
     JSON,
     TIMESTAMP,
     Boolean,
     CheckConstraint,
-    Column,
     DateTime,
     Enum,
     Float,
@@ -20,6 +22,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
 
 from ..utils.enum import RoleEnum
 from .base import Base
@@ -46,59 +49,69 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (Index("uq_users_email_lower", text("lower(email)"), unique=True),)
 
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(Text, unique=True, index=True, nullable=False)
-    hashed_password = Column(Text, nullable=False)
-    is_verified = Column(Boolean, default=False)
-    is_active = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    is_verified: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
-    session_version = Column(
+    session_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    verification_token = Column(Text, nullable=True)
-    invitation_expires_at = Column(DateTime(timezone=True), nullable=True)
-    reset_token_hash = Column(Text, nullable=True)
-    reset_token_expires_at = Column(DateTime(timezone=True), nullable=True)
-    role = Column(Enum(RoleEnum), default=RoleEnum.user, nullable=False)
-    updated_at = Column(
+    verification_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    invitation_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reset_token_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    role: Mapped[RoleEnum] = mapped_column(
+        Enum(RoleEnum), default=RoleEnum.user, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), nullable=False
+    )
 
 
 class CollectionConfiguration(Base):
     __tablename__ = "collection_configuration"
 
-    id = Column(Integer, primary_key=True)
-    revision = Column(Integer, nullable=False, default=0)
-    document = Column(JSONB, nullable=False)
-    ingress_status = Column(JSONB, nullable=False, default=dict)
-    collection_status = Column(JSONB, nullable=False, default=dict)
-    updated_at = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    document: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    ingress_status: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)
+    collection_status: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_by = Column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
     __table_args__ = (CheckConstraint("id = 1", name="collection_singleton"),)
 
 
 class CollectionRevision(Base):
     __tablename__ = "collection_revisions"
 
-    revision = Column(Integer, primary_key=True)
-    document = Column(JSONB, nullable=False)
-    updated_at = Column(
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    updated_by = Column(Text, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class CollectionBinding(Base):
     __tablename__ = "collection_bindings"
 
-    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
-    source_id = Column(Text, nullable=False)
-    local_id = Column(Text, nullable=False)
+    charger_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("chargers.charger_id"), primary_key=True
+    )
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    local_id: Mapped[str] = mapped_column(Text, nullable=False)
     __table_args__ = (
         UniqueConstraint("source_id", "local_id", name="uq_collection_source_charger"),
     )
@@ -107,33 +120,57 @@ class CollectionBinding(Base):
 class CollectionState(Base):
     __tablename__ = "collection_state"
 
-    charger_id = Column(Text, ForeignKey("chargers.charger_id"), primary_key=True)
-    sensor_key = Column(Text, primary_key=True)
-    value = Column(JSONB, nullable=False)
-    received_at = Column(DateTime(timezone=True), nullable=False)
-    is_snapshot = Column(Boolean, nullable=False)
+    charger_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("chargers.charger_id"), primary_key=True
+    )
+    sensor_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    is_snapshot: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class Charger(Base):
     __tablename__ = "chargers"
 
-    charger_id = Column(Text, primary_key=True, unique=True, index=True, nullable=False)
-    manufacturer_name = Column(Text, unique=False, index=True, nullable=True)
-    charger_name = Column(Text, unique=False, index=True, nullable=True)
-    firmware_version = Column(Text, unique=False, index=True, nullable=True)
-    last_seen = Column(Text, unique=False, index=True, nullable=True)
-    state = Column(Text, unique=False, index=True, nullable=True)
-    online = Column(Boolean, unique=False, default=True, index=True, nullable=False)
-    created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    charger_id: Mapped[str] = mapped_column(
+        Text, primary_key=True, unique=True, index=True, nullable=False
+    )
+    manufacturer_name: Mapped[str | None] = mapped_column(
+        Text, unique=False, index=True, nullable=True
+    )
+    charger_name: Mapped[str | None] = mapped_column(
+        Text, unique=False, index=True, nullable=True
+    )
+    firmware_version: Mapped[str | None] = mapped_column(
+        Text, unique=False, index=True, nullable=True
+    )
+    last_seen: Mapped[str | None] = mapped_column(
+        Text, unique=False, index=True, nullable=True
+    )
+    state: Mapped[str | None] = mapped_column(
+        Text, unique=False, index=True, nullable=True
+    )
+    online: Mapped[bool] = mapped_column(
+        Boolean, unique=False, default=True, index=True, nullable=False
+    )
+    created: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     # MQTT status fields
-    mqtt_connected = Column(Boolean, default=False, index=True, nullable=False)
-    mqtt_last_message = Column(DateTime(timezone=True), nullable=True, index=True)
-    mqtt_subscription_status = Column(
+    mqtt_connected: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True, nullable=False
+    )
+    mqtt_last_message: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    mqtt_subscription_status: Mapped[Any | None] = mapped_column(
         JSON, nullable=True
     )  # Track subscription status per hierarchy
-    mqtt_error_count = Column(Integer, default=0, nullable=False)
-    mqtt_last_error = Column(Text, nullable=True)
+    mqtt_error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    mqtt_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Composite indexes for common query patterns
     __table_args__ = (
@@ -146,12 +183,16 @@ class Charger(Base):
 class Telemetry(Base):
     __tablename__ = "telemetry"
 
-    charger_id = Column(Text, primary_key=True, nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), primary_key=True, nullable=False)
-    value = Column(Float, nullable=True)
-    type = Column(Text, primary_key=True, nullable=False)
-    data_source = Column(Text, nullable=False)
-    created = Column(DateTime(timezone=True), server_default=func.now())
+    charger_id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), primary_key=True, nullable=False
+    )
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    type: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
+    data_source: Mapped[str] = mapped_column(Text, nullable=False)
+    created: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     # The primary key serves upserts; TimescaleDB adds its own time index.
     __table_args__ = (
@@ -185,28 +226,36 @@ event.listen(
 class MonitoringService(Base):
     __tablename__ = "services"
 
-    id = Column(Text, primary_key=True)
-    container_id = Column(
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    container_id: Mapped[str | None] = mapped_column(
         Text, unique=True, nullable=True
     )  # (for FastAPI + Docker SDK)
-    container_name = Column(Text, unique=True, nullable=False)
-    mqtt_topic = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=func.now())
-    status = Column(Boolean, default=True)
-    operational_stage = Column(Text, nullable=False, default="stopped")
-    operational_status = Column(
+    container_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    mqtt_topic: Mapped[Any] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, default=func.now())
+    status: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    operational_stage: Mapped[str] = mapped_column(
+        Text, nullable=False, default="stopped"
+    )
+    operational_status: Mapped[Any] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql"), nullable=False, default=dict
     )
-    operational_updated_at = Column(DateTime(timezone=True), nullable=True)
-    stop_requested_at = Column(DateTime(timezone=True), nullable=True)
-    launch_config = Column(JSON, nullable=True)
+    operational_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stop_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    launch_config: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     # Desired workload state outlives a controller request or Docker API timeout.
-    desired_state = Column(
+    desired_state: Mapped[str] = mapped_column(
         Text, nullable=False, default="running", server_default="running"
     )
-    lifecycle_version = Column(Integer, nullable=False, default=1, server_default="1")
-    config_fingerprint = Column(Text, nullable=True)
-    collection_fingerprint = Column(Text, nullable=True)
+    lifecycle_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    config_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    collection_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class RadarRuntimeCheckpoint(Base):
@@ -219,11 +268,15 @@ class DeploymentMaintenance(Base):
         CheckConstraint("id = 1", name="deployment_maintenance_singleton"),
     )
 
-    id = Column(Integer, primary_key=True)
-    revision = Column(Text, nullable=False)
-    phase = Column(Text, nullable=False)
-    monitors = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
-    updated_at = Column(DateTime(timezone=True), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    monitors: Mapped[Any] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class MqttTopic(Base):
@@ -234,22 +287,26 @@ class MqttTopic(Base):
 
     __tablename__ = "mqtt_topics"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    service_id = Column(Text, ForeignKey("services.id"), nullable=False, index=True)
-    topic = Column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    service_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("services.id"), nullable=False, index=True
+    )
+    topic: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class Favorite(Base):
     __tablename__ = "favorites"
 
-    favorite_id = Column(
+    favorite_id: Mapped[int] = mapped_column(
         Integer, primary_key=True, unique=True, index=True, nullable=False
     )
 
-    charger_id = Column(
+    charger_id: Mapped[str] = mapped_column(
         Text, ForeignKey("chargers.charger_id"), nullable=False, index=True
     )
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
 
     # Composite index for user favorites lookup
     __table_args__ = (Index("ix_favorite_user_charger", "user_id", "charger_id"),)
@@ -258,23 +315,27 @@ class Favorite(Base):
 class Anomaly(Base):
     __tablename__ = "anomalies"
 
-    charger_id = Column(Text, nullable=False, index=True)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    telemetry_type = Column(Text, nullable=False, index=True)
+    charger_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    telemetry_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     # Empty scope belongs to historical and manually created records. Monitor IDs
     # stay in history after the monitor is deleted, so this is not a foreign key.
-    service_id = Column(Text, nullable=False, default="", server_default=text("''"))
-    anomaly_type = Column(Text, nullable=False, index=True)
-    anomaly_value = Column(Float, nullable=False, index=True)
+    service_id: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
+    anomaly_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    anomaly_value: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     # 'tail_pvalue' for rows written by the tail-probability detector.
     # 'conformal_pvalue' for rows written by static conformal monitoring.
     # 'zscore' for legacy rows written by the z-score heuristic.
     # NULL for rows predating this column.
-    value_type = Column(Text, nullable=True)
+    value_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Exact telemetry streams involved in this anomaly. Multivariate rows use this
     # to highlight only the charts whose sensors contributed to the aligned vector.
     # NULL means the row predates this column or the writer could not determine it.
-    sensor_set = Column(JSON, nullable=True)
+    sensor_set: Mapped[Any | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         PrimaryKeyConstraint(
@@ -318,17 +379,23 @@ event.listen(
 class AnomalyIdentity(Base):
     __tablename__ = "anomaly_identity"
 
-    anomaly_id = Column(
+    anomaly_id: Mapped[str] = mapped_column(
         Text,
         primary_key=True,
         nullable=False,
         server_default=text("gen_random_uuid()::text"),
     )
-    charger_id = Column(Text, nullable=False, index=True)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False, index=True)
-    telemetry_type = Column(Text, nullable=False, index=True)
-    service_id = Column(Text, nullable=False, default="", server_default=text("''"))
-    created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    charger_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, index=True
+    )
+    telemetry_type: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    service_id: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
+    created: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     __table_args__ = (
         UniqueConstraint(

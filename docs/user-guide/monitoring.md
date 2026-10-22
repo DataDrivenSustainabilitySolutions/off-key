@@ -191,7 +191,7 @@ History remains inspectable after a service is removed.
 
 ## Stop and cleanup workflow
 
-1. Open the charger monitoring view or `/services`.
+1. Open **Monitoring** at `/` and select the charger.
 2. Stop or remove the active service.
 3. Confirm that the service is absent from the service list and that its sensors are available again.
 

@@ -103,8 +103,6 @@
 .mn-target-rows > button.is-focused { background: var(--ex-hover); }
 .mn-target-rows > button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .mn-target-rows small { color: var(--ex-muted); font-size: 11px; }
-.mn-create .ex-collection { max-width: none; margin-bottom: 25px; }
-.mn-create .ex-collection-controls { gap: 18px; }
 .mn-create-mode { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
 .ex-shell .mn-create-mode button { border: 1px solid var(--ex-line); border-radius: 6px; padding: 9px 13px; }
 .ex-shell .mn-create-mode button[aria-pressed="true"] { color: var(--ex-accent); background: var(--ex-active); border-color: var(--ex-accent); }

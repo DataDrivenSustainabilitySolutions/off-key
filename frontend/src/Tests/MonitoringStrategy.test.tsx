@@ -40,10 +40,6 @@ vi.mock("../lib/api-client", () => ({
   },
 }));
 
-vi.mock("../components/NavigationBar", () => ({
-  NavigationBar: () => <div data-testid="navigation-bar" />,
-}));
-
 const vectorCapabilities: ModelCapabilities = {
   event_kind: "tabular",
   feature_count: { minimum: 1, maximum: null },

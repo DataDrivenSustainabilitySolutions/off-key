@@ -11,7 +11,6 @@ const { auth, getMembers, inviteMember, updateMember, removeMember, post } = vi.
 }));
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("@/components/NavigationBar", () => ({ NavigationBar: () => null }));
 vi.mock("@/components/AuthLayout", () => ({
   AuthLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AUTH_LINK_CLASS: "", AUTH_ERROR_CLASS: "", AUTH_SUBMIT_BUTTON_CLASS: "",

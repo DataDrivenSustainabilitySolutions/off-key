@@ -15,7 +15,6 @@ const { get, errorToast } = vi.hoisted(() => ({
 
 vi.mock("../lib/api-client", () => ({ apiUtils: { get } }));
 vi.mock("react-hot-toast", () => ({ default: { error: errorToast } }));
-vi.mock("../components/NavigationBar", () => ({ NavigationBar: () => null }));
 vi.mock("../pages/monitoring/StaticMonitoringSetup", () => ({
   StaticMonitoringSetup: ({ sensorTypes }: { sensorTypes: string[] }) =>
     <div data-testid="sensors">{sensorTypes.join(",")}</div>,

@@ -31,10 +31,6 @@ vi.mock("../lib/charger-api", () => ({
   mergeTelemetryData: (_current: unknown, incoming: unknown) => incoming,
 }));
 
-vi.mock("../components/NavigationBar", () => ({
-  NavigationBar: () => <div data-testid="navigation-bar" />,
-}));
-
 vi.mock("../components/DynamicTelemetryChart", () => ({
   default: ({
     telemetryData,

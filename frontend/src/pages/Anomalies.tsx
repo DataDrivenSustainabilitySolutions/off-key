@@ -73,7 +73,6 @@ export default function AnomalyTable() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("off-key:last-seen-anomalies", new Date().toISOString());
     const timeoutId = window.setTimeout(() => {
       void fetchAllAnomalies();
     }, 0);

@@ -131,7 +131,7 @@ These service and reading favourites are saved per account in this browser.
 The [visual monitoring guide](monitoring.md#visual-monitoring-pipelines) explains
 the shared pipeline library, typed graph, binding review and live inspection.
 
-Open `/services` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed sensors.
+Open **Monitoring** at `/` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed sensors.
 
 ## Reporting workflow
 

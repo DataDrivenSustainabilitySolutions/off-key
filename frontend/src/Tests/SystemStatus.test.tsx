@@ -10,7 +10,6 @@ const getStorage = vi.fn();
 const auth = vi.hoisted(() => ({ isAdmin: true, member: { email: "admin@example.com" } }));
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("../components/NavigationBar", () => ({ NavigationBar: () => null }));
 const status: StorageStatus = {
   database_size_bytes: 1500000000,
   retention_policies: [

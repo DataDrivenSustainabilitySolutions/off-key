@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import ipaddress
 import json
 import os
@@ -20,15 +21,25 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / "dev" / "local"
 ENV_FILE = LOCAL / ".env"
 API_KEYS = LOCAL / "state" / "emqx-api-keys"
+
+
+def _load_broker_fixture():
+    """Load the sibling fixture module by path, whoever imports this launcher."""
+    spec = importlib.util.spec_from_file_location(
+        "broker_fixture", LOCAL / "broker_fixture.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The source broker plus every fixture broker; compose.yml repeats this list as
+# its allowlist default, pinned by the local deployment contract test.
 LOCAL_LIVE_HOSTS = [
     "source-broker",
-    "fixture-broker-campus",
-    "fixture-broker-production",
-    "fixture-broker-greenhouse",
-    "fixture-broker-meter",
-    "fixture-broker-weather",
-    "fixture-broker-pump",
+    *(broker.host for broker in _load_broker_fixture().BROKERS),
 ]
+
 PORTS = {
     "LOCAL_FRONTEND_PORT": 5174,
     "LOCAL_API_PORT": 8002,

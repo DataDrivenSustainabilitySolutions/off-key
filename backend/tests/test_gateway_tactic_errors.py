@@ -96,6 +96,9 @@ def _fail_downstream(monkeypatch, error):
     client = Tactic.__new__(Tactic)
     client._make_request = AsyncMock(side_effect=error)
     monkeypatch.setattr(facade, "get_tactic_client", lambda: client)
+    # Undoing a patch on the lazy facade leaves real bound methods behind on it.
+    for name in list(vars(facade.tactic)):
+        monkeypatch.delattr(facade.tactic, name)
 
 
 async def _call(app, method, path, body):

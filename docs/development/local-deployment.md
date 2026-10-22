@@ -32,6 +32,10 @@ so invitations remain available after restarting.
 
 The first build can take several minutes. Startup waits for service health.
 `local-up` also builds the RADAR image used by the normal monitoring workflow.
+TACTIC runs every RADAR workload as a Swarm service, as in production, so
+`local-up` turns a non-Swarm Docker engine into a single-node Swarm manager
+(`docker swarm init --advertise-addr 127.0.0.1`) before starting. `docker swarm
+leave --force` undoes it once no other Swarm workload needs it.
 
 If Docker Desktop's credential helper hangs while fetching public dependency
 images, use `make local-up LOCAL_ARGS="--simulator --public-images"`. This mode

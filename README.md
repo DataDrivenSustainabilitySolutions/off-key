@@ -56,9 +56,11 @@ the [local deployment workflow](docs/development/local-deployment.md). It builds
 the current checkout and runs alongside other previews without sharing their
 database or image tags.
 
-Use the base compose file for stable local networking and host port access:
+Use the base compose file for stable local networking and host port access.
+RADAR workloads run as Swarm services, so the engine must be a Swarm manager:
 
 ```bash
+docker swarm init --advertise-addr 127.0.0.1  # once per Docker engine
 docker compose up -d --build
 ```
 

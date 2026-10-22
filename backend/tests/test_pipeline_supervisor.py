@@ -50,10 +50,9 @@ async def test_slow_preflight_and_cleanup_do_not_delay_heartbeat_or_queued_cance
     monkeypatch.setattr(PreflightOrphans, "sweep", remote_cleanup)
     workloads = SimpleNamespace(
         async_docker=SimpleNamespace(
-            client=SimpleNamespace(containers=SimpleNamespace(get=None)),
+            client=SimpleNamespace(services=SimpleNamespace(get=None)),
             run=AsyncMock(side_effect=docker.errors.NotFound("no preflight")),
         ),
-        _is_swarm_manager=AsyncMock(return_value=False),
         remove_intent=AsyncMock(),
     )
     async with pipeline_database() as session:

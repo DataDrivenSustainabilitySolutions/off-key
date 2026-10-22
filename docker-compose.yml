@@ -426,7 +426,7 @@ services:
       - BUILD=0
       - COMMIT=0
       - CONFIGS=0
-      - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
+      - CONTAINERS=0
       - DISTRIBUTION=0
       - EXEC=0
       - IMAGES=1 # Required when TACTIC pulls a missing RADAR image.
@@ -514,8 +514,10 @@ services:
     restart: unless-stopped
 
 networks:
+  # RADAR workloads are Swarm services that TACTIC attaches to this network.
   app-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
   socket-network:
     driver: bridge
   emqx-network:

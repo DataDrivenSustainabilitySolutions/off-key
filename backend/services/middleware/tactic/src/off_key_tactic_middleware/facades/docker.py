@@ -9,13 +9,6 @@ from off_key_core.config.logs import log_performance, logger
 
 from ..config.config import DockerConfig, get_tactic_settings
 
-_SWARM_FALLBACK_INDICATORS = (
-    "cannot be used with services",
-    "only networks scoped to the swarm can be used",
-    "this node is not a swarm manager",
-    "swarm mode",
-)
-
 
 def _extract_latest_workload_state(
     tasks: list[object], no_tasks_state: str = "no_tasks"
@@ -82,20 +75,10 @@ class AsyncDocker:
                 logger.warning(f"Error closing Docker client: {e}")
 
 
-def should_fallback_to_container(exc: Exception) -> bool:
-    if isinstance(exc, docker.errors.APIError) and exc.status_code in (400, 406, 503):
-        return True
-    text = str(exc).lower()
-    return any(indicator in text for indicator in _SWARM_FALLBACK_INDICATORS)
-
-
 async def get_workload_docker_status(
     async_docker: AsyncDocker, container_id: str
 ) -> str:
-    """Return the running status of a Docker workload by ID.
-
-    Tries Swarm services first (reads task state), then falls back to plain
-    containers (reads container status).
+    """Return the latest task state of a RADAR Swarm service by ID.
 
     Returns:
         "running" | task state | "no_tasks" | "not_found" | "no_container_id"
@@ -104,28 +87,11 @@ async def get_workload_docker_status(
     if not container_id:
         return "no_container_id"
     try:
-        try:
-            docker_service = await async_docker.run(
-                async_docker.client.services.get, container_id
-            )
-            tasks = await async_docker.run(docker_service.tasks)
-            return _extract_latest_workload_state(tasks)
-        except docker.errors.NotFound:
-            pass
-        except Exception as exc:
-            if not should_fallback_to_container(exc):
-                raise
-            logger.debug(
-                "Skipping Swarm service status lookup for workload %s: %s",
-                container_id,
-                exc,
-            )
-
-        docker_container = await async_docker.run(
-            async_docker.client.containers.get, container_id
+        docker_service = await async_docker.run(
+            async_docker.client.services.get, container_id
         )
-        await async_docker.run(docker_container.reload)
-        return docker_container.status or "unknown"
+        tasks = await async_docker.run(docker_service.tasks)
+        return _extract_latest_workload_state(tasks)
     except docker.errors.NotFound:
         return "not_found"
     except Exception as exc:

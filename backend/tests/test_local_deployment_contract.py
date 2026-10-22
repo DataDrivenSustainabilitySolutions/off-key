@@ -36,6 +36,8 @@ def launcher(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "LOCAL", local)
     monkeypatch.setattr(module, "ENV_FILE", local / ".env")
     monkeypatch.setattr(module, "API_KEYS", local / "state/emqx-api-keys")
+    # Never change the developer's or CI's Docker engine from a contract test.
+    monkeypatch.setattr(module, "ensure_swarm", lambda environment: None)
     module.initialize(
         argparse.Namespace(
             project=None,
@@ -412,3 +414,32 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
         assert services[name].get("ports", []) == []
         assert set(services[name]["networks"]) == {"app-network"}
     assert set(services["broker-fixture-publisher"]["depends_on"]) == fixture_names
+
+
+@pytest.mark.parametrize(
+    ("state", "initialized"),
+    [("active true", False), ("inactive false", True), ("active false", None)],
+)
+def test_local_start_requires_a_swarm_manager(
+    tmp_path, monkeypatch, state, initialized
+):
+    spec = importlib.util.spec_from_file_location(
+        "local_swarm", ROOT / "dev/local/run.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=f"{state}\n")
+
+    monkeypatch.setattr(module, "ensure_local_docker", lambda environment: None)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    if initialized is None:
+        with pytest.raises(ValueError, match="Swarm manager"):
+            module.ensure_swarm({})
+        return
+    module.ensure_swarm({})
+    init = ["docker", "swarm", "init", "--advertise-addr", "127.0.0.1"]
+    assert (init in calls) is initialized

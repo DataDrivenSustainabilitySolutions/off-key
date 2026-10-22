@@ -21,19 +21,12 @@ class PreflightOrphans:
                 f"radar_controller_id={controller}",
             ]
         }
-        if await self.workloads._is_swarm_manager():
-            candidates = await self.docker.run(
-                self.docker.client.services.list, filters=filters
-            )
-        else:
-            candidates = await self.docker.run(
-                self.docker.client.containers.list, all=True, filters=filters
-            )
+        candidates = await self.docker.run(
+            self.docker.client.services.list, filters=filters
+        )
         for workload in candidates:
             try:
-                labels = workload.attrs.get("Spec", {}).get(
-                    "Labels", workload.attrs.get("Config", {}).get("Labels", {})
-                )
+                labels = workload.attrs.get("Spec", {}).get("Labels", {})
                 identifier = labels.get("pipeline_activation_id")
                 if not identifier or labels.get("radar_controller_id") != controller:
                     continue

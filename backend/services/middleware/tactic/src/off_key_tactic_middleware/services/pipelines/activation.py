@@ -711,15 +711,12 @@ class PipelineActivations:
         row = await self._owned_row(row.id, token, "cancelling")
         name = f"radar-preflight-{row.id}"
         await self.session.commit()
-        collection = (
-            self.workloads.async_docker.client.services
-            if await self.workloads._is_swarm_manager()
-            else self.workloads.async_docker.client.containers
-        )
         import docker
 
         try:
-            preflight = await self.workloads.async_docker.run(collection.get, name)
+            preflight = await self.workloads.async_docker.run(
+                self.workloads.async_docker.client.services.get, name
+            )
         except docker.errors.NotFound:
             pass
         else:

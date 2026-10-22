@@ -54,6 +54,7 @@ See [Environment variables](reference/environment-variables.md) for the configur
 From the repository root:
 
 ```bash
+docker swarm init --advertise-addr 127.0.0.1  # once; RADAR runs as Swarm services
 docker compose up -d --build
 ```
 

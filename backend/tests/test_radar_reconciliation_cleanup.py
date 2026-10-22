@@ -166,30 +166,9 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
 
 
 @pytest.mark.asyncio
-async def test_reconcile_workload_removal_falls_back_to_container_on_swarm_error():
-    fake_docker = FakeAsyncDocker()
-    service_container = MagicMock()
-    service_container.remove = MagicMock()
-    fake_docker.client.services.get = MagicMock(
-        side_effect=docker.errors.APIError("This node is not a swarm manager")
-    )
-    fake_docker.client.containers.get = MagicMock(return_value=service_container)
-
-    reconciler = RadarStatusReconciliationService(async_docker=fake_docker)
-
-    assert await reconciler._remove_workload_if_present("ctr-1") is True
-    fake_docker.client.services.get.assert_called_once_with("ctr-1")
-    fake_docker.client.containers.get.assert_called_once_with("ctr-1")
-    service_container.remove.assert_called_once_with(force=True)
-
-
-@pytest.mark.asyncio
-async def test_reconcile_workload_removal_returns_false_when_missing_everywhere():
+async def test_reconcile_workload_removal_returns_false_when_missing():
     fake_docker = FakeAsyncDocker()
     fake_docker.client.services.get = MagicMock(
-        side_effect=docker.errors.NotFound("missing")
-    )
-    fake_docker.client.containers.get = MagicMock(
         side_effect=docker.errors.NotFound("missing")
     )
 
@@ -197,7 +176,6 @@ async def test_reconcile_workload_removal_returns_false_when_missing_everywhere(
 
     assert await reconciler._remove_workload_if_present("ctr-1") is False
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
-    fake_docker.client.containers.get.assert_called_once_with("ctr-1")
 
 
 @pytest.mark.asyncio

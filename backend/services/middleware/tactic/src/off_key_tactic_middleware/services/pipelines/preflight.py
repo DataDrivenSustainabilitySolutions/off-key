@@ -35,15 +35,14 @@ class PipelinePreflight:
         return digests[0] if digests else image.id
 
     async def run(self, activation_id: str, execution, image: str):
-        swarm = await self.workloads._is_swarm_manager()
-        workload = await self._ensure(activation_id, execution, image, swarm)
-        self._validate_identity(workload, activation_id, image, swarm)
+        workload = await self._ensure(activation_id, execution, image)
+        self._validate_identity(workload, activation_id, image)
         try:
-            succeeded = await self._wait_for_completion(workload, swarm)
+            succeeded = await self._wait_for_completion(workload)
             return await self._report(workload, execution, succeeded)
         except TimeoutError as exc:
             try:
-                detail = await self._progress_detail(workload, swarm)
+                detail = await self._progress_detail(workload)
             except Exception as diagnostic_error:
                 detail = f"status unavailable ({type(diagnostic_error).__name__})"
             raise PreflightRejected(f"Runtime preflight timed out: {detail}") from exc
@@ -51,38 +50,33 @@ class PipelinePreflight:
             # Preserve retryable remote uncertainty until shutdown is confirmed.
             await self.workloads.remove(workload.id)
 
-    async def _progress_detail(self, workload, swarm):
-        if swarm:
-            tasks = await self.docker.run(workload.tasks)
-            progress = [
-                {
-                    "state": task.get("Status", {}).get("State"),
-                    "message": task.get("Status", {}).get("Err")
-                    or task.get("Status", {}).get("Message"),
-                }
-                for task in tasks[-4:]
-            ]
-            return json.dumps(progress, separators=(",", ":"))[:1500]
-        await self.docker.run(workload.reload)
-        return str(workload.attrs.get("State", {}))[:1500]
+    async def _progress_detail(self, workload):
+        tasks = await self.docker.run(workload.tasks)
+        progress = [
+            {
+                "state": task.get("Status", {}).get("State"),
+                "message": task.get("Status", {}).get("Err")
+                or task.get("Status", {}).get("Message"),
+            }
+            for task in tasks[-4:]
+        ]
+        return json.dumps(progress, separators=(",", ":"))[:1500]
 
-    async def _ensure(self, activation_id, execution, image, swarm):
-        collection = (
-            self.docker.client.services if swarm else self.docker.client.containers
-        )
+    async def _ensure(self, activation_id, execution, image):
+        collection = self.docker.client.services
         name = f"radar-preflight-{activation_id}"
         try:
             return await self.docker.run(collection.get, name)
         except docker.errors.NotFound:
             pass
         try:
-            return await self._create(activation_id, execution, image, swarm)
+            return await self._create(activation_id, execution, image)
         except docker.errors.APIError as exc:
             if exc.status_code != 409:
                 raise
             return await self.docker.run(collection.get, name)
 
-    async def _create(self, activation_id, execution, image, swarm):
+    async def _create(self, activation_id, execution, image):
         settings = get_tactic_settings().config
         budget = settings.docker.resource_budget
         name = f"radar-preflight-{activation_id}"
@@ -97,41 +91,25 @@ class PipelinePreflight:
             "RADAR_MEMORY_LIMIT_MB": str(settings.radar_defaults.memory_limit_mb),
         }
         command = ["/app/bin/python", "-m", "off_key_mqtt_radar.preflight"]
-        if swarm:
-            return await self.docker.run(
-                self.docker.client.services.create,
-                image=image,
-                name=name,
-                command=command,
-                env=environment,
-                labels=labels,
-                mode=ServiceMode("replicated", replicas=1),
-                restart_policy=RestartPolicy(condition="none"),
-                resources=Resources(
-                    cpu_limit=budget.cpu_limit_nanos,
-                    mem_limit=budget.memory_limit_bytes,
-                ),
-                constraints=settings.docker.default_constraints,
-            )
         return await self.docker.run(
-            self.docker.client.containers.run,
+            self.docker.client.services.create,
             image=image,
             name=name,
             command=command,
-            environment=environment,
+            env=environment,
             labels=labels,
-            detach=True,
-            network_disabled=True,
-            mem_limit=budget.memory_limit_bytes,
-            nano_cpus=budget.cpu_limit_nanos,
+            mode=ServiceMode("replicated", replicas=1),
+            restart_policy=RestartPolicy(condition="none"),
+            resources=Resources(
+                cpu_limit=budget.cpu_limit_nanos,
+                mem_limit=budget.memory_limit_bytes,
+            ),
+            constraints=settings.docker.default_constraints,
         )
 
     @staticmethod
     def validate_cleanup_identity(workload, activation_id):
-        attrs = workload.attrs
-        actual_labels = attrs.get("Spec", {}).get(
-            "Labels", attrs.get("Config", {}).get("Labels", {})
-        )
+        actual_labels = workload.attrs.get("Spec", {}).get("Labels", {})
         expected = {
             "managed_by": "tactic",
             "service_type": "radar_preflight",
@@ -142,39 +120,30 @@ class PipelinePreflight:
             raise RuntimeError("Preflight workload belongs to a different owner")
 
     @staticmethod
-    def _validate_identity(workload, activation_id, image, swarm):
+    def _validate_identity(workload, activation_id, image):
         PipelinePreflight.validate_cleanup_identity(workload, activation_id)
-        attrs = workload.attrs
         actual_image = (
-            attrs.get("Spec", {})
+            workload.attrs.get("Spec", {})
             .get("TaskTemplate", {})
             .get("ContainerSpec", {})
             .get("Image")
-            if swarm
-            else attrs.get("Config", {}).get("Image")
         )
         if actual_image != image:
             raise RuntimeError(
                 "Preflight workload identity differs from persisted intent"
             )
 
-    async def _wait_for_completion(self, workload, swarm):
+    async def _wait_for_completion(self, workload):
         settings = get_tactic_settings().config
         async with asyncio.timeout(settings.pipeline_preflight_timeout_seconds):
             while True:
-                if swarm:
-                    tasks = await self.docker.run(workload.tasks)
-                    states = [task.get("Status", {}).get("State") for task in tasks]
-                    if states and all(
-                        state
-                        in {"complete", "failed", "rejected", "shutdown", "remove"}
-                        for state in states
-                    ):
-                        return all(state == "complete" for state in states)
-                else:
-                    await self.docker.run(workload.reload)
-                    if workload.status in {"exited", "dead"}:
-                        return workload.attrs["State"].get("ExitCode") == 0
+                tasks = await self.docker.run(workload.tasks)
+                states = [task.get("Status", {}).get("State") for task in tasks]
+                if states and all(
+                    state in {"complete", "failed", "rejected", "shutdown", "remove"}
+                    for state in states
+                ):
+                    return all(state == "complete" for state in states)
                 await asyncio.sleep(0.25)
 
     async def _report(self, workload, execution, succeeded):
@@ -206,7 +175,7 @@ class PipelinePreflight:
 
     @staticmethod
     def _read_report(workload):
-        """Read container bytes or Swarm's lazy chunks on the Docker thread."""
+        """Read Swarm's lazy log chunks on the Docker thread."""
         output = workload.logs(stdout=True, stderr=False, tail=100)
         chunks = (output,) if isinstance(output, bytes) else output
         result = bytearray()

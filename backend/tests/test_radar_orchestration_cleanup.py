@@ -7,10 +7,7 @@ import pytest
 from off_key_core.db import collection_runtime
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware.config.config import DockerConfig
-from off_key_tactic_middleware.facades.docker import (
-    get_workload_docker_status,
-    should_fallback_to_container,
-)
+from off_key_tactic_middleware.facades.docker import get_workload_docker_status
 from off_key_tactic_middleware.services.orchestration import (
     radar as radar_module,
 )
@@ -27,7 +24,6 @@ from off_key_tactic_middleware.services.orchestration.radar_workloads import (
 from tests.support.docker import FakeAsyncDocker
 
 NOT_FOUND = docker.errors.NotFound("missing")
-SWARM_UNAVAILABLE = docker.errors.APIError("This node is not a swarm manager")
 TASK_LABELS = {"radar_model_type": "knn", "monitoring_strategy": "static_baseline"}
 REMOVAL_FAILED = "Failed to remove one or more managed RADAR"
 
@@ -54,14 +50,11 @@ def _found(workloads, key):
     raise NOT_FOUND
 
 
-def _fake_docker(*, service=None, container=None, services=None, containers=None):
+def _fake_docker(*, service=None, services=None):
     fake = FakeAsyncDocker()
     fake.client.services.get = _lookup(service)
-    fake.client.containers.get = _lookup(container)
     if services is not None:
         fake.client.services.list = _lookup(services)
-    if containers is not None:
-        fake.client.containers.list = _lookup(containers)
     return fake
 
 
@@ -183,18 +176,6 @@ def selected_collection(monkeypatch, request):
 
 
 @pytest.mark.asyncio
-async def test_production_radar_refuses_container_fallback(monkeypatch):
-    fake_docker = FakeAsyncDocker()
-    fake_docker.client.containers.run = MagicMock()
-    workloads = RadarWorkloadManager(fake_docker)
-    monkeypatch.setattr(workloads, "_is_swarm_manager", AsyncMock(return_value=False))
-
-    with pytest.raises(RuntimeError, match="requires a Swarm manager"):
-        await workloads.create("svc-1", {"ENVIRONMENT": "production"})
-    fake_docker.client.containers.run.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_production_radar_copies_required_swarm_secret_references(monkeypatch):
     required = ("EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET")
     secrets = [
@@ -232,7 +213,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
     monkeypatch.setattr(workload_module, "build_radar_workload_labels", lambda **_: {})
 
     workloads = RadarWorkloadManager(fake_docker)
-    await workloads._create_swarm_service("svc-1", {"ENVIRONMENT": "production"})
+    await workloads.create("svc-1", {"ENVIRONMENT": "production"})
 
     fake_docker.client.services.get.assert_called_once_with("off-key_mqtt-radar")
     mounted = fake_docker.client.services.create.call_args.kwargs["secrets"]
@@ -246,13 +227,10 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
 async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     monkeypatch,
 ):
-    svc_workload = MagicMock(id="svc-1")
-    ctr_workload = MagicMock(id="ctr-1")
+    first = MagicMock(id="svc-1")
+    second = MagicMock(id="svc-2")
     fake_docker = _fake_docker(
-        services=[svc_workload],
-        containers=[ctr_workload],
-        service={"svc-1": svc_workload},
-        container={"ctr-1": ctr_workload},
+        services=[first, second], service={"svc-1": first, "svc-2": second}
     )
     session = _session(_deletion(_ids("svc-1")))
 
@@ -278,12 +256,7 @@ async def test_teardown_managed_radar_workloads_raises_on_remove_failure(
 ):
     broken_workload = MagicMock(id="svc-1")
     broken_workload.remove.side_effect = RuntimeError("boom")
-    fake_docker = _fake_docker(
-        services=[broken_workload],
-        containers=[],
-        service=broken_workload,
-        container=NOT_FOUND,
-    )
+    fake_docker = _fake_docker(services=[broken_workload], service=broken_workload)
     session = _session()
 
     with pytest.raises(RuntimeError, match=REMOVAL_FAILED):
@@ -305,9 +278,7 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
     broken_workload.remove.side_effect = RuntimeError("boom")
     fake_docker = _fake_docker(
         services=[ok_workload, broken_workload],
-        containers=[],
         service={"svc-ok": ok_workload, "svc-broken": broken_workload},
-        container=NOT_FOUND,
     )
     session = _session(_deletion(_ids("svc-ok")))
 
@@ -324,75 +295,35 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
 
 
 @pytest.mark.asyncio
-async def test_teardown_managed_radar_workloads_handles_non_swarm_docker(
-    monkeypatch,
-):
-    ctr_workload = MagicMock(id="ctr-1")
-    fake_docker = _fake_docker(
-        services=SWARM_UNAVAILABLE,
-        containers=[ctr_workload],
-        service=SWARM_UNAVAILABLE,
-        container=ctr_workload,
-    )
-    session = _session(_deletion(_ids("svc-1")))
-
-    summary = await _orchestrator(
-        monkeypatch, session, fake_docker
-    ).teardown_managed_radar_workloads()
-
-    assert summary["workloads_targeted"] == 1
-    assert summary["docker_workloads_removed"] == 1
-    assert summary["db_rows_deleted"] == 1
-    fake_docker.client.containers.list.assert_called_once()
-    fake_docker.client.containers.get.assert_called_once_with("ctr-1")
-    ctr_workload.remove.assert_called_once()
-    session.commit.assert_awaited_once()
-    session.rollback.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("service", "container_status", "expected"),
+    ("service", "expected"),
     [
-        pytest.param(SWARM_UNAVAILABLE, "running", "running", id="swarm-unavailable"),
-        pytest.param(RuntimeError("boom"), None, "error", id="service-lookup-fails"),
+        pytest.param(RuntimeError("boom"), "error", id="service-lookup-fails"),
         pytest.param(
             _swarm_service(_task(0, "failed"), _task(1, "running")),
-            None,
             "running",
             id="latest-task-state",
         ),
         pytest.param(
-            _swarm_service(_task(0, None)), None, "unknown", id="non-mapping-status"
+            _swarm_service(_task(0, None)), "unknown", id="non-mapping-status"
         ),
         pytest.param(
             _swarm_service(None, _task(0, "running")),
-            None,
             "running",
             id="malformed-task-ignored",
         ),
-        pytest.param(_swarm_service(), None, "no_tasks", id="no-tasks"),
-        pytest.param(NOT_FOUND, "unknown-status", "unknown", id="unknown-container"),
+        pytest.param(_swarm_service(), "no_tasks", id="no-tasks"),
     ],
 )
-async def test_workload_status(service, container_status, expected):
-    container = MagicMock(
-        status=None if container_status == "unknown-status" else container_status
-    )
-    fake_docker = _fake_docker(service=service, container=container)
+async def test_workload_status(service, expected):
+    fake_docker = _fake_docker(service=service)
 
     assert await get_workload_docker_status(fake_docker, "ctr-1") == expected
-
-    if container_status is None:
-        fake_docker.client.containers.get.assert_not_called()
-    else:
-        fake_docker.client.containers.get.assert_called_once_with("ctr-1")
-        container.reload.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_workload_status_reports_missing_and_unidentified_workloads():
-    fake_docker = _fake_docker(service=NOT_FOUND, container=NOT_FOUND)
+    fake_docker = _fake_docker(service=NOT_FOUND)
 
     assert await get_workload_docker_status(fake_docker, "ctr-1") == "not_found"
     assert await get_workload_docker_status(fake_docker, "") == "no_container_id"
@@ -406,26 +337,28 @@ async def test_startup_validation_tolerates_non_mapping_task_status(monkeypatch)
     workloads = RadarWorkloadManager(fake_docker)
     await workloads.validate_started(SimpleNamespace(id="ctr-1"))
 
-    fake_docker.client.containers.get.assert_not_called()
-
 
 @pytest.mark.asyncio
-async def test_startup_validation_raises_with_logs_when_container_exits(
-    monkeypatch,
-):
-    exited_container = MagicMock(status="exited")
-    exited_container.logs.return_value = (
-        b"Failed to start RADAR service: missing dependency"
-    )
-    fake_docker = _fake_docker(service=NOT_FOUND, container=exited_container)
+async def test_startup_validation_raises_with_the_failed_task_error(monkeypatch):
+    failed = _task(0, "failed")
+    failed["Status"]["Err"] = "missing dependency"
+    fake_docker = _fake_docker(service=_swarm_service(failed))
     _grace_period(monkeypatch)
     service = _orchestrator(monkeypatch, _session(), fake_docker)
 
-    with pytest.raises(RuntimeError, match="missing dependency"):
+    with pytest.raises(RuntimeError, match=r"task_state=failed.*missing dependency"):
         await service.workloads.validate_started(SimpleNamespace(id="ctr-1"))
 
-    exited_container.reload.assert_called_once()
-    exited_container.logs.assert_called_once_with(tail=120)
+
+@pytest.mark.asyncio
+async def test_startup_validation_raises_when_the_service_disappears(monkeypatch):
+    fake_docker = _fake_docker(service=NOT_FOUND)
+    _grace_period(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="disappeared during startup"):
+        await RadarWorkloadManager(fake_docker).validate_started(
+            SimpleNamespace(id="ctr-1")
+        )
 
 
 @pytest.mark.asyncio
@@ -445,43 +378,13 @@ async def test_startup_validation_raises_with_logs_when_container_exits(
         pytest.param(_engine_error(), ("error", {}), id="non-swarm-api-error"),
     ],
 )
-async def test_get_docker_status_and_labels_prefers_service_path(service, expected):
-    fake_docker = _fake_docker(service=service, container=MagicMock())
+async def test_get_docker_status_and_labels_reads_the_service(service, expected):
+    fake_docker = _fake_docker(service=service)
 
     workloads = RadarWorkloadManager(fake_docker)
 
     assert await workloads.get_status_and_labels("ctr-1") == expected
     fake_docker.client.services.get.assert_called_once_with("ctr-1")
-    fake_docker.client.containers.get.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("exc", "expected"),
-    [
-        (docker.errors.APIError("This node is not a swarm manager"), True),
-        (docker.errors.APIError("error: swarm mode is in maintenance"), True),
-        (docker.errors.APIError("cannot be used with services on this engine"), True),
-        (docker.errors.APIError("SWARM MODE MAINTENANCE WINDOW"), True),
-        (docker.errors.APIError("other transport issue"), False),
-        (Exception("random failure"), False),
-    ],
-)
-def test_should_fallback_to_container_matches_known_swarm_errors(exc, expected):
-    assert should_fallback_to_container(exc) is expected
-
-
-@pytest.mark.parametrize(
-    ("status_code", "expected"),
-    [(400, True), (406, True), (503, True), (404, False), (500, False)],
-)
-def test_should_fallback_to_container_respects_status_codes(status_code, expected):
-    response = SimpleNamespace(
-        status_code=status_code,
-        url="https://docker.local/v1/_ping",
-        reason="error",
-    )
-    exc = docker.errors.APIError("swarm error", response=response)
-    assert should_fallback_to_container(exc) is expected
 
 
 @pytest.mark.asyncio
@@ -501,9 +404,7 @@ async def test_removal_deletes_db_row_after_removing_workload(
 ):
     db_row = _db_row()
     workload = MagicMock(id="ctr-1")
-    fake_docker = _fake_docker(
-        service=NOT_FOUND, container=workload if workload_present else NOT_FOUND
-    )
+    fake_docker = _fake_docker(service=workload if workload_present else NOT_FOUND)
     session = _session(_deletion(_first(db_row)), row=db_row)
     service = _orchestrator(monkeypatch, session, fake_docker)
 
@@ -513,7 +414,8 @@ async def test_removal_deletes_db_row_after_removing_workload(
         assert await service.delete_radar_service(**kwargs) is True
 
     if workload_present:
-        workload.remove.assert_called_once_with(force=True)
+        workload.scale.assert_called_once_with(0)
+        workload.remove.assert_called_once_with()
     assert session.execute.await_count == 4
     assert session.commit.await_count == 2
     assert db_row.desired_state == "deleted"
@@ -532,7 +434,7 @@ async def test_removal_deletes_db_row_after_removing_workload(
 async def test_removal_returns_false_when_service_not_found(
     monkeypatch, operation, kwargs
 ):
-    fake_docker = _fake_docker(service=MagicMock(), container=MagicMock())
+    fake_docker = _fake_docker(service=MagicMock())
     session = _session(_first(None))
     service = _orchestrator(monkeypatch, session, fake_docker)
 
@@ -588,8 +490,9 @@ async def test_get_radar_service_resolves_identifier(
         operational_updated_at=None,
         created_at=None,
     )
-    container = MagicMock(status="running", attrs={"Config": {"Labels": labels}})
-    fake_docker = _fake_docker(service=NOT_FOUND, container=container)
+    fake_docker = _fake_docker(
+        service=_swarm_service(_task(0, "running"), labels=labels)
+    )
     session = _session(_first(db_row), row=db_row)
 
     detail = await _orchestrator(monkeypatch, session, fake_docker).get_radar_service(
@@ -603,8 +506,7 @@ async def test_get_radar_service_resolves_identifier(
     assert detail["docker_status"] == "running"
     assert detail["monitoring_strategy"] == "static_baseline"
     assert detail["model_type"] == model_type
-    assert fake_docker.client.containers.get.call_count >= 1
-    assert container.reload.call_count >= 1
+    assert fake_docker.client.services.get.call_count >= 1
 
 
 @pytest.mark.asyncio
@@ -614,13 +516,13 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
     db_row = _db_row()
     workload = MagicMock(id="ctr-1")
     workload.remove.side_effect = RuntimeError("boom")
-    fake_docker = _fake_docker(service=NOT_FOUND, container=workload)
+    fake_docker = _fake_docker(service=workload)
     session = _session(_first(db_row), row=db_row)
 
     service = _orchestrator(monkeypatch, session, fake_docker)
 
     assert await service.delete_radar_service("svc-1") is False
-    workload.remove.assert_called_once_with(force=True)
+    workload.remove.assert_called_once_with()
     session.execute.assert_awaited_once()
     session.commit.assert_awaited_once()
     assert db_row.desired_state == "deleted"
@@ -629,46 +531,31 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("service", "expected"),
-    [
-        pytest.param(SWARM_UNAVAILABLE, "container", id="swarm-only-error"),
-        pytest.param(MagicMock(id="svc-1"), "service", id="service-present"),
-    ],
-)
-async def test_find_workload_picks_service_or_container(service, expected):
-    container = MagicMock(id="ctr-1")
-    fake_docker = _fake_docker(service=service, container=container)
+@pytest.mark.parametrize("present", [True, False])
+async def test_find_workload_resolves_the_durable_service_name(present):
+    service = MagicMock(id="svc-1")
+    fake_docker = _fake_docker(service=service if present else NOT_FOUND)
 
     result = await RadarWorkloadManager(fake_docker).find("x")
 
-    assert result is (container if expected == "container" else service)
+    assert result is (service if present else None)
     fake_docker.client.services.get.assert_called_once_with("radar-x")
-    if expected == "container":
-        fake_docker.client.containers.get.assert_called_once_with("radar-x")
-    else:
-        fake_docker.client.containers.get.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_find_workload_raises_for_non_swarm_api_error():
-    fake_docker = _fake_docker(
-        service=_engine_error("internal server error"), container=MagicMock()
-    )
+    fake_docker = _fake_docker(service=_engine_error("internal server error"))
 
     with pytest.raises(docker.errors.APIError):
         await RadarWorkloadManager(fake_docker).find("x")
 
-    fake_docker.client.containers.get.assert_not_called()
-
 
 @pytest.mark.asyncio
 async def test_remove_workload_for_delete_returns_false_when_missing():
-    fake_docker = _fake_docker(service=NOT_FOUND, container=NOT_FOUND)
+    fake_docker = _fake_docker(service=NOT_FOUND)
 
     assert await RadarWorkloadManager(fake_docker).remove("ctr-missing") is False
     fake_docker.client.services.get.assert_called_once_with("ctr-missing")
-    fake_docker.client.containers.get.assert_called_once_with("ctr-missing")
 
 
 @pytest.mark.asyncio

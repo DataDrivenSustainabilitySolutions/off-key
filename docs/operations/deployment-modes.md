@@ -10,6 +10,7 @@ Use this page when selecting or switching a run mode.
 
 ```bash
 cp .env.example .env
+docker swarm init --advertise-addr 127.0.0.1  # once; RADAR runs as Swarm services
 docker compose up -d --build
 ```
 

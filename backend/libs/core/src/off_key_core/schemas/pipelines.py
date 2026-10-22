@@ -1,7 +1,7 @@
 """Versioned monitoring designs; safe to import in the control plane."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -9,7 +9,11 @@ from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
 
+# The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
 PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
+MONITORING_STRATEGIES: frozenset[str] = frozenset(get_args(PipelineStrategy))
+DEFAULT_TRAINING_WINDOW_SIZE = 1200
+DEFAULT_CALIBRATION_WINDOW_SIZE = 360
 NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
 Identifier = str
@@ -43,8 +47,12 @@ class PipelineEdge(PipelineModel):
 
 
 class PipelineSettings(PipelineModel):
-    training_window_size: int = Field(default=1200, ge=2, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=2, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     seed: int | None = 42
     conformal_strategy: Literal["split"] = "split"
 

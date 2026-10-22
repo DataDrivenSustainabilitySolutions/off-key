@@ -31,7 +31,12 @@ from off_key_core.utils.mqtt_topics import (
     normalize_static_monitoring_topics,
 )
 
-from .pipelines import PipelineExecutionConfig
+from .pipelines import (
+    DEFAULT_CALIBRATION_WINDOW_SIZE,
+    DEFAULT_TRAINING_WINDOW_SIZE,
+    PipelineExecutionConfig,
+    PipelineStrategy,
+)
 
 __all__ = [
     "AdaptivePreprocessingStep",
@@ -62,7 +67,7 @@ __all__ = [
     "validate_service_name",
 ]
 
-MonitoringStrategy = Literal["static_baseline", "adaptive_stream"]
+MonitoringStrategy = PipelineStrategy
 _MAX_AUTOMATIC_CALIBRATION_WORK = 1_000_000_000
 AlarmStatistic = Literal[
     "martingale",
@@ -261,8 +266,12 @@ class AdaptiveStreamConfig(BaseModel):
     aberrant_version: str = ABERRANT_VERSION
     model_type: str = "aberrant_online_isolation_forest"
     model_params: dict[str, Any] = Field(default_factory=dict)
-    training_window_size: int = Field(default=1200, ge=2, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=2, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     preprocessing_steps: list[AdaptivePreprocessingStep] = Field(
         default_factory=list,
         max_length=2,
@@ -599,8 +608,12 @@ class StaticBaselineConfig(BaseModel):
     strategy: Literal["static_baseline"] = "static_baseline"
     model_type: str = "pyod_iforest"
     model_params: dict[str, Any] = Field(default_factory=dict)
-    training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=20, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     conformal_strategy: Literal["split"] = "split"
     seed: int | None = 42
     martingale_config: StaticMartingaleConfig = Field(

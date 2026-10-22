@@ -13,7 +13,10 @@ from off_key_core.config.resource_budget import (
 )
 from off_key_core.config.validation import validate_environment as _validate_environment
 from off_key_core.models.pipelines import derive_monitoring_config
-from off_key_core.schemas.pipelines import PipelineExecutionConfig
+from off_key_core.schemas.pipelines import (
+    MONITORING_STRATEGIES,
+    PipelineExecutionConfig,
+)
 from off_key_core.schemas.radar import (
     LegacyMonitoringConfig,
     MonitoringConfig,
@@ -26,8 +29,6 @@ from off_key_core.utils.mqtt_topics import (
 )
 from pydantic import ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
 
 
 def _normalize_strategy(value: str, field_name: str) -> str:

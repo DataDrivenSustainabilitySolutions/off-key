@@ -1,5 +1,7 @@
 """Allowlisted component metadata, independent of scientific runtime imports."""
 
+from typing import get_args
+
 from ..schemas.pipelines import (
     NodeKind,
     PipelineCatalog,
@@ -16,7 +18,7 @@ from .pipeline_fields import component_fields
 from .pipeline_parameters import PARAMETER_MODELS
 from .static import STATIC_MODELS
 
-BOTH: list[PipelineStrategy] = ["static_baseline", "adaptive_stream"]
+BOTH: list[PipelineStrategy] = list(get_args(PipelineStrategy))
 
 
 def pipeline_components() -> list[PipelineComponent]:

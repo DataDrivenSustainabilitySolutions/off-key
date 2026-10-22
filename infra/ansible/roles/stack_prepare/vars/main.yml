@@ -132,7 +132,6 @@ service_environment:
     MQTT_USE_AUTH: "{{ mqtt_use_auth }}"
     MQTT_USERNAME: "{{ mqtt_local_proxy_username }}"
     MQTT_TOPIC_REGEX: "{{ mqtt_topic_regex }}"
-    AMBIBOX_INGRESS_ENABLED: "{{ ambibox_ingress_enabled | bool | lower }}"
     SYSTEM_COLLECTION_ENABLED: "{{ system_collection_enabled | default(true) | bool | lower }}"
     MQTT_TELEMETRY_ENABLED: "{{ mqtt_telemetry_enabled }}"
     MQTT_BATCH_SIZE: "{{ mqtt_batch_size }}"

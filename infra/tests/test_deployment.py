@@ -717,10 +717,6 @@ class DeploymentTests(unittest.TestCase):
                 ROOT / "scripts/check_application.py",
             ],
         }
-        allowed = {
-            # Unread; kept until the ingress-switch readiness test is revisited.
-            ("mqtt-proxy", "AMBIBOX_INGRESS_ENABLED"),
-        }
         shared = [backend / "libs/core/src"]
 
         def text(paths):
@@ -738,8 +734,6 @@ class DeploymentTests(unittest.TestCase):
         for service, paths in sources.items():
             code = text(paths + shared)
             for key in services[service]["environment"]:
-                if (service, key) in allowed:
-                    continue
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
@@ -750,7 +744,7 @@ class DeploymentTests(unittest.TestCase):
             "false",
         )
 
-    def test_readiness_receives_the_same_ingress_switches_as_the_controller(self):
+    def test_readiness_receives_the_same_collection_switch_as_the_controller(self):
         for name in ("prod", "prod-ingress-disabled"):
             services = self.results[name]["swarm_config"]["services"]
             expected = "false" if name == "prod-ingress-disabled" else "true"
@@ -759,10 +753,9 @@ class DeploymentTests(unittest.TestCase):
                     services[service]["environment"]["SYSTEM_COLLECTION_ENABLED"],
                     expected,
                 )
-                self.assertEqual(
-                    services[service]["environment"]["AMBIBOX_INGRESS_ENABLED"],
-                    expected,
-                )
+            self.assertEqual(
+                services["tactic"]["environment"]["AMBIBOX_INGRESS_ENABLED"], expected
+            )
 
     @unittest.skipUnless(
         os.environ.get("OFFKEY_GOST_SMOKE") == "1",

@@ -61,7 +61,7 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `APP_NAME` | `off-key` | Application display name; non-empty string |
+| `APP_NAME` | Required, no default; `.env.example` sets `aberration` | API title shown by the gateway; non-empty string |
 | `ENVIRONMENT` | `development` | Runtime environment label |
 | `DEBUG` | `false` | Debug-mode toggle; keep disabled in production |
 | `BACKEND_PORT` | `8000` | Gateway host port |
@@ -154,8 +154,8 @@ unknown errors remain eligible for retry.
 | `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT`, `TACTIC_DOCKER_DEFAULT_CPU_LIMIT` | `512m`, `0.5` | Swarm service limits for managed workers; see [RADAR deployment capacity](../operations/radar-capacity.md) |
 | `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
-| `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |
-| `TACTIC_SERVICE_PORT` | `8000` | Internal service-discovery port |
+| `TACTIC_SERVICE_HOST` | `middleware_tactic` (Compose sets `tactic-middleware`) | Where the API gateway reaches TACTIC; read only by the gateway |
+| `TACTIC_SERVICE_PORT` | `8000` | TACTIC port the API gateway calls; read only by the gateway |
 
 ## RADAR workloads
 
@@ -189,7 +189,7 @@ prevent startup.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `SYNC_HOSTNAME` | `db-sync` | DB Sync service hostname |
+| `SYNC_HOSTNAME` | `db-sync` | Where the API gateway reaches DB Sync; read only by the gateway |
 | `SYNC_API_HOST` | `0.0.0.0` | DB Sync bind address |
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |

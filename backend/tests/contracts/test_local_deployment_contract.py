@@ -11,25 +11,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
+
+from tests.support.compose import load_compose
 
 ROOT = Path(__file__).parents[3]
-
-
-class ComposeLoader(yaml.SafeLoader):
-    """Reads Compose merge tags such as !reset as plain YAML."""
-
-
-ComposeLoader.add_multi_constructor(
-    "!",
-    lambda loader, suffix, node: (
-        loader.construct_mapping(node)
-        if isinstance(node, yaml.MappingNode)
-        else loader.construct_sequence(node)
-        if isinstance(node, yaml.SequenceNode)
-        else loader.construct_scalar(node)
-    ),
-)
 
 
 @pytest.fixture
@@ -435,7 +420,7 @@ def test_compose_defaults_follow_the_launcher_and_the_fixture_brokers(launcher):
     assert defaults == launcher.PORTS
     (allowlist,) = re.findall(r"\$\{SYSTEM_LIVE_ALLOWED_HOSTS:-(.+?)\}'", text)
     assert allowlist == json.dumps(launcher.LOCAL_LIVE_HOSTS, separators=(",", ":"))
-    services = yaml.load(text, Loader=ComposeLoader)["services"]
+    services = load_compose(ROOT / "dev/local/compose.yml")["services"]
     fixture_hosts = set(launcher.LOCAL_LIVE_HOSTS) - {"source-broker"}
     assert {name for name in services if name.startswith("fixture-broker-")} == (
         fixture_hosts

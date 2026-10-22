@@ -48,6 +48,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
+    rewind_ledger,
 )
 
 pytestmark = pytest.mark.radar_integration
@@ -392,15 +393,7 @@ def test_lifecycle_migration_adopts_existing_attached_and_stopped_rows(
         )
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
-        if ledger:
-            connection.execute(
-                text(
-                    "DELETE FROM off_key_schema_migrations "
-                    "WHERE version >= '009_radar_lifecycle_intent.sql'"
-                )
-            )
-        else:
-            connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        rewind_ledger(connection, "009_radar_lifecycle_intent.sql" if ledger else None)
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         assert connection.execute(

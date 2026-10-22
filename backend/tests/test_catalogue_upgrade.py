@@ -15,12 +15,13 @@ from off_key_core.db.models import (
 from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select
 
 from tests.support.collection import catalog, runtime_catalog
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
+    rewind_ledger,
 )
 
 
@@ -88,12 +89,7 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         )
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
-        connection.execute(
-            text(
-                "DELETE FROM off_key_schema_migrations "
-                "WHERE version >= '005_generic_runtime.sql'"
-            )
-        )
+        rewind_ledger(connection, "005_generic_runtime.sql")
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         saved = SystemDocument.model_validate(
@@ -169,12 +165,7 @@ def test_upgrade_preserves_a_runtime_without_a_separate_saved_document(
         )
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
-        connection.execute(
-            text(
-                "DELETE FROM off_key_schema_migrations "
-                "WHERE version >= '005_generic_runtime.sql'"
-            )
-        )
+        rewind_ledger(connection, "005_generic_runtime.sql")
         apply_migrations(connection)
         result = SystemCollectionDefinition.model_validate(
             connection.scalar(select(SystemCollectionConfiguration.document))
@@ -209,12 +200,7 @@ def test_upgrade_monitor_topics_even_without_catalogue_configuration(
         )
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
-        connection.execute(
-            text(
-                "DELETE FROM off_key_schema_migrations "
-                "WHERE version >= '005_generic_runtime.sql'"
-            )
-        )
+        rewind_ledger(connection, "005_generic_runtime.sql")
         apply_migrations(connection)
         assert connection.scalar(select(MonitoringService.mqtt_topic)) == [
             "telemetry/#"

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
+    rewind_ledger,
 )
 
 pytestmark = pytest.mark.radar_integration
@@ -142,15 +143,9 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
         """)
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
-        if ledger:
-            connection.execute(
-                text(
-                    "DELETE FROM off_key_schema_migrations "
-                    "WHERE version >= '007_monitor_anomaly_identity.sql'"
-                )
-            )
-        else:
-            connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        rewind_ledger(
+            connection, "007_monitor_anomaly_identity.sql" if ledger else None
+        )
 
     with disposable_database.begin() as connection:
         assert (

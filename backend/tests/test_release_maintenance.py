@@ -37,7 +37,17 @@ from off_key_tactic_middleware.services.system_ingress import SYSTEM_INGRESS_LOC
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from tests.support.schema_baselines import restore_retired_schema
+from tests.support.schema_baselines import (
+    EXPECTED_MIGRATIONS,
+    migrations_from,
+    remove_pipeline_schema,
+    restore_retired_schema,
+    rewind_ledger,
+)
+
+
+def test_migration_history_is_the_expected_sequence():
+    assert tuple(migration_files()) == EXPECTED_MIGRATIONS
 
 
 def test_template_migration_preserves_existing_designs(disposable_database):
@@ -86,16 +96,10 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
                 mqtt_topic=[],
             )
         )
-        connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        rewind_ledger(connection)
         connection.execute(text("DROP TABLE deployment_maintenance"))
         connection.execute(text("DROP TABLE remembered_sessions"))
-        for table in (
-            "monitoring_pipeline_activations",
-            "monitoring_pipeline_runs",
-            "monitoring_pipeline_revisions",
-            "monitoring_pipelines",
-        ):
-            connection.execute(text(f"DROP TABLE {table}"))
+        remove_pipeline_schema(connection)
         connection.execute(text("ALTER TABLE services DROP COLUMN launch_config"))
         for table in (
             "system_configuration",
@@ -104,34 +108,12 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
         ):
             connection.execute(text(f"DROP TABLE {table}"))
     with disposable_database.begin() as connection:
-        assert migration_status(connection)["pending"] == [
-            "003_deployment_maintenance.sql",
-            "004_system_catalogue.sql",
-            "005_generic_runtime.sql",
-            "006_remembered_sessions.sql",
-            "007_monitor_anomaly_identity.sql",
-            "008_radar_runtime_checkpoints.sql",
-            "009_radar_lifecycle_intent.sql",
-            "010_monitoring_pipelines.sql",
-            "011_case_insensitive_emails.sql",
-            "012_remembered_session_rotation.sql",
-            "013_pipeline_templates.sql",
-            "014_drop_unread_schema.sql",
-        ]
-        assert apply_migrations(connection)["applied"] == [
-            "003_deployment_maintenance.sql",
-            "004_system_catalogue.sql",
-            "005_generic_runtime.sql",
-            "006_remembered_sessions.sql",
-            "007_monitor_anomaly_identity.sql",
-            "008_radar_runtime_checkpoints.sql",
-            "009_radar_lifecycle_intent.sql",
-            "010_monitoring_pipelines.sql",
-            "011_case_insensitive_emails.sql",
-            "012_remembered_session_rotation.sql",
-            "013_pipeline_templates.sql",
-            "014_drop_unread_schema.sql",
-        ]
+        assert migration_status(connection)["pending"] == migrations_from(
+            "003_deployment_maintenance.sql"
+        )
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "003_deployment_maintenance.sql"
+        )
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
         )
@@ -188,57 +170,17 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "remembered_sessions",
         ):
             connection.execute(text(f"DROP TABLE {table}"))
-        if ledger:
-            for table in (
-                "monitoring_pipeline_activations",
-                "monitoring_pipeline_runs",
-                "monitoring_pipeline_revisions",
-                "monitoring_pipelines",
-            ):
-                connection.execute(text(f"DROP TABLE {table}"))
-            connection.execute(
-                text(
-                    "DELETE FROM off_key_schema_migrations "
-                    "WHERE version >= '004_system_catalogue.sql'"
-                )
-            )
-        else:
-            for table in (
-                "monitoring_pipeline_activations",
-                "monitoring_pipeline_runs",
-                "monitoring_pipeline_revisions",
-                "monitoring_pipelines",
-            ):
-                connection.execute(text(f"DROP TABLE {table}"))
-            connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        remove_pipeline_schema(connection)
+        rewind_ledger(connection, "004_system_catalogue.sql" if ledger else None)
+        if not ledger:
             restore_retired_schema(connection)
     with disposable_database.begin() as connection:
-        assert migration_status(connection)["pending"] == [
-            "004_system_catalogue.sql",
-            "005_generic_runtime.sql",
-            "006_remembered_sessions.sql",
-            "007_monitor_anomaly_identity.sql",
-            "008_radar_runtime_checkpoints.sql",
-            "009_radar_lifecycle_intent.sql",
-            "010_monitoring_pipelines.sql",
-            "011_case_insensitive_emails.sql",
-            "012_remembered_session_rotation.sql",
-            "013_pipeline_templates.sql",
-            "014_drop_unread_schema.sql",
-        ]
-        assert apply_migrations(connection)["applied"] == [
-            "004_system_catalogue.sql",
-            "005_generic_runtime.sql",
-            "006_remembered_sessions.sql",
-            "007_monitor_anomaly_identity.sql",
-            "008_radar_runtime_checkpoints.sql",
-            "009_radar_lifecycle_intent.sql",
-            "010_monitoring_pipelines.sql",
-            "011_case_insensitive_emails.sql",
-            "012_remembered_session_rotation.sql",
-            "013_pipeline_templates.sql",
-            "014_drop_unread_schema.sql",
-        ]
+        assert migration_status(connection)["pending"] == migrations_from(
+            "004_system_catalogue.sql"
+        )
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "004_system_catalogue.sql"
+        )
         assert (
             connection.scalar(
                 text("SELECT revision FROM collection_configuration WHERE id=1")

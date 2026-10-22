@@ -397,20 +397,18 @@ def test_checkpoint_migration_adopts_existing_database_and_drops_the_path_table(
     disposable_database, ledger
 ):
     # Imported here: this module also runs as a standalone replacement process.
-    from tests.support.schema_baselines import restore_retired_schema
+    from tests.support.schema_baselines import (
+        remove_pipeline_schema,
+        restore_retired_schema,
+        rewind_ledger,
+    )
 
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         # Recreate the pre-checkpoint schema under review, including absence of
         # pipeline tables introduced by a later release. Keeping those tables
         # while erasing their ledger would simulate a corrupt migration history.
-        for table in (
-            "monitoring_pipeline_activations",
-            "monitoring_pipeline_runs",
-            "monitoring_pipeline_revisions",
-            "monitoring_pipelines",
-        ):
-            connection.execute(text(f"DROP TABLE {table}"))
+        remove_pipeline_schema(connection)
         connection.execute(text("DROP TABLE radar_runtime_checkpoints"))
         restore_retired_schema(connection)
         connection.execute(
@@ -419,12 +417,7 @@ def test_checkpoint_migration_adopts_existing_database_and_drops_the_path_table(
         connection.execute(
             text("INSERT INTO radar_model_checkpoints VALUES ('preserved.pkl')")
         )
-        if ledger:
-            connection.execute(
-                text("DELETE FROM off_key_schema_migrations WHERE version >= '008_'")
-            )
-        else:
-            connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        rewind_ledger(connection, "008_" if ledger else None)
     with disposable_database.begin() as connection:
         assert (
             "008_radar_runtime_checkpoints.sql"

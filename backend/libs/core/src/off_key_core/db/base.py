@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base
 
 from ..config.database import get_database_settings
 from ..config.logs import logger
@@ -37,17 +37,6 @@ def get_async_engine():
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
-    )
-
-
-@lru_cache(maxsize=1)
-def get_sync_session_local():
-    """Return lazily-created sync session factory."""
-    return sessionmaker(
-        bind=get_engine(),
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
     )
 
 
@@ -90,7 +79,6 @@ def reset_db_runtime_caches() -> None:
         except Exception as exc:
             logger.warning(f"Failed to dispose async engine during cache reset: {exc}")
 
-    get_sync_session_local.cache_clear()
     get_async_session_local.cache_clear()
     get_engine.cache_clear()
     get_async_engine.cache_clear()
@@ -112,18 +100,3 @@ async def get_db_async():
             await db.rollback()
             logger.warning(f"Database transaction rolled back: {e!s}")
             raise
-
-
-# Dependency for synchronous database sessions without auto-commit
-def get_db_sync_transactional():
-    """
-    Provides a synchronous database session without auto-commit.
-    Useful for complex transactions where manual commit/rollback control is needed.
-    The caller is responsible for committing or rolling back the transaction.
-    """
-    session_factory = get_sync_session_local()
-    db = session_factory()
-    try:
-        yield db
-    finally:
-        db.close()

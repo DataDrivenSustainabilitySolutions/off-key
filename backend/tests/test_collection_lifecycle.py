@@ -189,6 +189,29 @@ async def test_runtime_change_or_reconnect_still_reapplies_collection(
 
 
 @pytest.mark.asyncio
+async def test_collection_loop_owns_reconnection_after_the_client_gives_up(
+    proxy, monkeypatch
+):
+    snapshot = CollectionRuntimeSnapshot(
+        revision=3, catalog=catalog(), ingress={}, collection={}
+    )
+    monkeypatch.setattr(
+        proxy_module, "read_collection_runtime", AsyncMock(return_value=snapshot)
+    )
+    proxy.buffer.pause = MagicMock()
+    proxy.mqtt_client.is_connected = False
+    proxy.mqtt_client.state = SimpleNamespace(value="failed")
+    proxy.mqtt_client.connect = AsyncMock(return_value=False)
+
+    with pytest.raises(RuntimeError, match="disconnected"):
+        await proxy._refresh_configuration()
+
+    proxy.mqtt_client.connect.assert_awaited_once()
+    proxy.buffer.pause.assert_called_once()
+    assert proxy.revision == -1
+
+
+@pytest.mark.asyncio
 async def test_no_selection_is_healthy_idle(proxy, monkeypatch):
     snapshot = CollectionRuntimeSnapshot(
         revision=0,

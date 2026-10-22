@@ -61,7 +61,6 @@ class MQTTConfig(BaseModel):
 
     # Service Configuration
     enabled: bool
-    max_reconnect_attempts: int = Field(ge=1, le=100)
 
     # Message Processing
     batch_size: int = Field(ge=1, le=10_000)
@@ -170,9 +169,6 @@ class MQTTSettings(BaseSettings):
 
     MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
 
-    # Connection Management
-    MQTT_MAX_RECONNECT_ATTEMPTS: int = Field(default=10, ge=1, le=100)
-
     # Message Processing
     MQTT_BATCH_SIZE: int = Field(default=100, ge=1, le=10_000)
     MQTT_BATCH_TIMEOUT: float = Field(default=5.0, ge=0.1, le=300.0)
@@ -232,7 +228,6 @@ class MQTTSettings(BaseSettings):
             mqtt_api_key=self.MQTT_APIKEY,
             topic_regex=self.MQTT_TOPIC_REGEX,
             enabled=self.MQTT_TELEMETRY_ENABLED,
-            max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
             batch_size=self.MQTT_BATCH_SIZE,
             batch_timeout=self.MQTT_BATCH_TIMEOUT,
             connection_timeout=self.MQTT_CONNECTION_TIMEOUT,

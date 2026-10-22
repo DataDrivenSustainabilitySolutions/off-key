@@ -84,6 +84,13 @@ is applied, the collector enables admission. Failure remains visible and retries
 an empty selection is healthy idle. Old queued generations cannot enter a new
 mapping. Turning an input Off preserves previously recorded history.
 
+The collector's reconciliation loop is the only reconnect owner for the local
+broker. When the connection drops it pauses admission, reports `error` and
+reconnects on its next poll, about every two seconds, without an attempt
+cutoff; the MQTT client itself never retries. A new connection is a new
+subscription generation, so the collector reinstalls its subscriptions and
+re-requests retained snapshots before admitting again.
+
 ## Upgrade from the previous runtime
 
 Use the production release's packaged migration workflow; do not execute SQL

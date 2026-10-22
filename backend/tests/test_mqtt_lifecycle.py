@@ -3,7 +3,11 @@
 import threading
 
 import pytest
-from off_key_core.utils.mqtt_lifecycle import close_client, close_client_blocking
+from off_key_core.utils.mqtt_lifecycle import (
+    close_client,
+    close_client_blocking,
+    connack_refusal,
+)
 
 
 class _Client:
@@ -65,3 +69,13 @@ def test_the_network_thread_is_joined_even_when_disconnect_raises():
         close_client_blocking(client)
 
     assert client.calls == ["loop_stop"]
+
+
+def test_connack_refusals_read_v5_reason_codes_and_their_ints():
+    from paho.mqtt.packettypes import PacketTypes
+    from paho.mqtt.reasoncodes import ReasonCode
+
+    refusal = ReasonCode(PacketTypes.CONNACK, "Not authorized")
+    assert connack_refusal(refusal) == connack_refusal(135)
+    assert "check permissions" in connack_refusal(refusal)
+    assert connack_refusal(5) == "Unknown error code 5"

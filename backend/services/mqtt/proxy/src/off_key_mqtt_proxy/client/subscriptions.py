@@ -85,13 +85,15 @@ class SubscriptionManager:
         if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(finish)
 
-    def _on_subscribe(self, client, userdata, mid, granted_qos):
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
         self._ack(
             client,
             "subscribe",
             mid,
-            bool(granted_qos) and all(code < 128 for code in granted_qos),
+            bool(reason_codes) and all(code < 128 for code in reason_codes),
         )
 
-    def _on_unsubscribe(self, client, userdata, mid):
+    def _on_unsubscribe(
+        self, client, userdata, mid, reason_codes=None, properties=None
+    ):
         self._ack(client, "unsubscribe", mid, True)

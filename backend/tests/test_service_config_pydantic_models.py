@@ -31,7 +31,6 @@ def _base_mqtt_config() -> dict:
         "mqtt_api_key": "secret-key-123",
         "topic_regex": (r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"),
         "enabled": True,
-        "max_reconnect_attempts": 10,
         "batch_size": 100,
         "batch_timeout": 5.0,
         "connection_timeout": 30.0,

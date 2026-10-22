@@ -20,7 +20,7 @@ import janus
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
-from off_key_core.utils.mqtt_lifecycle import close_client
+from off_key_core.utils.mqtt_lifecycle import close_client, connack_refusal
 
 from .config.config import MQTTRadarConfig
 from .coverage import CoverageTracker
@@ -293,15 +293,7 @@ class RadarMQTTClient:
                 )
 
         else:
-            error_messages = {
-                1: "Connection refused - incorrect protocol version",
-                2: "Connection refused - invalid client identifier",
-                3: "Connection refused - server unavailable",
-                4: "Connection refused - bad username or password",
-                5: "Connection refused - not authorized",
-            }
-
-            error_msg = error_messages.get(rc, f"Unknown error code {rc}")
+            error_msg = connack_refusal(rc)
             logger.error("event=radar.mqtt_connection_refused error=%s", error_msg)
             self.is_connected = False
             self._notify_connection_result(RuntimeError(error_msg))

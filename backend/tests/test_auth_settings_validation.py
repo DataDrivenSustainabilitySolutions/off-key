@@ -2,53 +2,29 @@ import pytest
 from off_key_core.config.auth import get_auth_settings
 from pydantic import ValidationError
 
-
-@pytest.fixture
-def auth_env(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET", "a" * 32)
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "b" * 32)
-    monkeypatch.setenv("ALGORITHM", "HS256")
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")
-    get_auth_settings.cache_clear()
-    yield
-    get_auth_settings.cache_clear()
+from tests.support.env import set_auth_env
 
 
-def test_auth_settings_rejects_unsupported_algorithm(monkeypatch, auth_env):
-    monkeypatch.setenv("ALGORITHM", "none")
-    get_auth_settings.cache_clear()
-
-    with pytest.raises(ValidationError):
-        get_auth_settings()
-
-
-def test_auth_settings_rejects_short_jwt_secret(monkeypatch, auth_env):
-    monkeypatch.setenv("JWT_SECRET", "short")
-    get_auth_settings.cache_clear()
-
-    with pytest.raises(ValidationError):
-        get_auth_settings()
-
-
-def test_auth_settings_rejects_whitespace_around_secret(monkeypatch, auth_env):
-    monkeypatch.setenv("JWT_SECRET", " " + "z" * 32)
-    get_auth_settings.cache_clear()
-    with pytest.raises(ValidationError):
-        get_auth_settings()
-
-
-def test_auth_settings_rejects_invalid_expiry(monkeypatch, auth_env):
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "0")
-    get_auth_settings.cache_clear()
-
-    with pytest.raises(ValidationError):
-        get_auth_settings()
-
-
-def test_auth_settings_rejects_invalid_clock_skew(monkeypatch, auth_env):
-    monkeypatch.setenv("JWT_CLOCK_SKEW_SECONDS", "500")
-    get_auth_settings.cache_clear()
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ALGORITHM", "none"),
+        ("JWT_SECRET", "short"),
+        ("JWT_SECRET", " " + "z" * 32),
+        ("ACCESS_TOKEN_EXPIRE_MINUTES", "0"),
+        ("JWT_CLOCK_SKEW_SECONDS", "500"),
+    ],
+    ids=[
+        "unsupported_algorithm",
+        "short_secret",
+        "padded_secret",
+        "zero_expiry",
+        "excessive_clock_skew",
+    ],
+)
+def test_auth_settings_reject_unsafe_values(monkeypatch, name, value):
+    set_auth_env(monkeypatch)
+    monkeypatch.setenv(name, value)
 
     with pytest.raises(ValidationError):
         get_auth_settings()

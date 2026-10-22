@@ -12,14 +12,14 @@ from off_key_core.db.models import User
 from off_key_core.schemas.storage import RetentionPolicyStatus, StorageStatus
 from off_key_tactic_middleware.api.v1 import system as collection
 
-from .test_gateway_auth_token_types import _set_auth_env
+from tests.support.env import set_auth_env
 
 
 @pytest.mark.asyncio
 async def test_storage_requires_a_verified_user_and_returns_database_measurements(
     monkeypatch,
 ):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     settings = get_auth_settings()
     user = User(
         id=1,

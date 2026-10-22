@@ -99,12 +99,26 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const topics = { L1: inputs.L1, L2: inputs.L2 };
       const expectedTelemetryTypes = [l1Key, l2Key].sort();
       await publishCycle(activePublisher, topics, 0);
-      const readTelemetryTypes = async () => {
-        const response = await api.get(`/api/v1/telemetry/${chargerId}/type`, {
+      const readJson = async <T>(path: string) => {
+        const response = await api.get(path, {
           headers: { Authorization: `Bearer ${authToken}` },
         });
-        return ((await response.json()) as string[]).sort();
+        return (await response.json()) as T;
       };
+      const readTelemetryTypes = async () =>
+        (await readJson<string[]>(`/api/v1/telemetry/${chargerId}/type`)).sort();
+      const hasTelemetryAt = async (key: string, timestamp: string) =>
+        (
+          await readJson<Array<{ timestamp: string }>>(
+            `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(key)}&limit=1000`,
+          )
+        ).some((row) => Date.parse(row.timestamp) === Date.parse(timestamp));
+      const readServiceEvidence = async () =>
+        (
+          await readJson<ChartEvidence[]>(
+            `/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`,
+          )
+        ).filter((row) => row.service_id === serviceId);
       const hasExpectedTelemetryTypes = (types: string[]) =>
         types.length === expectedTelemetryTypes.length &&
         expectedTelemetryTypes.every((type, index) => types[index] === type);
@@ -157,17 +171,13 @@ test.describe("adaptive monitoring production lifecycle", () => {
       serviceId = started.service_id;
 
       const readServiceStatus = async () => {
-        const response = await api.get(
-          "/api/v1/monitors/all?active_only=true&include_docker_status=true",
-          { headers: { Authorization: `Bearer ${authToken}` } },
-        );
-        const services = (await response.json()) as Array<{
+        const services = await readJson<Array<{
           id: string;
           operational_status?: {
             stage?: string;
             message_count?: number;
           };
-        }>;
+        }>>("/api/v1/monitors/all?active_only=true&include_docker_status=true");
         return services.find((service) => service.id === serviceId)
           ?.operational_status;
       };
@@ -212,15 +222,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect
         .poll(
           async () => {
-            const response = await api.get(
-              `/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`,
-              {
-                headers: { Authorization: `Bearer ${authToken}` },
-              },
-            );
-            operationalEvidence = (
-              (await response.json()) as ChartEvidence[]
-            ).filter((row) => row.service_id === serviceId);
+            operationalEvidence = await readServiceEvidence();
             return operationalEvidence.some(
               (row) =>
                 row.strategy === "adaptive_stream" &&
@@ -275,21 +277,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const pendingL1 = new Date(eventTimeCursor).toISOString();
       await publish(activePublisher, topics.L1, 123, pendingL1);
       await expect
-        .poll(
-          async () => {
-            const response = await api.get(
-              `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(l1Key)}&limit=1000`,
-              { headers: { Authorization: `Bearer ${authToken}` } },
-            );
-            const rows = (await response.json()) as Array<{
-              timestamp: string;
-            }>;
-            return rows.some(
-              (row) => Date.parse(row.timestamp) === Date.parse(pendingL1),
-            );
-          },
-          { timeout: 60_000 },
-        )
+        .poll(() => hasTelemetryAt(l1Key, pendingL1), { timeout: 60_000 })
         .toBe(true);
 
       const telemetryRefresh = page.waitForResponse((response) => {
@@ -312,16 +300,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
       await expect
         .poll(
           async () => {
-            const response = await api.get(
-              `/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`,
-              {
-                headers: { Authorization: `Bearer ${authToken}` },
-              },
-            );
-            const rows = (await response.json()) as ChartEvidence[];
-            delayedEvidence = rows.find(
+            delayedEvidence = (await readServiceEvidence()).find(
               (row) =>
-                row.service_id === serviceId &&
                 Date.parse(row.input_timestamps[l1Key]!) === Date.parse(pendingL1) &&
                 Date.parse(row.input_timestamps[l2Key]!) === Date.parse(pendingL2),
             );
@@ -335,23 +315,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       );
 
       await expect
-        .poll(
-          async () => {
-            const response = await api.get(
-              `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(l2Key)}&limit=1000`,
-              {
-                headers: { Authorization: `Bearer ${authToken}` },
-              },
-            );
-            const rows = (await response.json()) as Array<{
-              timestamp: string;
-            }>;
-            return rows.some(
-              (row) => Date.parse(row.timestamp) === Date.parse(pendingL2),
-            );
-          },
-          { timeout: 120_000 },
-        )
+        .poll(() => hasTelemetryAt(l2Key, pendingL2), { timeout: 120_000 })
         .toBe(true);
 
       const evidenceRefresh = page.waitForResponse((response) => {

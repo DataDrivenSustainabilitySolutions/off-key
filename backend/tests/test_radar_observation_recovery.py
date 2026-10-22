@@ -1,16 +1,14 @@
 """Real managed worker replacement rejects retained checkpointed observations."""
 
-import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from amqtt.broker import Broker
 from amqtt.client import MQTTClient
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar import database as database_module
 from off_key_mqtt_radar import service as service_module
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
@@ -28,11 +26,7 @@ from pydantic import ValidationError
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-
-async def wait_for(predicate):
-    async with asyncio.timeout(20):
-        while not predicate():  # noqa: ASYNC110
-            await asyncio.sleep(0.01)
+from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
 
 @pytest.mark.asyncio
@@ -63,18 +57,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
     monkeypatch.setenv("RADAR_CHECKPOINT_STORAGE", "database")
     monkeypatch.setenv("RADAR_CHECKPOINT_SECRET", "retained-integration-secret")
     clear_radar_runtime_settings_cache()
-    broker = Broker(
-        {
-            "listeners": {"default": {"type": "tcp", "bind": "127.0.0.1:0"}},
-            "plugins": {
-                "amqtt.plugins.authentication.AnonymousAuthPlugin": {
-                    "allow_anonymous": True
-                }
-            },
-        }
-    )
-    await broker.start()
-    port = broker._servers["default"].instance.sockets[0].getsockname()[1]
+    broker, port = await start_mqtt_broker()
     config = MQTTRadarConfig(
         broker_host="127.0.0.1",
         broker_port=port,
@@ -83,12 +66,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
         checkpoint_interval=1,
         observation_max_age_seconds=120,
         health_check_interval=0.1,
-        monitoring=AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={"k": 1, "window_size": 8, "warm_up": 1},
-            training_window_size=2,
-            calibration_window_size=3,
-        ),
+        monitoring=tiny_adaptive_monitoring(),
     )
     monkeypatch.setattr(
         service_module, "get_radar_settings", lambda: SimpleNamespace(config=config)
@@ -114,7 +92,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
                     qos=1,
                     retain=True,
                 )
-            await wait_for(
+            await wait_until(
                 lambda index=index: (
                     original.recovery_status.get("saved_processed_count") == index + 1
                 )
@@ -133,7 +111,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
         replacement = RadarService()
         workers.append(replacement)
         await replacement.start()
-        await wait_for(
+        await wait_until(
             lambda: (
                 replacement.message_processor.received_message_count
                 >= original_processor.received_message_count + len(sensors)
@@ -170,7 +148,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
             # Retained QoS deliveries can still be queued after subscription.
             # Wait for this fresh reading's watermark, not an exact aggregate
             # receipt count that another retained delivery can advance past.
-            await wait_for(
+            await wait_until(
                 lambda: (
                     replacement.message_processor.export_observation_watermarks()
                     .get("entity", {})
@@ -192,7 +170,7 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
                     qos=1,
                     retain=True,
                 )
-        await wait_for(
+        await wait_until(
             lambda: replacement.recovery_status.get("saved_processed_count") == 8
         )
         assert replacement.detector.primary_service.processed_count == 8
@@ -213,12 +191,7 @@ async def test_managed_restore_requires_history_after_first_observation(
     """An authentic older payload cannot silently reopen a replay boundary."""
     config = MQTTRadarConfig(
         subscription_topics=["telemetry/entity/x"],
-        monitoring=AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={"k": 1, "window_size": 8, "warm_up": 1},
-            training_window_size=2,
-            calibration_window_size=3,
-        ),
+        monitoring=tiny_adaptive_monitoring(),
     )
     with disposable_database.begin() as connection:
         apply_migrations(connection)
@@ -292,12 +265,7 @@ def test_file_checkpoint_rejects_changed_alignment_policy(
     monitoring = (
         StaticBaselineConfig(training_window_size=20, calibration_window_size=8)
         if strategy == "static_baseline"
-        else AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={"k": 1, "window_size": 8, "warm_up": 1},
-            training_window_size=2,
-            calibration_window_size=3,
-        )
+        else tiny_adaptive_monitoring()
     )
     config = MQTTRadarConfig(
         monitoring=monitoring, subscription_topics=["telemetry/entity/x"]

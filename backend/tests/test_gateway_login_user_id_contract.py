@@ -5,14 +5,7 @@ from jose import jwt
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_core.config.auth import get_auth_settings
 
-
-def _set_auth_env(monkeypatch) -> None:
-    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-key-material-123456")
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "test-jwt-verification-secret-654321")
-    monkeypatch.setenv("ALGORITHM", "HS256")
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")
-    get_auth_settings.cache_clear()
+from tests.support.env import set_auth_env
 
 
 class _TacticLoginStub:
@@ -22,7 +15,7 @@ class _TacticLoginStub:
 
 @pytest.mark.asyncio
 async def test_login_includes_server_assigned_id_and_session_version(monkeypatch):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     monkeypatch.setattr(auth_api, "tactic", _TacticLoginStub())
 
     app = FastAPI()

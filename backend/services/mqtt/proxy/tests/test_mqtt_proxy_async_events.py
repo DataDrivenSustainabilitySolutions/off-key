@@ -1,8 +1,13 @@
+"""Async event handling in the MQTT proxy without a broker.
+
+Covers event-loop lifecycle, bounded async dispatch, handler failures and
+reconnect scheduling of the message handler and connection manager.
+"""
+
 import asyncio
-import time
 from contextlib import suppress
-from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import pytest_asyncio
@@ -11,615 +16,366 @@ from off_key_mqtt_proxy.client.messaging import MessageHandler
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.config.config import MQTTSettings
 
-"""
-This test module covers the following risk scenarios:
-1. Event loop lifecycle issues
-2. Future resource leaks
-3. Exception propagation
-4. Race conditions
-5. Performance degradation
-6. Silent failures
-"""
-
-
-class TestMessageHandlerAsyncEvents:
-    """Test suite for MessageHandler async event handling"""
-
-    @pytest_asyncio.fixture
-    async def message_handler(self):
-        """Create MessageHandler instance"""
-        handler = MessageHandler(max_queue_size=100)
-        yield handler
-        await handler.stop(drain=False)
-
-    @pytest.fixture
-    def mock_mqtt_message(self):
-        """Create mock MQTT message"""
-        msg = Mock()
-        msg.topic = "test/topic"
-        msg.payload = b'{"key": "value"}'
-        msg.qos = 0
-        msg.retain = False
-        return msg
-
-    @pytest.mark.asyncio
-    async def test_event_loop_not_set(self, message_handler, mock_mqtt_message):
-        """Test async handler when event loop is not set"""
-        handler_called = []
-
-        async def async_handler(message: MQTTMessage):
-            handler_called.append(message)
-
-        # Set handler without event loop
-        message_handler._event_loop = None
-        message_handler.message_handler = async_handler
-
-        # Simulate MQTT message callback
-        message_handler._on_message(None, None, mock_mqtt_message)
-
-        # Handler should not be called, error should be logged
-        await asyncio.sleep(0.1)
-        assert len(handler_called) == 0
-
-    @pytest.mark.asyncio
-    async def test_event_loop_closed_before_callback(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test run_coroutine_threadsafe across event-loop close race."""
-        handler_called = []
-
-        async def async_handler(message: MQTTMessage):
-            handler_called.append(message)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(async_handler, loop)
-
-        # Close the loop before callback
-        # Note: We can't actually close the running loop, so we'll mock is_closed()
-        with patch.object(loop, "is_closed", return_value=True):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.1)
-        # Handler should not be called due to closed loop check
-        assert len(handler_called) == 0
-
-    @pytest.mark.asyncio
-    async def test_run_coroutine_threadsafe_with_stopped_loop(self, message_handler):
-        """Test that run_coroutine_threadsafe raises when loop is stopped"""
-
-        async def async_handler(message: MQTTMessage):
-            pass
-
-        # Create a new loop and stop it
-        new_loop = asyncio.new_event_loop()
-        new_loop.close()
-
-        message_handler._event_loop = new_loop
-        message_handler.message_handler = async_handler
-
-        mock_msg = Mock()
-        mock_msg.topic = "test/topic"
-        mock_msg.payload = b'{"test": "data"}'
-        mock_msg.qos = 0
-        mock_msg.retain = False
-
-        # Should handle gracefully (error logged, no crash)
-        message_handler._on_message(None, None, mock_msg)
-
-    @pytest.mark.asyncio
-    async def test_async_handler_queue_is_bounded(self, mock_mqtt_message):
-        """Test that async handler work is queued with a hard upper bound"""
-        message_handler = MessageHandler(max_queue_size=3, max_concurrent_handlers=1)
-        release_handler = asyncio.Event()
-
-        async def slow_handler(message: MQTTMessage):
-            await release_handler.wait()
 
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(slow_handler, loop)
-
-        for _ in range(10):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.1)
+@pytest_asyncio.fixture
+async def message_handler():
+    handler = MessageHandler(max_queue_size=100)
+    yield handler
+    await handler.stop(drain=False)
 
-        assert message_handler.futures_created <= (
-            message_handler.max_queue_size + message_handler.max_concurrent_handlers
-        )
-        assert message_handler.handler_messages_dropped > 0
-
-        release_handler.set()
-        await message_handler.stop(timeout_seconds=1.0)
-
-    @pytest.mark.asyncio
-    async def test_futures_complete_eventually(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test that futures complete and clean up properly"""
-        completed_count = []
-
-        async def quick_handler(message: MQTTMessage):
-            await asyncio.sleep(0.01)
-            completed_count.append(1)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(quick_handler, loop)
-
-        # Send messages
-        for _ in range(5):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        # Wait for all to complete
-        await asyncio.sleep(0.2)
-
-        # All should complete
-        assert len(completed_count) == 5
-
-    @pytest.mark.asyncio
-    async def test_exception_in_async_handler_logged(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test that exceptions in async handlers are logged (not silent)"""
-
-        async def failing_handler(message: MQTTMessage):
-            raise ValueError("Test exception in async handler")
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(failing_handler, loop)
-
-        # Send message - exception should be logged, not crash
-        message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.1)
-
-        # Verify metrics tracked the exception
-        assert message_handler.futures_created == 1
-        assert message_handler.futures_failed == 1
-        assert message_handler.futures_completed == 0
-        assert message_handler.handler_errors == 1
-
-    @pytest.mark.asyncio
-    async def test_multiple_handler_exceptions_dont_crash(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test multiple concurrent exceptions in async handlers"""
-        exception_count = []
-
-        async def sometimes_failing_handler(message: MQTTMessage):
-            exception_count.append(1)
-            if len(exception_count) % 2 == 0:
-                raise RuntimeError(f"Exception {len(exception_count)}")
-            await asyncio.sleep(0.01)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(sometimes_failing_handler, loop)
-
-        # Send multiple messages
-        for _ in range(10):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.3)
-
-        # All messages processed (some failed, some succeeded)
-        assert len(exception_count) == 10
-        # Verify metrics tracked failures (every even message fails)
-        assert message_handler.futures_created == 10
-        assert message_handler.futures_failed == 5
-        assert message_handler.futures_completed == 5
-        assert message_handler.handler_errors == 5
-
-    @pytest.mark.asyncio
-    async def test_exception_doesnt_stop_processing(self, message_handler):
-        """Test that handler exception doesn't stop subsequent messages"""
-        processed_messages: list[str] = []
-
-        async def selective_failing_handler(message: MQTTMessage):
-            if "fail" in message.topic:
-                raise ValueError("Intentional failure")
-            processed_messages.append(message.topic)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(selective_failing_handler, loop)
-
-        # Send mix of failing and succeeding messages
-        topics = ["test/fail", "test/success1", "test/fail2", "test/success2"]
-        for topic in topics:
-            msg = Mock()
-            msg.topic = topic
-            msg.payload = b'{"test": "data"}'
-            msg.qos = 0
-            msg.retain = False
-            message_handler._on_message(None, None, msg)
-
-        await asyncio.sleep(0.2)
-
-        # Successful messages should be processed
-        assert "test/success1" in processed_messages
-        assert "test/success2" in processed_messages
-        assert len(processed_messages) == 2
-
-    @pytest.mark.asyncio
-    async def test_concurrent_handler_changes(self, message_handler, mock_mqtt_message):
-        """Test race condition when handler is changed while messages arrive"""
-        handler1_calls = []
-        handler2_calls = []
-
-        async def handler1(message: MQTTMessage):
-            handler1_calls.append(message.topic)
-
-        async def handler2(message: MQTTMessage):
-            handler2_calls.append(message.topic)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(handler1, loop)
-
-        # Send messages while changing handler
-        message_handler._on_message(None, None, mock_mqtt_message)
-        message_handler.set_handler(handler2, loop)
-        message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.2)
-
-        # Should handle gracefully without crashes
-        total_calls = len(handler1_calls) + len(handler2_calls)
-        assert total_calls == 2
-
-    @pytest.mark.asyncio
-    async def test_handler_cleared_during_processing(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test clearing handler while messages are being processed"""
-        processing_started = asyncio.Event()
-        handler_calls = []
-
-        async def slow_handler(message: MQTTMessage):
-            processing_started.set()
-            await asyncio.sleep(0.2)
-            handler_calls.append(message.topic)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(slow_handler, loop)
-
-        # Start message processing
-        message_handler._on_message(None, None, mock_mqtt_message)
-        await processing_started.wait()
-
-        # Clear handler while first message is processing
-        message_handler.clear_handler()
-
-        # Send another message (should be queued since no handler)
-        message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.3)
-
-        # First message should complete
-        assert len(handler_calls) == 1
-        # Second message should be queued
-        assert message_handler.get_queue_size() == 1
-
-    @pytest.mark.asyncio
-    async def test_rapid_message_arrival(self, message_handler):
-        """Test system under rapid concurrent message arrival"""
-        received_topics = []
-
-        async def handler(message: MQTTMessage):
-            received_topics.append(message.topic)
-            await asyncio.sleep(0.01)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(handler, loop)
-
-        # Rapidly send many messages
-        for i in range(50):
-            msg = Mock()
-            msg.topic = f"test/topic/{i}"
-            msg.payload = b'{"index": ' + str(i).encode() + b"}"
-            msg.qos = 0
-            msg.retain = False
-            message_handler._on_message(None, None, msg)
-
-        # Wait for all to process
-        await asyncio.sleep(1.0)
-
-        # All messages should be processed
-        assert len(received_topics) == 50
-
-    @pytest.mark.asyncio
-    async def test_message_queue_overflow(self, message_handler):
-        """Test behavior when message queue exceeds max size"""
-        # Set handler to None so messages are queued
-        message_handler.message_handler = None
-        max_size = message_handler.max_queue_size
-
-        # Send more messages than max queue size
-        for i in range(max_size + 20):
-            msg = Mock()
-            msg.topic = f"test/topic/{i}"
-            msg.payload = b'{"index": ' + str(i).encode() + b"}"
-            msg.qos = 0
-            msg.retain = False
-            message_handler._on_message(None, None, msg)
-
-        # Queue should be at max size, additional messages dropped
-        assert message_handler.get_queue_size() == max_size
-
-    @pytest.mark.asyncio
-    async def test_slow_handler_doesnt_block_mqtt_callbacks(self, message_handler):
-        """Test that slow async handlers don't block MQTT callback thread"""
-        call_times = []
-
-        async def very_slow_handler(message: MQTTMessage):
-            call_times.append(time.time())
-            await asyncio.sleep(0.1)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(very_slow_handler, loop)
-
-        # Rapidly send messages
-        start_time = time.time()
-        for i in range(5):
-            msg = Mock()
-            msg.topic = f"test/topic/{i}"
-            msg.payload = b'{"test": "data"}'
-            msg.qos = 0
-            msg.retain = False
-            message_handler._on_message(None, None, msg)
-
-        send_time = time.time() - start_time
-
-        # Sending should be fast (not blocked by handler execution)
-        assert send_time < 0.5
-
-        # Wait for processing
-        await asyncio.sleep(1.0)
-
-        # All should eventually process
-        assert len(call_times) == 5
-
-    @pytest.mark.asyncio
-    async def test_metrics_track_messages_received(
-        self, message_handler, mock_mqtt_message
-    ):
-        """Test that message metrics are properly tracked"""
-        initial_count = message_handler.messages_received
-
-        # Send messages
-        for _ in range(5):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        # Metrics should reflect received messages
-        assert message_handler.messages_received == initial_count + 5
-
-    @pytest.mark.asyncio
-    async def test_last_message_time_updated(self, message_handler, mock_mqtt_message):
-        """Test that last message time is tracked"""
-        assert message_handler.last_message_time is None
-
-        message_handler._on_message(None, None, mock_mqtt_message)
-
-        assert message_handler.last_message_time is not None
-        assert isinstance(message_handler.last_message_time, datetime)
-
-    @pytest.mark.asyncio
-    async def test_metrics_visibility(self, message_handler, mock_mqtt_message):
-        """Test that metrics are accessible for monitoring"""
-
-        async def handler(message: MQTTMessage):
-            pass
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(handler, loop)
-
-        # Send some messages
-        for _ in range(3):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        await asyncio.sleep(0.1)  # Wait for futures to complete
-
-        metrics = message_handler.get_metrics()
-
-        assert metrics["messages_received"] == 3
-        assert metrics["has_handler"] is True
-        assert "queue_size" in metrics
-        assert "last_message_time" in metrics
-        # Verify new metrics are tracked
-        assert "handler_errors" in metrics
-        assert "futures_created" in metrics
-        assert "futures_completed" in metrics
-        assert "futures_failed" in metrics
-        assert metrics["futures_created"] == 3
-        assert metrics["futures_completed"] == 3
-        assert metrics["futures_failed"] == 0
-
-    # Edge Cases
-    # ==========
-
-    @pytest.mark.asyncio
-    async def test_sync_handler_still_works(self, message_handler, mock_mqtt_message):
-        """Test that synchronous handlers still work correctly"""
-        sync_calls = []
-
-        def sync_handler(message: MQTTMessage):
-            sync_calls.append(message.topic)
-
-        message_handler.set_handler(sync_handler)
-
-        # Send messages
-        for _ in range(3):
-            message_handler._on_message(None, None, mock_mqtt_message)
-
-        # Sync handler should be called immediately
-        assert len(sync_calls) == 3
-
-    @pytest.mark.asyncio
-    async def test_malformed_json_payload(self, message_handler):
-        """Test handling of malformed JSON payloads"""
-        handler_calls = []
-
-        async def handler(message: MQTTMessage):
-            handler_calls.append(message)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(handler, loop)
-
-        msg = Mock()
-        msg.topic = "test/topic"
-        msg.payload = b"invalid json {"
-        msg.qos = 0
-        msg.retain = False
-
-        # Should handle gracefully
-        message_handler._on_message(None, None, msg)
-
-        await asyncio.sleep(0.1)
-
-        # Handler should still be called with fallback payload
-        assert len(handler_calls) == 1
-        assert "raw" in handler_calls[0].payload
-
-    @pytest.mark.asyncio
-    async def test_empty_payload(self, message_handler):
-        """Test handling of empty message payloads"""
-        handler_calls = []
-
-        async def handler(message: MQTTMessage):
-            handler_calls.append(message)
-
-        loop = asyncio.get_running_loop()
-        message_handler.set_handler(handler, loop)
-
-        msg = Mock()
-        msg.topic = "test/topic"
-        msg.payload = b""
-        msg.qos = 0
-        msg.retain = False
-
-        message_handler._on_message(None, None, msg)
-
-        await asyncio.sleep(0.1)
-
-        assert len(handler_calls) == 1
-
-
-class TestConnectionManagerAsyncEvents:
-    """Test suite for ConnectionManager async event handling"""
-
-    @pytest.fixture
-    def config(self):
-        """Create test MQTT config"""
-        return MQTTSettings().config
-
-    @pytest_asyncio.fixture
-    async def connection_manager(self, config):
-        """Create ConnectionManager instance"""
-        manager = ConnectionManager(config)
-        yield manager
-        # Cleanup
-        if manager._reconnect_task and not manager._reconnect_task.done():
-            manager._reconnect_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await manager._reconnect_task
-
-    # Event Loop Coordination Tests
-    # ==============================
-
-    @pytest.mark.asyncio
-    async def test_disconnect_callback_with_event_loop(self, connection_manager):
-        """Test disconnect callback coordination through event loop"""
-        callback_called = []
-
-        async def on_disconnected(unexpected: bool):
-            callback_called.append(unexpected)
-
-        connection_manager.on_disconnected = on_disconnected
-        connection_manager._event_loop = asyncio.get_running_loop()
-
-        # Simulate disconnect
-        connection_manager._on_disconnect(None, None, 0)
-
-        await asyncio.sleep(0.1)
-
-        # Callback should be called
-        assert len(callback_called) == 1
-        assert callback_called[0] is False  # Normal disconnect
-
-    @pytest.mark.asyncio
-    async def test_disconnect_callback_without_event_loop(self, connection_manager):
-        """Test disconnect callback when event loop is not set"""
-        callback_called = []
-
-        async def on_disconnected(unexpected: bool):
-            callback_called.append(unexpected)
-
-        connection_manager.on_disconnected = on_disconnected
-        connection_manager._event_loop = None
-
-        # Simulate disconnect
-        connection_manager._on_disconnect(None, None, 0)
-
-        await asyncio.sleep(0.1)
-
-        # Callback should not be called (no event loop)
-        assert len(callback_called) == 0
-
-    @pytest.mark.asyncio
-    async def test_reconnect_scheduling_with_closed_loop(self, connection_manager):
-        """Test reconnect scheduling when event loop is closed"""
-        loop = asyncio.get_running_loop()
-        connection_manager._event_loop = loop
-
-        # Mock is_closed to return True
+
+@pytest_asyncio.fixture
+async def connection_manager():
+    manager = ConnectionManager(MQTTSettings().config)
+    yield manager
+    if manager._reconnect_task and not manager._reconnect_task.done():
+        manager._reconnect_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await manager._reconnect_task
+
+
+def _paho_message(topic="test/topic", payload=b'{"key": "value"}'):
+    return Mock(topic=topic, payload=payload, qos=0, retain=False)
+
+
+def _recorder():
+    received = []
+
+    async def handler(message: MQTTMessage):
+        received.append(message)
+
+    return handler, received
+
+
+async def _settle():
+    """Run thread-safe callbacks and the tasks they start without sleeping."""
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+
+async def _drain(message_handler):
+    await _settle()
+    await message_handler._handler_queue.join()
+
+
+@pytest.mark.parametrize("loop_state", ["missing", "closed", "closing"])
+async def test_async_handler_without_a_usable_loop_is_never_scheduled(
+    message_handler, loop_state
+):
+    handler, received = _recorder()
+    loop = asyncio.new_event_loop()
+    if loop_state == "missing":
+        loop.close()
+        loop = None
+    elif loop_state == "closed":
+        loop.close()
+    else:
+        # The loop closes between the is_closed() check and scheduling.
+        loop.call_soon_threadsafe = Mock(side_effect=RuntimeError("closed"))
+    message_handler._event_loop = loop
+    message_handler.message_handler = handler
+
+    message_handler._on_message(None, None, _paho_message())
+    await _settle()
+
+    assert received == []
+    assert message_handler.futures_created == 0
+    assert message_handler.handler_errors == (loop_state == "closing")
+    if loop_state == "closing":
+        loop.close()
+
+
+@pytest.mark.parametrize("released", [True, False], ids=["drained", "timed_out"])
+async def test_bounded_async_dispatch_accounts_for_every_message(released):
+    message_handler = MessageHandler(max_queue_size=3, max_concurrent_handlers=1)
+    release = asyncio.Event()
+
+    async def slow_handler(_: MQTTMessage):
+        await release.wait()
+
+    message_handler.set_handler(slow_handler, asyncio.get_running_loop())
+    for _ in range(10):
+        message_handler._on_message(None, None, _paho_message())
+    await _settle()
+
+    created = message_handler.futures_created
+    assert created <= 3 + 1  # queue bound plus the one busy worker
+    assert created + message_handler.handler_messages_dropped == 10
+
+    if released:
+        release.set()
+    await message_handler.stop(timeout_seconds=0.05)
+
+    assert message_handler.futures_completed == (created if released else 0)
+    assert message_handler._handler_queue is None
+    assert message_handler._handler_workers == []
+
+
+async def test_async_handler_failures_are_counted_without_stopping_dispatch(
+    message_handler,
+):
+    processed = []
+
+    async def handler(message: MQTTMessage):
+        if "fail" in message.topic:
+            raise ValueError("handler failed")
+        processed.append(message.topic)
+
+    message_handler.set_handler(handler, asyncio.get_running_loop())
+    for topic in ["test/fail1", "test/ok1", "test/fail2", "test/ok2"]:
+        message_handler._on_message(None, None, _paho_message(topic))
+    await _drain(message_handler)
+
+    assert sorted(processed) == ["test/ok1", "test/ok2"]
+    metrics = message_handler.get_metrics()
+    assert (
+        metrics["futures_created"],
+        metrics["futures_completed"],
+        metrics["futures_failed"],
+        metrics["handler_errors"],
+    ) == (4, 2, 2, 2)
+
+
+async def test_slow_async_handlers_never_block_the_mqtt_callback(message_handler):
+    release = asyncio.Event()
+    received = []
+
+    async def slow_handler(message: MQTTMessage):
+        await release.wait()
+        received.append(message.topic)
+
+    message_handler.set_handler(slow_handler, asyncio.get_running_loop())
+    topics = [f"test/topic/{i}" for i in range(50)]
+    for topic in topics:
+        message_handler._on_message(None, None, _paho_message(topic))
+
+    # Every callback returned while no handler could finish.
+    assert received == []
+    assert message_handler.messages_received == 50
+
+    release.set()
+    await _drain(message_handler)
+
+    assert sorted(received) == sorted(topics)
+    assert message_handler.futures_completed == 50
+
+
+async def test_handler_swap_routes_later_messages_to_the_new_handler(
+    message_handler,
+):
+    loop = asyncio.get_running_loop()
+    first, first_received = _recorder()
+    second, second_received = _recorder()
+
+    message_handler.set_handler(first, loop)
+    message_handler._on_message(None, None, _paho_message("test/one"))
+    message_handler.set_handler(second, loop)
+    message_handler._on_message(None, None, _paho_message("test/two"))
+    await _drain(message_handler)
+
+    assert [m.topic for m in first_received] == ["test/one"]
+    assert [m.topic for m in second_received] == ["test/two"]
+
+
+async def test_clearing_the_handler_queues_later_messages_while_work_finishes(
+    message_handler,
+):
+    started, release = asyncio.Event(), asyncio.Event()
+    handled = []
+
+    async def slow_handler(message: MQTTMessage):
+        started.set()
+        await release.wait()
+        handled.append(message.topic)
+
+    message_handler.set_handler(slow_handler, asyncio.get_running_loop())
+    message_handler._on_message(None, None, _paho_message())
+    await started.wait()
+
+    message_handler.clear_handler()
+    message_handler._on_message(None, None, _paho_message())
+    release.set()
+    await message_handler._handler_queue.join()
+
+    assert handled == ["test/topic"]
+    assert message_handler.get_queue_size() == 1
+
+
+async def test_messages_without_a_handler_are_queued_up_to_the_bound(
+    message_handler,
+):
+    assert message_handler.last_message_time is None
+    bound = message_handler.max_queue_size
+    for i in range(bound + 20):
+        message_handler._on_message(None, None, _paho_message(f"test/topic/{i}"))
+    # Oversized payloads are rejected before parsing or counting.
+    message_handler._on_message(None, None, _paho_message(payload=b"x" * 40_000))
+
+    assert message_handler.messages_received == bound + 20
+    assert message_handler.handler_messages_dropped == 1
+    assert isinstance(message_handler.last_message_time, datetime)
+    assert message_handler.get_queue_size() == bound
+    first_two = message_handler.get_queued_messages(2)
+    rest = message_handler.get_queued_messages()
+    assert [m.topic for m in first_two + rest] == [
+        f"test/topic/{i}" for i in range(bound)
+    ]
+    assert message_handler.get_queue_size() == 0
+
+
+@pytest.mark.parametrize(
+    ("connected_seconds_ago", "has_messages", "expected"),
+    [(10, True, 0.5), (None, True, 0.0), (10, False, 0.0), (-10, True, 0.0)],
+    ids=["rate", "not_connected", "no_messages", "clock_skew"],
+)
+def test_message_rate_is_messages_per_connected_second(
+    connected_seconds_ago, has_messages, expected
+):
+    message_handler = MessageHandler()
+    message_handler.messages_received = 5
+    if has_messages:
+        message_handler.last_message_time = datetime.now()
+    connected_at = (
+        None
+        if connected_seconds_ago is None
+        else datetime.now() - timedelta(seconds=connected_seconds_ago)
+    )
+
+    rate = message_handler.get_message_rate(connected_at)
+
+    assert rate == pytest.approx(expected, rel=0.05)
+
+
+async def test_metrics_report_completed_async_work(message_handler):
+    handler, _ = _recorder()
+    message_handler.set_handler(handler, asyncio.get_running_loop())
+    for _ in range(3):
+        message_handler._on_message(None, None, _paho_message())
+    await _drain(message_handler)
+
+    assert message_handler.get_metrics() == {
+        "messages_received": 3,
+        "queue_size": 0,
+        "max_queue_size": 100,
+        "last_message_time": message_handler.last_message_time.isoformat(),
+        "has_handler": True,
+        "handler_errors": 0,
+        "futures_created": 3,
+        "futures_completed": 3,
+        "futures_failed": 0,
+        "handler_queue_size": 0,
+        "handler_messages_dropped": 0,
+    }
+
+
+async def test_sync_handlers_run_inline_and_failures_are_counted(message_handler):
+    calls = []
+
+    def sync_handler(message: MQTTMessage):
+        calls.append(message.topic)
+        if len(calls) == 2:
+            raise RuntimeError("sync handler failed")
+
+    message_handler.set_handler(sync_handler)
+    for _ in range(3):
+        message_handler._on_message(None, None, _paho_message())
+
+    assert calls == ["test/topic"] * 3
+    assert message_handler.handler_errors == 1
+
+
+@pytest.mark.parametrize("payload", [b"invalid json {", b""])
+async def test_undecodable_payload_reaches_the_handler_as_raw_text(
+    message_handler, payload
+):
+    handler, received = _recorder()
+    message_handler.set_handler(handler, asyncio.get_running_loop())
+
+    message_handler._on_message(None, None, _paho_message(payload=payload))
+    await _drain(message_handler)
+
+    assert [m.payload for m in received] == [{"raw": payload.decode()}]
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "has_loop", "notified", "reconnects"),
+    [(0, True, [False], False), (0, False, [], False), (1, True, [True], True)],
+    ids=["clean", "clean_without_loop", "unexpected"],
+)
+async def test_disconnect_notifies_through_the_loop_and_reconnects_when_unexpected(
+    connection_manager, reason_code, has_loop, notified, reconnects
+):
+    received = []
+
+    async def on_disconnected(unexpected: bool):
+        received.append(unexpected)
+
+    connection_manager.on_disconnected = on_disconnected
+    connection_manager._event_loop = asyncio.get_running_loop() if has_loop else None
+    connection_manager._reconnect_loop = AsyncMock()
+
+    connection_manager._on_disconnect(None, None, reason_code)
+    await _settle()
+
+    assert received == notified
+    assert (connection_manager._reconnect_task is not None) == reconnects
+
+
+async def test_disconnect_from_a_retired_client_is_ignored(connection_manager):
+    connection_manager.client = MagicMock()
+    connection_manager._event_loop = asyncio.get_running_loop()
+    connection_manager.on_disconnected = MagicMock()
+
+    connection_manager._on_disconnect(MagicMock(), None, 1)
+    await _settle()
+
+    connection_manager.on_disconnected.assert_not_called()
+    assert connection_manager._reconnect_task is None
+
+
+@pytest.mark.parametrize("cause", ["closed_loop", "shutdown"])
+async def test_reconnect_is_not_scheduled_without_a_live_loop_or_after_shutdown(
+    connection_manager, cause
+):
+    loop = asyncio.get_running_loop()
+    connection_manager._event_loop = loop
+    if cause == "shutdown":
+        connection_manager._shutdown_event.set()
+        connection_manager._schedule_reconnect()
+    else:
         with patch.object(loop, "is_closed", return_value=True):
             connection_manager._schedule_reconnect()
+    await _settle()
 
-        # Should log warning and not crash
-        await asyncio.sleep(0.1)
-
-    @pytest.mark.asyncio
-    async def test_reconnect_task_cleanup_on_shutdown(self, connection_manager):
-        """Test that reconnect task is properly cleaned up on shutdown"""
-        connection_manager._event_loop = asyncio.get_running_loop()
-        connection_manager._shutdown_event.set()
-
-        # Try to schedule reconnect while shutdown
-        connection_manager._schedule_reconnect()
-
-        await asyncio.sleep(0.1)
-
-        # No reconnect task should be created
-        assert connection_manager._reconnect_task is None
-
-    @pytest.mark.asyncio
-    async def test_connect_clears_stale_connection_event(self, connection_manager):
-        """Test that reconnect attempts cannot reuse a stale success event."""
-        connection_manager._connection_event.set()
-
-        mock_client = MagicMock()
-        mock_client.connect_async = MagicMock()
-        mock_client.loop_start = MagicMock()
-        mock_client.loop_stop = MagicMock()
-        mock_client.disconnect = MagicMock()
-        event_was_cleared = False
-
-        async def fake_wait_for(awaitable, timeout):  # noqa: ASYNC109
-            nonlocal event_was_cleared
-            awaitable.close()
-            event_was_cleared = not connection_manager._connection_event.is_set()
-            raise TimeoutError
-
-        with (
-            patch(
-                "off_key_mqtt_proxy.client.connection.mqtt.Client",
-                return_value=mock_client,
-            ),
-            patch("asyncio.wait_for", side_effect=fake_wait_for),
-        ):
-            assert await connection_manager.connect() is False
-
-        assert event_was_cleared, "_connection_event should be cleared before wait"
-        mock_client.loop_stop.assert_called_once()
-        mock_client.disconnect.assert_called_once()
+    assert connection_manager._reconnect_task is None
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+async def test_connect_clears_stale_connection_event(connection_manager):
+    """Test that reconnect attempts cannot reuse a stale success event."""
+    connection_manager._connection_event.set()
+
+    mock_client = MagicMock()
+    mock_client.connect_async = MagicMock()
+    mock_client.loop_start = MagicMock()
+    mock_client.loop_stop = MagicMock()
+    mock_client.disconnect = MagicMock()
+    event_was_cleared = False
+
+    async def fake_wait_for(awaitable, timeout):  # noqa: ASYNC109
+        nonlocal event_was_cleared
+        awaitable.close()
+        event_was_cleared = not connection_manager._connection_event.is_set()
+        raise TimeoutError
+
+    with (
+        patch(
+            "off_key_mqtt_proxy.client.connection.mqtt.Client",
+            return_value=mock_client,
+        ),
+        patch("asyncio.wait_for", side_effect=fake_wait_for),
+    ):
+        assert await connection_manager.connect() is False
+
+    assert event_was_cleared, "_connection_event should be cleared before wait"
+    mock_client.loop_stop.assert_called_once()
+    mock_client.disconnect.assert_called_once()

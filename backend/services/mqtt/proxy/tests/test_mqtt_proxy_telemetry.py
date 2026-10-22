@@ -1,3 +1,5 @@
+"""Telemetry parsing and batched database writes in the MQTT proxy."""
+
 import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -6,10 +8,13 @@ import pytest
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.telemetry import DatabaseWriter
+from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
 from off_key_mqtt_proxy.telemetry_models import ParseFailure, ParseSuccess, WriteBatch
 from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
+
+TOPIC = "telemetry/charger-1/sine"
+VALID = {"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"}
 
 
 def _writer() -> DatabaseWriter:
@@ -25,461 +30,242 @@ def _writer() -> DatabaseWriter:
     )
 
 
-def test_parse_telemetry_message_converts_offset_timestamp_to_utc():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+02:00", "value": "2.5"},
+def _message(topic=TOPIC, payload=None) -> MQTTMessage:
+    if payload is None:
+        payload = {"timestamp": datetime.now(UTC).isoformat(), "value": 1.0}
+    return MQTTMessage(
+        topic=topic,
+        payload=payload,
         timestamp=datetime.now(UTC),
         qos=0,
         retain=False,
     )
 
-    result = parse_telemetry_message(message, writer.topic_extractor)
 
+def _parse(payload, topic=TOPIC):
+    return parse_telemetry_message(_message(topic, payload), TopicMetadataExtractor())
+
+
+def _record(**overrides):
+    result = _parse({**VALID, **overrides})
     assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 10, 0, tzinfo=UTC)
-    assert result.record.created.tzinfo is not None
+    return result.record
 
 
-def test_parse_telemetry_message_treats_naive_timestamp_as_utc():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
+def _use_session(writer: DatabaseWriter) -> AsyncMock:
+    session = AsyncMock()
+    session_ctx = AsyncMock()
+    session_ctx.__aenter__.return_value = session
+    writer._session_factory = MagicMock(return_value=session_ctx)
+    return session
 
 
-def test_parse_telemetry_message_invalid_topic_returns_safe_failure():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/abc",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseFailure)
-    assert not result.is_error
-
-
-def test_parse_telemetry_message_invalid_timestamp_returns_safe_failure():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "not-a-date", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseFailure)
-    assert not result.is_error
-    assert result.reason == "Invalid timestamp format"
-
-
-def test_parse_telemetry_message_invalid_timezone_offset_returns_safe_failure():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+25:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseFailure)
-    assert not result.is_error
-    assert result.reason == "Invalid timestamp format"
-
-
-def test_parse_telemetry_message_utc_suffix_timestamp():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00Z", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
-
-
-def test_parse_telemetry_message_unix_epoch_timestamp():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": 1704110400, "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == datetime.fromtimestamp(1704110400, tz=UTC)
+def _database_error(sqlstate, message="database failure") -> DBAPIError:
+    error = Exception(message)
+    error.sqlstate = sqlstate
+    return DBAPIError("insert", None, error)
 
 
 @pytest.mark.parametrize(
-    "value", [None, True, False, "not-a-number", "NaN", "Infinity"]
+    ("timestamp", "expected"),
+    [
+        ("2024-01-01T12:00:00+02:00", datetime(2024, 1, 1, 10, 0, tzinfo=UTC)),
+        ("2024-01-01T12:00:00", datetime(2024, 1, 1, 12, 0, tzinfo=UTC)),
+        ("2024-01-01T12:00:00Z", datetime(2024, 1, 1, 12, 0, tzinfo=UTC)),
+        (1704110400, datetime.fromtimestamp(1704110400, tz=UTC)),
+    ],
+    ids=["offset", "naive_is_utc", "utc_suffix", "unix_epoch"],
 )
-def test_parse_telemetry_message_invalid_value_returns_safe_failure(value):
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": value},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
+def test_parse_normalizes_timestamps_to_utc(timestamp, expected):
+    result = _parse({"timestamp": timestamp, "value": "2.5"})
 
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseFailure)
-    assert not result.is_error
-    assert result.reason == "Invalid telemetry value"
+    assert isinstance(result, ParseSuccess)
+    assert result.record.timestamp == expected
+    assert result.record.value == 2.5
+    assert result.record.created.tzinfo is not None
 
 
-@pytest.mark.parametrize("timestamp", [None, True, "1e100"])
-def test_parse_telemetry_message_rejects_present_invalid_timestamp(timestamp):
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": timestamp, "value": 2.5},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-    result = parse_telemetry_message(message, writer.topic_extractor)
-
-    assert isinstance(result, ParseFailure)
-    assert not result.is_error
-    assert result.reason == "Invalid timestamp format"
-
-
-def test_parse_telemetry_message_uses_ingestion_time_without_timestamp():
-    writer = _writer()
+def test_parse_uses_ingestion_time_without_timestamp():
     before = datetime.now(UTC)
-    message = MQTTMessage(
-        topic="telemetry/0/currentDc",
-        payload={"value": 12.5},
-        timestamp=before,
-        qos=0,
-        retain=False,
-    )
 
-    result = parse_telemetry_message(message, writer.topic_extractor)
+    result = _parse({"value": 12.5}, topic="telemetry/0/currentDc")
 
     assert isinstance(result, ParseSuccess)
-    assert result.record.charger_id == "0"
-    assert result.record.telemetry_type == "currentDc"
-    assert result.record.value == 12.5
-    assert before <= result.record.timestamp <= datetime.now(UTC)
+    record = result.record
+    assert (record.charger_id, record.telemetry_type, record.value) == (
+        "0",
+        "currentDc",
+        12.5,
+    )
+    assert before <= record.timestamp <= datetime.now(UTC)
 
 
-@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("topic", "payload", "reason", "is_error"),
+    [
+        pytest.param(
+            "telemetry/abc",
+            VALID,
+            "Topic metadata extraction failed",
+            False,
+            id="topic",
+        ),
+        *[
+            pytest.param(
+                TOPIC,
+                {**VALID, "timestamp": timestamp},
+                "Invalid timestamp format",
+                False,
+                id=f"timestamp-{timestamp}",
+            )
+            for timestamp in [
+                "not-a-date",
+                "2024-01-01T12:00:00+25:00",
+                None,
+                True,
+                "1e100",
+            ]
+        ],
+        *[
+            pytest.param(
+                TOPIC,
+                {**VALID, "value": value},
+                "Invalid telemetry value",
+                False,
+                id=f"value-{value}",
+            )
+            for value in [None, True, False, "not-a-number", "NaN", "Infinity"]
+        ],
+        pytest.param(TOPIC, 5, "Unexpected parsing error", True, id="bare-number"),
+    ],
+)
+def test_parse_rejects_malformed_telemetry_without_raising(
+    topic, payload, reason, is_error
+):
+    result = _parse(payload, topic)
+
+    assert isinstance(result, ParseFailure)
+    assert (result.reason, result.is_error) == (reason, is_error)
+
+
 async def test_process_batch_returns_true_for_empty_batch():
+    assert await _writer()._process_batch(WriteBatch()) is True
+
+
+@pytest.mark.parametrize(
+    ("rowcount", "records", "written"),
+    [(1, 2, 1), (None, 3, 3), (-1, 1, 1)],
+    ids=["driver_count", "unknown_count", "negative_count"],
+)
+async def test_process_batch_counts_rows_reported_by_the_driver(
+    rowcount, records, written
+):
     writer = _writer()
-    batch = WriteBatch()
-    assert await writer._process_batch(batch) is True
+    session = _use_session(writer)
+    session.execute.return_value = MagicMock(rowcount=rowcount)
 
+    assert await writer._process_batch(WriteBatch(records=[_record()] * records))
 
-@pytest.mark.asyncio
-async def test_process_batch_uses_rowcount_for_written_records():
-    writer = _writer()
-
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
-
-    session = AsyncMock()
-    execute_insert_result = MagicMock()
-    execute_insert_result.rowcount = 1
-    session.execute.return_value = execute_insert_result
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-
-    writer._session_factory = MagicMock(return_value=session_ctx)
-
-    batch = WriteBatch(records=[result.record, result.record])
-    assert await writer._process_batch(batch) is True
+    assert writer.total_records_written == written
     assert writer.last_successful_write_at is not None
-    assert writer.total_records_written == 1
+    session.commit.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_none():
+@pytest.mark.parametrize(
+    "error",
+    [
+        IntegrityError("dup", None, None),
+        SQLAlchemyError("db down"),
+        RuntimeError("driver crashed"),
+    ],
+    ids=["integrity", "sqlalchemy", "unexpected"],
+)
+async def test_process_batch_rolls_back_and_reports_failure(error):
     writer = _writer()
+    session = _use_session(writer)
+    session.execute.side_effect = error
 
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
+    assert await writer._process_batch(WriteBatch(records=[_record()])) is False
 
-    session = AsyncMock()
-    execute_insert_result = MagicMock()
-    execute_insert_result.rowcount = None
-    session.execute.return_value = execute_insert_result
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-
-    writer._session_factory = MagicMock(return_value=session_ctx)
-
-    batch = WriteBatch(records=[result.record, result.record, result.record])
-    assert await writer._process_batch(batch) is True
-    assert writer.total_records_written == 3
-
-
-@pytest.mark.asyncio
-async def test_process_batch_falls_back_to_batch_size_when_rowcount_is_negative():
-    writer = _writer()
-
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
-
-    session = AsyncMock()
-    execute_insert_result = MagicMock()
-    execute_insert_result.rowcount = -1
-    session.execute.return_value = execute_insert_result
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-
-    writer._session_factory = MagicMock(return_value=session_ctx)
-
-    batch = WriteBatch(records=[result.record])
-    assert await writer._process_batch(batch) is True
-    assert writer.total_records_written == 1
-
-
-@pytest.mark.asyncio
-async def test_process_batch_integrity_error_rolls_back_and_reports_failure():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
-
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=IntegrityError("dup", None, None))
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-    writer._session_factory = MagicMock(return_value=session_ctx)
-
-    batch = WriteBatch(records=[result.record])
-    assert await writer._process_batch(batch) is False
-    assert writer.last_successful_write_at is None
     session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
+    assert writer.last_successful_write_at is None
     assert writer.total_records_written == 0
 
 
-@pytest.mark.asyncio
-async def test_process_batch_sqlalchemy_error_propagates_as_failure():
-    writer = _writer()
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
-
-    session = AsyncMock()
-    session.execute = AsyncMock(side_effect=SQLAlchemyError("db down"))
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-    writer._session_factory = MagicMock(return_value=session_ctx)
-
-    batch = WriteBatch(records=[result.record])
-    assert await writer._process_batch(batch) is False
-
-
-@pytest.mark.asyncio
-async def test_batch_retry_failure_increments_failed_record_metrics(monkeypatch):
+async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch):
     writer = _writer()
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
-
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result_one = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result_one, ParseSuccess)
-
-    message_two = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:01+00:00", "value": "3.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result_two = parse_telemetry_message(message_two, writer.topic_extractor)
-    assert isinstance(result_two, ParseSuccess)
-
+    monkeypatch.setattr("off_key_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
     batch_id = "test-batch"
     writer.processing_batches[batch_id] = WriteBatch(
-        records=[result_one.record, result_two.record]
+        records=[_record(), _record(timestamp="2024-01-01T12:00:01+00:00")]
     )
     writer._process_batch = AsyncMock(return_value=False)
-    monkeypatch.setattr("off_key_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
 
     await writer._process_batch_with_retry(batch_id)
 
     assert writer._process_batch.await_count == 4
-    assert writer.total_records_failed == 2
-    assert writer.total_batches_failed == 1
+    assert (writer.total_records_failed, writer.total_batches_failed) == (2, 1)
     assert writer.processing_batches[batch_id].size() == 2
+
+    # A retained batch is counted as failed once; a later success releases it.
     await writer._process_batch_with_retry(batch_id)
-    assert writer.total_records_failed == 2
-    assert writer.total_batches_failed == 1
-    writer._process_batch.return_value = True
+    writer._process_batch = AsyncMock(return_value=True)
     await writer._process_batch_with_retry(batch_id)
+
+    writer._process_batch.assert_awaited_once()
+    assert (writer.total_records_failed, writer.total_batches_failed) == (2, 1)
     assert not writer.processing_batches
 
 
-@pytest.mark.asyncio
-async def test_batch_retry_success_keeps_failed_metrics_at_zero(monkeypatch):
+@pytest.mark.parametrize(
+    ("metrics", "processing_batches", "expected"),
+    [
+        ({}, 0, "healthy"),
+        ({"total_batches_processed": 97, "total_batches_failed": 3}, 0, "degraded"),
+        ({"total_batches_processed": 1, "total_batches_failed": 1}, 0, "unhealthy"),
+        ({"write_latency_sum": 3.0, "write_latency_count": 1}, 0, "degraded"),
+        ({"write_latency_sum": 6.0, "write_latency_count": 1}, 0, "unhealthy"),
+        ({"write_latency_sum": 3.0, "write_latency_count": 1}, 1, "degraded"),
+        ({}, 6, "degraded"),
+        ({}, 11, "unhealthy"),
+        # Failure-driven unhealthy must not be softened by milder signals.
+        (
+            {
+                "total_batches_processed": 1,
+                "total_batches_failed": 1,
+                "write_latency_sum": 3.0,
+                "write_latency_count": 1,
+            },
+            6,
+            "unhealthy",
+        ),
+    ],
+    ids=[
+        "healthy",
+        "some_failures",
+        "many_failures",
+        "slow_writes",
+        "very_slow_writes",
+        "slow_writes_small_backlog",
+        "backlog",
+        "excessive_backlog",
+        "conflicting_signals",
+    ],
+)
+def test_health_status_reflects_failures_latency_and_backlog(
+    metrics, processing_batches, expected
+):
     writer = _writer()
-    writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
+    for name, value in metrics.items():
+        setattr(writer, name, value)
+    for index in range(processing_batches):
+        writer.processing_batches[f"batch_{index}"] = WriteBatch()
 
-    message = MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-    result = parse_telemetry_message(message, writer.topic_extractor)
-    assert isinstance(result, ParseSuccess)
-
-    batch_id = "test-batch"
-    writer.processing_batches[batch_id] = WriteBatch(records=[result.record])
-    writer._process_batch = AsyncMock(return_value=True)
-    monkeypatch.setattr("off_key_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
-
-    await writer._process_batch_with_retry(batch_id)
-
-    assert writer._process_batch.await_count == 1
-    assert writer.total_records_failed == 0
-    assert writer.total_batches_failed == 0
-    assert writer.processing_batches.get(batch_id) is None
+    assert writer.get_health_status().status == HealthStatus(expected)
 
 
-def test_get_health_status_prefers_unhealthy_when_multiple_conditions_conflict():
-    writer = _writer()
-    writer.total_batches_processed = 1
-    writer.total_batches_failed = 1
-    writer.write_latency_sum = 3.0
-    writer.write_latency_count = 1
-
-    health = writer.get_health_status()
-
-    assert health.status is HealthStatus.UNHEALTHY
-
-
-def test_get_health_status_marks_degraded_when_only_secondary_metrics_match():
-    writer = _writer()
-    writer.total_batches_processed = 1
-    writer.total_records_written = 1
-    writer.write_latency_sum = 3.0
-    writer.write_latency_count = 1
-    writer.processing_batches["batch_0"] = WriteBatch()
-
-    health = writer.get_health_status()
-
-    assert health.status is HealthStatus.DEGRADED
-
-
-def test_get_health_status_marks_unhealthy_with_excessive_processing_backlog():
-    writer = _writer()
-    for idx in range(11):
-        writer.processing_batches[f"batch_{idx}"] = WriteBatch()
-
-    health = writer.get_health_status()
-
-    assert health.status is HealthStatus.UNHEALTHY
-
-
-def _message() -> MQTTMessage:
-    return MQTTMessage(
-        topic="telemetry/charger-1/sine",
-        payload={"timestamp": datetime.now(UTC).isoformat(), "value": 1.0},
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-
-@pytest.mark.asyncio
 async def test_stalled_database_bounds_batches_and_backpressures_producers():
     writer = _writer()
     writer.batch_size = 1
@@ -518,7 +304,6 @@ async def test_stalled_database_bounds_batches_and_backpressures_producers():
         await writer.stop()
 
 
-@pytest.mark.asyncio
 async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches():
     writer = _writer()
     writer.batch_size = 1
@@ -546,18 +331,11 @@ async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches
     assert writer._health_task.done()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("sqlstate", ["22003", "23514", "54000"])
 async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate):
-    from sqlalchemy.exc import DBAPIError
-
     writer = _writer()
     writer.max_retries = 0
-    session = AsyncMock()
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-    writer._session_factory = MagicMock(return_value=session_ctx)
+    session = _use_session(writer)
     committed = []
     staged = []
 
@@ -565,9 +343,7 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
         params = statement.compile().params
         sensors = [value for key, value in params.items() if key.startswith("type_m")]
         if "bad" in sensors:
-            error = Exception("index row size exceeds maximum")
-            error.sqlstate = sqlstate
-            raise DBAPIError("insert", None, error)
+            raise _database_error(sqlstate, "index row size exceeds maximum")
         staged.extend(sensors)
         return MagicMock(rowcount=len(sensors))
 
@@ -579,9 +355,7 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     session.commit.side_effect = commit
     session.rollback.side_effect = staged.clear
     for sensor in ("good-before", "bad", "good-after"):
-        message = _message()
-        message.topic = f"telemetry/charger-1/{sensor}"
-        await writer.write_telemetry_message(message)
+        await writer.write_telemetry_message(_message(f"telemetry/charger-1/{sensor}"))
     await writer._trigger_batch_processing()
     await writer.write_telemetry_message(_message())
     await writer._trigger_batch_processing()
@@ -594,25 +368,18 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     assert writer.pending_batch.size() == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "sqlstate", ["08006", "40001", "42501", "42P01", "23503", "54000", None]
 )
 async def test_non_record_database_errors_retain_batch(sqlstate):
-    from sqlalchemy.exc import DBAPIError
-
     writer = _writer()
     writer.max_retries = 0
-    session = AsyncMock()
-    error = Exception("database failure")
-    error.sqlstate = sqlstate
-    session.execute.side_effect = DBAPIError("insert", None, error)
-    session_ctx = AsyncMock()
-    session_ctx.__aenter__.return_value = session
-    session_ctx.__aexit__.return_value = False
-    writer._session_factory = MagicMock(return_value=session_ctx)
+    session = _use_session(writer)
+    session.execute.side_effect = _database_error(sqlstate)
+
     await writer.write_telemetry_message(_message())
     await writer._trigger_batch_processing()
+
     assert len(writer.processing_batches) == 1
     assert next(iter(writer.processing_batches.values())).size() == 1
     assert writer.total_records_rejected == 0
@@ -620,13 +387,10 @@ async def test_non_record_database_errors_retain_batch(sqlstate):
     session.rollback.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("interruption", [False, asyncio.CancelledError()])
 async def test_isolation_retains_only_unfinished_records_after_interruption(
     interruption,
 ):
-    from off_key_mqtt_proxy.telemetry import PermanentRecordError
-
     writer = _writer()
     for _ in range(3):
         await writer.write_telemetry_message(_message())

@@ -83,7 +83,7 @@ class AdaptiveStreamDetectionService:
 
     def _initialize_fresh(self) -> None:
         self.state = AdaptiveStreamState.WARMUP
-        self.feature_keys: list[str] = []
+        self.feature_keys: list[str] = self._initial_feature_keys()
         # Validate constructors at startup, before subscribing or learning data.
         self.pipeline: ModelProtocol = self._build_pipeline(self.detector_config)
         self.calibration_scores: list[float] = []
@@ -190,6 +190,10 @@ class AdaptiveStreamDetectionService:
                 f"warm-up ({minimum})"
             )
         return detector_config
+
+    def _initial_feature_keys(self) -> list[str]:
+        """Known input schema; empty freezes it from the first observation."""
+        return []
 
     def _build_pipeline(self, detector_config: DetectorConfig) -> ModelProtocol:
         pipeline = detector_config.build()

@@ -11,6 +11,8 @@ from off_key_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
 )
+from off_key_mqtt_radar.pipelines import adapters
+from off_key_mqtt_radar.pipelines import adaptive as adaptive_module
 from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
 from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionService
 from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
@@ -53,6 +55,32 @@ def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
     assert state["ready"]
     assert service.state == AdaptiveStreamState.OPERATIONAL
     assert result.should_persist
+
+
+def test_fresh_start_builds_the_graph_and_normalizes_its_detector_once(monkeypatch):
+    calls = {"graph": 0, "config": 0}
+
+    def counted(name, function):
+        def wrapper(*args, **kwargs):
+            calls[name] += 1
+            return function(*args, **kwargs)
+
+        return wrapper
+
+    config = counted("config", adapters.detector_config)
+    monkeypatch.setattr(adapters, "detector_config", config)
+    monkeypatch.setattr(adaptive_module, "detector_config", config)
+    monkeypatch.setattr(
+        adaptive_module, "adaptive_graph", counted("graph", adapters.adaptive_graph)
+    )
+    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    pipeline = service.pipeline
+    for index in range(1, 4):
+        service.process_data_point(_point(index))
+
+    assert calls == {"graph": 1, "config": 1}
+    assert service.pipeline is pipeline
+    assert service.feature_keys == sorted(service.plan.bind(_point(1)))
 
 
 def test_branched_monitor_matches_standalone_numeric_reference():

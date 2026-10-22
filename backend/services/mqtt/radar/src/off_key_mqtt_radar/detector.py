@@ -367,9 +367,7 @@ class StaticConformalDetectionService:
 
         result = self._build_result(
             data=data,
-            processed_features={
-                key: vector[index] for index, key in enumerate(self.feature_keys)
-            },
+            processed_features=dict(zip(self._feature_order(), vector, strict=True)),
             score=p_value,
             is_anomaly=is_anomaly,
             severity=severity,
@@ -441,8 +439,12 @@ class StaticConformalDetectionService:
             return f"feature schema mismatch missing={missing} extra={extra}"
         return None
 
+    def _feature_order(self) -> list[str]:
+        """Column order of model matrices; pipelines order by their source."""
+        return self.feature_keys
+
     def _vectorize(self, data: dict[str, float]) -> list[float]:
-        return [float(data[key]) for key in self.feature_keys]
+        return [float(data[key]) for key in self._feature_order()]
 
     def _fit_static_baseline(
         self,
@@ -523,7 +525,7 @@ class StaticConformalDetectionService:
             self._fit_static_baseline,
             list(self.training_buffer),
             list(self.calibration_buffer),
-            list(self.feature_keys),
+            list(self._feature_order()),
         )
 
     def _complete_training_if_ready(self) -> None:

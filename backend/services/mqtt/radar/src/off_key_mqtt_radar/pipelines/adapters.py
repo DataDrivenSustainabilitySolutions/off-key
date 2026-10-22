@@ -33,7 +33,9 @@ def detector_config(plan: ExecutionPlan) -> DetectorConfig:
     return config
 
 
-def adaptive_graph(plan: ExecutionPlan, observer=None):
+def adaptive_graph(
+    plan: ExecutionPlan, observer=None, config: DetectorConfig | None = None
+):
     nodes = []
     for node in plan.feature_nodes:
         parents = plan.parents(node.id)
@@ -43,7 +45,8 @@ def adaptive_graph(plan: ExecutionPlan, observer=None):
             continue
         transformer = online_component(plan, node, parents)
         nodes.append(GraphNode(node.id, transformer, input=inputs[0]))
-    config = detector_config(plan)
+    if config is None:
+        config = detector_config(plan)
     capabilities = config.capabilities()
     minimum = (
         capabilities.warmup.minimum or 0

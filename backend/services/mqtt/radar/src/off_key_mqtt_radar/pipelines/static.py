@@ -5,8 +5,6 @@ from __future__ import annotations
 import math
 from time import perf_counter_ns
 
-import numpy as np
-
 from ..detector import StaticConformalDetectionService, StaticConformalState
 from ..execution_errors import FatalExecutionError, ObservationRejected
 from .batch import BatchFeatureGraph, FittedStaticPipeline
@@ -29,19 +27,14 @@ class StaticPipelineDetectionService(
             config,
         )
 
-    def _vectorize(self, data):
-        return [data[name] for name in self.plan.names(self.plan.source_id)]
+    def _feature_order(self):
+        return self.plan.names(self.plan.source_id)
 
-    def _fit_static_baseline(self, training_samples, calibration_samples, feature_keys):
+    def _fit_static_matrices(self, training_matrix, calibration_matrix):
         graph = BatchFeatureGraph(self.plan)
-        names = self.plan.names(self.plan.source_id)
-        training = graph.fit_transform(
-            np.asarray([[row[key] for key in names] for row in training_samples])
+        fitted, policy = super()._fit_static_matrices(
+            graph.fit_transform(training_matrix), graph.transform(calibration_matrix)
         )
-        calibration = graph.transform(
-            np.asarray([[row[key] for key in names] for row in calibration_samples])
-        )
-        fitted, policy = self._fit_static_matrices(training, calibration)
         return FittedStaticPipeline(graph, fitted), policy
 
     def process_data_point(self, data, topic=None, charger_id=None):

@@ -39,8 +39,11 @@ class AdaptivePipelineDetectionService(
     def _detector_config(self, feature_keys=None):
         return detector_config(self.plan)
 
+    def _initial_feature_keys(self):
+        return sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
+
     def _build_pipeline(self, config):
-        return adaptive_graph(self.plan, self._observe)[0]
+        return adaptive_graph(self.plan, self._observe, config)[0]
 
     def _restore(self, checkpoint):
         if checkpoint.get("schema_signature") != self.schema_signature:

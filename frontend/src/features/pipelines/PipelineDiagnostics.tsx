@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useNow } from "@/hooks/use-now";
+import { useState } from "react";
 import type { NodePass, PipelineState } from "./diagnostics";
 import { PipelineLearningSummary } from "./PipelineLearningSummary";
 export type { PipelineState } from "./diagnostics";
@@ -45,13 +46,7 @@ export function PipelineDiagnostics({
   onSelect?: (id: string) => void;
 }) {
   const [pass, setPass] = useState<"score" | "learn">("score");
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!window.document.hidden) setNow(Date.now());
-    }, 5_000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(5_000);
   if (!state || (expectedRunId && state.run_id !== expectedRunId))
     return (
       <section

@@ -14,6 +14,10 @@ export interface PollingOptions {
   schedule?: "fixed-rate" | "after-completion";
   /** Run the first tick inside the effect instead of on the next task. */
   startImmediately?: boolean;
+  /** Without a first run the loop waits one interval, for data a caller already loaded. */
+  initialRun?: boolean;
+  /** Abort the pending run when the page is hidden. */
+  abortWhenHidden?: boolean;
   /** Runs on every tick, including ticks that a pending run makes skip. */
   onTick?: () => void;
 }
@@ -29,7 +33,8 @@ const idle = { reload: () => Promise.resolve(), abort: () => {} };
  */
 export function usePollingLoop(tick: Tick, {
   intervalMs, enabled = true, pauseWhenHidden = false, resumeOnVisible = false,
-  overlap = "abort-previous", schedule = "fixed-rate", startImmediately = false, onTick,
+  overlap = "abort-previous", schedule = "fixed-rate", startImmediately = false, initialRun = true,
+  abortWhenHidden = false, onTick,
 }: PollingOptions = {}) {
   const controls = useRef(idle);
   useEffect(() => {
@@ -59,11 +64,17 @@ export function usePollingLoop(tick: Tick, {
       }
     };
     const scheduled = () => { if (!(pauseWhenHidden && document.hidden)) void execute(); };
-    const visible = () => { if (!document.hidden) void execute(); };
+    const visible = () => {
+      if (!document.hidden) { if (resumeOnVisible) void execute(); }
+      else if (abortWhenHidden) controller?.abort();
+    };
     let clock: ReturnType<typeof setInterval> | undefined;
     if (schedule === "fixed-rate" && intervalMs !== undefined) clock = setInterval(scheduled, intervalMs);
-    if (resumeOnVisible) document.addEventListener("visibilitychange", visible);
-    if (startImmediately) scheduled();
+    const watchVisibility = resumeOnVisible || abortWhenHidden;
+    if (watchVisibility) document.addEventListener("visibilitychange", visible);
+    if (!initialRun) {
+      if (schedule === "after-completion" && intervalMs !== undefined) next = setTimeout(scheduled, intervalMs);
+    } else if (startImmediately) scheduled();
     else next = setTimeout(scheduled, 0);
     controls.current = { reload: () => execute(true), abort: () => controller?.abort() };
     return () => {
@@ -72,9 +83,10 @@ export function usePollingLoop(tick: Tick, {
       clearTimeout(next);
       clearInterval(clock);
       controller?.abort();
-      if (resumeOnVisible) document.removeEventListener("visibilitychange", visible);
+      if (watchVisibility) document.removeEventListener("visibilitychange", visible);
     };
-  }, [tick, enabled, intervalMs, pauseWhenHidden, resumeOnVisible, overlap, schedule, startImmediately, onTick]);
+  }, [tick, enabled, intervalMs, pauseWhenHidden, resumeOnVisible, overlap, schedule, startImmediately, initialRun,
+    abortWhenHidden, onTick]);
   const reload = useCallback(() => controls.current.reload(), []);
   const abort = useCallback(() => controls.current.abort(), []);
   return { reload, abort };

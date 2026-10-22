@@ -1,5 +1,6 @@
 import type { RuleChange } from "./collectionRules";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { ApiRequestError, type ApiRequestOptions } from "@/lib/api-client";
 import { systemApi } from "./systemApi";
 import { renameSystemEntity, validateSystemDocument } from "./systemDocument";
@@ -214,42 +215,29 @@ export function useSystemDocument({
 
   const runtimeReady = state.owner === owner && (state.status === "ready" || state.status === "read-only");
   const pollInterval = state.snapshot?.runtime.collection?.status === "applying" ? 2000 : 5000;
-  useEffect(() => {
-    if (!runtimeReady) return;
+  const pollRuntime = useCallback(async (signal: AbortSignal) => {
+    const current = latest.current;
+    if (!current || busy.current || runtimeController.current) return;
     const context = generation.current;
-    const poll = async () => {
-      const current = latest.current;
-      if (!current || document.hidden || busy.current || runtimeController.current) return;
-      const controller = new AbortController();
-      runtimeController.current = controller;
-      let changedRevision = false;
-      const streamIds = current.document.streams.filter(stream => !runtimeConnectionId || stream.connection_id === runtimeConnectionId).map(stream => stream.id);
-      try {
-        const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal, redirectOnUnauthorized: false });
-        if (controller.signal.aborted || context !== generation.current || busy.current) return;
-        changedRevision = next.revision !== latest.current?.revision;
-        if (!changedRevision) updateRuntime(next, runtimeConnectionId);
-      } catch { /* Keep acknowledged settings through an outage. */ }
-      finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
-      if (changedRevision) await refreshRuntime();
-    };
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const pause = () => {
-      clearInterval(timer);
-      timer = undefined;
-      runtimeController.current?.abort();
-      runtimeController.current = undefined;
-    };
-    const resume = () => {
-      if (document.hidden) { pause(); return; }
-      timer ??= setInterval(() => void poll(), pollInterval);
-      void poll();
-    };
-    // The initial catalogue read already supplies runtime; poll immediately only on resume.
-    if (!document.hidden) timer = setInterval(() => void poll(), pollInterval);
-    document.addEventListener("visibilitychange", resume);
-    return () => { pause(); document.removeEventListener("visibilitychange", resume); };
-  }, [runtimeReady, runtimeConnectionId, pollInterval, owner, refreshRuntime, updateRuntime]);
+    // Saves and refreshes abort this request through the shared controller.
+    const controller = new AbortController();
+    signal.addEventListener("abort", () => controller.abort());
+    runtimeController.current = controller;
+    let changedRevision = false;
+    const streamIds = current.document.streams.filter(stream => !runtimeConnectionId || stream.connection_id === runtimeConnectionId).map(stream => stream.id);
+    try {
+      const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal, redirectOnUnauthorized: false });
+      if (controller.signal.aborted || context !== generation.current || busy.current) return;
+      changedRevision = next.revision !== latest.current?.revision;
+      if (!changedRevision) updateRuntime(next, runtimeConnectionId);
+    } catch { /* Keep acknowledged settings through an outage. */ }
+    finally { if (runtimeController.current === controller) runtimeController.current = undefined; }
+    if (changedRevision) await refreshRuntime();
+  }, [runtimeConnectionId, refreshRuntime, updateRuntime]);
+  // The initial catalogue read already supplies runtime; poll immediately only
+  // on resume. runtimeReady drops while another account loads, which restarts the loop.
+  usePollingLoop(pollRuntime, { enabled: runtimeReady, intervalMs: pollInterval, overlap: "skip", initialRun: false,
+    pauseWhenHidden: true, resumeOnVisible: true, abortWhenHidden: true });
 
   const save = useCallback(
     async (

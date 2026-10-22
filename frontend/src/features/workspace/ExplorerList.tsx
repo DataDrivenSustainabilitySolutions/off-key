@@ -1,4 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useNow } from "@/hooks/use-now";
+import { useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
@@ -24,7 +25,6 @@ const noStatus = () => undefined;
 export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity, emptyMessage = "No items here.", emptyAction }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const activityId = useId();
-  const [now, setNow] = useState(() => Date.now());
   const liveStatus = useSyncExternalStore(activity?.telemetry.subscribeUpdates ?? subscribeNothing, activity?.telemetry.getStatus ?? noStatus);
   const position = positions.get(viewKey);
   // Keep this imperative viewport adapter outside React Compiler memoization.
@@ -36,11 +36,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
   });
   const items = virtualizer.getVirtualItems();
   const hasIndicators = !!activity && items.some(item => isReadingLeaf(rows[item.index]!.node));
-  useEffect(() => {
-    if (!hasIndicators) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [hasIndicators]);
+  const now = useNow(1000, hasIndicators);
   const previousKey = useRef(viewKey);
   useLayoutEffect(() => {
     if (previousKey.current !== viewKey) {

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Activity, Check, Link2, Unlink2 } from "lucide-react";
 
@@ -95,6 +96,16 @@ const LiveTelemetryIndicator: React.FC<{
   );
 };
 
+type DetailsCursors = {
+  chargerId: string;
+  evidenceCursor?: MonitoringEvidenceCursor;
+  evidenceLoaded: boolean;
+  telemetryLoaded: boolean;
+  telemetryCursors: Map<string, TelemetryCursor>;
+};
+const freshCursors = (chargerId: string): DetailsCursors =>
+  ({ chargerId, evidenceLoaded: false, telemetryLoaded: false, telemetryCursors: new Map() });
+
 const Details: React.FC = () => {
   const { chargerId = "" } = useParams<{ chargerId: string }>();
   return <ChargerDetails key={chargerId} chargerId={chargerId} />;
@@ -109,7 +120,6 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const [refreshRequest, setRefreshRequest] = useState(0);
   const [telemetryUnavailable, setTelemetryUnavailable] = useState(false);
   const catalogue = useOptionalCatalogue();
   const snapshot = catalogue?.system.snapshot;
@@ -119,157 +129,128 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
 
-  useEffect(() => {
-    if (!chargerId) {
-      return;
-    }
-
-    let cancelled = false;
-    let refreshInFlight = false;
-    let activeController: AbortController | undefined;
-    let evidenceCursor: MonitoringEvidenceCursor | undefined;
-    let evidenceLoaded = false;
-    let telemetryLoaded = false;
-    const telemetryCursors = new Map<string, TelemetryCursor>();
-
-    const refresh = async (showLoading = false) => {
-      if (refreshInFlight) return;
-      refreshInFlight = true;
-      const controller = new AbortController();
-      activeController = controller;
-      if (showLoading) setIsLoadingTelemetry(true);
-
-      const loadEvidence = () =>
-        drainForward({
-          cursor: evidenceCursor,
-          fetchPage: cursor =>
-            apiUtils.get<MonitoringChartEvidence[]>(
-              API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
-              { signal: controller.signal },
-            ),
-          cursorOf: getMonitoringEvidenceCursor,
-          pageSize: EVIDENCE_PAGE_SIZE,
-        });
-
-      const loadedCatalogue = snapshotRef.current;
-      const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
-        await Promise.allSettled([
-          loadedCatalogue
-            ? getAllTelemetryData(
-                chargerId,
-                controller.signal,
-                telemetryLoaded ? telemetryCursors : undefined,
-                loadedCatalogue,
-              )
-            : telemetryLoaded
-            ? getAllTelemetryData(
-                chargerId,
-                controller.signal,
-                telemetryCursors,
-              )
-            : getAllTelemetryData(chargerId, controller.signal),
-          getAnomalies(chargerId, controller.signal),
-          loadEvidence(),
-          apiUtils.get<ActiveService[]>(
-            `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
-            { signal: controller.signal },
+  // Cursors for the incremental reads; a different entity starts over.
+  const cursorRef = useRef(freshCursors(chargerId));
+  const refresh = useCallback(async (signal: AbortSignal) => {
+    if (cursorRef.current.chargerId !== chargerId) cursorRef.current = freshCursors(chargerId);
+    const cursors = cursorRef.current;
+    const first = !cursors.telemetryLoaded && !cursors.evidenceLoaded;
+    if (first) setIsLoadingTelemetry(true);
+    const loadEvidence = () =>
+      drainForward({
+        cursor: cursors.evidenceCursor,
+        fetchPage: cursor =>
+          apiUtils.get<MonitoringChartEvidence[]>(
+            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+            { signal },
           ),
-        ]);
+        cursorOf: getMonitoringEvidenceCursor,
+        pageSize: EVIDENCE_PAGE_SIZE,
+      });
 
-      if (!cancelled) {
-        if (telemetryResult.status === "fulfilled") {
-          setTelemetryUnavailable(false);
-          setAllTelemetryData((current) =>
-            telemetryLoaded
-              ? mergeTelemetryData(current, telemetryResult.value)
-              : telemetryResult.value
-          );
-          telemetryLoaded = true;
-          telemetryResult.value.forEach((series) => {
-            if (series.cursor) telemetryCursors.set(series.type, series.cursor);
-          });
-        } else {
-          setTelemetryUnavailable(true);
-          clientLogger.error({
-            event: "details.telemetry_load_failed",
-            message: "Error loading entity readings",
-            error: telemetryResult.reason,
-            context: { chargerId },
-          });
-        }
+    const loadedCatalogue = snapshotRef.current;
+    const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
+      await Promise.allSettled([
+        loadedCatalogue
+          ? getAllTelemetryData(
+              chargerId,
+              signal,
+              cursors.telemetryLoaded ? cursors.telemetryCursors : undefined,
+              loadedCatalogue,
+            )
+          : cursors.telemetryLoaded
+          ? getAllTelemetryData(
+              chargerId,
+              signal,
+              cursors.telemetryCursors,
+            )
+          : getAllTelemetryData(chargerId, signal),
+        getAnomalies(chargerId, signal),
+        loadEvidence(),
+        apiUtils.get<ActiveService[]>(
+          `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
+          { signal },
+        ),
+      ]);
 
-        if (anomaliesResult.status === "fulfilled") {
-          setChargerAnomalies((current) =>
-            sameAnomalyWindow(current, anomaliesResult.value)
-              ? current
-              : anomaliesResult.value
-          );
-        } else {
-          clientLogger.error({
-            event: "details.anomalies_load_failed",
-            message: "Error loading entity anomalies",
-            error: anomaliesResult.reason,
-            context: { chargerId },
-          });
-        }
-
-        if (evidenceResult.status === "fulfilled") {
-          const incomingEvidence = evidenceResult.value ?? [];
-          setMonitoringEvidence((current) =>
-            evidenceLoaded
-              ? mergeMonitoringChartEvidence(current, incomingEvidence)
-              : incomingEvidence
-          );
-          evidenceLoaded = true;
-          evidenceCursor =
-            getMonitoringEvidenceCursor(incomingEvidence) ?? evidenceCursor;
-        } else {
-          clientLogger.error({
-            event: "details.monitoring_evidence_load_failed",
-            message: "Error loading monitoring evidence",
-            error: evidenceResult.reason,
-            context: { chargerId },
-          });
-        }
-
-        if (servicesResult.status === "fulfilled") {
-          setMonitoringServices(servicesResult.value ?? []);
-        } else {
-          clientLogger.error({
-            event: "details.monitoring_services_load_failed",
-            message: "Error loading monitoring service status",
-            error: servicesResult.reason,
-            context: { chargerId },
-          });
-        }
-
-        setNow(Date.now());
-
-        if (showLoading) setIsLoadingTelemetry(false);
+    if (!signal.aborted) {
+      if (telemetryResult.status === "fulfilled") {
+        setTelemetryUnavailable(false);
+        setAllTelemetryData((current) =>
+          cursors.telemetryLoaded
+            ? mergeTelemetryData(current, telemetryResult.value)
+            : telemetryResult.value
+        );
+        cursors.telemetryLoaded = true;
+        telemetryResult.value.forEach((series) => {
+          if (series.cursor) cursors.telemetryCursors.set(series.type, series.cursor);
+        });
+      } else {
+        setTelemetryUnavailable(true);
+        clientLogger.error({
+          event: "details.telemetry_load_failed",
+          message: "Error loading entity readings",
+          error: telemetryResult.reason,
+          context: { chargerId },
+        });
       }
-      if (activeController === controller) activeController = undefined;
-      refreshInFlight = false;
-    };
 
-    void refresh(true);
-    const interval = window.setInterval(
-      () => {
-        if (!document.hidden) void refresh();
-      },
-      INTERVALS.DETAILS_UPDATE,
-    );
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void refresh();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+      if (anomaliesResult.status === "fulfilled") {
+        setChargerAnomalies((current) =>
+          sameAnomalyWindow(current, anomaliesResult.value)
+            ? current
+            : anomaliesResult.value
+        );
+      } else {
+        clientLogger.error({
+          event: "details.anomalies_load_failed",
+          message: "Error loading entity anomalies",
+          error: anomaliesResult.reason,
+          context: { chargerId },
+        });
+      }
 
-    return () => {
-      cancelled = true;
-      activeController?.abort();
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [chargerId, refreshRequest]);
+      if (evidenceResult.status === "fulfilled") {
+        const incomingEvidence = evidenceResult.value ?? [];
+        setMonitoringEvidence((current) =>
+          cursors.evidenceLoaded
+            ? mergeMonitoringChartEvidence(current, incomingEvidence)
+            : incomingEvidence
+        );
+        cursors.evidenceLoaded = true;
+        cursors.evidenceCursor =
+          getMonitoringEvidenceCursor(incomingEvidence) ?? cursors.evidenceCursor;
+      } else {
+        clientLogger.error({
+          event: "details.monitoring_evidence_load_failed",
+          message: "Error loading monitoring evidence",
+          error: evidenceResult.reason,
+          context: { chargerId },
+        });
+      }
+
+      if (servicesResult.status === "fulfilled") {
+        setMonitoringServices(servicesResult.value ?? []);
+      } else {
+        clientLogger.error({
+          event: "details.monitoring_services_load_failed",
+          message: "Error loading monitoring service status",
+          error: servicesResult.reason,
+          context: { chargerId },
+        });
+      }
+
+      setNow(Date.now());
+
+      if (first) setIsLoadingTelemetry(false);
+    }
+  }, [chargerId]);
+  const { reload } = usePollingLoop(refresh, { intervalMs: INTERVALS.DETAILS_UPDATE, overlap: "skip",
+    pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
+  const retry = () => {
+    cursorRef.current = freshCursors(chargerId);
+    void reload();
+  };
 
   const latestTelemetryTimestamp = useMemo(
     () => getLatestTelemetryTimestamp(allTelemetryData),
@@ -441,7 +422,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           {telemetryUnavailable && allTelemetryData.length > 0 && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">
               <span>Readings could not be refreshed.</span>
-              <Button variant="ghost" size="sm" onClick={() => setRefreshRequest((request) => request + 1)}>
+              <Button variant="ghost" size="sm" onClick={retry}>
                 Retry
               </Button>
             </div>
@@ -496,10 +477,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
             <div className="h-80">
               <NoDataFound
                 message={telemetryUnavailable ? "Readings could not be loaded" : "No recorded readings for this entity"}
-                onRefresh={() => {
-                  setIsLoadingTelemetry(true);
-                  setRefreshRequest((request) => request + 1);
-                }}
+                onRefresh={retry}
               />
             </div>
           ) : visibleCategories.length === 0 ? (

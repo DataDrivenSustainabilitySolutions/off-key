@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useLocation } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import { ApiRequestError } from "@/lib/api-client";
@@ -126,41 +127,22 @@ export function PipelineActivation({
     ? executableChanges(previous, revision.definition)
     : [];
   const operationPhase = operation?.phase;
-  useEffect(() => {
+  const pollActivation = useCallback(async (signal: AbortSignal) => {
     if (!operationId) return;
-    const controller = new AbortController();
-    let pending = false;
-    const poll = async () => {
-      if (pending || window.document.hidden) return;
-      pending = true;
-      try {
-        const next = await pipelinesApi.activation(
-          operationId,
-          controller.signal,
-        );
-        if (!controller.signal.aborted) {
-          setOperation(next);
-          setError("");
-          if (next.phase === "succeeded") onComplete(next.service_id);
-        }
-      } catch (reason) {
-        if (!controller.signal.aborted) setError(getErrorMessage(reason));
-      } finally {
-        pending = false;
-      }
-    };
-    void poll();
-    const timer = window.setInterval(() => {
-      if (!operationPhase || !terminal.has(operationPhase)) void poll();
-    }, 3_000);
-    const visible = () => void poll();
-    window.document.addEventListener("visibilitychange", visible);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-      window.document.removeEventListener("visibilitychange", visible);
-    };
-  }, [operationId, operationPhase, onComplete]);
+    try {
+      const next = await pipelinesApi.activation(operationId, signal);
+      if (signal.aborted) return;
+      setOperation(next);
+      setError("");
+      if (next.phase === "succeeded") onComplete(next.service_id);
+    } catch (reason) {
+      if (!signal.aborted) setError(getErrorMessage(reason));
+    }
+  }, [operationId, onComplete]);
+  usePollingLoop(pollActivation, {
+    enabled: !!operationId && !(operationPhase && terminal.has(operationPhase)),
+    intervalMs: 3_000, overlap: "skip", pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true,
+  });
   const activate = async () => {
     if (
       busy ||

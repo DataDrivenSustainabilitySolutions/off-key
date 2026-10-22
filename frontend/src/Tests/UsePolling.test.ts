@@ -130,4 +130,20 @@ describe("usePollingLoop", () => {
     await advance(1000);
     expect(tick).toHaveBeenCalledTimes(2);
   });
+
+  it("waits one interval without an initial run and aborts the pending run when hidden", async () => {
+    const { runs } = harness({ intervalMs: 1000, overlap: "skip", initialRun: false, pauseWhenHidden: true,
+      resumeOnVisible: true, abortWhenHidden: true });
+    await advance(999);
+    expect(runs).toHaveLength(0);
+    await advance(1);
+    expect(runs).toHaveLength(1);
+    act(() => setHidden(true));
+    expect(runs[0]!.signal.aborted).toBe(true);
+    runs[0]!.finish();
+    await advance(5000);
+    expect(runs).toHaveLength(1);
+    act(() => setHidden(false));
+    expect(runs).toHaveLength(2);
+  });
 });

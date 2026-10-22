@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useNow } from "@/hooks/use-now";
+import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
 import { EChart } from "@/features/charts/EChart";
 import { TelemetryChartSummary } from "@/features/charts/TelemetryChartSummary";
@@ -28,13 +29,9 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}:${serviceId ?? ""}` : undefined;
   const [minutes, setMinutes] = useNavigationDraft(viewKey && `${viewKey}:minutes`, 15);
-  const [now, setNow] = useState(Date.now);
+  const now = useNow(5000);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
-  useEffect(() => {
-    const timer = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 5000);
-    return () => clearInterval(timer);
-  }, []);
 
   const history = useMemo(() => {
     const collected = monitoring.telemetry;

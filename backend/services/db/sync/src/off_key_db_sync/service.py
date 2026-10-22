@@ -25,7 +25,6 @@ class SyncService:
 
     def __init__(self):
         self.is_running = False
-        self.initial_sync_complete = False
         self.schema_ready = False
         self.shutdown_event = asyncio.Event()
 
@@ -121,7 +120,6 @@ class SyncService:
             if not await self._initialize_database():
                 raise RuntimeError("Database initialization failed")
 
-            self.initial_sync_complete = True
             self.is_running = True
 
             logger.info("Database sync service started successfully")
@@ -143,28 +141,10 @@ class SyncService:
             return
 
         logger.info("Stopping database sync service")
-        shutdown_start_time = asyncio.get_event_loop().time()
-
-        # Signal shutdown
         self.shutdown_event.set()
         self.is_running = False
         self.schema_ready = False
-
-        try:
-            shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
-
-            logger.info(
-                f"Database sync service stopped successfully in "
-                f"{shutdown_duration:.2f}s",
-                extra={"shutdown_duration": shutdown_duration},
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Error during database sync service shutdown: {e}",
-                exc_info=True,
-            )
-            raise
+        logger.info("Database sync service stopped")
 
     async def run(self):
         """Run the database sync service"""
@@ -201,16 +181,13 @@ class SyncService:
 
     def get_health_status(self):
         """Get current health status"""
-        is_healthy = (
-            self.is_running and self.schema_ready and self.initial_sync_complete
-        )
-
         return {
             "status": (
                 "healthy"
-                if is_healthy
+                if self.is_running and self.schema_ready
                 else ("starting" if self.is_running else "stopped")
             ),
             "schema_ready": self.schema_ready,
-            "initial_sync_complete": self.initial_sync_complete,
+            # Kept in the /health shape the gateway waits on; equals schema_ready.
+            "initial_sync_complete": self.schema_ready,
         }

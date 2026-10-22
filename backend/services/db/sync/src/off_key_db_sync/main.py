@@ -5,7 +5,6 @@ Orchestrates both the core sync service and optional FastAPI server.
 """
 
 import asyncio
-from contextlib import suppress
 from pathlib import Path
 
 import uvicorn
@@ -18,6 +17,7 @@ from off_key_core.config.logs import (
     logger,
 )
 from off_key_core.config.validation import validate_settings
+from off_key_core.utils.tasks import run_until_first_exit
 
 from .api import app, set_sync_service
 from .config.config import get_sync_settings
@@ -78,26 +78,9 @@ async def main():
 
     tasks = {sync_task, api_task}
     try:
-        # Wait until either the sync service stops or the API server exits
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-        # Propagate exceptions from whichever task finished first
-        for task in done:
-            task.result()
-
+        # Stop when either the sync service or the API server exits.
+        await run_until_first_exit(tasks)
     finally:
-        # Ensure both tasks are stopped
-        for task in tasks:
-            if task.done():
-                continue
-            task.cancel()
-
-        for task in tasks:
-            if task.done():
-                continue
-            with suppress(asyncio.CancelledError):
-                await task
-
         logger.info("Database sync service shutdown complete")
 
 

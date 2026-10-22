@@ -47,7 +47,7 @@ def include_readings(definition, rules, selected):
 
 
 def apply_rule_edits(definition, edits):
-    brokers = {item.id for item in definition.sources}
+    brokers = {item.id for item in definition.document.connections}
     readings = {
         (stream.connection_id, stream.id): stream
         for stream in definition.document.streams

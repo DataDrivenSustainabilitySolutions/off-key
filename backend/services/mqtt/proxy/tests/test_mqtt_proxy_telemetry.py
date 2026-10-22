@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
 from off_key_mqtt_proxy.telemetry_models import (
+    HealthStatus,
     ParseFailure,
     ParseSuccess,
     WriteBatch,

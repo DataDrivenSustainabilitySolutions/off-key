@@ -84,12 +84,14 @@ class TopicMetadataExtractor:
         return TopicMetadata(charger_id=charger_id, telemetry_type=telemetry_type)
 
 
-def normalize_sensor_key_strategy(value: str) -> str:
+def normalize_sensor_key_strategy(
+    value: str, field_name: str = "sensor_key_strategy"
+) -> str:
     """Validate the shared feature-key projection used by aligned monitoring."""
     normalized = value.strip().lower()
     if normalized not in SENSOR_KEY_STRATEGIES:
         allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
-        raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
+        raise ValueError(f"{field_name} must be one of: {allowed}")
     return normalized
 
 

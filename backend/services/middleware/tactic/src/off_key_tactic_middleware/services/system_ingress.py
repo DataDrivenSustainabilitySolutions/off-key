@@ -105,7 +105,7 @@ class SystemIngress:
                 for key, timestamp in self._received_at_us.items()
                 if key[1] in self.bindings.get(key[0], {})
             }
-            for connection in definition.sources:
+            for connection in definition.document.connections:
                 topics = self.bindings.get(connection.id)
                 if not topics:
                     continue

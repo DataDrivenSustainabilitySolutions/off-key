@@ -11,7 +11,6 @@ from typing import Any, TypeGuard, cast
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
-from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import CursorResult
 from sqlalchemy.dialects.postgresql import insert
@@ -21,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .client.models import MQTTMessage
 from .config.config import MQTTConfig
 from .telemetry_models import (
+    HealthStatus,
     ParseFailure,
     WriteBatch,
     WriterHealthStatus,

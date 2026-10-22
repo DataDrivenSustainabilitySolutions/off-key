@@ -27,6 +27,7 @@ from off_key_core.models.static import (
 )
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
+    normalize_sensor_key_strategy,
     normalize_static_monitoring_topics,
 )
 
@@ -61,7 +62,6 @@ __all__ = [
     "validate_service_name",
 ]
 
-_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 MonitoringStrategy = Literal["static_baseline", "adaptive_stream"]
 _MAX_AUTOMATIC_CALIBRATION_WORK = 1_000_000_000
 AlarmStatistic = Literal[
@@ -187,11 +187,7 @@ class PerformanceConfig(BaseModel):
     @field_validator("sensor_key_strategy")
     @classmethod
     def validate_sensor_key_strategy(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _SENSOR_KEY_STRATEGIES:
-            allowed = ", ".join(sorted(_SENSOR_KEY_STRATEGIES))
-            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
+        return normalize_sensor_key_strategy(value)
 
 
 class StandardScalerConfig(BaseModel):

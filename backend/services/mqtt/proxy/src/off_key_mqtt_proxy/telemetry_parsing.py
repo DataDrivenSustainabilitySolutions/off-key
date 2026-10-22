@@ -4,11 +4,17 @@ from datetime import UTC, datetime
 from math import isfinite
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from off_key_core.utils.string import string_to_float
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .client.models import MQTTMessage
 from .telemetry_models import ParseFailure, ParseResult, ParseSuccess, TelemetryRecord
+
+
+def _as_float(value) -> float | None:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 
 def parse_telemetry_message(
@@ -61,7 +67,7 @@ def parse_telemetry_message(
             )
 
         raw_value = payload.get("value")
-        value = None if isinstance(raw_value, bool) else string_to_float(raw_value)
+        value = None if isinstance(raw_value, bool) else _as_float(raw_value)
         if value is None or not isfinite(value):
             return ParseFailure(
                 reason="Invalid telemetry value",

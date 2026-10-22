@@ -2,9 +2,13 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 
-from off_key_core.utils.enum import HealthStatus
+
+class HealthStatus(StrEnum):
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    DEGRADED = "degraded"
 
 
 @dataclass(frozen=True, slots=True)

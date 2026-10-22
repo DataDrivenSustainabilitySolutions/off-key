@@ -20,21 +20,14 @@ from off_key_core.schemas.radar import (
     PerformanceConfig,
     StaticBaselineConfig,
 )
-from off_key_core.utils.mqtt_topics import normalize_static_monitoring_topics
+from off_key_core.utils.mqtt_topics import (
+    normalize_sensor_key_strategy,
+    normalize_static_monitoring_topics,
+)
 from pydantic import ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
 MONITORING_STRATEGIES = {"static_baseline", "adaptive_stream"}
-
-
-def _normalize_sensor_key_strategy(value: str, field_name: str) -> str:
-    """Normalize and validate sensor key strategy values."""
-    normalized = value.strip().lower()
-    if normalized not in SENSOR_KEY_STRATEGIES:
-        allowed = ", ".join(sorted(SENSOR_KEY_STRATEGIES))
-        raise ValueError(f"{field_name} must be one of: {allowed}")
-    return normalized
 
 
 def _normalize_strategy(value: str, field_name: str) -> str:
@@ -243,7 +236,7 @@ class RadarSettings(BaseSettings):
     @classmethod
     def validate_sensor_key_strategy(cls, value: str) -> str:
         """Validate sensor key strategy from environment."""
-        return _normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
+        return normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
 
     @field_validator("RADAR_MONITORING_STRATEGY")
     @classmethod

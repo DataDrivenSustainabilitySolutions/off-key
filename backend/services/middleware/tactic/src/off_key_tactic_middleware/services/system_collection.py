@@ -182,7 +182,7 @@ class SystemCollectionService:
             raise ValidationError("Collection is disabled by the operator.")
         access = AmbiboxLiveAccess(get_ambibox_settings())
         selected = {item.source_id for item in definition.streams(selected_only=True)}
-        for connection in definition.sources:
+        for connection in definition.document.connections:
             if connection.id not in selected:
                 continue
             if not settings.allows_host(connection.host) and access(connection) is None:
@@ -330,7 +330,7 @@ class SystemCollectionService:
             row.ingress_status = {}
             row.collection_status = {}
         devices = {item.id: item.label for item in definition.document.devices}
-        connections = {item.id: item.label for item in definition.sources}
+        connections = {item.id: item.label for item in definition.document.connections}
         identities = {binding.entity_id for binding in definition.bindings.values()}
         existing = {
             item.charger_id: item

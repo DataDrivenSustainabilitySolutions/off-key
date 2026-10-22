@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_topics import normalize_sensor_key_strategy
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .activity import ActivityTracker
@@ -48,8 +49,6 @@ class MessageProcessor:
     - Coordinate with anomaly detector
     - Track processing metrics
     """
-
-    SENSOR_KEY_STRATEGIES = TopicParser.SENSOR_KEY_STRATEGIES
 
     def __init__(
         self,
@@ -89,9 +88,7 @@ class MessageProcessor:
             observation_max_age_seconds=observation_max_age_seconds,
             observation_future_tolerance_seconds=observation_future_tolerance_seconds,
         )
-        self.sensor_key_strategy = self._validate_sensor_key_strategy(
-            sensor_key_strategy
-        )
+        self.sensor_key_strategy = normalize_sensor_key_strategy(sensor_key_strategy)
 
         # Metrics
         self.received_message_count = 0
@@ -101,15 +98,6 @@ class MessageProcessor:
         self.last_alignment_status: str | None = None
 
         self._log_context = {"component": "message_processor"}
-
-    @classmethod
-    def _validate_sensor_key_strategy(cls, value: str) -> str:
-        """Validate sensor key strategy at construction time for clearer errors."""
-        normalized = value.strip().lower()
-        if normalized not in cls.SENSOR_KEY_STRATEGIES:
-            allowed = ", ".join(sorted(cls.SENSOR_KEY_STRATEGIES))
-            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
 
     def process_message_sync(self, message: MQTTMessage) -> AnomalyResult | None:
         """

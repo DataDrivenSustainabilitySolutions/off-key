@@ -14,6 +14,12 @@ EntityId = Annotated[
 ]
 
 
+def _has_control(value: str, *, forbid_space: bool = False) -> bool:
+    """C0 controls and DEL; paths also reject the space character."""
+    floor = 33 if forbid_space else 32
+    return any(ord(character) < floor or ord(character) == 127 for character in value)
+
+
 class SystemModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,9 +39,7 @@ class NamedEntity(SystemModel):
     @classmethod
     def readable_label(cls, value: str) -> str:
         value = value.strip()
-        if not value or any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if not value or _has_control(value):
             raise ValueError("Use a non-empty name without control characters")
         return value
 
@@ -75,10 +79,7 @@ class SystemConnection(NamedEntity):
         if self.websocket_path is not None and (
             self.transport != "websocket"
             or not self.websocket_path.startswith("/")
-            or any(
-                ord(character) < 33 or ord(character) == 127
-                for character in self.websocket_path
-            )
+            or _has_control(self.websocket_path, forbid_space=True)
             or "#" in self.websocket_path
         ):
             raise ValueError(
@@ -95,9 +96,7 @@ class SystemDevice(NamedEntity):
     @field_validator("kind")
     @classmethod
     def bounded_kind(cls, value: str) -> str:
-        if not value.strip() or any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if not value.strip() or _has_control(value):
             raise ValueError("Use a device kind without control characters")
         return value.strip()
 
@@ -122,7 +121,7 @@ class SystemStream(NamedEntity):
                 "Use a concrete MQTT topic of at most 512 UTF-8 bytes, "
                 "without wildcards or NUL"
             )
-        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        if _has_control(value):
             raise ValueError("MQTT topics must not contain control characters")
         return value
 
@@ -130,8 +129,7 @@ class SystemStream(NamedEntity):
     @classmethod
     def json_pointer(cls, value: str | None) -> str | None:
         if value is not None and (
-            not re.fullmatch(r"(?:/(?:[^~/]|~[01])*)*", value)
-            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+            not re.fullmatch(r"(?:/(?:[^~/]|~[01])*)*", value) or _has_control(value)
         ):
             raise ValueError(
                 "Use an RFC 6901 JSON Pointer, such as /readings/temperature"
@@ -141,9 +139,7 @@ class SystemStream(NamedEntity):
     @field_validator("unit", "category")
     @classmethod
     def readable_metadata(cls, value: str | None) -> str | None:
-        if value is not None and any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if value is not None and _has_control(value):
             raise ValueError("Metadata must not contain control characters")
         return value
 

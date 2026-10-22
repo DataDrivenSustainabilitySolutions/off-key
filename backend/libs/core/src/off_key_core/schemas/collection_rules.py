@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .collection_policy import CollectionPolicy
-from .system import EntityId, SystemModel, SystemStream
+from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
 
 class CollectionRuleScope(SystemModel):
@@ -94,3 +94,17 @@ class SystemCollectionRuleChange(SystemModel):
         if len(keys) != len(set(keys)):
             raise ValueError("Change each scope once per request")
         return self
+
+
+def legacy_rules(document: SystemDocument) -> list[CollectionRule]:
+    """Pin each collected reading of a pre-rules definition to its own policy."""
+    return [
+        CollectionRule(
+            scope=CollectionRuleScope(
+                kind="reading", connection_id=stream.connection_id, reading_id=stream.id
+            ),
+            policy=stream.policy or document.default_policy,
+        )
+        for stream in document.streams
+        if (stream.policy or document.default_policy).mode != "off"
+    ]

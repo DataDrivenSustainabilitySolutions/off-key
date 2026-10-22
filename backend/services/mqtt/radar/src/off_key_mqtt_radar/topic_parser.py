@@ -3,10 +3,9 @@ Topic parser utilities for RADAR.
 """
 
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import Any
 
 from off_key_core.utils.mqtt_topics import (
-    SENSOR_KEY_STRATEGIES,
     TopicMetadataExtractor,
     canonical_sensor_key,
     normalize_sensor_key_strategy,
@@ -19,12 +18,7 @@ class TopicParser:
     Parse MQTT topics using the shared extraction contract.
     """
 
-    SENSOR_KEY_STRATEGIES: ClassVar[frozenset[str]] = SENSOR_KEY_STRATEGIES
     _default_extractor = TopicMetadataExtractor()
-
-    @staticmethod
-    def _validate_sensor_key_strategy(sensor_key_strategy: str) -> str:
-        return normalize_sensor_key_strategy(sensor_key_strategy)
 
     @staticmethod
     def extract_charger_id(
@@ -45,7 +39,7 @@ class TopicParser:
         payload: Mapping[str, Any] | None = None,
         extractor: TopicMetadataExtractor | None = None,
     ) -> str | None:
-        strategy = TopicParser._validate_sensor_key_strategy(sensor_key_strategy)
+        strategy = normalize_sensor_key_strategy(sensor_key_strategy)
         parser = extractor or TopicParser._default_extractor
         metadata = parser.extract(topic=topic, payload=payload)
         if not metadata:

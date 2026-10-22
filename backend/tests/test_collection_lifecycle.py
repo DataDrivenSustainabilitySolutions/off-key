@@ -130,7 +130,7 @@ async def test_label_revision_preserves_admission_samples_and_deadlines(
     renamed = deepcopy(snapshot)
     renamed.revision = 4
     renamed.ingress["revision"] = 4
-    source = renamed.catalog.sources[0]
+    source = renamed.catalog.document.connections[0]
     source.label = "Assembly broker"
     renamed.catalog.document.devices[0].label = "Assembly entity"
     renamed.catalog.document.streams[0].label = "Assembly temperature"
@@ -171,7 +171,7 @@ async def test_runtime_change_or_reconnect_still_reapplies_collection(
     changed = deepcopy(snapshot)
     changed.revision = 4
     changed.ingress["revision"] = 4
-    source = changed.catalog.sources[0]
+    source = changed.catalog.document.connections[0]
     source.label = "Renamed broker"
     if change == "policy":
         changed.catalog.document.streams[0].policy.mode = "original"

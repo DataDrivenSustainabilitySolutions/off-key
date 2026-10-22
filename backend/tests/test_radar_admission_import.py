@@ -26,3 +26,20 @@ def test_admission_import_needs_only_radar_runtime_environment():
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_package_import_loads_no_runtime_modules():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, off_key_mqtt_radar; "
+            "loaded = [m for m in sys.modules if m.startswith('off_key_mqtt_radar.')]; "
+            "assert not loaded, loaded",
+        ],
+        cwd=Path(sys.executable).parent,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

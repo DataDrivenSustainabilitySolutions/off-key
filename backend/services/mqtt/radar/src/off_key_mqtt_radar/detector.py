@@ -11,7 +11,6 @@ import importlib
 import json
 import logging
 import os
-import re
 import time
 from collections import deque
 from datetime import UTC, datetime
@@ -35,11 +34,6 @@ from .models import AnomalyResult
 # =============================================================================
 # Checkpoint Security
 # =============================================================================
-
-_UNSEEN_FEATURE_PATTERN = re.compile(
-    r"Feature ['\"](?P<feature>[^'\"]+)['\"] has not been seen during learning"
-)
-_WARMUP_STAGE_PATTERN = re.compile(r"^(?P<stage>[a-z_]+):\s")
 
 
 class StaticConformalState(Enum):

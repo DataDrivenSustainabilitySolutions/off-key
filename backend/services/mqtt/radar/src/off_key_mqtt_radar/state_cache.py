@@ -113,8 +113,6 @@ class SensorStateCache:
         # Tracks last emitted sensor update sequence in strict-barrier mode.
         self._last_emitted_versions: dict[str, dict[str, int]] = {}
         self._next_update_seq = 0
-        self.strict_barrier_emit_count = 0
-        self.strict_barrier_wait_count = 0
         self._last_cleanup = time.time()
         self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
@@ -215,7 +213,6 @@ class SensorStateCache:
                     for sensor in self.required_sensor_order
                 }
             )
-            self.strict_barrier_emit_count += 1
 
             input_timestamps = {
                 sensor: charger_cache[sensor].event_timestamp
@@ -280,7 +277,6 @@ class SensorStateCache:
         if not pending_sensors:
             return None
 
-        self.strict_barrier_wait_count += 1
         return AlignmentUpdate(
             status="waiting_for_barrier",
             pending_sensors=pending_sensors,
@@ -422,12 +418,6 @@ class SensorStateCache:
             entries_to_remove,
             self.max_chargers,
         )
-
-    def clear(self) -> None:
-        """Clear partial frames while retaining observation replay protection."""
-        with self._lock:
-            self._readings_by_charger.clear()
-            self._last_emitted_versions.clear()
 
     def export_watermarks(self) -> dict[str, dict[str, float]]:
         with self._lock:

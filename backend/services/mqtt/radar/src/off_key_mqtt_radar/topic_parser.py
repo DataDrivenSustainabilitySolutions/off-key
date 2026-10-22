@@ -81,27 +81,3 @@ class TopicParser:
             except ValueError:
                 continue
         return sensors
-
-    @staticmethod
-    def build_topic(charger_id: str, sensor_type: str) -> str:
-        return f"telemetry/{charger_id}/{sensor_type}"
-
-    @staticmethod
-    def matches_pattern(topic: str, pattern: str) -> bool:
-        topic_parts = topic.split("/")
-        pattern_parts = pattern.split("/")
-
-        i = 0
-        for pp in pattern_parts:
-            if pp == "#":
-                return True
-            if i >= len(topic_parts):
-                return False
-            if pp == "+":
-                i += 1
-                continue
-            if pp != topic_parts[i]:
-                return False
-            i += 1
-
-        return i == len(topic_parts)

@@ -55,7 +55,6 @@ class HealthMonitor:
 
         # Service state
         self.start_time: datetime | None = None
-        self.last_health_check = time.time()
         self._shutdown_event: asyncio.Event | None = None
         self._health_check_task: asyncio.Task | None = None
 
@@ -162,8 +161,6 @@ class HealthMonitor:
                 await self._database_writer.write_service_metrics(
                     self.build_metrics_snapshot(status)
                 )
-
-            self.last_health_check = time.time()
 
         except Exception as e:
             logger.error(

@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
@@ -132,25 +131,6 @@ class AnomalyResult:
         """One eligibility rule shared by ingestion and persistence."""
         return self.is_anomaly or is_inference(self.context)
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization"""
-        return {
-            "anomaly_score": self.anomaly_score,
-            "is_anomaly": self.is_anomaly,
-            "severity": self.severity,
-            "timestamp": (
-                self.timestamp.isoformat()
-                if isinstance(self.timestamp, datetime)
-                else self.timestamp
-            ),
-            "model_info": self.model_info,
-            "raw_data": self.raw_data,
-            "processed_features": self.processed_features,
-            "topic": self.topic,
-            "charger_id": self.charger_id,
-            "context": self.context,
-        }
-
 
 @dataclass
 class MQTTMessage:
@@ -163,19 +143,12 @@ class MQTTMessage:
     timestamp: datetime | None = None
     received_monotonic: float | None = None
 
-    _topic_extractor = TopicMetadataExtractor()
-
     def get_json_payload(self) -> dict[str, Any]:
         """Parse payload as JSON"""
         try:
             return json.loads(self.payload.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise ValueError(f"Invalid JSON payload: {error}") from error
-
-    def extract_charger_id(self) -> str | None:
-        """Extract charger ID from topic pattern"""
-        metadata = self._topic_extractor.extract(topic=self.topic, payload=None)
-        return metadata.charger_id if metadata else None
 
 
 @dataclass
@@ -188,14 +161,3 @@ class HealthStatus:
     metrics: dict[str, Any]
     active_alerts: list[str]
     uptime_seconds: float
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary"""
-        return {
-            "status": self.status,
-            "timestamp": self.timestamp.isoformat(),
-            "components": self.components,
-            "metrics": self.metrics,
-            "active_alerts": self.active_alerts,
-            "uptime_seconds": self.uptime_seconds,
-        }

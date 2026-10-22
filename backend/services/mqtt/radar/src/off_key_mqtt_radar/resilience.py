@@ -19,7 +19,6 @@ class ServiceState(Enum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     FAILED = "failed"
-    UNKNOWN = "unknown"
 
 
 class DetectionService(Protocol):

@@ -30,15 +30,12 @@ export const API_CONFIG = {
       REFRESH: '/v1/auth/refresh',
       LOGOUT: '/v1/auth/logout',
       FORGOT_PASSWORD: '/v1/auth/forgot-password',
-      RESET_PASSWORD: '/v1/auth/reset-password',
     },
 
     // Chargers
     CHARGERS: {
       AVAILABLE: '/v1/chargers/available',
-      BY_ID: (chargerId: string) => `/v1/chargers/${chargerId}`,
     },
-
 
     // Telemetry
     TELEMETRY: {
@@ -61,25 +58,18 @@ export const API_CONFIG = {
 
     // Anomalies
     ANOMALIES: {
-      BASE: '/v1/anomalies',
       BY_CHARGER: (chargerId: string) =>
         `/v1/anomalies?charger_id=${chargerId}`,
-      BY_CHARGER_AND_TYPE: (chargerId: string, telemetryType: string) =>
-        `/v1/anomalies?charger_id=${chargerId}&telemetry_type=${telemetryType}`,
-      CREATE: '/v1/anomalies',
       DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
     },
 
     // Monitoring Services
     MONITORING: {
       START: '/v1/monitors/start',
-      STOP: '/v1/monitors/stop',
       DELETE: (serviceId: string) => `/v1/monitors/${encodeURIComponent(serviceId)}`,
       LIST: '/v1/monitors/all',
       DETAILS: '/v1/monitors',
       MODELS: '/v1/monitors/models',
-      EVIDENCE: (chargerId: string) =>
-        `/v1/monitors/evidence?charger_id=${encodeURIComponent(chargerId)}`,
       CHART_EVIDENCE: (
         chargerId: string,
         cursor?: {
@@ -100,11 +90,6 @@ export const API_CONFIG = {
         }
         return `/v1/monitors/evidence/chart?${params.toString()}`;
       },
-    },
-
-    // Monitoring & Anomaly Detection
-    ANOMALY_DETECTION: {
-      DETECT: '/v1/anomaly-detection/detect',
     },
   },
 } as const;

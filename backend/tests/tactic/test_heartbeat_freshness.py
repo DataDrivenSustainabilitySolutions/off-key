@@ -6,7 +6,7 @@ from off_key_mqtt_radar.config.config import (
     PIPELINE_HEARTBEAT_INTERVAL_CAP,
     MQTTRadarConfig,
 )
-from off_key_tactic_middleware.services.radar_status import (
+from off_key_tactic_middleware.services.orchestration.radar_status import (
     PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS,
     RUNTIME_STATUS_STALE_AFTER_SECONDS,
     heartbeat_age_seconds,

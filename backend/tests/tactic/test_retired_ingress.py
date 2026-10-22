@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_tactic_middleware.config.collection import AmbiboxSettings
-from off_key_tactic_middleware.services import retired_ingress
+from off_key_tactic_middleware.services.catalogue import retired_ingress
 
 
 @pytest.mark.asyncio

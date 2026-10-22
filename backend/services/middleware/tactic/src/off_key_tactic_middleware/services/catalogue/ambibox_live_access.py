@@ -4,8 +4,8 @@ from urllib.parse import urlsplit
 
 from off_key_core.schemas.system import SystemConnection
 
-from ..config.collection import AmbiboxSettings
-from ..config.system_live import LiveCredential, LiveSocksProxy
+from ...config.collection import AmbiboxSettings
+from ...config.system_live import LiveCredential, LiveSocksProxy
 from .broker_access import BrokerAccess
 
 

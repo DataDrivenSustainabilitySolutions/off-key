@@ -29,8 +29,8 @@ from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
 from paho.mqtt.enums import CallbackAPIVersion
 from sqlalchemy import select, text, update
 
-from ..config.config import get_tactic_settings
-from ..config.system_live import get_system_live_settings
+from ...config.config import get_tactic_settings
+from ...config.system_live import get_system_live_settings
 from .broker_access import resolve_broker
 from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker

@@ -30,13 +30,13 @@ from ...schemas import (
     TelemetryPaginatedResponse,
     UserLoginRequest,
 )
+from ...services.accounts.users import UserService
 from ...services.data import (
     AnomalyService,
     ChargerQueryService,
     FavoriteService,
     MonitoringEvidenceService,
     TelemetryQueryService,
-    UserService,
 )
 from ..errors import DomainErrorRoute
 

@@ -1,6 +1,5 @@
 """Issue access credentials from remembered sessions after checking membership."""
 
-import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -10,7 +9,8 @@ from off_key_core.schemas.sessions import REMEMBERED_SESSION_SECONDS
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..domain import AuthenticationError
+from ...domain import AuthenticationError
+from .tokens import digest_token
 
 # Tabs that refresh together with the same cookie must not sign each other out.
 ROTATION_GRACE = timedelta(seconds=30)
@@ -22,10 +22,6 @@ ROTATION_INTERVAL = timedelta(days=1)
 
 def _utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
-
-
-def _digest(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
 
 
 class RememberedSessionService:
@@ -41,7 +37,7 @@ class RememberedSessionService:
         issued_at: datetime,
     ) -> str:
         token = secrets.token_urlsafe(32)
-        token_hash = _digest(token)
+        token_hash = digest_token(token)
         self.session.add(
             RememberedSession(
                 token_hash=token_hash,
@@ -80,7 +76,7 @@ class RememberedSessionService:
                 select(RememberedSession, User)
                 .join(User, User.id == RememberedSession.user_id)
                 .where(
-                    RememberedSession.token_hash == _digest(token),
+                    RememberedSession.token_hash == digest_token(token),
                     RememberedSession.expires_at > now,
                 )
                 .with_for_update(of=RememberedSession)
@@ -136,7 +132,7 @@ class RememberedSessionService:
     async def revoke(self, token: str) -> None:
         family = (
             select(RememberedSession.family_id)
-            .where(RememberedSession.token_hash == _digest(token))
+            .where(RememberedSession.token_hash == digest_token(token))
             .scalar_subquery()
         )
         await self.session.execute(

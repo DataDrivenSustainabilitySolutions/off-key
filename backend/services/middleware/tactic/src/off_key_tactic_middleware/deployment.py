@@ -19,6 +19,10 @@ from sqlalchemy import select, text
 
 from .facades.docker import SWARM_TASK_DONE
 from .services.orchestration.radar import RadarOrchestrationService
+from .services.orchestration.radar_status import (
+    RUNTIME_STATUS_STALE_AFTER_SECONDS,
+    heartbeat_age_seconds,
+)
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
     get_async_docker,
@@ -27,10 +31,6 @@ from .services.pipelines.release import (
     normalize_saved_launch,
     prepare_release_monitors,
     record_release_run,
-)
-from .services.radar_status import (
-    RUNTIME_STATUS_STALE_AFTER_SECONDS,
-    heartbeat_age_seconds,
 )
 
 

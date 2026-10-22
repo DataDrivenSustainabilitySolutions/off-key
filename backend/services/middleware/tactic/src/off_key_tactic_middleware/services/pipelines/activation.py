@@ -58,11 +58,11 @@ from sqlalchemy import select
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..orchestration.radar import RadarOrchestrationService
-from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
-from ..radar_status import (
+from ..orchestration.radar_status import (
     PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS,
     heartbeat_age_seconds,
 )
+from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
 from .runs import ensure_predecessor_run

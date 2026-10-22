@@ -25,7 +25,9 @@ from off_key_tactic_middleware.config.config import DockerConfig
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.facades.docker import AsyncDocker
-from off_key_tactic_middleware.services import collection_monitors, system_collection
+from off_key_tactic_middleware.services.catalogue import system_collection
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.orchestration import collection_monitors
 from off_key_tactic_middleware.services.orchestration import radar as radar_module
 from off_key_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_config_fingerprint,
@@ -38,10 +40,9 @@ from off_key_tactic_middleware.services.orchestration.radar_lifecycle import (
 from off_key_tactic_middleware.services.orchestration.radar_workloads import (
     RadarWorkloadManager,
 )
-from off_key_tactic_middleware.services.reconciliation import (
+from off_key_tactic_middleware.services.orchestration.reconciliation import (
     RadarStatusReconciliationService,
 )
-from off_key_tactic_middleware.services.system import SystemService
 from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

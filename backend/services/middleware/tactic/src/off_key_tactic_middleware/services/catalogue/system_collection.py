@@ -25,12 +25,12 @@ from off_key_core.schemas.system_collection import (
 from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select
 
-from ..config.collection import get_ambibox_settings
-from ..config.system_live import get_system_live_settings
-from ..domain import ConflictError, ValidationError
+from ...config.collection import get_ambibox_settings
+from ...config.system_live import get_system_live_settings
+from ...domain import ConflictError, ValidationError
+from ..orchestration.collection_monitors import CollectionMonitorService
 from .ambibox_live_access import AmbiboxLiveAccess
 from .broker_access import resolve_broker
-from .collection_monitors import CollectionMonitorService
 from .collection_rule_edits import apply_rule_edits, policy_metadata
 
 

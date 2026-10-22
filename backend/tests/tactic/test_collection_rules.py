@@ -16,9 +16,15 @@ from off_key_core.schemas.system_collection import (
     build_bindings,
 )
 from off_key_core.utils.collection_rules import CollectionRuleResolver
-from off_key_tactic_middleware.services import system_collection as collection_module
-from off_key_tactic_middleware.services.collection_rule_edits import apply_rule_edits
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
+from off_key_tactic_middleware.services.catalogue import (
+    system_collection as collection_module,
+)
+from off_key_tactic_middleware.services.catalogue.collection_rule_edits import (
+    apply_rule_edits,
+)
+from off_key_tactic_middleware.services.catalogue.system_collection import (
+    SystemCollectionService,
+)
 
 from tests.support.system_document import document
 

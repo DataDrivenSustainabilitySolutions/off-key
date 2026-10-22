@@ -204,7 +204,7 @@ async def test_renamed_legacy_monitor_still_captures_restart_configuration(monke
 def test_status_freshness_without_a_docker_probe(age, stale):
     from datetime import UTC, datetime, timedelta
 
-    from off_key_tactic_middleware.services.radar_status import (
+    from off_key_tactic_middleware.services.orchestration.radar_status import (
         derive_operational_status,
     )
 

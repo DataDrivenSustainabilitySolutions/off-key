@@ -29,17 +29,17 @@ from .config.collection import get_ambibox_settings
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
-from .services.ambibox_live_access import AmbiboxLiveAccess
+from .services.catalogue.ambibox_live_access import AmbiboxLiveAccess
+from .services.catalogue.system import SystemService
+from .services.catalogue.system_ingress import SystemIngress
+from .services.catalogue.system_live import SystemLiveService
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
     set_shared_async_docker,
 )
+from .services.orchestration.reconciliation import RadarStatusReconciliationService
 from .services.pipelines.supervisor import PipelineActivationSupervisor
-from .services.reconciliation import RadarStatusReconciliationService
-from .services.system import SystemService
-from .services.system_ingress import SystemIngress
-from .services.system_live import SystemLiveService
 
 
 async def _teardown_ephemeral_radar_workloads(app: FastAPI, phase: str) -> None:

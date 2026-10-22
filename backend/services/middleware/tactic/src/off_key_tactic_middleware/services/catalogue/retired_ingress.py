@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from ..config.collection import get_ambibox_settings
+from ...config.collection import get_ambibox_settings
 
 RESOURCE_PREFIX = "offkey_ambibox_"
 

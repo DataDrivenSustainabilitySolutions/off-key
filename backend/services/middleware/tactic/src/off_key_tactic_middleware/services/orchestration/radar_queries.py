@@ -6,7 +6,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from sqlalchemy import select
 
-from ..radar_status import derive_operational_status
+from .radar_status import derive_operational_status
 
 
 def exactly_one(container_name, container_id, purpose: str) -> bool:

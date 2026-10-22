@@ -35,6 +35,9 @@ from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.deployment import reserve
 from off_key_tactic_middleware.domain import ConflictError, ValidationError
+from off_key_tactic_middleware.services.catalogue.system_collection import (
+    SystemCollectionService,
+)
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -44,7 +47,6 @@ from off_key_tactic_middleware.services.pipelines.preflight import (
     PipelinePreflight,
     PreflightRejected,
 )
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

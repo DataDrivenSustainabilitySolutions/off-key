@@ -16,21 +16,21 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config.config import get_tactic_settings
-from ..facades.docker import AsyncDocker, get_workload_docker_status
-from .orchestration.monitor_intent import (
+from ...config.config import get_tactic_settings
+from ...facades.docker import AsyncDocker, get_workload_docker_status
+from .monitor_intent import (
     complete_stop,
     mark_deleting,
     purge_service_rows,
     request_stop_values,
 )
-from .orchestration.radar_lifecycle import RadarLifecycleController
-from .orchestration.radar_workloads import RadarWorkloadManager
+from .radar_lifecycle import RadarLifecycleController
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
     UNVERIFIED_WORKLOAD_STATES,
     apply_terminal_operational_status,
 )
+from .radar_workloads import RadarWorkloadManager
 from .time_utils import coerce_utc
 
 

@@ -28,12 +28,14 @@ from off_key_core.db.models import (
 )
 from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware import deployment
-from off_key_tactic_middleware.services.members import MemberService
+from off_key_tactic_middleware.services.accounts.members import MemberService
+from off_key_tactic_middleware.services.catalogue.system_ingress import (
+    SYSTEM_INGRESS_LOCK,
+)
 from off_key_tactic_middleware.services.orchestration import radar
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from off_key_tactic_middleware.services.system_ingress import SYSTEM_INGRESS_LOCK
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 

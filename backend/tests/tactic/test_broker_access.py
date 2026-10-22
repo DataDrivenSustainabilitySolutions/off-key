@@ -9,7 +9,7 @@ from off_key_tactic_middleware.config.system_live import (
     LiveSocksProxy,
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.broker_access import (
+from off_key_tactic_middleware.services.catalogue.broker_access import (
     BrokerAccess,
     resolve_broker,
 )

@@ -7,8 +7,10 @@ import pytest
 from off_key_core.schemas.system import SystemDocument, SystemSnapshot
 from off_key_tactic_middleware.config.collection import AmbiboxSettings
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services.ambibox_live_access import AmbiboxLiveAccess
-from off_key_tactic_middleware.services.system_live import SystemLiveService
+from off_key_tactic_middleware.services.catalogue.ambibox_live_access import (
+    AmbiboxLiveAccess,
+)
+from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
 
 
 def snapshot(*, host, credential_ref=None):

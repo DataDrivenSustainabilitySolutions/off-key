@@ -11,8 +11,8 @@ from off_key_core.schemas.sessions import RememberedSessionToken
 from off_key_core.schemas.user import ForgotPasswordRequest
 
 from ...provider import get_member_service, get_remembered_session_service
-from ...services.members import MemberService
-from ...services.remembered_sessions import RememberedSessionService
+from ...services.accounts.members import MemberService
+from ...services.accounts.remembered_sessions import RememberedSessionService
 from ..collection_auth import current_member, require_admin
 from ..errors import DomainErrorRoute
 

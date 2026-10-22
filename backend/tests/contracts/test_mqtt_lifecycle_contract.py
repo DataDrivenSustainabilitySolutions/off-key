@@ -25,7 +25,7 @@ from off_key_mqtt_proxy.client.connection import ConnectionManager
 from off_key_mqtt_proxy.client.facade import MQTTClient
 from off_key_mqtt_proxy.client.models import ConnectionState
 from off_key_mqtt_proxy.config.config import MQTTConfig
-from off_key_tactic_middleware.services.system_live_mqtt import LiveMqttWorker
+from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
 
 from tests.support.mqtt import (
     mqtt_broker,

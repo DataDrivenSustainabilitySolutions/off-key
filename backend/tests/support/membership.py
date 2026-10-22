@@ -2,7 +2,7 @@
 
 from off_key_core.db.models import User
 from off_key_core.schemas.members import MemberInvitation
-from off_key_tactic_middleware.services.members import MemberService
+from off_key_tactic_middleware.services.accounts.members import MemberService
 from sqlalchemy import select
 
 PASSWORD = "correct horse battery staple"

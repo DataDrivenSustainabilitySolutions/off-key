@@ -12,7 +12,9 @@ from off_key_core.schemas.collection_wire import (
 )
 from off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
+from off_key_tactic_middleware.services.catalogue.system_collection import (
+    SystemCollectionService,
+)
 from pydantic import ValidationError
 
 from tests.support.collection import catalog, message, runtime_catalog

@@ -13,7 +13,7 @@ from off_key_api_gateway.api.rate_limiter import client_ip
 from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_api_gateway.facades.tactic import Tactic, TacticError
 from off_key_core.schemas.user import UserLogin
-from off_key_tactic_middleware.services.data import users as users_module
+from off_key_tactic_middleware.services.accounts import users as users_module
 
 from tests.support.env import set_auth_env
 

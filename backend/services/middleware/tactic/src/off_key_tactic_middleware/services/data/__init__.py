@@ -5,7 +5,6 @@ from .chargers import ChargerQueryService
 from .favorites import FavoriteService
 from .monitoring_evidence import MonitoringEvidenceService
 from .telemetry import TelemetryQueryService
-from .users import UserService
 
 __all__ = [
     "AnomalyService",
@@ -13,5 +12,4 @@ __all__ = [
     "FavoriteService",
     "MonitoringEvidenceService",
     "TelemetryQueryService",
-    "UserService",
 ]

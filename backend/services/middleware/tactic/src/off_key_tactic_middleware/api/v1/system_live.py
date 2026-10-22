@@ -5,8 +5,8 @@ from off_key_core.db.models import User
 from off_key_core.schemas.system_live import SystemLiveScope, SystemLiveStart
 
 from ...provider import get_live_service, get_system_service
-from ...services.system import SystemService
-from ...services.system_live import LiveSessionError, SystemLiveService
+from ...services.catalogue.system import SystemService
+from ...services.catalogue.system_live import LiveSessionError, SystemLiveService
 from ..collection_auth import current_member, require_admin
 
 router = APIRouter(prefix="/live", tags=["system-live"])

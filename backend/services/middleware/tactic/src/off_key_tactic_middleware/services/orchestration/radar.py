@@ -29,9 +29,6 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ..radar_status import (
-    TERMINAL_WORKLOAD_STATES,
-)
 from .monitor_intent import mark_deleting, purge_service_rows, retire_workload
 from .radar_environment import (
     build_radar_config_fingerprint,
@@ -39,6 +36,9 @@ from .radar_environment import (
 )
 from .radar_lifecycle import RadarLifecycleController
 from .radar_queries import RadarServiceQueries, exactly_one, find_service
+from .radar_status import (
+    TERMINAL_WORKLOAD_STATES,
+)
 from .radar_workloads import RadarWorkloadManager, get_async_docker
 
 

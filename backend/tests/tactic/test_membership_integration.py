@@ -26,11 +26,11 @@ from off_key_tactic_middleware.domain import (
     ValidationError,
 )
 from off_key_tactic_middleware.repositories import UserRepository
-from off_key_tactic_middleware.services.data.users import UserService
-from off_key_tactic_middleware.services.members import MemberService
-from off_key_tactic_middleware.services.remembered_sessions import (
+from off_key_tactic_middleware.services.accounts.members import MemberService
+from off_key_tactic_middleware.services.accounts.remembered_sessions import (
     RememberedSessionService,
 )
+from off_key_tactic_middleware.services.accounts.users import UserService
 from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env

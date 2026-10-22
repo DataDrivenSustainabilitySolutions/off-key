@@ -21,22 +21,22 @@ from .repositories import (
     TelemetryRepository,
     UserRepository,
 )
+from .services.accounts.members import MemberService
+from .services.accounts.remembered_sessions import RememberedSessionService
+from .services.accounts.users import UserService
+from .services.catalogue.system import SystemService
+from .services.catalogue.system_live import SystemLiveService
 from .services.data import (
     AnomalyService,
     ChargerQueryService,
     FavoriteService,
     MonitoringEvidenceService,
     TelemetryQueryService,
-    UserService,
 )
-from .services.members import MemberService
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.pipelines.activation import PipelineActivations
 from .services.pipelines.forms import start_form_monitor
 from .services.pipelines.library import PipelineLibrary
-from .services.remembered_sessions import RememberedSessionService
-from .services.system import SystemService
-from .services.system_live import SystemLiveService
 
 
 def get_radar_orchestration_service(

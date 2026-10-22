@@ -22,12 +22,12 @@ from off_key_tactic_middleware.config.system_live import (
     LiveSocksProxy,
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.system import SystemService
-from off_key_tactic_middleware.services.system_live import (
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live import (
     LiveSessionError,
     SystemLiveService,
 )
-from off_key_tactic_middleware.services.system_live_mqtt import LiveMqttWorker
+from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
 from socks import SOCKS5
 
 from tests.support.system_live import FakeWorker, manager, snapshot

@@ -18,7 +18,7 @@ from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_proxy.telemetry import DatabaseWriter
 from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services import system_ingress
+from off_key_tactic_middleware.services.catalogue import system_ingress
 
 
 def definition():

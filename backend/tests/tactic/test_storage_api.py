@@ -11,7 +11,7 @@ from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.storage import RetentionPolicyStatus, StorageStatus
 from off_key_tactic_middleware.api.v1 import system as collection
-from off_key_tactic_middleware.services import system as system_service
+from off_key_tactic_middleware.services.catalogue import system as system_service
 
 from tests.support.env import set_auth_env
 

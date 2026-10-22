@@ -20,8 +20,8 @@ from off_key_tactic_middleware.domain import (
     NotFoundError,
     ValidationError,
 )
-from off_key_tactic_middleware.services.members import MemberService
-from off_key_tactic_middleware.services.remembered_sessions import (
+from off_key_tactic_middleware.services.accounts.members import MemberService
+from off_key_tactic_middleware.services.accounts.remembered_sessions import (
     RememberedSessionService,
 )
 from sqlalchemy import select

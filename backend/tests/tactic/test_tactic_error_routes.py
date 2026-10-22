@@ -17,8 +17,8 @@ from off_key_tactic_middleware.domain import (
     ValidationError,
 )
 from off_key_tactic_middleware.provider import get_user_service
+from off_key_tactic_middleware.services.catalogue.system import SystemService
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
-from off_key_tactic_middleware.services.system import SystemService
 
 ERRORS = [
     (NotFoundError("missing"), 404, "missing"),

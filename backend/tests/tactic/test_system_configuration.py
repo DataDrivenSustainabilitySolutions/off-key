@@ -29,7 +29,7 @@ from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.services import system as system_service
+from off_key_tactic_middleware.services.catalogue import system as system_service
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session

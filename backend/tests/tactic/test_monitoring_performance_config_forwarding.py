@@ -25,7 +25,7 @@ from off_key_tactic_middleware.config.config import TacticSettings
 from off_key_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_environment,
 )
-from off_key_tactic_middleware.services.radar_status import (
+from off_key_tactic_middleware.services.orchestration.radar_status import (
     derive_operational_status,
 )
 from pydantic import ValidationError

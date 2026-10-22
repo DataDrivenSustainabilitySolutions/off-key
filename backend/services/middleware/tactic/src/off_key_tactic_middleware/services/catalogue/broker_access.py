@@ -5,7 +5,7 @@ from typing import Literal
 
 from off_key_core.schemas.system import SystemConnection
 
-from ..config.system_live import LiveCredential, LiveSocksProxy, SystemLiveSettings
+from ...config.system_live import LiveCredential, LiveSocksProxy, SystemLiveSettings
 
 
 @dataclass(frozen=True)

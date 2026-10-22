@@ -22,10 +22,14 @@ from off_key_mqtt_proxy import proxy as proxy_module
 from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_radar.topic_parser import TopicParser
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services import system_collection as collection_module
-from off_key_tactic_middleware.services import system_ingress as ingress_module
-from off_key_tactic_middleware.services.system import SystemService
-from off_key_tactic_middleware.services.system_live import SystemLiveService
+from off_key_tactic_middleware.services.catalogue import (
+    system_collection as collection_module,
+)
+from off_key_tactic_middleware.services.catalogue import (
+    system_ingress as ingress_module,
+)
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
 from paho.mqtt.client import CallbackAPIVersion, Client
 from paho.mqtt.publish import multiple, single
 from sqlalchemy import func, select

@@ -21,7 +21,7 @@ from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..domain import ConflictError
+from ...domain import ConflictError
 from .system_collection import SystemCollectionService
 
 

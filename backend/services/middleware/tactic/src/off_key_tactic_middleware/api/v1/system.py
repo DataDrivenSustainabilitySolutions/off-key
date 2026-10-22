@@ -12,7 +12,7 @@ from off_key_core.schemas.system_collection import (
 from off_key_core.utils.enum import RoleEnum
 
 from ...provider import get_system_service
-from ...services.system import SystemService
+from ...services.catalogue.system import SystemService
 from ..collection_auth import current_member, require_admin
 from ..errors import DomainErrorRoute
 from .system_live import router as live_router

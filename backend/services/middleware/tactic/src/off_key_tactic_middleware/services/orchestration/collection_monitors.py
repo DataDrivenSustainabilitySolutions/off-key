@@ -6,13 +6,13 @@ from off_key_core.db.pipeline_claims import monitor_claim_condition
 from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from sqlalchemy import update
 
-from ..domain import InfrastructureError
-from .orchestration.monitor_intent import (
+from ...domain import InfrastructureError
+from .monitor_intent import (
     complete_stop,
     request_stop_values,
     retire_workload,
 )
-from .orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
+from .radar_workloads import RadarWorkloadManager, get_async_docker
 
 
 class CollectionMonitorService:

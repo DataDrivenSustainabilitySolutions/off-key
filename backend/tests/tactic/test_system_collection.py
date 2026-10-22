@@ -35,10 +35,14 @@ from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.services import system as system_module
-from off_key_tactic_middleware.services import system_collection as collection_module
-from off_key_tactic_middleware.services.system import SystemService
-from off_key_tactic_middleware.services.system_collection import SystemCollectionService
+from off_key_tactic_middleware.services.catalogue import system as system_module
+from off_key_tactic_middleware.services.catalogue import (
+    system_collection as collection_module,
+)
+from off_key_tactic_middleware.services.catalogue.system import SystemService
+from off_key_tactic_middleware.services.catalogue.system_collection import (
+    SystemCollectionService,
+)
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 

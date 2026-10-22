@@ -1,6 +1,5 @@
 """Single-installation membership and single-use account links."""
 
-import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -14,7 +13,8 @@ from off_key_core.utils.enum import RoleEnum
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..domain import AuthenticationError, ConflictError, NotFoundError, ValidationError
+from ...domain import AuthenticationError, ConflictError, NotFoundError, ValidationError
+from .tokens import digest_token
 
 
 class MemberService:
@@ -114,7 +114,7 @@ class MemberService:
             self.session.add(user)
         token = secrets.token_urlsafe(32)
         user.role = invitation.role
-        user.verification_token = hashlib.sha256(token.encode()).hexdigest()
+        user.verification_token = digest_token(token)
         user.invitation_expires_at = datetime.now(UTC) + timedelta(hours=48)
         await self.session.commit()
         log_security_event(
@@ -176,9 +176,7 @@ class MemberService:
         await self._lock_membership()
         user = await self.session.scalar(
             select(User)
-            .where(
-                User.verification_token == hashlib.sha256(token.encode()).hexdigest()
-            )
+            .where(User.verification_token == digest_token(token))
             .with_for_update()
         )
         if (
@@ -207,7 +205,7 @@ class MemberService:
         if user is None or not user.is_active or not user.is_verified:
             return None
         token = secrets.token_urlsafe(32)
-        user.reset_token_hash = hashlib.sha256(token.encode()).hexdigest()
+        user.reset_token_hash = digest_token(token)
         user.reset_token_expires_at = datetime.now(UTC) + timedelta(minutes=30)
         await self.session.commit()
         return {"email": user.email, "token": token}
@@ -215,7 +213,7 @@ class MemberService:
     async def reset_password(self, token: str, password: str) -> None:
         user = await self.session.scalar(
             select(User)
-            .where(User.reset_token_hash == hashlib.sha256(token.encode()).hexdigest())
+            .where(User.reset_token_hash == digest_token(token))
             .with_for_update()
         )
         if (

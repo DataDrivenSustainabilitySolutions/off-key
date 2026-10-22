@@ -3,7 +3,7 @@
 from off_key_core.schemas.collection_rules import CollectionRule, CollectionRuleScope
 from off_key_core.utils.collection_rules import CollectionRuleResolver
 
-from ..domain import ValidationError
+from ...domain import ValidationError
 
 
 def restore_rule(definition, rules, edit):

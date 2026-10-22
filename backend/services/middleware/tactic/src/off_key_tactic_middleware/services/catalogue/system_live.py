@@ -12,7 +12,7 @@ from uuid import uuid4
 from off_key_core.schemas.system import SystemSnapshot
 from off_key_core.utils.payload_decode import PayloadDecoder
 
-from ..config.system_live import SystemLiveSettings
+from ...config.system_live import SystemLiveSettings
 from .broker_access import ResolvedBroker, resolve_broker
 from .system_live_mqtt import LiveMqttWorker
 

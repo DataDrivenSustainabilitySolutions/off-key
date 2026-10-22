@@ -4,7 +4,7 @@ from off_key_core.schemas.system import SystemDocument, SystemSnapshot
 from off_key_tactic_middleware.config.system_live import (
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.system_live import (
+from off_key_tactic_middleware.services.catalogue.system_live import (
     SystemLiveService,
 )
 

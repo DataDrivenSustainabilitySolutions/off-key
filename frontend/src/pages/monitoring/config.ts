@@ -286,7 +286,7 @@ export const buildAdaptiveMonitoringRequest = ({
   }
   const trainingWindow = parseNumber({
     value: draft.trainingWindow, label: "Warm-up samples", field: "trainingWindow",
-    errors, integer: true, min: 1,
+    errors, integer: true, min: 2,
   });
   const calibrationWindow = parseNumber({
     value: draft.calibrationWindow, label: "Calibration samples",

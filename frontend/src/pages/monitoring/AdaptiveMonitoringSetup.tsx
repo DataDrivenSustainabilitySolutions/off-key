@@ -182,7 +182,7 @@ export function AdaptiveMonitoringSetup({
 
             <ConfigSection title="Lifecycle and threshold" help="The threshold uses the higher empirical quantile of calibration scores. A quantile of 1 uses the largest score." icon={Gauge}>
               <div className="grid gap-4 sm:grid-cols-3">
-                {([['trainingWindow', 'Warm-up samples', 1], ['calibrationWindow', 'Calibration samples', 1], ['thresholdQuantile', 'Threshold quantile', 0.000001]] as const).map(([field, label, min]) => <div key={field}><label className={LABEL_CLASS} htmlFor={`adaptive-${field}`}>{label}</label><input id={`adaptive-${field}`} type="number" min={min} max={field === 'thresholdQuantile' ? 1 : undefined} step={field === 'thresholdQuantile' ? '0.001' : 1} className={cn(CONTROL_CLASS, "mt-2")} value={draft[field]} onChange={(event) => { setDraft((current) => ({ ...current, [field]: event.target.value })); clearError(field); }} /><FieldError field={field} errors={fieldErrors} /></div>)}
+                {([['trainingWindow', 'Warm-up samples', 2], ['calibrationWindow', 'Calibration samples', 1], ['thresholdQuantile', 'Threshold quantile', 0.000001]] as const).map(([field, label, min]) => <div key={field}><label className={LABEL_CLASS} htmlFor={`adaptive-${field}`}>{label}</label><input id={`adaptive-${field}`} type="number" min={min} max={field === 'thresholdQuantile' ? 1 : undefined} step={field === 'thresholdQuantile' ? '0.001' : 1} className={cn(CONTROL_CLASS, "mt-2")} value={draft[field]} onChange={(event) => { setDraft((current) => ({ ...current, [field]: event.target.value })); clearError(field); }} /><FieldError field={field} errors={fieldErrors} /></div>)}
               </div>
             </ConfigSection>
           </div>

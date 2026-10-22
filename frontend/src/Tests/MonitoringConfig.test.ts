@@ -83,6 +83,19 @@ describe("monitoring configuration", () => {
     expect(result.errors.projectionComponents).toMatch(/selected readings/);
   });
 
+  it("requires the two warm-up samples the backend requires", () => {
+    const build = (trainingWindow: string) => buildAdaptiveMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["telemetry/charger-1/L1"],
+      draft: { ...createDefaultAdaptiveDraft(), trainingWindow },
+      modelDefinition: undefined,
+      containerName: "unused",
+    });
+
+    expect(build("1").errors.trainingWindow).toBe("Warm-up samples must be at least 2.");
+    expect(build("2").errors.trainingWindow).toBeUndefined();
+  });
+
   it("preserves explicit null adaptive model parameters", () => {
     const draft = createDefaultAdaptiveDraft();
     draft.modelType = "aberrant_x_stream";

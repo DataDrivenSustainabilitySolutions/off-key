@@ -165,7 +165,7 @@ class HealthMonitor:
 
             # Write metrics if database writer is available
             if self._database_writer:
-                await self._database_writer.write_service_metrics(
+                await self._database_writer.write_heartbeat(
                     self.build_metrics_snapshot(status)
                 )
 

@@ -27,7 +27,6 @@ from .config.runtime import get_radar_checkpoint_settings
 from .database import (
     CheckpointOwnershipLost,
     DatabaseWriter,
-    ensure_radar_metrics_tables,
 )
 from .detector import StaticConformalDetectionService
 from .detector_runtime import DetectorRuntime
@@ -152,7 +151,6 @@ class RadarService:
 
             # Durable recovery must complete before MQTT receives live input.
             if self.config.db_write_enabled:
-                await ensure_radar_metrics_tables()
                 await self._setup_database_writer()
 
             # Initialize anomaly detection
@@ -198,7 +196,7 @@ class RadarService:
 
             self.is_running = True
             if self.database_writer:
-                await self.database_writer.write_service_metrics(
+                await self.database_writer.write_heartbeat(
                     self.health_monitor.build_metrics_snapshot()
                 )
 

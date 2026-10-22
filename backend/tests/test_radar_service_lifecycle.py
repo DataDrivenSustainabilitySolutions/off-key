@@ -283,7 +283,7 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
         lambda: SimpleNamespace(SERVICE_ID="svc-1"),
     )
 
-    await writer.write_service_metrics(
+    await writer.write_heartbeat(
         {
             "total_messages_processed": 2,
             "service_status": "healthy",
@@ -317,7 +317,7 @@ async def test_failed_execution_stops_health_publication_without_errors(caplog):
     """Quarantine publishes no heartbeat and leaves a valid recovery status."""
     radar_service = object.__new__(RadarService)
     writer = SimpleNamespace(
-        write_service_metrics=AsyncMock(),
+        write_heartbeat=AsyncMock(),
         get_health_status=lambda: {"status": "healthy"},
     )
     monitor = HealthMonitor()
@@ -335,6 +335,6 @@ async def test_failed_execution_stops_health_publication_without_errors(caplog):
     await monitor._perform_health_check()
 
     assert radar_service.shutdown_event.is_set()
-    writer.write_service_metrics.assert_not_awaited()
+    writer.write_heartbeat.assert_not_awaited()
     assert "radar.health_check_failed" not in caplog.text
     monitor.get_health_status()

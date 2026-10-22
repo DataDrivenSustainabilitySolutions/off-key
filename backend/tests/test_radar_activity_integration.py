@@ -16,7 +16,7 @@ from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage, ServiceMetrics
+from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
 from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -179,8 +179,6 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
         ),
     )
     try:
-        async with engine.begin() as connection:
-            await connection.run_sync(ServiceMetrics.__table__.create)
         await writer.start()
         async with blocker_engine.connect() as blocker:
             transaction = await blocker.begin()
@@ -201,7 +199,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
                 # Evidence has one blocked connection. Heartbeat persistence must
                 # still succeed so the operator can see the failure promptly.
                 async with asyncio.timeout(2):
-                    await writer.write_service_metrics(snapshot)
+                    await writer.write_heartbeat(snapshot)
                 async with sessions() as session:
                     status = await session.scalar(
                         text(

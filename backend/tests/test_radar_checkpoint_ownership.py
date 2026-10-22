@@ -12,7 +12,6 @@ from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import CheckpointOwnershipLost, DatabaseWriter
-from off_key_mqtt_radar.models import ServiceMetrics
 from off_key_mqtt_radar.runtime_checkpoint import (
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
@@ -60,7 +59,6 @@ async def store(disposable_database, monkeypatch):
                 mqtt_topic=["telemetry/entity/x"],
             )
         )
-        ServiceMetrics.__table__.create(connection)
     monkeypatch.setenv("SERVICE_ID", "overlap-monitor")
     clear_radar_runtime_settings_cache()
     engine = create_async_engine(
@@ -144,15 +142,13 @@ async def test_stale_writer_cannot_commit_outputs_or_status(store, owner, operat
     replacement_writer = DatabaseWriter(config(), store, managed_checkpoints=True)
     await replacement_writer.load_checkpoint("overlap-monitor")
     await replacement_writer.commit_checkpoint(snapshot(codec, detector))
-    await replacement_writer.write_service_metrics(
+    await replacement_writer.write_heartbeat(
         {"operational_status": {"stage": "operational"}}
     )
     result = observe(detector, 6)
     await old_writer.write_result(result)
     if operation == "heartbeat":
-        await old_writer.write_service_metrics(
-            {"operational_status": {"stage": "failed"}}
-        )
+        await old_writer.write_heartbeat({"operational_status": {"stage": "failed"}})
     else:
         with pytest.raises(CheckpointOwnershipLost):
             if operation == "background_batch":
@@ -170,10 +166,6 @@ async def test_stale_writer_cannot_commit_outputs_or_status(store, owner, operat
         assert (
             await session.scalar(text("SELECT operational_stage FROM services"))
             == "operational"
-        )
-        assert (
-            await session.scalar(text("SELECT count(*) FROM radar_service_metrics"))
-            == 1
         )
 
 
@@ -270,7 +262,7 @@ async def test_blocked_checkpoint_keeps_heartbeat_and_serializes_takeover(store,
                 )
                 await wait_for_database_lock(blocker, "INSERT INTO monitoring_evidence")
                 async with asyncio.timeout(2):
-                    await writer.write_service_metrics(
+                    await writer.write_heartbeat(
                         {"operational_status": {"stage": "degraded"}}
                     )
                 assert not writer._ownership_error
@@ -351,7 +343,7 @@ async def test_fenced_heartbeat_wakes_blocked_producer_without_writer_task(
         replacement = DatabaseWriter(config(), store, managed_checkpoints=True)
         await replacement.load_checkpoint("overlap-monitor")
         await replacement.commit_checkpoint(snapshot(codec, detector))
-        await writer.write_service_metrics({"operational_status": {"stage": "failed"}})
+        await writer.write_heartbeat({"operational_status": {"stage": "failed"}})
         async with asyncio.timeout(2):
             with pytest.raises(CheckpointOwnershipLost):
                 await waiting

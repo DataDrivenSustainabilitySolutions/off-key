@@ -456,10 +456,6 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         )
         inferred_at = datetime.fromisoformat(recovered["activity"]["last_inference_at"])
         assert inferred_at >= replaced_at
-        with engine.connect() as connection:
-            peak_rss_mb = connection.scalar(
-                text("SELECT max(memory_usage_mb) FROM radar_service_metrics")
-            )
         print(
             json.dumps(
                 {
@@ -479,7 +475,6 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
                     "evidence_after_recovery": evidence_count(),
                     "restored": recovered["recovery"]["restored"],
                     "coverage_gap": recovered["coverage"]["has_gaps"],
-                    "peak_sampled_rss_mb": peak_rss_mb,
                     "replayed_observations_rejected": recovered["coverage"][
                         "dropped_by_reason"
                     ].get("observation_duplicate", 0),

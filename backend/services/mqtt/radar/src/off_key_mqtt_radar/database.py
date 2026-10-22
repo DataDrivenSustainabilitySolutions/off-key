@@ -41,7 +41,7 @@ from sqlalchemy.schema import MetaData
 from .config.config import MQTTRadarConfig
 from .config.runtime import get_radar_checkpoint_settings, get_radar_database_settings
 from .database_status import HEARTBEAT_UPDATE
-from .models import AnomalyResult, ServiceMetrics
+from .models import AnomalyResult
 from .result_records import PreparedResult, ResultProjector
 
 logger = logging.getLogger(__name__)
@@ -475,8 +475,8 @@ class DatabaseWriter:
                     self._in_flight = 0
                     self._queue_changed.notify_all()
 
-    async def write_service_metrics(self, metrics: dict[str, Any]):
-        """Write service performance metrics"""
+    async def write_heartbeat(self, metrics: dict[str, Any]):
+        """Publish the operational status from a health snapshot."""
         if not self.config.db_write_enabled:
             return
 
@@ -489,21 +489,6 @@ class DatabaseWriter:
             # transaction still permits an independent health commit.
             async with self._checkpoint_token_lock, self.session_factory() as session:
                 await self._assert_checkpoint_ownership(session, lock=False)
-                service_metrics = ServiceMetrics(
-                    timestamp=datetime.now(),
-                    total_messages_processed=metrics.get("total_messages_processed", 0),
-                    total_anomalies_detected=metrics.get("total_anomalies_detected", 0),
-                    anomaly_rate=metrics.get("anomaly_rate", 0.0),
-                    avg_processing_time_ms=metrics.get("avg_processing_time_ms"),
-                    throughput_per_second=metrics.get("throughput_per_second"),
-                    memory_usage_mb=metrics.get("memory_usage_mb"),
-                    error_count=metrics.get("error_count", 0),
-                    error_rate=metrics.get("error_rate", 0.0),
-                    service_status=metrics.get("service_status", "unknown"),
-                    active_alerts=metrics.get("active_alerts", []),
-                )
-
-                session.add(service_metrics)
                 await self._update_service_operational_status(
                     session, metrics.get("operational_status")
                 )
@@ -975,94 +960,3 @@ class DatabaseWriter:
             "error_rate": error_rate,
             **activity,
         }
-
-
-async def ensure_radar_metrics_tables():
-    """Ensure RADAR service metrics tables exist.
-
-    Note: Anomalies are now written to the core 'anomalies' table
-    (TimescaleDB hypertable) managed by off_key_core. This function only
-    creates auxiliary tables for service metrics and model checkpoints.
-    """
-    try:
-        session_factory = get_radar_async_session_factory()
-        async with session_factory() as session:
-            # Check if radar_service_metrics table exists
-            result = await session.execute(
-                text("SELECT to_regclass('radar_service_metrics')")
-            )
-            metrics_table_exists = result.scalar() is not None
-
-            if not metrics_table_exists:
-                logger.info("event=radar.db_metrics_tables_creating")
-
-                # Create radar_service_metrics table
-                await session.execute(
-                    text(
-                        """
-                    CREATE TABLE IF NOT EXISTS radar_service_metrics (
-                        id SERIAL PRIMARY KEY,
-                        timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                        total_messages_processed INTEGER NOT NULL DEFAULT 0,
-                        total_anomalies_detected INTEGER NOT NULL DEFAULT 0,
-                        anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
-                        avg_processing_time_ms FLOAT,
-                        throughput_per_second FLOAT,
-                        memory_usage_mb FLOAT,
-                        error_count INTEGER NOT NULL DEFAULT 0,
-                        error_rate FLOAT NOT NULL DEFAULT 0.0,
-                        service_status VARCHAR(20) NOT NULL,
-                        active_alerts JSONB
-                    )
-                """
-                    )
-                )
-
-                # Create radar_model_checkpoints table
-                await session.execute(
-                    text(
-                        """
-                    CREATE TABLE IF NOT EXISTS radar_model_checkpoints (
-                        id SERIAL PRIMARY KEY,
-                        model_type VARCHAR(50) NOT NULL,
-                        model_version VARCHAR(50) NOT NULL,
-                        checkpoint_path VARCHAR(500) NOT NULL,
-                        processed_count INTEGER NOT NULL DEFAULT 0,
-                        anomaly_count INTEGER NOT NULL DEFAULT 0,
-                        anomaly_rate FLOAT NOT NULL DEFAULT 0.0,
-                        avg_processing_time FLOAT,
-                        memory_usage_mb FLOAT,
-                        created_timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                        config_snapshot JSONB
-                    )
-                """
-                    )
-                )
-
-                # Create index for better performance
-                await session.execute(
-                    text(
-                        "CREATE INDEX IF NOT EXISTS "
-                        "idx_radar_service_metrics_timestamp "
-                        "ON radar_service_metrics(timestamp)"
-                    )
-                )
-
-                logger.info("event=radar.db_metrics_tables_created")
-            else:
-                logger.debug("event=radar.db_metrics_tables_exist")
-
-            await session.commit()
-
-        logger.info("event=radar.db_table_verification_completed")
-
-    except Exception as e:
-        logger.error(
-            "event=radar.db_table_verification_failed error=%s",
-            str(e),
-            exc_info=True,
-        )
-        logger.warning(
-            "Continuing without table creation - "
-            "metrics tables should be handled by migrations or manual setup"
-        )

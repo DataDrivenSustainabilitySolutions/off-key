@@ -34,7 +34,6 @@ async def signed_graph_writer(pipeline_database, monkeypatch):
     monkeypatch.setattr(
         radar_database, "_radar_async_session_factory", pipeline_database
     )
-    await radar_database.ensure_radar_metrics_tables()
     async with pipeline_database() as session:
         _, revision = await monitoring_fixture.published_design(session)
         activation = await PipelineActivations(session).submit(
@@ -106,7 +105,7 @@ async def test_startup_uses_first_database_receipt_even_when_controller_is_delay
 ):
     writer, sessions, activation, _, _ = signed_graph_writer
     if timely:
-        await writer.write_service_metrics(healthy_metrics())
+        await writer.write_heartbeat(healthy_metrics())
     async with sessions.begin() as session:
         service = await session.get(MonitoringService, activation.service_id)
         row = await session.get(PipelineActivation, activation.id)
@@ -121,7 +120,7 @@ async def test_startup_uses_first_database_receipt_even_when_controller_is_delay
     metrics = healthy_metrics()
     # A sender cannot forge an earlier database receipt.
     metrics["operational_status"]["first_heartbeat_at"] = "2000-01-01T00:00:00Z"
-    await writer.write_service_metrics(metrics)
+    await writer.write_heartbeat(metrics)
     async with sessions() as session:
         service = await session.get(MonitoringService, activation.service_id)
         row = await session.get(PipelineActivation, activation.id)
@@ -166,7 +165,7 @@ async def test_heartbeat_started_before_fatal_commit_cannot_replace_failed_statu
         await original(session, status)
 
     monkeypatch.setattr(writer, "_update_service_operational_status", delayed_status)
-    heartbeat = asyncio.create_task(writer.write_service_metrics(healthy_metrics()))
+    heartbeat = asyncio.create_task(writer.write_heartbeat(healthy_metrics()))
     try:
         await asyncio.wait_for(captured.wait(), timeout=10)
         await writer.fail_pipeline_run(
@@ -196,7 +195,7 @@ async def test_fatal_waiting_for_inflight_status_publishes_last_without_deadlock
         return result
 
     monkeypatch.setattr(writer, "_can_publish_pipeline_status", held_status_lock)
-    heartbeat = asyncio.create_task(writer.write_service_metrics(healthy_metrics()))
+    heartbeat = asyncio.create_task(writer.write_heartbeat(healthy_metrics()))
     failure = None
     try:
         await asyncio.wait_for(locked.wait(), timeout=10)
@@ -246,9 +245,7 @@ async def test_graph_heartbeat_remains_independent_of_blocked_checkpoint_commit(
         try:
             commit = asyncio.create_task(writer.commit_checkpoint(replacement))
             await asyncio.wait_for(pending.wait(), timeout=10)
-            await asyncio.wait_for(
-                writer.write_service_metrics(healthy_metrics()), timeout=5
-            )
+            await asyncio.wait_for(writer.write_heartbeat(healthy_metrics()), timeout=5)
             assert not commit.done()
             assert writer.total_errors == 0
             async with sessions() as session:

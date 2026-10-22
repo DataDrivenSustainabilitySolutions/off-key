@@ -51,8 +51,7 @@ def test_invalid_start_returns_422_without_launching(
         path = "/v1/monitors/start"
     else:
         app.include_router(radar.router, prefix="/api/v1/orchestration")
-        app.dependency_overrides[radar.get_db_async] = lambda: None
-        monkeypatch.setattr(radar, "start_form_monitor", launch)
+        app.dependency_overrides[radar.get_form_monitor_starter] = lambda: launch
         path = "/api/v1/orchestration/radar/services/start/"
 
     with TestClient(app) as client:

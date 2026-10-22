@@ -17,7 +17,6 @@ from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.payload_decode import decode_value
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
-from off_key_tactic_middleware.api.v1 import system_live as live_api
 from off_key_tactic_middleware.config.system_live import (
     LiveCredential,
     LiveSocksProxy,
@@ -576,7 +575,7 @@ def _api(monkeypatch, *, role=RoleEnum.user, authenticated=True):
         )
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     monkeypatch.setattr(SystemService, "read", AsyncMock(return_value=snapshot()))
-    monkeypatch.setattr(live_api, "require_application_writes", AsyncMock())
+    monkeypatch.setattr(SystemService, "require_writes", AsyncMock())
     return app, service
 
 

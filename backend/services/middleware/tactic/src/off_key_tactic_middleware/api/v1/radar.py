@@ -1,19 +1,16 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from off_key_core.db.base import get_db_async
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import RadarServiceLabel
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import DomainError
-from ...provider import get_radar_orchestration_service
+from ...provider import get_form_monitor_starter, get_radar_orchestration_service
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from ...services.pipelines.forms import start_form_monitor
 from ..errors import http_error
 
 router = APIRouter()
@@ -57,11 +54,11 @@ async def list_radar_services(
     status_code=202,
 )
 async def start_radar_service(
-    config: RadarConfig, session: AsyncSession = Depends(get_db_async)
+    config: RadarConfig, start_form_monitor=Depends(get_form_monitor_starter)
 ):
     """Start a monitor configured with a setup form as an equivalent pipeline."""
     try:
-        activation = await start_form_monitor(session, config)
+        activation = await start_form_monitor(config)
     except DomainError as exc:
         raise http_error(exc) from exc
     return {

@@ -1,8 +1,15 @@
 """
 Dependency injection providers for TACTIC middleware service.
+
+Routers under api/v1 are transport-only: they receive services from these
+providers and never touch a database session, query or transaction directly
+(test_tactic_data_api_architecture enforces this). New services take the
+AsyncSession directly; the existing repositories stay but are not extended.
 """
 
-from fastapi import Depends
+from functools import partial
+
+from fastapi import Depends, HTTPException, Request
 from off_key_core.db.base import get_db_async
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +29,14 @@ from .services.data import (
     TelemetryQueryService,
     UserService,
 )
+from .services.members import MemberService
 from .services.orchestration.radar import RadarOrchestrationService
+from .services.pipelines.activation import PipelineActivations
+from .services.pipelines.forms import start_form_monitor
+from .services.pipelines.library import PipelineLibrary
+from .services.remembered_sessions import RememberedSessionService
+from .services.system import SystemService
+from .services.system_live import SystemLiveService
 
 
 def get_radar_orchestration_service(
@@ -80,3 +94,43 @@ def get_monitoring_evidence_service(
 ) -> MonitoringEvidenceService:
     """Dependency provider for monitoring-evidence queries."""
     return MonitoringEvidenceService(MonitoringEvidenceRepository(session))
+
+
+def get_system_service(session: AsyncSession = Depends(get_db_async)) -> SystemService:
+    """Saved catalogue, collection status and policy changes."""
+    return SystemService(session)
+
+
+def get_live_service(request: Request) -> SystemLiveService:
+    """The process-wide live observation manager started with the app."""
+    service = getattr(request.app.state, "system_live", None)
+    if service is None:
+        raise HTTPException(503, "Live observation is unavailable.")
+    return service
+
+
+def get_pipeline_library(
+    session: AsyncSession = Depends(get_db_async),
+) -> PipelineLibrary:
+    return PipelineLibrary(session)
+
+
+def get_pipeline_activations(
+    session: AsyncSession = Depends(get_db_async),
+) -> PipelineActivations:
+    return PipelineActivations(session)
+
+
+def get_form_monitor_starter(session: AsyncSession = Depends(get_db_async)):
+    """Start a setup-form monitor as its equivalent pipeline activation."""
+    return partial(start_form_monitor, session)
+
+
+def get_member_service(session: AsyncSession = Depends(get_db_async)) -> MemberService:
+    return MemberService(session)
+
+
+def get_remembered_session_service(
+    session: AsyncSession = Depends(get_db_async),
+) -> RememberedSessionService:
+    return RememberedSessionService(session)

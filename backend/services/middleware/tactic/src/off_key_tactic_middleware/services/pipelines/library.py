@@ -215,6 +215,21 @@ class PipelineLibrary:
             raise NotFoundError("Pipeline revision not found")
         return revision_view(revision)
 
+    async def pipeline_state(self, service_id: str):
+        service = await self.session.get(MonitoringService, service_id)
+        if service is None:
+            raise NotFoundError("Monitoring service not found")
+        return (service.operational_status or {}).get("pipeline_state")
+
+    async def selected_state(self, service_id: str | None):
+        """The workspace's selected service state; a missing selection is None."""
+        if not service_id:
+            return None
+        service = await self.session.get(MonitoringService, service_id)
+        if service is None:
+            return None
+        return (service.operational_status or {}).get("pipeline_state")
+
     async def _service_source(self, service_id):
         run = await self.session.scalar(
             select(PipelineRun).where(PipelineRun.service_id == service_id)

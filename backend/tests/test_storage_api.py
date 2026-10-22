@@ -11,6 +11,7 @@ from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.storage import RetentionPolicyStatus, StorageStatus
 from off_key_tactic_middleware.api.v1 import system as collection
+from off_key_tactic_middleware.services import system as system_service
 
 from tests.support.env import set_auth_env
 
@@ -38,7 +39,7 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
         checked_at=datetime.now(UTC),
     )
     read = AsyncMock(return_value=status)
-    monkeypatch.setattr(collection, "read_storage_status", read)
+    monkeypatch.setattr(system_service, "read_storage_status", read)
     app = FastAPI()
     app.include_router(collection.router)
     app.dependency_overrides[get_db_async] = lambda: session

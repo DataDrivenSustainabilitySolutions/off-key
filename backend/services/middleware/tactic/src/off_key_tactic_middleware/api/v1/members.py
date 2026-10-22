@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, Response
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.members import (
     AcceptInvitation,
@@ -10,8 +9,8 @@ from off_key_core.schemas.members import (
 )
 from off_key_core.schemas.sessions import RememberedSessionToken
 from off_key_core.schemas.user import ForgotPasswordRequest
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...provider import get_member_service, get_remembered_session_service
 from ...services.members import MemberService
 from ...services.remembered_sessions import RememberedSessionService
 from ..collection_auth import current_member, require_admin
@@ -20,14 +19,9 @@ from ..errors import DomainErrorRoute
 router = APIRouter(prefix="/members", tags=["members"], route_class=DomainErrorRoute)
 
 
-def member_service(session: AsyncSession = Depends(get_db_async)) -> MemberService:
-    return MemberService(session)
-
-
-def remembered_session_service(
-    session: AsyncSession = Depends(get_db_async),
-) -> RememberedSessionService:
-    return RememberedSessionService(session)
+# Dependency overrides in tests address these names; they are the providers.
+member_service = get_member_service
+remembered_session_service = get_remembered_session_service
 
 
 @router.post("/sessions")

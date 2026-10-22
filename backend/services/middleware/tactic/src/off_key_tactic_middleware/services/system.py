@@ -3,10 +3,13 @@
 from datetime import UTC, datetime
 
 from off_key_core.db.collection import lock_collection_configuration
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import CollectionState
+from off_key_core.db.retention import read_storage_status
 from off_key_core.db.system import SystemConfiguration, SystemRevision
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
+from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import (
     SystemChange,
     SystemDocument,
@@ -69,6 +72,68 @@ class SystemService:
             storage_origin="empty",
             runtime=runtime,
         )
+
+    async def health(self) -> dict:
+        snapshot = await read_collection_runtime(self.session)
+        return {
+            "revision": snapshot.revision,
+            "collection": snapshot.collection,
+            "ingress": snapshot.ingress,
+        }
+
+    async def storage(self) -> StorageStatus:
+        return await read_storage_status(self.session)
+
+    async def require_writes(self) -> None:
+        await require_application_writes(self.session)
+
+    async def revisions(self, limit: int = 50) -> list[dict]:
+        rows = await self.session.scalars(
+            select(SystemRevision).order_by(SystemRevision.revision.desc()).limit(limit)
+        )
+        return [
+            {
+                "revision": row.revision,
+                "updated_at": row.updated_at.isoformat(),
+                "updated_by": row.updated_by,
+            }
+            for row in rows
+        ]
+
+    async def collection_status(self, stream_ids) -> dict:
+        """Runtime status narrowed to the requested readings and their brokers."""
+        snapshot = await self.read()
+        wanted = set(stream_ids)
+        runtime = snapshot.runtime
+        runtime.bindings = {
+            key: value for key, value in runtime.bindings.items() if key in wanted
+        }
+        connections = {value["connection_id"] for value in runtime.bindings.values()}
+        if "sources" in runtime.ingress:
+            runtime.ingress["sources"] = {
+                key: value
+                for key, value in runtime.ingress["sources"].items()
+                if key in connections
+            }
+        if "readings" in runtime.ingress:
+            runtime.ingress["readings"] = {
+                key: value
+                for key, value in runtime.ingress["readings"].items()
+                if key in runtime.bindings
+            }
+        runtime.latest_readings = await self.latest_readings(runtime.bindings)
+        return {
+            "revision": snapshot.revision,
+            "runtime": runtime.model_dump(mode="json"),
+        }
+
+    async def preview_collection(
+        self, change: SystemCollectionChange | SystemCollectionRuleChange
+    ):
+        _, preview = await SystemCollectionService(self.session).prepare(
+            await self.read(), change
+        )
+        return preview
 
     async def save(self, change: SystemChange, *, actor: str) -> SystemSnapshot:
         # Existing maintenance gating and the same advisory lock serialize all

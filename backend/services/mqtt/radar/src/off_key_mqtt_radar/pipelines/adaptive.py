@@ -99,9 +99,7 @@ class AdaptivePipelineDetectionService(
             return frozenset()
         return frozenset(
             slot
-            for feature in self.plan.compiled.features[
-                self.plan.compiled.feature_output_id
-            ]
+            for feature in self.plan.compiled.features[self.plan.feature_output_id]
             if feature.raw
             for slot in feature.slots
         )
@@ -119,12 +117,12 @@ class AdaptivePipelineDetectionService(
 
     def _score(self, data):
         self._diagnose(self.diagnostics.select_pass, "score")
-        self.diagnostics.record(self.plan.compiled.source_id, data, data)
+        self.diagnostics.record(self.plan.source_id, data, data)
         return super()._score(data)
 
     def _learn(self, data):
         self._diagnose(self.diagnostics.select_pass, "learn")
-        self.diagnostics.record(self.plan.compiled.source_id, data, data)
+        self.diagnostics.record(self.plan.source_id, data, data)
         super()._learn(data)
         self._diagnose(
             self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
@@ -140,12 +138,12 @@ class AdaptivePipelineDetectionService(
             return
         self._diagnose(self.diagnostics.select_pass, "score")
         self.diagnostics.record(
-            self.plan.compiled.policy_id,
+            self.plan.policy_id,
             {"score": result.anomaly_score},
             float(result.is_anomaly),
         )
         self.diagnostics.record(
-            self.plan.compiled.output_id,
+            self.plan.output_id,
             {"alarm": float(result.is_anomaly)},
             result.anomaly_score,
         )

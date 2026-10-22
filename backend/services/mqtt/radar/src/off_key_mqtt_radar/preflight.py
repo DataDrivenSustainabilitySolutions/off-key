@@ -18,7 +18,7 @@ from pathlib import Path
 from aberrant import __version__ as aberrant_version
 from off_key_core.config.resource_budget import DEFAULT_RADAR_MEMORY_MB
 from off_key_core.models.adaptive import ABERRANT_VERSION
-from off_key_core.models.pipelines import execution_fingerprint, pipeline_catalog_id
+from off_key_core.models.pipelines import pipeline_catalog_id
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -43,13 +43,8 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         raise ValueError(
             "Target worker's Aberrant version differs from its generated catalog"
         )
+    # ExecutionPlan rejects a fingerprint that differs from the design.
     plan = ExecutionPlan(execution)
-    if execution.fingerprint != execution_fingerprint(
-        execution.definition, execution.bindings
-    ):
-        raise ValueError(
-            "Bound executable fingerprint does not match its definition and bindings"
-        )
     settings = (
         PreflightSettings()
         if memory_limit_mb is None

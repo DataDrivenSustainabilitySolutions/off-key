@@ -31,7 +31,7 @@ class PipelineExecutionMixin:
 
     def _failure_node(self, error: BaseException) -> str:
         """Name the failing node; model-level errors belong to the detector."""
-        detector_id = self.plan.compiled.detector_id
+        detector_id = self.plan.detector_id
         node = getattr(error, "node_id", None) or detector_id
         return detector_id if node == "$model" else node
 

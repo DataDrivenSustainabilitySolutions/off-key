@@ -30,11 +30,11 @@ class StaticPipelineDetectionService(
         )
 
     def _vectorize(self, data):
-        return [data[name] for name in self.plan.names(self.plan.compiled.source_id)]
+        return [data[name] for name in self.plan.names(self.plan.source_id)]
 
     def _fit_static_baseline(self, training_samples, calibration_samples, feature_keys):
         graph = BatchFeatureGraph(self.plan)
-        names = self.plan.names(self.plan.compiled.source_id)
+        names = self.plan.names(self.plan.source_id)
         training = graph.fit_transform(
             np.asarray([[row[key] for key in names] for row in training_samples])
         )
@@ -62,15 +62,13 @@ class StaticPipelineDetectionService(
             self.diagnostics.select_pass,
             "score" if self.state == StaticConformalState.READY else "learn",
         )
-        self.diagnostics.record(self.plan.compiled.source_id, bound, bound)
+        self.diagnostics.record(self.plan.source_id, bound, bound)
         try:
             result = super().process_data_point(bound, topic, charger_id)
             result.raw_data = dict(data)
             if result.should_persist:
                 result.processed_features = self.conformal_detector.last_features
-                self.diagnostics.record(
-                    self.plan.compiled.output_id, None, result.anomaly_score
-                )
+                self.diagnostics.record(self.plan.output_id, None, result.anomaly_score)
             return result
         except Exception as error:
             self._execution_failed = True
@@ -93,10 +91,10 @@ class StaticPipelineDetectionService(
             context = super()._update_alarm_policy(p_value)
         except Exception as error:
             raise FatalExecutionError(
-                str(error), node_id=self.plan.compiled.policy_id
+                str(error), node_id=self.plan.policy_id
             ) from error
         self.diagnostics.record(
-            self.plan.compiled.policy_id,
+            self.plan.policy_id,
             {"p_value": p_value},
             float(context["alarm_fired"]),
             elapsed_ns=perf_counter_ns() - started,
@@ -128,9 +126,7 @@ class StaticPipelineDetectionService(
     def _publish_fit_readiness(self):
         for node in self.plan.feature_nodes:
             self.diagnostics.nodes[node.id].update(state="ready", ready=True)
-        self.diagnostics.nodes[self.plan.compiled.detector_id].update(
-            state="ready", ready=True
-        )
+        self.diagnostics.nodes[self.plan.detector_id].update(state="ready", ready=True)
 
     def get_pipeline_state(self):
         state = self.diagnostics.snapshot()

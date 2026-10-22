@@ -48,7 +48,7 @@ class NamedProjection:
 def detector_config(plan: ExecutionPlan) -> DetectorConfig:
     from off_key_core.models.adaptive import ADAPTIVE_MODELS_BY_TYPE
 
-    node = plan.nodes[plan.compiled.detector_id]
+    node = plan.nodes[plan.detector_id]
     model_type = node.component.removeprefix("detector:")
     definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
     params = dict(node.params)
@@ -75,9 +75,7 @@ def adaptive_graph(plan: ExecutionPlan, observer=None):
     nodes = []
     for node in plan.feature_nodes:
         parents = plan.parents(node.id)
-        inputs = [
-            INPUT if parent == plan.compiled.source_id else parent for parent in parents
-        ]
+        inputs = [INPUT if parent == plan.source_id else parent for parent in parents]
         params = dict(node.params)
         if node.kind == "merge":
             nodes.append(MergeNode(node.id, inputs=tuple(inputs)))
@@ -115,11 +113,11 @@ def adaptive_graph(plan: ExecutionPlan, observer=None):
     if minimum > plan.execution.definition.settings.training_window_size:
         raise ValueError(f"Detector warm-up must contain at least {minimum} updates")
     terminal = create_model(config.model.id, config.model.params)
-    output = plan.compiled.feature_output_id
+    output = plan.feature_output_id
     return GraphPipeline(
         nodes,
         terminal,
-        INPUT if output == plan.compiled.source_id else output,
+        INPUT if output == plan.source_id else output,
         model_minimum_updates=minimum,
         observer=observer,
     ), config

@@ -67,7 +67,7 @@ def _adaptive_pca_allocations(
 
 def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEstimate:
     definition = plan.compiled.definition
-    source = plan.compiled.source_id
+    source = plan.source_id
     samples = (
         definition.settings.training_window_size
         + definition.settings.calibration_window_size
@@ -83,7 +83,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     remaining = Counter(
         parent for node in plan.feature_nodes for parent in plan.parents(node.id)
     )
-    remaining[plan.compiled.feature_output_id] += 1
+    remaining[plan.feature_output_id] += 1
     alive = {source: len(plan.names(source))}
     peak = sum(alive.values())
     initialization = 0

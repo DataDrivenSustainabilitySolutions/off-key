@@ -255,3 +255,14 @@ def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):
     assert result.should_persist
     assert service.state == AdaptiveStreamState.OPERATIONAL
     assert service.diagnostics.errors >= 14
+
+
+def test_unpickled_plan_derives_ids_without_post_init():
+    plan = ExecutionPlan(adaptive_pipeline_config().pipeline)
+    # Checkpoints pickled before the IDs were cached carry only stored fields.
+    restored = pickle.loads(pickle.dumps(plan))
+    assert "detector_id" not in restored.__dict__
+    assert restored.detector_id == plan.compiled.detector_id
+    assert restored.output_features == plan.output_features
+    point = _point(1)
+    assert restored.bind(point) == plan.bind(point)

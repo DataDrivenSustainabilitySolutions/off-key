@@ -59,7 +59,7 @@ class BatchFeatureGraph:
         return self._execute(matrix, fit=False, observer=observer)
 
     def _execute(self, matrix: np.ndarray, *, fit: bool, observer=None) -> np.ndarray:
-        source = self.plan.compiled.source_id
+        source = self.plan.source_id
         matrix = np.asarray(matrix, dtype=float)
         if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.names(source)):
             raise ValueError("Batch graph input width differs from its compiled schema")
@@ -71,7 +71,7 @@ class BatchFeatureGraph:
             for node in self.plan.feature_nodes
             for parent in self.plan.parents(node.id)
         )
-        output_id = self.plan.compiled.feature_output_id
+        output_id = self.plan.feature_output_id
         remaining[output_id] += 1
         for node in self.plan.feature_nodes:
             started = perf_counter_ns()
@@ -151,7 +151,7 @@ class FittedStaticPipeline:
         result = self.conformal.compute_p_values(transformed)
         if self.observer is not None and len(transformed) == 1:
             self.observer.record(
-                self.graph.plan.compiled.detector_id,
+                self.graph.plan.detector_id,
                 self.last_features,
                 float(np.asarray(result).ravel()[0]),
                 elapsed_ns=perf_counter_ns() - started,

@@ -1,6 +1,7 @@
 """Runtime view of the shared compiler's canonical execution plan."""
 
 from dataclasses import dataclass, field
+from functools import cached_property
 
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
 from off_key_core.schemas.pipelines import PipelineExecutionConfig, PipelineValidation
@@ -46,20 +47,49 @@ class ExecutionPlan:
     def names(self, identifier: str) -> list[str]:
         return self._names[identifier]
 
+    # Derived IDs are cached lazily: plans unpickled from older checkpoints
+    # never ran __post_init__ beyond the fields they stored.
+    @cached_property
+    def source_id(self) -> str:
+        return self.compiled.source_id
+
+    @cached_property
+    def detector_id(self) -> str:
+        return self.compiled.detector_id
+
+    @cached_property
+    def policy_id(self) -> str:
+        return self.compiled.policy_id
+
+    @cached_property
+    def output_id(self) -> str:
+        return self.compiled.output_id
+
+    @cached_property
+    def feature_output_id(self) -> str:
+        return self.compiled.feature_output_id
+
+    @cached_property
+    def _expected_inputs(self) -> frozenset[str]:
+        return frozenset(item.input_key for item in self.execution.bindings)
+
+    @cached_property
+    def _slot_inputs(self) -> list[tuple[str, str]]:
+        by_slot = {item.slot_id: item.input_key for item in self.execution.bindings}
+        return [
+            (slot.id, by_slot[slot.id]) for slot in self.compiled.definition.input_slots
+        ]
+
     def bind(self, data: dict[str, float]) -> dict[str, float]:
-        expected = {item.input_key for item in self.execution.bindings}
+        expected = self._expected_inputs
         if set(data) != expected:
             raise ObservationRejected(
                 "Pipeline inputs differ from the bound reading schema; "
                 f"missing={sorted(expected - data.keys())}, "
                 f"extra={sorted(data.keys() - expected)}"
             )
-        by_slot = {item.slot_id: item for item in self.execution.bindings}
-        return {
-            slot.id: float(data[by_slot[slot.id].input_key])
-            for slot in self.compiled.definition.input_slots
-        }
+        return {slot: float(data[key]) for slot, key in self._slot_inputs}
 
     @property
     def output_features(self) -> list[str]:
-        return self.names(self.compiled.feature_output_id)
+        return self.names(self.feature_output_id)

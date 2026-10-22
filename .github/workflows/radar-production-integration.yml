@@ -35,14 +35,9 @@ jobs:
 
       - name: Select the production database and current RADAR image
         run: |
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          release = json.loads(Path("infra/ansible/inventories/prod/group_vars/all/release.yml").read_text())["release"]
-          with open(os.environ["GITHUB_ENV"], "a") as output:
-              output.write(f"TEST_RADAR_DATABASE_IMAGE={release['images']['postgres']}\n")
-              output.write(f"TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:{os.environ['GITHUB_SHA']}\n")
-          PY
+          image="$(python3 .github/scripts/release_image.py postgres)"
+          echo "TEST_RADAR_DATABASE_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Build the current production RADAR Dockerfile
         run: |

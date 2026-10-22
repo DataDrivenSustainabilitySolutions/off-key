@@ -73,7 +73,7 @@ The workflow contains the server bootstrap and readiness commands. Then run:
 
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen --python 3.14
-export TEST_RADAR_DATABASE_IMAGE="$(python3 -c 'import json; print(json.load(open("infra/ansible/inventories/prod/group_vars/all/release.yml"))["release"]["images"]["postgres"])')"
+export TEST_RADAR_DATABASE_IMAGE="$(python3 .github/scripts/release_image.py postgres)"
 export TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:local
 export TEST_RADAR_DOCKER=1
 docker pull eclipse-mosquitto:2.0

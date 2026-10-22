@@ -38,13 +38,8 @@ jobs:
 
       - name: Use the production TimescaleDB image
         run: |
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          release = json.loads(Path("infra/ansible/inventories/prod/group_vars/all/release.yml").read_text())["release"]
-          with open(os.environ["GITHUB_ENV"], "a") as output:
-              output.write(f"POSTGRES_TEST_IMAGE={release['images']['postgres']}\n")
-          PY
+          image="$(python3 .github/scripts/release_image.py postgres)"
+          echo "POSTGRES_TEST_IMAGE=$image" >> "$GITHUB_ENV"
 
       - name: Start isolated brokers and database
         run: docker compose up -d --wait --wait-timeout 120

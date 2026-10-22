@@ -16,6 +16,7 @@ from off_key_core.schemas.radar import RadarStartConfig
 from sqlalchemy import select
 
 from .preflight import PipelinePreflight
+from .runs import ensure_predecessor_run
 
 
 def normalize_saved_launch(value: dict) -> RadarStartConfig:
@@ -48,25 +49,16 @@ def normalize_saved_launch(value: dict) -> RadarStartConfig:
 
 
 async def _previous_run(session, monitor, config):
-    run = await session.scalar(
-        select(PipelineRun).where(PipelineRun.service_id == monitor["previous_id"])
+    original = monitor.get("previous_config") or monitor["config"]
+    execution = original.get("pipeline")
+    return await ensure_predecessor_run(
+        session,
+        service_id=monitor["previous_id"],
+        launch_config=original,
+        execution=execution,
+        revision_id=execution["revision_id"] if execution else None,
+        created_at=datetime.now(UTC),
     )
-    if run is None:
-        original = monitor.get("previous_config") or monitor["config"]
-        execution = original.get("pipeline")
-        run = PipelineRun(
-            id=str(uuid4()),
-            service_id=monitor["previous_id"],
-            revision_id=execution["revision_id"] if execution else None,
-            execution=execution,
-            launch_config=original,
-            layout={},
-            status="running",
-            created_at=datetime.now(UTC),
-        )
-        session.add(run)
-        await session.flush()
-    return run
 
 
 async def prepare_release_monitors(session, operation, workloads):

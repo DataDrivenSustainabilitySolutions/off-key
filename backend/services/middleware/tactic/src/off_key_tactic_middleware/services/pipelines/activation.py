@@ -63,6 +63,7 @@ from ..radar_status import (
 )
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
+from .runs import ensure_predecessor_run
 
 
 def activation_view(row):
@@ -432,27 +433,14 @@ class PipelineActivations:
         return claims
 
     async def _predecessor_run(self, predecessor, now):
-        predecessor_run = (
-            await self.session.scalar(
-                select(PipelineRun).where(PipelineRun.service_id == predecessor.id)
-            )
-            if predecessor
-            else None
+        if predecessor is None:
+            return None
+        return await ensure_predecessor_run(
+            self.session,
+            service_id=predecessor.id,
+            launch_config=predecessor.launch_config,
+            created_at=now,
         )
-        if predecessor is not None and predecessor_run is None:
-            predecessor_run = PipelineRun(
-                id=str(uuid4()),
-                service_id=predecessor.id,
-                revision_id=None,
-                execution=None,
-                launch_config=predecessor.launch_config,
-                layout={},
-                status="running",
-                created_at=now,
-            )
-            self.session.add(predecessor_run)
-            await self.session.flush()
-        return predecessor_run
 
     async def cancel(self, identifier):
         await lock_collection_configuration(self.session)

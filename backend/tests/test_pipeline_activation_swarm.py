@@ -311,7 +311,7 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
         row = await session.get(PipelineActivation, second.id)
         with pytest.raises(ValueError, match="pending pipeline activation"):
             await RadarOrchestrationService(
-                session, None, workloads=workloads
+                session, workloads=workloads
             )._assert_topics_available(
                 mqtt_topics=row.launch_config["mqtt_topics"],
                 container_name="competing-legacy",
@@ -372,7 +372,7 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
     await drive_activation(sessions, workloads, fourth.id, until="validated")
     async with sessions() as session:
         assert await RadarOrchestrationService(
-            session, None, workloads=workloads
+            session, workloads=workloads
         ).delete_radar_service(second.service_id)
     await drive_activation(sessions, workloads, fourth.id, until="cancelled")
     with pytest.raises(docker.errors.NotFound):

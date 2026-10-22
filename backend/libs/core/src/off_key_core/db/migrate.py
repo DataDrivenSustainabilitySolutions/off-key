@@ -9,10 +9,10 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from .base import get_engine
+from .locks import MIGRATION_LOCK
 from .models import Base
 from .schema import bootstrap_schema, validate_existing_schema
 
-MIGRATION_LOCK = 73128004
 LEDGER = "off_key_schema_migrations"
 SYSTEM_TABLES = {
     "system_configuration",

@@ -3,8 +3,13 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-COLLECTION_CONFIGURATION_LOCK = 73128001
-COLLECTION_PROXY_LOCK = 73128003
+from .locks import COLLECTION_CONFIGURATION_LOCK, COLLECTION_PROXY_LOCK
+
+__all__ = [
+    "COLLECTION_CONFIGURATION_LOCK",
+    "COLLECTION_PROXY_LOCK",
+    "lock_collection_configuration",
+]
 
 
 async def lock_collection_configuration(session: AsyncSession) -> None:

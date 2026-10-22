@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from off_key_core.config.logs import log_security_event
+from off_key_core.db.locks import MEMBERSHIP_LOCK
 from off_key_core.db.models import Favorite, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
 from off_key_core.schemas.user import normalize_email
@@ -21,7 +22,9 @@ class MemberService:
         self.session = session
 
     async def _lock_membership(self, actor: User | None = None) -> None:
-        await self.session.execute(text("SELECT pg_advisory_xact_lock(73128004)"))
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": MEMBERSHIP_LOCK}
+        )
         if actor is not None:
             await self.session.refresh(actor)
             if (

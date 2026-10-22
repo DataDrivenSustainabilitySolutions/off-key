@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
+from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
@@ -25,8 +26,6 @@ from ..config.config import get_tactic_settings
 from ..config.system_live import get_system_live_settings
 from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker
-
-SYSTEM_INGRESS_LOCK = 73128005
 
 
 class SystemIngress:

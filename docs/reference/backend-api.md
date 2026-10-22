@@ -39,6 +39,8 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 | `GET` | `/auth/verify-email` | Retired: always returns 410 | Request a new invitation |
 | `POST` | `/auth/forgot-password` | Send reset mail when the account exists | Body: `email` |
 | `POST` | `/auth/reset-password` | Reset a password | Body: `token`, `new_password` |
+| `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |
+| `POST` | `/auth/logout` | Revoke the remembered session and clear its cookie | Session cookie |
 
 ```http
 POST /v1/auth/login
@@ -94,12 +96,16 @@ Authorization: Bearer <token>
 | --- | --- | --- | --- |
 | `GET` | `/system` | Saved generic document, revision, bindings and runtime | Member |
 | `PUT` | `/system` | Save structural changes at `expected_revision` | Administrator |
-| `PATCH` | `/system/labels` | Persist object labels without changing IDs | Administrator |
+| `GET` | `/system/revisions` | Saved catalogue revisions | Member |
 | `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
 | `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | Administrator |
 | `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
 | `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
+| `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
+| `POST` | `/system/live/leases` | Start a bounded preview lease | Administrator |
+| `PUT` | `/system/live/leases/{lease_id}` | Renew a preview lease | Administrator |
+| `DELETE` | `/system/live/leases/{lease_id}` | Stop a preview lease; 204 | Administrator |
 
 Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
@@ -121,6 +127,7 @@ MQTT paths and JSON Pointer payload bindings.
 | `POST` | `/monitors/start` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
 | `DELETE` | `/monitors/stop` | Stop/remove a workload by container | Exactly one of `container_name`, `container_id` |
 | `DELETE` | `/monitors/{service_id}` | Delete a service record and backing workload | Path: `service_id` |
+| `PATCH` | `/monitors/{service_id}/label` | Rename a service; administrator only | Body: `display_name` |
 | `GET` | `/monitors/models` | Discover available models | Optional `strategy` |
 | `GET` | `/monitors/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
 | `GET` | `/monitors/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
@@ -158,9 +165,9 @@ Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
 | Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
 | Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; administrators create, rename, archive and save with `expected_version` |
 | Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | Administrators infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
-| Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}` | Publish and inspect immutable executable revisions |
-| Activations | `/pipeline-activations`, `/pipeline-activations/{id}` | Idempotent start/replacement, progress and cancellation |
-| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout` | Immutable execution and retained history; separately versioned layout |
+| Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}`, `/pipelines/{id}/revisions/{revision_id}/metadata` | Publish and inspect immutable executable revisions |
+| Activations | `/pipelines/apply`, `/pipeline-activations`, `/pipeline-activations/{id}` | Apply a definition directly (HTTP 202), idempotent start/replacement, progress and cancellation |
+| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution and retained history; separately versioned layout |
 | Workspace | `/workspace?selected_service_id=...` | One member-scoped request for summaries and the selected bounded diagnostic snapshot |
 
 Use publication and activation for graph starts. The legacy `/start` endpoint
@@ -186,8 +193,8 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
 | `GET` | `/favorites` | List a user's favourites | Current authenticated member |
-| `POST` | `/favorites` | Add a favourite charger | Body: `user_id`, `charger_id` |
-| `DELETE` | `/favorites` | Remove a favourite charger | Body: `user_id`, `charger_id` |
+| `POST` | `/favorites` | Add a favourite charger for the current member | Body: `charger_id` |
+| `DELETE` | `/favorites` | Remove a favourite charger of the current member | Body: `charger_id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
 | `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
 | `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |

@@ -148,6 +148,11 @@ unknown errors remain eligible for retry.
 | `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to hide the workbench; the setup forms still start monitors as pipelines, and existing graph execution, inspection, stopping and release recovery remain available. |
 | `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
 | `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
+| `TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS`, `TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS` | `2`, `8` | Activation concurrency bounds; see [Monitoring pipelines](../development/monitoring-pipelines.md) |
+| `TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`, `TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES` | `384`, `256`, `65536` | Managed worker budgets; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT`, `TACTIC_DOCKER_DEFAULT_CPU_LIMIT` | `512m`, `0.5` | Swarm service limits for managed workers; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
 | `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |
 | `TACTIC_SERVICE_PORT` | `8000` | Internal service-discovery port |
 
@@ -204,7 +209,11 @@ tested main commit. Images are recorded in the verified server release; local
 | --- | --- | --- |
 | `SYSTEM_COLLECTION_ENABLED` | `false` in service defaults; enabled in deployments | Run persistent generic collection independently of previews |
 | `SYSTEM_LIVE_ENABLED` | `false` in service defaults | Permit temporary in-memory previews |
-| `SYSTEM_LIVE_ALLOWED_HOSTS`, `SYSTEM_LIVE_ALLOWED_HOST_SUFFIXES` | Operator configuration | Allowed generic upstream brokers |
+| `SYSTEM_LIVE_ALLOWED_HOSTS` | Operator configuration | Allowed generic upstream brokers |
+| `SYSTEM_LIVE_DATA_SOURCE` | `broker` | `simulated` replaces upstream brokers with generated preview data |
+| `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` | `15` | Upstream broker connection deadline for previews |
+| `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
+| `SIMULATOR_WORKSHOP_ENABLED` | `false` | Local simulator also publishes the workshop fixture topics |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
 | `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |
 | `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Allow reuse of operator-provisioned private broker access |
@@ -228,13 +237,7 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
 | Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
-| Swarm ingress has no traffic | `INGRESS_*` | Verify persisted state, tailnet reachability, and upstream host |
-
-## Related pages
-
-- [Getting started](../getting-started.md)
-- [Developer setup](../development/setup.md)
-- [Deployment modes](../operations/deployment-modes.md)
+| Vendor broker has no traffic | `AMBIBOX_INGRESS_ENABLED`, `AMBIBOX_SOCKS_SERVER` | Verify persisted vendor identity, tailnet reachability, and upstream host |
 
 ## RADAR configuration files
 
@@ -245,3 +248,9 @@ limit are described in [RADAR deployment capacity](../operations/radar-capacity.
 settings and components are constructed. File values override environment values.
 Restart the workload after changing configuration; running services do not watch
 or reload the file.
+
+## Related pages
+
+- [Getting started](../getting-started.md)
+- [Developer setup](../development/setup.md)
+- [Deployment modes](../operations/deployment-modes.md)

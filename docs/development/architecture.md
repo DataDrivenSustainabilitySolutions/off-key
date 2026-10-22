@@ -30,7 +30,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 | Service | Owns | Reads from | Writes to | Critical dependencies |
 | --- | --- | --- | --- | --- |
 | Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway and a valid `VITE_API_URL` |
-| API Gateway | External route contract and request composition | TACTIC data/orchestration endpoints | HTTP responses | TACTIC readiness |
+| API Gateway | External route contract and request composition | TACTIC data, membership, catalogue and monitoring endpoints | HTTP responses | TACTIC readiness |
 | TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model catalogue | Database and container lifecycle | Docker API, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
@@ -113,7 +113,7 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 | Caller | Callee | Critical paths | Purpose |
 | --- | --- | --- | --- |
 | Frontend | API Gateway | `/v1/auth/*`, `/v1/chargers/*`, `/v1/telemetry/*`, `/v1/monitors/*`, `/v1/anomalies*` | Primary user contract |
-| API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access and orchestration |
+| API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/members/*`, `/api/v1/system/*`, `/api/v1/monitors/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access, membership, catalogue, pipelines and orchestration; `test_tactic_gateway_contract.py` checks every call |
 | Health tooling | API Gateway | `/health` | Gateway liveness |
 | Health tooling | TACTIC | `/health`, `/ready` | Orchestration and registry readiness |
 | Internal checks | DB Sync | `/health`, `/ready/schema` | Schema readiness |

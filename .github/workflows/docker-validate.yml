@@ -16,7 +16,6 @@ concurrency:
 jobs:
   docker-validate:
     uses: ./.github/workflows/docker-images.yml
-    secrets: inherit
     with:
       publish: false
       cache-scope-prefix: docker-validate

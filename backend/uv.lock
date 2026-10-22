@@ -1920,8 +1920,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "off-key-core", extra = ["mail", "web"] },
-    { name = "python-jose" },
+    { name = "off-key-core", extra = ["auth", "mail", "web"] },
     { name = "slowapi" },
     { name = "uvicorn" },
 ]
@@ -1931,8 +1930,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "fastapi", specifier = ">=0.115.8" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "off-key-core", extras = ["web", "mail"], editable = "libs/core" },
-    { name = "python-jose", specifier = ">=3.4.0" },
+    { name = "off-key-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
@@ -1953,6 +1951,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+auth = [
+    { name = "python-jose" },
+]
 mail = [
     { name = "fastapi-mail" },
 ]
@@ -1970,10 +1971,11 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-jose", marker = "extra == 'auth'", specifier = ">=3.4.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.38" },
 ]
-provides-extras = ["web", "mail"]
+provides-extras = ["web", "mail", "auth"]
 
 [[package]]
 name = "off-key-db-sync"
@@ -2063,10 +2065,9 @@ dependencies = [
     { name = "bcrypt" },
     { name = "docker" },
     { name = "fastapi" },
-    { name = "off-key-core", extra = ["mail", "web"] },
+    { name = "off-key-core", extra = ["auth", "mail", "web"] },
     { name = "paho-mqtt", extra = ["proxy"] },
     { name = "pydantic-settings" },
-    { name = "python-jose" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2076,10 +2077,9 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "docker", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "off-key-core", extras = ["web", "mail"], editable = "libs/core" },
+    { name = "off-key-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
     { name = "paho-mqtt", extras = ["proxy"], specifier = ">=2.1.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
-    { name = "python-jose", specifier = ">=3.4.0" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]

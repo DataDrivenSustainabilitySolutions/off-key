@@ -1,12 +1,10 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
-from jose import jwt
 from off_key_api_gateway.api.v1 import system as gateway
-from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.storage import RetentionPolicyStatus, StorageStatus
@@ -14,6 +12,7 @@ from off_key_tactic_middleware.api.v1 import system as collection
 from off_key_tactic_middleware.services.catalogue import system as system_service
 
 from tests.support.env import set_auth_env
+from tests.support.tokens import access_token
 
 
 @pytest.mark.asyncio
@@ -21,7 +20,6 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
     monkeypatch,
 ):
     set_auth_env(monkeypatch)
-    settings = get_auth_settings()
     user = User(
         id=1,
         email="user@example.com",
@@ -43,18 +41,7 @@ async def test_storage_requires_a_verified_user_and_returns_database_measurement
     app = FastAPI()
     app.include_router(collection.router)
     app.dependency_overrides[get_db_async] = lambda: session
-    token = jwt.encode(
-        {
-            "sub": user.email,
-            "user_id": user.id,
-            "session_version": 0,
-            "exp": datetime.now(UTC) + timedelta(minutes=5),
-            "iss": settings.JWT_ISSUER,
-            "aud": settings.JWT_AUDIENCE,
-        },
-        settings.JWT_SECRET.get_secret_value(),
-        algorithm=settings.ALGORITHM,
-    )
+    token = access_token(user, session_version=0)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:

@@ -19,8 +19,7 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "off-key-core[web,mail]",
-    "python-jose>=3.4.0",
+    "off-key-core[web,mail,auth]",
     "fastapi>=0.115.8",
     "httpx>=0.27.0",
     "slowapi>=0.1.9",

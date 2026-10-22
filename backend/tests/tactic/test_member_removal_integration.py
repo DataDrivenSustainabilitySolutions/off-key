@@ -8,7 +8,6 @@ import pytest_asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
-from off_key_api_gateway.services.auth import create_jwt
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import Charger, Favorite, RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
@@ -28,6 +27,7 @@ from sqlalchemy import select
 
 from tests.support.env import set_auth_env
 from tests.support.membership import PASSWORD, bootstrap
+from tests.support.tokens import access_token
 
 
 @pytest_asyncio.fixture
@@ -38,16 +38,6 @@ async def removal_database(member_database, monkeypatch):
         await connection.run_sync(Charger.__table__.create)
         await connection.run_sync(Favorite.__table__.create)
     return sessions
-
-
-def access_token(user):
-    return create_jwt(
-        {
-            "sub": user.email,
-            "user_id": user.id,
-            "session_version": user.session_version,
-        }
-    )
 
 
 def member_app(sessions):

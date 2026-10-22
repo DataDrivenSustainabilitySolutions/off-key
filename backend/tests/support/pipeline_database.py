@@ -1,10 +1,6 @@
 """Real PostgreSQL pipeline fixture with an applied fixture catalogue."""
 
-from datetime import UTC, datetime, timedelta
-
 import pytest_asyncio
-from jose import jwt
-from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import (
     SystemCollectionConfiguration,
@@ -22,6 +18,8 @@ from off_key_core.schemas.system_collection import (
 from off_key_tactic_middleware.config.config import get_tactic_settings
 from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from tests.support.tokens import access_token
 
 
 @pytest_asyncio.fixture
@@ -104,16 +102,4 @@ async def published_design(session):
 
 
 def membership_token(user):
-    settings = get_auth_settings()
-    return jwt.encode(
-        {
-            "sub": user.email,
-            "user_id": user.id,
-            "session_version": user.session_version,
-            "exp": datetime.now(UTC) + timedelta(minutes=5),
-            "iss": settings.JWT_ISSUER,
-            "aud": settings.JWT_AUDIENCE,
-        },
-        settings.JWT_SECRET.get_secret_value(),
-        algorithm=settings.ALGORITHM,
-    )
+    return access_token(user)

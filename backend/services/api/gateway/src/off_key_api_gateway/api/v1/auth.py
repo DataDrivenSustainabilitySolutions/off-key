@@ -10,6 +10,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
+from off_key_core.auth.tokens import AccessClaims, issue_access_token
 from off_key_core.config.logs import log_security_event, logger, redact_email
 from off_key_core.schemas.members import AcceptInvitation, PasswordReset
 from off_key_core.schemas.sessions import (
@@ -23,7 +24,6 @@ from off_key_core.schemas.user import (
 from off_key_core.utils.mail import send_password_reset_email
 
 from ...facades.tactic import TacticError, tactic
-from ...services.auth import create_jwt
 from ..errors import TacticErrorRoute
 from ..rate_limiter import client_ip, limiter
 
@@ -42,12 +42,12 @@ def access_token_response(authenticated_user: dict) -> dict:
     if type(version) is not int or version < 0:
         raise HTTPException(502, "Authentication service returned an invalid session")
     return {
-        "access_token": create_jwt(
-            {
-                "sub": authenticated_user["email"],
-                "user_id": user_id,
-                "session_version": version,
-            }
+        "access_token": issue_access_token(
+            AccessClaims(
+                sub=authenticated_user["email"],
+                user_id=user_id,
+                session_version=version,
+            )
         ),
         "token_type": "bearer",
         "user_id": user_id,

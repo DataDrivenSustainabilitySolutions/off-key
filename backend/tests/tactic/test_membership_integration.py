@@ -10,7 +10,6 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
-from off_key_api_gateway.services.auth import create_jwt
 from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
@@ -35,6 +34,7 @@ from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env
 from tests.support.membership import PASSWORD, bootstrap
+from tests.support.tokens import access_token
 
 
 @pytest.mark.asyncio
@@ -347,12 +347,12 @@ async def test_invitation_reset_and_immediate_session_revocation(
     claims = await login()
     credential = HTTPAuthorizationCredentials(
         scheme="Bearer",
-        credentials=create_jwt(
-            {
-                "sub": claims["email"],
-                "user_id": claims["id"],
-                "session_version": claims["session_version"],
-            }
+        credentials=access_token(
+            SimpleNamespace(
+                email=claims["email"],
+                id=claims["id"],
+                session_version=claims["session_version"],
+            )
         ),
     )
     async with sessions() as session:
@@ -370,12 +370,12 @@ async def test_invitation_reset_and_immediate_session_revocation(
     claims = await login()
     credential = HTTPAuthorizationCredentials(
         scheme="Bearer",
-        credentials=create_jwt(
-            {
-                "sub": claims["email"],
-                "user_id": claims["id"],
-                "session_version": claims["session_version"],
-            }
+        credentials=access_token(
+            SimpleNamespace(
+                email=claims["email"],
+                id=claims["id"],
+                session_version=claims["session_version"],
+            )
         ),
     )
     async with sessions() as session:
@@ -534,12 +534,10 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
         assert changed.session_version == reset_version + 1
     credential = HTTPAuthorizationCredentials(
         scheme="Bearer",
-        credentials=create_jwt(
-            {
-                "sub": "admin@example.com",
-                "user_id": admin_id,
-                "session_version": reset_version,
-            }
+        credentials=access_token(
+            SimpleNamespace(
+                email="admin@example.com", id=admin_id, session_version=reset_version
+            )
         ),
     )
     async with sessions() as session:

@@ -6,11 +6,9 @@ from collections import Counter
 from time import perf_counter_ns
 
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.random_projection import SparseRandomProjection
 
 from ..execution_errors import FatalExecutionError
+from .components import BATCH_PASSTHROUGH, batch_component
 from .plan import ExecutionPlan
 
 
@@ -24,26 +22,11 @@ class BatchFeatureGraph:
 
     def __init__(self, plan: ExecutionPlan):
         self.plan = plan
-        self.components = {}
-        for node in plan.feature_nodes:
-            params = dict(node.params)
-            if node.component == "static.standard_scaler":
-                self.components[node.id] = StandardScaler(**params)
-            elif node.component == "static.min_max_scaler":
-                self.components[node.id] = MinMaxScaler(**params)
-            elif node.component in {"static.pca", "static.random_projection"}:
-                seed = params.pop("seed", None)
-                constructor = (
-                    PCA if node.component == "static.pca" else SparseRandomProjection
-                )
-                self.components[node.id] = constructor(random_state=seed, **params)
-            elif node.component not in {
-                "features.select",
-                "features.rename",
-                "features.passthrough",
-                "features.merge",
-            }:
-                raise ValueError(f"Unsupported static component: {node.component}")
+        self.components = {
+            node.id: batch_component(node)
+            for node in plan.feature_nodes
+            if node.component not in BATCH_PASSTHROUGH
+        }
         self.fitted = False
 
     def fit_transform(self, matrix: np.ndarray) -> np.ndarray:

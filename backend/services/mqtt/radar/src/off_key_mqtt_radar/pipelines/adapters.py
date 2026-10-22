@@ -1,48 +1,10 @@
 """Compile feature nodes into public, standalone Aberrant components."""
 
-from contextlib import contextmanager
-
 from aberrant.catalog import DetectorConfig, create_model
-from aberrant.compose import (
-    INPUT,
-    GraphNode,
-    GraphPipeline,
-    MergeNode,
-    Passthrough,
-    Rename,
-    Select,
-)
-from aberrant.transform.preprocessing import MinMaxScaler, StandardScaler
-from aberrant.transform.projection import IncrementalPCA, RandomProjection
+from aberrant.compose import INPUT, GraphNode, GraphPipeline, MergeNode
 
+from .components import online_component
 from .plan import ExecutionPlan
-
-
-class NamedProjection:
-    """Adapt public projection output names to canonical graph-scoped names."""
-
-    def __init__(self, projection, names: list[str]):
-        self.projection = projection
-        self.names = tuple(names)
-
-    @property
-    def readiness(self):
-        return self.projection.readiness
-
-    def learn_one(self, data):
-        self.projection.learn_one(data)
-
-    def transform_one(self, data):
-        transformed = self.projection.transform_one(data)
-        return {
-            name: transformed[f"component_{index}"]
-            for index, name in enumerate(self.names)
-        }
-
-    @contextmanager
-    def learning_transaction(self, data):
-        with self.projection.learning_transaction(data):
-            yield
 
 
 def detector_config(plan: ExecutionPlan) -> DetectorConfig:
@@ -76,32 +38,10 @@ def adaptive_graph(plan: ExecutionPlan, observer=None):
     for node in plan.feature_nodes:
         parents = plan.parents(node.id)
         inputs = [INPUT if parent == plan.source_id else parent for parent in parents]
-        params = dict(node.params)
         if node.kind == "merge":
             nodes.append(MergeNode(node.id, inputs=tuple(inputs)))
             continue
-        component = node.component
-        if component == "features.select":
-            transformer = Select(**params)
-        elif component == "features.rename":
-            transformer = Rename(**params)
-        elif component == "features.passthrough":
-            transformer = Passthrough()
-        elif component == "adaptive.standard_scaler":
-            transformer = StandardScaler(**params)
-        elif component == "adaptive.min_max_scaler":
-            transformer = MinMaxScaler(**params)
-        elif component in {"adaptive.uncentered_pca", "adaptive.random_projection"}:
-            constructor = (
-                IncrementalPCA
-                if component == "adaptive.uncentered_pca"
-                else RandomProjection
-            )
-            transformer = NamedProjection(
-                constructor(keys=plan.names(parents[0]), **params), plan.names(node.id)
-            )
-        else:
-            raise ValueError(f"Unsupported adaptive component: {component}")
+        transformer = online_component(plan, node, parents)
         nodes.append(GraphNode(node.id, transformer, input=inputs[0]))
     config = detector_config(plan)
     capabilities = config.capabilities()

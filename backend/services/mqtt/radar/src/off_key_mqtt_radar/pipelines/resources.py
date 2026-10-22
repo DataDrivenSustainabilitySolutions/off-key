@@ -2,7 +2,9 @@
 
 import sys
 from collections import Counter
+from collections.abc import Callable
 from struct import calcsize
+from typing import Any
 
 import numpy as np
 from pydantic import BaseModel
@@ -65,6 +67,21 @@ def _adaptive_pca_allocations(
     return numeric, containers
 
 
+def _dense_projection(_node, width: int, outputs: int) -> tuple[int, int]:
+    return width * outputs * 8, 0
+
+
+# Projection state as (numeric bytes, retained container bytes) per component.
+STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
+    "adaptive.uncentered_pca": lambda node, width, outputs: _adaptive_pca_allocations(
+        node.params["n0"], width, outputs
+    ),
+    "static.pca": _dense_projection,
+    "static.random_projection": _dense_projection,
+    "adaptive.random_projection": _dense_projection,
+}
+
+
 def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEstimate:
     definition = plan.compiled.definition
     source = plan.source_id
@@ -91,19 +108,12 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     for node in plan.feature_nodes:
         alive[node.id] = len(plan.names(node.id))
         peak = max(peak, sum(alive.values()))
-        width = len(plan.names(plan.parents(node.id)[0]))
-        if node.component == "adaptive.uncentered_pca":
-            numeric, retained = _adaptive_pca_allocations(
-                node.params["n0"], width, len(plan.names(node.id))
-            )
+        estimate = STATE_ESTIMATORS.get(node.component)
+        if estimate is not None:
+            width = len(plan.names(plan.parents(node.id)[0]))
+            numeric, retained = estimate(node, width, len(plan.names(node.id)))
             initialization += numeric
             projection_containers += retained
-        elif node.component in {
-            "static.pca",
-            "static.random_projection",
-            "adaptive.random_projection",
-        }:
-            initialization += width * len(plan.names(node.id)) * 8
         for parent in plan.parents(node.id):
             remaining[parent] -= 1
             if remaining[parent] == 0:

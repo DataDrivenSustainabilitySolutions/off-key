@@ -6,6 +6,7 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from off_key_core.schemas.collection_wire import decode_ingress_envelope
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     SystemCollectionStream,
@@ -35,19 +36,8 @@ class Observation:
 def parse_observation(
     stream: SystemCollectionStream, message: MQTTMessage
 ) -> Observation:
-    envelope = message.payload
-    if not isinstance(envelope, dict):
-        raise ValueError("Expected ingress envelope")
-    value = PayloadDecoder(envelope["payload"].encode("utf-8")).value(stream.definition)
-    millis = envelope["received_at"]
-    if isinstance(millis, bool) or not isinstance(millis, (int, float)):
-        raise ValueError("Expected broker observation time")
-    received_at = datetime.fromtimestamp(millis / 1000, UTC)
-    if received_at.timestamp() > time.time() + 300:
-        raise ValueError("Future observation")
-    retained = envelope["upstream_retained"]
-    if not isinstance(retained, bool):
-        raise ValueError("Expected retained flag")
+    payload, received_at, retained = decode_ingress_envelope(message.payload)
+    value = PayloadDecoder(payload.encode("utf-8")).value(stream.definition)
     return Observation(stream, value, received_at, message.retain or retained)
 
 

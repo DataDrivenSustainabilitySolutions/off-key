@@ -5,7 +5,6 @@ owned by mqtt-proxy. No view lease or browser connection controls this worker.
 """
 
 import asyncio
-import json
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -16,6 +15,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.collection_wire import encode_ingress_envelope
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.mqtt_lifecycle import close_client
 from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
@@ -180,12 +180,8 @@ class SystemIngress:
                     time.time_ns() // 1000, self._received_at_us.get(key, 0) + 1
                 )
                 self._received_at_us[key] = received_at_us
-                envelope = json.dumps(
-                    {
-                        "payload": decoded,
-                        "received_at": received_at_us / 1000,
-                        "upstream_retained": retained,
-                    }
+                envelope = encode_ingress_envelope(
+                    decoded, received_at_us / 1000, retained
                 )
             except UnicodeError:
                 self.dropped += 1

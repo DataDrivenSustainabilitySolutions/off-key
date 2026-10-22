@@ -1,8 +1,15 @@
 import asyncio
+import json
+import time
+from datetime import UTC, datetime
 
 import pytest
 from off_key_core.db.catalogue_v1_models import (
     AmbiboxCatalog,
+)
+from off_key_core.schemas.collection_wire import (
+    decode_ingress_envelope,
+    encode_ingress_envelope,
 )
 from off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
@@ -62,6 +69,49 @@ def test_invalid_numeric_payloads_are_rejected(value):
     buffer.receive(message(config, value))
     assert buffer.take(now=100) == []
     assert buffer.metrics()["invalid"] == 1
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"received_at": True},
+        {"received_at": "1700000000000"},
+        {"received_at": (time.time() + 301) * 1000},
+        {"upstream_retained": "false"},
+        {"payload": 42},
+        "not an envelope",
+        {"missing": "payload"},
+    ],
+    ids=[
+        "bool_time",
+        "string_time",
+        "future_time",
+        "string_retained",
+        "non_text_payload",
+        "not_a_mapping",
+        "missing_keys",
+    ],
+)
+def test_malformed_ingress_envelopes_are_counted_invalid(envelope):
+    config = runtime_catalog("original")
+    buffer = CollectionBuffer()
+    buffer.configure(config, now=0)
+    incoming = message(config, 12)
+    if isinstance(envelope, dict) and "missing" not in envelope:
+        incoming.payload = {**incoming.payload, **envelope}
+    else:
+        incoming.payload = envelope
+    buffer.receive(incoming)
+    assert buffer.take(now=100) == []
+    assert buffer.metrics()["invalid"] == 1
+
+
+def test_ingress_envelopes_round_trip_in_milliseconds():
+    received_at = datetime(2026, 10, 22, 12, 0, 0, 123456, UTC)
+    millis = received_at.timestamp() * 1000
+    encoded = encode_ingress_envelope("42", millis, True)
+    assert list(json.loads(encoded)) == ["payload", "received_at", "upstream_retained"]
+    assert decode_ingress_envelope(json.loads(encoded)) == ("42", received_at, True)
 
 
 def test_state_is_coalesced_and_policy_changes_invalidate_monitor_inputs():

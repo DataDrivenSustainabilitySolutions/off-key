@@ -9,22 +9,27 @@ import docker
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.models import MonitoringService, MqttTopic, PipelineRun
+from off_key_core.db.models import MonitoringService, PipelineRun
 from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
 from off_key_core.schemas.radar import RadarOperationalStatus
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config.config import get_tactic_settings
 from ..facades.docker import AsyncDocker, get_workload_docker_status
+from .orchestration.monitor_intent import (
+    complete_stop,
+    mark_deleting,
+    purge_service_rows,
+    request_stop_values,
+)
 from .orchestration.radar_lifecycle import RadarLifecycleController
 from .orchestration.radar_workloads import RadarWorkloadManager
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
     UNVERIFIED_WORKLOAD_STATES,
     apply_terminal_operational_status,
-    mark_collection_monitor_stopped,
 )
 from .time_utils import coerce_utc
 
@@ -121,11 +126,7 @@ class RadarStatusReconciliationService:
                     MonitoringService.desired_state == "running",
                     MonitoringService.stop_requested_at.is_(None),
                 )
-                .values(
-                    desired_state="stopped",
-                    stop_requested_at=datetime.now(UTC),
-                    lifecycle_version=MonitoringService.lifecycle_version + 1,
-                )
+                .values(**request_stop_values())
             )
             await session.commit()
             lifecycle = RadarLifecycleController(
@@ -222,7 +223,7 @@ class RadarStatusReconciliationService:
         if getattr(service, "desired_state", None) == "deleted":
             await self._delete_service_row(session, service.id)
         elif service.stop_requested_at is not None or service.status:
-            mark_collection_monitor_stopped(service)
+            complete_stop(service)
             await complete_stopped_runs(session, [service.id])
         elif self._is_purge_due(service):
             await self._delete_service_row(session, service.id)
@@ -236,12 +237,7 @@ class RadarStatusReconciliationService:
             apply_terminal_operational_status(service, docker_status)
         elif self._is_purge_due(service):
             # Hold the claim until a later unlocked inspection confirms shutdown.
-            service.desired_state = "deleted"
-            service.lifecycle_version = (
-                getattr(service, "lifecycle_version", 1) or 1
-            ) + 1
-            service.stop_requested_at = datetime.now(UTC)
-            service.status = True
+            mark_deleting(service, hold_claim=True)
             return
         elif service.status:
             service.status = False
@@ -261,14 +257,7 @@ class RadarStatusReconciliationService:
 
     @staticmethod
     async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
-        await complete_stopped_runs(session, [service_id])
-        await session.execute(
-            delete(MqttTopic).where(MqttTopic.service_id == service_id)
-        )
-        result = await session.execute(
-            delete(MonitoringService).where(MonitoringService.id == service_id)
-        )
-        return int(result.rowcount or 0)
+        return await purge_service_rows(session, [service_id])
 
     async def _remove_workload_if_present(self, container_id: str | None) -> bool:
         return await RadarWorkloadManager(self.async_docker).remove(container_id)

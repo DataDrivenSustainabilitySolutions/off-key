@@ -99,22 +99,6 @@ def apply_terminal_operational_status(
     service.operational_updated_at = coerce_utc(status.get("updated_at"))
 
 
-def mark_collection_monitor_stopped(service: MonitoringService) -> None:
-    """Complete a durable stop request after workload removal succeeds."""
-    status = RadarOperationalStatus(
-        stage="stopped",
-        detail="Collection changed. Restart with fresh calibration.",
-        updated_at=datetime.now(UTC),
-    )
-    service.status = False
-    service.desired_state = "stopped"
-    service.lifecycle_version = (getattr(service, "lifecycle_version", None) or 1) + 1
-    service.operational_stage = status.stage
-    service.operational_updated_at = status.updated_at
-    service.operational_status = status.model_dump(mode="json", exclude_none=True)
-    service.stop_requested_at = None
-
-
 def _override_operational_status(
     status: dict[str, Any],
     stage: str,

@@ -1,7 +1,5 @@
 """Pause affected monitors with durable stop intent before changing their inputs."""
 
-from datetime import UTC, datetime
-
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.models import MonitoringService
 from off_key_core.db.pipeline_claims import monitor_claim_condition
@@ -9,8 +7,12 @@ from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution
 from sqlalchemy import update
 
 from ..domain import InfrastructureError
+from .orchestration.monitor_intent import (
+    complete_stop,
+    request_stop_values,
+    retire_workload,
+)
 from .orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
-from .radar_status import mark_collection_monitor_stopped
 
 
 class CollectionMonitorService:
@@ -32,11 +34,7 @@ class CollectionMonitorService:
                     monitor_claim_condition(),
                     MonitoringService.desired_state != "deleted",
                 )
-                .values(
-                    stop_requested_at=datetime.now(UTC),
-                    desired_state="stopped",
-                    lifecycle_version=MonitoringService.lifecycle_version + 1,
-                )
+                .values(**request_stop_values())
             )
 
         # At this point the catalogue caller has only prepared/validated a change.
@@ -58,10 +56,7 @@ class CollectionMonitorService:
                     workload_id = monitor.container_id
                     version = monitor.lifecycle_version
                     fingerprint = monitor.config_fingerprint
-                if fingerprint:
-                    await workloads.remove_intent(monitor_id, workload_id)
-                else:
-                    await workloads.remove(workload_id)
+                await retire_workload(workloads, monitor_id, workload_id, fingerprint)
                 async with sessions.begin() as session:
                     await lock_execution_records(session, [monitor_id])
                     monitor = await session.get(
@@ -74,7 +69,7 @@ class CollectionMonitorService:
                         and monitor.stop_requested_at is not None
                         and monitor.desired_state == "stopped"
                     ):
-                        mark_collection_monitor_stopped(monitor)
+                        complete_stop(monitor)
                         await complete_stopped_runs(session, [monitor_id])
             except Exception as exc:
                 raise InfrastructureError(

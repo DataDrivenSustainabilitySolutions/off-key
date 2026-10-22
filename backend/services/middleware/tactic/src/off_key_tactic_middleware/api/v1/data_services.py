@@ -9,14 +9,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ...domain import (
-    AuthenticationError,
-    ConflictError,
-    DomainError,
-    InfrastructureError,
-    NotFoundError,
-    ValidationError,
-)
+from ...domain import ValidationError
 from ...provider import (
     get_anomaly_service,
     get_charger_query_service,
@@ -44,33 +37,9 @@ from ...services.data import (
     TelemetryQueryService,
     UserService,
 )
+from ..errors import DomainErrorRoute
 
-router = APIRouter()
-
-
-def _raise_http_from_domain(error: DomainError) -> None:
-    """Map domain/application errors to HTTP errors."""
-    if isinstance(error, NotFoundError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
-    if isinstance(error, ConflictError):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
-    if isinstance(error, AuthenticationError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error))
-    if isinstance(error, ValidationError):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(error),
-        )
-    if isinstance(error, InfrastructureError):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal infrastructure error",
-        )
-
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Unexpected domain error",
-    )
+router = APIRouter(route_class=DomainErrorRoute)
 
 
 @router.get("/chargers", response_model=list[ChargerResponse])
@@ -80,14 +49,11 @@ async def get_chargers(
     active_only: bool = Query(False),
     service: ChargerQueryService = Depends(get_charger_query_service),
 ):
-    try:
-        return await service.list_chargers(
-            skip=skip,
-            limit=limit,
-            active_only=active_only,
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.list_chargers(
+        skip=skip,
+        limit=limit,
+        active_only=active_only,
+    )
 
 
 @router.get("/chargers/active/ids", response_model=dict)
@@ -96,10 +62,7 @@ async def get_active_charger_ids(
     limit: int = Query(100, ge=1, le=1000),
     service: ChargerQueryService = Depends(get_charger_query_service),
 ):
-    try:
-        return await service.list_active_charger_ids(skip=skip, limit=limit)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.list_active_charger_ids(skip=skip, limit=limit)
 
 
 @router.get("/telemetry/{charger_id}/types", response_model=list[str])
@@ -108,10 +71,7 @@ async def get_telemetry_types(
     limit: int = Query(100, ge=1, le=1000),
     service: TelemetryQueryService = Depends(get_telemetry_query_service),
 ):
-    try:
-        return await service.list_types(charger_id=charger_id, limit=limit)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.list_types(charger_id=charger_id, limit=limit)
 
 
 @router.get(
@@ -128,27 +88,24 @@ async def get_telemetry_data(
     paginated: bool = Query(False),
     service: TelemetryQueryService = Depends(get_telemetry_query_service),
 ) -> list[TelemetryDataPoint] | TelemetryPaginatedResponse:
-    try:
-        cursor_values = (after_created, after_event_timestamp)
-        if any(value is not None for value in cursor_values) and not all(
-            value is not None for value in cursor_values
-        ):
-            raise ValidationError("All telemetry live cursor fields are required")
-        if after_timestamp is not None and after_created is not None:
-            raise ValidationError(
-                "Historical and live telemetry cursors cannot be used together"
-            )
-        return await service.get_telemetry_data(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-            after_timestamp=after_timestamp,
-            after_created=after_created,
-            after_event_timestamp=after_event_timestamp,
-            paginated=paginated,
+    cursor_values = (after_created, after_event_timestamp)
+    if any(value is not None for value in cursor_values) and not all(
+        value is not None for value in cursor_values
+    ):
+        raise ValidationError("All telemetry live cursor fields are required")
+    if after_timestamp is not None and after_created is not None:
+        raise ValidationError(
+            "Historical and live telemetry cursors cannot be used together"
         )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.get_telemetry_data(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+        after_timestamp=after_timestamp,
+        after_created=after_created,
+        after_event_timestamp=after_event_timestamp,
+        paginated=paginated,
+    )
 
 
 @router.post("/auth/login")
@@ -156,13 +113,10 @@ async def authenticate_user(
     login_data: UserLoginRequest,
     service: UserService = Depends(get_user_service),
 ) -> dict[str, object]:
-    try:
-        return await service.authenticate(
-            email=login_data.email,
-            password=login_data.password,
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.authenticate(
+        email=login_data.email,
+        password=login_data.password,
+    )
 
 
 @router.get("/users/{user_id}/favorites", response_model=list[str])
@@ -170,10 +124,7 @@ async def get_user_favorites(
     user_id: int,
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    try:
-        return await service.list_user_favorites(user_id=user_id)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.list_user_favorites(user_id=user_id)
 
 
 @router.post("/users/{user_id}/favorites")
@@ -182,12 +133,7 @@ async def add_user_favorite(
     payload: FavoriteMutationRequest,
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    try:
-        return await service.add_favorite(
-            user_id=user_id, charger_id=payload.charger_id
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.add_favorite(user_id=user_id, charger_id=payload.charger_id)
 
 
 @router.delete("/users/{user_id}/favorites/{charger_id}")
@@ -196,10 +142,7 @@ async def remove_user_favorite(
     charger_id: str,
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    try:
-        return await service.remove_favorite(user_id=user_id, charger_id=charger_id)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.remove_favorite(user_id=user_id, charger_id=charger_id)
 
 
 @router.get("/anomalies/count")
@@ -207,11 +150,8 @@ async def get_anomaly_count(
     since: datetime | None = Query(None),
     service: AnomalyService = Depends(get_anomaly_service),
 ):
-    try:
-        count = await service.count_anomalies(since=since)
-        return {"count": count}
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    count = await service.count_anomalies(since=since)
+    return {"count": count}
 
 
 @router.get(
@@ -276,14 +216,11 @@ async def get_charger_anomalies(
     limit: int = Query(500, ge=1, le=1000),
     service: AnomalyService = Depends(get_anomaly_service),
 ):
-    try:
-        return await service.list_anomalies(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-        )
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.list_anomalies(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+    )
 
 
 @router.post("/anomalies")
@@ -291,10 +228,7 @@ async def create_anomaly(
     anomaly_data: AnomalyCreateRequest,
     service: AnomalyService = Depends(get_anomaly_service),
 ):
-    try:
-        return await service.create_anomaly(payload=anomaly_data)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.create_anomaly(payload=anomaly_data)
 
 
 @router.delete("/anomalies/{anomaly_id}")
@@ -302,7 +236,4 @@ async def delete_anomaly(
     anomaly_id: str,
     service: AnomalyService = Depends(get_anomaly_service),
 ):
-    try:
-        return await service.delete_anomaly(anomaly_id=anomaly_id)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.delete_anomaly(anomaly_id=anomaly_id)

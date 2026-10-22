@@ -17,14 +17,13 @@ from off_key_core.utils.enum import RoleEnum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...domain import DomainError
 from ...services.system import SystemService
 from ...services.system_collection import SystemCollectionService
 from ..collection_auth import current_member, require_admin
-from .data_services import _raise_http_from_domain
+from ..errors import DomainErrorRoute
 from .system_live import router as live_router
 
-router = APIRouter(prefix="/system", tags=["system"])
+router = APIRouter(prefix="/system", tags=["system"], route_class=DomainErrorRoute)
 router.include_router(live_router)
 
 
@@ -90,13 +89,10 @@ async def preview_collection(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
-    try:
-        _, preview = await SystemCollectionService(session).prepare(
-            await SystemService(session).read(), change
-        )
-        return preview
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    _, preview = await SystemCollectionService(session).prepare(
+        await SystemService(session).read(), change
+    )
+    return preview
 
 
 @router.put("/collection")
@@ -105,13 +101,8 @@ async def apply_collection(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
-    try:
-        snapshot = await SystemCollectionService(session).apply(
-            change, actor=user.email
-        )
-        return {**snapshot.model_dump(mode="json"), "can_edit": True}
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    snapshot = await SystemCollectionService(session).apply(change, actor=user.email)
+    return {**snapshot.model_dump(mode="json"), "can_edit": True}
 
 
 @router.get("")
@@ -130,14 +121,11 @@ async def save_system(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_db_async),
 ):
-    try:
-        snapshot = await SystemService(session).save(change, actor=user.email)
-        live = getattr(request.app.state, "system_live", None)
-        if live is not None:
-            await live.reconcile(snapshot)
-        return {**snapshot.model_dump(mode="json"), "can_edit": True}
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    snapshot = await SystemService(session).save(change, actor=user.email)
+    live = getattr(request.app.state, "system_live", None)
+    if live is not None:
+        await live.reconcile(snapshot)
+    return {**snapshot.model_dump(mode="json"), "can_edit": True}
 
 
 @router.get("/revisions")

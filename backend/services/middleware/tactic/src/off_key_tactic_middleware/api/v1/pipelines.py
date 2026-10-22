@@ -33,14 +33,17 @@ from off_key_core.schemas.pipelines import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ...domain import DomainError
 from ...provider import get_model_registry_service, get_radar_orchestration_service
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.library import PipelineLibrary
 from ..collection_auth import current_member, require_admin
-from .data_services import _raise_http_from_domain
+from ..errors import DomainErrorRoute
 
-router = APIRouter(prefix="/monitors", dependencies=[Depends(current_member)])
+router = APIRouter(
+    prefix="/monitors",
+    dependencies=[Depends(current_member)],
+    route_class=DomainErrorRoute,
+)
 
 
 @router.post(
@@ -58,8 +61,6 @@ async def apply_pipeline(
 async def invoke(operation):
     try:
         return await operation
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

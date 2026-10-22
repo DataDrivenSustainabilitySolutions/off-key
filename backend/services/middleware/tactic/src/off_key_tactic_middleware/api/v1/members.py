@@ -12,13 +12,12 @@ from off_key_core.schemas.sessions import RememberedSessionToken
 from off_key_core.schemas.user import ForgotPasswordRequest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...domain import DomainError
 from ...services.members import MemberService
 from ...services.remembered_sessions import RememberedSessionService
 from ..collection_auth import current_member, require_admin
-from .data_services import _raise_http_from_domain
+from ..errors import DomainErrorRoute
 
-router = APIRouter(prefix="/members", tags=["members"])
+router = APIRouter(prefix="/members", tags=["members"], route_class=DomainErrorRoute)
 
 
 def member_service(session: AsyncSession = Depends(get_db_async)) -> MemberService:
@@ -44,10 +43,7 @@ async def refresh_remembered_session(
     request: RememberedSessionToken,
     service: RememberedSessionService = Depends(remembered_session_service),
 ):
-    try:
-        return await service.refresh(request.token)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.refresh(request.token)
 
 
 @router.post("/sessions/revoke")
@@ -77,10 +73,7 @@ async def invite(
     actor: User = Depends(require_admin),
     service: MemberService = Depends(member_service),
 ):
-    try:
-        return await service.invite(invitation, actor)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.invite(invitation, actor)
 
 
 @router.put("/{user_id}", response_model=MemberProfile)
@@ -90,10 +83,7 @@ async def update_member(
     actor: User = Depends(require_admin),
     service: MemberService = Depends(member_service),
 ):
-    try:
-        return await service.update(user_id, change, actor)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    return await service.update(user_id, change, actor)
 
 
 @router.delete("/{user_id}", status_code=204, response_class=Response)
@@ -102,11 +92,8 @@ async def remove_member(
     actor: User = Depends(require_admin),
     service: MemberService = Depends(member_service),
 ):
-    try:
-        await service.remove(user_id, actor)
-        return Response(status_code=204)
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    await service.remove(user_id, actor)
+    return Response(status_code=204)
 
 
 @router.post("/accept-invitation")
@@ -114,11 +101,8 @@ async def accept_invitation(
     invitation: AcceptInvitation,
     service: MemberService = Depends(member_service),
 ):
-    try:
-        await service.accept_invitation(invitation.token, invitation.password)
-        return {"message": "Account activated. You can now sign in."}
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    await service.accept_invitation(invitation.token, invitation.password)
+    return {"message": "Account activated. You can now sign in."}
 
 
 @router.post("/request-password-reset")
@@ -134,8 +118,5 @@ async def reset_password(
     request: PasswordReset,
     service: MemberService = Depends(member_service),
 ):
-    try:
-        await service.reset_password(request.token, request.new_password)
-        return {"message": "Password has been successfully reset"}
-    except DomainError as exc:
-        _raise_http_from_domain(exc)
+    await service.reset_password(request.token, request.new_password)
+    return {"message": "Password has been successfully reset"}

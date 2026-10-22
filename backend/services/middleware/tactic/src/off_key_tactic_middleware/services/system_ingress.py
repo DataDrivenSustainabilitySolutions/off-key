@@ -15,6 +15,12 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.collection_status import (
+    INGRESS_APPLIED,
+    INGRESS_CONNECTING,
+    IngressWorkerState,
+    is_prepared_or_applied,
+)
 from off_key_core.schemas.collection_wire import encode_ingress_envelope
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.mqtt_lifecycle import close_client
@@ -247,12 +253,12 @@ class SystemIngress:
                         sources = {
                             key: dict(value) for key, value in self.states.items()
                         }
-                        state = {
+                        state: IngressWorkerState = {
                             "revision": row.revision,
                             "generation": self.generation,
-                            "status": "applied"
+                            "status": INGRESS_APPLIED
                             if self.output is not None and self.output.is_connected()
-                            else "connecting",
+                            else INGRESS_CONNECTING,
                             "sources": sources,
                             "readings": {
                                 key: dict(value) for key, value in self.readings.items()
@@ -276,12 +282,7 @@ class SystemIngress:
         definition = SystemCollectionDefinition.model_validate(row.document)
         if self.output is None:
             self.output = await asyncio.to_thread(self._make_output)
-        prepared = row.collection_status.get(
-            "revision"
-        ) == row.revision and row.collection_status.get("status") in {
-            "prepared",
-            "applied",
-        }
+        prepared = is_prepared_or_applied(row.collection_status, row.revision)
         if self.generation != definition.generation:
             # Wait until the collector is listening to this unique generation.
             if self.generation is not None:

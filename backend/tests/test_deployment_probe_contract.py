@@ -1,5 +1,7 @@
 """The deployment readiness probe reads the real collection runtime shape.
 
+It also keeps its literal 'applied' status in step with core's status schema.
+
 infra/scripts/check_application.py runs inside the deployed proxy image and its
 infra unit tests use stand-ins, so this pins it to the backend's own models.
 """
@@ -10,6 +12,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from off_key_core.schemas.collection_status import (
+    COLLECTION_APPLIED,
+    COLLECTION_APPLYING,
+    COLLECTION_ERROR,
+    COLLECTION_PREPARED,
+    INGRESS_APPLIED,
+    INGRESS_CONNECTING,
+    is_applied,
+)
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
@@ -83,3 +94,28 @@ def test_probe_skips_brokers_before_the_first_save():
         "revision": 0,
         "selected_sensors": 0,
     }
+
+
+@pytest.mark.parametrize(
+    ("collection", "ingress", "accepted"),
+    [
+        (COLLECTION_APPLIED, INGRESS_APPLIED, True),
+        (COLLECTION_APPLYING, INGRESS_APPLIED, False),
+        (COLLECTION_PREPARED, INGRESS_APPLIED, False),
+        (COLLECTION_ERROR, INGRESS_APPLIED, False),
+        (COLLECTION_APPLIED, INGRESS_CONNECTING, False),
+    ],
+)
+def test_probe_accepts_only_the_statuses_core_calls_applied(
+    collection, ingress, accepted
+):
+    now = datetime.now(UTC)
+    snapshot = runtime(revision=3, selected=True, now=now)
+    snapshot.collection["status"] = collection
+    snapshot.ingress["status"] = ingress
+    assert is_applied(snapshot.collection, 3) is (collection == COLLECTION_APPLIED)
+    if accepted:
+        probe().check_collection(snapshot, now)
+    else:
+        with pytest.raises(ValueError, match="has not applied catalog revision 3"):
+            probe().check_collection(snapshot, now)

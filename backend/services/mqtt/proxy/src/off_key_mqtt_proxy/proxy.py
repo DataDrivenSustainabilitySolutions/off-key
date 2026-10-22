@@ -5,7 +5,6 @@ import signal
 import time
 from contextlib import suppress
 from datetime import UTC, datetime
-from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
@@ -15,6 +14,16 @@ from off_key_core.db.collection import (
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import Charger, CollectionState
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.collection_status import (
+    COLLECTION_APPLIED,
+    COLLECTION_APPLYING,
+    COLLECTION_DISABLED,
+    COLLECTION_ERROR,
+    COLLECTION_PREPARED,
+    COLLECTION_STARTING,
+    CollectionWorkerState,
+    is_applied,
+)
 from off_key_core.schemas.system_collection import runtime_fingerprint
 from sqlalchemy import case, delete, text, update
 from sqlalchemy.dialects.postgresql import insert
@@ -42,7 +51,7 @@ class MQTTProxyService:
         self._prepared_revision = -1
         self._prepared_configuration: list | None = None
         self._generation = -1
-        self.state: dict[str, Any] = {"status": "starting"}
+        self.state: CollectionWorkerState = {"status": COLLECTION_STARTING}
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
@@ -53,7 +62,7 @@ class MQTTProxyService:
 
     async def _apply(self, snapshot) -> None:
         self.buffer.pause()
-        self.state = {"revision": snapshot.revision, "status": "applying"}
+        self.state = {"revision": snapshot.revision, "status": COLLECTION_APPLYING}
         await self._save_status(snapshot.revision)
         async with asyncio.timeout(self.config.graceful_shutdown_timeout):
             await self.database_writer.drain()
@@ -84,7 +93,7 @@ class MQTTProxyService:
         self._generation = subscriptions.generation
         self.state = {
             "revision": snapshot.revision,
-            "status": "prepared",
+            "status": COLLECTION_PREPARED,
             "selected_sensors": len(desired),
             "idle": not desired,
         }
@@ -119,10 +128,7 @@ class MQTTProxyService:
         ):
             self.revision = -1
             await self._apply(snapshot)
-        ingress_ready = (
-            snapshot.ingress.get("revision") == snapshot.revision
-            and snapshot.ingress.get("status") == "applied"
-        )
+        ingress_ready = is_applied(snapshot.ingress, snapshot.revision)
         if self.revision != snapshot.revision and (
             ingress_ready or not snapshot.catalog.streams(selected_only=True)
         ):
@@ -134,7 +140,7 @@ class MQTTProxyService:
                         "Broker did not acknowledge collection activation"
                     )
             self.revision = snapshot.revision
-            self.state["status"] = "applied"
+            self.state["status"] = COLLECTION_APPLIED
         await self._save_status(snapshot.revision)
 
     async def _save_status(self, revision: int | None) -> None:
@@ -223,7 +229,7 @@ class MQTTProxyService:
 
     async def _collect(self) -> None:
         if not self.config.enabled:
-            self.state = {"status": "disabled"}
+            self.state = {"status": COLLECTION_DISABLED}
             await self.shutdown_event.wait()
             return
         # Losing this DB connection terminates the worker; it cannot continue as
@@ -273,7 +279,7 @@ class MQTTProxyService:
                 self.revision = self._prepared_revision = -1
                 self.state = {
                     "revision": self.state.get("revision"),
-                    "status": "error",
+                    "status": COLLECTION_ERROR,
                     "error": "Collection could not be applied or written; retrying",
                 }
                 with suppress(Exception):
@@ -318,7 +324,7 @@ class MQTTProxyService:
             and self._task
             and not self._task.done()
             and self.mqtt_client.is_connected
-            and self.state.get("status") == "applied"
+            and self.state.get("status") == COLLECTION_APPLIED
         )
         return {"ready": ready, "service": "mqtt-proxy", **self.state}
 

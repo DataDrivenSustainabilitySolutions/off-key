@@ -4,6 +4,8 @@ import time
 from collections import deque
 from datetime import datetime
 
+from off_key_core.schemas.collection_status import CollectionDiagnosticsState
+
 from .collection_buffer import CollectionBuffer
 from .telemetry import DatabaseWriter
 
@@ -15,7 +17,7 @@ class CollectionDiagnostics:
         self.last_state_write_at: datetime | None = None
         self._samples: deque[tuple[float, dict[str, int]]] = deque(maxlen=32)
 
-    def snapshot(self, *, connected: bool) -> dict:
+    def snapshot(self, *, connected: bool) -> CollectionDiagnosticsState:
         now = time.monotonic()
         counters = self.buffer.metrics()
         totals = {

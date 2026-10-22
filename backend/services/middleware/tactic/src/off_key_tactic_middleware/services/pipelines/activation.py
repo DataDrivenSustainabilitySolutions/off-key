@@ -33,6 +33,7 @@ from off_key_core.models.pipelines import (
     execution_fingerprint,
     pipeline_catalog_id,
 )
+from off_key_core.schemas.collection_status import is_applied
 from off_key_core.schemas.pipelines import (
     BoundInput,
     PipelineActivationRequest,
@@ -310,10 +311,7 @@ class PipelineActivations:
 
     async def _bindings(self, request, definition, performance):
         snapshot = await read_collection_runtime(self.session)
-        if (
-            snapshot.collection.get("revision") != snapshot.revision
-            or snapshot.collection.get("status") != "applied"
-        ):
+        if not is_applied(snapshot.collection, snapshot.revision):
             raise ConflictError("Wait for the collection configuration to be applied")
         streams = {
             stream.definition.id: stream

@@ -7,6 +7,7 @@ from threading import Event
 
 from amqtt.broker import Broker
 from off_key_core.schemas.radar import AdaptiveStreamConfig
+from off_key_mqtt_proxy.config.config import MQTTConfig
 
 ANONYMOUS_ACCESS = {
     "amqtt.plugins.authentication.AnonymousAuthPlugin": {"allow_anonymous": True}
@@ -151,3 +152,24 @@ def observe(detector, value):
         "input_timestamps": {"x": result.timestamp.isoformat()},
     }
     return result
+
+
+def proxy_config(port: int = 1883, **overrides) -> MQTTConfig:
+    """A plain-TCP, unauthenticated proxy configuration for a local broker."""
+    return MQTTConfig(
+        **{
+            "broker_host": "127.0.0.1",
+            "broker_port": port,
+            "use_tls": False,
+            "client_id_prefix": "contract",
+            "use_auth": False,
+            "mqtt_username": "",
+            "mqtt_api_key": "",
+            "enabled": True,
+            "batch_size": 10,
+            "batch_timeout": 0.5,
+            "connection_timeout": 1.0,
+            "max_message_queue_size": 100,
+        }
+        | overrides
+    )

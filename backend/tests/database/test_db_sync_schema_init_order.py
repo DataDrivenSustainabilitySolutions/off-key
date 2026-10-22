@@ -1,5 +1,6 @@
 """Current-schema bootstrap and database declaration checks."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -96,3 +97,74 @@ def test_monitoring_evidence_strategy_payload_ddl_supports_both_lanes():
     assert "anomaly_score FLOAT" in ddl
     assert "ck_monitoring_evidence_strategy_payload" in ddl
     assert "'Infinity'::double precision" in ddl
+
+
+@pytest.mark.asyncio
+async def test_database_wait_retries_until_the_connection_answers(monkeypatch):
+    service = SyncService()
+    answers = AsyncMock(side_effect=[False, False, True])
+    sleep = AsyncMock()
+    monkeypatch.setattr(service, "_check_database_connection", answers)
+    monkeypatch.setattr("off_key_db_sync.service.asyncio.sleep", sleep)
+
+    assert await service._wait_for_database(max_retries=3, delay=2) is True
+    assert answers.await_count == 3
+    assert sleep.await_args_list == [((2,),), ((2,),)]
+
+    answers = AsyncMock(return_value=False)
+    monkeypatch.setattr(service, "_check_database_connection", answers)
+    assert await service._wait_for_database(max_retries=2, delay=0) is False
+    assert answers.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("available", "initialised", "error"),
+    [
+        (False, True, "Database not available"),
+        (True, False, "Database initialization failed"),
+    ],
+)
+async def test_failed_start_raises_and_reports_stopped(
+    monkeypatch, available, initialised, error
+):
+    service = SyncService()
+    monkeypatch.setattr(
+        service, "_wait_for_database", AsyncMock(return_value=available)
+    )
+    monkeypatch.setattr(
+        service, "_initialize_database", AsyncMock(return_value=initialised)
+    )
+
+    with pytest.raises(RuntimeError, match=error):
+        await service.start()
+    assert service.get_health_status() == {
+        "status": "stopped",
+        "schema_ready": False,
+        "initial_sync_complete": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_serves_until_shutdown_then_stops(monkeypatch):
+    service = SyncService()
+    observed = []
+
+    def shutdown():
+        observed.append(service.get_health_status()["status"])
+        service.shutdown_event.set()
+
+    async def ready():
+        service.schema_ready = True
+        # Runs once start() has returned and run() waits for the signal.
+        asyncio.get_running_loop().call_soon(shutdown)
+        return True
+
+    monkeypatch.setattr(service, "_wait_for_database", AsyncMock(return_value=True))
+    monkeypatch.setattr(service, "_initialize_database", ready)
+    monkeypatch.setattr("off_key_db_sync.service.signal.signal", MagicMock())
+
+    await service.run()
+
+    assert observed == ["healthy"]
+    assert service.get_health_status()["status"] == "stopped"

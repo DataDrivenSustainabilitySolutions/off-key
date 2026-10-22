@@ -24,34 +24,17 @@ from off_key_core.schemas.system import SystemConnection
 from off_key_mqtt_proxy.client.connection import ConnectionManager
 from off_key_mqtt_proxy.client.facade import MQTTClient
 from off_key_mqtt_proxy.client.models import ConnectionState
-from off_key_mqtt_proxy.config.config import MQTTConfig
 from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
 
 from tests.support.mqtt import (
     mqtt_broker,
     paused_socket_creation,
+    proxy_config,
     wait_until,
     withholding_server,
 )
 
 pytestmark = pytest.mark.timeout(15)
-
-
-def proxy_config(port: int) -> MQTTConfig:
-    return MQTTConfig(
-        broker_host="127.0.0.1",
-        broker_port=port,
-        use_tls=False,
-        client_id_prefix="contract",
-        use_auth=False,
-        mqtt_username="",
-        mqtt_api_key="",
-        enabled=True,
-        batch_size=10,
-        batch_timeout=0.5,
-        connection_timeout=1.0,
-        max_message_queue_size=100,
-    )
 
 
 def live_worker(port: int, topics: list[str], *, on_message=None, on_state=None):

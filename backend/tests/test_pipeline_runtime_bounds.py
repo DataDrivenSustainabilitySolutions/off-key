@@ -16,7 +16,8 @@ pytestmark = pytest.mark.radar_integration
 
 
 @pytest.mark.parametrize(
-    "workload,edges", [("maximum_edges", 128), ("maximum_width", 63)]
+    "workload,edges",
+    [("maximum_edges", 128), pytest.param("maximum_width", 63, marks=pytest.mark.slow)],
 )
 def test_maximum_graph_executes_once_per_node_with_observation_equivalence(
     workload, edges
@@ -43,7 +44,9 @@ def test_maximum_graph_executes_once_per_node_with_observation_equivalence(
     )
 
 
-@pytest.mark.parametrize("workload", ["maximum_edges", "maximum_width"])
+@pytest.mark.parametrize(
+    "workload", ["maximum_edges", pytest.param("maximum_width", marks=pytest.mark.slow)]
+)
 def test_sustained_boundary_graph_keeps_previews_and_retained_storage_bounded(workload):
     result = sustained_bounds(build_workload(workload, trees=2), samples=100)
     assert result["observations"] == 200

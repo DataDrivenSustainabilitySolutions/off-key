@@ -20,6 +20,7 @@ jobs:
   pre-commit:
     name: pre-commit (${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +41,7 @@ jobs:
         run: uv run --project backend ty check --project backend
 
       - name: Test backend
-        run: uv run --project backend python -m pytest -q
+        run: uv run --project backend python -m pytest -q --timeout=300 --timeout-method=thread
 
       - name: Check generated monitoring contracts and catalog
         run: |

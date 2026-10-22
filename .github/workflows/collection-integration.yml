@@ -53,7 +53,8 @@ jobs:
         env:
           TEST_SCHEMA_DATABASE_URL: postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test
         run: |
-          uv run --project backend python -m pytest -m "postgres and not radar_integration" -q --tb=short --junitxml="$RUNNER_TEMP/database-results.xml"
+          uv run --project backend python -m pytest -m "postgres and not radar_integration" -q --tb=short \
+            --timeout=300 --timeout-method=thread --junitxml="$RUNNER_TEMP/database-results.xml"
           python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/database-results.xml" "collection database"
 
       - name: Test routing, collection and recovery under load

@@ -52,6 +52,16 @@ class StaticConformalState(Enum):
     FAILED = "failed"
 
 
+# States that consume the feature vector and therefore validate its schema.
+_SCHEMA_CHECKED_STATES = frozenset(
+    {
+        StaticConformalState.COLLECTING,
+        StaticConformalState.CALIBRATING,
+        StaticConformalState.READY,
+    }
+)
+
+
 class StaticConformalDetectionService:
     """Train-once static baseline detector using conformal p-values and martingales."""
 
@@ -227,7 +237,23 @@ class StaticConformalDetectionService:
         start_time = time.time()
         self._complete_training_if_ready()
 
-        if self.state == StaticConformalState.COLLECTING:
+        schema_error = (
+            self._validate_or_freeze_feature_schema(data)
+            if self.state in _SCHEMA_CHECKED_STATES
+            else None
+        )
+        if schema_error:
+            self.processed_count += 1
+            self.schema_mismatch_count += 1
+            result = self._non_inference_result(
+                data,
+                topic,
+                charger_id,
+                start_time,
+                phase="schema_mismatch",
+                extra_context={"schema_error": schema_error},
+            )
+        elif self.state == StaticConformalState.COLLECTING:
             result = self._process_collecting(data, topic, charger_id, start_time)
         elif self.state == StaticConformalState.CALIBRATING:
             result = self._process_calibrating(data, topic, charger_id, start_time)
@@ -246,6 +272,36 @@ class StaticConformalDetectionService:
             self._checkpoint_model()
         return result
 
+    def _non_inference_result(
+        self,
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
+        start_time: float,
+        *,
+        phase: str,
+        extra_context: dict[str, Any],
+        processed_features: dict[str, float] | None = None,
+        severity: str = "low",
+    ) -> AnomalyResult:
+        return self._build_result(
+            data=data,
+            processed_features=processed_features,
+            score=1.0,
+            is_anomaly=False,
+            severity=severity,
+            topic=topic,
+            charger_id=charger_id,
+            start_time=start_time,
+            phase=phase,
+            extra_context=extra_context,
+        )
+
+    def _collect(self, buffer: list[dict[str, float]], data: dict[str, float]) -> int:
+        self.processed_count += 1
+        buffer.append({key: float(data[key]) for key in self.feature_keys})
+        return len(buffer)
+
     def _process_collecting(
         self,
         data: dict[str, float],
@@ -253,44 +309,19 @@ class StaticConformalDetectionService:
         charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
-        schema_error = self._validate_or_freeze_feature_schema(data)
-        self.processed_count += 1
-
-        if schema_error:
-            self.schema_mismatch_count += 1
-            return self._build_result(
-                data=data,
-                processed_features=None,
-                score=1.0,
-                is_anomaly=False,
-                severity="low",
-                topic=topic,
-                charger_id=charger_id,
-                start_time=start_time,
-                phase="schema_mismatch",
-                extra_context={"schema_error": schema_error},
-            )
-
-        self.training_buffer.append(
-            {key: float(data[key]) for key in self.feature_keys}
-        )
-        collected = len(self.training_buffer)
+        collected = self._collect(self.training_buffer, data)
         if collected >= self.static_config.training_window_size:
             self.state = StaticConformalState.CALIBRATING
             phase = "calibrating"
         else:
             phase = "collecting"
-
-        return self._build_result(
-            data=data,
-            processed_features=data,
-            score=1.0,
-            is_anomaly=False,
-            severity="low",
-            topic=topic,
-            charger_id=charger_id,
-            start_time=start_time,
+        return self._non_inference_result(
+            data,
+            topic,
+            charger_id,
+            start_time,
             phase=phase,
+            processed_features=data,
             extra_context={"training_collected_samples": collected},
         )
 
@@ -301,45 +332,20 @@ class StaticConformalDetectionService:
         charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
-        schema_error = self._validate_or_freeze_feature_schema(data)
-        self.processed_count += 1
-
-        if schema_error:
-            self.schema_mismatch_count += 1
-            return self._build_result(
-                data=data,
-                processed_features=None,
-                score=1.0,
-                is_anomaly=False,
-                severity="low",
-                topic=topic,
-                charger_id=charger_id,
-                start_time=start_time,
-                phase="schema_mismatch",
-                extra_context={"schema_error": schema_error},
-            )
-
-        self.calibration_buffer.append(
-            {key: float(data[key]) for key in self.feature_keys}
-        )
-        calibration_collected = len(self.calibration_buffer)
+        calibration_collected = self._collect(self.calibration_buffer, data)
         if calibration_collected >= self.static_config.calibration_window_size:
             self.state = StaticConformalState.TRAINING
             self._submit_training()
             phase = "training_started"
         else:
             phase = "calibrating"
-
-        return self._build_result(
-            data=data,
-            processed_features=data,
-            score=1.0,
-            is_anomaly=False,
-            severity="low",
-            topic=topic,
-            charger_id=charger_id,
-            start_time=start_time,
+        return self._non_inference_result(
+            data,
+            topic,
+            charger_id,
+            start_time,
             phase=phase,
+            processed_features=data,
             extra_context={"calibration_collected_samples": calibration_collected},
         )
 
@@ -352,15 +358,11 @@ class StaticConformalDetectionService:
     ) -> AnomalyResult:
         self.processed_count += 1
         self.discarded_during_training_count += 1
-        return self._build_result(
-            data=data,
-            processed_features=None,
-            score=1.0,
-            is_anomaly=False,
-            severity="low",
-            topic=topic,
-            charger_id=charger_id,
-            start_time=start_time,
+        return self._non_inference_result(
+            data,
+            topic,
+            charger_id,
+            start_time,
             phase="training_discarded",
             extra_context={
                 "discarded_during_training_count": (
@@ -376,23 +378,7 @@ class StaticConformalDetectionService:
         charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
-        schema_error = self._validate_or_freeze_feature_schema(data)
         self.processed_count += 1
-        if schema_error:
-            self.schema_mismatch_count += 1
-            return self._build_result(
-                data=data,
-                processed_features=None,
-                score=1.0,
-                is_anomaly=False,
-                severity="low",
-                topic=topic,
-                charger_id=charger_id,
-                start_time=start_time,
-                phase="schema_mismatch",
-                extra_context={"schema_error": schema_error},
-            )
-
         vector = self._vectorize(data)
         p_value = self._compute_p_value(vector)
         if self.alarm_controller is None:
@@ -460,16 +446,13 @@ class StaticConformalDetectionService:
         start_time: float,
     ) -> AnomalyResult:
         self.processed_count += 1
-        return self._build_result(
-            data=data,
-            processed_features=None,
-            score=1.0,
-            is_anomaly=False,
-            severity="unknown",
-            topic=topic,
-            charger_id=charger_id,
-            start_time=start_time,
+        return self._non_inference_result(
+            data,
+            topic,
+            charger_id,
+            start_time,
             phase="failed",
+            severity="unknown",
             extra_context={"training_error": self.training_error},
         )
 

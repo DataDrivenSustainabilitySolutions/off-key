@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 ROUTERS = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "services"
     / "middleware"
     / "tactic"

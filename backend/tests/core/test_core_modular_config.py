@@ -257,7 +257,7 @@ def test_gateway_validation_specs_exclude_database():
 
 
 def test_no_canonical_config_imports_or_get_settings_calls():
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parents[2]
     roots = [
         project_root / "libs" / "core" / "src",
         project_root / "services",

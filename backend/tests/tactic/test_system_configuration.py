@@ -100,7 +100,9 @@ def database(tmp_path, monkeypatch):
 
 
 CONFORMANCE = json.loads(
-    (Path(__file__).parent / "fixtures/system_document_conformance.json").read_text()
+    (
+        Path(__file__).parents[1] / "fixtures/system_document_conformance.json"
+    ).read_text()
 )
 
 

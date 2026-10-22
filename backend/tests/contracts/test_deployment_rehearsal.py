@@ -391,7 +391,7 @@ def assert_graph_restored(client, entity, saved, workers, release):
 
 def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once():
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
     with httpx.Client(
         base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"),

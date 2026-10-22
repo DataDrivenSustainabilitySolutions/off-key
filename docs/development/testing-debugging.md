@@ -24,6 +24,12 @@ uv run --project backend python -m pytest -q
 For a faster local loop, add `-m "not slow"` to skip the boundary-size
 runtime tests; CI always runs them.
 
+Backend tests live under `backend/tests/`, one folder per area: `core`,
+`database` (schema, migrations, DB sync), `gateway`, `tactic`, `radar`,
+`proxy`, `pipelines`, `simulator` and `contracts` (cross-service, deployment
+and documentation contracts). Shared fakes and fixtures live in
+`backend/tests/support/`; test modules never import each other.
+
 Expected result: lint and the type check exit with status `0`, and tests
 complete without failures. The type check covers the packages listed under
 `[tool.ty.src]` in `backend/pyproject.toml`; RADAR joins once its lifecycle

@@ -12,7 +12,7 @@ from off_key_mqtt_simulator.service import SimulatorService
 from off_key_mqtt_simulator.workshop import build_workshop_messages
 
 WORKSHOP_FIXTURE = (
-    Path(__file__).resolve().parents[2] / "dev" / "local" / "workshop-system.json"
+    Path(__file__).resolve().parents[3] / "dev" / "local" / "workshop-system.json"
 )
 
 

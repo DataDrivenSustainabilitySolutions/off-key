@@ -17,7 +17,7 @@ from off_key_tactic_middleware.main import create_app
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 URL = re.compile(r"https?://[^'\"\s]+")
 # Compose service and deploy-gate host for each probed application.
 SERVICES = {

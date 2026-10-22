@@ -140,7 +140,7 @@ def test_expand_env_vars_resolves_nested_fallback_chain(monkeypatch):
 
 def test_load_yaml_config_applies_root_fallback(monkeypatch):
     service_config = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()
@@ -165,7 +165,7 @@ def test_load_yaml_config_applies_root_fallback(monkeypatch):
 
 def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch):
     service_config = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[2]
         / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()

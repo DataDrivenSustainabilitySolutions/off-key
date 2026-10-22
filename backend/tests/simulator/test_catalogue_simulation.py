@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).parents[2]
+ROOT = Path(__file__).parents[3]
 spec = importlib.util.spec_from_file_location(
     "catalogue_fixture", ROOT / "dev/local/catalog_fixture.py"
 )

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from off_key_api_gateway.api.v1.routes import router
 from off_key_core.db.models import Base
 
-REPOSITORY = Path(__file__).resolve().parents[2]
+REPOSITORY = Path(__file__).resolve().parents[3]
 REFERENCE = REPOSITORY / "docs/reference"
 # Documented names that are not ORM tables.
 EXTRA_TABLES = {"off_key_schema_migrations"}

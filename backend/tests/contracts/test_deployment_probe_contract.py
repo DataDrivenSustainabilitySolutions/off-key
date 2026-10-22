@@ -27,7 +27,7 @@ from off_key_core.schemas.system_collection import (
     build_bindings,
 )
 
-PROBE = Path(__file__).resolve().parents[2] / "infra/scripts/check_application.py"
+PROBE = Path(__file__).resolve().parents[3] / "infra/scripts/check_application.py"
 
 
 def probe():

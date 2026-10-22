@@ -5,7 +5,7 @@ from pathlib import Path
 
 from off_key_core.db import locks
 
-BACKEND = Path(__file__).resolve().parents[1]
+BACKEND = Path(__file__).resolve().parents[2]
 
 
 def test_lock_keys_are_unique_except_the_documented_membership_share():

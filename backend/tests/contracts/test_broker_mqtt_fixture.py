@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 from off_key_core.schemas.system import SystemDocument
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location(
     "broker_fixture", ROOT / "dev/local/broker_fixture.py"
 )

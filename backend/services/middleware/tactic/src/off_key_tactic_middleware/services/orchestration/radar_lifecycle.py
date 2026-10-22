@@ -8,13 +8,9 @@ from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...config.config import get_radar_container_runtime_settings
-from .radar_environment import (
-    build_radar_config_fingerprint,
-    build_radar_controller_identity,
-    build_radar_environment,
-)
+from .radar_environment import build_radar_config_fingerprint, build_radar_environment
 from .radar_workloads import RadarWorkloadManager
+from .workload_identity import controller_id
 
 
 class RadarLifecycleController:
@@ -148,11 +144,8 @@ class RadarLifecycleController:
 
     async def remove_orphans(self) -> None:
         """Retire delayed remote creations whose durable intent was deleted."""
-        controller_id = build_radar_controller_identity(
-            get_radar_container_runtime_settings().radar_database_url
-        )
         for workload_id in await self.workloads.list_managed_ids(
-            controller_id=controller_id
+            controller_id=controller_id()
         ):
             try:
                 await self._remove_orphan(workload_id)

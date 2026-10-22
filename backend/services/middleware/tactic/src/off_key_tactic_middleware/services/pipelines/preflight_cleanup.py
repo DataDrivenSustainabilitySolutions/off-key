@@ -3,7 +3,8 @@
 from off_key_core.config.logs import logger
 from off_key_core.db.models import DeploymentMaintenance, PipelineActivation
 
-from .preflight import preflight_controller_id
+from ...facades.docker import workload_labels
+from ..orchestration.workload_identity import controller_id
 
 
 class PreflightOrphans:
@@ -13,7 +14,7 @@ class PreflightOrphans:
         self.docker = workloads.async_docker
 
     async def sweep(self):
-        controller = preflight_controller_id()
+        controller = controller_id()
         filters = {
             "label": [
                 "managed_by=tactic",
@@ -26,7 +27,7 @@ class PreflightOrphans:
         )
         for workload in candidates:
             try:
-                labels = workload.attrs.get("Spec", {}).get("Labels", {})
+                labels = workload_labels(workload)
                 identifier = labels.get("pipeline_activation_id")
                 if not identifier or labels.get("radar_controller_id") != controller:
                     continue

@@ -7,18 +7,17 @@ import docker
 from docker.types import Resources, RestartPolicy, ServiceMode
 from off_key_core.models.pipelines import pipeline_catalog_id
 
-from ...config.config import get_radar_container_runtime_settings, get_tactic_settings
-from ..orchestration.radar_environment import build_radar_controller_identity
+from ...config.config import get_tactic_settings
+from ...facades.docker import SWARM_TASK_DONE
+from ..orchestration.workload_identity import (
+    has_labels,
+    preflight_identity_labels,
+    preflight_workload_name,
+)
 
 
 class PreflightRejected(ValueError):
     pass
-
-
-def preflight_controller_id() -> str:
-    return build_radar_controller_identity(
-        get_radar_container_runtime_settings().radar_database_url
-    )
 
 
 class PipelinePreflight:
@@ -64,7 +63,7 @@ class PipelinePreflight:
 
     async def _ensure(self, activation_id, execution, image):
         collection = self.docker.client.services
-        name = f"radar-preflight-{activation_id}"
+        name = preflight_workload_name(activation_id)
         try:
             return await self.docker.run(collection.get, name)
         except docker.errors.NotFound:
@@ -79,13 +78,6 @@ class PipelinePreflight:
     async def _create(self, activation_id, execution, image):
         settings = get_tactic_settings().config
         budget = settings.docker.resource_budget
-        name = f"radar-preflight-{activation_id}"
-        labels = {
-            "managed_by": "tactic",
-            "service_type": "radar_preflight",
-            "pipeline_activation_id": activation_id,
-            "radar_controller_id": preflight_controller_id(),
-        }
         environment = {
             "RADAR_PIPELINE_CONFIG": execution.model_dump_json(),
             "RADAR_MEMORY_LIMIT_MB": str(settings.radar_defaults.memory_limit_mb),
@@ -94,10 +86,10 @@ class PipelinePreflight:
         return await self.docker.run(
             self.docker.client.services.create,
             image=image,
-            name=name,
+            name=preflight_workload_name(activation_id),
             command=command,
             env=environment,
-            labels=labels,
+            labels=preflight_identity_labels(activation_id),
             mode=ServiceMode("replicated", replicas=1),
             restart_policy=RestartPolicy(condition="none"),
             resources=Resources(
@@ -107,16 +99,20 @@ class PipelinePreflight:
             constraints=settings.docker.default_constraints,
         )
 
+    async def remove_for(self, activation_id):
+        """Remove the activation's preflight job when it is still ours."""
+        try:
+            workload = await self.docker.run(
+                self.docker.client.services.get, preflight_workload_name(activation_id)
+            )
+        except docker.errors.NotFound:
+            return
+        self.validate_cleanup_identity(workload, activation_id)
+        await self.workloads.remove(workload.id)
+
     @staticmethod
     def validate_cleanup_identity(workload, activation_id):
-        actual_labels = workload.attrs.get("Spec", {}).get("Labels", {})
-        expected = {
-            "managed_by": "tactic",
-            "service_type": "radar_preflight",
-            "pipeline_activation_id": activation_id,
-            "radar_controller_id": preflight_controller_id(),
-        }
-        if any(actual_labels.get(key) != value for key, value in expected.items()):
+        if not has_labels(workload, preflight_identity_labels(activation_id)):
             raise RuntimeError("Preflight workload belongs to a different owner")
 
     @staticmethod
@@ -139,10 +135,7 @@ class PipelinePreflight:
             while True:
                 tasks = await self.docker.run(workload.tasks)
                 states = [task.get("Status", {}).get("State") for task in tasks]
-                if states and all(
-                    state in {"complete", "failed", "rejected", "shutdown", "remove"}
-                    for state in states
-                ):
+                if states and all(state in SWARM_TASK_DONE for state in states):
                     return all(state == "complete" for state in states)
                 await asyncio.sleep(0.25)
 

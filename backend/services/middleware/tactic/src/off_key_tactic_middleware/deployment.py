@@ -17,6 +17,7 @@ from off_key_core.db.pipeline_claims import (
 from off_key_core.schemas.radar import RadarStartConfig
 from sqlalchemy import select, text
 
+from .facades.docker import SWARM_TASK_DONE
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
@@ -27,8 +28,6 @@ from .services.pipelines.release import (
     prepare_release_monitors,
     record_release_run,
 )
-
-TERMINAL_TASKS = {"shutdown", "complete", "failed", "rejected", "remove"}
 
 
 def captured_configuration(name: str, environment: list[str]) -> dict:
@@ -207,7 +206,7 @@ async def wait_stopped(workloads, workload_id: str, *, attempts: int = 120):
             workloads.async_docker.client.api.tasks,
             filters={"service": workload_id},
         )
-        if all(task["Status"]["State"] in TERMINAL_TASKS for task in tasks):
+        if all(task["Status"]["State"] in SWARM_TASK_DONE for task in tasks):
             return
         await asyncio.sleep(1)
     raise ValueError("A retiring RADAR task did not stop; deployment remains blocked")

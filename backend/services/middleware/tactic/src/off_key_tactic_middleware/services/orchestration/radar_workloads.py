@@ -10,15 +10,18 @@ from typing import Any
 
 import docker
 from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
-from off_key_core.config.logs import logger
 
 from ...config.config import get_tactic_settings
-from ...facades.docker import AsyncDocker, _extract_latest_workload_state
-from .radar_environment import (
-    build_radar_config_fingerprint,
-    build_radar_controller_identity,
-    build_radar_workload_labels,
+from ...facades.docker import (
+    SWARM_TASK_SHUTDOWN_DONE,
+    SWARM_TASK_STARTUP_FAILED,
+    AsyncDocker,
+    get_workload_status_and_labels,
+    latest_task_status,
+    workload_labels,
 )
+from .radar_environment import build_radar_workload_labels
+from .workload_identity import has_labels, radar_identity_labels, radar_workload_name
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
@@ -40,7 +43,7 @@ class RadarWorkloadManager:
         """Resolve the durable Docker name, including unknown create outcomes."""
         try:
             return await self.async_docker.run(
-                self.async_docker.client.services.get, f"radar-{service_id}"
+                self.async_docker.client.services.get, radar_workload_name(service_id)
             )
         except docker.errors.NotFound:
             return None
@@ -58,18 +61,7 @@ class RadarWorkloadManager:
                 workload = await self.find(service_id)
                 if workload is None:
                     raise
-        labels = _labels(workload)
-        expected = {
-            "managed_by": "tactic",
-            "service_type": "radar",
-            "radar_service_id": service_id,
-            "radar_lifecycle_version": environment["RADAR_LIFECYCLE_VERSION"],
-            "radar_config_fingerprint": build_radar_config_fingerprint(environment),
-            "radar_controller_id": build_radar_controller_identity(
-                environment["RADAR_DATABASE_URL"]
-            ),
-        }
-        if any(labels.get(key) != value for key, value in expected.items()):
+        if not has_labels(workload, radar_identity_labels(service_id, environment)):
             raise RuntimeError(
                 "Existing RADAR workload does not match its persisted intent"
             )
@@ -80,7 +72,7 @@ class RadarWorkloadManager:
         removed = await self.remove(workload_id)
         workload = await self.find(service_id)
         if workload is not None:
-            if _labels(workload).get("radar_service_id") != service_id:
+            if workload_labels(workload).get("radar_service_id") != service_id:
                 raise RuntimeError(
                     "Refusing to remove a RADAR workload with a different owner"
                 )
@@ -92,7 +84,7 @@ class RadarWorkloadManager:
         docker_config = tactic_config.docker
         budget = docker_config.resource_budget
         service_kwargs: dict[str, Any] = {
-            "name": f"radar-{service_id}",
+            "name": radar_workload_name(service_id),
             "labels": build_radar_workload_labels(
                 environment=environment,
                 radar_image=environment.get(
@@ -182,23 +174,11 @@ class RadarWorkloadManager:
         workload_id: str,
         tasks: list[dict[str, Any]],
     ) -> None:
-        task_items = [task for task in tasks if isinstance(task, dict)]
-        if not task_items:
+        status = latest_task_status(tasks)
+        if status is None:
             return
-
-        latest_task = max(task_items, key=lambda task: str(task.get("CreatedAt", "")))
-        status = latest_task.get("Status")
-        if not isinstance(status, dict):
-            status = {}
         state = str(status.get("State", "") or "unknown").lower()
-        if state not in {
-            "complete",
-            "failed",
-            "rejected",
-            "shutdown",
-            "orphaned",
-            "remove",
-        }:
+        if state not in SWARM_TASK_STARTUP_FAILED:
             return
 
         detail = status.get("Err") or status.get("Message") or "no task error"
@@ -249,7 +229,6 @@ class RadarWorkloadManager:
             return [task for task in tasks if task.get("ServiceID") == service_id]
 
     async def _wait_for_task_shutdown(self, query):
-        terminal = {"shutdown", "complete", "completed", "failed", "rejected", "remove"}
         try:
             async with asyncio.timeout(
                 get_tactic_settings().config.radar_stop_timeout_seconds
@@ -259,7 +238,8 @@ class RadarWorkloadManager:
                     if all(
                         isinstance(task, dict)
                         and isinstance(task.get("Status"), dict)
-                        and str(task["Status"].get("State", "")).lower() in terminal
+                        and str(task["Status"].get("State", "")).lower()
+                        in SWARM_TASK_SHUTDOWN_DONE
                         for task in tasks
                     ):
                         return
@@ -289,29 +269,4 @@ class RadarWorkloadManager:
         workload_id: str,
     ) -> tuple[str, dict[str, str]]:
         """Return normalized status and labels for a service."""
-        if not workload_id:
-            return "no_container_id", {}
-
-        try:
-            docker_service = await self.async_docker.run(
-                self.async_docker.client.services.get,
-                workload_id,
-            )
-            tasks = await self.async_docker.run(docker_service.tasks)
-            status = _extract_latest_workload_state(tasks)
-            labels = _labels(docker_service)
-            return status, {str(key): str(value) for key, value in labels.items()}
-        except docker.errors.NotFound:
-            return "not_found", {}
-        except Exception as exc:
-            logger.debug(
-                "Error checking Docker workload metadata for %s: %s",
-                workload_id,
-                exc,
-            )
-            return "error", {}
-
-
-def _labels(workload: Any) -> dict[str, str]:
-    attrs = getattr(workload, "attrs", {}) or {}
-    return attrs.get("Spec", {}).get("Labels") or {}
+        return await get_workload_status_and_labels(self.async_docker, workload_id)

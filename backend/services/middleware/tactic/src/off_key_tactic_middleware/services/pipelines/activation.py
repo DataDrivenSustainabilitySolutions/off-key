@@ -724,19 +724,8 @@ class PipelineActivations:
             await self.session.commit()
             await self.workloads.remove_intent(row.service_id, None)
         row = await self._owned_row(row.id, token, "cancelling")
-        name = f"radar-preflight-{row.id}"
         await self.session.commit()
-        import docker
-
-        try:
-            preflight = await self.workloads.async_docker.run(
-                self.workloads.async_docker.client.services.get, name
-            )
-        except docker.errors.NotFound:
-            pass
-        else:
-            PipelinePreflight.validate_cleanup_identity(preflight, row.id)
-            await self.workloads.remove(preflight.id)
+        await PipelinePreflight(self.workloads).remove_for(row.id)
         row = await self._owned_row(row.id, token, "cancelling")
         row.phase = "failed" if row.error else "cancelled"
         await self.session.commit()

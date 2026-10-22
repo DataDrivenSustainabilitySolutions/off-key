@@ -38,7 +38,8 @@
       The failed assertion names the incorrect SMTP setting. Resend requires
       email_username=resend, use_credentials=True, validate_certs=True, and exactly
       one of mail_starttls or mail_ssl_tls. Check production vars.yml and any vault
-      overrides; see docs/email-delivery.md.
+      overrides; see docs/operations/production.md (production email) and
+      docs/single-organization.md (Resend settings).
   when: smtp_server == 'smtp.resend.com'
 
 # Shared by deployment and offline configuration checks. All inputs are supplied

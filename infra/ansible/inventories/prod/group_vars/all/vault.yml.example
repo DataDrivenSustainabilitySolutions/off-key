@@ -49,10 +49,8 @@ oauth2_cookie_secret: "CHANGE_ME_openssl_rand_hex_16"
 # ambibox_mqtt_password: "existing-vendor-password"
 # Otherwise the deployment reads the existing EMQX AmbiBox connector once.
 
-# Optional vendor auth key to (re)register the ambibox node. Leave EMPTY normally — identity
-# restores from persisted state. Set only for a deliberate re-register, and clear the old
-# tailscaled.state from the NFS export so the key is used.
-tailscale_ambibox_authkey: ""
+# The ambibox vendor identity is restored from the NFS export or a private seed; see
+# docs/operations/recovery.md. No auth key is configured here.
 
 # Hostname suffix for the prod ambibox node (a cluster/site id). Valid DNS label.
 # Empty → DDSS-prod.

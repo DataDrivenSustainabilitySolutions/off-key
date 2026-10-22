@@ -111,7 +111,8 @@ ambibox_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-
 # ── Persistence ──────────────────────────────────────────────────────────────────────────
 # Which stateful paths are volume-backed. Flipping any of these is a data-visibility change,
 # so the persistence_switch role detects it, backs up first, and refuses to run in prod
-# without -e persistence_switch_confirm=true. See README "Persistence".
+# without -e persistence_switch_confirm=true. See docs/operations/production.md and
+# docs/operations/recovery.md.
 #
 # Prod persists everything: with no volume, ANY change to a value in .env rewrites the
 # service spec, Swarm recreates the task, and the database starts empty.
@@ -168,8 +169,9 @@ tactic_service_port:      "{{ tactic_port }}"
 tactic_docker_api_url:    "http://socket-proxy"
 tactic_docker_api_port:   "2375"
 tactic_docker_max_concurrent_calls: "5"
-# Fully-qualified Swarm network name (stack name prefix). The compose inline env
-# overrides the env_file value for TACTIC to this, so they must match.
+# Fully-qualified Swarm network name (stack name prefix). The rendered
+# docker-compose.environment.yml value overrides the inline default in
+# docker-compose.swarm.yml, so they must match.
 tactic_docker_default_network:      "off-key_emqx-network"
 tactic_docker_additional_networks:  "off-key_app-network"
 tactic_docker_default_restart_policy: on-failure

@@ -60,7 +60,7 @@
       - jq
       - git
       - unzip
-      - rsync        # used by backup-ambibox-state.yml (synchronize) to pull tailnet state
+      - rsync        # operator convenience on hosts; no playbook depends on it
       - nfs-common   # NFS client — lets backends mount the shared ambibox-state volume
     state: present
     lock_timeout: 120

@@ -68,8 +68,8 @@ For Resend, configure `SMTP_SERVER=smtp.resend.com`, `SMTP_PORT=587`,
 Use `MAIL_STARTTLS=True`, `MAIL_SSL_TLS=False`, `USE_CREDENTIALS=True`, and
 `VALIDATE_CERTS=True`. Set `EMAIL_FROM` to an address on your verified domain.
 Both API and TACTIC need the mail settings; the frontend never needs the key.
-See the infrastructure repository's `docs/email-delivery.md` for domain, vault,
-and deployment instructions. Local Mailpit settings remain unchanged.
+See [Production releases](operations/production.md#credentials-ingress-and-certificates)
+for the vault and deployment steps. Local Mailpit settings remain unchanged.
 
 Pending legacy registrations need a new invitation. Public registration and old
 email-verification links no longer activate accounts. Invitation links expire in

@@ -182,10 +182,8 @@ services:
       - tailscale-ambibox-state:/var/lib/tailscale
 
     environment:
-      # TS_AUTHKEY is normally EMPTY — identity restores from the persisted state volume.
-      # It is only consumed when there is no valid state (fresh register / deliberate
-      # rotation: set tailscale_ambibox_authkey in vault AND clear tailscaled.state from the
-      # NFS export, otherwise valid state always wins and the key is ignored).
+      # No TS_AUTHKEY: the vendor identity is restored from the NFS export or a private
+      # seed (docs/operations/recovery.md).
       - TS_USERSPACE=true
       - TS_STATE_DIR=/var/lib/tailscale
       # SOCKS5 proxy on port 1055 — used by emqx-main to reach vendor MQTT over tailnet

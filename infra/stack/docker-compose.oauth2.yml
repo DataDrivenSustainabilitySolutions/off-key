@@ -3,7 +3,8 @@
 # Merged on top of docker-compose.swarm.yml by stack_deploy via a second -f (always, alongside
 # the traefik overlay). Kept out of the base file so the auth layer lives on its own, reviewable
 # and committable independently. References the base's overlay networks, so it is NOT valid on
-# its own — only as an overlay. See INGRESS.md.
+# its own — only as an overlay. See docs/operations/production.md
+# (Credentials, ingress and certificates).
 #
 # oauth2-proxy runs in forwardAuth mode: Traefik calls its /oauth2/auth endpoint per request
 # (header-only), so oauth2-proxy is NEVER in the request/response body path. All config comes

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { filterSourceReports } from "@/features/workspace/reporting-scope";
 import type { Anomaly } from "@/types/charger";

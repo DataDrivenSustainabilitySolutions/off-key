@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";

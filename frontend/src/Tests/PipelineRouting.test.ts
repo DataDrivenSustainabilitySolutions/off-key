@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { routeConnections, type ConnectionRoute, type RoutingBox } from "@/features/pipelines/routing";
 import { edgeId, NODE_SIZE } from "@/features/pipelines/semantics";

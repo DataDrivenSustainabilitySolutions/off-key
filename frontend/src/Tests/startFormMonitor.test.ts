@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { startFormMonitor } from "@/features/monitoring/setup/startMonitor";

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";

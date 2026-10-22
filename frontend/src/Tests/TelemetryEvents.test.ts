@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
 import { createAnomalyMarkers, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";

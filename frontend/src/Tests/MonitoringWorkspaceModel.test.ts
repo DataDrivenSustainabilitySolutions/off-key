@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { buildMonitoringIndex, serviceName, serviceState, servicesForScope } from "@/features/monitoring/serviceModel";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
 import type { MonitoringInput } from "@/features/monitoring/serviceModel";

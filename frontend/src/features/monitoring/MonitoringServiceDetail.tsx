@@ -11,12 +11,12 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatDateTime } from "@/lib/format-time";
-import { InlineName } from "../catalogue/InlineName";
+import { InlineName } from "@/components/InlineName";
 import { MonitoringHistory } from "./MonitoringHistory";
-import { chooseTab as withTab } from "./monitoringView";
-import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { SystemDocument } from "../catalogue/systemTypes";
-import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
+import { chooseTab as withTab } from "@/domain/monitoring/monitoringView";
+import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { SystemDocument } from "@/types/system";
+import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "@/domain/monitoring/serviceModel";
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));

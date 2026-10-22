@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { Link, useLocation } from "react-router-dom";
-import { sourceHref } from "../catalogue/collectionRules";
-import type { SystemDocument } from "../catalogue/systemTypes";
+import { sourceHref } from "@/domain/system/collectionRules";
+import type { SystemDocument } from "@/types/system";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
@@ -10,8 +10,8 @@ import { getErrorMessage } from "@/lib/errors";
 import { AdaptiveMonitoringSetup } from "./setup/AdaptiveMonitoringSetup";
 import { StaticMonitoringSetup } from "./setup/StaticMonitoringSetup";
 import type { ActiveService, ModelDefinition, MonitoringStrategy } from "@/types/monitoring";
-import { MonitoringTargetPicker } from "./MonitoringTargetPicker";
-import type { MonitoringTarget } from "./serviceModel";
+import { MonitoringTargetPicker } from "../workspace/MonitoringTargetPicker";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 
 type Props = { targets: MonitoringTarget[]; services: ActiveService[]; initialTarget?: string; initialReading?: string;
   byStream: Map<string, Set<string>>; collectionReady: boolean; document?: SystemDocument; draftKey?: string; onStarted: (id?: string) => Promise<void>; onBack: () => void };

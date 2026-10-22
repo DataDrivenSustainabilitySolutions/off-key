@@ -7,7 +7,7 @@ import {
   formatEventSampleOffset,
   formatTelemetryEventTooltip,
   groupTelemetryEvents,
-} from "@/lib/telemetry-events";
+} from "@/features/charts/telemetry-events";
 import type { Anomaly } from "@/types/charger";
 
 const anomaly: Anomaly = {

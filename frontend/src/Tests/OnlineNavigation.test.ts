@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
-import { buildNavigationIndex, navigationRows, navigationTrail, searchNavigation } from "@/features/explorer/navigationIndex";
-import { onlineNavigationIndex } from "@/features/explorer/onlineNavigation";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
+import { buildNavigationIndex, navigationRows, navigationTrail, searchNavigation } from "@/domain/system/navigationIndex";
+import { onlineNavigationIndex } from "@/domain/system/onlineNavigation";
 
 const now = Date.parse("2026-10-16T12:00:00Z");
 const connection = (id: string) => ({ id, label: id, protocol: "mqtt" as const, host: "localhost", port: 1883, transport: "tcp" as const, tls: false });

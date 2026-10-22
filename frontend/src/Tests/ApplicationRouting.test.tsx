@@ -21,7 +21,7 @@ vi.mock("@/pages/SystemStatus", () => ({ default: () => <h1>System status</h1> }
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/lib/api-client", async original => {
   const actual = await original<typeof import("@/lib/api-client")>();
-  const { createEmptySystem } = await import("@/features/catalogue/systemDocument");
+  const { createEmptySystem } = await import("@/domain/system/systemDocument");
   return { ...actual, apiUtils: { ...actual.apiUtils, get: vi.fn(async () => ({
     document: createEmptySystem(), revision: 0, can_edit: false, storage_origin: "saved", runtime: { mode: "configured_only", message: "" },
   })) } };
@@ -29,8 +29,8 @@ vi.mock("@/lib/api-client", async original => {
 
 let routes: RouteObject[];
 beforeAll(async () => {
-  await import("@/App");
-  await import("@/components/ApplicationWorkspace");
+  await import("@/app/App");
+  await import("@/app/ApplicationWorkspace");
   routes = captureRouter.mock.calls[0]![0];
 });
 beforeEach(() => {

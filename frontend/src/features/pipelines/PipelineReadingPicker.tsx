@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
-import type { MonitoringTarget } from "../monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 
 export function PipelineReadingPicker({ target, selected, disabled, owned, onChange }: {
   target?: MonitoringTarget; selected: string[]; disabled: boolean;

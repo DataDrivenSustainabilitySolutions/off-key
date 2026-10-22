@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
-import type { MonitoringInput } from "@/features/monitoring/serviceModel";
-import { buildMonitoringChartOption } from "@/lib/telemetry-chart";
-import { formatMonitoringObservationTooltip } from "@/lib/monitoring-tooltip";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
+import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
+import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { filterServiceAnomalies } from "@/lib/monitoring-chart";
 import type { Anomaly } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";

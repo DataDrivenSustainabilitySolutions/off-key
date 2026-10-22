@@ -8,10 +8,10 @@ import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib
 import { INTERVALS } from "@/lib/constants";
 import type { MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
 import type { TelemetryCursor } from "@/types/charger";
-import type { SystemConnection } from "../catalogue/systemTypes";
-import { ReadingHistoryCache, readingHistoryKey } from "../explorer/readingHistoryCache";
-import { mergeReadingHistory } from "../explorer/readingMonitoring";
-import type { MonitoringInput } from "./serviceModel";
+import type { SystemConnection } from "@/types/system";
+import { ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readingHistoryCache";
+import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 
 type Input = { id: string; key: string; entityId: string; telemetryType: string };
 

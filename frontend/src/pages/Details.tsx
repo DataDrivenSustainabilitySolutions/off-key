@@ -8,7 +8,7 @@ import {
   PageShell,
 } from "@/components/DashboardLayout";
 import { ChartSkeleton, NoDataFound } from "@/components/LoadingStates";
-import DynamicTelemetryChart from "@/components/DynamicTelemetryChart";
+import DynamicTelemetryChart from "@/features/charts/DynamicTelemetryChart";
 import { Button } from "@/components/ui/button";
 import { INTERVALS } from "@/lib/constants";
 import { clientLogger } from "@/lib/logger";
@@ -32,7 +32,7 @@ import type {
   MonitoringEvidenceCursor,
 } from "@/types/monitoring";
 import { buildSensorClaims } from "@/lib/monitoring-services";
-import { useLinkedChartNavigation } from "@/hooks/use-linked-chart-navigation";
+import { useLinkedChartNavigation } from "@/features/charts/use-linked-chart-navigation";
 import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,

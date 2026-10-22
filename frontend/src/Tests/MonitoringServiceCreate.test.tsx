@@ -4,9 +4,9 @@ import { MemoryRouter, createMemoryRouter, RouterProvider, Link } from "react-ro
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitoringServiceCreate } from "@/features/monitoring/MonitoringServiceCreate";
 import { apiUtils } from "@/lib/api-client";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { ActiveService } from "@/types/monitoring";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn(), post: vi.fn() } }));
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));

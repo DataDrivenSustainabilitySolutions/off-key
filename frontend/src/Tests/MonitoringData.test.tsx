@@ -6,8 +6,8 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type { ApiRequestOptions } from "../lib/api-client";
-import { createEmptySystem } from "../features/catalogue/systemDocument";
-import type { SystemDocument, SystemRuntime } from "../features/catalogue/systemTypes";
+import { createEmptySystem } from "../domain/system/systemDocument";
+import type { SystemDocument, SystemRuntime } from "../types/system";
 import { CatalogueContext, type CatalogueContextValue } from "../features/workspace/catalogue-context";
 import Monitoring from "../pages/Monitoring";
 import { useMonitoringData } from "../pages/monitoring/useMonitoringData";

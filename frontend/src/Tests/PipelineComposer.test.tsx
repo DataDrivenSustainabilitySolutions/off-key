@@ -17,7 +17,7 @@ import { routeConnections } from "@/features/pipelines/routing";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
 import { addReading, selectReadings, targetInputs } from "@/features/pipelines/slots";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { clearNavigationDrafts, storeDraft, useNavigationDraft } from "@/lib/navigation-draft";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));

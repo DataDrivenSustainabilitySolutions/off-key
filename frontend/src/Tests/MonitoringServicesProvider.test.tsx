@@ -1,8 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { MonitoringServicesProvider } from "@/features/monitoring/MonitoringServicesProvider";
-import { useMonitoringServices } from "@/features/monitoring/useMonitoringServices";
+import { MonitoringServicesProvider } from "@/domain/monitoring/MonitoringServicesProvider";
+import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn(), patch: vi.fn() } }));
 

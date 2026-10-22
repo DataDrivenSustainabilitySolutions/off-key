@@ -7,8 +7,8 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import PipelineEditor from "@/features/pipelines/PipelineEditor";
 import PipelineWorkspace from "@/features/pipelines/PipelineWorkspace";
 import { PipelineCreate } from "@/features/pipelines/PipelineCreate";

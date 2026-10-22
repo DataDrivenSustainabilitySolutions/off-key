@@ -12,8 +12,8 @@ import {
   serializeSystemDocument,
   systemRemovalIds,
   validateSystemDocument,
-} from "@/features/catalogue/systemDocument";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+} from "@/domain/system/systemDocument";
+import type { SystemDocument } from "@/types/system";
 
 export const systemFixture = (): SystemDocument => ({
   ...createEmptySystem("Workshop"),

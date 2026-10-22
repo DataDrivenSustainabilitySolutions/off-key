@@ -10,7 +10,7 @@ import {
 import type { PipelineServiceView } from "@/features/pipelines/contracts";
 import type { ActiveService } from "@/types/monitoring";
 import { normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { apply: vi.fn(), activation: vi.fn(), cancel: vi.fn() } }));

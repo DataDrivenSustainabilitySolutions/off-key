@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { InlineName } from "@/features/catalogue/InlineName";
+import { InlineName } from "@/components/InlineName";
 
 const edit = () => {
   fireEvent.click(screen.getByRole("button", { name: "Rename title" }));

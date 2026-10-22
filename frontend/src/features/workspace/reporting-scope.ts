@@ -1,6 +1,6 @@
 import type { Anomaly } from "@/types/charger";
-import type { SystemDocument, SystemRuntime } from "../catalogue/systemTypes";
-import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
+import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
 
 /** Match recorded identities, independent of catalogue labels and MQTT topic names. */
 export function filterSourceReports(reports: Anomaly[], ids: readonly string[] | undefined, runtime?: SystemRuntime) {

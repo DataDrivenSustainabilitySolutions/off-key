@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { useCatalogue } from "./catalogue-context";
-import { navigationTrail } from "../explorer/navigationIndex";
+import { navigationTrail } from "@/domain/system/navigationIndex";
 
 export function SourceScope() {
   const { document, index, selected, selectionMissing, selectSource } = useCatalogue();

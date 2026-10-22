@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import type { CollectionPolicy } from "@/types/collection";
 import { useState } from "react";
-import { originLabel, policyLabel, scopeKey, topicWithinPrefix, type RuleScope } from "./collectionRules";
-import type { SystemDocument, SystemRuntime } from "./systemTypes";
+import { originLabel, policyLabel, scopeKey, topicWithinPrefix, type RuleScope } from "@/domain/system/collectionRules";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { useRecordingRules } from "./useRecordingRules";
 
 type Props = { scope: RuleScope; ids: string[]; document: SystemDocument; runtime?: SystemRuntime;

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   chooseTab, createPipeline, dropReplacement, editFromRun, monitoringNavigationKey, openPipeline, resetView,
   setActivation, setRevision, showLibrary,
-} from "@/features/monitoring/monitoringView";
+} from "@/domain/monitoring/monitoringView";
 
 const search = (query: string) => new URLSearchParams(query);
 

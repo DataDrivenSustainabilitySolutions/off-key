@@ -10,9 +10,9 @@ import { PipelineActivation } from "@/features/pipelines/PipelineActivation";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeDefinition } from "@/features/pipelines/contracts";
 import { ApiRequestError } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { createEmptySystem } from "@/domain/system/systemDocument";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
 const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };

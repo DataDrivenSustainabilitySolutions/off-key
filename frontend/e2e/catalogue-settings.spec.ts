@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Locator } from "@playwright/test";
-import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "../src/types/system";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 

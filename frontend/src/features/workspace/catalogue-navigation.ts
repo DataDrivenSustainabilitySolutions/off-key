@@ -1,5 +1,5 @@
-import { WORKSPACE_PATHS } from "@/components/application-navigation";
-import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
+import { WORKSPACE_PATHS } from "./application-navigation";
+import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
 
 export const isWorkspacePath = (path: string) => WORKSPACE_PATHS.includes(path);
 

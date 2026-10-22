@@ -2,11 +2,11 @@ import { useEffect, type ComponentProps } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EChart } from "@/components/EChart";
+import type { EChart } from "@/features/charts/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
 import type { ActiveService, MonitoringChartEvidence, MartingaleTrackerResult } from "@/types/monitoring";
 import type { Anomaly } from "@/types/charger";
-import { formatTelemetryEventTime } from "@/lib/telemetry-events";
+import { formatTelemetryEventTime } from "@/features/charts/telemetry-events";
 
 const chartMock = vi.hoisted(() => ({
   mounted: vi.fn(),
@@ -14,7 +14,7 @@ const chartMock = vi.hoisted(() => ({
   latestProps: undefined as ComponentProps<typeof EChart> | undefined,
 }));
 
-vi.mock("@/components/EChart", () => ({
+vi.mock("@/features/charts/EChart", () => ({
   EChart: (props: ComponentProps<typeof EChart>) => {
     chartMock.latestProps = props;
     useEffect(() => {
@@ -34,7 +34,7 @@ vi.mock("@/components/EChart", () => ({
   },
 }));
 
-import { DynamicTelemetryChart } from "@/components/DynamicTelemetryChart";
+import { DynamicTelemetryChart } from "@/features/charts/DynamicTelemetryChart";
 
 let intersectionCallback: IntersectionObserverCallback | undefined;
 

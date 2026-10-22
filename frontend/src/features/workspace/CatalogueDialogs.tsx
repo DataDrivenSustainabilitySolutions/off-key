@@ -1,12 +1,12 @@
 import { lazy, Suspense, useState, type RefObject } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { serializeSystemDocument } from "../catalogue/systemDocument";
-import { CatalogueSettingsHeader } from "../explorer/CatalogueSettingsHeader";
+import { serializeSystemDocument } from "@/domain/system/systemDocument";
+import { CatalogueSettingsHeader } from "./CatalogueSettingsHeader";
 import { useCatalogue } from "./catalogue-context";
 
-const Settings = lazy(() => import("../explorer/ExplorerSettings"));
-const StructureEditor = lazy(() => import("../catalogue/SystemStructureEditor").then(module => ({ default: module.SystemStructureEditor })));
+const Settings = lazy(() => import("./ExplorerSettings"));
+const StructureEditor = lazy(() => import("./SystemStructureEditor").then(module => ({ default: module.SystemStructureEditor })));
 
 export function CatalogueDialogs({ toggle }: { toggle: RefObject<HTMLButtonElement | null> }) {
   const { system, document, index, dialog, dialogOrigin, editingLocked, openEditor, closeDialog, browse, selectSource, positions } = useCatalogue();

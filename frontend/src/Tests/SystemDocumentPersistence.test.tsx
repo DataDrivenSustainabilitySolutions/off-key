@@ -1,12 +1,12 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { useSystemDocument } from "@/domain/system/useSystemDocument";
 import type {
   SystemDocument,
   SystemSnapshot,
-} from "@/features/catalogue/systemTypes";
+} from "@/types/system";
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();

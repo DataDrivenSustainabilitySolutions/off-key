@@ -3,16 +3,16 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
-import type { MonitoringIndex } from "../monitoring/serviceModel";
+import type { MonitoringIndex } from "@/domain/monitoring/serviceModel";
 import { useCatalogue } from "../workspace/catalogue-context";
-import { collectionApplied } from "../catalogue/collectionRules";
+import { collectionApplied } from "@/domain/system/collectionRules";
 import { predecessorEntity } from "./bindings";
 import { pipelinesApi } from "./api";
 import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
-import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary } from "../monitoring/monitoringView";
+import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {

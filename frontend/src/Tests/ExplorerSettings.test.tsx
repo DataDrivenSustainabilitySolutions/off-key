@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import ExplorerSettings from "@/features/explorer/ExplorerSettings";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+import ExplorerSettings from "@/features/workspace/ExplorerSettings";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemDocument } from "@/types/system";
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem("Weather system"),

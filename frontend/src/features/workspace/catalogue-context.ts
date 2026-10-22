@@ -1,11 +1,11 @@
 import { createContext, useContext, type Dispatch, type RefObject, type SetStateAction } from "react";
-import type { useSystemDocument } from "../catalogue/useSystemDocument";
-import type { SystemEntityKind, SystemDocument } from "../catalogue/systemTypes";
-import type { SystemLiveTelemetry } from "../catalogue/systemLiveTelemetry";
-import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
-import type { ExplorerPreferences } from "../explorer/preferences";
-import type { ListPosition } from "../explorer/ExplorerList";
+import type { useSystemDocument } from "@/domain/system/useSystemDocument";
+import type { SystemEntityKind, SystemDocument } from "@/types/system";
+import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
+import type { ExplorerPreferences } from "./preferences";
+import type { ListPosition } from "./ExplorerList";
 
 export type CatalogueDialog = { kind: "settings" } | { kind: "editor"; entityKind: SystemEntityKind; id?: string; key: number } | null;
 

@@ -1,4 +1,4 @@
-import type { MonitoringTarget } from "../monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineDefinition } from "./contracts";
 import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import { addReading } from "./slots";

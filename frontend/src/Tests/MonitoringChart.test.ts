@@ -10,13 +10,13 @@ import {
   type ChartThemeColors,
   type TelemetryChartModel,
   type TelemetryChartOption,
-} from "@/lib/telemetry-chart";
-import { normalizeTelemetry } from "@/lib/telemetry-data";
+} from "@/features/charts/telemetry-chart";
+import { normalizeTelemetry } from "@/features/charts/telemetry-data";
 import {
   collectTelemetryChartDetectors,
   getDefaultDetectorId,
   type DetectionChartPoint,
-} from "@/lib/telemetry-detectors";
+} from "@/features/charts/telemetry-detectors";
 import type { TelemetryDataPoint } from "@/types/charger";
 import {
   getMonitoringEvidenceCursor,

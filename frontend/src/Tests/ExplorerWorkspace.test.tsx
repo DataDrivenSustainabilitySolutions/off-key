@@ -1,22 +1,22 @@
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
-import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
+import { ApplicationWorkspace } from "@/app/ApplicationWorkspace";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import Reporting from "@/pages/Anomalies";
-import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
-import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/explorer/preferences";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { buildNavigationIndex } from "@/domain/system/navigationIndex";
+import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/workspace/preferences";
+import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { ActiveService } from "@/types/monitoring";
-import type { SystemDocument, SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { SystemDocument, SystemSnapshot } from "@/types/system";
 
 const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true, isAdmin: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
-vi.mock("@/components/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
+vi.mock("@/features/charts/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
 vi.mock("@/lib/api-client", async (original) => {
   const actual = await original<typeof import("@/lib/api-client")>();
   return { ...actual, apiUtils: { ...actual.apiUtils, get: vi.fn(), patch: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } };
@@ -76,7 +76,7 @@ function fileFor(document: SystemDocument) {
 }
 
 beforeAll(async () => {
-  await import("@/features/explorer/ExplorerPreview");
+  await import("@/features/readings/ExplorerPreview");
   await import("@/features/pipelines/PipelineWorkspace");
 });
 

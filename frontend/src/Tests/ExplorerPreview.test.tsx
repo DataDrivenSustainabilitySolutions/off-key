@@ -1,20 +1,20 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EChart } from "@/components/EChart";
-import { ExplorerHistoryChart } from "@/features/explorer/ExplorerHistoryChart";
-import ExplorerPreview from "@/features/explorer/ExplorerPreview";
-import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
-import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/features/explorer/readingHistoryCache";
-import { buildNavigationIndex, type ExplorerNode } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveBatch, LiveValue } from "@/features/catalogue/systemLiveTypes";
-import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
+import { EChart } from "@/features/charts/EChart";
+import { ExplorerHistoryChart } from "@/features/readings/ExplorerHistoryChart";
+import ExplorerPreview from "@/features/readings/ExplorerPreview";
+import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
+import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readingHistoryCache";
+import { buildNavigationIndex, type ExplorerNode } from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveBatch, LiveValue } from "@/types/system-live";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
-vi.mock("@/features/explorer/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
-vi.mock("@/components/EChart", () => ({
+vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
+vi.mock("@/features/charts/EChart", () => ({
   EChart: vi.fn(({ accessibleDescription, resolvedTheme }: { accessibleDescription: string; resolvedTheme: string }) =>
     <div role="img" aria-label={accessibleDescription} data-theme={resolvedTheme} />),
 }));

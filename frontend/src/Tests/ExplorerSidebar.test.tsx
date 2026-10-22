@@ -2,15 +2,15 @@ import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@te
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ExplorerSidebar } from "@/features/explorer/ExplorerSidebar";
-import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/explorer/ExplorerList";
-import { buildNavigationIndex, navigationRows } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+import { ExplorerSidebar } from "@/features/workspace/ExplorerSidebar";
+import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/workspace/ExplorerList";
+import { buildNavigationIndex, navigationRows } from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemDocument } from "@/types/system";
 import { apiClient } from "@/lib/api-client";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveBatch } from "@/features/catalogue/systemLiveTypes";
-import type { SystemRuntime } from "@/features/catalogue/systemTypes";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveBatch } from "@/types/system-live";
+import type { SystemRuntime } from "@/types/system";
 
 const viewportHeight = 360;
 const rowHeight = 72;

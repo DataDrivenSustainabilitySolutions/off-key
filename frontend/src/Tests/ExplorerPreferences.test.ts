@@ -11,7 +11,7 @@ import {
   toggleExplorerFavourite,
   type ExplorerPreferences,
   type PersonalGroup,
-} from "@/features/explorer/preferences";
+} from "@/features/workspace/preferences";
 
 const key = (account: string | number | null = "alice") =>
   `aberration:explorer:v1:${account ?? "local"}`;

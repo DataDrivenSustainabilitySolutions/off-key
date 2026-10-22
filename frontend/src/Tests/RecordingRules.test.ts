@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/features/catalogue/collectionRules";
-import { scopeKey } from "@/features/catalogue/collectionRules";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemCollectionPreview, SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/domain/system/collectionRules";
+import { scopeKey } from "@/domain/system/collectionRules";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemCollectionPreview, SystemSnapshot } from "@/types/system";
 import { useRecordingRules } from "@/features/catalogue/useRecordingRules";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));

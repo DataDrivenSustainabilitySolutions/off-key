@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useDetectorPanes } from "@/hooks/use-detector-panes";
+import { useDetectorPanes } from "@/features/charts/use-detector-panes";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 const service = (status: boolean, stage = "operational") =>

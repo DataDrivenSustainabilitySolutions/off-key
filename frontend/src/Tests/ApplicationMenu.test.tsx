@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApplicationMenu } from "@/components/ApplicationMenu";
+import { ApplicationMenu } from "@/app/ApplicationMenu";
 import { BrandHome } from "@/components/BrandHome";
 import { ThemeProvider } from "@/components/theme-provider";
 

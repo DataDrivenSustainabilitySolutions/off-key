@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { systemApi } from "./systemApi";
-import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "./collectionRules";
-import { scopeKey } from "./collectionRules";
-import type { SystemCollectionPreview, SystemSnapshot } from "./systemTypes";
+import { systemApi } from "@/domain/system/systemApi";
+import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/domain/system/collectionRules";
+import { scopeKey } from "@/domain/system/collectionRules";
+import type { SystemCollectionPreview, SystemSnapshot } from "@/types/system";
 
 type Draft = { broker: string; baseline: SystemSnapshot; edits: RuleEdit[] };
 type Undo = { broker: string; previous: CollectionRule[]; acknowledged: SystemSnapshot };

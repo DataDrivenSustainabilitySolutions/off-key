@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { Plug, Square } from "lucide-react";
-import type { SystemLiveTelemetry } from "./systemLiveTelemetry";
+import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 type Props = {
   telemetry: SystemLiveTelemetry;

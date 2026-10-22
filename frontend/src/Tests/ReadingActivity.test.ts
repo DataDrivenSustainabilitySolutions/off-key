@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveStatus, LiveNodeSnapshot } from "@/features/catalogue/systemLiveTypes";
-import type { SystemRuntime } from "@/features/catalogue/systemTypes";
-import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
-import { readingActivity, type ReadingActivitySource } from "@/features/explorer/readingActivity";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveStatus, LiveNodeSnapshot } from "@/types/system-live";
+import type { SystemRuntime } from "@/types/system";
+import { buildNavigationIndex } from "@/domain/system/navigationIndex";
+import { readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
 
 const now = Date.parse("2026-10-13T12:00:00Z");
 const time = (age = 0) => new Date(now - age).toISOString();

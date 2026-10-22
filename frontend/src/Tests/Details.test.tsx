@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import Details from "../pages/Details";
 import { CatalogueContext, type CatalogueContextValue } from "../features/workspace/catalogue-context";
-import { buildNavigationIndex } from "../features/explorer/navigationIndex";
-import { createEmptySystem } from "../features/catalogue/systemDocument";
-import type { SystemDocument, SystemRuntime } from "../features/catalogue/systemTypes";
-import type { ChartNavigationState } from "../lib/telemetry-chart";
+import { buildNavigationIndex } from "../domain/system/navigationIndex";
+import { createEmptySystem } from "../domain/system/systemDocument";
+import type { SystemDocument, SystemRuntime } from "../types/system";
+import type { ChartNavigationState } from "../features/charts/telemetry-chart";
 
 const mockLoadAllTelemetryTypes = vi.fn<
   (...args: unknown[]) => Promise<unknown[]>
@@ -31,7 +31,7 @@ vi.mock("../lib/charger-api", () => ({
   mergeTelemetryData: (_current: unknown, incoming: unknown) => incoming,
 }));
 
-vi.mock("../components/DynamicTelemetryChart", () => ({
+vi.mock("../features/charts/DynamicTelemetryChart", () => ({
   default: ({
     telemetryData,
     anomalies,

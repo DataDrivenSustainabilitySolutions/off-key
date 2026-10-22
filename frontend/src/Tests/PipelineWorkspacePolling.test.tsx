@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { useMonitoringServices } from "@/features/monitoring/useMonitoringServices";
+import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 
 vi.mock("@/lib/api-client", () => ({
   apiUtils: { get: vi.fn(), patch: vi.fn() },

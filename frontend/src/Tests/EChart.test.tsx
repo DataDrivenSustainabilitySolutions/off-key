@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TelemetryChartOption } from "@/lib/telemetry-chart";
+import type { TelemetryChartOption } from "@/features/charts/telemetry-chart";
 
 const echartsMock = vi.hoisted(() => {
   const instances: Array<{
@@ -57,7 +57,7 @@ vi.mock("echarts/components", () => ({
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
 
-import { EChart } from "@/components/EChart";
+import { EChart } from "@/features/charts/EChart";
 
 const option = (id: string): TelemetryChartOption =>
   ({ series: [{ id, type: "line", data: [] }] }) as TelemetryChartOption;

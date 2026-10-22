@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
-import type { SystemSnapshot } from "../src/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "../src/types/system";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 

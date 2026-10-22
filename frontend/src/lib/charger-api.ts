@@ -10,7 +10,7 @@ import type {
   TelemetryTypeData,
 } from "@/types/charger";
 import { normalizeChargerLastSeen } from "@/types/charger";
-import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "@/types/system";
 
 type TelemetryApiPoint = TelemetryDataPoint & { created?: string };
 

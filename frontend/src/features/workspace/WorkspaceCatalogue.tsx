@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ExplorerSidebar } from "../explorer/ExplorerSidebar";
-import { navigationRows, navigationTrail, searchNavigation } from "../explorer/navigationIndex";
-import { onlineNavigationIndex } from "../explorer/onlineNavigation";
+import { ExplorerSidebar } from "./ExplorerSidebar";
+import { navigationRows, navigationTrail, searchNavigation } from "@/domain/system/navigationIndex";
+import { onlineNavigationIndex } from "@/domain/system/onlineNavigation";
 import { useCatalogue } from "./catalogue-context";
 
 const subscribeNothing = () => () => {};

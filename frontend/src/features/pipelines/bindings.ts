@@ -1,5 +1,5 @@
 import type { ActiveService } from "@/types/monitoring";
-import type { MonitoringTarget } from "../monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineDefinition, PipelineServiceView } from "./contracts";
 
 /** Suggest only unambiguous matches; never guess between two equivalent readings. */

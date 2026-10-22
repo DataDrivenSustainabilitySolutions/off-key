@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { mergeReadingHistory } from "@/features/explorer/readingMonitoring";
-import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
-import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/features/explorer/readingHistoryCache";
-import type { SystemConnection, SystemStream } from "@/features/catalogue/systemTypes";
+import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
+import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
+import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/domain/readings/readingHistoryCache";
+import type { SystemConnection, SystemStream } from "@/types/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
 const connection: SystemConnection = { id: "broker", label: "Building", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false };

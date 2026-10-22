@@ -13,7 +13,7 @@ import { nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
 import { PipelineRunHistory } from "./PipelineRunHistory";
-import { editFromRun } from "../monitoring/monitoringView";
+import { editFromRun } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 export default function PipelineRunView({

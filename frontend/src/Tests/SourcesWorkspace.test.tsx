@@ -3,16 +3,16 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearNavigationDrafts, rememberNavigation } from "@/lib/navigation-draft";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
-import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
-import { recordingScopeReadingIds, scopeForNode, scopeReadingIds } from "@/features/catalogue/collectionRules";
-import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { ApplicationWorkspace } from "@/app/ApplicationWorkspace";
+import { recordingScopeReadingIds, scopeForNode, scopeReadingIds } from "@/domain/system/collectionRules";
+import { buildNavigationIndex } from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
 import { apiUtils } from "@/lib/api-client";
-import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "@/types/system";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true, logout: vi.fn() }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
-vi.mock("@/components/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
+vi.mock("@/features/charts/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
 vi.mock("@/lib/api-client", async original => ({ ...await original<typeof import("@/lib/api-client")>(), apiUtils: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 vi.mock("@tanstack/react-virtual", () => ({ useVirtualizer: ({ count }: { count: number }) => ({ getTotalSize: () => count * 72,
   getVirtualItems: () => Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 72, size: 72 })), measureElement: vi.fn(), scrollToOffset: vi.fn(), scrollToIndex: vi.fn() }) }));
@@ -26,7 +26,7 @@ function fixture(): SystemSnapshot {
 let saved: SystemSnapshot;
 beforeAll(async () => {
   // Exercise inspector behaviour without timing the initial module transform.
-  await import("@/features/explorer/ExplorerPreview");
+  await import("@/features/readings/ExplorerPreview");
 });
 beforeEach(() => {
   clearNavigationDrafts(); saved = fixture();

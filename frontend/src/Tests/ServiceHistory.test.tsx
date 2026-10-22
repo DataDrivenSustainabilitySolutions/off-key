@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useServiceHistory } from "@/features/monitoring/useServiceHistory";
-import { ReadingHistoryCache } from "@/features/explorer/readingHistoryCache";
-import type { MonitoringInput } from "@/features/monitoring/serviceModel";
+import { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { getTelemetryData } from "@/lib/charger-api";
 import { apiUtils } from "@/lib/api-client";
 import type { MonitoringChartEvidence } from "@/types/monitoring";

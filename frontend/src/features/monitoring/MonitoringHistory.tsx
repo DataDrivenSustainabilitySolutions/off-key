@@ -1,16 +1,16 @@
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { EChart } from "@/components/EChart";
-import { TelemetryDetectorControls } from "@/components/TelemetryDetectorControls";
-import { useChartColors } from "@/hooks/use-chart-colors";
-import { useDetectorSelection } from "@/hooks/use-detector-selection";
+import { EChart } from "@/features/charts/EChart";
+import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
+import { useChartColors } from "@/features/charts/use-chart-colors";
+import { useDetectorSelection } from "@/features/charts/use-detector-selection";
 import { useNavigationDraft } from "@/lib/navigation-draft";
-import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/lib/telemetry-chart";
-import { getChartDomain } from "@/lib/telemetry-thresholds";
+import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/features/charts/telemetry-chart";
+import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
-import type { SystemConnection } from "../catalogue/systemTypes";
-import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { MonitoringInput } from "./serviceModel";
+import type { SystemConnection } from "@/types/system";
+import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
 

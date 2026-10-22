@@ -6,9 +6,9 @@ import {
   navigationTrail,
   searchNavigation,
   type NavigationIndex,
-} from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemConnection, SystemDocument, SystemStream } from "@/features/catalogue/systemTypes";
+} from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemConnection, SystemDocument, SystemStream } from "@/types/system";
 
 function connection(id = "broker", label = "Workshop broker"): SystemConnection {
   return { id, label, host: "private-endpoint.invalid", port: 1883, protocol: "mqtt", transport: "tcp", tls: false };

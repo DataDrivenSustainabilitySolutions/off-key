@@ -13,7 +13,7 @@ from ...config.config import (
     get_radar_container_runtime_settings,
     get_tactic_settings,
 )
-from ...models.registry import ModelRegistryService
+from ...models.catalog import validate_model_params
 
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
@@ -78,9 +78,13 @@ def build_radar_environment(
     *,
     service_id: str,
     config: RadarStartConfig,
-    model_registry: ModelRegistryService | None,
+    validate_params: bool,
 ) -> dict[str, str]:
-    """Compile validated service configuration into RADAR environment variables."""
+    """Compile validated service configuration into RADAR environment variables.
+
+    ``validate_params`` merges catalogue defaults into the model parameters. A
+    persisted launch already holds merged parameters, so rebuilding it skips this.
+    """
     monitoring = config.monitoring
     mqtt_config = RadarMqttOverrides.model_validate(
         config.mqtt_config or {}
@@ -157,17 +161,16 @@ def build_radar_environment(
 
     try:
         validated_params = (
-            model_registry.validate_model_params(
+            validate_model_params(
                 monitoring.model_type,
                 monitoring.model_params,
-                category="model",
                 family=(
                     ADAPTIVE_MODEL_FAMILY
                     if monitoring.strategy == "adaptive_stream"
                     else STATIC_MODEL_FAMILY
                 ),
             )
-            if model_registry is not None
+            if validate_params
             else monitoring.model_params
         )
     except ValueError as exc:

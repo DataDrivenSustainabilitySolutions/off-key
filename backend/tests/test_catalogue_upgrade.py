@@ -17,7 +17,10 @@ from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import insert, select, text
 
-from tests.support.schema_baselines import remove_pipeline_schema
+from tests.support.schema_baselines import (
+    remove_pipeline_schema,
+    restore_retired_schema,
+)
 
 from .test_collection import catalog, runtime_catalog
 
@@ -85,6 +88,7 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
             )
         )
         remove_pipeline_schema(connection)
+        restore_retired_schema(connection)
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
@@ -165,6 +169,7 @@ def test_upgrade_preserves_a_runtime_without_a_separate_saved_document(
             )
         )
         remove_pipeline_schema(connection)
+        restore_retired_schema(connection)
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
@@ -204,6 +209,7 @@ def test_upgrade_monitor_topics_even_without_catalogue_configuration(
             )
         )
         remove_pipeline_schema(connection)
+        restore_retired_schema(connection)
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "

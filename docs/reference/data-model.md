@@ -27,7 +27,6 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `anomalies` | `(charger_id, timestamp, telemetry_type, service_id)` | Detected anomaly events and contributing sensor set |
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
-| `model_registry` | `id` | Active model definitions, import paths, schemas, and defaults |
 
 ## Relationship highlights
 
@@ -79,17 +78,6 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - Migration `009_radar_lifecycle_intent.sql` preserves attached workers and marks
   already inactive services as stopped. Older attached workers without saved
   configuration remain observable and removable; they are not auto-created.
-
-## Model registry
-
-`model_registry` is the database-backed source for model discovery:
-
-- model metadata and family
-- import paths
-- JSON parameter schema and defaults
-- version and activation state
-
-TACTIC and the Gateway monitoring endpoints use these definitions for discovery and validation.
 
 ## Data access paths
 

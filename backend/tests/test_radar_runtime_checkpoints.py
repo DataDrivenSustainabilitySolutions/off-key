@@ -23,7 +23,7 @@ from off_key_mqtt_radar.runtime_checkpoint import (
 )
 from off_key_mqtt_radar.service import RadarService
 from pydantic import ValidationError
-from sqlalchemy import insert, text
+from sqlalchemy import insert, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -391,9 +391,12 @@ async def test_checkpoint_and_pending_evidence_roll_back_together(
 
 
 @pytest.mark.parametrize("ledger", [True, False])
-def test_checkpoint_migration_adopts_existing_database_without_path_table_changes(
+def test_checkpoint_migration_adopts_existing_database_and_drops_the_path_table(
     disposable_database, ledger
 ):
+    # Imported here: this module also runs as a standalone replacement process.
+    from tests.support.schema_baselines import restore_retired_schema
+
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         # Recreate the pre-checkpoint schema under review, including absence of
@@ -407,6 +410,7 @@ def test_checkpoint_migration_adopts_existing_database_without_path_table_change
         ):
             connection.execute(text(f"DROP TABLE {table}"))
         connection.execute(text("DROP TABLE radar_runtime_checkpoints"))
+        restore_retired_schema(connection)
         connection.execute(
             text("CREATE TABLE radar_model_checkpoints (checkpoint_path text)")
         )
@@ -425,12 +429,8 @@ def test_checkpoint_migration_adopts_existing_database_without_path_table_change
             in migration_status(connection)["pending"]
         )
         apply_migrations(connection)
-        assert (
-            connection.scalar(
-                text("SELECT checkpoint_path FROM radar_model_checkpoints")
-            )
-            == "preserved.pkl"
-        )
+        # Migration 014 retires the file-era table along with file checkpoints.
+        assert not inspect(connection).has_table("radar_model_checkpoints")
         assert apply_migrations(connection)["applied"] == []
 
 

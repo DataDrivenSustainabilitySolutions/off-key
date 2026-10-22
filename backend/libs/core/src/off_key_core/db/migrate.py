@@ -42,6 +42,8 @@ PRE_LEDGER_TABLES = frozenset(
     }
 )
 BASELINE_TABLES = PRE_LEDGER_TABLES - {"deployment_maintenance"}
+# Columns a historical database may still carry; migration 014 drops them.
+RETIRED_COLUMNS = {"services": {"stateful_set_name"}}
 
 
 def migration_files() -> dict[str, str]:
@@ -99,7 +101,11 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
     if existing >= PRE_LEDGER_TABLES:
-        validate_existing_schema(connection, excluded_columns=excluded_columns)
+        validate_existing_schema(
+            connection,
+            excluded_columns=excluded_columns,
+            retired_columns=RETIRED_COLUMNS,
+        )
         adopted = [
             "001_membership.sql",
             "002_monitor_stop_intent.sql",
@@ -118,6 +124,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         tables=baseline,
         excluded_columns=excluded_columns
         | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
+        retired_columns=RETIRED_COLUMNS,
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

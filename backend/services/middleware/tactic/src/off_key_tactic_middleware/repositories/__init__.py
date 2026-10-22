@@ -1,6 +1,5 @@
 """Persistence layer for TACTIC data services."""
 
-from .admin_models import ModelRegistryAdminRepository
 from .data import (
     AnomalyRepository,
     ChargerRepository,
@@ -14,7 +13,6 @@ __all__ = [
     "AnomalyRepository",
     "ChargerRepository",
     "FavoriteRepository",
-    "ModelRegistryAdminRepository",
     "MonitoringEvidenceRepository",
     "TelemetryRepository",
     "UserRepository",

@@ -31,7 +31,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 | --- | --- | --- | --- | --- |
 | Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway and a valid `VITE_API_URL` |
 | API Gateway | External route contract and request composition | TACTIC data/orchestration endpoints | HTTP responses | TACTIC readiness |
-| TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model registry | Database and container lifecycle | Docker API, model registry, database |
+| TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model catalogue | Database and container lifecycle | Docker API, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |

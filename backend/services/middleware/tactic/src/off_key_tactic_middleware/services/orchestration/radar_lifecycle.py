@@ -74,7 +74,7 @@ class RadarLifecycleController:
         environment = build_radar_environment(
             service_id=service.id,
             config=RadarStartConfig.model_validate(service.launch_config),
-            model_registry=None,
+            validate_params=False,
         )
         environment["RADAR_COLLECTION_FINGERPRINT"] = (
             service.collection_fingerprint or ""

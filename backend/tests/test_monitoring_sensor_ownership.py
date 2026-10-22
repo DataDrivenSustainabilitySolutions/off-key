@@ -22,7 +22,6 @@ def _service_with_session(session):
     session.scalars.return_value.all.return_value = []
     service = object.__new__(RadarOrchestrationService)
     service.session = session
-    service.model_registry = MagicMock()
     service.workloads = MagicMock()
     service.workloads.get_status_and_labels = AsyncMock(return_value=("running", {}))
     return service

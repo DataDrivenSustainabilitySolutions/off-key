@@ -33,7 +33,7 @@ from off_key_core.schemas.pipelines import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ...provider import get_model_registry_service, get_radar_orchestration_service
+from ...provider import get_radar_orchestration_service
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.library import PipelineLibrary
 from ..collection_auth import current_member, require_admin
@@ -209,9 +209,8 @@ async def revision_metadata(
 async def activate_pipeline(
     change: PipelineActivationRequest,
     session: AsyncSession = Depends(get_db_async),
-    registry=Depends(get_model_registry_service),
 ):
-    return await invoke(PipelineActivations(session, registry).submit(change))
+    return await invoke(PipelineActivations(session).submit(change))
 
 
 @router.get(

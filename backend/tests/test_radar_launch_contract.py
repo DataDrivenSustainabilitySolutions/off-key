@@ -120,7 +120,7 @@ def _environment(config):
         patch(f"{MODULE}.get_radar_container_runtime_settings", return_value=runtime),
     ):
         return build_radar_environment(
-            service_id="svc-golden", config=config, model_registry=None
+            service_id="svc-golden", config=config, validate_params=False
         )
 
 

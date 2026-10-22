@@ -6,11 +6,7 @@ from off_key_core.schemas.radar import RadarServiceLabel
 from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
 from pydantic import BaseModel
 
-from ...models.registry import ModelRegistryService
-from ...provider import (
-    get_model_registry_service,
-    get_radar_orchestration_service,
-)
+from ...provider import get_radar_orchestration_service
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
@@ -206,30 +202,4 @@ async def delete_radar_service(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to delete RADAR service: {e!s}"
-        ) from e
-
-
-@router.get("/radar/models/", response_model=list[dict[str, Any]])
-async def list_available_models(
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
-):
-    """
-    Lists all available anomaly detection models and their hyperparameters.
-
-    Returns information about each model including:
-    - family: Model family (forest, distance, svm, etc.)
-    - description: What the model does
-    - complexity: Computational complexity
-    - memory_usage: Expected memory footprint
-    - parameter_schema: JSON schema for hyperparameters
-    - default_parameters: Default parameter values
-
-    Use this endpoint to discover available models and their configuration options
-    before starting a RADAR service.
-    """
-    try:
-        return model_registry.get_available_models()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get available models: {e!s}"
         ) from e

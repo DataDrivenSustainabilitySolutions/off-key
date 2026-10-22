@@ -89,9 +89,8 @@ def applications(monkeypatch):
     tactic = create_app()
     readiness = {
         "api-gateway": lambda ready: None,
-        "tactic-middleware": lambda ready: (
-            setattr(tactic.state, "model_registry_ready", ready),
-            setattr(tactic.state, "docker_client", object() if ready else None),
+        "tactic-middleware": lambda ready: setattr(
+            tactic.state, "docker_client", object() if ready else None
         ),
         "mqtt-proxy": lambda ready: setattr(proxy, "ready", ready),
         "db-sync": lambda ready: db_sync_api.set_sync_service(

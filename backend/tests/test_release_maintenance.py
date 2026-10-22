@@ -37,6 +37,8 @@ from off_key_tactic_middleware.services.system_ingress import SYSTEM_INGRESS_LOC
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from tests.support.schema_baselines import restore_retired_schema
+
 
 def test_template_migration_preserves_existing_designs(disposable_database):
     with disposable_database.begin() as connection:
@@ -47,7 +49,7 @@ def test_template_migration_preserves_existing_designs(disposable_database):
         connection.execute(
             text(
                 "DELETE FROM off_key_schema_migrations "
-                "WHERE version='013_pipeline_templates.sql'"
+                "WHERE version >= '013_pipeline_templates.sql'"
             )
         )
         connection.execute(
@@ -57,7 +59,10 @@ def test_template_migration_preserves_existing_designs(disposable_database):
                 "VALUES ('existing','Existing template','',false,1,'{}','{}')"
             )
         )
-        assert apply_migrations(connection)["applied"] == ["013_pipeline_templates.sql"]
+        assert apply_migrations(connection)["applied"] == [
+            "013_pipeline_templates.sql",
+            "014_drop_unread_schema.sql",
+        ]
         assert (
             connection.scalar(
                 text("SELECT is_template FROM monitoring_pipelines WHERE id='existing'")
@@ -111,6 +116,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
             "013_pipeline_templates.sql",
+            "014_drop_unread_schema.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "003_deployment_maintenance.sql",
@@ -124,6 +130,7 @@ def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
             "013_pipeline_templates.sql",
+            "014_drop_unread_schema.sql",
         ]
         assert (
             connection.scalar(text("SELECT count(*) FROM services WHERE id='old'")) == 1
@@ -204,6 +211,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             ):
                 connection.execute(text(f"DROP TABLE {table}"))
             connection.execute(text("DROP TABLE off_key_schema_migrations"))
+            restore_retired_schema(connection)
     with disposable_database.begin() as connection:
         assert migration_status(connection)["pending"] == [
             "004_system_catalogue.sql",
@@ -216,6 +224,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
             "013_pipeline_templates.sql",
+            "014_drop_unread_schema.sql",
         ]
         assert apply_migrations(connection)["applied"] == [
             "004_system_catalogue.sql",
@@ -228,6 +237,7 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             "011_case_insensitive_emails.sql",
             "012_remembered_session_rotation.sql",
             "013_pipeline_templates.sql",
+            "014_drop_unread_schema.sql",
         ]
         assert (
             connection.scalar(
@@ -254,6 +264,10 @@ def test_clean_break_preserves_configuration_and_history_and_runs_once(
             == 1
         )
         assert connection.scalar(text("SELECT count(*) FROM system_configuration")) == 1
+        assert not inspect(connection).has_table("model_registry")
+        assert "stateful_set_name" not in {
+            column["name"] for column in inspect(connection).get_columns("services")
+        }
         connection.execute(
             insert(Telemetry).values(
                 charger_id="existing",
@@ -404,8 +418,11 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
         collection_runtime, "read_collection_runtime", AsyncMock(return_value=snapshot)
     )
     monkeypatch.setattr(radar, "get_async_docker", Docker)
-    registry = MagicMock()
-    registry.validate_model_params.return_value = {}
+    monkeypatch.setattr(
+        "off_key_tactic_middleware.services.orchestration.radar_environment."
+        "validate_model_params",
+        lambda *args, **kwargs: {},
+    )
     try:
         async with AsyncSession(engine, expire_on_commit=False) as session:
             session.add_all(
@@ -443,7 +460,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
                 )
             )
             await session.commit()
-            orchestration = RadarOrchestrationService(session, registry)
+            orchestration = RadarOrchestrationService(session)
             orchestration.workloads = workloads
             await deployment.begin(session, orchestration, revision)
             assert sorted(removed) == ["old", "stopping"]
@@ -545,9 +562,7 @@ async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
                 )
             )
             await session.commit()
-            orchestration = RadarOrchestrationService(
-                session, None, workloads=workloads
-            )
+            orchestration = RadarOrchestrationService(session, workloads=workloads)
             with pytest.raises(ValueError, match="could not stop"):
                 await deployment.begin(session, orchestration, "a" * 40)
             await session.rollback()

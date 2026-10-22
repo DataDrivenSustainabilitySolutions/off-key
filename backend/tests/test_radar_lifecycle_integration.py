@@ -46,7 +46,10 @@ from off_key_tactic_middleware.services.system_collection import SystemCollectio
 from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from tests.support.schema_baselines import remove_pipeline_schema
+from tests.support.schema_baselines import (
+    remove_pipeline_schema,
+    restore_retired_schema,
+)
 
 
 @pytest_asyncio.fixture
@@ -91,7 +94,7 @@ async def pending_monitor(
         container_name="review-" + service_id, mqtt_topics=["telemetry/entity/value"]
     )
     environment = build_radar_environment(
-        service_id=service_id, config=config, model_registry=None
+        service_id=service_id, config=config, validate_params=False
     )
     environment["RADAR_COLLECTION_FINGERPRINT"] = "review-collection"
     environment["RADAR_LIFECYCLE_VERSION"] = "1"
@@ -234,7 +237,7 @@ async def test_cancelled_creation_is_adopted_once_and_keeps_sensor_claim(
         monkeypatch.setattr(
             radar_module, "get_async_docker", lambda: workloads.async_docker
         )
-        orchestration = radar_module.RadarOrchestrationService(session, None)
+        orchestration = radar_module.RadarOrchestrationService(session)
         with pytest.raises(ValueError, match="overlaps active service"):
             await orchestration._assert_topics_available(
                 mqtt_topics=["telemetry/entity/value"], container_name="another"
@@ -387,6 +390,7 @@ def test_lifecycle_migration_adopts_existing_attached_and_stopped_rows(
         """)
         )
         remove_pipeline_schema(connection)
+        restore_retired_schema(connection)
         if ledger:
             connection.execute(
                 text(
@@ -587,7 +591,7 @@ async def test_legacy_monitor_keeps_sensor_claim_through_real_swarm_replacement(
     async with sessions() as session:
         with pytest.raises(ValueError, match="overlaps active service"):
             await radar_module.RadarOrchestrationService(
-                session, None
+                session
             )._assert_topics_available(
                 mqtt_topics=["telemetry/entity/value"], container_name="replacement"
             )
@@ -635,7 +639,7 @@ async def test_delete_holds_claim_until_real_swarm_task_stops_without_database_l
         radar_module, "get_async_docker", lambda: workloads.async_docker
     )
     async with sessions() as session:
-        service = radar_module.RadarOrchestrationService(session, None)
+        service = radar_module.RadarOrchestrationService(session)
         started = time.monotonic()
         deleting = asyncio.create_task(service.delete_radar_service(service_id))
         async with asyncio.timeout(10):
@@ -680,7 +684,7 @@ async def test_externally_removed_service_retains_claim_while_real_tasks_retire(
         radar_module, "get_async_docker", lambda: workloads.async_docker
     )
     async with sessions() as session:
-        service = radar_module.RadarOrchestrationService(session, None)
+        service = radar_module.RadarOrchestrationService(session)
         started = time.monotonic()
         deleting = asyncio.create_task(service.delete_radar_service(service_id))
         await asyncio.sleep(0.1)
@@ -796,7 +800,7 @@ async def test_collection_edit_revalidates_revision_after_unlocked_real_docker_s
                 await lock_collection_configuration(session)
                 topic = latest.runtime.bindings["humidity"]["accepted_topic"]
                 await radar_module.RadarOrchestrationService(
-                    session, None
+                    session
                 )._assert_topics_available(
                     mqtt_topics=[topic], container_name="new-pending"
                 )

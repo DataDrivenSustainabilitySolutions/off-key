@@ -25,7 +25,6 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ...models.registry import ModelRegistryService
 from ..radar_status import (
     TERMINAL_WORKLOAD_STATES,
     derive_operational_status,
@@ -52,13 +51,11 @@ class RadarOrchestrationService:
     def __init__(
         self,
         session: AsyncSession,
-        model_registry: ModelRegistryService,
         *,
         workloads: RadarWorkloadManager | None = None,
     ):
         self.session: AsyncSession = session
         self._workloads = workloads
-        self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
     @property
@@ -116,7 +113,7 @@ class RadarOrchestrationService:
         env_vars = build_radar_environment(
             service_id=db_service_id,
             config=config,
-            model_registry=self.model_registry,
+            validate_params=True,
         )
         env_vars["RADAR_COLLECTION_FINGERPRINT"] = collection_fingerprint
         config_fingerprint = build_radar_config_fingerprint(env_vars)

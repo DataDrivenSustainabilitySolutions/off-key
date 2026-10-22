@@ -1,7 +1,7 @@
 """Public validation and serialization of the shared RADAR launch contract."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -137,10 +137,8 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
             RADAR_CHECKPOINT_SECRET="monitoring-contract-test-key",
         ),
     )
-    registry = MagicMock()
-    registry.validate_model_params.return_value = config.monitoring.model_params
     environment = radar_environment.build_radar_environment(
-        service_id="test-service", config=tactic_config, model_registry=registry
+        service_id="test-service", config=tactic_config, validate_params=False
     )
     for name in RadarSettings.model_fields:
         monkeypatch.delenv(name, raising=False)

@@ -244,7 +244,7 @@ async def test_activation_binding_and_persisted_union_claims(pipeline_database):
         )
         assert row.claim_topics == [topic]
         with pytest.raises(ValueError, match="pending pipeline activation"):
-            await RadarOrchestrationService(session, None)._assert_topics_available(
+            await RadarOrchestrationService(session)._assert_topics_available(
                 mqtt_topics=[topic], container_name="legacy"
             )
         await session.rollback()
@@ -271,7 +271,7 @@ async def test_stop_predetermined_service_cancels_its_pending_activation(
                 idempotency_key="stop-pending",
             )
         )
-        assert await RadarOrchestrationService(session, None).delete_radar_service(
+        assert await RadarOrchestrationService(session).delete_radar_service(
             activation.service_id
         )
         row = await session.get(
@@ -486,7 +486,7 @@ async def test_running_intent_keeps_claim_when_legacy_status_is_false(
             )
         await session.rollback()
         with pytest.raises(ValueError, match="overlaps active service"):
-            await RadarOrchestrationService(session, None)._assert_topics_available(
+            await RadarOrchestrationService(session)._assert_topics_available(
                 mqtt_topics=[topic], container_name="conflicting-legacy"
             )
         await session.rollback()

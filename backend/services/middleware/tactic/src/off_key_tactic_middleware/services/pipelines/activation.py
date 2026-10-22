@@ -72,9 +72,8 @@ class ActivationOwnershipLost(RuntimeError):
 
 
 class PipelineActivations:
-    def __init__(self, session, registry=None, workloads=None):
+    def __init__(self, session, workloads=None):
         self.session = session
-        self.registry = registry
         self._workloads = workloads
 
     @property
@@ -84,9 +83,7 @@ class PipelineActivations:
         return self._workloads
 
     def _orchestration(self):
-        return RadarOrchestrationService(
-            self.session, self.registry, workloads=self.workloads
-        )
+        return RadarOrchestrationService(self.session, workloads=self.workloads)
 
     async def get(self, identifier):
         return activation_view(await self._row(identifier))

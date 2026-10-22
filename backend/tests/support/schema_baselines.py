@@ -16,3 +16,11 @@ def remove_pipeline_schema(connection):
         "monitoring_pipelines",
     ):
         connection.execute(text(f"DROP TABLE {name}"))
+
+
+def restore_retired_schema(connection):
+    """Recreate schema every pre-014 database carries and migration 014 drops."""
+    connection.execute(text("CREATE TABLE model_registry (id serial PRIMARY KEY)"))
+    connection.execute(
+        text("ALTER TABLE services ADD COLUMN stateful_set_name text UNIQUE")
+    )

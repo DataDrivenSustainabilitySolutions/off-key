@@ -146,26 +146,16 @@ class Charger(Base):
 class Telemetry(Base):
     __tablename__ = "telemetry"
 
-    charger_id = Column(
-        Text, primary_key=True, unique=False, index=True, nullable=False
-    )
-    timestamp = Column(
-        TIMESTAMP(timezone=True),
-        primary_key=True,
-        unique=False,
-        index=True,
-        nullable=False,
-    )
-    value = Column(Float, unique=False, index=True, nullable=True)
-    type = Column(Text, primary_key=True, unique=False, index=True, nullable=False)
-    data_source = Column(Text, nullable=False, index=True)
-    created = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    charger_id = Column(Text, primary_key=True, nullable=False)
+    timestamp = Column(TIMESTAMP(timezone=True), primary_key=True, nullable=False)
+    value = Column(Float, nullable=True)
+    type = Column(Text, primary_key=True, nullable=False)
+    data_source = Column(Text, nullable=False)
+    created = Column(DateTime(timezone=True), server_default=func.now())
 
+    # The primary key serves upserts; TimescaleDB adds its own time index.
     __table_args__ = (
-        UniqueConstraint("charger_id", "timestamp", "type", name="uq_telemetry_entry"),
-        # Composite indexes for common query patterns
-        Index("ix_telemetry_charger_timestamp", "charger_id", "timestamp"),
-        Index("ix_telemetry_charger_type", "charger_id", "type"),
+        # History reads, newest first.
         Index(
             "ix_telemetry_charger_type_timestamp_desc",
             "charger_id",
@@ -174,18 +164,13 @@ class Telemetry(Base):
             postgresql_using="btree",
             postgresql_ops={"timestamp": "DESC"},
         ),
+        # Cursor reads by arrival time.
         Index(
             "ix_telemetry_charger_type_created_timestamp",
             "charger_id",
             "type",
             "created",
             "timestamp",
-        ),
-        Index(
-            "ix_telemetry_timestamp_desc",
-            "timestamp",
-            postgresql_using="btree",
-            postgresql_ops={"timestamp": "DESC"},
         ),
     )
 
@@ -205,9 +190,6 @@ class MonitoringService(Base):
         Text, unique=True, nullable=True
     )  # (for FastAPI + Docker SDK)
     container_name = Column(Text, unique=True, nullable=False)
-    stateful_set_name = Column(
-        Text, unique=True, nullable=True
-    )  # (for Kubernetes StatefulSet)
     mqtt_topic = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=func.now())
     status = Column(Boolean, default=True)
@@ -372,52 +354,4 @@ class AnomalyIdentity(Base):
             "charger_id",
             "timestamp",
         ),
-    )
-
-
-class ModelRegistry(Base):
-    """
-    Database-backed ML model registry.
-
-    Stores model definitions, hyperparameter schemas, and metadata.
-    Replaces hardcoded MODEL_REGISTRY and PREPROCESSOR_REGISTRY.
-    """
-
-    __tablename__ = "model_registry"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    model_type = Column(Text, unique=True, nullable=False, index=True)
-    category = Column(Text, nullable=False, index=True)  # currently 'model'
-    family = Column(Text, nullable=False, index=True)  # 'forest', 'distance', etc.
-
-    # Model metadata
-    name = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    complexity = Column(Text, nullable=True)  # 'low', 'medium', 'high'
-    memory_usage = Column(Text, nullable=True)  # 'low', 'medium', 'high'
-
-    # Import configuration
-    import_paths = Column(JSON, nullable=False)  # List of import paths to try
-
-    # Parameter schema (JSON Schema format)
-    parameter_schema = Column(JSON, nullable=False)
-    default_parameters = Column(JSON, nullable=False, default=dict)
-
-    # Versioning and lifecycle
-    version = Column(Text, nullable=False, default="1.0.0")
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
-    requires_special_handling = Column(
-        Boolean, default=False, nullable=False
-    )  # For KNN, etc.
-
-    # Timestamps
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    # Indexes for efficient queries
-    __table_args__ = (
-        Index("ix_model_registry_active_category", "is_active", "category"),
-        Index("ix_model_registry_type_active", "model_type", "is_active"),
     )

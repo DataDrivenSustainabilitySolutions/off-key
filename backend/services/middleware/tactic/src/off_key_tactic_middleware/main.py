@@ -5,8 +5,7 @@ This service acts as an orchestrator between the API gateway and backend microse
 specifically handling Docker container orchestration for RADAR services.
 """
 
-import asyncio
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -29,12 +28,10 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
 from .api.v1 import data_services, members, models, pipelines, radar, system
-from .api.v1.admin_models import router as admin_models_router
 from .config.collection import get_ambibox_settings
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
-from .models.registry import ModelRegistryNotReadyError, ModelRegistryService
 from .services.ambibox_live_access import AmbiboxLiveAccess
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.reconciliation import RadarStatusReconciliationService
@@ -42,75 +39,11 @@ from .services.system import SystemService
 from .services.system_live import SystemLiveService
 
 
-async def _initialize_model_registry(
-    app: FastAPI,
-    *,
-    max_retries: int,
-    retry_interval_seconds: float,
-    log_as_exception: bool,
-) -> bool:
-    """Initialize model registry once and update app state."""
-    model_registry = getattr(app.state, "model_registry", None)
-    if model_registry is None:
-        model_registry = ModelRegistryService()
-        app.state.model_registry = model_registry
-
-    try:
-        await model_registry.initialize(
-            max_retries=max_retries,
-            retry_interval_seconds=retry_interval_seconds,
-        )
-        app.state.model_registry_ready = True
-        logger.info("Model registry ready")
-        return True
-    except ModelRegistryNotReadyError as exc:
-        app.state.model_registry_ready = False
-        if log_as_exception:
-            logger.exception(
-                "Model registry initialization failed; model endpoints will return "
-                "503 until recovery succeeds",
-                extra={"error": str(exc), "error_type": type(exc).__name__},
-            )
-        else:
-            logger.warning(
-                "Model registry still not ready; retrying in %.1fs (%s)",
-                retry_interval_seconds,
-                exc,
-            )
-        return False
-
-
-async def _model_registry_recovery_loop(app: FastAPI) -> None:
-    """Retry model registry initialization in background until ready."""
-    config = get_tactic_settings().config
-    retry_interval = config.model_registry_init_retry_interval_seconds
-
-    logger.info(
-        "Starting model registry recovery loop (retry_interval=%.1fs)",
-        retry_interval,
-    )
-
-    while True:
-        ready = await _initialize_model_registry(
-            app,
-            max_retries=1,
-            retry_interval_seconds=retry_interval,
-            log_as_exception=False,
-        )
-        if ready:
-            logger.info("Model registry recovery completed")
-            return
-        await asyncio.sleep(retry_interval)
-
-
 async def _teardown_ephemeral_radar_workloads(app: FastAPI, phase: str) -> None:
     """Destroy all managed RADAR workloads and clear DB service records."""
     session_factory = get_async_session_local()
     async with session_factory() as session:
-        service = RadarOrchestrationService(
-            session=session,
-            model_registry=app.state.model_registry,
-        )
+        service = RadarOrchestrationService(session)
         summary = await service.teardown_managed_radar_workloads()
 
     logger.info(
@@ -120,21 +53,6 @@ async def _teardown_ephemeral_radar_workloads(app: FastAPI, phase: str) -> None:
         summary["docker_workloads_removed"],
         summary["db_rows_deleted"],
     )
-
-
-async def _start_model_registry(app: FastAPI, config: TacticConfig) -> None:
-    """Initialize the registry or start its bounded background recovery."""
-    model_registry_ready = await _initialize_model_registry(
-        app,
-        max_retries=config.model_registry_init_max_retries,
-        retry_interval_seconds=config.model_registry_init_retry_interval_seconds,
-        log_as_exception=True,
-    )
-    if not model_registry_ready:
-        app.state.model_registry_recovery_task = asyncio.create_task(
-            _model_registry_recovery_loop(app),
-            name="tactic-model-registry-recovery",
-        )
 
 
 async def _connect_docker(app: FastAPI) -> None:
@@ -217,35 +135,17 @@ async def _shutdown_services(app: FastAPI, config: TacticConfig) -> None:
         finally:
             app.state.docker_client = None
 
-    recovery_task = app.state.model_registry_recovery_task
-    if recovery_task is not None:
-        try:
-            recovery_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await recovery_task
-        except Exception:
-            logger.exception("Error stopping model registry recovery")
-        finally:
-            app.state.model_registry_recovery_task = None
-
-    app.state.model_registry_ready = False
-    app.state.model_registry = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager for startup and shutdown events."""
     config = get_tactic_settings().config
 
-    app.state.model_registry = ModelRegistryService()
-    app.state.model_registry_ready = False
-    app.state.model_registry_recovery_task = None
     app.state.docker_client = None
     app.state.reconciliation_service = None
     app.state.system_live = None
 
     try:
-        await _start_model_registry(app, config)
         await _connect_docker(app)
 
         if config.radar_workload_lifecycle == RadarWorkloadLifecycle.EPHEMERAL:
@@ -260,7 +160,7 @@ async def lifespan(app: FastAPI):
         from .services.pipelines.supervisor import PipelineActivationSupervisor
 
         app.state.pipeline_activation_supervisor = PipelineActivationSupervisor(
-            app.state.model_registry, RadarWorkloadManager(app.state.docker_client)
+            RadarWorkloadManager(app.state.docker_client)
         )
         await app.state.pipeline_activation_supervisor.start()
         operator_access = AmbiboxLiveAccess(get_ambibox_settings())
@@ -324,38 +224,26 @@ def create_app() -> FastAPI:
     business.include_router(models.router, prefix="/api/v1", tags=["models"])
     business.include_router(pipelines.router, prefix="/api/v1", tags=["pipelines"])
     business.include_router(system.router, prefix="/api/v1")
-    business.include_router(admin_models_router, prefix="/api/v1", tags=["admin"])
 
     business.include_router(members.router, prefix="/api/v1")
     app.include_router(business)
 
     @app.get("/health")
-    async def health_check(request: Request):
+    async def health_check():
         """Health check endpoint."""
-        return {
-            "status": "healthy",
-            "service": "tactic-middleware",
-            "model_registry_ready": getattr(
-                request.app.state,
-                "model_registry_ready",
-                False,
-            ),
-        }
+        return {"status": "healthy", "service": "tactic-middleware"}
 
     @app.get("/ready")
     async def readiness_check(request: Request, response: Response):
-        """Readiness endpoint that requires model registry and docker connectivity."""
-        model_registry_ready = getattr(request.app.state, "model_registry_ready", False)
-        docker_ready = getattr(request.app.state, "docker_client", None) is not None
-        ready = model_registry_ready and docker_ready
+        """Readiness endpoint that requires docker connectivity."""
+        ready = getattr(request.app.state, "docker_client", None) is not None
         if not ready:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
         return {
             "status": "ready" if ready else "not_ready",
             "service": "tactic-middleware",
-            "model_registry_ready": model_registry_ready,
-            "docker_ready": docker_ready,
+            "docker_ready": ready,
         }
 
     return app

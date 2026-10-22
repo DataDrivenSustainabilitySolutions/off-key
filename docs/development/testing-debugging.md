@@ -142,7 +142,7 @@ docker compose logs --tail 200 tactic-middleware
 
 ### Monitoring start fails
 
-1. Confirm that the model registry is populated:
+1. Confirm that the model catalogue is served:
 
     ```bash
     curl --fail http://localhost:8000/v1/monitors/models

@@ -200,12 +200,6 @@ class TacticConfig(BaseModel):
     # Managed RADAR workload lifecycle behavior
     radar_workload_lifecycle: RadarWorkloadLifecycle = RadarWorkloadLifecycle.EPHEMERAL
 
-    # Model Registry Initialization
-    model_registry_init_max_retries: int = Field(default=30, ge=1, le=600)
-    model_registry_init_retry_interval_seconds: float = Field(
-        default=2.0, ge=0.1, le=60.0
-    )
-
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     @model_validator(mode="after")
@@ -355,10 +349,6 @@ class TacticSettings(BaseSettings):
     TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(default=24)
     TACTIC_RADAR_WORKLOAD_LIFECYCLE: str | None = Field(default=None)
 
-    # Model Registry Initialization
-    TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES: int = Field(default=30)
-    TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS: float = Field(default=2.0)
-
     @staticmethod
     def _split_constraints(raw_value: str) -> list[str]:
         if not raw_value:
@@ -473,10 +463,6 @@ class TacticSettings(BaseSettings):
                 self.TACTIC_TERMINAL_SERVICE_RETENTION_HOURS
             ),
             radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
-            model_registry_init_max_retries=self.TACTIC_MODEL_REGISTRY_INIT_MAX_RETRIES,
-            model_registry_init_retry_interval_seconds=(
-                self.TACTIC_MODEL_REGISTRY_INIT_RETRY_INTERVAL_SECONDS
-            ),
         )
 
 

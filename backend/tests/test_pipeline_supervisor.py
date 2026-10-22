@@ -89,9 +89,7 @@ async def test_slow_preflight_and_cleanup_do_not_delay_heartbeat_or_queued_cance
         )
         await session.commit()
 
-    supervisor = PipelineActivationSupervisor(
-        None, workloads, sessions=pipeline_database
-    )
+    supervisor = PipelineActivationSupervisor(workloads, sessions=pipeline_database)
     await supervisor.start()
     try:
         async with asyncio.timeout(5):

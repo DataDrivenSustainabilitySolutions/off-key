@@ -284,21 +284,24 @@ async def test_gateway_delete_preserves_tactic_error_status():
     assert exc_info.value.status == 404
 
 
-def _model_registry(validated_params=None):
-    registry = MagicMock()
-    registry.validate_model_params.return_value = validated_params or {
-        "n_estimators": 100,
-        "contamination": 0.1,
-    }
-    return registry
+def _validator(monkeypatch, validated_params=None):
+    validator = MagicMock(
+        return_value=validated_params or {"n_estimators": 100, "contamination": 0.1}
+    )
+    monkeypatch.setattr(
+        "off_key_tactic_middleware.services.orchestration.radar_environment."
+        "validate_model_params",
+        validator,
+    )
+    return validator
 
 
-def test_tactic_builds_static_environment():
-    registry = _model_registry()
+def test_tactic_builds_static_environment(monkeypatch):
+    validator = _validator(monkeypatch)
 
     env = build_radar_environment(
         service_id="svc-static",
-        model_registry=registry,
+        validate_params=True,
         config=RadarStartConfig(
             container_name="radar",
             mqtt_topics=[
@@ -358,11 +361,14 @@ def test_tactic_builds_static_environment():
         "n_estimators": 100,
         "contamination": 0.1,
     }
-    assert registry.validate_model_params.call_args.args[0] == "pyod_iforest"
-    assert registry.validate_model_params.call_args.kwargs["family"] == "static_pyod"
+    assert validator.call_args.args[0] == "pyod_iforest"
+    assert validator.call_args.kwargs["family"] == "static_pyod"
 
 
-def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides():
+def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
+    monkeypatch,
+):
+    _validator(monkeypatch)
     settings = TacticSettings(
         TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST="emqx-main",
         TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=8883,
@@ -381,12 +387,12 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
         patch(f"{module}.get_radar_container_runtime_settings", return_value=runtime),
     ):
         env = build_radar_environment(
-            service_id="svc", config=config, model_registry=_model_registry()
+            service_id="svc", config=config, validate_params=True
         )
         config.mqtt_config = {"host": "evil.example"}
         with pytest.raises(ValueError, match="cannot be overridden"):
             build_radar_environment(
-                service_id="svc", config=config, model_registry=_model_registry()
+                service_id="svc", config=config, validate_params=True
             )
     assert env["ENVIRONMENT"] == "production"
     assert env["RADAR_MQTT_BROKER_HOST"] == "emqx-main"
@@ -398,12 +404,12 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
     assert "RADAR_MQTT_API_KEY" not in env
 
 
-def test_tactic_builds_adaptive_environment():
-    registry = _model_registry({"num_trees": 2})
+def test_tactic_builds_adaptive_environment(monkeypatch):
+    validator = _validator(monkeypatch, {"num_trees": 2})
 
     env = build_radar_environment(
         service_id="svc-dynamic",
-        model_registry=registry,
+        validate_params=True,
         config=RadarStartConfig(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
@@ -428,16 +434,16 @@ def test_tactic_builds_adaptive_environment():
         "mode": "calibrated_quantile",
         "quantile": 1.0,
     }
-    assert registry.validate_model_params.call_args.kwargs["family"] == (
-        "adaptive_aberrant"
-    )
+    assert validator.call_args.kwargs["family"] == ("adaptive_aberrant")
 
 
-def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict():
-    registry = _model_registry({"num_trees": 100})
+def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
+    monkeypatch,
+):
+    _validator(monkeypatch, {"num_trees": 100})
     env = build_radar_environment(
         service_id="svc-dynamic-default",
-        model_registry=registry,
+        validate_params=True,
         config=RadarStartConfig(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
@@ -457,7 +463,7 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict():
     with pytest.raises(ValueError, match="model_type conflicts"):
         build_radar_environment(
             service_id="svc-dynamic-conflict",
-            model_registry=registry,
+            validate_params=True,
             config=RadarStartConfig(
                 container_name="radar",
                 mqtt_topics=["telemetry/charger-1/L1"],

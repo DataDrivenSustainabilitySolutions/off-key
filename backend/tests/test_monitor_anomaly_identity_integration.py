@@ -14,7 +14,10 @@ from off_key_tactic_middleware.services.data.anomalies import AnomalyService
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from tests.support.schema_baselines import remove_pipeline_schema
+from tests.support.schema_baselines import (
+    remove_pipeline_schema,
+    restore_retired_schema,
+)
 
 
 @pytest.mark.asyncio
@@ -139,6 +142,7 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
             UPDATE anomaly_identity SET anomaly_id = 'preserved-public-id';
         """)
         remove_pipeline_schema(connection)
+        restore_retired_schema(connection)
         if ledger:
             connection.execute(
                 text(

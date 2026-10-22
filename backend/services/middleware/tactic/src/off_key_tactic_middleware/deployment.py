@@ -17,7 +17,6 @@ from off_key_core.db.pipeline_claims import (
 from off_key_core.schemas.radar import RadarStartConfig
 from sqlalchemy import select, text
 
-from .models.registry import ModelRegistryService
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
@@ -372,9 +371,7 @@ async def run(action: str, revision: str) -> dict:
                 "phase": operation.phase if operation else "complete",
                 "revision": operation.revision if operation else None,
             }
-        registry = ModelRegistryService()
-        await registry.initialize(max_retries=1)
-        orchestration = RadarOrchestrationService(session, registry)
+        orchestration = RadarOrchestrationService(session)
         return await (
             begin(session, orchestration, revision)
             if action == "begin"

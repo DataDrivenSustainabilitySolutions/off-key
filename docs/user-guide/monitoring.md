@@ -213,7 +213,7 @@ curl --fail http://localhost:8000/v1/anomalies/count
 | Start fails with a validation error | Invalid model parameters or sensors already claimed | Retry with defaults and check active services |
 | Service runs but evidence is empty | No MQTT data flow or warm-up/calibration is incomplete | Verify the topic stream and allow the initial window to complete |
 | Service disappears after a restart | Ephemeral lifecycle is configured | Use `TACTIC_RADAR_WORKLOAD_LIFECYCLE=persistent` only when persistence is required |
-| Model endpoint is empty | Model registry has not initialized | Check TACTIC `/ready` and its logs |
+| Model endpoint fails | TACTIC is unreachable | Check TACTIC `/ready` and its logs |
 | Evidence exists but no anomalies appear | Current observations have not crossed the detector threshold | Inspect evidence before changing model parameters |
 
 ## Related pages

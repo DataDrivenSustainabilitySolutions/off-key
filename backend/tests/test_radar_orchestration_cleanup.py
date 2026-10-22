@@ -110,7 +110,7 @@ def _orchestrator(monkeypatch, session, fake_docker=None):
     monkeypatch.setattr(
         radar_module, "get_async_docker", lambda: fake_docker or FakeAsyncDocker()
     )
-    return RadarOrchestrationService(session=session, model_registry=MagicMock())
+    return RadarOrchestrationService(session=session)
 
 
 def _db_row(**overrides):

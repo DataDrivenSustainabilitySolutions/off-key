@@ -57,6 +57,9 @@ APPLIED_CHECKSUMS = {
     "013_pipeline_templates.sql": (
         "5f201c44247726ac28fcda3b3c372ad7fa956f10d9dc1ce3b2099e1e5aad22ca"
     ),
+    "014_drop_unread_schema.sql": (
+        "65a0ba7666bb23c807bb5b8d262c8a8ee3b4c9de7370f0f8c74e00ea616b7df6"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -72,6 +75,8 @@ LEDGER_TABLES = {
         "monitoring_pipeline_activations",
     },
 }
+# Pre-ledger tables a later migration dropped.
+RETIRED_TABLES = {"014_drop_unread_schema.sql": {"model_registry"}}
 
 
 def test_released_migrations_keep_their_applied_checksums():
@@ -96,5 +101,7 @@ def test_every_orm_table_is_pre_ledger_or_owned_by_a_migration():
     owned = set().union(*LEDGER_TABLES.values())
 
     assert not PRE_LEDGER_TABLES & owned
-    assert set(Base.metadata.tables) == PRE_LEDGER_TABLES | owned
+    retired = set().union(*RETIRED_TABLES.values())
+    assert retired <= PRE_LEDGER_TABLES
+    assert set(Base.metadata.tables) == (PRE_LEDGER_TABLES | owned) - retired
     assert PRE_LEDGER_TABLES - {"deployment_maintenance"} == BASELINE_TABLES

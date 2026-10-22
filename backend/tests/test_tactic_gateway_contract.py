@@ -22,18 +22,7 @@ CALL_SHAPES = {
     "system_request": (0, 2, "path", "", "/api/v1/system"),
 }
 # TACTIC routes the gateway deliberately never calls.
-INTERNAL_ONLY = {
-    ("GET", "/api/v1/orchestration/radar/models/"): "operator API",
-    ("GET", "/api/v1/models/info/{model_type}"): "operator API",
-    ("POST", "/api/v1/models/validate"): "operator API",
-    ("POST", "/api/v1/models/create-instance"): "operator API",
-    ("GET", "/api/v1/models/categories/models"): "operator API",
-    ("GET", "/api/v1/models/health"): "operator API",
-    ("GET", "/api/v1/admin/models/"): "operator API",
-    ("PUT", "/api/v1/admin/models/{model_type}"): "operator API",
-    ("DELETE", "/api/v1/admin/models/{model_type}"): "operator API",
-    ("POST", "/api/v1/admin/models/{model_type}/test"): "operator API",
-}
+INTERNAL_ONLY: dict[tuple[str, str], str] = {}
 
 
 def _literal(node):

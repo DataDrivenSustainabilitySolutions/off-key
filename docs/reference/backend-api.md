@@ -226,32 +226,22 @@ Health and readiness remain available without this service credential.
 | `GET` | `/orchestration/radar/services/details/` | Get workload details |
 | `DELETE` | `/orchestration/radar/services/stop/` | Stop by container reference |
 | `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |
-| `GET` | `/orchestration/radar/models/` | List model options |
 
-### Model registry
+### Model catalogue
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/models/` | List active models |
-| `GET` | `/models/info/{model_type}` | Get model details |
-| `POST` | `/models/validate` | Validate parameters |
-| `POST` | `/models/create-instance` | Validate runtime model parameters |
-| `GET` | `/models/categories/models` | List model families |
-| `GET` | `/models/health` | Registry health |
+| `GET` | `/models/` | List the detectors shipped in RADAR, optionally filtered by `strategy` |
 
-Admin routes under `/admin/models` provide list, update, deactivate, and
-parameter-validation operations for shipped models. Updates can change display
-metadata, default parameters, and activation; executable model definitions and
-parameter schemas come from the application's catalog. Adding a model requires
-shipping its implementation and catalog entry. Restrict these routes at the
-deployment boundary until route-level authorization is enforced.
+The catalogue is served from code (`off_key_core.models`). Adding a model means
+shipping its implementation and catalogue entry.
 
 ### Middleware health
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Liveness; outside `/api/v1` |
-| `GET` | `/ready` | Model registry and Docker API readiness; outside `/api/v1` |
+| `GET` | `/ready` | Docker API readiness; outside `/api/v1` |
 
 ## Error model
 

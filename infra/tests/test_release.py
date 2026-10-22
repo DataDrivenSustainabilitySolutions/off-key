@@ -1,6 +1,5 @@
 """Release identity and readiness failures that public HTTP alone cannot detect."""
 
-import importlib.util
 import json
 import os
 import sys
@@ -16,19 +15,11 @@ from unittest.mock import patch
 
 import yaml
 from jinja2 import Environment
-from support import ROOT, ansible, run
+from support import ROOT, ansible, load_script, run
 
-
-def load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-application = load("check_application")
-swarm = load("check_swarm")
-release = load("pin_release")
+application = load_script("check_application")
+swarm = load_script("check_swarm")
+release = load_script("pin_release")
 
 
 class ReleaseTests(unittest.TestCase):

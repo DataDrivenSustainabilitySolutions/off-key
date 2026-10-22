@@ -1,7 +1,6 @@
 """Exercise backup and seed restoration with fake credentials and no network."""
 
 import hashlib
-import importlib.util
 import json
 import os
 import stat
@@ -14,13 +13,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
-from support import ROOT, ansible, run
+from support import ROOT, ansible, load_script, run
 
-spec = importlib.util.spec_from_file_location(
-    "trust_ssh_host", ROOT / "scripts/trust_ssh_host.py"
-)
-trust = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(trust)
+trust = load_script("trust_ssh_host")
 
 
 class RecoveryTests(unittest.TestCase):

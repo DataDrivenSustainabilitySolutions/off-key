@@ -1,7 +1,6 @@
 """Integration checks for actual Ansible rendering and Docker config parsing."""
 
 import hashlib
-import importlib.util
 import ipaddress
 import json
 import os
@@ -12,13 +11,9 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 import yaml
-from support import CLIENTS, ROOT, TOKEN, ansible, discovery, render, run
+from support import CLIENTS, ROOT, TOKEN, ansible, discovery, load_script, render, run
 
-spec = importlib.util.spec_from_file_location(
-    "compile_stack", ROOT / "scripts/compile_stack.py"
-)
-compiler = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(compiler)
+compiler = load_script("compile_stack")
 
 MOUNTS = {
     "persist_postgres": ("postgres", "/var/lib/postgresql/data"),
@@ -94,7 +89,7 @@ class DeploymentTests(unittest.TestCase):
             ),
             ("prod-moved", "prod", {"ambibox_nfs_addr": "100.100.10.99"}),
             ("prod-rotated", "prod", {"cloudflare_tunnel_token": TOKEN + "rotated"}),
-            ("prod-ephemeral", "prod", all_off | {"persist_mailpit": True}),
+            ("prod-ephemeral", "prod", all_off),
             ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
             ("prod-collection-disabled", "prod", {"mqtt_telemetry_enabled": "false"}),
             (
@@ -292,15 +287,16 @@ class DeploymentTests(unittest.TestCase):
                     ]
                 )
             )
-            for environment in ("prod", "prod"):
-                with self.subTest(environment=environment):
+            # Retiring twice must be idempotent: the repeat finds nothing to remove.
+            for attempt in ("first", "repeat"):
+                with self.subTest(attempt=attempt):
                     ansible(
                         "playbook",
                         "-i",
                         "localhost,",
                         str(playbook),
                         "-e",
-                        f"offkey_env={environment}",
+                        "offkey_env=prod",
                     )
                     expected = [
                         name

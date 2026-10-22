@@ -1,6 +1,5 @@
 """Release triggers and private runner material use fail-closed trust boundaries."""
 
-import importlib.util
 import json
 import os
 import sys
@@ -10,20 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import yaml
-from support import ROOT, ansible, run
+from support import ROOT, ansible, load_script, run
 
-
-def load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-release = load("pin_release")
+release = load_script("pin_release")
 with patch.dict(sys.modules, {"pin_release": release}):
-    readiness = load("release_ready")
-secrets = load("prepare_ci_secrets")
+    readiness = load_script("release_ready")
+secrets = load_script("prepare_ci_secrets")
 
 
 class CDTests(unittest.TestCase):

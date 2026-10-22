@@ -1,5 +1,6 @@
 """Run the real configuration tools against temporary, non-secret inputs."""
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -7,6 +8,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_script(name):
+    """Import infra/scripts/<name>.py as a module, without touching sys.path."""
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run(*args, cwd=ROOT, env=None, input=None, check=True, timeout=180):

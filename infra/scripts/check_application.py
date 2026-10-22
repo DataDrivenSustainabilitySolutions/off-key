@@ -46,17 +46,21 @@ def check_collection(snapshot, now, ingress_enabled=True):
     return {"revision": snapshot.revision, "selected_sensors": len(selected)}
 
 
+def probe_endpoints(environ):
+    """Readiness URLs the deploy gate requires, keyed by service."""
+    return {
+        "schema": "http://db-sync:8009/ready/schema",
+        "api": "http://api:8000/health",
+        "tactic": f"http://tactic:{environ.get('TACTIC_PORT', '8001')}/ready",
+        "collector": "http://localhost:8010/ready",
+    }
+
+
 async def main():
     from off_key_core.db.base import get_async_engine, get_async_session_local
     from off_key_core.db.collection_runtime import read_collection_runtime
 
-    endpoints = {
-        "schema": "http://db-sync:8009/ready/schema",
-        "api": "http://api:8000/health",
-        "tactic": f"http://tactic:{os.environ.get('TACTIC_PORT', '8001')}/ready",
-        "collector": "http://localhost:8010/ready",
-    }
-    for name, url in endpoints.items():
+    for name, url in probe_endpoints(os.environ).items():
         with await asyncio.to_thread(urlopen, url, timeout=5) as response:
             json.load(response)
         print(f"{name}: ready", flush=True)

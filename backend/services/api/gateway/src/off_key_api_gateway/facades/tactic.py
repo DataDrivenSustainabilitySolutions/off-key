@@ -496,11 +496,14 @@ class Tactic:
             endpoint=f"/api/v1/data/anomalies/{path_segment(anomaly_id)}",
         )
 
-    async def list_available_models(self) -> list[dict[str, Any]]:
-        """List models from TACTIC model registry API."""
+    async def list_available_models(
+        self, strategy: str | None = None
+    ) -> list[dict[str, Any]]:
+        """List the shipped detectors, filtered by TACTIC when a strategy is given."""
         return await self.request(
             method="GET",
             endpoint="/api/v1/models/",
+            params={"strategy": strategy} if strategy else None,
         )
 
 

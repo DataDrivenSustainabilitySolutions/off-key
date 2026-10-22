@@ -30,30 +30,26 @@ def _normalize_models_for_gateway(
 
     Data source stays TACTIC; only the transport shape is adapted for consumers.
     """
-    normalized: dict[str, dict[str, Any]] = {}
-    for model in models_from_tactic:
-        model_type = model.get("model_type")
-        if not model_type:
-            continue
-
-        normalized[model_type] = {
-            "name": model.get("name"),
-            "description": model.get("description", ""),
+    # TACTIC's ModelInfo always carries every field; nulls pass through unchanged.
+    return {
+        model["model_type"]: {
+            "name": model["name"],
+            "description": model["description"],
             "family": model["family"],
-            "strategy": model.get("strategy", "static_baseline"),
-            "complexity": model.get("complexity", "unknown"),
-            "memory_usage": model.get("memory_usage", "unknown"),
-            "parameters": model.get("parameter_schema", model.get("parameters", {})),
-            "default_parameters": model.get("default_parameters", {}),
-            "version": model.get("version"),
-            "requires_special_handling": model.get("requires_special_handling", False),
-            "catalog_id": model.get("catalog_id"),
-            "algorithm_family": model.get("algorithm_family"),
-            "available": model.get("available", True),
-            "default_capabilities": model.get("default_capabilities"),
+            "strategy": model["strategy"],
+            "complexity": model["complexity"],
+            "memory_usage": model["memory_usage"],
+            "parameters": model["parameter_schema"],
+            "default_parameters": model["default_parameters"],
+            "version": model["version"],
+            "requires_special_handling": model["requires_special_handling"],
+            "catalog_id": model["catalog_id"],
+            "algorithm_family": model["algorithm_family"],
+            "available": model["available"],
+            "default_capabilities": model["default_capabilities"],
         }
-
-    return normalized
+        for model in models_from_tactic
+    }
 
 
 class MonitoringServiceConfig(RadarStartConfig):
@@ -327,15 +323,8 @@ async def list_available_models_endpoint(
     # Enable client-side caching - models rarely change
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        models = await tactic.list_available_models()
-        normalized = _normalize_models_for_gateway(models)
-        if strategy:
-            return {
-                key: model
-                for key, model in normalized.items()
-                if model.get("strategy") == strategy
-            }
-        return normalized
+        models = await tactic.list_available_models(strategy)
+        return _normalize_models_for_gateway(models)
     except TacticError:
         raise
     except Exception as e:

@@ -88,6 +88,16 @@ async def test_requests_forward_the_current_correlation_id(serve):
     assert received["correlation_id"] == "request-123"
 
 
+async def test_model_list_lets_tactic_apply_the_strategy_filter(serve):
+    facade, received = await serve(text="[]")
+
+    assert await facade.list_available_models("adaptive_stream") == []
+    assert received["path"] == "/api/v1/models/"
+    assert received["query"] == {"strategy": "adaptive_stream"}
+    await facade.list_available_models()
+    assert received["query"] == {}
+
+
 @pytest.mark.parametrize(
     ("status", "text", "content_type", "message", "body"),
     [

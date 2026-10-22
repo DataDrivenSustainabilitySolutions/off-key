@@ -1,4 +1,4 @@
-"""Render both application deployment paths without using local credentials."""
+"""Render the local Compose deployment without using local credentials."""
 
 import json
 import os
@@ -12,11 +12,10 @@ import pytest
 ROOT = Path(__file__).parents[3]
 
 
-@pytest.mark.parametrize("filename", ["docker-compose.yml"])
-def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filename):
+def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for deployment contract checks")
-    source = ROOT / filename
+    source = ROOT / "docker-compose.yml"
     fixture = {
         "MQTT_USE_AUTH": "true",
         "MQTT_USERNAME": "fixture-proxy",
@@ -75,14 +74,13 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filenam
         "api-gateway": ("SYNC_HOSTNAME", "SYNC_API_PORT"),
         "mqtt-proxy": ("MQTT_USERNAME", "MQTT_APIKEY", "MQTT_CA_FILE"),
         "tactic-middleware": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),
-    }
-    if filename == "docker-compose.yml":
-        expected["mqtt-simulator"] = (
+        "mqtt-simulator": (
             "SIMULATOR_BROKER_HOST",
             "SIMULATOR_INTERVAL_SECONDS",
             "SIMULATOR_USERNAME",
             "SIMULATOR_API_KEY",
-        )
+        ),
+    }
     for service, keys in expected.items():
         for key in keys:
             assert services[service]["environment"][key] == fixture[key]

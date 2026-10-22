@@ -136,7 +136,7 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 ## Deployment context
 
-- **Local default:** `docker compose up -d --build`
+- **Local default:** `docker compose up -d --build` (loads `docker-compose.override.yml` for container names, ports, file sync and reload)
 - **Cluster override:** `docker-compose.cluster.yml`
 - **Swarm:** `infra/stack/docker-compose.swarm.yml`
 - **Swarm ingress overlay:** add the integrated production ingress overlays

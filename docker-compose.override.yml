@@ -1,0 +1,83 @@
+# Development conveniences that `docker compose up` loads on top of
+# docker-compose.yml: fixed container names, published ports, file sync
+# and gateway reload. Compose skips it whenever -f names files, so the local
+# deployment (dev/local/run.py) never loads it and the cluster command lists it.
+services:
+  frontend:
+    container_name: react_client
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /src
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+
+  api-gateway:
+    container_name: api_gateway
+    ports:
+      - "${BACKEND_PORT}:8000"
+    command: ["uvicorn", "off_key_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.14/site-packages/off_key_api_gateway",
+              "--host", "0.0.0.0", "--port", "8000"]
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/api/gateway/src/off_key_api_gateway
+          target: /app/lib/python3.14/site-packages/off_key_api_gateway
+        - action: rebuild
+          path: ./backend/uv.lock
+
+  tactic-middleware:
+    container_name: tactic_middleware
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  mqtt-proxy:
+    container_name: mqtt_proxy
+
+  mqtt-simulator:
+    container_name: mqtt_simulator
+
+  db-sync:
+    container_name: db_sync
+    develop:
+      watch:
+        - action: sync
+          path: backend/services/db/sync/src/off_key_db_sync
+          target: /app/lib/python3.14/site-packages/off_key_db_sync
+        - action: rebuild
+          path: ./backend/uv.lock
+
+  timescaledb:
+    container_name: timescaledb
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+  socket-proxy:
+    container_name: socket_proxy
+
+  mailpit:
+    container_name: mailpit
+    ports:
+      - "8025:8025" # Web UI
+      - "1025:1025" # SMTP port
+
+  emqx-main:
+    ports:
+      - 1883:1883
+      - 8083:8083
+      - 8084:8084
+      - 8883:8883
+      - 18083:18083
+
+  source-broker:
+    container_name: source_broker
+    ports:
+      - "127.0.0.1:1884:1883"

@@ -1,5 +1,6 @@
 # Uses the real application images and services with isolated local state.
-# Requires Docker Compose 2.24.4 or later for !override.
+# Requires Docker Compose 2.24.4 or later for !override. docker-compose.override.yml
+# is not loaded, so none of its container names, ports or file sync apply here.
 x-broker-fixture-broker: &broker-fixture-broker
   image: eclipse-mosquitto:2.0
   command: ["mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
@@ -18,74 +19,46 @@ x-broker-fixture-broker: &broker-fixture-broker
 
 services:
   frontend:
-    container_name: !reset null
     build:
       target: production
       args:
         VITE_LOCAL_ADMIN_EMAIL: "${SUPERUSER_MAIL:-admin@example.com}"
     environment: !override
       API_UPSTREAM: api-gateway:8000
-    develop: !reset null
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_FRONTEND_PORT:-5174}:5173"
 
   api-gateway:
-    container_name: !reset null
-    command:
-      [
-        "uvicorn",
-        "off_key_api_gateway.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8000",
-      ]
-    develop: !reset null
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_API_PORT:-8002}:8000"
 
   tactic-middleware:
-    container_name: !reset null
     # Ephemeral cleanup is host-wide; this deployment owns only its DB records.
     environment:
       TACTIC_RADAR_WORKLOAD_LIFECYCLE: persistent
       SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-true}"
       SYSTEM_LIVE_ALLOWED_HOSTS: '${SYSTEM_LIVE_ALLOWED_HOSTS:-["source-broker","fixture-broker-campus","fixture-broker-production","fixture-broker-greenhouse","fixture-broker-meter","fixture-broker-weather","fixture-broker-pump"]}'
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_TACTIC_PORT:-8003}:8000"
 
-  mqtt-radar:
-    container_name: !reset null
-
-  mqtt-proxy:
-    container_name: !reset null
-
   mqtt-simulator:
-    container_name: !reset null
     environment:
       SIMULATOR_WORKSHOP_ENABLED: "${SIMULATOR_WORKSHOP_ENABLED:-true}"
 
-  db-sync:
-    container_name: !reset null
-    develop: !reset null
-
   timescaledb:
-    container_name: !reset null
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5433}:5432"
 
   socket-proxy:
-    container_name: !reset null
     # Official released proxy; avoid the moving Docker Hub latest image.
     image: "${LOCAL_SOCKET_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:v0.4.2}"
 
   mailpit:
-    container_name: !reset null
     environment:
       MP_DATABASE: /data/mailpit.db
     volumes: !override
       - local_mailpit_data:/data
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_MAILPIT_PORT:-8026}:8025"
       - "127.0.0.1:${LOCAL_SMTP_PORT:-1026}:1025"
 
@@ -93,7 +66,7 @@ services:
     volumes: !override
       - ./dev/local/state/emqx-api-keys:/opt/emqx/etc/dev-api-keys:ro
       - local_emqx_data:/opt/emqx/data
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_MQTT_PORT:-1885}:1883"
       - "127.0.0.1:${LOCAL_MQTT_WS_PORT:-8085}:8083"
       - "127.0.0.1:${LOCAL_MQTT_WSS_PORT:-8086}:8084"
@@ -101,8 +74,7 @@ services:
       - "127.0.0.1:${LOCAL_EMQX_PORT:-18084}:18083"
 
   source-broker:
-    container_name: !reset null
-    ports: !override
+    ports:
       - "127.0.0.1:${LOCAL_SOURCE_MQTT_PORT:-1886}:1883"
 
   fixture-broker-campus:

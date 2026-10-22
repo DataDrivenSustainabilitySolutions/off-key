@@ -4,15 +4,14 @@ import { EChart } from "@/components/EChart";
 import { TelemetryChartSummary } from "@/components/TelemetryChartSummary";
 import { TelemetryDetectorControls } from "@/components/TelemetryDetectorControls";
 import { TelemetryEventDetails } from "@/components/TelemetryEventDetails";
-import { useTheme } from "@/components/theme-provider";
-import { useDetectorSelection } from "@/hooks/use-detector-selection";
+import { DetectorNotices } from "@/components/DetectorNotices";
+import { useChartColors } from "@/hooks/use-chart-colors";
+import { useDetectorPanes } from "@/hooks/use-detector-panes";
 import { createAnomalyMarkers, filterAnomalies } from "@/lib/anomaly-utils";
-import { resolveChartThemeColors } from "@/lib/echarts-theme";
-import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies } from "@/lib/monitoring-chart";
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/lib/telemetry-chart";
 import { normalizeTelemetry } from "@/lib/telemetry-data";
-import { collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
 import type { LiveNodeSnapshot } from "../catalogue/systemLiveTypes";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
@@ -25,14 +24,13 @@ type Inspection = { startMs: number; endMs: number; windowStartMs: number };
 type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; serviceId?: string; historyCache?: ReadingHistoryCache };
 
 export function ExplorerHistoryChart({ stream, connection, snapshot, binding, serviceId, historyCache }: Props) {
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}:${serviceId ?? ""}` : undefined;
   const [minutes, setMinutes] = useNavigationDraft(viewKey && `${viewKey}:minutes`, 15);
   const [now, setNow] = useState(Date.now);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
-  const colors = useMemo(() => resolveChartThemeColors(resolvedTheme), [resolvedTheme]);
   useEffect(() => {
     const timer = setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 5000);
     return () => clearInterval(timer);
@@ -61,23 +59,13 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
     && (!(serviceId ?? service?.id) || item.service_id === (serviceId ?? service?.id))), [monitoring.evidence, service, telemetryType, serviceId]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, serviceId ?? service?.id, telemetryType),
     [serviceId, service?.id, monitoring.anomalies, evidence, telemetryType]);
-  const operational = service?.operational_status.stage === "operational" && !service.operational_status.is_stale;
-  const lastScoreTime = evidence.reduce<number | undefined>((latest, item) => {
-    const time = getEvidenceTimeForSensor(item, telemetryType);
-    return time === undefined ? latest : Math.max(latest ?? -Infinity, time);
-  }, undefined);
-  const pending = useMemo(() => operational && lastScoreTime !== undefined ? monitoring.telemetry
-    .map((point) => Date.parse(point.timestamp)).filter((time) => time >= cutoff && time > lastScoreTime) : [],
-  [operational, lastScoreTime, monitoring.telemetry, cutoff]);
-  const detectors = useMemo(() => collectTelemetryChartDetectors({
-    telemetryType, evidence, telemetryTimes: normalizedHistory.map(([time]) => time),
-  }), [telemetryType, normalizedHistory, evidence]);
-  const detectorCatalog = useMemo(() => detectors.map(({ id, serviceId, trackerId, name, pane }) =>
-    ({ id, serviceId, trackerId, name, pane })), [detectors]);
-  const selection = useDetectorSelection(detectorCatalog, `${stream.id}\u0000${service?.id ?? ""}`);
-  const selectedDetectorIds = useMemo(() => ({
-    static: selection.selectedDetectorIds.static, adaptive: selection.selectedDetectorIds.adaptive,
-  }), [selection.selectedDetectorIds.static, selection.selectedDetectorIds.adaptive]);
+  const telemetryTimes = useMemo(() => normalizedHistory.map(([time]) => time), [normalizedHistory]);
+  const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => Date.parse(point.timestamp))
+    .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
+  // A service reached by id may be stopped; the explorer then shows its last stage.
+  const panes = useDetectorPanes({ telemetryType, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
+    service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}`, requireActiveService: false });
+  const { detectors, selectedDetectorIds, pending } = panes;
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
     telemetry, detectors, selectedDetectorIds,
@@ -142,17 +130,15 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
           <option value={60}>1 hour</option><option value={120}>2 hours</option></select>
       </div>
     </div>
-    {service && <p className="ex-history-monitoring" role="status">{operational && lastScoreTime === undefined
+    {service && <p className="ex-history-monitoring" role="status">{panes.awaitingFirstScore
       ? "Awaiting first score" : `Monitoring: ${service.operational_status.stage.replace(/_/g, " ")}`}
       {pending.length > 0 && ` · ${pending.length} awaiting score`}</p>}
     {evidence.some(row => row.sensor_set.length > 1) && <p className="ex-history-monitoring">Detector results describe the joint inputs; they do not attribute an alarm to this reading.</p>}
-    {selection.controlCatalog.some((detector) => selection.controlCatalog.filter((item) => item.pane === detector.pane).length > 1)
-      && <div className="ex-history-detectors"><TelemetryDetectorControls detectors={selection.controlCatalog} selected={selection.selectedDetectorIds}
-        unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} /></div>}
-    {selection.controlCatalog.filter((detector) => detector.id === selectedDetectorIds[detector.pane]
-      && !model.secondarySeries.some((series) => series.id === detector.id)).map((detector) =>
-      <p key={detector.id} className="ex-preview-note" role="status">{detector.name}: {selection.unavailableIds.has(detector.id)
-        ? "No evaluated observations available" : "No evaluated observations in selected range"}</p>)}
+    {panes.showDetectorControls
+      && <div className="ex-history-detectors"><TelemetryDetectorControls detectors={panes.controlCatalog} selected={selectedDetectorIds}
+        unavailableIds={panes.unavailableIds} onSelect={panes.onSelect} /></div>}
+    <DetectorNotices controlCatalog={panes.controlCatalog} selectedDetectorIds={selectedDetectorIds}
+      unavailableIds={panes.unavailableIds} secondarySeries={model.secondarySeries} className="ex-preview-note" />
     {model.telemetry.data.length ? <div className="ex-history-navigation" role="group" aria-label="Chart navigation" tabIndex={0}
       onKeyDown={navigate}>
       <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description}

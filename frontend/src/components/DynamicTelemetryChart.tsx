@@ -13,19 +13,18 @@ import { TelemetryDetectorControls } from "@/components/TelemetryDetectorControl
 import { TelemetryEventDetails } from "@/components/TelemetryEventDetails";
 import { TelemetryChartSummary } from "@/components/TelemetryChartSummary";
 import { NoChartsAvailable } from "@/components/LoadingStates";
-import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import {
   createAnomalyMarkers,
   filterAnomalies,
 } from "@/lib/anomaly-utils";
-import { resolveChartThemeColors } from "@/lib/echarts-theme";
-import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies } from "@/lib/monitoring-chart";
 import { normalizeTelemetry } from "@/lib/telemetry-data";
-import { collectTelemetryChartDetectors } from "@/lib/telemetry-detectors";
 import { getChartDomain } from "@/lib/telemetry-thresholds";
-import { useDetectorSelection } from "@/hooks/use-detector-selection";
+import { useChartColors } from "@/hooks/use-chart-colors";
+import { useDetectorPanes } from "@/hooks/use-detector-panes";
+import { DetectorNotices } from "@/components/DetectorNotices";
 import {
   buildTelemetryChartModel,
   buildTelemetryChartOption,
@@ -75,7 +74,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   timelineExtent,
   onNavigationStateChange,
 }) => {
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, colors: themeColors } = useChartColors();
   const [collapsed, setCollapsed] = useState(false);
   const [localNavigationState, setLocalNavigationState] =
     useState<ChartNavigationState>(DEFAULT_CHART_NAVIGATION);
@@ -114,10 +113,6 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     [telemetryData.type, telemetryData.label],
   );
   const timeZone = useMemo(() => getLocalTimeZone(), []);
-  const themeColors = useMemo(
-    () => resolveChartThemeColors(resolvedTheme),
-    [resolvedTheme],
-  );
 
   const activeNavigationState = navigationState ?? localNavigationState;
   const { viewport } = activeNavigationState;
@@ -243,43 +238,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     () => sensorEvidence.filter((item) => !monitoringService || item.service_id === monitoringService.id),
     [monitoringService, sensorEvidence],
   );
-  const detectors = useMemo(
-    () => collectTelemetryChartDetectors({
-      telemetryType: telemetryData.type,
-      evidence: serviceEvidence,
-      telemetryTimes: normalizedTelemetry.map(([time]) => time),
-    }),
-    [serviceEvidence, normalizedTelemetry, telemetryData.type],
-  );
-  const detectorCatalog = useMemo(
-    () => detectors.map(({ id, serviceId, trackerId, name, pane }) => ({ id, serviceId, trackerId, name, pane })),
-    [detectors],
-  );
-  const { selectedDetectorIds, controlCatalog, unavailableIds, onSelect: selectDetector } =
-    useDetectorSelection(detectorCatalog, `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`);
-  const latestOperationalEvidenceTime = useMemo(() => {
-    if (!monitoringService) return undefined;
-    const times = serviceEvidence
-      .map((item) => getEvidenceTimeForSensor(item, telemetryData.type))
-      .filter((time): time is number => time !== undefined);
-    return times.length > 0 ? Math.max(...times) : undefined;
-  }, [monitoringService, serviceEvidence, telemetryData.type]);
-  const serviceIsOperational = Boolean(
-    monitoringService?.status &&
-    monitoringService.operational_status.stage === "operational" &&
-    !monitoringService.operational_status.is_stale,
-  );
-  const awaitingFirstScore =
-    serviceIsOperational && latestOperationalEvidenceTime === undefined;
-  const pendingTelemetryTimestamps = useMemo(
-    () =>
-      serviceIsOperational && latestOperationalEvidenceTime !== undefined
-        ? filteredData
-            .map(([time]) => time)
-            .filter((time) => time > latestOperationalEvidenceTime)
-        : [],
-    [filteredData, latestOperationalEvidenceTime, serviceIsOperational],
-  );
+  const telemetryTimes = useMemo(() => normalizedTelemetry.map(([time]) => time), [normalizedTelemetry]);
+  const filteredTimes = useMemo(() => filteredData.map(([time]) => time), [filteredData]);
+  const {
+    detectors, selectedDetectorIds, controlCatalog, unavailableIds, onSelect: selectDetector,
+    awaitingFirstScore, pending: pendingTelemetryTimestamps, showDetectorControls,
+  } = useDetectorPanes({
+    telemetryType: telemetryData.type,
+    evidence: serviceEvidence,
+    telemetryTimes,
+    pendingCandidateTimes: filteredTimes,
+    service: monitoringService,
+    selectionKey: `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`,
+  });
   const chartModel = useMemo(() => {
     return buildTelemetryChartModel({
       telemetryName: displayName,
@@ -531,9 +502,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 
       {!collapsed && (
         <CardContent className="pb-5 pt-5">
-          {isChartVisible && controlCatalog.some((detector) =>
-            controlCatalog.filter((other) => other.pane === detector.pane).length > 1,
-          ) && (
+          {isChartVisible && showDetectorControls && (
             <div className="mb-4">
               <TelemetryDetectorControls
                 detectors={controlCatalog}
@@ -564,16 +533,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </div>
           ) : chartOption && chartModel ? (
             <>
-              {controlCatalog.filter((detector) =>
-                detector.id === selectedDetectorIds[detector.pane] &&
-                !chartModel.secondarySeries.some((series) => series.id === detector.id),
-              ).map((detector) => (
-                <div key={detector.id} role="status" className="mb-3 text-sm text-muted-foreground">
-                  {detector.name}: {unavailableIds.has(detector.id)
-                    ? "No evaluated observations available"
-                    : "No evaluated observations in selected range"}
-                </div>
-              ))}
+              <DetectorNotices controlCatalog={controlCatalog} selectedDetectorIds={selectedDetectorIds}
+                unavailableIds={unavailableIds} secondarySeries={chartModel.secondarySeries} className="mb-3 text-sm text-muted-foreground" />
               {viewport.mode === "absolute" && (
                 <div
                   className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground"

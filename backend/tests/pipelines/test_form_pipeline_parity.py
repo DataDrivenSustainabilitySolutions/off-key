@@ -1,5 +1,7 @@
 """Form monitors run as pipelines with the detections the form detectors produced."""
 
+from itertools import pairwise
+
 import numpy as np
 import pytest
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
@@ -163,3 +165,118 @@ def test_incremental_pca_pipeline_warms_the_projection_before_the_model():
     assert calibration_start(pipeline_detector) == (
         calibration_start(form_detector) + n0 - 1
     )
+
+
+# Pin the graph each setup form lowers to.
+SLOTS = [{"id": "input_1", "label": "L1"}, {"id": "input_2", "label": "L2"}]
+SOURCE = {"id": "input", "kind": "source", "component": "source.aligned"}
+OUTPUT = {"id": "output", "kind": "output", "component": "output.evidence"}
+
+
+def lowered(form):
+    config = RadarStartConfig.model_validate(form).model_dump(mode="json")
+    return legacy_definition(config).model_dump(mode="json", exclude_defaults=True)
+
+
+def chain(*node_ids):
+    return [
+        {"source": source, "target": target} for source, target in pairwise(node_ids)
+    ]
+
+
+def test_static_form_lowers_to_a_martingale_graph():
+    assert lowered(static_form()) == {
+        "input_slots": SLOTS,
+        "nodes": [
+            SOURCE,
+            {
+                "id": "detector",
+                "kind": "detector",
+                "component": "detector:pyod_iforest",
+                "params": {
+                    "n_estimators": 50,
+                    "contamination": 0.1,
+                    "random_state": 42,
+                },
+            },
+            {
+                "id": "policy",
+                "kind": "policy",
+                "component": "policy.martingale",
+                "params": {
+                    "trackers": [
+                        {
+                            "tracker_id": "primary",
+                            "alarm_statistic": "restarted_martingale",
+                            "threshold_config": {"mode": "manual", "value": 5.0},
+                            "betting_function": "power",
+                            "epsilon": 0.5,
+                        }
+                    ],
+                    "automatic_threshold_calibration": {
+                        "false_alarm_probability": 0.01,
+                        "horizon": 1000,
+                        "simulation_count": 5000,
+                    },
+                },
+            },
+            OUTPUT,
+        ],
+        "edges": chain("input", "detector", "policy", "output"),
+        "settings": {"training_window_size": 60, "calibration_window_size": 20},
+    }
+
+
+def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
+    pca = {"type": "incremental_pca", "n_components": 2, "n0": 30, "tol": 1e-7}
+    assert lowered(adaptive_form(STANDARD, pca)) == {
+        "strategy": "adaptive_stream",
+        "input_slots": SLOTS,
+        "nodes": [
+            SOURCE,
+            {
+                "id": "transform_1",
+                "kind": "transform",
+                "component": "adaptive.standard_scaler",
+                "params": {"with_std": True},
+            },
+            {
+                "id": "transform_2",
+                "kind": "transform",
+                "component": "adaptive.uncentered_pca",
+                "params": {
+                    "n_components": 2,
+                    "n0": 30,
+                    "tol": 1e-07,
+                    "forgetting_factor": None,
+                },
+            },
+            {
+                "id": "detector",
+                "kind": "detector",
+                "component": "detector:aberrant_online_isolation_forest",
+                "params": {
+                    "branching_factor": 2,
+                    "max_leaf_samples": 32,
+                    "metric": "axisparallel",
+                    "n_jobs": 1,
+                    "num_trees": 100,
+                    "seed": 7,
+                    "subsample": 1.0,
+                    "tree_type": "adaptive",
+                    "window_size": 2048,
+                },
+            },
+            {
+                "id": "policy",
+                "kind": "policy",
+                "component": "policy.quantile",
+                "params": {"mode": "calibrated_quantile", "quantile": 0.95},
+            },
+            OUTPUT,
+        ],
+        "edges": chain(
+            "input", "transform_1", "transform_2", "detector", "policy", "output"
+        ),
+        "settings": {"training_window_size": 40, "calibration_window_size": 20},
+    }

@@ -102,6 +102,37 @@ async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsi
         detector.shutdown()
 
 
+async def test_cancelled_call_finishes_the_model_operation_before_reraising():
+    """A thread cannot be interrupted, so cancellation waits for the mutation."""
+    runtime = DetectorRuntime(
+        SimpleNamespace(
+            get_health_info=lambda: {"state": "healthy"}, primary_service=None
+        )
+    )
+    started, release = threading.Event(), threading.Event()
+    finished = []
+
+    def mutate():
+        started.set()
+        release.wait(timeout=10)
+        finished.append(True)
+
+    call = asyncio.create_task(runtime.call(mutate))
+    try:
+        await asyncio.to_thread(started.wait, 10)
+        call.cancel()
+        await asyncio.sleep(0)
+        assert not call.done()
+        release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await call
+        assert finished == [True]
+    finally:
+        release.set()
+        await runtime.stop()
+
+
 @pytest.mark.parametrize("failure_boundary", ["health", "copy"])
 async def test_diagnostic_failure_preserves_inference_and_original_exception(
     monkeypatch, failure_boundary

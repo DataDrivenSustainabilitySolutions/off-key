@@ -190,6 +190,13 @@ jobs:
           for service in $(docker service ls --format '{{.Name}}' --filter label=com.docker.stack.namespace=offkey-smoke); do
             docker service logs --tail 100 "$service" > "deployment-smoke-diagnostics/$service.log" 2>&1 || true
           done
+          # Release jobs are plain `docker run` containers; a daemon restart or OOM kill
+          # only shows up in the host logs, so print them where the job log keeps them.
+          echo "::group::Docker daemon and kernel messages"
+          sudo journalctl -u docker --since "-40 min" --no-pager 2>&1 | grep -viE 'level=(debug|info)' | tail -n 80 || true
+          sudo dmesg -T 2>&1 | grep -iE 'oom|killed process|out of memory|segfault' | tail -n 40 || true
+          docker service ls 2>&1 || true
+          echo "::endgroup::"
 
       - name: Upload failure diagnostics
         if: failure()

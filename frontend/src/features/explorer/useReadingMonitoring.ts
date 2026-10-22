@@ -8,7 +8,8 @@ import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
 import type { Anomaly } from "@/types/charger";
-import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
+import type { MonitoringChartEvidence } from "@/types/monitoring";
+import { useMonitoringServices } from "../monitoring/useMonitoringServices";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
 import { mergeReadingHistory, type ReadingMonitoringBinding } from "./readingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey, useReadingHistorySnapshot } from "./readingHistoryCache";
@@ -91,22 +92,19 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
       if (!binding || monitoringPending || signal.aborted || document.hidden) return;
       clearTimeout(monitoringTimer);
       monitoringPending = true;
-      const [evidence, anomalies, services] = await Promise.allSettled([
+      const [evidence, anomalies] = await Promise.allSettled([
         loadEvidence(),
         get<Anomaly[]>(API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(binding.entityId)),
-        get<ActiveService[]>(`${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`),
       ]);
       monitoringPending = false;
       if (signal.aborted) return;
       if (evidence.status === "fulfilled") evidenceCursor = evidence.value.cursor;
-      monitoringFailed = [evidence, anomalies, services].some(result => result.status === "rejected");
-      const topic = savedBinding?.accepted_topic ?? buildDeviceTelemetryTopic(binding.entityId, binding.telemetryType);
+      monitoringFailed = [evidence, anomalies].some(result => result.status === "rejected");
       cache.update(context.key, entry => ({ ...entry, evidenceCursor,
         evidenceFetchedAt: evidence.status === "fulfilled" ? Date.now() : entry.evidenceFetchedAt,
         data: { ...entry.data, binding,
           evidence: evidence.status === "fulfilled" ? mergeMonitoringChartEvidence(entry.data.evidence, evidence.value.rows) : entry.data.evidence,
           anomalies: anomalies.status === "fulfilled" ? anomalies.value : entry.data.anomalies,
-          services: services.status === "fulfilled" ? services.value.filter(service => (service.mqtt_topics ?? []).some(filter => mqttFiltersOverlap(filter, topic))) : entry.data.services,
           error: error(),
         },
       }));
@@ -126,6 +124,15 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
       clearTimeout(monitoringTimer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [context, cache, savedBinding?.accepted_topic]);
-  return context ? state : UNBOUND_HISTORY;
+  }, [context, cache]);
+  // The service list comes from the workspace's shared poll, filtered to this reading's topic.
+  const feed = useMonitoringServices(!!context?.binding, INTERVALS.DETAILS_UPDATE);
+  const acceptedTopic = savedBinding?.accepted_topic;
+  const services = useMemo(() => {
+    if (!context?.binding) return [];
+    const topic = acceptedTopic ?? buildDeviceTelemetryTopic(context.binding.entityId, context.binding.telemetryType);
+    return feed.services.filter(service => (service.mqtt_topics ?? []).some(filter => mqttFiltersOverlap(filter, topic)));
+  }, [context, acceptedTopic, feed.services]);
+  const history = context ? state : UNBOUND_HISTORY;
+  return { ...history, services, error: history.error || (context?.binding && feed.error ? "Monitoring services could not be updated." : "") };
 }

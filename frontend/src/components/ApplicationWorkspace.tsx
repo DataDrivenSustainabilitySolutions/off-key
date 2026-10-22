@@ -14,6 +14,7 @@ import { ExplorerSidebarResize } from "@/features/explorer/ExplorerSidebarResize
 import { DEFAULT_SIDEBAR_WIDTH } from "@/features/explorer/sidebarSizing";
 import "@/features/explorer/explorer.css";
 import "@/features/workspace/workspace.css";
+import { MonitoringServicesProvider } from "@/features/monitoring/MonitoringServicesProvider";
 
 const subscribeMobile = (listener: () => void) => {
   const media = window.matchMedia("(max-width: 760px)");
@@ -74,6 +75,8 @@ function WorkspaceFrame() {
 }
 
 export function ApplicationWorkspace() {
-  const { userId } = useAuth();
-  return <CatalogueProvider key={userId ?? "local"}><WorkspaceFrame /></CatalogueProvider>;
+  const { userId, isAuthenticated } = useAuth();
+  return <CatalogueProvider key={userId ?? "local"}>
+    <MonitoringServicesProvider enabled={isAuthenticated}><WorkspaceFrame /></MonitoringServicesProvider>
+  </CatalogueProvider>;
 }

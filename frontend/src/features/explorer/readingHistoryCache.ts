@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { Anomaly, TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
-import type { ActiveService, MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
+import type { MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
 import type { ReadingMonitoringBinding } from "./readingMonitoring";
 import type { SystemConnection, SystemStream } from "../catalogue/systemTypes";
 
@@ -9,7 +9,6 @@ export type ReadingMonitoring = {
   telemetry: TelemetryDataPoint[];
   evidence: MonitoringChartEvidence[];
   anomalies: Anomaly[];
-  services: ActiveService[];
   loading?: boolean;
   error: string;
 };
@@ -21,7 +20,7 @@ export type ReadingHistoryEntry = {
   evidenceFetchedAt?: number;
 };
 export const EMPTY_READING_HISTORY: ReadingMonitoring = {
-  telemetry: [], evidence: [], anomalies: [], services: [], loading: true, error: "",
+  telemetry: [], evidence: [], anomalies: [], loading: true, error: "",
 };
 export const READING_HISTORY_CACHE_LIMIT = 12;
 export const READING_HISTORY_POINT_LIMIT = 32_768;

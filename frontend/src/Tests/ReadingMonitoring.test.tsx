@@ -21,7 +21,8 @@ beforeEach(() => {
   vi.mocked(apiUtils.get).mockImplementation(async (endpoint) => {
     if (endpoint.includes("/data?")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
-    if (endpoint.startsWith("/v1/anomalies?") || endpoint.startsWith("/v1/monitors/all?")) return [];
+    if (endpoint.startsWith("/v1/anomalies?")) return [];
+    if (endpoint.startsWith("/v1/monitors/workspace")) return { services: [], authoring_enabled: false };
     throw new Error("Unexpected endpoint");
   });
 });
@@ -109,7 +110,20 @@ describe("selected-reading monitoring subscription", () => {
     expect(signal?.aborted).toBe(true);
     expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
     expect(hook.result.current.telemetry).toEqual(points);
-    expect(apiUtils.get).toHaveBeenCalledTimes(8);
+    // Three history requests per selection; the service list is one shared request.
+    expect(apiUtils.get).toHaveBeenCalledTimes(7);
+  });
+
+  it("filters the shared service list to the reading's accepted topic", async () => {
+    const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/workspace")
+      ? Promise.resolve({ services: [
+        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"] },
+        { id: "other", mqtt_topics: ["telemetry/other-entity/#"] },
+      ] }) : baseGet(endpoint, options));
+    const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
+    await waitFor(() => expect(hook.result.current.services.map(service => service.id)).toEqual(["match"]));
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace"))).toHaveLength(1);
   });
 
   it("polls with ingestion cursors, pauses in hidden tabs, and recovers from partial failures", async () => {

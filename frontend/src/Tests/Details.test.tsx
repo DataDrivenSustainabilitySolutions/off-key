@@ -8,6 +8,7 @@ import { buildNavigationIndex } from "../domain/system/navigationIndex";
 import { createEmptySystem } from "../domain/system/systemDocument";
 import type { SystemDocument, SystemRuntime } from "../types/system";
 import type { ChartNavigationState } from "../features/charts/telemetry-chart";
+import { mqttConnection } from "./support/fixtures/system";
 
 const mockLoadAllTelemetryTypes = vi.fn<
   (...args: unknown[]) => Promise<unknown[]>
@@ -206,7 +207,7 @@ describe("<Details />", () => {
 
   it("is titled by the catalogue entity behind the recorded identity and links to it in Sources", async () => {
     const document: SystemDocument = { ...createEmptySystem(),
-      connections: [{ id: "broker", label: "Building broker", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false }],
+      connections: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.test" })],
       devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
       streams: [{ id: "temperature", label: "Air temperature", connection_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
     };

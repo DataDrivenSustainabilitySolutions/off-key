@@ -9,6 +9,7 @@ import { buildNavigationIndex } from "@/domain/system/navigationIndex";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import { apiUtils } from "@/lib/api-client";
 import type { SystemSnapshot } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true, logout: vi.fn() }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
@@ -18,7 +19,7 @@ vi.mock("@tanstack/react-virtual", () => ({ useVirtualizer: ({ count }: { count:
   getVirtualItems: () => Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 72, size: 72 })), measureElement: vi.fn(), scrollToOffset: vi.fn(), scrollToIndex: vi.fn() }) }));
 
 function fixture(): SystemSnapshot {
-  const document = { ...createEmptySystem(), label: "Workshop", connections: [{ id: "broker", label: "Workshop broker", host: "localhost", port: 1883, protocol: "mqtt" as const, transport: "tcp" as const, tls: false }],
+  const document = { ...createEmptySystem(), label: "Workshop", connections: [mqttConnection({ id: "broker", label: "Workshop broker", host: "localhost" })],
     devices: [{ id: "room", label: "Room station", kind: "sensor" }], streams: ["temperature", "power"].map(id => ({ id, label: id, topic: `building/floor1/${id}`, device_id: "room", connection_id: "broker", value_type: "number" as const, category: "Environment" })) };
   return { document, revision: 3, can_edit: true, storage_origin: "saved", runtime: { mode: "configured_only", message: "", collection_revision: 4, collection: { status: "applied", revision: 4 }, collection_rules: [],
     bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: "entity", telemetry_key: stream.id, accepted_topic: `telemetry/entity/${stream.id}`, connection_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };

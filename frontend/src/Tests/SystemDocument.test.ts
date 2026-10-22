@@ -15,7 +15,7 @@ import {
 } from "@/domain/system/systemDocument";
 import type { SystemDocument } from "@/types/system";
 
-export const systemFixture = (): SystemDocument => ({
+const systemFixture = (): SystemDocument => ({
   ...createEmptySystem("Workshop"),
   connections: [
     {

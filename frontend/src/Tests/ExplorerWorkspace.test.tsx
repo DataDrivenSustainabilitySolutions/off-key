@@ -12,6 +12,7 @@ import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorer
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemSnapshot } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true, isAdmin: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
@@ -32,7 +33,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem(), label: "North building",
-  connections: [{ id: "broker", label: "Building broker", protocol: "mqtt", host: "broker.example.test", port: 1883, transport: "tcp", tls: false }],
+  connections: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.example.test" })],
   devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
   streams: ["temperature", "humidity"].map((id) => ({ id, label: id === "temperature" ? "Air temperature" : "Relative humidity", connection_id: "broker", device_id: "station", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
   groups: [{ id: "roof", label: "Roof", member_ids: ["station", "temperature"] }],

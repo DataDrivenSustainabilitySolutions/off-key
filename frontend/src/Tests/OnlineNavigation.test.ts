@@ -5,9 +5,10 @@ import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import { buildNavigationIndex, navigationRows, navigationTrail, searchNavigation } from "@/domain/system/navigationIndex";
 import { onlineNavigationIndex } from "@/domain/system/onlineNavigation";
+import { mqttConnection } from "./support/fixtures/system";
 
 const now = Date.parse("2026-10-16T12:00:00Z");
-const connection = (id: string) => ({ id, label: id, protocol: "mqtt" as const, host: "localhost", port: 1883, transport: "tcp" as const, tls: false });
+const connection = (id: string) => mqttConnection({ id, label: id, host: "localhost" });
 const stream = (id: string, topic: string, connectionId = "broker", deviceId?: string) => ({
   id, label: id, topic, connection_id: connectionId, device_id: deviceId, value_type: "number" as const, category: "Test",
 });

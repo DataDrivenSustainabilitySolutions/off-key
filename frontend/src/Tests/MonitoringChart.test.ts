@@ -26,42 +26,24 @@ import type {
   MartingaleTrackerResult,
   MonitoringChartEvidence,
 } from "@/types/monitoring";
+import { chartEvidence, trackerResult as trackerFixture } from "./support/fixtures/monitoring";
 
 const evidence = (
   serviceId: string,
   timestamp: string,
   martingale: number | null,
   sequenceNumber = 1,
-): MonitoringChartEvidence => ({
-  service_id: serviceId,
-  timestamp,
-  sequence_number: sequenceNumber,
-  sensor_set: ["L1"],
-  input_timestamps: { L1: timestamp },
-  restarted_martingale: martingale,
-  threshold: 100,
-  alarm: false,
-  created: timestamp,
-});
+): MonitoringChartEvidence =>
+  chartEvidence({ service_id: serviceId, timestamp, sequence_number: sequenceNumber, restarted_martingale: martingale });
 
 const adaptiveEvidence = (
   serviceId: string,
   timestamp: string,
   score: number | null,
   threshold = 2,
-): MonitoringChartEvidence => ({
-  service_id: serviceId,
-  timestamp,
-  sequence_number: 1,
-  sensor_set: ["L1"],
-  input_timestamps: { L1: timestamp },
-  strategy: "adaptive_stream",
-  model_type: "aberrant_online_isolation_forest",
-  anomaly_score: score,
-  restarted_martingale: null,
-  threshold,
-  alarm: score !== null && score > threshold,
-  created: timestamp,
+): MonitoringChartEvidence => chartEvidence({
+  service_id: serviceId, timestamp, strategy: "adaptive_stream", model_type: "aberrant_online_isolation_forest",
+  anomaly_score: score, threshold, alarm: score !== null && score > threshold,
 });
 
 const trackerResult = (
@@ -70,23 +52,8 @@ const trackerResult = (
   alarmStatistic: MartingaleTrackerResult["alarm_statistic"],
   value: number,
   threshold: number,
-): MartingaleTrackerResult => ({
-  tracker_id: trackerId,
-  betting_function: bettingFunction,
-  betting_parameters: {},
-  alarm_statistic: alarmStatistic,
-  statistic_value: value,
-  statistic_is_infinite: false,
-  log_statistic_value: Math.log(value),
-  statistics: {},
-  e_value: 1,
-  e_value_is_infinite: false,
-  log_e_value: 0,
-  threshold,
-  alarm_fired: false,
-  alarm_active: false,
-  alarm_count: 0,
-  tested_count: 1,
+): MartingaleTrackerResult => trackerFixture({
+  tracker_id: trackerId, betting_function: bettingFunction, alarm_statistic: alarmStatistic, statistic_value: value, threshold,
 });
 
 const colors: ChartThemeColors = {

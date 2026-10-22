@@ -11,6 +11,7 @@ import { apiClient } from "@/lib/api-client";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveBatch } from "@/types/system-live";
 import type { SystemRuntime } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 const viewportHeight = 360;
 const rowHeight = 72;
@@ -63,7 +64,7 @@ afterEach(() => {
 function system(readings = 3): SystemDocument {
   return {
     ...createEmptySystem("Test catalogue"),
-    connections: [{ id: "broker", label: "North laboratory", protocol: "mqtt", host: "private.example.invalid", port: 1883, transport: "tcp", tls: false }],
+    connections: [mqttConnection({ id: "broker", label: "North laboratory", host: "private.example.invalid" })],
     streams: Array.from({ length: readings }, (_, position) => ({
       id: `value-${position}`, label: `Value ${position}`, connection_id: "broker", topic: `site/room/value${position}`,
       value_type: "number", category: "Environment",

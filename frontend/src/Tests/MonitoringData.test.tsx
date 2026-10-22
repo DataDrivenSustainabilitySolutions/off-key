@@ -11,6 +11,7 @@ import type { SystemDocument, SystemRuntime } from "../types/system";
 import { CatalogueContext, type CatalogueContextValue } from "../features/workspace/catalogue-context";
 import Monitoring from "../pages/Monitoring";
 import { useMonitoringData } from "../pages/monitoring/useMonitoringData";
+import { mqttConnection } from "./support/fixtures/system";
 
 const { get, errorToast } = vi.hoisted(() => ({
   get: vi.fn<(url: string, options?: ApiRequestOptions) => Promise<unknown>>(),
@@ -68,7 +69,7 @@ it("shows only monitoring services assigned to the selected entity", async () =>
 it("reads entity names from the workspace catalogue instead of loading it again", async () => {
   auth.value = { isAdmin: true, isAuthenticated: true };
   const document: SystemDocument = { ...createEmptySystem(),
-    connections: [{ id: "broker", label: "Building broker", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false }],
+    connections: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.test" })],
     devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
     streams: [{ id: "temperature", label: "Air temperature", connection_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
   };

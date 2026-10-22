@@ -6,6 +6,7 @@ import { scopeKey } from "@/domain/system/collectionRules";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { SystemCollectionPreview, SystemSnapshot } from "@/types/system";
 import { useRecordingRules } from "@/features/catalogue/useRecordingRules";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
 
@@ -22,9 +23,7 @@ function fixture(): SystemSnapshot {
     value_type: "number" as const, category: "Environment",
   }));
   return {
-    document: { ...createEmptySystem(), streams, connections: ["broker", "other-broker"].map(id => ({
-      id, label: id, host: "localhost", port: 1883, protocol: "mqtt" as const, transport: "tcp" as const, tls: false,
-    })) }, revision: 3, can_edit: true, storage_origin: "saved",
+    document: { ...createEmptySystem(), streams, connections: ["broker", "other-broker"].map(id => mqttConnection({ id, label: id, host: "localhost" })) }, revision: 3, can_edit: true, storage_origin: "saved",
     runtime: {
       mode: "configured_only", message: "", collection_revision: 4, collection_rules: [original],
       bindings: Object.fromEntries(streams.map(stream => [stream.id, {

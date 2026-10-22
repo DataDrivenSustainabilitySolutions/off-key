@@ -5,9 +5,10 @@ import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
 import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/domain/readings/readingHistoryCache";
 import type { SystemConnection, SystemStream } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
-const connection: SystemConnection = { id: "broker", label: "Building", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false };
+const connection: SystemConnection = mqttConnection({ id: "broker", label: "Building", host: "broker.test" });
 const stream: SystemStream = { id: "reading", label: "Temperature", connection_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
 const savedBinding = { entity_id: "canonical-entity", telemetry_key: "temperature/air", accepted_topic: "telemetry/canonical-entity/temperature/air", policy: { mode: "original" as const, interval_seconds: 10 } };
 const time = "2026-10-10T12:00:00Z";

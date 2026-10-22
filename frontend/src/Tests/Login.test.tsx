@@ -6,6 +6,7 @@ import type { Mock } from "vitest";
 import { AuthProvider } from "@/auth/AuthContext";
 import { tokenManager } from "@/auth/session";
 import Login from "../pages/Login";
+import { unsignedJwt as createUnsignedToken } from "./support/fixtures/auth";
 
 const mockNavigate = vi.fn();
 
@@ -46,18 +47,6 @@ const renderLogin = () =>
     </AuthProvider>
   );
 
-const encodeBase64Url = (value: object): string =>
-  btoa(JSON.stringify(value))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-
-const createUnsignedToken = (payload: object): string =>
-  [
-    encodeBase64Url({ alg: "none", typ: "JWT" }),
-    encodeBase64Url(payload),
-    "",
-  ].join(".");
 
 describe("Login", () => {
   it("shows form fields and submit button", () => {

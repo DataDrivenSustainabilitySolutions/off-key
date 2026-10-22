@@ -7,10 +7,11 @@ import { getTelemetryData } from "@/lib/charger-api";
 import { apiUtils } from "@/lib/api-client";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import type { TelemetryDataPoint } from "@/types/charger";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/charger-api", async original => ({ ...await original<typeof import("@/lib/charger-api")>(), getTelemetryData: vi.fn() }));
 vi.mock("@/lib/api-client", async original => ({ ...await original<typeof import("@/lib/api-client")>(), apiUtils: { get: vi.fn() } }));
-const connection = { id: "broker", label: "Broker", protocol: "mqtt" as const, host: "example.test", port: 1883, transport: "tcp" as const, tls: false };
+const connection = mqttConnection({ id: "broker", label: "Broker", host: "example.test" });
 const inputs: MonitoringInput[] = ["temperature", "humidity"].map(id => ({
   stream: { id, label: id, connection_id: "broker", topic: id, category: "Other", value_type: "number" },
   binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } }, path: "Station",

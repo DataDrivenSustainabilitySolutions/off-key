@@ -11,6 +11,7 @@ import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveBatch, LiveValue } from "@/types/system-live";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
@@ -26,7 +27,7 @@ const lastChartProps = () => {
 };
 const system: SystemDocument = {
   ...createEmptySystem(), label: "Test system",
-  connections: [{ id: "broker", label: "North building", protocol: "mqtt", host: "broker.test", port: 1883, tls: false, transport: "tcp" }],
+  connections: [mqttConnection({ id: "broker", label: "North building", host: "broker.test" })],
   devices: [{ id: "device", label: "Room sensor", kind: "sensor", connection_id: "broker" }],
   streams: [
     { id: "temperature", label: "Air temperature", topic: "site/room/temperature", value_type: "number", unit: "°C" },

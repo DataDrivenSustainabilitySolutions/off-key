@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 from off_key_mqtt_radar.activity import ActivityTracker
-from off_key_mqtt_radar.models import AnomalyResult
+from off_key_mqtt_radar.models import (
+    AnomalyResult,
+    inference_key,
+    strategy_context_key,
+)
 from off_key_mqtt_radar.result_records import ResultProjector
 
 STATIC = "static_conformal"
@@ -52,6 +56,8 @@ def test_every_consumer_agrees_on_inference(context, strategy, inference):
     tracker.record_result(result)
     (record,), _ = ResultProjector()._build_records([result])
 
+    assert strategy_context_key(context) == strategy
+    assert inference_key(context) == (strategy if inference else None)
     assert result.should_persist is inference
     assert (tracker.snapshot()["last_inference_at"] is not None) is inference
     assert record["value_type"] == VALUE_TYPES[strategy]

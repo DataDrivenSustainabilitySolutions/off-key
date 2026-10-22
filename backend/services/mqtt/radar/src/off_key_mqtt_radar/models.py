@@ -18,6 +18,29 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
+# Detector context keys, in precedence order, and the phase that scores live data.
+INFERENCE_PHASES = {"static_conformal": "ready", "adaptive_stream": "operational"}
+
+
+def strategy_context_key(context: dict[str, Any] | None) -> str | None:
+    """Return the detector context key a result carries, if any."""
+    context = context or {}
+    return next(
+        (key for key in INFERENCE_PHASES if isinstance(context.get(key), dict)), None
+    )
+
+
+def inference_key(context: dict[str, Any] | None) -> str | None:
+    """Return the detector context key of an inference result, if it is one."""
+    key = strategy_context_key(context)
+    if key is not None and context[key].get("phase") == INFERENCE_PHASES[key]:
+        return key
+    return None
+
+
+def is_inference(context: dict[str, Any] | None) -> bool:
+    return inference_key(context) is not None
+
 
 class ModelCheckpoint(Base):
     """Database model for storing model checkpoints and metadata"""
@@ -107,14 +130,7 @@ class AnomalyResult:
     @property
     def should_persist(self) -> bool:
         """One eligibility rule shared by ingestion and persistence."""
-        context = self.context or {}
-        return self.is_anomaly or any(
-            isinstance(context.get(key), dict) and context[key].get("phase") == phase
-            for key, phase in (
-                ("static_conformal", "ready"),
-                ("adaptive_stream", "operational"),
-            )
-        )
+        return self.is_anomaly or is_inference(self.context)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization"""

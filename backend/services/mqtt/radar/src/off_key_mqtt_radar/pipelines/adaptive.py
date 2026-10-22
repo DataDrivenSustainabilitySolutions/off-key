@@ -11,6 +11,7 @@ from off_key_core.models.pipelines import execution_fingerprint
 
 from ..adaptive_detector import AdaptiveStreamDetectionService, AdaptiveStreamState
 from ..execution_errors import FatalExecutionError, ObservationRejected
+from ..models import inference_key
 from .adapters import adaptive_graph, detector_config
 from .diagnostics import PipelineDiagnostics
 from .plan import ExecutionPlan
@@ -153,8 +154,7 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
         self.diagnostics.observe(event)
 
     def _record_result(self, result):
-        context = (result.context or {}).get("adaptive_stream", {})
-        if context.get("phase") != "operational":
+        if inference_key(result.context) != "adaptive_stream":
             return
         self._diagnose(self.diagnostics.select_pass, "score")
         self._diagnose(

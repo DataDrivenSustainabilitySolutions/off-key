@@ -7,7 +7,8 @@ import {
   type PipelineValidation,
 } from "@/features/pipelines/contracts";
 import type { GraphDocument } from "@/features/pipelines/model";
-import { useGraphEditor, useUnsavedChanges } from "@/features/pipelines/useGraphEditor";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import { clearNavigationDrafts, useNavigationDraft } from "@/lib/navigation-draft";
 
 const initial: GraphDocument = {

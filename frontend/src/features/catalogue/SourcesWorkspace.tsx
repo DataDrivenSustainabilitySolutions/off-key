@@ -3,6 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Plus } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { SystemLiveControls } from "./SystemLiveControls";
 import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds } from "./collectionRules";
 import { useRecordingRules } from "./useRecordingRules";
@@ -30,6 +31,7 @@ export function SourcesWorkspace() {
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
   const rules = useRecordingRules(system.snapshot, selected?.connectionId, system.applyRules);
+  useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (!rules.dirty) return false;
     if (nextLocation.pathname !== currentLocation.pathname) return true;

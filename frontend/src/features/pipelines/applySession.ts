@@ -2,7 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { ApiRequestError } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
-import { navigationDraft, navigationDraftGeneration, readStoredDraft, storeDraft } from "@/lib/navigation-draft";
+import { createDraftStore, navigationDraft } from "@/lib/navigation-draft";
 import type { PipelineActivationView, PipelineApplyRequest } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
 
@@ -18,55 +18,47 @@ type Snapshot = {
 
 /** An immutable request outlives navigation and uncertain network responses. */
 export function createApplySession(storageKey: string) {
-  const generation = navigationDraftGeneration();
-  const stored = readStoredDraft(storageKey) as Partial<Snapshot> | undefined;
-  let snapshot: Snapshot = {
-    request: stored?.request, operation: stored?.operation, busy: false, error: "",
-  };
-  const listeners = new Set<() => void>();
-  const update = (next: Snapshot) => {
-    if (generation !== navigationDraftGeneration()) return;
-    snapshot = next;
-    storeDraft(storageKey, { request: next.request, operation: next.operation });
-    listeners.forEach((listener) => listener());
-  };
+  const { getSnapshot, subscribe, update } = createDraftStore<Snapshot>(storageKey, (value) => {
+    const stored = value as Partial<Snapshot> | undefined;
+    return { request: stored?.request, operation: stored?.operation, busy: false, error: "" };
+  }, (next) => ({ request: next.request, operation: next.operation }));
   return {
-    getSnapshot: () => snapshot,
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    getSnapshot,
+    subscribe,
     submit: async (request?: PipelineApplyRequest) => {
-      if (snapshot.busy || snapshot.operation) return;
-      const immutable = snapshot.request ?? request;
+      if (getSnapshot().busy || getSnapshot().operation) return;
+      const immutable = getSnapshot().request ?? request;
       if (!immutable) return;
       update({ request: immutable, busy: true, error: "" });
       try {
         const operation = await pipelinesApi.apply(immutable);
-        update({ ...snapshot, operation, busy: false, error: "" });
+        update({ ...getSnapshot(), operation, busy: false, error: "" });
       } catch (reason) {
         const rejected = reason instanceof ApiRequestError && reason.status !== undefined && reason.status < 500;
-        update({ ...snapshot, request: rejected ? undefined : immutable, busy: false, error: getErrorMessage(reason) });
+        update({ ...getSnapshot(), request: rejected ? undefined : immutable, busy: false, error: getErrorMessage(reason) });
       }
     },
     refresh: async (signal: AbortSignal) => {
-      const id = snapshot.operation?.id;
+      const id = getSnapshot().operation?.id;
       if (!id) return;
       try {
         const operation = await pipelinesApi.activation(id, signal);
-        if (!signal.aborted && snapshot.operation?.id === id)
-          update({ ...snapshot, operation, error: "" });
+        if (!signal.aborted && getSnapshot().operation?.id === id)
+          update({ ...getSnapshot(), operation, error: "" });
       } catch (reason) {
-        if (!signal.aborted) update({ ...snapshot, error: getErrorMessage(reason) });
+        if (!signal.aborted) update({ ...getSnapshot(), error: getErrorMessage(reason) });
       }
     },
     cancel: async () => {
-      if (snapshot.busy || !snapshot.operation || applyFinished(snapshot.operation)) return;
-      update({ ...snapshot, busy: true, error: "" });
+      if (getSnapshot().busy || !getSnapshot().operation || applyFinished(getSnapshot().operation)) return;
+      update({ ...getSnapshot(), busy: true, error: "" });
       try {
-        const operation = await pipelinesApi.cancel(snapshot.operation!.id);
-        update({ ...snapshot, operation, busy: false });
-      } catch (reason) { update({ ...snapshot, busy: false, error: getErrorMessage(reason) }); }
+        const operation = await pipelinesApi.cancel(getSnapshot().operation!.id);
+        update({ ...getSnapshot(), operation, busy: false });
+      } catch (reason) { update({ ...getSnapshot(), busy: false, error: getErrorMessage(reason) }); }
     },
     reset: () => {
-      if (snapshot.busy || (snapshot.operation && !applyFinished(snapshot.operation))) return;
+      if (getSnapshot().busy || (getSnapshot().operation && !applyFinished(getSnapshot().operation))) return;
       update({ busy: false, error: "" });
     },
   };

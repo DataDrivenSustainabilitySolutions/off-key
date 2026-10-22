@@ -35,6 +35,29 @@ export function storeDraft(key: string, value: unknown | undefined) {
   } catch { /* A full or unavailable store only loses reload recovery. */ }
 }
 
+/**
+ * An external store for one draft. Writes from before the last
+ * clearNavigationDrafts are ignored; with a storage key each write stores
+ * persist(snapshot) for reload recovery, and undefined removes it.
+ */
+export function createDraftStore<S>(storageKey: string | undefined, initial: (stored: unknown) => S,
+  persist: (snapshot: S) => unknown) {
+  // Captured before the stored copy is read, so a clear in between wins.
+  const generation = navigationDraftGeneration();
+  let snapshot = initial(storageKey ? readStoredDraft(storageKey) : undefined);
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    update: (next: S) => {
+      if (generation !== navigationDraftGeneration()) return;
+      snapshot = next;
+      if (storageKey) storeDraft(storageKey, persist(next));
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
 /** Account-prefixed keys retain form state during a setup detour, in memory only. */
 export function useNavigationDraft<T>(key: string | undefined, initial: T | (() => T)) {
   const [value, setValue] = useState<T>(() => key ? navigationDraft(key, () => typeof initial === "function" ? (initial as () => T)() : initial)

@@ -113,11 +113,16 @@ uv run --project backend pre-commit run --all-files
 === "Internal endpoints"
 
     ```bash
-    docker compose exec mqtt-proxy wget -qO- http://localhost:8010/health
-    docker compose exec mqtt-proxy wget -qO- http://localhost:8010/ready
-    docker compose exec db-sync wget -qO- http://localhost:8009/health
-    docker compose exec db-sync wget -qO- http://localhost:8009/ready/schema
+    # The backend image has no wget or curl; use its Python like the healthchecks do.
+    probe='import sys, urllib.request as u; print(u.urlopen(sys.argv[1]).read().decode())'
+    docker compose exec mqtt-proxy /app/bin/python -c "$probe" http://localhost:8010/health
+    docker compose exec mqtt-proxy /app/bin/python -c "$probe" http://localhost:8010/ready
+    docker compose exec db-sync /app/bin/python -c "$probe" http://localhost:8009/health
+    docker compose exec db-sync /app/bin/python -c "$probe" http://localhost:8009/ready/schema
     ```
+
+    A 503 raises `HTTPError` instead of printing the body; `docker compose ps`
+    shows the same health state.
 
 `/ready` reports an applied collection revision. An empty selection is healthy idle.
 

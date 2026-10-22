@@ -21,7 +21,7 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/reset-password` | Set a new password with a reset token | Public |
 | `/` | Monitoring services and selected-source evidence | Authenticated |
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
-| `/monitoring/:chargerId` | Configure monitoring for one charger | Authenticated |
+| `/monitoring/:chargerId` | Opens the Create workbench for this entity; shows the setup form when visual authoring is disabled | Authenticated |
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |
@@ -29,6 +29,12 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/system/status` | Live collection diagnostics, database size and retention status | Authenticated |
 
 ## Workspace navigation
+
+The catalogue opens and closes from the small handle on its upper edge. Desktop
+collapse restores the full content width while preserving search, navigation and
+the saved panel width. On mobile the catalogue overlays the page below the header;
+its edge handle, Escape or the backdrop closes it and restores focus. Ctrl/Cmd+K
+opens the catalogue and focuses search in either layout.
 
 **Monitoring**, **Sources**, and **Reporting** are always available in the navbar,
 including on mobile. The left sidebar contains one MQTT catalogue of brokers,
@@ -59,7 +65,7 @@ is included in the URL, so links and browser back/forward retain that context.
 3. Log in and receive a bearer token.
 4. The frontend API client attaches that token to subsequent requests.
 
-The **Remember this device** choice determines whether the browser stores the session in local or session storage. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
+With **Remember this device**, the access token stays in memory and is restored from an HttpOnly session cookie through `/v1/auth/refresh`; otherwise it lives in session storage for the tab. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
 **Account → Access control** shows your signed-in email and role. Administrators manage
 invitations, roles, and access under **Account → Members**. Disable a member to revoke
@@ -129,9 +135,9 @@ These service and reading favourites are saved per account in this browser.
 ## Services workflow
 
 The [visual monitoring guide](monitoring.md#visual-monitoring-pipelines) explains
-the shared pipeline library, typed graph, binding review and live inspection.
+templates, the typed graph, reading selection and live inspection.
 
-Open **Monitoring** at `/` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed sensors.
+Open **Monitoring** at `/` to inspect monitoring services. The view refreshes service state and shows the strategy and processing stage reported by the backend. Removing a service also releases its claimed readings.
 
 ## Reporting workflow
 

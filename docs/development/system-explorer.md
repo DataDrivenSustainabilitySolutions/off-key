@@ -58,7 +58,7 @@ The inspector's Collection controls explicitly select Off, Sample (1–3,600 sec
 
 ## Upgrade and deployment
 
-Migration `004_system_catalogue.sql` adds the saved-system and generic collection tables. Migration `005_generic_runtime.sql` performs the clean cutover in the same transactional release workflow: it converts existing saved configuration once, preserves stable input identities and explicit collection policies, rewrites monitor subscriptions to `telemetry/<entity>/<reading>`. Existing sensor measurements and latest values remain in place. Accounts, favourites, catalogue revisions, monitor names, model settings and monitoring evidence are preserved. The former configuration tables remain an archive; no runtime, API or UI reads them as a fallback. Later deployments do not repeat the conversion, and new opted-in samples accumulate normally.
+The catalogue migrations and what they preserve are described in [Collection](../operations/system-collection.md).
 
 There is one catalogue runtime and one accepted topic namespace. New readings receive deterministic internal entity and reading identities. JSON Pointer bindings support multiple fields on an arbitrary upstream MQTT topic. Importing or adding a reading leaves it Off; an existing selection is retained by stable reading ID. Active monitors must stop before an input or its collection cadence changes. Generated v1 EMQX/GOST routes are retired before generic subscriptions start; operator-authored routes are untouched.
 

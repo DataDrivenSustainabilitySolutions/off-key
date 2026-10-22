@@ -97,14 +97,17 @@ completed monitor stops remain durable.
 
 ## Startup order and readiness
 
-The normal local startup remains one command, but dependencies become ready in this order:
+Local Compose starts everything with one command; its `depends_on` health
+conditions form two chains:
 
-1. `timescaledb`
-2. `db-sync` at `/ready/schema`
-3. `tactic-middleware` at `/ready`
-4. `api-gateway` at `/health`
-5. `mqtt-proxy` at `/ready` once the collection revision is applied
-6. `frontend`
+- `timescaledb` → `db-sync` (`/ready/schema`) → `tactic-middleware` (`/ready`) →
+  `api-gateway` (`/health`) → `frontend`. The gateway also waits for db-sync
+  `/health` itself before serving.
+- `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
+  collection revision is applied) → the optional `mqtt-simulator`.
+
+Production Swarm has no start order; the release gates on
+`infra/scripts/check_application.py` instead.
 
 Gateway liveness can succeed while TACTIC-backed data or monitoring operations remain unavailable.
 
@@ -114,10 +117,12 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 | --- | --- | --- | --- |
 | Frontend | API Gateway | `/v1/auth/*`, `/v1/chargers/*`, `/v1/telemetry/*`, `/v1/monitors/*`, `/v1/anomalies*` | Primary user contract |
 | API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/members/*`, `/api/v1/system/*`, `/api/v1/monitors/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access, membership, catalogue, pipelines and orchestration; `test_tactic_gateway_contract.py` checks every call |
+| API Gateway (startup) | DB Sync | `/health` | Waits for the schema service before serving |
 | Health tooling | API Gateway | `/health` | Gateway liveness |
 | Health tooling | TACTIC | `/health`, `/ready` | Orchestration and registry readiness |
 | Internal checks | DB Sync | `/health`, `/ready/schema` | Schema readiness |
 | Internal checks | MQTT Proxy | `/health`, `/ready` | Collection readiness |
+| Release gate | Every service | `infra/scripts/check_application.py` | Production readiness after deployment |
 
 ## Failure modes and recovery checkpoints
 

@@ -104,12 +104,8 @@ Use authenticated **Sources** to import an `aberration-system` catalogue or edit
 brokers, entities and readings. Recording is explicitly opt-in. Operator networking,
 credentials and TLS settings remain private and separate from catalogue exports.
 
-Migration `005_generic_runtime.sql` converts saved configuration once while keeping
-existing sensor measurements/latest values, accounts, favourites, catalogue
-revisions, monitor settings and monitoring evidence. Recording and retention
-continue unchanged. Do not reset
-an existing database or use the retired catalogue API during the cutover. See
-[Collection](system-collection.md).
+Do not reset an existing database during an upgrade; see
+[Collection](system-collection.md) for what the catalogue migrations preserve.
 
 Real observations and vendor registration/recovery notes remain private operator
 material. They are not required for hosted CI.

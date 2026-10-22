@@ -28,17 +28,13 @@ removal are serialized within the same membership transaction lock.
    delivering it. Real organization invitations and password recovery require
    a working SMTP relay. Use authenticated TLS and certificate validation.
 3. For an existing database, take a backup and pause the API, TACTIC, and db-sync
-   during the upgrade. Apply the migration before starting the new services:
-
-   ```sh
-   docker compose exec -T timescaledb sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backend/migrations/001_membership.sql
-   ```
-
-   On Swarm, run the same SQL with `psql` against the installation database using
-   operator credentials. Fresh databases are initialized by db-sync automatically.
-   The migration is transactional and repeatable. It preserves verified accounts,
-   password hashes, roles, favorites, and telemetry; obsolete verification links
-   are invalidated. All existing login sessions must sign in again.
+   during the upgrade. Apply migrations only through the packaged migration
+   workflow described in
+   [Collection](operations/system-collection.md#upgrade-from-the-previous-runtime);
+   fresh databases are initialized by db-sync automatically. The membership
+   migration preserves verified accounts, password hashes, roles, favorites, and
+   telemetry; obsolete verification links are invalidated, and every existing login
+   session must sign in again.
 4. Start matching versions of all application services, then check readiness.
    Do not mix old and new API/TACTIC versions. The old schema checker rejects the
    added columns, so rolling back requires a coordinated database restore or a

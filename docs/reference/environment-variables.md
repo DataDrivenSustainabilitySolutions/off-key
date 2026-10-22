@@ -196,8 +196,9 @@ prevent startup.
 | `LOG_FORMAT` | `simple` | Supported log output format |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |
 | `LOG_PII_DEBUG_UNMASK` | `false` | Never enable in shared or production environments |
-| `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle |
-| `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle |
+| `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle (gateway only) |
+| `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle (gateway only) |
+| `LOG_CORRELATION_HEADER` | `X-Correlation-ID` | Request header that carries the correlation ID into logs |
 
 ## Production images and collection ingress
 

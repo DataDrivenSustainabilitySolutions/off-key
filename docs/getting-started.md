@@ -117,7 +117,7 @@ docker compose down -v
 | --- | --- | --- |
 | API gateway keeps restarting | Database schema or TACTIC is not ready | Wait for startup, then inspect `db-sync`, `tactic-middleware`, and gateway logs |
 | EMQX fails its health check | Dashboard password is missing or the persisted node state has incompatible bootstrap settings | Check `.env`; recreate the local EMQX volume only if its data can be discarded |
-| Verification email is missing | Mailpit is unavailable | Check the `mailpit` service and open its UI |
+| Invitation email is missing | Mailpit is unavailable | Check the `mailpit` service and open its UI |
 | Frontend cannot reach the API | Vite proxy target or runtime API URL is wrong | Check `VITE_API_URL` for the selected run mode |
 | Monitoring start cannot find its image | Local RADAR image has not been built | Run `docker compose build mqtt-radar` |
 

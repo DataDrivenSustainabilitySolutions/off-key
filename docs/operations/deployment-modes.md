@@ -58,7 +58,8 @@ GitHub Actions after all main checks pass. See [GitHub setup](github-setup.md),
 [Production releases](production.md), and [Recovery](recovery.md).
 
 ```bash
-make deploy-prod REVISION=<full-tested-main-SHA>
+make check-infra                                  # validate Ansible and the rendered stack
+make deploy-prod REVISION=<full-tested-main-SHA>  # dispatch Deploy Production
 ```
 
 ## Safe mode switching
@@ -67,6 +68,13 @@ Stop the current mode before starting another:
 
 ```bash
 docker compose down
+```
+
+If containers keep resolving stale names or networks after switching between the
+local, ingress and cluster modes, remove the shared networks too:
+
+```bash
+docker network rm off-key_app-network off-key_emqx-network || true
 ```
 
 !!! warning

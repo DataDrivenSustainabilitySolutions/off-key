@@ -3,6 +3,8 @@
  * Manages base URLs, endpoints, and API-related constants
  */
 
+import { EVIDENCE_PAGE_SIZE } from "./forward-pages";
+
 // Environment-based API configuration
 const getApiBaseUrl = (): string => {
   // Use proxy in development, direct URL in production/Docker
@@ -80,7 +82,10 @@ export const API_CONFIG = {
         },
         serviceId?: string,
       ) => {
-        const params = new URLSearchParams({ charger_id: chargerId });
+        const params = new URLSearchParams({
+          charger_id: chargerId,
+          limit: EVIDENCE_PAGE_SIZE.toString(),
+        });
         if (serviceId) params.set('service_id', serviceId);
         if (cursor) {
           params.set('after_created', cursor.created);

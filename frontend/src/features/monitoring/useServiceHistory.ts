@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { drainForward, EVIDENCE_PAGE_SIZE, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { getTelemetryCursor, getTelemetryData } from "@/lib/charger-api";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
 import { INTERVALS } from "@/lib/constants";
 import type { MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
-import type { TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
+import type { TelemetryCursor } from "@/types/charger";
 import type { SystemConnection } from "../catalogue/systemTypes";
 import { ReadingHistoryCache, readingHistoryKey } from "../explorer/readingHistoryCache";
 import { mergeReadingHistory } from "../explorer/readingMonitoring";
@@ -63,16 +64,13 @@ export function useServiceHistory(
       telemetryPending = true;
       await Promise.allSettled(context.inputs.map(async input => {
         try {
-          const points: Array<TelemetryDataPoint & { created?: string }> = [];
           const initial = telemetryCursors.get(input.key);
-          let cursor = initial;
-          for (let page = 0; page < 10; page++) {
-            const incoming = await getTelemetryData(input.entityId, input.telemetryType, signal, cursor);
-            points.push(...incoming);
-            const next = getTelemetryCursor(incoming);
-            if (!initial || incoming.length < 1000 || !next || JSON.stringify(next) === JSON.stringify(cursor)) break;
-            cursor = next;
-          }
+          const points = await drainForward({
+            cursor: initial,
+            fetchPage: cursor => getTelemetryData(input.entityId, input.telemetryType, signal, cursor),
+            cursorOf: getTelemetryCursor,
+            pageSize: TELEMETRY_PAGE_SIZE,
+          });
           if (signal.aborted) return;
           const next = getTelemetryCursor(points) ?? initial;
           telemetryCursors.set(input.key, next);
@@ -92,17 +90,14 @@ export function useServiceHistory(
       clearTimeout(evidenceTimer);
       evidencePending = true;
       const results = await Promise.allSettled(context.entities.map(async entityId => {
-        const rows: MonitoringChartEvidence[] = [];
         const initial = evidenceCursors.get(entityId);
-        let cursor = initial;
-        for (let page = 0; page < 10; page++) {
-          const incoming = await apiUtils.get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(entityId, cursor, serviceId),
-            { signal, redirectOnUnauthorized: false });
-          rows.push(...incoming);
-          const next = getMonitoringEvidenceCursor(incoming);
-          if (!initial || incoming.length < 2000 || !next || JSON.stringify(next) === JSON.stringify(cursor)) break;
-          cursor = next;
-        }
+        const rows = await drainForward({
+          cursor: initial,
+          fetchPage: cursor => apiUtils.get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(entityId, cursor, serviceId),
+            { signal, redirectOnUnauthorized: false }),
+          cursorOf: getMonitoringEvidenceCursor,
+          pageSize: EVIDENCE_PAGE_SIZE,
+        });
         if (!signal.aborted) evidenceCursors.set(entityId, getMonitoringEvidenceCursor(rows) ?? initial);
         return rows.filter(row => row.service_id === serviceId);
       }));

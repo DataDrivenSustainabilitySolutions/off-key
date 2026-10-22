@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { drainForward, EVIDENCE_PAGE_SIZE, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { getTelemetryCursor, getTelemetryData } from "@/lib/charger-api";
 import { INTERVALS } from "@/lib/constants";
 import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
-import type { Anomaly, TelemetryDataPoint } from "@/types/charger";
+import type { Anomaly } from "@/types/charger";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "../catalogue/systemTypes";
 import { mergeReadingHistory, type ReadingMonitoringBinding } from "./readingMonitoring";
@@ -50,27 +51,21 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
     const get = <T,>(endpoint: string) => apiUtils.get<T>(endpoint, { signal, redirectOnUnauthorized: false });
 
     const loadTelemetry = async () => {
-      const points: Array<TelemetryDataPoint & { created?: string }> = [];
-      let cursor = telemetryCursor;
-      for (let page = 0; page < 10; page++) {
-        const incoming = await getTelemetryData(binding!.entityId, binding!.telemetryType, signal, cursor);
-        points.push(...incoming);
-        const next = getTelemetryCursor(incoming);
-        if (!telemetryCursor || incoming.length < 1000 || !next || JSON.stringify(next) === JSON.stringify(cursor)) break;
-        cursor = next;
-      }
+      const points = await drainForward({
+        cursor: telemetryCursor,
+        fetchPage: cursor => getTelemetryData(binding!.entityId, binding!.telemetryType, signal, cursor),
+        cursorOf: getTelemetryCursor,
+        pageSize: TELEMETRY_PAGE_SIZE,
+      });
       return { points, cursor: getTelemetryCursor(points) ?? telemetryCursor };
     };
     const loadEvidence = async () => {
-      const rows: MonitoringChartEvidence[] = [];
-      let cursor = evidenceCursor;
-      for (let page = 0; page < 10; page++) {
-        const incoming = await get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(binding!.entityId, cursor));
-        rows.push(...incoming);
-        const next = getMonitoringEvidenceCursor(incoming);
-        if (!evidenceCursor || incoming.length < 2000 || !next || JSON.stringify(next) === JSON.stringify(cursor)) break;
-        cursor = next;
-      }
+      const rows = await drainForward({
+        cursor: evidenceCursor,
+        fetchPage: cursor => get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(binding!.entityId, cursor)),
+        cursorOf: getMonitoringEvidenceCursor,
+        pageSize: EVIDENCE_PAGE_SIZE,
+      });
       return { rows, cursor: getMonitoringEvidenceCursor(rows) ?? evidenceCursor };
     };
     const pollTelemetry = async () => {

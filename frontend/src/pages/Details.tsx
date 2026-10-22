@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { drainForward, EVIDENCE_PAGE_SIZE } from "@/lib/forward-pages";
 import {
   getAllTelemetryData,
   getAnomalies,
@@ -43,8 +44,6 @@ import { entitySource, reportLabels } from "@/features/workspace/reporting-scope
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
-const EVIDENCE_PAGE_SIZE = 2000;
-const MAX_FORWARD_PAGES = 10;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
 
 const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
@@ -133,29 +132,17 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
       activeController = controller;
       if (showLoading) setIsLoadingTelemetry(true);
 
-      const loadEvidence = async () => {
-        const initialCursor = evidenceCursor;
-        let cursor = initialCursor;
-        const evidence: MonitoringChartEvidence[] = [];
-        for (let pageNumber = 0; pageNumber < MAX_FORWARD_PAGES; pageNumber += 1) {
-          const page = await apiUtils.get<MonitoringChartEvidence[]>(
-            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
-            { signal: controller.signal },
-          );
-          evidence.push(...page);
-          if (!initialCursor || page.length < EVIDENCE_PAGE_SIZE) return evidence;
-          const nextCursor = getMonitoringEvidenceCursor(page);
-          if (
-            !nextCursor ||
-            (nextCursor.created === cursor?.created &&
-              nextCursor.timestamp === cursor.timestamp &&
-              nextCursor.service_id === cursor.service_id &&
-              nextCursor.sequence_number === cursor.sequence_number)
-          ) return evidence;
-          cursor = nextCursor;
-        }
-        return evidence;
-      };
+      const loadEvidence = () =>
+        drainForward({
+          cursor: evidenceCursor,
+          fetchPage: cursor =>
+            apiUtils.get<MonitoringChartEvidence[]>(
+              API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+              { signal: controller.signal },
+            ),
+          cursorOf: getMonitoringEvidenceCursor,
+          pageSize: EVIDENCE_PAGE_SIZE,
+        });
 
       const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
         await Promise.allSettled([

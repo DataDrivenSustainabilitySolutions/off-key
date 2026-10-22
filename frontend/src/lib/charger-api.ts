@@ -1,5 +1,6 @@
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { drainForward, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { clientLogger } from "@/lib/logger";
 import type {
   Anomaly,
@@ -11,8 +12,6 @@ import type {
 import { normalizeChargerLastSeen } from "@/types/charger";
 import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
 
-const TELEMETRY_PAGE_SIZE = 1000;
-const MAX_FORWARD_PAGES = 10;
 type TelemetryApiPoint = TelemetryDataPoint & { created?: string };
 
 export const getTelemetryCursor = (
@@ -78,21 +77,12 @@ export const getAllTelemetryData = async (
   const telemetryData = await Promise.all(
     telemetryTypes.map(async (type): Promise<TelemetryTypeData | null> => {
       try {
-        const initialCursor = cursorByType?.get(type);
-        let cursor = initialCursor;
-        const data: TelemetryApiPoint[] = [];
-        for (let pageNumber = 0; pageNumber < MAX_FORWARD_PAGES; pageNumber += 1) {
-          const page = await getTelemetryData(chargerId, type, signal, cursor);
-          data.push(...page);
-          if (!initialCursor || page.length < TELEMETRY_PAGE_SIZE) break;
-          const nextCursor = getTelemetryCursor(page);
-          if (
-            !nextCursor ||
-            (nextCursor.created === cursor?.created &&
-              nextCursor.timestamp === cursor.timestamp)
-          ) break;
-          cursor = nextCursor;
-        }
+        const data = await drainForward({
+          cursor: cursorByType?.get(type),
+          fetchPage: cursor => getTelemetryData(chargerId, type, signal, cursor),
+          cursorOf: getTelemetryCursor,
+          pageSize: TELEMETRY_PAGE_SIZE,
+        });
         const nextCursor = getTelemetryCursor(data);
         return {
           type,

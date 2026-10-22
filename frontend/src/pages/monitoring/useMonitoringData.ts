@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import toast from "react-hot-toast";
 
+import { usePollingLoop } from "@/hooks/use-polling";
 import { API_CONFIG } from "@/lib/api-config";
 import { apiUtils } from "@/lib/api-client";
 import { getTelemetryTypes } from "@/lib/charger-api";
@@ -16,43 +17,18 @@ function useMonitoringResource<T>(
 ) {
   const [data, setData] = useState(initial);
   const [loading, setLoading] = useState(false);
-  const active = useRef(false);
-  const request = useRef<AbortController | undefined>(undefined);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const reload = useCallback(async (): Promise<void> => {
-    if (!active.current) return;
-    clearTimeout(timer.current);
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
+  const tick = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
     try {
-      const result = await load(controller.signal);
-      if (!controller.signal.aborted) setData(result);
+      const result = await load(signal);
+      if (!signal.aborted) setData(result);
     } catch (error) {
-      if (!controller.signal.aborted) {
-        toast.error(`${errorLabel}: ${getErrorMessage(error)}`);
-      }
+      if (!signal.aborted) toast.error(`${errorLabel}: ${getErrorMessage(error)}`);
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-        if (pollInterval) {
-          timer.current = setTimeout(() => void reload(), pollInterval);
-        }
-      }
+      if (!signal.aborted) setLoading(false);
     }
-  }, [errorLabel, load, pollInterval]);
-
-  useEffect(() => {
-    active.current = true;
-    timer.current = setTimeout(() => void reload(), 0);
-    return () => {
-      active.current = false;
-      clearTimeout(timer.current);
-      request.current?.abort();
-    };
-  }, [reload]);
+  }, [errorLabel, load]);
+  const { reload } = usePollingLoop(tick, { intervalMs: pollInterval, schedule: "after-completion" });
 
   return { data, loading, reload };
 }

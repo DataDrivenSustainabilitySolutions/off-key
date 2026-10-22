@@ -1,4 +1,5 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { ApiRequestError } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/errors";
 import { navigationDraft, navigationDraftGeneration, readStoredDraft, storeDraft } from "@/lib/navigation-draft";
@@ -80,19 +81,9 @@ export function usePipelineApply(key: string, onComplete: (id: string) => void) 
   useEffect(() => {
     if (operation?.phase === "succeeded") { session.reset(); onComplete(operation.service_id); }
   }, [operation?.phase, operation?.service_id, onComplete, session]);
-  useEffect(() => {
-    if (!operationId || finished) return;
-    const controller = new AbortController();
-    let polling = false;
-    const poll = async () => {
-      if (document.hidden || polling) return;
-      polling = true;
-      try { await session.refresh(controller.signal); } finally { polling = false; }
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 3000);
-    document.addEventListener("visibilitychange", poll);
-    return () => { controller.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", poll); };
-  }, [operationId, finished, session]);
+  // The operation id is part of the identity so a new apply restarts polling.
+  const refresh = useCallback((signal: AbortSignal) => operationId ? session.refresh(signal) : undefined, [operationId, session]);
+  usePollingLoop(refresh, { enabled: !!operationId && !finished, intervalMs: 3000, overlap: "skip",
+    pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
   return { ...snapshot, session };
 }

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { SectionPanel } from "@/components/DashboardLayout";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { apiUtils } from "@/lib/api-client";
 import { collectionDiagnosis, diagnosticsFresh } from "@/lib/collection-diagnostics";
 import { getErrorMessage } from "@/lib/errors";
@@ -25,33 +26,20 @@ export function CollectionHealth() {
   const [snapshot, setSnapshot] = useState<CollectionStatus | null>(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    let active = true;
-    let pending = false;
-    const refresh = async () => {
-      // Expire old reports even while a status request is still pending.
-      setNow(Date.now());
-      if (pending) return;
-      pending = true;
-      try {
-        const result = await apiUtils.get<CollectionStatus>("/v1/system/health");
-        if (active) {
-          setSnapshot(result);
-          setError("");
-        }
-      } catch (reason) {
-        if (active) setError(getErrorMessage(reason));
-      } finally {
-        pending = false;
+  // Expire old reports even while a status request is still pending.
+  const advanceClock = useCallback(() => setNow(Date.now()), []);
+  const refresh = useCallback(async (signal: AbortSignal) => {
+    try {
+      const result = await apiUtils.get<CollectionStatus>("/v1/system/health");
+      if (!signal.aborted) {
+        setSnapshot(result);
+        setError("");
       }
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 3000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    } catch (reason) {
+      if (!signal.aborted) setError(getErrorMessage(reason));
+    }
   }, []);
+  usePollingLoop(refresh, { intervalMs: 3000, overlap: "skip", startImmediately: true, onTick: advanceClock });
 
   return (
     <SectionPanel

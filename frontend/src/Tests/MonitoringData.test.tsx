@@ -35,6 +35,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+// The page decides on graph authoring first, then starts its own requests.
+async function openLegacyPage() {
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  await act(() => vi.advanceTimersByTimeAsync(1));
+}
+
 beforeEach(() => {
   auth.value = { isAdmin: true };
   vi.useFakeTimers();
@@ -55,7 +61,7 @@ it("shows only monitoring services assigned to the selected entity", async () =>
     { path: "/monitoring/:chargerId", element: <Monitoring /> },
   ], { initialEntries: ["/monitoring/entity-A"] });
   render(<RouterProvider router={router} />);
-  await act(() => vi.advanceTimersByTimeAsync(1));
+  await openLegacyPage();
   expect(screen.getByTestId("entity-services").textContent).toBe("selected-service");
 });
 
@@ -96,7 +102,7 @@ it("isolates charger state and ignores an old response after navigation", async 
     { path: "/monitoring/:chargerId", element: <Monitoring /> },
   ], { initialEntries: ["/monitoring/charger-A"] });
   render(<RouterProvider router={router} />);
-  await act(() => vi.advanceTimersByTimeAsync(1));
+  await openLegacyPage();
   await act(() => router.navigate("/monitoring/charger-B"));
   await act(() => vi.advanceTimersByTimeAsync(1));
   expect(screen.getByTestId("sensors").textContent).toBe("sensor-B");

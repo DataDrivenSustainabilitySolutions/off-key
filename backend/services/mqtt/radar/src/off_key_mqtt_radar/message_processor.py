@@ -447,14 +447,12 @@ class MessageProcessor:
             canonical_dt = datetime.fromtimestamp(float(sample_timestamp), tz=UTC)
             result.timestamp = canonical_dt
             result.context["canonical_sample_timestamp"] = canonical_dt.isoformat()
-        metadata = getattr(
-            self.detector.primary_service, "attach_observation_metadata", None
-        )
-        if callable(metadata):
-            try:
-                metadata(result.timestamp, input_timestamps or {})
-            except Exception:
-                logger.exception("event=radar.pipeline_diagnostic_metadata_failed")
+        try:
+            self.detector.primary_service.attach_observation_metadata(
+                result.timestamp, input_timestamps or {}
+            )
+        except Exception:
+            logger.exception("event=radar.pipeline_diagnostic_metadata_failed")
         self.message_count += 1
         if result.is_anomaly:
             self.anomaly_count += 1

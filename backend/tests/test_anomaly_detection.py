@@ -4,11 +4,15 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_mqtt_radar.detector_handle import DetectorHandle
+from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from off_key_mqtt_radar.detector import StaticConformalDetectionService
+from off_key_mqtt_radar.detector_handle import DetectionService, DetectorHandle
 from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
 from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
 from off_key_mqtt_radar.memory import MemoryManager
 from off_key_mqtt_radar.models import AnomalyResult
+from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionService
+from off_key_mqtt_radar.pipelines.static import StaticPipelineDetectionService
 
 
 def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:
@@ -71,15 +75,40 @@ class TestDetectorHandle:
 
         assert captured.value is error
 
-    def test_health_refreshes_background_training_state(self):
+    def test_health_read_has_no_side_effects(self):
         primary = _DetectorDouble()
-        detector = DetectorHandle(primary)
 
-        health = detector.get_health_info()
+        health = DetectorHandle(primary).get_health_info()
 
-        primary.refresh_background_state.assert_called_once_with()
+        primary.refresh_background_state.assert_not_called()
         assert health["state"] == "healthy"
         assert health["primary_service_stats"]["strategy"] == "static_baseline"
+
+
+@pytest.mark.parametrize(
+    "detector",
+    [
+        StaticConformalDetectionService,
+        AdaptiveStreamDetectionService,
+        StaticPipelineDetectionService,
+        AdaptivePipelineDetectionService,
+    ],
+)
+def test_detectors_define_every_protocol_operation(detector):
+    """The service calls each hook directly, so none may be missing."""
+    operations = {
+        name
+        for name, member in vars(DetectionService).items()
+        if callable(member) and not name.startswith("_")
+    }
+    assert operations >= {"refresh_background_state", "get_pipeline_state"}
+    defined = {
+        name
+        for cls in detector.__mro__[:-1]
+        for name in vars(cls)
+        if name in operations
+    }
+    assert defined == operations
 
 
 class TestTelemetryFeatureValidator:

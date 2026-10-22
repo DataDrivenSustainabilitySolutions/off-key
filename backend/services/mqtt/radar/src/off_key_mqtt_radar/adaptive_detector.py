@@ -408,6 +408,18 @@ class AdaptiveStreamDetectionService:
             "aberrant_version": aberrant_version,
         }
 
+    def refresh_background_state(self) -> None:
+        """Adaptive models train inline and have no background state."""
+
+    def get_pipeline_state(self) -> dict[str, Any] | None:
+        """Form detectors have no node graph to report."""
+        return None
+
+    def attach_observation_metadata(
+        self, timestamp: datetime, input_timestamps: dict[str, Any]
+    ) -> None:
+        """Form detectors keep no per-observation diagnostics."""
+
     def get_model_info(self) -> dict[str, Any]:
         return {
             "strategy": "adaptive_stream",

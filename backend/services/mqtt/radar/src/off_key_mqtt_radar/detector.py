@@ -661,6 +661,15 @@ class StaticConformalDetectionService:
             "schema_signature": self.schema_signature,
         }
 
+    def get_pipeline_state(self) -> dict[str, Any] | None:
+        """Form detectors have no node graph to report."""
+        return None
+
+    def attach_observation_metadata(
+        self, timestamp: datetime, input_timestamps: dict[str, Any]
+    ) -> None:
+        """Form detectors keep no per-observation diagnostics."""
+
     def get_model_info(self) -> dict[str, Any]:
         return {
             "strategy": "static_baseline",

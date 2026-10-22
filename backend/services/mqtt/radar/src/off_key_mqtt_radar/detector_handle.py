@@ -1,6 +1,7 @@
 """Run one detector and turn its unexpected errors into execution failures."""
 
 import logging
+from datetime import datetime
 from typing import Any, Protocol
 
 from .execution_errors import FatalExecutionError, ObservationRejected
@@ -10,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class DetectionService(Protocol):
-    """Detector operations the service relies on."""
+    """Every detector operation the service calls; detectors define each one."""
+
+    processed_count: int
+    last_checkpoint: int
 
     def process_data_point(
         self,
@@ -20,6 +24,18 @@ class DetectionService(Protocol):
     ) -> AnomalyResult: ...
 
     def get_model_info(self) -> dict[str, Any]: ...
+
+    def export_checkpoint(self) -> dict[str, Any]: ...
+
+    def refresh_background_state(self) -> None: ...
+
+    def get_pipeline_state(self) -> dict[str, Any] | None: ...
+
+    def attach_observation_metadata(
+        self, timestamp: datetime, input_timestamps: dict[str, Any]
+    ) -> None: ...
+
+    def shutdown(self) -> None: ...
 
 
 class DetectorHandle:
@@ -34,9 +50,7 @@ class DetectorHandle:
 
     async def stop(self) -> None:
         """Release resources held by the detector."""
-        shutdown = getattr(self.primary_service, "shutdown", None)
-        if callable(shutdown):
-            shutdown()
+        self.primary_service.shutdown()
 
     def process(
         self,
@@ -55,11 +69,7 @@ class DetectorHandle:
             ) from error
 
     def get_health_info(self) -> dict[str, Any]:
-        refresh_background_state = getattr(
-            self.primary_service, "refresh_background_state", None
-        )
-        if callable(refresh_background_state):
-            refresh_background_state()
+        """Read model statistics; the serial owner refreshes background state."""
         return {
             "state": "healthy",
             "primary_service_stats": self.primary_service.get_model_info(),

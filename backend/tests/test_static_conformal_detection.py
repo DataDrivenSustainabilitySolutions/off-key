@@ -12,6 +12,7 @@ from off_key_mqtt_radar.detector import (
     StaticConformalState,
 )
 from off_key_mqtt_radar.detector_handle import DetectorHandle
+from off_key_mqtt_radar.detector_runtime import DetectorRuntime
 from off_key_mqtt_radar.martingales import MartingaleAlarmController
 
 
@@ -225,7 +226,7 @@ def test_static_conformal_rejects_malformed_p_value_output(monkeypatch, p_values
         service._compute_p_value([1.0, 2.0])
 
 
-def test_static_health_poll_completes_finished_background_training(monkeypatch):
+async def test_runtime_refresh_completes_finished_background_training():
     service = StaticConformalDetectionService(_static_config())
     executor = ControlledExecutor()
     service._training_executor = executor
@@ -235,7 +236,12 @@ def test_static_health_poll_completes_finished_background_training(monkeypatch):
         (FakeConformalDetector(p_value=0.5), service._create_alarm_controller())
     )
 
-    health_info = DetectorHandle(service).get_health_info()
+    runtime = DetectorRuntime(DetectorHandle(service))
+    try:
+        await runtime.refresh()
+        health_info = runtime.get_health_info()
+    finally:
+        await runtime.stop()
 
     assert health_info["primary_service_stats"]["state"] == "ready"
     assert service.state == StaticConformalState.READY

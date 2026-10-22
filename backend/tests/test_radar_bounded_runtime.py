@@ -107,7 +107,11 @@ async def test_cancelled_call_finishes_the_model_operation_before_reraising():
     """A thread cannot be interrupted, so cancellation waits for the mutation."""
     runtime = DetectorRuntime(
         SimpleNamespace(
-            get_health_info=lambda: {"state": "healthy"}, primary_service=None
+            get_health_info=lambda: {"state": "healthy"},
+            primary_service=SimpleNamespace(
+                refresh_background_state=lambda: None,
+                get_pipeline_state=lambda: None,
+            ),
         )
     )
     started, release = threading.Event(), threading.Event()

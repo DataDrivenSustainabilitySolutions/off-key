@@ -64,7 +64,10 @@ class DetectorRuntime:
             self._refresh_snapshot()
 
     def _refresh_snapshot(self) -> None:
+        primary = self.detector.primary_service
         try:
+            # Publish finished background training before reading statistics.
+            primary.refresh_background_state()
             snapshot = deepcopy(self.detector.get_health_info())
         except Exception as error:
             self._health_error_count += 1
@@ -81,12 +84,10 @@ class DetectorRuntime:
         self._snapshot = snapshot
         # The serial owner publishes one detached diagnostic envelope, at most
         # once per second. Per-observation evidence keeps its small model info.
-        primary = self.detector.primary_service
-        diagnostic_reader = getattr(primary, "get_pipeline_state", None)
         now = time.monotonic()
-        if callable(diagnostic_reader) and now - self._pipeline_snapshot_at >= 1.0:
+        if now - self._pipeline_snapshot_at >= 1.0:
             try:
-                self._pipeline_snapshot = diagnostic_reader()
+                self._pipeline_snapshot = primary.get_pipeline_state()
                 self._pipeline_snapshot_at = now
             except Exception:
                 self._health_error_count += 1

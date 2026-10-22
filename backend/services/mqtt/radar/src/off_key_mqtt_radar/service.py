@@ -568,9 +568,7 @@ class RadarService:
         """Run model refresh and byte serialization on the serial model owner."""
         codec = self._checkpoint_codec
         primary = self.detector.primary_service
-        refresh = getattr(primary, "refresh_background_state", None)
-        if refresh is not None:
-            refresh()
+        primary.refresh_background_state()
         state = primary.export_checkpoint()
         phase = state.get("static_state", state.get("adaptive_state"))
         due = (

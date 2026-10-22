@@ -85,26 +85,26 @@ def db_config():
 
 
 @pytest.mark.asyncio
-async def test_write_anomaly_adds_to_queue(db_config, sample_anomaly_result):
+async def test_write_result_adds_to_queue(db_config, sample_anomaly_result):
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
     writer._flush_batch = AsyncMock()
 
-    await writer.write_anomaly(sample_anomaly_result)
+    await writer.write_result(sample_anomaly_result)
 
     assert len(writer.write_queue) == 1
     writer._flush_batch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_write_anomaly_signals_writer_when_batch_size_reached(
+async def test_write_result_signals_writer_when_batch_size_reached(
     db_config,
     sample_anomaly_result,
 ):
     writer = DatabaseWriter(db_config, session_factory=AsyncMock())
     writer._flush_batch = AsyncMock()
 
-    await writer.write_anomaly(sample_anomaly_result)
-    await writer.write_anomaly(sample_anomaly_result)
+    await writer.write_result(sample_anomaly_result)
+    await writer.write_result(sample_anomaly_result)
 
     assert writer._flush_event.is_set()
     writer._flush_batch.assert_not_awaited()
@@ -126,7 +126,7 @@ async def test_writer_loop_flushes_signalled_batch(db_config):
 
 
 @pytest.mark.asyncio
-async def test_write_anomaly_applies_backpressure_at_queue_limit(
+async def test_write_result_applies_backpressure_at_queue_limit(
     db_config,
     sample_anomaly_result,
     mock_session_factory,
@@ -136,8 +136,8 @@ async def test_write_anomaly_applies_backpressure_at_queue_limit(
     writer._execute_upsert = AsyncMock(side_effect=RuntimeError("database unavailable"))
     writer._retry_failed_batch = AsyncMock(return_value=False)
 
-    await writer.write_anomaly(sample_anomaly_result)
-    await writer.write_anomaly(sample_anomaly_result)
+    await writer.write_result(sample_anomaly_result)
+    await writer.write_result(sample_anomaly_result)
 
     producers = [
         asyncio.create_task(writer.write_result(sample_anomaly_result))
@@ -187,7 +187,7 @@ async def test_in_flight_batch_counts_towards_capacity_and_stop_wakes_producers(
     producer = asyncio.create_task(writer.write_result(sample_anomaly_result))
     await asyncio.sleep(0)
     assert not producer.done()
-    assert writer.get_performance_metrics()["queue_size"] == 1
+    assert len(writer.write_queue) + writer._in_flight == 1
 
     stop = asyncio.create_task(writer.stop())
     try:
@@ -640,7 +640,6 @@ async def test_malformed_result_does_not_poison_valid_batch(
     assert writer.write_queue == []
     assert writer.total_written == 1
     assert writer.total_rejected == 1
-    assert writer.get_performance_metrics()["total_rejected"] == 1
 
 
 @pytest.mark.asyncio

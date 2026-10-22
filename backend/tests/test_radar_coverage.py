@@ -65,7 +65,7 @@ async def test_invalid_observations_record_coverage_losses(payload, reason):
         memory_manager=None,
         coverage=tracker,
     )
-    result = await processor.process_message(
+    result = processor.process_message_sync(
         MQTTMessage(topic="telemetry/entity/reading", payload=payload)
     )
     assert result is None

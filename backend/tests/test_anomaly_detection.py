@@ -63,16 +63,6 @@ class TestResilientAnomalyDetector:
         assert result.context["model_used"] == "statistical"
         assert detector.error_count == 1
 
-    def test_explicit_fallback_service_is_identified(self):
-        primary = _DetectorDouble(error=RuntimeError("primary failed"))
-        fallback = _DetectorDouble(_result(0.2))
-        detector = ResilientAnomalyDetector(primary, fallback)
-
-        result = detector.process_with_resilience({"value": 3.0})
-
-        assert result.context["fallback_reason"] == "primary failed"
-        assert result.context["model_used"] == "fallback"
-
     def test_circuit_breaker_opens_on_repeated_errors(self):
         primary = _DetectorDouble(error=RuntimeError("model error"))
         detector = ResilientAnomalyDetector(primary)

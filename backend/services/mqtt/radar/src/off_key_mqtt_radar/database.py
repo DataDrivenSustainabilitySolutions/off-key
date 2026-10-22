@@ -269,10 +269,6 @@ class DatabaseWriter:
         if should_flush:
             self._flush_event.set()
 
-    async def write_anomaly(self, result: AnomalyResult):
-        """Queue a result; retained as the public writer entry point."""
-        await self.write_result(result)
-
     async def load_checkpoint(self, service_id: str) -> dict[str, Any] | None:
         """Require the migrated durable store before a managed worker subscribes."""
         if self.session_factory is None:
@@ -926,32 +922,6 @@ class DatabaseWriter:
             "persistence_timeout_seconds": max(
                 self.config.sensor_freshness_seconds, self.config.db_batch_timeout * 2
             ),
-        }
-
-    def get_performance_metrics(self) -> dict[str, Any]:
-        """Get database writer performance metrics"""
-        avg_write_time = 0.0
-        if self.write_times:
-            avg_write_time = sum(self.write_times) / len(self.write_times)
-
-        throughput = 0.0
-        if avg_write_time > 0:
-            avg_batch_size = self.config.db_batch_size
-            throughput = avg_batch_size / avg_write_time
-
-        return {
-            "total_written": self.total_written,
-            "total_evidence_written": self.total_evidence_written,
-            "total_errors": self.total_errors,
-            "total_rejected": self.total_rejected,
-            "error_rate": self.total_errors
-            / max(self.total_written + self.total_errors, 1),
-            "queue_size": len(self.write_queue) + self._in_flight,
-            "avg_write_time_seconds": avg_write_time,
-            "throughput_per_second": throughput,
-            "last_write_time": datetime.fromtimestamp(self.last_write_time).isoformat(),
-            "write_enabled": self.config.db_write_enabled,
-            **self._persistence_activity(),
         }
 
     def get_health_status(self) -> dict[str, Any]:

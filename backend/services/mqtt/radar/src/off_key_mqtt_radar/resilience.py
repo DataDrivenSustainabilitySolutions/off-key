@@ -37,13 +37,8 @@ class DetectionService(Protocol):
 class ResilientAnomalyDetector:
     """Run a detector behind fallback and circuit-breaker protection."""
 
-    def __init__(
-        self,
-        primary_service: DetectionService,
-        fallback_service: DetectionService | None = None,
-    ) -> None:
+    def __init__(self, primary_service: DetectionService) -> None:
         self.primary_service = primary_service
-        self.fallback_service = fallback_service
         self.state = ServiceState.HEALTHY
         self.error_count = 0
         self.error_window = 100
@@ -63,10 +58,9 @@ class ResilientAnomalyDetector:
 
     async def stop(self) -> None:
         """Release resources held by wrapped detector services."""
-        for service in (self.primary_service, self.fallback_service):
-            shutdown = getattr(service, "shutdown", None)
-            if callable(shutdown):
-                shutdown()
+        shutdown = getattr(self.primary_service, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
 
     def process_with_resilience(
         self,
@@ -102,17 +96,6 @@ class ResilientAnomalyDetector:
         self.logger.warning("event=radar.fallback_processing reason=%s", reason)
 
         try:
-            if self.fallback_service is not None:
-                result = self.fallback_service.process_data_point(
-                    data, topic, charger_id
-                )
-                result.context = result.context or {}
-                result.context.update(
-                    fallback_reason=reason,
-                    model_used="fallback",
-                )
-                return result
-
             score = self._simple_statistical_anomaly_score(data)
             return AnomalyResult(
                 anomaly_score=score,

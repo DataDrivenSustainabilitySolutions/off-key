@@ -63,7 +63,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         )
 
     def operational():
-        return monitor.get_health_status().metrics["operational_status"]
+        return monitor.health_monitor.get_health_status().metrics["operational_status"]
 
     try:
         await monitor.start()

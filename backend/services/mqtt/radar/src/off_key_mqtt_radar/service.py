@@ -36,7 +36,6 @@ from .feature_validation import TelemetryFeatureValidator
 from .health_monitor import HealthMonitor
 from .memory import MemoryManager
 from .message_processor import MessageProcessor
-from .models import HealthStatus as RadarHealthStatus
 from .models import MQTTMessage
 from .mqtt_client import RadarMQTTClient
 from .resilience import ResilientAnomalyDetector
@@ -493,11 +492,8 @@ class RadarService:
             if self.database_writer is not None:
                 self.database_writer.raise_if_fenced()
             # Delegate to message processor
-            runtime = getattr(self, "_detector_runtime", None)
-            result = (
-                await runtime.call(self.message_processor.process_message_sync, message)
-                if runtime is not None
-                else await self.message_processor.process_message(message)
+            result = await self._detector_runtime.call(
+                self.message_processor.process_message_sync, message
             )
 
             if result:
@@ -595,12 +591,7 @@ class RadarService:
         ):
             return
         self.database_writer.raise_if_fenced()
-        runtime = getattr(self, "_detector_runtime", None)
-        captured = (
-            await runtime.call(self._freeze_checkpoint, force)
-            if runtime is not None
-            else self._freeze_checkpoint(force)
-        )
+        captured = await self._detector_runtime.call(self._freeze_checkpoint, force)
         if captured is None:
             return
         checkpoint, processor, phase, gap = captured
@@ -726,10 +717,6 @@ class RadarService:
         finally:
             # Ensure cleanup
             await self.stop()
-
-    def get_health_status(self) -> RadarHealthStatus:
-        """Get comprehensive health status using HealthMonitor."""
-        return self.health_monitor.get_health_status()
 
 
 # Global service instance

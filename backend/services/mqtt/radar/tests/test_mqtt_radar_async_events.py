@@ -280,7 +280,7 @@ async def test_unexpected_disconnect_records_a_gap_and_schedules_reconnect(
     await asyncio.sleep(0)  # let the thread-safe reconnect scheduling run
 
     assert not mqtt_client.is_connected
-    assert mqtt_client.get_connection_info()["connected"] is False
+    assert mqtt_client.get_health_status()["status"] == "unhealthy"
     assert mqtt_client.coverage.snapshot().last_gap_reason == "mqtt_disconnect"
     assert mqtt_client._reconnect_task is not None
 
@@ -301,7 +301,7 @@ async def test_reconnection_backoff(config):
     client._connect = mock_connect
 
     # Trigger reconnection
-    await client._schedule_reconnect()
+    client._ensure_reconnect_task()
     if client._reconnect_task:
         await asyncio.wait_for(client._reconnect_task, timeout=1)
 
@@ -320,7 +320,7 @@ async def test_reconnection_has_no_attempt_cutoff_or_unbounded_exponent(config):
 
     client._connect = mock_connect
 
-    await client._schedule_reconnect()
+    client._ensure_reconnect_task()
     await asyncio.wait_for(client._reconnect_task, timeout=1)
 
     assert client.reconnect_attempts == 100001
@@ -330,7 +330,8 @@ async def test_reconnection_has_no_attempt_cutoff_or_unbounded_exponent(config):
 async def test_shutdown_interrupts_capped_reconnect_backoff(config):
     client = RadarMQTTClient(config)
     client.reconnect_delay = 300
-    await client._schedule_reconnect()
+    client._ensure_reconnect_task()
+    await asyncio.sleep(0)  # let the first attempt start before shutdown
     client._shutdown_event.set()
     await asyncio.wait_for(client._reconnect_task, timeout=1)
     assert client.reconnect_attempts == 1
@@ -345,6 +346,7 @@ async def test_shutdown_cancels_reconnection(config):
     initial_attempts = client.reconnect_attempts
 
     # Should not reconnect when shutdown
-    await client._schedule_reconnect()
+    client._ensure_reconnect_task()
+    assert client._reconnect_task is None
 
     assert client.reconnect_attempts == initial_attempts

@@ -502,11 +502,6 @@ class RadarMQTTClient:
             return
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-    async def _schedule_reconnect(self):
-        """Compatibility wrapper used by tests and explicit callers."""
-        self._ensure_reconnect_task()
-        await asyncio.sleep(0)
-
     async def _reconnect_loop(self):
         """Keep one owner retrying through outages with bounded backoff."""
         delay = min(self.reconnect_delay, 300.0)
@@ -538,39 +533,6 @@ class RadarMQTTClient:
             # Doubling the already capped delay avoids unbounded exponentiation
             # when a worker survives an extended broker outage.
             delay = min(delay * 2, 300.0)
-
-    def get_connection_info(self) -> dict[str, Any]:
-        """Get connection information for monitoring"""
-        uptime = None
-        if self.connection_time:
-            uptime = (datetime.now() - self.connection_time).total_seconds()
-
-        last_message_age = None
-        if self.last_message_time:
-            last_message_age = (datetime.now() - self.last_message_time).total_seconds()
-
-        return {
-            "connected": self.is_connected,
-            "broker_host": self.config.broker_host,
-            "broker_port": self.config.broker_port,
-            "client_id": self.client._client_id if self.client else None,
-            "subscribed_topics": sorted(self._confirmed_subscriptions),
-            "pending_subscriptions": sorted(self._pending_subscriptions.values()),
-            "connection_time": (
-                self.connection_time.isoformat() if self.connection_time else None
-            ),
-            "uptime_seconds": uptime,
-            "reconnect_attempts": self.reconnect_attempts,
-            "message_count": self.message_count,
-            "error_count": self.error_count,
-            "queue_size": self.message_queue.qsize(),
-            "last_message_age_seconds": last_message_age,
-            "rate_limit_status": {
-                "current_rate": len(self.rate_limiter),
-                "limit": self.config.rate_limit_per_minute,
-            },
-            "coverage": self.coverage.snapshot().model_dump(mode="json"),
-        }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""

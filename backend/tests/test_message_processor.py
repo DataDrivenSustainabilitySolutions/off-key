@@ -320,7 +320,7 @@ async def test_process_message_aligns_evidence_to_payload_event_timestamp():
         timestamp=datetime.now(UTC),
     )
 
-    result = await processor.process_message(message)
+    result = processor.process_message_sync(message)
 
     assert result is not None
     assert result.timestamp == event_time

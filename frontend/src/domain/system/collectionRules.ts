@@ -2,7 +2,7 @@ import type { CollectionPolicy } from "@/types/collection";
 import type { ExplorerNode, NavigationIndex } from "./navigationIndex";
 import type { RuleScope, SystemDocument, SystemRuntime } from "@/types/system";
 
-export type { RuleScope, CollectionRule, RuleEdit, RuleChange, PolicyOrigin } from "@/types/system";
+export type { RuleScope, CollectionRule, RuleEdit, RuleChange } from "@/types/system";
 export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.connection_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
 export const policyLabel = (policy?: CollectionPolicy) => !policy || policy.mode === "off" ? "Off" : policy.mode === "original" ? "Original rate" : `Sample · ${policy.interval_seconds}s`;
 

@@ -3,7 +3,7 @@ import type { LiveStatus } from "@/types/system-live";
 import type { SystemRuntime } from "@/types/system";
 import type { ExplorerNode } from "./navigationIndex";
 
-export const READING_ACTIVITY_WINDOW_MS = 30_000;
+const READING_ACTIVITY_WINDOW_MS = 30_000;
 export type ReadingActivitySource = {
   telemetry: SystemLiveTelemetry;
   liveStreamIds: readonly string[];

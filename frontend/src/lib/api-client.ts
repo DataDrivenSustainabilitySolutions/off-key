@@ -13,16 +13,9 @@ import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 
-// Types for API responses
-export interface ApiError {
+interface ApiError {
   detail: string | { loc: (string | number)[]; msg: string }[];
   status: number;
-}
-
-export interface ApiResponse<T = unknown> {
-  data: T;
-  status: number;
-  message?: string;
 }
 
 export interface ApiRequestOptions {

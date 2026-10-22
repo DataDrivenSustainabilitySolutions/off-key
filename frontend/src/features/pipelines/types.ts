@@ -3,7 +3,7 @@ import type { Node } from "@xyflow/react";
 import type { PipelineNode } from "./contracts";
 import type { DataKind } from "./semantics";
 
-export type CanvasData = {
+type CanvasData = {
   label: string;
   kind: PipelineNode["kind"];
   operation: string;

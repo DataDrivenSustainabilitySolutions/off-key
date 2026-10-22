@@ -33,7 +33,7 @@ const creationActions = [
   { kind: "group", label: "Add collection", description: "Organise related sources", icon: Layers },
 ] as const;
 
-export function ExplorerSettings({
+function ExplorerSettings({
   document, revision, canEdit, saving, error, onImport, onExport, onCreate, onEdit,
 }: Props) {
   const entitySelectId = useId();

@@ -5,7 +5,7 @@
  */
 
 /** Keys that describe the open view; a reset clears them all. */
-export const VIEW_KEYS = ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream",
+const VIEW_KEYS = ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream",
   "inspect", "pipeline", "view", "revision", "activation", "replace", "from"] as const;
 
 /** Remembered monitoring URL, restored when navigating back to the workspace. */

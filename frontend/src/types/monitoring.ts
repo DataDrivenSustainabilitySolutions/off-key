@@ -7,7 +7,7 @@
 // Parameter schema from the static model registry
 export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
 
-export type JsonPrimitive = string | number | boolean | null;
+type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export interface ParameterSchema {
@@ -66,12 +66,12 @@ export type OperationalStage =
   | 'failed'
   | 'stopped';
 
-export interface OperationalProgress {
+interface OperationalProgress {
   current: number;
   target: number;
 }
 
-export interface MonitoringCoverage {
+interface MonitoringCoverage {
   delivery: 'best_effort';
   has_gaps: boolean;
   received_message_count: number;
@@ -82,7 +82,7 @@ export interface MonitoringCoverage {
   last_gap_reason?: string | null;
 }
 
-export interface MonitoringActivity {
+interface MonitoringActivity {
   freshness_seconds: number;
   last_input_at?: string | null;
   last_processed_at?: string | null;
@@ -123,7 +123,7 @@ export interface ActiveService {
   created_at?: string;
 }
 
-export interface MonitoringPerformanceConfig {
+interface MonitoringPerformanceConfig {
   sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
   sensor_freshness_seconds: number;
   observation_max_age_seconds?: number;
@@ -150,19 +150,19 @@ interface MartingaleTrackerBase {
     | { mode: 'automatic' };
 }
 
-export interface PowerMartingaleTracker extends MartingaleTrackerBase {
+interface PowerMartingaleTracker extends MartingaleTrackerBase {
   betting_function: 'power';
   epsilon: number;
 }
 
-export interface SimpleMixtureMartingaleTracker extends MartingaleTrackerBase {
+interface SimpleMixtureMartingaleTracker extends MartingaleTrackerBase {
   betting_function: 'simple_mixture';
   epsilons?: number[] | null;
   n_grid: number;
   min_epsilon: number;
 }
 
-export interface SimpleJumperMartingaleTracker extends MartingaleTrackerBase {
+interface SimpleJumperMartingaleTracker extends MartingaleTrackerBase {
   betting_function: 'simple_jumper';
   jump: number;
 }
@@ -172,7 +172,7 @@ export type MartingaleTrackerConfig =
   | SimpleMixtureMartingaleTracker
   | SimpleJumperMartingaleTracker;
 
-export interface StaticMartingaleConfig {
+interface StaticMartingaleConfig {
   trackers: MartingaleTrackerConfig[];
   automatic_threshold_calibration: {
     false_alarm_probability: number;
@@ -181,7 +181,7 @@ export interface StaticMartingaleConfig {
   };
 }
 
-export interface StaticBaselineRequestConfig {
+interface StaticBaselineRequestConfig {
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -202,7 +202,7 @@ export type AdaptivePreprocessingStep =
     }
   | { type: 'random_projection'; n_components: number; seed: number | null };
 
-export interface AdaptiveStreamRequestConfig {
+interface AdaptiveStreamRequestConfig {
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -239,7 +239,7 @@ export type MonitoringStartRequest =
 // Compatibility name retained for existing static-lane consumers.
 export type AnomalyDetectionRequest = StaticAnomalyDetectionRequest;
 
-export interface MonitoringEvidence {
+interface MonitoringEvidence {
   service_id: string;
   timestamp: string;
   sequence_number: number;
@@ -261,7 +261,7 @@ export interface MonitoringEvidence {
   alarm: boolean;
 }
 
-export interface MartingaleStatisticEvidence {
+interface MartingaleStatisticEvidence {
   value: number | null;
   is_infinite: boolean;
   log_value: number | null;

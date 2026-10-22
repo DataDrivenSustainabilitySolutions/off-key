@@ -10,7 +10,7 @@ import type {
   SystemSnapshot,
 } from "@/types/system";
 
-export type SystemDocumentStatus =
+type SystemDocumentStatus =
   "loading" | "ready" | "read-only" | "sign-in-required" | "unavailable";
 type Options = {
   isAuthenticated: boolean;

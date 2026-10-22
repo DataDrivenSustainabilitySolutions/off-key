@@ -1,4 +1,4 @@
-export const base64Url = (value: unknown): string =>
+const base64Url = (value: unknown): string =>
   btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 
 /** A JWT-shaped string with an unsigned header; only the payload matters to the client. */

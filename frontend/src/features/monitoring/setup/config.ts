@@ -62,8 +62,8 @@ export interface AdaptiveDraft {
   sensorKeyStrategy: SensorKeyStrategy;
 }
 
-export const DEFAULT_MODEL_TYPE = "pyod_iforest";
-export const DEFAULT_MARTINGALE_THRESHOLD = 100;
+const DEFAULT_MODEL_TYPE = "pyod_iforest";
+const DEFAULT_MARTINGALE_THRESHOLD = 100;
 
 export const createDefaultMartingaleTracker = (
   trackerId = "primary",

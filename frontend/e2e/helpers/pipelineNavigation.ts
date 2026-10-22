@@ -31,7 +31,7 @@ export async function expectReadablePipeline(page: Page) {
   await expect(graph.locator(".pl-node strong").first()).toHaveCSS("font-size", "16px");
 }
 
-export async function expectPipelineOverview(page: Page) {
+async function expectPipelineOverview(page: Page) {
   const graph = page.getByLabel("Pipeline graph", { exact: true });
   await expect
     .poll(() =>

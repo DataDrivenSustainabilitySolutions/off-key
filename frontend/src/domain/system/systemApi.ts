@@ -2,7 +2,7 @@ import { apiUtils, type ApiRequestOptions } from "@/lib/api-client";
 import type { RuleChange } from "@/types/system";
 import type { SystemCollectionPreview, SystemDocument, SystemSnapshot } from "@/types/system";
 
-export const SYSTEM_ENDPOINT = "/v1/system";
+const SYSTEM_ENDPOINT = "/v1/system";
 
 type CollectionStatus = { revision: number; runtime: SystemSnapshot["runtime"] };
 

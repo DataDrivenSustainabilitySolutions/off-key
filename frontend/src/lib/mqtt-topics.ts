@@ -1,4 +1,4 @@
-export const DEVICE_TELEMETRY_PREFIX = "telemetry";
+const DEVICE_TELEMETRY_PREFIX = "telemetry";
 
 
 export interface DeviceTelemetryTopic {

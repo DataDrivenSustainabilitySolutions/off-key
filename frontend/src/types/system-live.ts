@@ -1,5 +1,5 @@
 export type Sample = { timestamp: number; value: number };
-export type NodeTelemetry = {
+type NodeTelemetry = {
   value: number;
   lastSeen: number;
   received: number;

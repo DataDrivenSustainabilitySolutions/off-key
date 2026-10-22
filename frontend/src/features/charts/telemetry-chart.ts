@@ -38,11 +38,11 @@ export type TelemetryChartOption = ComposeOption<
   | TooltipComponentOption
 >;
 
-export type ChartViewport =
+type ChartViewport =
   | { mode: "live" }
   | { mode: "absolute"; startMs: number; endMs: number };
 
-export interface ChartTimeRange {
+interface ChartTimeRange {
   fromMs?: number;
   toMs?: number;
 }
@@ -71,7 +71,6 @@ export const areChartNavigationStatesEqual = (
       left.viewport.startMs === right.viewport.startMs &&
       left.viewport.endMs === right.viewport.endMs));
 
-export type { MonitoringChartReading, TelemetryChartSeries } from "./types";
 
 
 export interface MonitoringChartModel {

@@ -107,4 +107,4 @@ export type RuleEdit =
   | { scope: RuleScope; operation: "inherit" }
   | { scope: RuleScope; operation: "restore"; restore_rule: CollectionRule | null };
 export type RuleChange = { expected_revision: number; expected_collection_revision: number; rule_changes: RuleEdit[]; pause_affected_monitors?: boolean };
-export type PolicyOrigin = { scope: RuleScope | null; inherited: boolean; needs_review: boolean };
+type PolicyOrigin = { scope: RuleScope | null; inherited: boolean; needs_review: boolean };

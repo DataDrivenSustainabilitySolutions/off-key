@@ -2,7 +2,7 @@
 // depends on a server default.
 export const TELEMETRY_PAGE_SIZE = 1000;
 export const EVIDENCE_PAGE_SIZE = 2000;
-export const MAX_FORWARD_PAGES = 10;
+const MAX_FORWARD_PAGES = 10;
 
 interface DrainForwardOptions<T, C> {
   /** Last cursor already seen; without one only the latest page is read. */

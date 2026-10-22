@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export const APPLICATION_NAME = "Aberration";
+const APPLICATION_NAME = "Aberration";
 
 /** Name the browser tab after the page, most specific part first. */
 export function useDocumentTitle(...parts: Array<string | false | null | undefined>) {

@@ -11,7 +11,7 @@ import type {
   LiveStream,
 } from "@/types/system-live";
 
-export const SYSTEM_LIVE_ENDPOINT = "/v1/system/live";
+const SYSTEM_LIVE_ENDPOINT = "/v1/system/live";
 export const LIVE_HISTORY_LIMIT = 8192;
 const HISTORY_MS = 2 * 60 * 60 * 1000;
 const POLL_MS = 1000;

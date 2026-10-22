@@ -73,6 +73,10 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: Check for unused frontend files, dependencies and exports
+        working-directory: frontend
+        run: npm run knip
+
       - name: Test frontend
         working-directory: frontend
         run: npm test

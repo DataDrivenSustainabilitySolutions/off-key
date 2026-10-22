@@ -9,8 +9,8 @@ import type {
 } from "@/types/system";
 
 export const MAX_SYSTEM_BYTES = 1_048_576;
-export const DEFAULT_MQTT_PORT = 1883;
-export const DEFAULT_POLICY: CollectionPolicy = { mode: "off", interval_seconds: 10 };
+const DEFAULT_MQTT_PORT = 1883;
+const DEFAULT_POLICY: CollectionPolicy = { mode: "off", interval_seconds: 10 };
 export const DEFAULT_GROUP_COLOR = "#397f74";
 const INVALID_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -31,7 +31,7 @@ const isIpv6 = (host: string) => {
   }
 };
 
-export class SystemValidationError extends Error {
+class SystemValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SystemValidationError";

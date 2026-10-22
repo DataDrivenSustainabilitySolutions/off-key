@@ -2,7 +2,7 @@ import { useCallback, useState, type SetStateAction } from "react";
 
 const drafts = new Map<string, unknown>();
 let generation = 0;
-export const navigationDraftGeneration = () => generation;
+const navigationDraftGeneration = () => generation;
 export function navigationDraft<T>(key: string, initial: () => T): T {
   if (!drafts.has(key)) drafts.set(key, initial());
   return drafts.get(key) as T;

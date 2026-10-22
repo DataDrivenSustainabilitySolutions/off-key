@@ -43,7 +43,7 @@ export interface DetectionChartPoint {
   observation?: DetectionObservation;
 }
 
-export interface DetectionOverflow {
+interface DetectionOverflow {
   observation: DetectionObservation;
   boundary: "upper" | "lower";
 }

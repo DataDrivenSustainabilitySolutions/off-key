@@ -389,6 +389,7 @@ def main() -> None:
         host=config.host,
         port=config.port,
         log_level=config.log_level.lower(),
+        log_config=None,  # Keep the service YAML handlers and formatters
     )
 
 

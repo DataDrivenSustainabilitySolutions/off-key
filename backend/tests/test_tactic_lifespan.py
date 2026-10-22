@@ -97,3 +97,33 @@ async def test_lifespan_closes_unverified_docker_client(monkeypatch):
     teardown.assert_not_awaited()
     assert app.state.docker_client is None
     assert app.state.model_registry is None
+
+
+def test_main_keeps_the_service_logging_config(monkeypatch):
+    """uvicorn must not replace the YAML handlers with its default config."""
+    config = SimpleNamespace(
+        service_name="tactic",
+        service_version="test",
+        docker=SimpleNamespace(base_url="unix:///docker.sock"),
+        host="127.0.0.1",
+        port=8001,
+        log_level="WARNING",
+    )
+    app = object()
+    run = MagicMock()
+    for name, value in {
+        "load_env": lambda: None,
+        "load_yaml_config": lambda path: None,
+        "log_startup_logging_configuration": lambda service: None,
+        "validate_settings": lambda *args, **kwargs: None,
+        "get_tactic_settings": lambda: SimpleNamespace(config=config),
+        "create_app": lambda: app,
+    }.items():
+        monkeypatch.setattr(tactic_main, name, value)
+    monkeypatch.setattr(tactic_main.uvicorn, "run", run)
+
+    tactic_main.main()
+
+    run.assert_called_once_with(
+        app, host="127.0.0.1", port=8001, log_level="warning", log_config=None
+    )

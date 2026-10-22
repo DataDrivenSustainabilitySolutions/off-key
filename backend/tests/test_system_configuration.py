@@ -1,6 +1,8 @@
 """Saved-system structure, persistence, authorization and legacy non-mutation."""
 
+import json
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -95,6 +97,31 @@ def database(tmp_path, monkeypatch):
     monkeypatch.setattr(system_service, "require_application_writes", AsyncMock())
     yield engine
     engine.dispose()
+
+
+CONFORMANCE = json.loads(
+    (Path(__file__).parent / "fixtures/system_document_conformance.json").read_text()
+)
+
+
+def conformance_document(case: dict) -> dict:
+    data = deepcopy(CONFORMANCE["base"])
+    data["connections"][0].update(case.get("connection", {}))
+    if "group" in case:
+        data["groups"].append(case["group"])
+    return data
+
+
+@pytest.mark.parametrize(
+    "case", CONFORMANCE["cases"], ids=[case["name"] for case in CONFORMANCE["cases"]]
+)
+def test_system_document_conformance_cases(case):
+    """The frontend validator runs the same cases (SystemDocument.test.ts)."""
+    if case["valid"]:
+        SystemDocument.model_validate(conformance_document(case))
+    else:
+        with pytest.raises(ValueError):
+            SystemDocument.model_validate(conformance_document(case))
 
 
 @pytest.mark.parametrize(

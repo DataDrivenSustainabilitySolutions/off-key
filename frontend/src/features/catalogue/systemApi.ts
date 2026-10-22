@@ -1,5 +1,5 @@
 import { apiUtils, type ApiRequestOptions } from "@/lib/api-client";
-import type { RuleChange } from "./collectionRuleTypes";
+import type { RuleChange } from "./systemTypes";
 import type { SystemCollectionPreview, SystemDocument, SystemSnapshot } from "./systemTypes";
 
 export const SYSTEM_ENDPOINT = "/v1/system";

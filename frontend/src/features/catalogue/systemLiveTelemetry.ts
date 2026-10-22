@@ -1,6 +1,6 @@
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import type { SystemDocument } from "./systemTypes";
-import type { Sample, LiveTelemetryStore, TelemetryMessage } from "./types";
+import type { Sample, LiveTelemetryStore, TelemetryMessage } from "./systemLiveTypes";
 import type {
   LiveBatch,
   LiveConnection,

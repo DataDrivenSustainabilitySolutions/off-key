@@ -2,7 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Box, ChevronDown, Database, Download, Layers, LoaderCircle, LockKeyhole, Plus, Radio, Server, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
-import { importSystemDocument, MAX_SYSTEM_BYTES } from "@/features/catalogue/systemDocument";
+import { MAX_SYSTEM_BYTES, parseSystemDocument } from "@/features/catalogue/systemDocument";
 import type { SystemDocument, SystemEntityKind } from "@/features/catalogue/systemTypes";
 import { CatalogueImportReview } from "./CatalogueImportReview";
 
@@ -57,7 +57,7 @@ export function ExplorerSettings({
     setFileError("");
     try {
       if (file.size > MAX_SYSTEM_BYTES) throw new Error("Use a catalogue file smaller than 1 MiB.");
-      const imported = importSystemDocument(await file.text());
+      const imported = parseSystemDocument(await file.text());
       if (sequence === fileSequence.current)
         setCandidate({ document: imported, revision: selectedRevision, fileName: file.name });
     } catch (failure) {

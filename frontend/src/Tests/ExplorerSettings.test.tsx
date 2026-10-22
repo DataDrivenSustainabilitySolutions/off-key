@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ExplorerSettings from "@/features/explorer/ExplorerSettings";
-import { createEmptySystem, importSystemDocument } from "@/features/catalogue/systemDocument";
+import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import type { SystemDocument } from "@/features/catalogue/systemTypes";
 
 const fixture = (): SystemDocument => ({
@@ -47,10 +47,6 @@ describe("explorer settings catalogue files", () => {
     fireEvent.click(preview());
     await waitFor(() => expect(props.onImport).toHaveBeenCalledWith(imported, 7));
     expect(screen.queryByRole("button", { name: "Replace saved catalogue" })).toBeNull();
-  });
-
-  it("rejects retired provider-specific catalogue files", () => {
-    expect(() => importSystemDocument(JSON.stringify({ provider: "ambibox", schema_version: 1, sources: [] }))).toThrow();
   });
 
   it.each([

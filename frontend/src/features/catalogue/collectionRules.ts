@@ -2,8 +2,8 @@ import type { CollectionPolicy } from "@/types/collection";
 import type { ExplorerNode, NavigationIndex } from "../explorer/navigationIndex";
 import type { SystemDocument, SystemRuntime } from "./systemTypes";
 
-import type { RuleScope } from "./collectionRuleTypes";
-export type { RuleScope, CollectionRule, RuleEdit, RuleChange, PolicyOrigin } from "./collectionRuleTypes";
+import type { RuleScope } from "./systemTypes";
+export type { RuleScope, CollectionRule, RuleEdit, RuleChange, PolicyOrigin } from "./systemTypes";
 export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.connection_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
 export const policyLabel = (policy?: CollectionPolicy) => !policy || policy.mode === "off" ? "Off" : policy.mode === "original" ? "Original rate" : `Sample · ${policy.interval_seconds}s`;
 

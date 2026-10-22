@@ -15,11 +15,21 @@ export const DEFAULT_GROUP_COLOR = "#397f74";
 const INVALID_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const hasControl = (value: string) =>
+/** C0 controls and DEL, matching the backend; paths also reject the space character. */
+const hasControl = (value: string, forbidSpace = false) =>
   Array.from(value).some((character) => {
     const code = character.charCodeAt(0);
-    return code < 32 || code === 127;
+    return code < (forbidSpace ? 33 : 32) || code === 127;
   });
+/** An IPv6 literal without a zone index, as the URL parser reads it. */
+const isIpv6 = (host: string) => {
+  if (!host.includes(":")) return false;
+  try {
+    return new URL(`http://[${host}]/`).hostname !== "";
+  } catch {
+    return false;
+  }
+};
 
 export class SystemValidationError extends Error {
   constructor(message: string) {
@@ -125,9 +135,7 @@ function connection(value: unknown, index: number): SystemConnection {
     .replace(/\.$/, "");
   const hostname =
     /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
-  const ipv6 =
-    /^[0-9a-f:]+$/.test(host) && (host.match(/:/g)?.length ?? 0) >= 2;
-  if (!hostname.test(host) && !ipv6)
+  if (!hostname.test(host) && !isIpv6(host))
     fail(
       `${path}.host`,
       "use a hostname or IP address without a URL, credentials or path",
@@ -138,7 +146,7 @@ function connection(value: unknown, index: number): SystemConnection {
       : text(item.websocket_path, `${path}.websocket_path`, 512);
   if (
     websocketPath !== undefined &&
-    (!websocketPath.startsWith("/") || /[\s#]/.test(websocketPath))
+    (!websocketPath.startsWith("/") || hasControl(websocketPath, true) || websocketPath.includes("#"))
   )
     fail(
       `${path}.websocket_path`,
@@ -388,10 +396,6 @@ export function createEmptySystem(label = "My system"): SystemDocument {
     streams: [],
     groups: [],
   };
-}
-
-export function importSystemDocument(contents: string): SystemDocument {
-  return parseSystemDocument(contents);
 }
 
 export const collectionByKind = {

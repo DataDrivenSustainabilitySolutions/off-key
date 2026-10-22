@@ -65,7 +65,7 @@ class SystemConnection(NamedEntity):
     def broker_host(cls, value: str) -> str:
         value = value.lower().rstrip(".")
         try:
-            return ipaddress.ip_address(value).compressed
+            address = ipaddress.ip_address(value)
         except ValueError:
             label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
             if not re.fullmatch(rf"{label}(?:\.{label})*", value):
@@ -73,6 +73,10 @@ class SystemConnection(NamedEntity):
                     "Use a broker hostname or IP address, without a URL or port"
                 ) from None
             return value
+        # A zone index names an interface on one machine, not a broker address.
+        if getattr(address, "scope_id", None):
+            raise ValueError("Use an IPv6 address without a zone index")
+        return address.compressed
 
     @model_validator(mode="after")
     def transport_fields(self) -> Self:

@@ -1,11 +1,11 @@
 // @vitest-environment node
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createEmptySystem,
   DEFAULT_GROUP_COLOR,
   newSystemEntity,
   upsertSystemEntity,
-  importSystemDocument,
   parseSystemDocument,
   removeSystemEntity,
   renameSystemEntity,
@@ -76,9 +76,6 @@ describe("domain agnostic saved systems", () => {
   it("roundtrips connection access, structure and stream bindings independently of a domain", () => {
     const system = systemFixture();
     expect(parseSystemDocument(serializeSystemDocument(system))).toEqual(
-      system,
-    );
-    expect(importSystemDocument(serializeSystemDocument(system))).toEqual(
       system,
     );
     expect(serializeSystemDocument(system)).not.toMatch(
@@ -196,8 +193,8 @@ describe("domain agnostic saved systems", () => {
   });
 
   it("accepts only the generic catalogue format", () => {
-    expect(() => importSystemDocument(JSON.stringify({ provider: "ambibox", schema_version: 1, sources: [] }))).toThrow();
-    expect(() => importSystemDocument(JSON.stringify({ format: "aberration-workspace", schema_version: 1 }))).toThrow();
+    expect(() => parseSystemDocument(JSON.stringify({ provider: "ambibox", schema_version: 1, sources: [] }))).toThrow();
+    expect(() => parseSystemDocument(JSON.stringify({ format: "aberration-workspace", schema_version: 1 }))).toThrow();
   });
 
 
@@ -252,5 +249,20 @@ describe("catalogue entity edits", () => {
     expect(saved.groups.map(group => group.member_ids)).toEqual([
       ["connection:workshop", "device:oven", "device:probe"], ["stream:temperature"],
     ]);
+  });
+});
+
+type ConformanceCase = { name: string; valid: boolean; connection?: object; group?: object };
+const conformance = JSON.parse(fs.readFileSync(
+  new URL("../../../backend/tests/fixtures/system_document_conformance.json", import.meta.url), "utf8",
+)) as { base: SystemDocument; cases: ConformanceCase[] };
+
+describe("validator conformance with the backend model", () => {
+  it.each(conformance.cases.map((item) => [item.name, item] as const))("%s", (_, item) => {
+    const document = structuredClone(conformance.base);
+    Object.assign(document.connections[0]!, item.connection);
+    if (item.group) document.groups.push(item.group as SystemDocument["groups"][number]);
+    if (item.valid) expect(() => validateSystemDocument(document)).not.toThrow();
+    else expect(() => validateSystemDocument(document)).toThrow();
   });
 });

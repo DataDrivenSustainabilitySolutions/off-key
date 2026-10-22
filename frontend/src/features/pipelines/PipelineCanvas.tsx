@@ -12,8 +12,8 @@ import {
 import { LocateFixed, Magnet } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
-import { connectNodes, connectionIssue, type GraphDocument } from "./model";
-import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
+import { connectNodes, connectionIssue, removeElements, type GraphDocument } from "./model";
+import { NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard, type CanvasNode } from "./PipelineNodeCard";
 import { PipelineGrid } from "./PipelineGrid";
@@ -313,30 +313,10 @@ export default function PipelineCanvas({
             edges: removedEdges,
           }) => {
             if (readOnly) return false;
-            const ids = new Set(removedNodes.map((node) => node.id));
-            const edgeIds = new Set(removedEdges.map((edge) => edge.id));
-            onChange({
-              definition: {
-                ...document.definition,
-                nodes: document.definition.nodes.filter(
-                  (node) => !ids.has(node.id),
-                ),
-                edges: document.definition.edges.filter(
-                  (edge) =>
-                    !ids.has(edge.source) &&
-                    !ids.has(edge.target) &&
-                    !edgeIds.has(edgeId(edge)),
-                ),
-              },
-              layout: {
-                ...document.layout,
-                nodes: Object.fromEntries(
-                  Object.entries(document.layout.nodes).filter(
-                    ([id]) => !ids.has(id),
-                  ),
-                ),
-              },
-            });
+            onChange(removeElements(document, {
+              nodeIds: removedNodes.map((node) => node.id),
+              edgeIds: removedEdges.map((edge) => edge.id),
+            }));
             setSelectedEdges([]);
             return false;
           }}

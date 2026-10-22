@@ -1,5 +1,6 @@
 import type { JsonValue } from "@/types/monitoring";
 import { AdjacencyField } from "./AdjacencyField";
+import { fieldDefaults } from "./model";
 
 /** Deliberately bounded controls; the server owns schema validation. */
 export type FieldDescriptor = {
@@ -101,11 +102,7 @@ export function ParameterFields({
                     disabled={readOnly}
                     value={selected}
                     onChange={(event) => {
-                      const defaults = Object.fromEntries(
-                        (field.variants![event.target.value] ?? [])
-                          .filter((item) => item.default !== undefined)
-                          .map((item) => [item.name, item.default!]),
-                      );
+                      const defaults = fieldDefaults(field.variants![event.target.value] ?? []);
                       updateEntry({
                         ...defaults,
                         [field.discriminator!]: event.target.value,
@@ -159,11 +156,7 @@ export function ParameterFields({
                     update([
                       ...entries.map((item) => item ?? null),
                       {
-                        ...Object.fromEntries(
-                          (field.variants![kind] ?? [])
-                            .filter((item) => item.default !== undefined)
-                            .map((item) => [item.name, item.default!]),
-                        ),
+                        ...fieldDefaults(field.variants![kind] ?? []),
                         [field.discriminator!]: kind,
                       },
                     ]);
@@ -354,11 +347,7 @@ export function ParameterFields({
                   onClick={() =>
                     update([
                       ...entries,
-                      Object.fromEntries(
-                        (field.fields ?? [])
-                          .filter((item) => item.default !== undefined)
-                          .map((item) => [item.name, item.default!]),
-                      ),
+                      fieldDefaults(field.fields ?? []),
                     ])
                   }
                 >

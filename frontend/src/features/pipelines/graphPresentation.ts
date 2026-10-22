@@ -1,7 +1,7 @@
 import { MarkerType, type Edge } from "@xyflow/react";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import type { CanvasNode } from "./PipelineNodeCard";
-import { nodeLabel, nodeOptionLabel, type GraphDocument } from "./model";
+import { incomingEdges, nodeLabel, nodeOptionLabel, type GraphDocument } from "./model";
 import {
   componentFor,
   dataKinds,
@@ -46,9 +46,7 @@ export function presentGraph(
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const ranks = new Map<string, number>();
   for (const node of nodes)
-    document.definition.edges
-      .filter((edge) => edge.target === node.id)
-      .sort((left, right) => left.order - right.order)
+    incomingEdges(document.definition, node.id)
       .forEach((edge, index) => ranks.set(edgeId(edge), index + 1));
   const edges: Edge[] = document.definition.edges.map((edge) => {
     const source = byId.get(edge.source);

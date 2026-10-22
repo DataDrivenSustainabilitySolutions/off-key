@@ -392,3 +392,5 @@ export type SelectParameters = {
 export type StandardScalerParameters = {
   with_std?: boolean;
 };
+
+export const PIPELINE_LIMITS = { nodes: 64, edges: 128, slots: 100 } as const;

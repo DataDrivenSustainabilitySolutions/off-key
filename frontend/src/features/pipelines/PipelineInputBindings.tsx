@@ -1,5 +1,6 @@
 import type { MonitoringTarget } from "../monitoring/serviceModel";
 import type { PipelineDefinition } from "./contracts";
+import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import { addReading } from "./slots";
 
 export function PipelineInputBindings({ slots, target, bindings, disabled, owned, onChange, onSlotsChange }: {
@@ -26,7 +27,7 @@ export function PipelineInputBindings({ slots, target, bindings, disabled, owned
     </label><button type="button" disabled={disabled} aria-label={`Remove reading for ${slot.label}`}
       onClick={() => onSlotsChange(slots.filter((item) => item.id !== slot.id), bindings)}>Remove</button></div>)}
     <label className="pl-field"><span>Add reading</span>
-      <select aria-label="Add reading" value="" disabled={disabled || slots.length >= 100} onChange={(event) => {
+      <select aria-label="Add reading" value="" disabled={disabled || slots.length >= PIPELINE_LIMITS.slots} onChange={(event) => {
         const input = target.inputs.find((input) => input.stream.id === event.target.value);
         if (input) { const next = addReading(slots, bindings, input); onSlotsChange(next.slots, next.bindings); }
       }}>

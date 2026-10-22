@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PipelineCatalog } from "./contracts";
-import { addBlocker, nodeLabel, type GraphDocument } from "./model";
+import { addBlocker, isMultiInstanceKind, nodeLabel, PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { nodeKinds } from "./semantics";
 
 const kinds = ["source", "transform", "merge", "detector", "policy", "output"] as const;
@@ -36,9 +36,9 @@ export function PipelineToolbox({
     `${component.label} ${component.description} ${nodeKinds[component.kind]}`
       .toLocaleLowerCase()
       .includes(search));
-  const full = definition.nodes.length >= 64;
+  const full = definition.nodes.length >= PIPELINE_LIMITS.nodes;
   const sections = kinds.map((kind) => {
-    const existing = ["transform", "merge"].includes(kind)
+    const existing = isMultiInstanceKind(kind)
       ? undefined : definition.nodes.find((node) => node.kind === kind);
     const items = matches.filter((component) => component.kind === kind);
     return { kind, existing, items };
@@ -53,8 +53,8 @@ export function PipelineToolbox({
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
-      <p className="pl-toolbox-count" role="status">{definition.nodes.length} / 64</p>
-      {full && <p className="pl-help">The design has reached its 64-component limit.</p>}
+      <p className="pl-toolbox-count" role="status">{definition.nodes.length} / {PIPELINE_LIMITS.nodes}</p>
+      {full && <p className="pl-help">The design has reached its {PIPELINE_LIMITS.nodes}-component limit.</p>}
       {sections.map(({ kind, existing, items }) => (
         <section key={kind}>
           <h4>{nodeKinds[kind]}</h4>

@@ -28,6 +28,7 @@ import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, suggestBindings } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
+import { strategyLabel } from "./semantics";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -185,7 +186,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
               commit(document);
               setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
             }} /></div>
-          <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{draft.document.definition.strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline"}</strong>
+          <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{strategyLabel(draft.document.definition.strategy)}</strong>
             <small>{draft.document.definition.strategy === "adaptive_stream" ? "Learns from live readings" : "Learns a baseline, then monitors"}</small></div>
         </div>
         {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}

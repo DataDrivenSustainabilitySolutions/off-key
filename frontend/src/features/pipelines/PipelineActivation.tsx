@@ -13,6 +13,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import type { PipelineDefinition, PipelineRevisionView } from "./contracts";
 import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
+import { strategyLabel } from "./semantics";
 import {
   readActivationRequest,
   retainActivationRequest,
@@ -260,9 +261,7 @@ export function PipelineActivation({
         <>
           <p>
             Revision {revision.number} ·{" "}
-            {revision.definition.strategy === "adaptive_stream"
-              ? "Adaptive stream"
-              : "Static baseline"}
+            {strategyLabel(revision.definition.strategy)}
           </p>
           {previous && (
             <>

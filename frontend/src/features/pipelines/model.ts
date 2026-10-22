@@ -1,12 +1,15 @@
 import type { JsonValue } from "@/types/monitoring";
+import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import type {
   PipelineDefinition,
+  PipelineEdge,
   PipelineLayout,
   PipelineNode,
   PipelineComponent,
 } from "./contracts";
 import {
   componentFor,
+  edgeId,
   dataKinds,
   GRID_STEP,
   inputKind,
@@ -14,6 +17,20 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+
+export { PIPELINE_LIMITS };
+
+/** Transforms and merges may repeat; every other kind appears once per design. */
+export const isMultiInstanceKind = (kind: string) => kind === "transform" || kind === "merge";
+
+/** Catalogue defaults for the fields that declare one. */
+export const fieldDefaults = (fields: readonly { name: string; default?: JsonValue | null }[]) =>
+  Object.fromEntries(fields.filter((field) => field.default !== undefined)
+    .map((field) => [field.name, field.default as JsonValue])) as Record<string, JsonValue>;
+
+/** A node's inputs in merge order. */
+export const incomingEdges = (definition: PipelineDefinition, nodeId: string) =>
+  definition.edges.filter((edge) => edge.target === nodeId).sort((left, right) => left.order - right.order);
 
 export type GraphDocument = {
   definition: PipelineDefinition;
@@ -66,11 +83,7 @@ export function addComponent(
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
       .length + 1;
-  const params = Object.fromEntries(
-    component.fields
-      .filter((field) => field.default !== undefined)
-      .map((field) => [field.name, field.default as JsonValue]),
-  );
+  const params = fieldDefaults(component.fields);
   return {
     definition: {
       ...document.definition,
@@ -134,26 +147,76 @@ export function addBlocker(
 ): string | undefined {
   if (!component.strategies.includes(definition.strategy))
     return "Not available for this strategy.";
-  if (definition.nodes.length >= 64) return "The design has reached its 64-component limit.";
+  if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
+    return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
   if (
-    !["transform", "merge"].includes(component.kind) &&
+    !isMultiInstanceKind(component.kind) &&
     definition.nodes.some((node) => node.kind === component.kind)
   )
     return "A design has one of these.";
 }
 
-export function removeNode(document: GraphDocument, id: string): GraphDocument {
-  const positions = { ...document.layout.nodes };
-  delete positions[id];
+/** Remove nodes with every incident edge and their layout, plus any listed edges; merge order is kept. */
+export function removeElements(
+  document: GraphDocument,
+  { nodeIds = [], edgeIds = [] }: { nodeIds?: string[]; edgeIds?: string[] },
+): GraphDocument {
+  const nodes = new Set(nodeIds);
+  const edges = new Set(edgeIds);
   return {
     definition: {
       ...document.definition,
-      nodes: document.definition.nodes.filter((node) => node.id !== id),
+      nodes: document.definition.nodes.filter((node) => !nodes.has(node.id)),
       edges: document.definition.edges.filter(
-        (edge) => edge.source !== id && edge.target !== id,
+        (edge) => !nodes.has(edge.source) && !nodes.has(edge.target) && !edges.has(edgeId(edge)),
       ),
     },
-    layout: { ...document.layout, nodes: positions },
+    layout: {
+      ...document.layout,
+      nodes: Object.fromEntries(Object.entries(document.layout.nodes).filter(([id]) => !nodes.has(id))),
+    },
+  };
+}
+
+export const removeNode = (document: GraphDocument, id: string) => removeElements(document, { nodeIds: [id] });
+
+export const disconnectEdge = (definition: PipelineDefinition, edge: Pick<PipelineEdge, "source" | "target">): PipelineDefinition => ({
+  ...definition,
+  edges: definition.edges.filter((item) => edgeId(item) !== edgeId(edge)),
+});
+
+const updateNode = (document: GraphDocument, nodeId: string, change: (node: PipelineNode) => PipelineNode): GraphDocument => ({
+  ...document,
+  definition: {
+    ...document.definition,
+    nodes: document.definition.nodes.map((node) => (node.id === nodeId ? change(node) : node)),
+  },
+});
+
+/** Swap a node's component; its parameters reset to the catalogue defaults and its connections stay. */
+export const replaceComponent = (document: GraphDocument, nodeId: string, component: PipelineComponent) =>
+  updateNode(document, nodeId, (node) => ({
+    ...node,
+    component: component.id,
+    contract_version: component.contract_version ?? 1,
+    params: fieldDefaults(component.fields),
+  }));
+
+export const setNodeParams = (document: GraphDocument, nodeId: string, params: PipelineNode["params"]) =>
+  updateNode(document, nodeId, (node) => ({ ...node, params }));
+
+/** Title a node; a node without a stored position gets its default one. */
+export function setNodeLabel(document: GraphDocument, nodeId: string, label: string): GraphDocument {
+  const index = document.definition.nodes.findIndex((node) => node.id === nodeId);
+  return {
+    ...document,
+    layout: {
+      ...document.layout,
+      nodes: {
+        ...document.layout.nodes,
+        [nodeId]: { ...nodePosition(document.layout, nodeId, index), ...document.layout.nodes[nodeId], label },
+      },
+    },
   };
 }
 
@@ -176,8 +239,8 @@ export function connectionIssue(
     )
   )
     return "This connection is already present.";
-  if (definition.edges.length >= 128)
-    return "The design has reached its 128-connection limit.";
+  if (definition.edges.length >= PIPELINE_LIMITS.edges)
+    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
   const fromComponent = componentFor(from, components);
   const toComponent = componentFor(to, components);
   if (

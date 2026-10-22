@@ -2,42 +2,15 @@
 
 import asyncio
 import socket
-from contextlib import asynccontextmanager, suppress
+from contextlib import suppress
 from threading import Event
 
 import pytest
-from amqtt.broker import Broker
 from amqtt.client import MQTTClient
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
-
-async def wait_until(predicate, deadline_seconds=10):
-    async with asyncio.timeout(deadline_seconds):
-        # Broker and Paho thread state do not expose an asyncio event.
-        while not predicate():  # noqa: ASYNC110
-            await asyncio.sleep(0.01)
-
-
-@asynccontextmanager
-async def mqtt_broker(*, plugins=None, port=0):
-    broker = Broker(
-        {
-            "listeners": {"default": {"type": "tcp", "bind": f"127.0.0.1:{port}"}},
-            "plugins": plugins
-            or {
-                "amqtt.plugins.authentication.AnonymousAuthPlugin": {
-                    "allow_anonymous": True
-                }
-            },
-        }
-    )
-    await broker.start()
-    port = broker._servers["default"].instance.sockets[0].getsockname()[1]
-    try:
-        yield broker, port
-    finally:
-        await broker.shutdown()
+from tests.support.mqtt import ANONYMOUS_ACCESS, mqtt_broker, wait_until
 
 
 async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads():
@@ -298,7 +271,7 @@ async def test_cancelled_initial_connection_stops_processor_and_network_thread(
 
 async def test_real_broker_acl_rejection_fails_required_subscription_readiness():
     plugins = {
-        "amqtt.plugins.authentication.AnonymousAuthPlugin": {"allow_anonymous": True},
+        **ANONYMOUS_ACCESS,
         "amqtt.plugins.topic_checking.TopicAccessControlListPlugin": {
             "acl": {"anonymous": ["telemetry/acl/allowed"]}
         },

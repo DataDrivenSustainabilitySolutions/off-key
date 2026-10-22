@@ -15,7 +15,7 @@ from off_key_api_gateway.facades.tactic import Tactic, TacticError
 from off_key_core.schemas.user import UserLogin
 from off_key_tactic_middleware.services.data import users as users_module
 
-from .test_gateway_login_user_id_contract import _set_auth_env
+from tests.support.env import set_auth_env
 
 
 def _request(peer, forwarded=None):
@@ -77,7 +77,7 @@ def _attach(client, error):
 async def test_writes_are_not_repeated_after_the_request_may_have_run(
     facade, method, monkeypatch
 ):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     session = _attach(facade, aiohttp.ServerDisconnectedError())
     with pytest.raises(TacticError):
         await facade._make_request(method, "/api/v1/orchestration/start")
@@ -86,7 +86,7 @@ async def test_writes_are_not_repeated_after_the_request_may_have_run(
 
 @pytest.mark.asyncio
 async def test_reads_and_unsent_writes_are_retried(facade, monkeypatch):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     session = _attach(facade, aiohttp.ServerDisconnectedError())
     with pytest.raises(TacticError):
         await facade._make_request("GET", "/api/v1/monitors")
@@ -115,7 +115,7 @@ class _RotatingTactic:
 async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
     monkeypatch,
 ):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     monkeypatch.setattr(auth_api, "tactic", _RotatingTactic())
     app = FastAPI()
     app.include_router(auth_api.router)
@@ -132,7 +132,7 @@ async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
 
 @pytest.mark.asyncio
 async def test_forgot_password_delivers_mail_after_responding(monkeypatch):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     order = []
 
     async def request(*_, **__):

@@ -2,27 +2,15 @@ import os
 
 import pytest
 
+from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
 _GATEWAY_ENVIRONMENT = {
+    **AUTH_ENVIRONMENT,
+    **EMAIL_ENVIRONMENT,
     "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
     "APP_NAME": "off-key-test",
     "DEBUG": "false",
-    "JWT_SECRET": "test-signing-secret-material-123456789",
-    "JWT_VERIFICATION_SECRET": "test-verification-secret-material-987654321",
-    "ALGORITHM": "HS256",
-    "ACCESS_TOKEN_EXPIRE_MINUTES": "30",
-    "SUPERUSER_MAIL": "admin@example.com",
-    "EMAIL_USERNAME": "sender@example.com",
-    "EMAIL_PASSWORD": "test-email-password",
-    "EMAIL_FROM": "sender@example.com",
-    "FRONTEND_BASE_URL": "http://localhost:5173",
-    "SMTP_SERVER": "localhost",
-    "SMTP_PORT": "1025",
-    "MAIL_STARTTLS": "true",
-    "MAIL_SSL_TLS": "false",
-    "USE_CREDENTIALS": "true",
-    "VALIDATE_CERTS": "false",
     "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
     "SERVICE_LOG_FILE": os.devnull,
 }
@@ -30,8 +18,7 @@ _GATEWAY_ENVIRONMENT = {
 
 @pytest.mark.asyncio
 async def test_health_check_returns_liveness_payload(monkeypatch):
-    for name, value in _GATEWAY_ENVIRONMENT.items():
-        monkeypatch.setenv(name, value)
+    set_environment(monkeypatch, _GATEWAY_ENVIRONMENT)
 
     # The test must not inherit configuration from a developer's local .env.
     monkeypatch.setattr(

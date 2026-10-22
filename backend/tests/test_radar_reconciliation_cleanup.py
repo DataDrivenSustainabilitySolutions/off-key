@@ -12,6 +12,8 @@ from off_key_tactic_middleware.services.reconciliation import (
     RadarStatusReconciliationService,
 )
 
+from tests.support.docker import FakeAsyncDocker
+
 
 def _query_result(services):
     result = MagicMock()
@@ -45,23 +47,11 @@ def _service(
 def _reconciler(*, retention_hours: int, docker_statuses: list[str]):
     service = RadarStatusReconciliationService(
         terminal_service_retention_hours=retention_hours,
-        async_docker=_FakeAsyncDocker(),
+        async_docker=FakeAsyncDocker(),
     )
     service._get_docker_status = AsyncMock(side_effect=docker_statuses)
     service._remove_workload_if_present = AsyncMock(return_value=False)
     return service
-
-
-class _FakeAsyncDocker:
-    def __init__(self):
-        self.client = SimpleNamespace(
-            api=SimpleNamespace(tasks=MagicMock(return_value=[])),
-            services=SimpleNamespace(),
-            containers=SimpleNamespace(),
-        )
-
-    async def run(self, func, *args, **kwargs):
-        return func(*args, **kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -176,7 +166,7 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
 
 @pytest.mark.asyncio
 async def test_reconcile_workload_removal_falls_back_to_container_on_swarm_error():
-    fake_docker = _FakeAsyncDocker()
+    fake_docker = FakeAsyncDocker()
     service_container = MagicMock()
     service_container.remove = MagicMock()
     fake_docker.client.services.get = MagicMock(
@@ -194,7 +184,7 @@ async def test_reconcile_workload_removal_falls_back_to_container_on_swarm_error
 
 @pytest.mark.asyncio
 async def test_reconcile_workload_removal_returns_false_when_missing_everywhere():
-    fake_docker = _FakeAsyncDocker()
+    fake_docker = FakeAsyncDocker()
     fake_docker.client.services.get = MagicMock(
         side_effect=docker.errors.NotFound("missing")
     )
@@ -266,7 +256,7 @@ def test_is_purge_due_returns_true_when_reference_time_missing_and_retention_is_
         created_at=None,
     )
     reconciler = RadarStatusReconciliationService(
-        terminal_service_retention_hours=0, async_docker=_FakeAsyncDocker()
+        terminal_service_retention_hours=0, async_docker=FakeAsyncDocker()
     )
     assert reconciler._is_purge_due(service) is True
 
@@ -279,7 +269,7 @@ def test_is_purge_due_returns_false_when_reference_time_missing_and_retention_no
         created_at=None,
     )
     reconciler = RadarStatusReconciliationService(
-        terminal_service_retention_hours=24, async_docker=_FakeAsyncDocker()
+        terminal_service_retention_hours=24, async_docker=FakeAsyncDocker()
     )
     assert reconciler._is_purge_due(service) is False
 

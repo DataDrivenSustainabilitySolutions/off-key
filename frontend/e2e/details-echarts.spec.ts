@@ -31,208 +31,127 @@ const NEW_POINT = {
   created: "2026-07-28T08:04:01.000Z",
   value: 232.2,
 };
+const ANOMALY = {
+  anomaly_id: "anomaly-e2e-1",
+  charger_id: CHARGER_ID,
+  timestamp: "2026-07-28T08:02:00.000Z",
+  telemetry_type: "systemVoltage",
+  anomaly_type: "spike",
+  anomaly_value: 0.01,
+  value_type: "tail_pvalue",
+  sensor_set: ["systemVoltage"],
+};
 
-const installDetailsApi = async (
+/** Evidence for one voltage reading, scored half a minute after it arrived. */
+const evidence = (
+  timestamp: string,
+  sequence: number,
+  scores: Record<string, unknown>,
+) => ({
+  timestamp,
+  created: new Date(Date.parse(timestamp) + 30_000).toISOString(),
+  sequence_number: sequence,
+  sensor_set: ["systemVoltage"],
+  input_timestamps: { systemVoltage: timestamp },
+  alarm: false,
+  ...scores,
+});
+const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
+  evidence(timestamp, index + 1, {
+    strategy: "static_baseline",
+    service_id: "radar-service-e2e",
+    restarted_martingale: 10 ** -index,
+    threshold: 100,
+  }),
+);
+const adaptiveEvidence = (timestamp: string, sequence: number) =>
+  evidence(timestamp, sequence, {
+    strategy: "adaptive_stream",
+    service_id: "adaptive-delayed",
+    anomaly_score: sequence,
+    restarted_martingale: null,
+    threshold: 5,
+  });
+const ADAPTIVE_SERVICE = {
+  id: "adaptive-delayed",
+  container_id: "container-delayed",
+  container_name: "radar-delayed",
+  mqtt_topics: [`telemetry/${CHARGER_ID}/systemVoltage`],
+  status: true,
+  monitoring_strategy: "adaptive_stream",
+  operational_status: {
+    stage: "operational",
+    message_count: 2,
+    processed_message_count: 2,
+    is_stale: false,
+  },
+};
+
+/** Serves a polled feed: its first page, then `later` once released. */
+const routeFeed = async (
   page: Page,
-  telemetryTypes: string[] = ["systemVoltage"],
+  path: string,
+  first: unknown[],
+  later: unknown[],
 ) => {
-  let includeNewTelemetry = false;
-
-  await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
-    await route.fulfill({ json: telemetryTypes });
-  });
-  await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, async (route) => {
+  let released = false;
+  await page.route(`**${path}*`, async (route) => {
     const isIncremental = new URL(route.request().url()).searchParams.has(
       "after_created",
     );
-    await route.fulfill({
-      json: isIncremental
-        ? includeNewTelemetry
-          ? [NEW_POINT]
-          : []
-        : INITIAL_POINTS,
-    });
+    await route.fulfill({ json: !isIncremental ? first : released ? later : [] });
   });
-  await page.route("**/v1/anomalies/count*", async (route) => {
-    await route.fulfill({ json: 1 });
-  });
-  await page.route(`**/v1/anomalies?charger_id=${CHARGER_ID}*`, async (route) => {
-    await route.fulfill({
-      json: [
-        {
-          anomaly_id: "anomaly-e2e-1",
-          charger_id: CHARGER_ID,
-          timestamp: "2026-07-28T08:02:00.000Z",
-          telemetry_type: "systemVoltage",
-          anomaly_type: "spike",
-          anomaly_value: 0.01,
-          value_type: "tail_pvalue",
-          sensor_set: ["systemVoltage"],
-        },
-      ],
-    });
-  });
-  await page.route("**/v1/monitors/evidence/chart?*", async (route) => {
-    const isIncremental = new URL(route.request().url()).searchParams.has(
-      "after_created",
+  return async () => {
+    released = true;
+    const response = page.waitForResponse(
+      (candidate) =>
+        candidate.url().includes(path) &&
+        candidate.url().includes("after_created"),
     );
-    await route.fulfill({
-      json: isIncremental
-        ? []
-        : [
-            {
-              strategy: "static_baseline",
-              service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:00:00.000Z",
-              created: "2026-07-28T08:00:31.000Z",
-              sequence_number: 1,
-              sensor_set: ["systemVoltage"],
-              input_timestamps: {
-                systemVoltage: "2026-07-28T08:00:00.000Z",
-              },
-              restarted_martingale: 1,
-              threshold: 100,
-              alarm: false,
-            },
-            {
-              strategy: "static_baseline",
-              service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:01:00.000Z",
-              created: "2026-07-28T08:01:31.000Z",
-              sequence_number: 2,
-              sensor_set: ["systemVoltage"],
-              input_timestamps: {
-                systemVoltage: "2026-07-28T08:01:00.000Z",
-              },
-              restarted_martingale: 0.1,
-              threshold: 100,
-              alarm: false,
-            },
-            {
-              strategy: "static_baseline",
-              service_id: "radar-service-e2e",
-              timestamp: "2026-07-28T08:02:00.000Z",
-              created: "2026-07-28T08:02:31.000Z",
-              sequence_number: 3,
-              sensor_set: ["systemVoltage"],
-              input_timestamps: {
-                systemVoltage: "2026-07-28T08:02:00.000Z",
-              },
-              restarted_martingale: 0.01,
-              threshold: 100,
-              alarm: false,
-            },
-          ],
-    });
-  });
-  await page.route("**/v1/monitors/all?*", async (route) => {
-    await route.fulfill({ json: [] });
-  });
-
-  return {
-    publishNewTelemetry: async () => {
-      includeNewTelemetry = true;
-      const response = page.waitForResponse(
-        (candidate) =>
-          candidate.url().includes(`/v1/telemetry/${CHARGER_ID}/data`) &&
-          candidate.url().includes("after_created"),
-      );
-      await page.evaluate(() =>
-        document.dispatchEvent(new Event("visibilitychange")),
-      );
-      await response;
-    },
+    await page.evaluate(() =>
+      document.dispatchEvent(new Event("visibilitychange")),
+    );
+    await response;
   };
 };
 
-const installDelayedEvidenceApi = async (page: Page) => {
-  const firstTimestamp = "2026-07-28T08:00:00.000Z";
-  const secondTimestamp = "2026-07-28T08:01:00.000Z";
-  let releaseDelayedEvidence = false;
-
+const installDetailsApi = async (
+  page: Page,
+  {
+    telemetryTypes = ["systemVoltage"],
+    telemetry = INITIAL_POINTS,
+    anomalies = [ANOMALY],
+    services = [] as unknown[],
+    initialEvidence = STATIC_EVIDENCE,
+    delayedEvidence = [] as unknown[],
+  } = {},
+) => {
   await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
-    await route.fulfill({ json: ["systemVoltage"] });
-  });
-  await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, async (route) => {
-    const isIncremental = new URL(route.request().url()).searchParams.has(
-      "after_created",
-    );
-    await route.fulfill({
-      json: isIncremental
-        ? []
-        : [
-            { ...INITIAL_POINTS[0], timestamp: firstTimestamp },
-            { ...INITIAL_POINTS[1], timestamp: secondTimestamp },
-          ],
-    });
-  });
-  await page.route(`**/v1/anomalies?charger_id=${CHARGER_ID}*`, async (route) => {
-    await route.fulfill({ json: [] });
+    await route.fulfill({ json: telemetryTypes });
   });
   await page.route("**/v1/anomalies/count*", async (route) => {
-    await route.fulfill({ json: 0 });
+    await route.fulfill({ json: anomalies.length });
+  });
+  await page.route(`**/v1/anomalies?charger_id=${CHARGER_ID}*`, async (route) => {
+    await route.fulfill({ json: anomalies });
   });
   await page.route("**/v1/monitors/all?*", async (route) => {
-    await route.fulfill({
-      json: [
-        {
-          id: "adaptive-delayed",
-          container_id: "container-delayed",
-          container_name: "radar-delayed",
-          mqtt_topics: [
-            `telemetry/${CHARGER_ID}/systemVoltage`,
-          ],
-          status: true,
-          monitoring_strategy: "adaptive_stream",
-          operational_status: {
-            stage: "operational",
-            message_count: 2,
-            processed_message_count: 2,
-            is_stale: false,
-          },
-        },
-      ],
-    });
-  });
-  await page.route("**/v1/monitors/evidence/chart?*", async (route) => {
-    const isIncremental = new URL(route.request().url()).searchParams.has(
-      "after_created",
-    );
-    const row = (timestamp: string, sequence: number) => ({
-      service_id: "adaptive-delayed",
-      timestamp,
-      created: new Date(Date.parse(timestamp) + 30_000).toISOString(),
-      sequence_number: sequence,
-      sensor_set: ["systemVoltage"],
-      input_timestamps: { systemVoltage: timestamp },
-      strategy: "adaptive_stream",
-      anomaly_score: sequence,
-      restarted_martingale: null,
-      threshold: 5,
-      alarm: false,
-    });
-    await route.fulfill({
-      json: isIncremental
-        ? releaseDelayedEvidence
-          ? [row(secondTimestamp, 2)]
-          : []
-        : [row(firstTimestamp, 1)],
-    });
+    await route.fulfill({ json: services });
   });
 
   return {
-    releaseEvidence: async () => {
-      releaseDelayedEvidence = true;
-      const response = page.waitForResponse(
-        (candidate) =>
-          candidate.url().includes("/v1/monitors/evidence/chart") &&
-          candidate.url().includes("after_created"),
-      );
-      await page.evaluate(() =>
-        document.dispatchEvent(new Event("visibilitychange")),
-      );
-      await response;
-    },
+    publishNewTelemetry: await routeFeed(
+      page,
+      `/v1/telemetry/${CHARGER_ID}/data`,
+      telemetry,
+      [NEW_POINT],
+    ),
+    releaseEvidence: await routeFeed(
+      page,
+      "/v1/monitors/evidence/chart",
+      initialEvidence,
+      delayedEvidence,
+    ),
   };
 };
 
@@ -361,7 +280,13 @@ test.describe("Details telemetry ECharts", () => {
   test("fills delayed evidence retroactively without moving the viewport", async ({
     page,
   }) => {
-    const api = await installDelayedEvidenceApi(page);
+    const api = await installDetailsApi(page, {
+      telemetry: INITIAL_POINTS.slice(0, 2),
+      anomalies: [],
+      services: [ADAPTIVE_SERVICE],
+      initialEvidence: [adaptiveEvidence("2026-07-28T08:00:00.000Z", 1)],
+      delayedEvidence: [adaptiveEvidence("2026-07-28T08:01:00.000Z", 2)],
+    });
     await page.goto(`/details/${CHARGER_ID}`);
 
     const card = page
@@ -386,7 +311,9 @@ test.describe("Details telemetry ECharts", () => {
   test("optionally mirrors horizontal navigation across chart views", async ({
     page,
   }) => {
-    await installDetailsApi(page, ["systemVoltage", "systemCurrent"]);
+    await installDetailsApi(page, {
+      telemetryTypes: ["systemVoltage", "systemCurrent"],
+    });
     await page.goto(`/details/${CHARGER_ID}`);
 
     const voltageCard = page

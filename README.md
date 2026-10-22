@@ -37,6 +37,11 @@ npm test
 npm run build
 ```
 
+For branch coverage, add `--cov` to the backend pytest command (the root
+`.coveragerc` measures every backend package; database, collection and Swarm lanes
+skip unless their environment is set) and run `npm run test:coverage` in `frontend/`,
+which writes an HTML report to `frontend/coverage/`.
+
 The frontend build type-checks application, Node tooling, unit tests, and Playwright
 tests before producing the Vite bundle. Run `npm run test:e2e` against a running
 Compose stack; CI's deployment smoke workflow performs that full-system check.

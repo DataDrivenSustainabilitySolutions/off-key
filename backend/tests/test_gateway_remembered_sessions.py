@@ -8,7 +8,7 @@ from off_key_api_gateway.api.v1 import auth as auth_api
 from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.config.auth import get_auth_settings
 
-from .test_gateway_login_user_id_contract import _set_auth_env
+from tests.support.env import set_auth_env
 
 TOKEN = "r" * 43
 COOKIE = auth_api.REMEMBERED_SESSION_COOKIE
@@ -35,7 +35,7 @@ class SessionTactic:
 
 @pytest.fixture
 def session_api(monkeypatch):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     tactic = SessionTactic()
     monkeypatch.setattr(auth_api, "tactic", tactic)
     app = FastAPI()

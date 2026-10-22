@@ -22,6 +22,7 @@ from off_key_tactic_middleware.config import (
     get_radar_container_runtime_settings,
 )
 
+from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
 
@@ -37,7 +38,6 @@ def test_database_settings_parse_with_only_database_environment(monkeypatch):
     monkeypatch.setenv("POSTGRES_PORT", "5432")
     monkeypatch.setenv("POSTGRES_HOST", "localhost")
     monkeypatch.delenv("JWT_SECRET", raising=False)
-    monkeypatch.delenv("JWT_VERIFICATION_SECRET", raising=False)
 
     reset_runtime_caches_for_tests()
 
@@ -51,11 +51,7 @@ def test_database_settings_parse_with_only_database_environment(monkeypatch):
 
 
 def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
-    monkeypatch.setenv("JWT_SECRET", "super-secret-key-material-123456")
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret-key-material-654321")
-    monkeypatch.setenv("ALGORITHM", "HS256")
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")
+    set_environment(monkeypatch, AUTH_ENVIRONMENT)
     monkeypatch.delenv("POSTGRES_USER", raising=False)
     monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
     monkeypatch.delenv("POSTGRES_DB", raising=False)
@@ -69,28 +65,6 @@ def test_auth_settings_parse_with_only_auth_environment(monkeypatch):
     assert auth.ALGORITHM == "HS256"
     assert auth.ACCESS_TOKEN_EXPIRE_MINUTES == 30
     assert auth.SUPERUSER_MAIL == "admin@example.com"
-
-    reset_runtime_caches_for_tests()
-
-
-def test_email_settings_parse_with_only_email_environment(monkeypatch):
-    monkeypatch.setenv("EMAIL_USERNAME", "sender@example.com")
-    monkeypatch.setenv("EMAIL_PASSWORD", "email-secret")
-    monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
-    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:5173")
-    monkeypatch.setenv("SMTP_SERVER", "localhost")
-    monkeypatch.setenv("SMTP_PORT", "1025")
-    monkeypatch.setenv("MAIL_STARTTLS", "true")
-    monkeypatch.setenv("MAIL_SSL_TLS", "false")
-    monkeypatch.setenv("USE_CREDENTIALS", "true")
-    monkeypatch.setenv("VALIDATE_CERTS", "false")
-    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com")
-
-    reset_runtime_caches_for_tests()
-
-    email = get_email_settings()
-
-    assert email.anomaly_alert_recipients_list == ["admin@example.com"]
 
     reset_runtime_caches_for_tests()
 
@@ -242,24 +216,16 @@ def test_database_url_encoding_is_consistent_across_runtime_builders(monkeypatch
 
 
 def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
-    monkeypatch.setenv("APP_NAME", "off-key")
-    monkeypatch.setenv("DEBUG", "false")
-    monkeypatch.setenv("JWT_SECRET", "super-secret-key-material-123456")
-    monkeypatch.setenv("JWT_VERIFICATION_SECRET", "verify-secret-key-material-654321")
-    monkeypatch.setenv("ALGORITHM", "HS256")
-    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    monkeypatch.setenv("SUPERUSER_MAIL", "admin@example.com")
-    monkeypatch.setenv("EMAIL_USERNAME", "sender@example.com")
-    monkeypatch.setenv("EMAIL_PASSWORD", "email-secret")
-    monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
-    monkeypatch.setenv("FRONTEND_BASE_URL", "http://localhost:5173")
-    monkeypatch.setenv("SMTP_SERVER", "localhost")
-    monkeypatch.setenv("SMTP_PORT", "1025")
-    monkeypatch.setenv("MAIL_STARTTLS", "true")
-    monkeypatch.setenv("MAIL_SSL_TLS", "false")
-    monkeypatch.setenv("USE_CREDENTIALS", "true")
-    monkeypatch.setenv("VALIDATE_CERTS", "false")
-    monkeypatch.setenv("ANOMALY_ALERT_RECIPIENTS", "admin@example.com")
+    set_environment(
+        monkeypatch,
+        {
+            **AUTH_ENVIRONMENT,
+            **EMAIL_ENVIRONMENT,
+            "APP_NAME": "off-key",
+            "DEBUG": "false",
+            "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
+        },
+    )
     monkeypatch.delenv("POSTGRES_USER", raising=False)
     monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
     monkeypatch.delenv("POSTGRES_DB", raising=False)

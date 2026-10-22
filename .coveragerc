@@ -1,0 +1,24 @@
+# Branch coverage for every backend package. From the repository root:
+#   uv run --project backend python -m pytest -q --cov --cov-report=term-missing:skip-covered
+# Database, collection and Swarm lanes skip unless their environment is set.
+[run]
+branch = true
+# SQLAlchemy's asyncio layer switches greenlets; without this, lines are filed
+# under the wrong module.
+concurrency = thread,greenlet
+parallel = true
+relative_files = true
+# Count code that tests start in Python subprocesses as well.
+patch = subprocess
+source =
+    backend/libs/core/src
+    backend/services/api/gateway/src
+    backend/services/db/sync/src
+    backend/services/middleware/tactic/src
+    backend/services/mqtt/proxy/src
+    backend/services/mqtt/radar/src
+    backend/services/mqtt/simulator/src
+
+[report]
+skip_empty = true
+precision = 2

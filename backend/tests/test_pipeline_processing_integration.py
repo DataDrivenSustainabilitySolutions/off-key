@@ -33,8 +33,9 @@ from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionServi
 from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 
+from tests.support.mqtt import mqtt_broker, wait_until
+
 from .test_adaptive_pipeline_runtime import _config
-from .test_radar_mqtt_integration import mqtt_broker, wait_until
 
 SERVICE_ID = "pipeline-integration-service"
 

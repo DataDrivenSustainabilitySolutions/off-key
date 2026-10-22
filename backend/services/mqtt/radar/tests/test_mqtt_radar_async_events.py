@@ -1,6 +1,11 @@
+"""Async event handling in the RADAR MQTT client without a broker.
+
+Covers event-loop lifecycle, handler failures, shutdown, admission bounds and
+reconnection. Real-broker behaviour lives in test_radar_mqtt_integration.py.
+"""
+
 import asyncio
-import time
-from contextlib import suppress
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -10,809 +15,336 @@ from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.models import MQTTMessage
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
-"""
-This test module covers the following risk scenarios:
-1. Event loop lifecycle issues
-2. Exception propagation
-3. Resource leaks
-4. Race conditions
-5. Performance degradation
-6. Silent failures
-"""
+
+@pytest.fixture
+def config():
+    return MQTTRadarConfig(
+        broker_host="localhost",
+        broker_port=1883,
+        use_tls=False,
+        use_auth=False,
+        subscription_topics=["telemetry/test/sine"],
+        subscription_qos=0,
+        max_queue_size=100,
+        rate_limit_per_minute=60,
+        client_id_prefix="test",
+    )
 
 
-class TestMQTTAsyncEventHandling:
-    """Test suite for async event handling in MQTT client"""
+@pytest_asyncio.fixture
+async def mqtt_client(config):
+    """Client whose connect step installs a mocked Paho client."""
+    client = RadarMQTTClient(config)
+    paho_client = MagicMock(_client_id="test-client-id")
 
-    @pytest.fixture
-    def config(self):
-        """Create test configuration"""
-        return MQTTRadarConfig(
-            broker_host="localhost",
-            broker_port=1883,
-            use_tls=False,
-            use_auth=False,
-            subscription_topics=["telemetry/test/sine"],
-            subscription_qos=0,
-            max_queue_size=100,
-            rate_limit_per_minute=60,
-            client_id_prefix="test",
-        )
+    async def connect():
+        client._loop = asyncio.get_running_loop()
+        client.client = paho_client
+        client.is_connected = True
 
-    @pytest_asyncio.fixture
-    async def mqtt_client(self, config):
-        """Create MQTT client instance with mocked paho client"""
-        client = RadarMQTTClient(config)
+    client._connect = connect
+    yield client
+    await client.stop()
 
-        # Mock network connections
-        with patch("off_key_mqtt_radar.mqtt_client.mqtt.Client") as mock_client_class:
-            mock_mqtt_client = MagicMock()
-            mock_mqtt_client.connect_async = MagicMock()
-            mock_mqtt_client.loop_start = MagicMock()
-            mock_mqtt_client.loop_stop = MagicMock()
-            mock_mqtt_client.disconnect = MagicMock()
-            mock_mqtt_client.subscribe = MagicMock(return_value=(0, 1))
-            mock_mqtt_client._client_id = "test-client-id"
-            mock_client_class.return_value = mock_mqtt_client
 
-            # Store mock for tests to use
-            client._mock_mqtt_client = mock_mqtt_client
+def _message(payload=b"test"):
+    return MQTTMessage(
+        topic="test/topic",
+        payload=payload,
+        qos=0,
+        retain=False,
+        timestamp=datetime.now(),
+    )
 
-            # start client without actually connecting
-            _ = client._connect
 
-            async def mock_connect():
-                client._loop = asyncio.get_running_loop()
-                client.client = mock_mqtt_client
-                client.is_connected = True
+def _drops(client):
+    return client.coverage.snapshot().dropped_by_reason
 
-            client._connect = mock_connect
 
-            yield client
+async def test_message_before_the_loop_is_ready_is_counted_as_dropped(mqtt_client):
+    paho_message = Mock(topic="test/topic", payload=b"test", qos=0, retain=False)
 
-            # Cleanup
-            if (
-                client._message_processor_task
-                and not client._message_processor_task.done()
-            ):
-                client._message_processor_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await client._message_processor_task
+    mqtt_client._on_message(None, None, paho_message)
 
-    @pytest.mark.asyncio
-    async def test_event_loop_not_initialized(self, mqtt_client):
-        """Test behavior when event loop is not set"""
-        # Simulate MQTT message callback before start()
-        mqtt_client._loop = None
+    assert mqtt_client.message_queue.qsize() == 0
+    assert _drops(mqtt_client) == {"loop_unavailable": 1}
 
-        mock_msg = Mock()
-        mock_msg.topic = "test/topic"
-        mock_msg.payload = b"test"
-        mock_msg.qos = 0
-        mock_msg.retain = False
 
-        # Should not crash, should log and drop message
-        mqtt_client._on_message(None, None, mock_msg)
+async def test_messages_after_shutdown_are_ignored(mqtt_client):
+    await mqtt_client.start()
+    await mqtt_client.stop()
 
-        # Queue should be empty (message was dropped)
-        assert mqtt_client.message_queue.qsize() == 0
+    mqtt_client._on_message(mqtt_client.client, None, Mock(payload=b"test"))
 
-    @pytest.mark.asyncio
-    async def test_start_fails_when_initial_connect_fails(self, config):
-        """Test startup does not mark the client running without MQTT connectivity."""
-        client = RadarMQTTClient(config)
-        client._connect = AsyncMock(side_effect=RuntimeError("connect failed"))
+    assert mqtt_client.coverage.snapshot().received_message_count == 0
 
-        with pytest.raises(RuntimeError, match="connect failed"):
-            await client.start()
 
-        assert client._shutdown_event.is_set()
+async def test_message_racing_shutdown_is_accounted_as_dropped(mqtt_client):
+    """Paho can pass the shutdown check just before stop() closes the bridge."""
+    await mqtt_client.start()
+    await mqtt_client.stop()
+
+    mqtt_client._handle_incoming_message(_message())
+
+    assert mqtt_client.error_count == 1
+    assert _drops(mqtt_client) == {"enqueue_error": 1}
+
+
+async def test_start_fails_when_initial_connect_fails(config):
+    """Test startup does not mark the client running without MQTT connectivity."""
+    client = RadarMQTTClient(config)
+    client._connect = AsyncMock(side_effect=RuntimeError("connect failed"))
+
+    with pytest.raises(RuntimeError, match="connect failed"):
+        await client.start()
+
+    assert client._shutdown_event.is_set()
+    assert client.is_connected is False
+    assert (
+        client._message_processor_task is None or client._message_processor_task.done()
+    )
+
+
+async def test_connect_completes_from_success_callback(config):
+    """The Paho callback resolves the connection attempt without polling."""
+    paho_client = MagicMock()
+    paho_client.subscribe.return_value = (0, 1)
+
+    def acknowledge_subscription():
+        paho_client.on_connect(paho_client, None, None, 0, None)
         assert client.is_connected is False
-        assert (
-            client._message_processor_task is None
-            or client._message_processor_task.done()
-        )
-
-    @pytest.mark.asyncio
-    async def test_connect_completes_from_success_callback(self, config):
-        """The Paho callback resolves the connection attempt without polling."""
-        paho_client = MagicMock()
-        paho_client.subscribe.return_value = (0, 1)
-
-        def acknowledge_subscription():
-            paho_client.on_connect(paho_client, None, None, 0, None)
-            assert client.is_connected is False
-            paho_client.on_subscribe(paho_client, None, 1, [0], None)
-
-        paho_client.loop_start.side_effect = acknowledge_subscription
-        client = RadarMQTTClient(config)
-
-        with patch(
-            "off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
-        ):
-            await asyncio.wait_for(client._connect(), timeout=0.5)
-
-        assert client.is_connected is True
-        assert client._connection_result is None
-        paho_client.subscribe.assert_called_once()
-        await client.stop()
-
-    @pytest.mark.asyncio
-    async def test_connect_fails_from_refusal_callback(self, config):
-        """A broker refusal fails immediately instead of waiting for a timeout."""
-        paho_client = MagicMock()
-        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
-            paho_client, None, None, 5
-        )
-        client = RadarMQTTClient(config)
-
-        with (
-            patch(
-                "off_key_mqtt_radar.mqtt_client.mqtt.Client",
-                return_value=paho_client,
-            ),
-            pytest.raises(RuntimeError, match="not authorized"),
-        ):
-            await asyncio.wait_for(client._connect(), timeout=0.5)
-
-        assert client.is_connected is False
-        assert client._connection_result is None
-        assert client.client is None
-
-    @pytest.mark.asyncio
-    async def test_local_subscribe_failure_never_marks_ready(self, config):
-        paho_client = MagicMock()
-        paho_client.subscribe.return_value = (4, None)
-        paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
-            paho_client, None, None, 0, None
-        )
-        client = RadarMQTTClient(config)
-        with (
-            patch(
-                "off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
-            ),
-            pytest.raises(RuntimeError, match="SUBSCRIBE failed locally"),
-        ):
-            await client._connect()
-        assert not client.is_connected
-        assert client.client is None
-
-    @pytest.mark.asyncio
-    async def test_event_loop_closed_during_message_handling(self, mqtt_client):
-        """Test handling message when event loop closes between check and execution"""
-        # Start client and simulate successful connection
-        mqtt_client._loop = asyncio.get_running_loop()
-        mqtt_client._message_processor_task = asyncio.create_task(
-            mqtt_client._message_processor()
-        )
-        mqtt_client.is_connected = True
-
-        mock_msg = Mock()
-        mock_msg.topic = "test/topic"
-        mock_msg.payload = b"test"
-        mock_msg.qos = 0
-        mock_msg.retain = False
-
-        # Stop the client (closes event loop)
-        await mqtt_client.stop()
-
-        # Try to process message with closed loop
-        # Should handle gracefully without crashing
-        mqtt_client._on_message(None, None, mock_msg)
-
-        # Should not add to queue since loop is stopped
-        assert mqtt_client._shutdown_event.is_set()
-
-    @pytest.mark.asyncio
-    async def test_call_soon_threadsafe_with_closed_loop(self, mqtt_client):
-        """Test call_soon_threadsafe behavior with closed event loop"""
-        await mqtt_client.start()
-        loop = mqtt_client._loop
-
-        # Close the loop
-        await mqtt_client.stop()
-
-        # Attempt to use call_soon_threadsafe should not crash
-        # This tests the robustness of the cross-thread coordination
-        try:
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=b"test",
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            # This may raise RuntimeError if loop is closed, which is expected
-            loop.call_soon_threadsafe(
-                lambda: mqtt_client._handle_incoming_message(message)
-            )
-        except RuntimeError as e:
-            # Expected when loop is closed
-            assert "closed" in str(e).lower() or "running" in str(e).lower()
-
-    @pytest.mark.asyncio
-    async def test_message_handler_exception_propagation(self, mqtt_client):
-        """Test that exceptions in async message handler are caught and logged"""
-        await mqtt_client.start()
-
-        # Set up a handler that raises an exception
-        async def failing_handler(_: MQTTMessage):
-            raise ValueError("Test exception in handler")
-
-        mqtt_client.set_message_handler(failing_handler)
-
-        # Send a message
-        message = MQTTMessage(
-            topic="test/topic",
-            payload=b"test",
-            qos=0,
-            retain=False,
-            timestamp=datetime.now(),
-        )
-
-        await mqtt_client.message_queue.put(message)
-
-        # Give processor time to handle message
-        await asyncio.sleep(0.2)
-
-        # Error count should increase
-        assert mqtt_client.error_count > 0
-
-        # Client should still be running (exception didn't kill processor)
-        assert not mqtt_client._message_processor_task.done()
-
-    @pytest.mark.asyncio
-    async def test_multiple_concurrent_handler_exceptions(self, mqtt_client):
-        """Test multiple simultaneous handler exceptions don't crash the system"""
-        await mqtt_client.start()
-
-        exception_count = 0
-
-        async def sometimes_failing_handler(_: MQTTMessage):
-            nonlocal exception_count
-            exception_count += 1
-            if exception_count % 2 == 0:
-                raise RuntimeError(f"Exception {exception_count}")
-            await asyncio.sleep(0.01)
-
-        mqtt_client.set_message_handler(sometimes_failing_handler)
-
-        # Send multiple messages
-        for i in range(10):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            await mqtt_client.message_queue.put(message)
-
-        # Wait for processing
-        await asyncio.sleep(0.5)
-
-        # Some should have failed
-        assert mqtt_client.error_count >= 5
-        # Processor should still be running
-        assert not mqtt_client._message_processor_task.done()
-
-    @pytest.mark.asyncio
-    async def test_handler_exception_with_queue_backlog(self, mqtt_client):
-        """Test exception handling doesn't block queue processing"""
-        await mqtt_client.start()
-
-        processed_messages = []
-
-        async def handler_with_selective_failures(message: MQTTMessage):
-            if b"fail" in message.payload:
-                raise ValueError("Intentional failure")
-            processed_messages.append(message.payload)
-
-        mqtt_client.set_message_handler(handler_with_selective_failures)
-
-        # Queue messages: some that fail, some that succeed
-        messages = [b"fail1", b"success1", b"fail2", b"success2", b"success3"]
-        for payload in messages:
-            await mqtt_client.message_queue.put(
-                MQTTMessage(
-                    topic="test/topic",
-                    payload=payload,
-                    qos=0,
-                    retain=False,
-                    timestamp=datetime.now(),
-                )
-            )
-
-        # Wait for processing
-        await asyncio.sleep(0.5)
-
-        # Successful messages should be processed
-        assert len(processed_messages) == 3
-        assert mqtt_client.error_count == 2
-
-    @pytest.mark.asyncio
-    async def test_message_queue_cleanup_on_shutdown(self, mqtt_client):
-        """Test that pending messages are handled during shutdown"""
-        await mqtt_client.start()
-
-        # Fill queue with messages
-        for i in range(10):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            await mqtt_client.message_queue.put(message)
-
-        initial_queue_size = mqtt_client.message_queue.qsize()
-        assert initial_queue_size > 0
-
-        # Stop client
-        await mqtt_client.stop()
-
-        # Task should be cancelled
-        assert (
-            mqtt_client._message_processor_task.cancelled()
-            or mqtt_client._message_processor_task.done()
-        )
-
-    @pytest.mark.asyncio
-    async def test_no_handler_memory_leak(self, mqtt_client):
-        """Test that messages without handlers don't accumulate"""
-        await mqtt_client.start()
-
-        # Don't set a message handler
-        mqtt_client.message_handler = None
-
-        # Send messages
-        for i in range(20):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            await mqtt_client.message_queue.put(message)
-
-        # Wait for processing
-        await asyncio.sleep(0.3)
-
-        # Queue should be drained even without handler
-        assert mqtt_client.message_queue.qsize() == 0
-
-    @pytest.mark.asyncio
-    async def test_mqtt_client_cleanup_on_multiple_stop_calls(self, mqtt_client):
-        """Test that multiple stop() calls don't cause resource issues"""
-        await mqtt_client.start()
-
-        # Call stop multiple times
-        await mqtt_client.stop()
-        await mqtt_client.stop()
-        await mqtt_client.stop()
-
-        # Should handle gracefully
-        assert mqtt_client._shutdown_event.is_set()
-        assert not mqtt_client.is_connected
-
-    @pytest.mark.asyncio
-    async def test_concurrent_message_arrival_and_handler_setting(self, mqtt_client):
-        """Test race condition when handler is set while messages arrive"""
-        await mqtt_client.start()
-
-        processed = []
-
-        async def slow_handler(message: MQTTMessage):
-            await asyncio.sleep(0.05)
-            processed.append(message.payload)
-
-        # Start sending messages immediately
-        async def send_messages():
-            for i in range(10):
-                message = MQTTMessage(
-                    topic="test/topic",
-                    payload=f"message_{i}".encode(),
-                    qos=0,
-                    retain=False,
-                    timestamp=datetime.now(),
-                )
-                await mqtt_client.message_queue.put(message)
-                await asyncio.sleep(0.01)
-
-        # Send messages and set handler concurrently
-        send_task = asyncio.create_task(send_messages())
-        await asyncio.sleep(0.05)
-        mqtt_client.set_message_handler(slow_handler)
-
-        await send_task
-        await asyncio.sleep(1.0)
-
-        # All messages should be processed
-        assert len(processed) > 0
-
-    @pytest.mark.asyncio
-    async def test_concurrent_stop_and_message_processing(self, mqtt_client):
-        """Test race condition between stop() and ongoing message processing"""
-        await mqtt_client.start()
-
-        processing_started = asyncio.Event()
-        processing_finished = asyncio.Event()
-
-        async def slow_handler(_: MQTTMessage):
-            processing_started.set()
-            await asyncio.sleep(0.2)
-            processing_finished.set()
-
-        mqtt_client.set_message_handler(slow_handler)
-
-        # Queue a message
-        message = MQTTMessage(
-            topic="test/topic",
-            payload=b"test",
-            qos=0,
-            retain=False,
-            timestamp=datetime.now(),
-        )
-        await mqtt_client.message_queue.put(message)
-
-        # Wait for processing to start
-        await processing_started.wait()
-
-        # Stop while message is being processed
-        await mqtt_client.stop()
-
-        # Should handle gracefully
-        assert mqtt_client._shutdown_event.is_set()
-
-    @pytest.mark.asyncio
-    async def test_rate_limiter_thread_safety(self, mqtt_client):
-        """Test rate limiter under concurrent access from MQTT thread"""
-        await mqtt_client.start()
-
-        # Simulate rapid message arrival from MQTT callback thread
-        async def simulate_mqtt_callbacks():
-            for i in range(100):
-                message = MQTTMessage(
-                    topic="test/topic",
-                    payload=f"msg_{i}".encode(),
-                    qos=0,
-                    retain=False,
-                    timestamp=datetime.now(),
-                )
-                # Simulate call from MQTT thread via event loop
-                mqtt_client._loop.call_soon_threadsafe(
-                    lambda m=message: mqtt_client._handle_incoming_message(m)
-                )
-                await asyncio.sleep(0.001)
-
-        await simulate_mqtt_callbacks()
-        await asyncio.sleep(0.5)
-
-        # Should not crash and rate limiter should work
-        assert len(mqtt_client.rate_limiter) <= mqtt_client.config.rate_limit_per_minute
-
-    @pytest.mark.asyncio
-    async def test_message_queue_backpressure(self, mqtt_client):
-        """Test behavior when messages arrive faster than processing"""
-        await mqtt_client.start()
-
-        async def very_slow_handler(_: MQTTMessage):
-            await asyncio.sleep(0.1)
-
-        mqtt_client.set_message_handler(very_slow_handler)
-
-        # Rapidly queue messages beyond processing capacity
-        messages_sent = 0
-        messages_dropped = 0
-
-        for i in range(mqtt_client.config.max_queue_size + 20):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            try:
-                mqtt_client.message_queue.put_nowait(message)
-                messages_sent += 1
-            except asyncio.QueueFull:
-                messages_dropped += 1
-
-        # Should drop messages when queue is full
-        assert messages_dropped > 0
-        assert mqtt_client.message_queue.qsize() == mqtt_client.config.max_queue_size
-
-    @pytest.mark.asyncio
-    async def test_rate_limiting_prevents_overload(self, mqtt_client):
-        """Test rate limiting prevents system overload"""
-        await mqtt_client.start()
-
-        # Try to send more messages than rate limit
-        messages_to_send = mqtt_client.config.rate_limit_per_minute + 20
-        for i in range(messages_to_send):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            mqtt_client._handle_incoming_message(message)
-
-        # Queue size should be limited by rate limiter
-        # Only the first rate_limit_per_minute messages should be queued
-        assert (
-            mqtt_client.message_queue.qsize()
-            <= mqtt_client.config.rate_limit_per_minute
-        )
-
-        # Rate limiter should have accepted initial batch and dropped excess
-        # Note: Rate limiting logs warnings but doesn't increment error_count
-        assert mqtt_client.message_count <= mqtt_client.config.rate_limit_per_minute
-
-    @pytest.mark.asyncio
-    async def test_slow_handler_doesnt_block_mqtt_callbacks(self, mqtt_client):
-        """Test that slow message handlers don't block MQTT network loop"""
-        await mqtt_client.start()
-
-        handler_call_times = []
-
-        async def slow_handler(_: MQTTMessage):
-            handler_call_times.append(time.time())
-            await asyncio.sleep(0.1)
-
-        mqtt_client.set_message_handler(slow_handler)
-
-        # Queue multiple messages rapidly
-        start_time = time.time()
-        for i in range(5):
-            message = MQTTMessage(
-                topic="test/topic",
-                payload=f"message_{i}".encode(),
-                qos=0,
-                retain=False,
-                timestamp=datetime.now(),
-            )
-            await mqtt_client.message_queue.put(message)
-
-        enqueue_time = time.time() - start_time
-
-        # Enqueueing should be fast (not blocked by handler)
-        assert enqueue_time < 0.5
-
-        # Wait for processing
-        await asyncio.sleep(1.0)
-
-        # All messages should eventually be processed
-        assert len(handler_call_times) == 5
-
-    # Risk 6: Silent Failures
-    # ========================
-
-    @pytest.mark.asyncio
-    async def test_handler_error_logging(self, mqtt_client, caplog):
-        """Test that handler errors are logged and not silently ignored"""
-        await mqtt_client.start()
-
-        async def failing_handler(_: MQTTMessage):
-            raise RuntimeError("Critical handler error")
-
-        mqtt_client.set_message_handler(failing_handler)
-
-        message = MQTTMessage(
-            topic="test/topic",
-            payload=b"test",
-            qos=0,
-            retain=False,
-            timestamp=datetime.now(),
-        )
-        await mqtt_client.message_queue.put(message)
-
-        await asyncio.sleep(0.2)
-
-        # Error should be logged
-        assert mqtt_client.error_count > 0
-
-    @pytest.mark.asyncio
-    async def test_connection_failure_tracking(self, mqtt_client):
-        """Test that connection failures are tracked and visible"""
-        # Mock failed connection
-        with patch.object(mqtt_client, "client") as mock_client:
-            mock_client.connect_async.side_effect = Exception("Connection failed")
-
-            # Attempt connection should handle failure
-            with suppress(Exception):
-                await mqtt_client._connect()
-
-            # Should track reconnection attempts
-            assert mqtt_client.reconnect_attempts >= 0
-
-    @pytest.mark.asyncio
-    async def test_health_status_reflects_errors(self, mqtt_client):
-        """Test health status accurately reflects system state"""
-        await mqtt_client.start()
-
-        # Simulate high error rate
-        mqtt_client.error_count = 50
-        mqtt_client.message_count = 100
-
-        health = mqtt_client.get_health_status()
-
-        # Should indicate degraded status
-        assert health["status"] in ["degraded", "unhealthy"]
-        assert health["error_rate"] > 0.1
-
-    @pytest.mark.asyncio
-    async def test_disconnection_event_visibility(self, mqtt_client):
-        """Test that disconnection events are properly tracked"""
-        await mqtt_client.start()
-
-        # Simulate disconnection
-        mqtt_client._on_disconnect(mqtt_client.client, None, None, 1, None)
-
-        # Should update connection state
-        assert not mqtt_client.is_connected
-
-        # Connection info should reflect disconnected state
-        info = mqtt_client.get_connection_info()
-        assert not info["connected"]
-
-    # Edge Cases
-    # ==========
-
-    @pytest.mark.asyncio
-    async def test_empty_message_payload(self, mqtt_client):
-        """Test handling of empty message payloads"""
-        await mqtt_client.start()
-
-        processed = []
-
-        async def handler(_: MQTTMessage):
-            processed.append(message.payload)
-
-        mqtt_client.set_message_handler(handler)
-
-        message = MQTTMessage(
-            topic="test/topic",
-            payload=b"",
-            qos=0,
-            retain=False,
-            timestamp=datetime.now(),
-        )
-        await mqtt_client.message_queue.put(message)
-
-        await asyncio.sleep(0.2)
-
-        assert len(processed) == 1
-        assert processed[0] == b""
-
-    @pytest.mark.asyncio
-    async def test_rapid_start_stop_cycles(self, mqtt_client):
-        """Test rapid start/stop cycles don't cause issues"""
-        for _ in range(3):
-            await mqtt_client.start()
-            await asyncio.sleep(0.1)
-            await mqtt_client.stop()
-            await asyncio.sleep(0.1)
-
-        # Should handle gracefully
-        assert mqtt_client._shutdown_event.is_set()
-
-    @pytest.mark.asyncio
-    async def test_message_timestamps_preserved(self, mqtt_client):
-        """Test that message timestamps are preserved through processing"""
-        await mqtt_client.start()
-
-        received_timestamps = []
-
-        async def handler(message: MQTTMessage):
-            received_timestamps.append(message.timestamp)
-
-        mqtt_client.set_message_handler(handler)
-
-        original_timestamp = datetime.now()
-        message = MQTTMessage(
-            topic="test/topic",
-            payload=b"test",
-            qos=0,
-            retain=False,
-            timestamp=original_timestamp,
-        )
-        await mqtt_client.message_queue.put(message)
-
-        await asyncio.sleep(0.2)
-
-        assert len(received_timestamps) == 1
-        assert received_timestamps[0] == original_timestamp
-
-
-class TestMQTTReconnectionLogic:
-    """Test suite for reconnection logic and resilience"""
-
-    @pytest.fixture
-    def config(self):
-        return MQTTRadarConfig(
-            broker_host="localhost",
-            broker_port=1883,
-            use_tls=False,
-            use_auth=False,
-            subscription_topics=["telemetry/test/sine"],
-            subscription_qos=0,
-            max_queue_size=100,
-            rate_limit_per_minute=60,
-            client_id_prefix="test",
-        )
-
-    @pytest.mark.asyncio
-    async def test_reconnection_backoff(self, config):
-        """Test exponential backoff in reconnection attempts"""
-        client = RadarMQTTClient(config)
-        client.reconnect_delay = 0.01  # Speed up test
-        calls = 0
-
-        # Mock _connect to not actually connect
-        async def mock_connect():
-            nonlocal calls
-            calls += 1
-            if calls == 3:
-                client.is_connected = True
-
-        client._connect = mock_connect
-
-        # Trigger reconnection
-        await client._schedule_reconnect()
-        if client._reconnect_task:
-            await asyncio.wait_for(client._reconnect_task, timeout=1)
-
-        assert calls == 3
-        assert client.reconnect_attempts == 3
-
-    @pytest.mark.asyncio
-    async def test_reconnection_has_no_attempt_cutoff_or_unbounded_exponent(
-        self, config
+        paho_client.on_subscribe(paho_client, None, 1, [0], None)
+
+    paho_client.loop_start.side_effect = acknowledge_subscription
+    client = RadarMQTTClient(config)
+
+    with patch("off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client):
+        await asyncio.wait_for(client._connect(), timeout=0.5)
+
+    assert client.is_connected is True
+    assert client._connection_result is None
+    paho_client.subscribe.assert_called_once()
+    await client.stop()
+
+
+async def test_connect_fails_from_refusal_callback(config):
+    """A broker refusal fails immediately instead of waiting for a timeout."""
+    paho_client = MagicMock()
+    paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
+        paho_client, None, None, 5
+    )
+    client = RadarMQTTClient(config)
+
+    with (
+        patch(
+            "off_key_mqtt_radar.mqtt_client.mqtt.Client",
+            return_value=paho_client,
+        ),
+        pytest.raises(RuntimeError, match="not authorized"),
     ):
-        """A long-lived retry counter cannot exhaust retries or overflow backoff."""
-        client = RadarMQTTClient(config)
-        client.reconnect_delay = 0.001
-        client.reconnect_attempts = 100000
+        await asyncio.wait_for(client._connect(), timeout=0.5)
 
-        async def mock_connect():
+    assert client.is_connected is False
+    assert client._connection_result is None
+    assert client.client is None
+
+
+async def test_local_subscribe_failure_never_marks_ready(config):
+    paho_client = MagicMock()
+    paho_client.subscribe.return_value = (4, None)
+    paho_client.loop_start.side_effect = lambda: paho_client.on_connect(
+        paho_client, None, None, 0, None
+    )
+    client = RadarMQTTClient(config)
+    with (
+        patch("off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client),
+        pytest.raises(RuntimeError, match="SUBSCRIBE failed locally"),
+    ):
+        await client._connect()
+    assert not client.is_connected
+    assert client.client is None
+
+
+async def test_handler_failures_are_counted_without_stopping_the_processor(
+    mqtt_client,
+):
+    await mqtt_client.start()
+    processed = []
+
+    async def handler(message: MQTTMessage):
+        if message.payload.startswith(b"fail"):
+            raise ValueError("handler failed")
+        processed.append(message)
+
+    mqtt_client.set_message_handler(handler)
+    messages = [_message(payload) for payload in (b"fail", b"ok", b"fail", b"", b"ok")]
+    for message in messages:
+        await mqtt_client.message_queue.put(message)
+    await mqtt_client.message_queue.join()
+
+    # Delivered messages are the queued objects: payload and timestamp untouched.
+    delivered = [messages[1], messages[3], messages[4]]
+    assert all(got is sent for got, sent in zip(processed, delivered, strict=True))
+    assert mqtt_client.error_count == 2
+    assert _drops(mqtt_client) == {"handler_error": 2}
+    assert not mqtt_client._message_processor_task.done()
+
+
+async def test_messages_before_a_handler_is_set_are_drained_as_drops(mqtt_client):
+    await mqtt_client.start()
+    for _ in range(3):
+        await mqtt_client.message_queue.put(_message())
+    await mqtt_client.message_queue.join()
+
+    handler = AsyncMock()
+    mqtt_client.set_message_handler(handler)
+    for _ in range(2):
+        await mqtt_client.message_queue.put(_message())
+    await mqtt_client.message_queue.join()
+
+    assert mqtt_client.message_queue.qsize() == 0
+    assert _drops(mqtt_client) == {"no_handler": 3}
+    assert handler.await_count == 2
+
+
+async def test_stop_drops_backlog_that_a_slow_handler_let_accumulate(mqtt_client):
+    await mqtt_client.start()
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_handler(_: MQTTMessage):
+        started.set()
+        await release.wait()
+
+    mqtt_client.set_message_handler(slow_handler)
+    await mqtt_client.message_queue.put(_message())
+    await started.wait()
+    # The network callback keeps admitting while the handler is still busy.
+    for _ in range(5):
+        mqtt_client._handle_incoming_message(_message())
+    assert mqtt_client.message_count == 5
+
+    await mqtt_client.stop()
+
+    assert mqtt_client._message_processor_task.done()
+    assert _drops(mqtt_client) == {"shutdown_queue": 5}
+
+
+async def test_stop_is_idempotent_and_restart_reopens_the_bridge(mqtt_client):
+    await mqtt_client.start()
+    await mqtt_client.stop()
+    await mqtt_client.stop()
+    assert mqtt_client._shutdown_event.is_set()
+    assert not mqtt_client.is_connected
+
+    handler = AsyncMock()
+    mqtt_client.set_message_handler(handler)
+    await mqtt_client.start()
+    await mqtt_client.message_queue.put(_message())
+    await mqtt_client.message_queue.join()
+
+    handler.assert_awaited_once()
+
+
+async def test_rate_limit_admits_exactly_its_budget_across_network_threads(
+    mqtt_client,
+):
+    limit = mqtt_client.config.rate_limit_per_minute
+    messages = [_message() for _ in range(limit + 20)]
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(mqtt_client._handle_incoming_message, messages))
+
+    assert mqtt_client.message_count == limit
+    assert mqtt_client.message_queue.qsize() == limit
+    assert len(mqtt_client.rate_limiter) == limit
+    assert _drops(mqtt_client) == {"rate_limit": 20}
+
+
+async def test_health_status_degrades_on_a_high_error_rate(mqtt_client):
+    await mqtt_client.start()
+    mqtt_client.error_count = 50
+    mqtt_client.message_count = 100
+
+    health = mqtt_client.get_health_status()
+
+    assert (health["status"], health["reason"]) == ("degraded", "high_error_rate")
+    assert health["error_rate"] == 0.5
+
+
+async def test_unexpected_disconnect_records_a_gap_and_schedules_reconnect(
+    mqtt_client,
+):
+    await mqtt_client.start()
+
+    mqtt_client._on_disconnect(mqtt_client.client, None, None, 1, None)
+    await asyncio.sleep(0)  # let the thread-safe reconnect scheduling run
+
+    assert not mqtt_client.is_connected
+    assert mqtt_client.get_connection_info()["connected"] is False
+    assert mqtt_client.coverage.snapshot().last_gap_reason == "mqtt_disconnect"
+    assert mqtt_client._reconnect_task is not None
+
+
+async def test_reconnection_backoff(config):
+    """Test exponential backoff in reconnection attempts"""
+    client = RadarMQTTClient(config)
+    client.reconnect_delay = 0.01  # Speed up test
+    calls = 0
+
+    # Mock _connect to not actually connect
+    async def mock_connect():
+        nonlocal calls
+        calls += 1
+        if calls == 3:
             client.is_connected = True
 
-        client._connect = mock_connect
+    client._connect = mock_connect
 
-        await client._schedule_reconnect()
+    # Trigger reconnection
+    await client._schedule_reconnect()
+    if client._reconnect_task:
         await asyncio.wait_for(client._reconnect_task, timeout=1)
 
-        assert client.reconnect_attempts == 100001
-        assert client.is_connected
-
-    @pytest.mark.asyncio
-    async def test_shutdown_interrupts_capped_reconnect_backoff(self, config):
-        client = RadarMQTTClient(config)
-        client.reconnect_delay = 300
-        await client._schedule_reconnect()
-        client._shutdown_event.set()
-        await asyncio.wait_for(client._reconnect_task, timeout=1)
-        assert client.reconnect_attempts == 1
-        await client.stop()
-
-    @pytest.mark.asyncio
-    async def test_shutdown_cancels_reconnection(self, config):
-        """Test that shutdown prevents reconnection attempts"""
-        client = RadarMQTTClient(config)
-        client._shutdown_event.set()
-
-        initial_attempts = client.reconnect_attempts
-
-        # Should not reconnect when shutdown
-        await client._schedule_reconnect()
-
-        assert client.reconnect_attempts == initial_attempts
+    assert calls == 3
+    assert client.reconnect_attempts == 3
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+async def test_reconnection_has_no_attempt_cutoff_or_unbounded_exponent(config):
+    """A long-lived retry counter cannot exhaust retries or overflow backoff."""
+    client = RadarMQTTClient(config)
+    client.reconnect_delay = 0.001
+    client.reconnect_attempts = 100000
+
+    async def mock_connect():
+        client.is_connected = True
+
+    client._connect = mock_connect
+
+    await client._schedule_reconnect()
+    await asyncio.wait_for(client._reconnect_task, timeout=1)
+
+    assert client.reconnect_attempts == 100001
+    assert client.is_connected
+
+
+async def test_shutdown_interrupts_capped_reconnect_backoff(config):
+    client = RadarMQTTClient(config)
+    client.reconnect_delay = 300
+    await client._schedule_reconnect()
+    client._shutdown_event.set()
+    await asyncio.wait_for(client._reconnect_task, timeout=1)
+    assert client.reconnect_attempts == 1
+    await client.stop()
+
+
+async def test_shutdown_cancels_reconnection(config):
+    """Test that shutdown prevents reconnection attempts"""
+    client = RadarMQTTClient(config)
+    client._shutdown_event.set()
+
+    initial_attempts = client.reconnect_attempts
+
+    # Should not reconnect when shutdown
+    await client._schedule_reconnect()
+
+    assert client.reconnect_attempts == initial_attempts

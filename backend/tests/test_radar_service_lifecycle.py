@@ -71,6 +71,31 @@ async def test_radar_service_stop_cleans_up_partially_started_components():
     assert radar_service.database_writer is None
 
 
+@pytest.mark.asyncio
+async def test_cancelled_message_handler_finishes_processing_before_reraising():
+    """Shutdown must not interrupt a message between model update and evidence."""
+    radar_service = object.__new__(RadarService)
+    started, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def process(message):
+        started.set()
+        await release.wait()
+        finished.set()
+
+    radar_service._process_one_message = process
+    handler = asyncio.create_task(radar_service._handle_mqtt_message(object()))
+    await started.wait()
+
+    handler.cancel()
+    await asyncio.sleep(0)
+    assert not handler.done()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await handler
+    assert finished.is_set()
+
+
 @pytest.mark.parametrize(
     ("static_state", "expected_stage", "expected_progress"),
     [
@@ -205,6 +230,24 @@ def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
     assert snapshot["total_messages_processed"] == 8
     assert snapshot["total_anomalies_detected"] == 2
     message_processor.get_metrics.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_ends_on_shutdown_signal_without_a_final_check():
+    monitor = HealthMonitor(health_check_interval=60)
+    monitor._perform_health_check = AsyncMock()
+    shutdown = asyncio.Event()
+    await monitor.start(shutdown)
+    await asyncio.sleep(0)
+
+    shutdown.set()
+    try:
+        # asyncio.wait does not cancel on timeout; the loop swallows cancellation.
+        done, _ = await asyncio.wait({monitor._health_check_task}, timeout=1)
+        assert done == {monitor._health_check_task}
+        monitor._perform_health_check.assert_not_awaited()
+    finally:
+        await monitor.stop()
 
 
 @pytest.mark.asyncio

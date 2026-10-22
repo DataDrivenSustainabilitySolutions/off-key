@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=chromium --project=system-workspace",
     "test:e2e:headed": "playwright test --project=chromium --project=system-workspace --headed"
@@ -49,6 +50,7 @@
     "@types/react-dom": "^19.3.0",
     "@typescript/native": "npm:typescript@~7.0.2",
     "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",

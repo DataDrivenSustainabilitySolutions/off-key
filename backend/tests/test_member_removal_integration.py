@@ -26,13 +26,14 @@ from off_key_tactic_middleware.services.remembered_sessions import (
 )
 from sqlalchemy import select
 
-from .test_gateway_auth_token_types import _set_auth_env
+from tests.support.env import set_auth_env
+
 from .test_membership_integration import PASSWORD, bootstrap
 
 
 @pytest_asyncio.fixture
 async def removal_database(member_database, monkeypatch):
-    _set_auth_env(monkeypatch)
+    set_auth_env(monkeypatch)
     engine, sessions = member_database
     async with engine.begin() as connection:
         await connection.run_sync(Charger.__table__.create)

@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
+from off_key_mqtt_radar import state_cache as state_cache_module
 from off_key_mqtt_radar.message_processor import MessageProcessor
 from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
-from off_key_mqtt_radar.state_cache import AlignmentUpdate
+from off_key_mqtt_radar.state_cache import AlignmentUpdate, SensorStateCache
 
 
 def _build_processor(
@@ -110,12 +111,20 @@ def test_align_features_normalizes_before_state_cache_update():
     assert alignment["input_timestamps"] == {"voltage": 10.0, "current": 11.0}
 
 
-def test_align_features_waiting_for_all_returns_none():
+@pytest.mark.parametrize(
+    ("status", "pending_field", "sensor_ages"),
+    [
+        ("waiting_for_all", "missing_sensors", {"voltage": 0.2}),
+        ("stale_sensor_block", "stale_sensors", {"voltage": 0.4, "current": 45.0}),
+        ("waiting_for_barrier", "pending_sensors", {"voltage": 0.1, "current": 0.0}),
+    ],
+)
+def test_align_features_withholds_incomplete_vectors(
+    status, pending_field, sensor_ages
+):
     state_cache = MagicMock()
     state_cache.update_with_status.return_value = AlignmentUpdate(
-        status="waiting_for_all",
-        missing_sensors=("current",),
-        sensor_ages={"voltage": 0.2},
+        status=status, sensor_ages=sensor_ages, **{pending_field: ("current",)}
     )
     processor = _build_processor(
         required_sensors={"voltage", "current"},
@@ -129,54 +138,39 @@ def test_align_features_waiting_for_all_returns_none():
     )
 
     assert features is None
-    assert alignment["alignment_status"] == "waiting_for_all"
-    assert alignment["missing_sensors"] == ["current"]
+    assert alignment["alignment_status"] == status
+    assert alignment[pending_field] == ["current"]
 
 
-def test_align_features_blocks_stale_sensor_data():
-    state_cache = MagicMock()
-    state_cache.update_with_status.return_value = AlignmentUpdate(
-        status="stale_sensor_block",
-        stale_sensors=("current",),
-        sensor_ages={"voltage": 0.4, "current": 45.0},
-    )
+def test_three_sensor_cadence_blocks_stale_vectors_until_the_slow_sensor_recovers(
+    monkeypatch,
+):
+    now = {"value": 100.0}
+    monkeypatch.setattr(state_cache_module.time, "time", lambda: now["value"])
+    sensors = {"s1", "s2", "s3"}
     processor = _build_processor(
-        required_sensors={"voltage", "current"},
-        state_cache=state_cache,
+        required_sensors=sensors,
+        state_cache=SensorStateCache(
+            required_sensors=sensors, max_sensor_age_seconds=5
+        ),
     )
+    timeline = [
+        (100.0, "s1", 1.0, "waiting_for_all", None),
+        (101.0, "s2", 2.0, "waiting_for_all", None),
+        (102.0, "s3", 3.0, "aligned_emit", {"s1": 1.0, "s2": 2.0, "s3": 3.0}),
+        # s1 arrives late; s2 and s3 are now stale and must be blocked.
+        (110.0, "s1", 1.1, "stale_sensor_block", None),
+        (111.0, "s2", 2.1, "stale_sensor_block", None),
+        # Once the slow sensor recovers, aligned vectors resume.
+        (112.0, "s3", 3.1, "aligned_emit", {"s1": 1.1, "s2": 2.1, "s3": 3.1}),
+    ]
 
-    features, alignment = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"value": 230.5},
-    )
-
-    assert features is None
-    assert alignment["alignment_status"] == "stale_sensor_block"
-    assert alignment["stale_sensors"] == ["current"]
-
-
-def test_align_features_waiting_for_barrier_returns_none():
-    state_cache = MagicMock()
-    state_cache.update_with_status.return_value = AlignmentUpdate(
-        status="waiting_for_barrier",
-        pending_sensors=("current",),
-        sensor_ages={"voltage": 0.1, "current": 0.0},
-    )
-    processor = _build_processor(
-        required_sensors={"voltage", "current"},
-        state_cache=state_cache,
-    )
-
-    features, alignment = processor._align_features(
-        charger_id="charger-1",
-        sensor_type="voltage",
-        data={"value": 230.5},
-    )
-
-    assert features is None
-    assert alignment["alignment_status"] == "waiting_for_barrier"
-    assert alignment["pending_sensors"] == ["current"]
+    for at, sensor, value, status, expected in timeline:
+        now["value"] = at
+        features, alignment = processor._align_features(
+            "charger-1", sensor, {sensor: value}
+        )
+        assert (alignment["alignment_status"], features) == (status, expected)
 
 
 def test_align_features_keeps_full_hierarchy_sensor_key():

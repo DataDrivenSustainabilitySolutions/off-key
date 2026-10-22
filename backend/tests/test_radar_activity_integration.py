@@ -7,11 +7,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from amqtt.broker import Broker
 from amqtt.client import MQTTClient
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar import service as service_module
 from off_key_mqtt_radar.activity import ActivityTracker
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
@@ -23,30 +21,14 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-
-async def _wait_until(predicate, deadline_seconds=15):
-    async with asyncio.timeout(deadline_seconds):
-        # Network callbacks and database commits do not expose asyncio events.
-        while not predicate():  # noqa: ASYNC110
-            await asyncio.sleep(0.01)
+from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
 
 @pytest.mark.asyncio
 async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
     tmp_path, monkeypatch
 ):
-    broker = Broker(
-        {
-            "listeners": {"default": {"type": "tcp", "bind": "127.0.0.1:0"}},
-            "plugins": {
-                "amqtt.plugins.authentication.AnonymousAuthPlugin": {
-                    "allow_anonymous": True
-                }
-            },
-        }
-    )
-    await broker.start()
-    port = broker._servers["default"].instance.sockets[0].getsockname()[1]
+    broker, port = await start_mqtt_broker()
     config = MQTTRadarConfig(
         broker_host="127.0.0.1",
         broker_port=port,
@@ -59,12 +41,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         memory_limit_mb=2048,
         sensor_freshness_seconds=0.3,
         health_check_interval=0.05,
-        monitoring=AdaptiveStreamConfig(
-            model_type="aberrant_knn",
-            model_params={"k": 1, "window_size": 8, "warm_up": 1},
-            training_window_size=2,
-            calibration_window_size=3,
-        ),
+        monitoring=tiny_adaptive_monitoring(),
     )
     monkeypatch.setenv("RADAR_CHECKPOINT_STORAGE", "file")
     monkeypatch.setenv("RADAR_CHECKPOINT_DIR", str(tmp_path))
@@ -101,7 +78,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
             expected_processed = monitor.message_processor.message_count + 1
             for sensor in ("a", "b"):
                 await publish(sensor, index % 5 + 1)
-            await _wait_until(
+            await wait_until(
                 lambda expected=expected_processed: (
                     monitor.message_processor.message_count >= expected
                 )
@@ -112,7 +89,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         await asyncio.sleep(0.35)
         received = monitor.message_processor.received_message_count
         await publish("a", 4)
-        await _wait_until(
+        await wait_until(
             lambda: monitor.message_processor.received_message_count > received
         )
         status = operational()
@@ -121,7 +98,7 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         assert status["activity"]["last_inference_at"] == previous_inference
         assert not status["is_stale"]
         await publish("b", 4)
-        await _wait_until(lambda: operational()["stage"] == "operational")
+        await wait_until(lambda: operational()["stage"] == "operational")
         # The next snapshot must age inputs even when no more callbacks occur.
         await asyncio.sleep(0.35)
         status = operational()
@@ -212,7 +189,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
             )
             try:
                 await writer.write_result(result)
-                await _wait_until(
+                await wait_until(
                     lambda: (
                         writer.get_health_status()["reason"] == "persistence_stalled"
                     )
@@ -236,7 +213,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
                 assert status["stage"] == "degraded"
             finally:
                 await transaction.rollback()
-        await _wait_until(lambda: writer.last_persisted_at is not None)
+        await wait_until(lambda: writer.last_persisted_at is not None)
         assert writer.get_health_status()["oldest_pending_age_seconds"] is None
         assert not health.get_health_status().metrics["activity"]["persistence_stalled"]
     finally:

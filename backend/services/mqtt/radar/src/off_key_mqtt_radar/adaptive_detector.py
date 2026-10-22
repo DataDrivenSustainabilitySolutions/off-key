@@ -21,7 +21,6 @@ from aberrant.catalog import DetectorConfig, WarmupUnit
 from off_key_core.models import ABERRANT_VERSION
 from off_key_core.schemas.radar import AdaptiveStreamConfig, IncrementalPCAConfig
 
-from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
 from .models import AnomalyResult
 
@@ -59,11 +58,8 @@ class AdaptiveStreamDetectionService:
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
-        *,
-        automatic_checkpoints: bool = True,
     ) -> None:
         self.config = config
-        self.automatic_checkpoints = automatic_checkpoints
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, AdaptiveStreamConfig):
             raise ValueError("adaptive_stream_config is required")
@@ -135,19 +131,10 @@ class AdaptiveStreamDetectionService:
             raise ValueError("Operational adaptive checkpoint has no threshold")
 
     @classmethod
-    def from_checkpoint(
-        cls, checkpoint_path: str, config: AnomalyDetectionConfig
-    ) -> "AdaptiveStreamDetectionService":
-        checkpoint = CheckpointManager().load(checkpoint_path)
-        return cls.from_checkpoint_data(checkpoint, config)
-
-    @classmethod
     def from_checkpoint_data(
         cls,
         checkpoint: dict[str, Any],
         config: AnomalyDetectionConfig,
-        *,
-        automatic_checkpoints: bool = True,
     ) -> "AdaptiveStreamDetectionService":
         if checkpoint.get("strategy") != "adaptive_stream":
             raise ValueError("Checkpoint strategy does not match adaptive_stream")
@@ -155,9 +142,7 @@ class AdaptiveStreamDetectionService:
             raise ValueError("Checkpoint aberrant version is incompatible")
         if checkpoint.get("schema_signature") != cls._build_schema_signature(config):
             raise ValueError("Adaptive checkpoint configuration is incompatible")
-        return cls(
-            config, checkpoint=checkpoint, automatic_checkpoints=automatic_checkpoints
-        )
+        return cls(config, checkpoint=checkpoint)
 
     @staticmethod
     def _build_schema_signature(config: AnomalyDetectionConfig) -> str:
@@ -248,12 +233,6 @@ class AdaptiveStreamDetectionService:
             self.state = AdaptiveStreamState.FAILED
             self.training_error = str(exc)
             raise
-
-        if (
-            self.processed_count
-            and self.processed_count % self.config.checkpoint_interval == 0
-        ):
-            self._checkpoint_model()
         return result
 
     def _process_current_state(
@@ -310,7 +289,6 @@ class AdaptiveStreamDetectionService:
                 max(self.calibration_scores) - min(self.calibration_scores),
             )
             self.state = AdaptiveStreamState.OPERATIONAL
-            self._checkpoint_model()
         return self._result(
             data, score, False, "calibration", topic, charger_id, started
         )
@@ -429,23 +407,6 @@ class AdaptiveStreamDetectionService:
             "schema_signature": self.schema_signature,
             "aberrant_version": aberrant_version,
         }
-
-    def _checkpoint_model(self) -> None:
-        if not self.automatic_checkpoints:
-            return
-        try:
-            manager = CheckpointManager()
-            manager.save(
-                {**self.export_checkpoint(), "service_id": manager.service_id},
-                processed_count=self.processed_count,
-            )
-            self.last_checkpoint = self.processed_count
-        except Exception as exc:
-            self.logger.error(
-                "event=radar.adaptive_checkpoint_save_failed error=%s",
-                exc,
-                exc_info=True,
-            )
 
     def get_model_info(self) -> dict[str, Any]:
         return {

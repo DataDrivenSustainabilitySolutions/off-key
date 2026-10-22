@@ -26,7 +26,6 @@ from off_key_core.models.static import (
 from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .alarm_calibration import resolve_tracker_thresholds
-from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
 from .martingales import MartingaleAlarmController
 from .models import AnomalyResult
@@ -63,11 +62,8 @@ class StaticConformalDetectionService:
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
-        *,
-        automatic_checkpoints: bool = True,
     ):
         self.config = config
-        self.automatic_checkpoints = automatic_checkpoints
         self.logger = logging.getLogger(__name__)
         self.schema_signature = self._build_schema_signature_from_config(config)
         if not isinstance(config.monitoring, StaticBaselineConfig):
@@ -166,19 +162,10 @@ class StaticConformalDetectionService:
         )
 
     @classmethod
-    def from_checkpoint(
-        cls, checkpoint_path: str, config: AnomalyDetectionConfig
-    ) -> "StaticConformalDetectionService":
-        checkpoint = CheckpointManager().load(checkpoint_path)
-        return cls.from_checkpoint_data(checkpoint, config)
-
-    @classmethod
     def from_checkpoint_data(
         cls,
         checkpoint: dict[str, Any],
         config: AnomalyDetectionConfig,
-        *,
-        automatic_checkpoints: bool = True,
     ) -> "StaticConformalDetectionService":
         saved_strategy = checkpoint.get("strategy")
         if saved_strategy != "static_baseline":
@@ -194,9 +181,7 @@ class StaticConformalDetectionService:
                 "configuration. Starting fresh is required."
             )
 
-        return cls(
-            config, checkpoint=checkpoint, automatic_checkpoints=automatic_checkpoints
-        )
+        return cls(config, checkpoint=checkpoint)
 
     @staticmethod
     def _build_schema_signature_from_config(config: AnomalyDetectionConfig) -> str:
@@ -257,13 +242,6 @@ class StaticConformalDetectionService:
             result = self._process_ready(data, topic, charger_id, start_time)
         else:
             result = self._process_failed(data, topic, charger_id, start_time)
-
-        should_checkpoint = (
-            self.processed_count
-            and self.processed_count % self.config.checkpoint_interval == 0
-        )
-        if should_checkpoint:
-            self._checkpoint_model()
         return result
 
     def _non_inference_result(
@@ -563,7 +541,6 @@ class StaticConformalDetectionService:
             self.training_buffer = []
             self.calibration_buffer = []
             self.training_error = None
-            self._checkpoint_model()
             self.logger.info(
                 "event=radar.static_conformal_training_complete "
                 "training_window_size=%s calibration_window_size=%s "
@@ -683,34 +660,6 @@ class StaticConformalDetectionService:
             "training_error": self.training_error,
             "schema_signature": self.schema_signature,
         }
-
-    def _checkpoint_model(self) -> None:
-        if not self.automatic_checkpoints:
-            return
-        try:
-            checkpoint_manager = CheckpointManager()
-            service_id = checkpoint_manager.service_id
-            checkpoint_data = {
-                **self.export_checkpoint(),
-                "config": self.config,
-                "service_id": service_id,
-            }
-
-            checkpoint_path = checkpoint_manager.save(
-                checkpoint_data,
-                processed_count=self.processed_count,
-            )
-            self.last_checkpoint = self.processed_count
-            self.logger.info(
-                "Static conformal checkpoint saved atomically: %s",
-                checkpoint_path,
-            )
-        except Exception as exc:
-            self.logger.error(
-                "event=radar.static_conformal_checkpoint_save_failed error=%s",
-                str(exc),
-                exc_info=True,
-            )
 
     def get_model_info(self) -> dict[str, Any]:
         return {

@@ -5,7 +5,6 @@ Coordinates MQTT subscription, anomaly detection, and database persistence
 with comprehensive monitoring and health checks.
 
 Refactored to use extracted components:
-- CheckpointManager: Handles checkpoint persistence
 - MessageProcessor: Handles MQTT message processing
 - HealthMonitor: Handles health checks and metrics
 - TopicParser: Handles topic parsing utilities
@@ -21,7 +20,6 @@ from off_key_core.config.logs import logger
 
 from .adaptive_detector import AdaptiveStreamDetectionService
 from .admission import require_monitor_admission
-from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
 from .database import (
@@ -78,7 +76,6 @@ class RadarService:
         )
 
         # Extracted components
-        self.checkpoint_manager = CheckpointManager()
         self.health_monitor = HealthMonitor(
             health_check_interval=self.config.health_check_interval,
             sensor_freshness_seconds=self.config.sensor_freshness_seconds,
@@ -103,7 +100,7 @@ class RadarService:
         self._restored_observation_watermarks: dict[str, dict[str, float]] = {}
         self._checkpoint_restored = False
         self._fatal_error: Exception | None = None
-        self.recovery_status: dict = {"storage": "file", "restored": False}
+        self.recovery_status: dict = {"storage": "none", "restored": False}
 
         # Logging context
         self._log_context = {"service": "radar", "component": "main"}
@@ -140,9 +137,8 @@ class RadarService:
         try:
             await require_monitor_admission()
             runtime = get_radar_checkpoint_settings()
-            if runtime.RADAR_CHECKPOINT_STORAGE == "database":
-                if not self.config.db_write_enabled:
-                    raise ValueError("Managed checkpoints require database writes")
+            # Checkpoints live in the database; without writes RADAR starts fresh.
+            if self.config.db_write_enabled:
                 self._checkpoint_codec = RuntimeCheckpointCodec(
                     runtime.SERVICE_ID,
                     self.config,
@@ -279,9 +275,6 @@ class RadarService:
         self.message_processor = None
         self._detector_runtime = None
 
-        # Cleanup checkpoint lock file using extracted manager
-        self.checkpoint_manager.cleanup_lock()
-
         logger.info("RADAR service stopped")
         if final_checkpoint_error is not None:
             raise RuntimeError(
@@ -342,9 +335,7 @@ class RadarService:
                         "Managed checkpoint is missing observation replay history"
                     )
                 primary_service = service_cls.from_checkpoint_data(
-                    snapshot.detector,
-                    anomaly_config,
-                    automatic_checkpoints=False,
+                    snapshot.detector, anomaly_config
                 )
                 self._restored_processor = snapshot.processor
                 self._restored_coverage = snapshot.coverage.data
@@ -356,50 +347,12 @@ class RadarService:
                     input_recovery="live_only_with_possible_gap",
                 )
             else:
-                primary_service = service_cls(
-                    anomaly_config, automatic_checkpoints=False
-                )
-
-        for checkpoint_path in (
-            [] if codec is not None else self.checkpoint_manager.candidate_paths()
-        ):
-            if not self.checkpoint_manager.claim(checkpoint_path):
-                continue
-            try:
-                logger.info(
-                    f"Found checkpoint, attempting restore: {checkpoint_path}",
-                    extra=self._log_context,
-                )
-                primary_service = service_cls.from_checkpoint(
-                    checkpoint_path, anomaly_config
-                )
-                self._checkpoint_restored = True
-                self.recovery_status = {
-                    "storage": "file",
-                    "restored": True,
-                    "restored_processed_count": primary_service.processed_count,
-                    "input_recovery": "live_only_with_possible_gap",
-                }
-                logger.info(
-                    "Successfully restored from checkpoint",
-                    extra={
-                        **self._log_context,
-                        "checkpoint_path": checkpoint_path,
-                        "processed_count": primary_service.processed_count,
-                    },
-                )
-                break
-            except Exception as e:
-                logger.warning(
-                    "event=radar.checkpoint_restore_failed error=%s",
-                    str(e),
-                    extra=self._log_context,
-                    exc_info=True,
-                )
-                self.checkpoint_manager.cleanup_lock()
+                primary_service = service_cls(anomaly_config)
 
         if primary_service is None:
-            logger.info("No checkpoint found, starting fresh", extra=self._log_context)
+            logger.info(
+                "Database writes disabled, starting fresh", extra=self._log_context
+            )
             primary_service = service_cls(anomaly_config)
 
         # Create resilient detector (with fallback)

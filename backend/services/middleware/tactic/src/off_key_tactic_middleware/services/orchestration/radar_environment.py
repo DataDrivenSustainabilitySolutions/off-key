@@ -101,6 +101,8 @@ def build_radar_environment(
             raise ValueError("Production MQTT connection settings cannot be overridden")
     environment = {
         "SERVICE_ID": service_id,
+        # RADAR no longer reads this key. It stays so persisted config
+        # fingerprints of running monitors do not change.
         "RADAR_CHECKPOINT_STORAGE": "database",
         "ENVIRONMENT": runtime.ENVIRONMENT,
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),

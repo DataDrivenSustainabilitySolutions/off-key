@@ -30,7 +30,6 @@ __pycache__/
 coverage.xml
 htmlcov/
 site/
-/backend/checkpoints/
 /backend/pytest-cache-files-*/
 
 # Node and frontend output

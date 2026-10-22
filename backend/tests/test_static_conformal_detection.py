@@ -100,7 +100,6 @@ def _manual_restarted_controller(
 def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     config = _static_config()
     service = StaticConformalDetectionService(config)
-    service._checkpoint_model = lambda: None
     executor = ControlledExecutor()
     service._training_executor = executor
 
@@ -230,7 +229,6 @@ def test_static_health_poll_completes_finished_background_training(monkeypatch):
     service = StaticConformalDetectionService(_static_config())
     executor = ControlledExecutor()
     service._training_executor = executor
-    service._checkpoint_model = lambda: None
     service.state = StaticConformalState.TRAINING
     service._training_future = executor.future
     executor.future.set_result(
@@ -405,11 +403,7 @@ def test_martingale_ensemble_aggregates_new_crossings():
     assert controller.tested_count == 2
 
 
-def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
-    monkeypatch,
-    tmp_path,
-):
-    monkeypatch.setenv("RADAR_CHECKPOINT_DIR", str(tmp_path))
+def test_static_conformal_real_pyod_nonconform_training_reaches_ready(monkeypatch):
     monkeypatch.setenv("SERVICE_ID", "static-conformal-test")
     clear_radar_runtime_settings_cache()
     config = _static_config(
@@ -472,7 +466,7 @@ def test_static_conformal_real_pyod_nonconform_training_reaches_ready(
         clear_radar_runtime_settings_cache()
 
 
-def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
+def test_static_conformal_restores_ready_checkpoint(monkeypatch):
     config = _static_config()
     alarm_controller = _manual_restarted_controller(
         epsilon=0.5, alarm_count=2, tested_count=7
@@ -494,11 +488,8 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
             StaticConformalDetectionService._build_schema_signature_from_config(config)
         ),
     }
-    checkpoint_path = tmp_path / "static.pkl"
-    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
-
-    restored = StaticConformalDetectionService.from_checkpoint(
-        str(checkpoint_path), config
+    restored = StaticConformalDetectionService.from_checkpoint_data(
+        pickle.loads(pickle.dumps(checkpoint)), config
     )
 
     assert restored.state == StaticConformalState.READY
@@ -519,7 +510,6 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch, tmp_path):
 )
 def test_static_conformal_rejects_incomplete_ready_checkpoint(
     monkeypatch,
-    tmp_path,
     missing_key,
     expected_exception,
     expected_message,
@@ -543,11 +533,8 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
         checkpoint[missing_key] = []
     else:
         checkpoint[missing_key] = None
-    checkpoint_path = tmp_path / f"missing-{missing_key}.pkl"
-    checkpoint_path.write_bytes(pickle.dumps(checkpoint))
-
     with pytest.raises(expected_exception, match=expected_message):
-        StaticConformalDetectionService.from_checkpoint(str(checkpoint_path), config)
+        StaticConformalDetectionService.from_checkpoint_data(checkpoint, config)
 
 
 def test_static_conformal_uses_static_config_model_params(monkeypatch):
@@ -575,3 +562,19 @@ def test_static_conformal_uses_static_config_model_params(monkeypatch):
     assert captured["model_type"] == "pyod_knn"
     assert captured["params"]["n_neighbors"] == 7
     assert captured["params"]["contamination"] == 0.08
+
+
+def test_old_namespace_checkpoint_requires_fresh_calibration_after_clean_break():
+    checkpoint = {
+        "strategy": "static_baseline",
+        "static_state": "collecting",
+        "processed_count": 21,
+        "training_buffer": [{"L1": 1.5}],
+        "schema_signature": (
+            "b9e29f162055df516aa44c3dfc9cc9826681f3109c83d597872893b7857b78d1"
+        ),
+    }
+    config = AnomalyDetectionConfig(subscription_topics=["telemetry/c1/L1"])
+
+    with pytest.raises(ValueError, match="schema signature"):
+        StaticConformalDetectionService.from_checkpoint_data(checkpoint, config)

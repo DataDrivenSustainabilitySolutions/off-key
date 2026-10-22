@@ -122,7 +122,7 @@ uv run --project backend pre-commit run --all-files
 Tail critical services:
 
 ```bash
-docker compose logs -f api-gateway tactic-middleware db-sync mqtt-proxy mqtt-radar
+docker compose logs -f api-gateway tactic-middleware db-sync mqtt-proxy
 ```
 
 Inspect recent output for one service:

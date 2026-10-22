@@ -79,7 +79,7 @@ async def owner(store):
     codec = RuntimeCheckpointCodec(
         "overlap-monitor", settings, b"overlap-integration-secret"
     )
-    detector = AdaptiveStreamDetectionService(settings, automatic_checkpoints=False)
+    detector = AdaptiveStreamDetectionService(settings)
     writer = DatabaseWriter(settings, store, managed_checkpoints=True)
     try:
         for index in range(5):
@@ -96,7 +96,7 @@ async def test_late_old_writer_cannot_roll_back_replacement_checkpoint(store):
     codec = RuntimeCheckpointCodec(
         "overlap-monitor", settings, b"overlap-integration-secret"
     )
-    old_detector = AdaptiveStreamDetectionService(settings, automatic_checkpoints=False)
+    old_detector = AdaptiveStreamDetectionService(settings)
     replacement_detector = None
     old_writer = DatabaseWriter(settings, store, managed_checkpoints=True)
     replacement_writer = DatabaseWriter(settings, store, managed_checkpoints=True)
@@ -106,7 +106,7 @@ async def test_late_old_writer_cannot_roll_back_replacement_checkpoint(store):
         await old_writer.commit_checkpoint(snapshot(codec, old_detector))
         record = await replacement_writer.load_checkpoint("overlap-monitor")
         replacement_detector = AdaptiveStreamDetectionService.from_checkpoint_data(
-            codec.decode(record).detector, settings, automatic_checkpoints=False
+            codec.decode(record).detector, settings
         )
         await replacement_writer.write_result(observe(replacement_detector, 5))
         await replacement_writer.write_result(observe(replacement_detector, 6))
@@ -175,7 +175,7 @@ async def test_concurrent_initial_snapshots_have_one_winner(store):
     codec = RuntimeCheckpointCodec(
         "overlap-monitor", settings, b"overlap-integration-secret"
     )
-    detector = AdaptiveStreamDetectionService(settings, automatic_checkpoints=False)
+    detector = AdaptiveStreamDetectionService(settings)
     writers = [
         DatabaseWriter(settings, store, managed_checkpoints=True) for _ in range(2)
     ]
@@ -357,7 +357,7 @@ async def test_fenced_heartbeat_wakes_blocked_producer_without_writer_task(
 @pytest.mark.asyncio
 async def test_managed_evidence_cannot_commit_before_initial_checkpoint_claim(store):
     settings = config()
-    detector = AdaptiveStreamDetectionService(settings, automatic_checkpoints=False)
+    detector = AdaptiveStreamDetectionService(settings)
     writer = DatabaseWriter(settings, store, managed_checkpoints=True)
     try:
         for index in range(5):

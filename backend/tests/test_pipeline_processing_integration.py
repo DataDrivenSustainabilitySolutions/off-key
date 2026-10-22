@@ -122,7 +122,6 @@ async def pipeline_environment(disposable_database, monkeypatch):
                 drivername="postgresql+asyncpg"
             ).render_as_string(hide_password=False),
             "RADAR_DB_WRITE_ENABLED": "true",
-            "RADAR_CHECKPOINT_STORAGE": "database",
             "RADAR_CHECKPOINT_SECRET": "disposable-pipeline-checkpoint-key",
             "RADAR_CHECKPOINT_INTERVAL": "1",
             "RADAR_HEALTH_CHECK_INTERVAL": "5",
@@ -244,7 +243,7 @@ async def test_real_mqtt_graph_restores_numeric_state_and_coherent_preview(
                 )
             )
             reference = AdaptivePipelineDetectionService.from_checkpoint_data(
-                snapshot.detector, config, automatic_checkpoints=False
+                snapshot.detector, config
             )
         async with supervised_service() as (replacement, _):
             primary = replacement.detector.primary_service

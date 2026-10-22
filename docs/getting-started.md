@@ -57,7 +57,7 @@ From the repository root:
 docker compose up -d --build
 ```
 
-The standalone RADAR and MQTT simulator services are profile-gated and do not start in the baseline stack.
+The MQTT simulator is profile-gated and does not start in the baseline stack. RADAR workloads start only when TACTIC launches a monitoring service.
 
 ## 3. Verify the stack
 

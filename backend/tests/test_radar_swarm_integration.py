@@ -256,7 +256,6 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         "ENVIRONMENT": "development",
         "SERVICE_ID": service_id,
         "RADAR_LIFECYCLE_VERSION": "1",
-        "RADAR_CHECKPOINT_STORAGE": "database",
         "RADAR_CHECKPOINT_SECRET": "disposable-swarm-checkpoint-secret",
         "RADAR_DATABASE_URL": "postgresql+asyncpg://radar_test:disposable-integration-password"
         f"@{database.name}:5432/radar_test",

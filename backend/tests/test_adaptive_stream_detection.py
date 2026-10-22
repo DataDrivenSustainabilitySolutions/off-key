@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
+import pickle
 from typing import Any
 
 import pytest
@@ -17,7 +17,6 @@ from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.checkpoint_manager import CheckpointManager
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from pydantic import ValidationError
 
@@ -135,7 +134,6 @@ def test_every_released_detector_runs_warmup_calibration_and_operational(
 ) -> None:
     config = _runtime_config(model_type)
     detector = AdaptiveStreamDetectionService(config)
-    monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
     count = _feature_count(model_type)
     total = config.monitoring.training_window_size + 2
     results = [
@@ -167,7 +165,6 @@ def test_all_released_transforms_feed_real_detector(
         preprocessing_steps=[step],
     )
     detector = AdaptiveStreamDetectionService(config)
-    monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
     results = [detector.process_data_point(_point(index, 2)) for index in range(4)]
     assert results[-1].context["adaptive_stream"]["phase"] == "operational"
     assert math.isfinite(results[-1].anomaly_score)
@@ -196,7 +193,6 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
     recorder = _RecordingPipeline([1.0, 3.0, 2.0, 3.0])
     detector.pipeline = recorder
     detector.feature_keys = ["x"]
-    monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
 
     results = [detector.process_data_point({"x": float(index)}) for index in range(6)]
 
@@ -216,13 +212,7 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
         "aberrant_multivariate_rolling_matrix_profile",
     ],
 )
-def test_native_pipeline_checkpoint_preserves_future_scores(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model_type: str
-) -> None:
-    manager = CheckpointManager(str(tmp_path), "adaptive-checkpoint")
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.adaptive_detector.CheckpointManager", lambda: manager
-    )
+def test_native_pipeline_checkpoint_preserves_future_scores(model_type: str) -> None:
     config = _runtime_config(model_type)
     detector = AdaptiveStreamDetectionService(config)
     feature_count = _feature_count(model_type)
@@ -230,8 +220,8 @@ def test_native_pipeline_checkpoint_preserves_future_scores(
     for index in range(total):
         detector.process_data_point(_point(index, feature_count))
 
-    [checkpoint_path] = manager.candidate_paths()
-    restored = AdaptiveStreamDetectionService.from_checkpoint(checkpoint_path, config)
+    checkpoint = pickle.loads(pickle.dumps(detector.export_checkpoint()))
+    restored = AdaptiveStreamDetectionService.from_checkpoint_data(checkpoint, config)
     next_point = _point(total + 1, feature_count)
     expected = detector.process_data_point(next_point)
     result = restored.process_data_point(next_point)
@@ -303,7 +293,6 @@ def test_half_space_trees_bounds_new_extremes_before_scoring(monkeypatch):
     detector = AdaptiveStreamDetectionService(
         _runtime_config("aberrant_half_space_trees")
     )
-    monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
     detector.process_data_point({"x": 0.0})
     detector.process_data_point({"x": 1.0})
     assert detector.pipeline.first.transform_one({"x": 100.0}) == {"x": 1.0}
@@ -324,7 +313,6 @@ def test_severity_uses_excess_over_signed_threshold(monkeypatch):
     detector = AdaptiveStreamDetectionService(
         _runtime_config("aberrant_online_isolation_forest", training=2, calibration=2)
     )
-    monkeypatch.setattr(detector, "_checkpoint_model", lambda: None)
     detector.pipeline = _RecordingPipeline([-4.0, -2.0, -1.9, 0.0])
     detector.feature_keys = ["x"]
     results = [detector.process_data_point({"x": float(i)}) for i in range(6)]
@@ -342,20 +330,12 @@ def test_severity_uses_excess_over_signed_threshold(monkeypatch):
         ("detector_config", {}),
     ],
 )
-def test_checkpoint_rejects_incompatible_runtime_or_configuration(
-    tmp_path, monkeypatch, field, value
-):
-    manager = CheckpointManager(str(tmp_path), "catalog-checkpoint")
-    monkeypatch.setattr(
-        "off_key_mqtt_radar.adaptive_detector.CheckpointManager", lambda: manager
-    )
+def test_checkpoint_rejects_incompatible_runtime_or_configuration(field, value):
     config = _runtime_config("aberrant_knn", training=2)
     detector = AdaptiveStreamDetectionService(config)
     for index in range(3):
         detector.process_data_point(_point(index, 2))
-    [checkpoint_path] = manager.candidate_paths()
-    checkpoint = manager.load(checkpoint_path)
+    checkpoint = pickle.loads(pickle.dumps(detector.export_checkpoint()))
     checkpoint[field] = value
-    changed_path = manager.save(checkpoint, processed_count=999)
     with pytest.raises(ValueError, match="incompatible"):
-        AdaptiveStreamDetectionService.from_checkpoint(changed_path, config)
+        AdaptiveStreamDetectionService.from_checkpoint_data(checkpoint, config)

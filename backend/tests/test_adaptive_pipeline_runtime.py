@@ -171,7 +171,7 @@ def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
     model, params, required
 ):
     config = _config(model=model, branched=False, model_params=params)
-    service = AdaptivePipelineDetectionService(config, automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(config)
     for index in range(1, 12):
         result = service.process_data_point({"reading_a": float(index)})
     state = service.get_pipeline_state()["nodes"]["model"]
@@ -183,7 +183,7 @@ def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
 
 def test_branched_monitor_matches_standalone_numeric_reference():
     config = _config()
-    service = AdaptivePipelineDetectionService(config, automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(config)
     reference, _ = adaptive_graph(ExecutionPlan(config.pipeline))
     states = []
     for index in range(1, 9):
@@ -213,7 +213,7 @@ def test_branched_monitor_matches_standalone_numeric_reference():
 
 
 def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
-    service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(_config())
     initial = service.get_pipeline_state()["nodes"]
     assert initial["pca"]["readiness_observed"] == 0
     assert initial["pca"]["readiness_required"] == 3
@@ -252,13 +252,11 @@ def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
 @pytest.mark.parametrize("processed", [2, 5, 7])
 def test_graph_checkpoints_restore_every_learning_phase(processed):
     config = _config()
-    original = AdaptivePipelineDetectionService(config, automatic_checkpoints=False)
+    original = AdaptivePipelineDetectionService(config)
     for index in range(1, processed + 1):
         original.process_data_point(_point(index))
     checkpoint = pickle.loads(pickle.dumps(original.export_checkpoint()))
-    restored = AdaptivePipelineDetectionService.from_checkpoint_data(
-        checkpoint, config, automatic_checkpoints=False
-    )
+    restored = AdaptivePipelineDetectionService.from_checkpoint_data(checkpoint, config)
     assert restored.pipeline.observer is not None
     for index in range(processed + 1, 10):
         expected = original.process_data_point(_point(index))
@@ -278,7 +276,7 @@ def test_graph_checkpoints_restore_every_learning_phase(processed):
     ],
 )
 def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
-    service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(_config())
     before = pickle.dumps(service.pipeline)
     with pytest.raises(ObservationRejected):
         service.process_data_point(invalid)
@@ -293,7 +291,6 @@ def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
 def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     service = AdaptivePipelineDetectionService(
         _config(model="aberrant_half_space_trees", clipped=True),
-        automatic_checkpoints=False,
     )
     valid = {"reading_a": 100.0, "reading_b": -50.0, "reading_temperature": 0.5}
     service.process_data_point(valid)
@@ -314,9 +311,7 @@ def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     ],
 )
 def test_retained_history_blocks_calibration_until_reference_exists(model, ignored):
-    service = AdaptivePipelineDetectionService(
-        _config(model=model, branched=False), automatic_checkpoints=False
-    )
+    service = AdaptivePipelineDetectionService(_config(model=model, branched=False))
     for value in ignored:
         service.process_data_point({"reading_a": value})
     assert service.warmup_count == 2
@@ -333,7 +328,6 @@ def test_retained_history_blocks_calibration_until_reference_exists(model, ignor
 def test_execution_failure_stops_model_and_blocks_checkpoint():
     service = AdaptivePipelineDetectionService(
         _config(model="aberrant_moving_geometric_average", branched=False),
-        automatic_checkpoints=False,
     )
     for value in (1.0, 2.0, 3.0, 4.0):
         service.process_data_point({"reading_a": value})
@@ -352,7 +346,7 @@ def test_execution_failure_stops_model_and_blocks_checkpoint():
 
 
 def test_live_values_come_from_real_score_pass_with_original_metadata():
-    service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(_config())
     service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)
     for index in range(1, 8):
         result = service.process_data_point(_point(index))
@@ -370,7 +364,7 @@ def test_live_values_come_from_real_score_pass_with_original_metadata():
 
 
 def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):
-    service = AdaptivePipelineDetectionService(_config(), automatic_checkpoints=False)
+    service = AdaptivePipelineDetectionService(_config())
 
     def broken(*args):
         raise RuntimeError("diagnostics failed")

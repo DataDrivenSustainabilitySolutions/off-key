@@ -20,7 +20,7 @@ from .plan import ExecutionPlan
 class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
     """Warm transforms without contaminating downstream models or calibration."""
 
-    def __init__(self, config, checkpoint=None, *, automatic_checkpoints=True):
+    def __init__(self, config, checkpoint=None):
         if config.pipeline is None:
             raise ValueError("A bound pipeline configuration is required")
         self.plan = ExecutionPlan(config.pipeline)
@@ -33,9 +33,7 @@ class AdaptivePipelineDetectionService(AdaptiveStreamDetectionService):
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
         self._scored_features: dict[str, float] | None = None
-        super().__init__(
-            config, checkpoint, automatic_checkpoints=automatic_checkpoints
-        )
+        super().__init__(config, checkpoint)
         self._raw_unit_interval_slots = self._unit_interval_slots()
         self._diagnose(
             self.diagnostics.readiness, self.pipeline.node_states, self.pipeline

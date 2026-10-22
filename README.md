@@ -65,19 +65,8 @@ docker compose up -d --build
 This mode runs a single EMQX node (`emqx-main`).
 It uses the local mock `source-broker` for deterministic development.
 
-By default, anomaly detection containers are not started.
-`mqtt-radar` is profile-gated and only starts when explicitly requested
-or when created by the monitoring service workflow.
-
-To run the standalone RADAR service manually:
-
-```bash
-docker compose --profile standalone-radar up -d mqtt-radar
-```
-
-Standalone RADAR also requires concrete topics for one charger. Configure
-`RADAR_SUBSCRIPTION_TOPICS` as a comma-separated sensor list; wildcard topics are
-rejected because they cannot define a stable multivariate feature schema.
+RADAR workloads are not part of the baseline stack. TACTIC creates one for
+each monitoring service started from the UI.
 
 ### Monitoring architecture
 
@@ -137,9 +126,9 @@ regression suite exercises repeated connection failures against a real MQTT brok
 Cancelling startup also retires sockets whose TCP connection completes during
 shutdown. A real-socket regression verifies that the broker sees the connection close.
 
-This builds `off-key-mqtt-radar:latest` without starting the profile-gated
-standalone RADAR container. Rebuild it after RADAR dependencies or source code
-change.
+This builds `off-key-mqtt-radar:latest`. The `mqtt-radar` compose service is
+build-only and never runs a container itself. Rebuild it after RADAR
+dependencies or source code change.
 
 ### MQTT simulator profile (local only)
 

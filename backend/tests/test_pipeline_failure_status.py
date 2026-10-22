@@ -64,7 +64,7 @@ async def signed_graph_writer(pipeline_database, monkeypatch):
     monkeypatch.setenv("SERVICE_ID", activation.service_id)
     clear_radar_runtime_settings_cache()
     config = MQTTRadarConfig(pipeline=execution)
-    detector = StaticPipelineDetectionService(config, automatic_checkpoints=False)
+    detector = StaticPipelineDetectionService(config)
     writer = DatabaseWriter(
         config, session_factory=pipeline_database, managed_checkpoints=True
     )

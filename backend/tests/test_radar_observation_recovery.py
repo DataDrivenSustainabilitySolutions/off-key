@@ -1,6 +1,7 @@
 """Real managed worker replacement rejects retained checkpointed observations."""
 
 import json
+import pickle
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -12,7 +13,6 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 from off_key_mqtt_radar import database as database_module
 from off_key_mqtt_radar import service as service_module
 from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.checkpoint_manager import CheckpointManager
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.database import DatabaseWriter
@@ -54,7 +54,6 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("SERVICE_ID", "retained-monitor")
     monkeypatch.setenv("RADAR_LIFECYCLE_VERSION", "1")
-    monkeypatch.setenv("RADAR_CHECKPOINT_STORAGE", "database")
     monkeypatch.setenv("RADAR_CHECKPOINT_SECRET", "retained-integration-secret")
     clear_radar_runtime_settings_cache()
     broker, port = await start_mqtt_broker()
@@ -217,7 +216,7 @@ async def test_managed_restore_requires_history_after_first_observation(
     codec = RuntimeCheckpointCodec(
         "history-monitor", config, b"history-integration-secret"
     )
-    detector = AdaptiveStreamDetectionService(config, automatic_checkpoints=False)
+    detector = AdaptiveStreamDetectionService(config)
     worker = RadarService()
     worker._checkpoint_codec = codec
     worker.database_writer = writer
@@ -256,8 +255,8 @@ async def test_managed_restore_requires_history_after_first_observation(
         ("alignment_max_skew_seconds", 1.0),
     ],
 )
-def test_file_checkpoint_rejects_changed_alignment_policy(
-    tmp_path, monkeypatch, strategy, field, value
+def test_checkpoint_rejects_changed_alignment_policy(
+    monkeypatch, strategy, field, value
 ):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("RADAR_CHECKPOINT_SECRET", "file-policy-integration-secret")
@@ -275,16 +274,15 @@ def test_file_checkpoint_rejects_changed_alignment_policy(
         if strategy == "static_baseline"
         else AdaptiveStreamDetectionService
     )
-    detector = cls(config, automatic_checkpoints=False)
+    detector = cls(config)
     try:
-        manager = CheckpointManager(
-            checkpoint_dir=str(tmp_path), service_id="file-policy"
-        )
-        path = manager.save(detector.export_checkpoint(), processed_count=0)
+        checkpoint = pickle.loads(pickle.dumps(detector.export_checkpoint()))
         with pytest.raises(
             ValueError, match=r"schema signature|configuration is incompatible"
         ):
-            cls.from_checkpoint(path, config.model_copy(update={field: value}))
+            cls.from_checkpoint_data(
+                checkpoint, config.model_copy(update={field: value})
+            )
     finally:
         detector.shutdown()
         clear_radar_runtime_settings_cache()

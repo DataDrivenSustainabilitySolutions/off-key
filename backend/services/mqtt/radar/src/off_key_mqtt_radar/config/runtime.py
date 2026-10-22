@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from off_key_core.config.database import build_postgres_database_url
 from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
@@ -102,21 +101,19 @@ class RadarCheckpointSettings(BaseSettings):
         secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
     )
 
-    RADAR_CHECKPOINT_DIR: str = "checkpoints"
     SERVICE_ID: str = "default"
     RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr("")
-    RADAR_CHECKPOINT_STORAGE: Literal["file", "database"] = "file"
     RADAR_CHECKPOINT_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS: float = Field(default=30.0, gt=0)
     RADAR_FATAL_PERSIST_RETRY_SECONDS: float = Field(default=5.0, gt=0, le=30)
     ENVIRONMENT: str = "development"
 
-    @field_validator("RADAR_CHECKPOINT_DIR", "SERVICE_ID")
+    @field_validator("SERVICE_ID")
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Checkpoint directory and service id must not be empty")
+            raise ValueError("Service id must not be empty")
         return normalized
 
     @field_validator("ENVIRONMENT")

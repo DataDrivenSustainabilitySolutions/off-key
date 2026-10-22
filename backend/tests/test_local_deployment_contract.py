@@ -98,7 +98,7 @@ def test_commands_ignore_exported_credentials_and_unconfigured_optional_secrets(
     monkeypatch.setenv("POSTGRES_PASSWORD", "exported-production-password")
     monkeypatch.setenv("JWT_SECRET", "exported-production-jwt")
     monkeypatch.setenv("MQTT_APIKEY", "exported-production-mqtt")
-    monkeypatch.setenv("COMPOSE_PROFILES", "standalone-radar")
+    monkeypatch.setenv("COMPOSE_PROFILES", "radar-image")
     monkeypatch.setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
     monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
     monkeypatch.setattr(

@@ -78,7 +78,7 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         from .pipelines.static import StaticPipelineDetectionService
 
         BatchFeatureGraph(plan)
-        detector = StaticPipelineDetectionService(config, automatic_checkpoints=False)
+        detector = StaticPipelineDetectionService(config)
         try:
             detector._create_pyod_detector()
         finally:

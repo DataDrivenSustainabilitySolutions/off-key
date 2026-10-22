@@ -61,13 +61,11 @@ async def test_radar_service_stop_cleans_up_partially_started_components():
     radar_service.database_writer = database_writer
     radar_service.message_processor = None
     radar_service.health_monitor = None
-    radar_service.checkpoint_manager = SimpleNamespace(cleanup_lock=MagicMock())
 
     await RadarService.stop(radar_service)
 
     mqtt_client.stop.assert_awaited_once()
     database_writer.stop.assert_awaited_once()
-    radar_service.checkpoint_manager.cleanup_lock.assert_called_once()
     assert radar_service.mqtt_client is None
     assert radar_service.database_writer is None
 

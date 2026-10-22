@@ -223,43 +223,15 @@ services:
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   mqtt-radar:
+    # Build-only: TACTIC launches every RADAR workload from this image.
     build:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    container_name: mqtt_radar
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      tactic-middleware:
-        condition: service_healthy
-      mqtt-proxy:
-        condition: service_healthy
-    networks:
-      - app-network
-      - emqx-network
-    restart: always
-    environment:
-      - "RADAR_MQTT_USERNAME=${RADAR_MQTT_USERNAME:-}"
-      - "RADAR_MQTT_API_KEY=${RADAR_MQTT_API_KEY:-}"
-      - "RADAR_MQTT_CA_FILE=${RADAR_MQTT_CA_FILE:-}"
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "RADAR_MQTT_BROKER_HOST=${RADAR_MQTT_BROKER_HOST}"
-      - "RADAR_MQTT_BROKER_PORT=${RADAR_MQTT_BROKER_PORT}"
-      - "RADAR_MQTT_USE_TLS=${RADAR_MQTT_USE_TLS}"
-      - "RADAR_MQTT_USE_AUTH=${RADAR_MQTT_USE_AUTH}"
-      - "RADAR_SUBSCRIPTION_TOPICS=${RADAR_SUBSCRIPTION_TOPICS}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
-      - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
     profiles:
-      - standalone-radar
+      - radar-image
 
   mqtt-proxy:
     build:

@@ -151,15 +151,17 @@ unknown errors remain eligible for retry.
 | `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |
 | `TACTIC_SERVICE_PORT` | `8000` | Internal service-discovery port |
 
-## Standalone RADAR profile
+## RADAR workloads
+
+TACTIC sets these on each workload it launches.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `RADAR_MQTT_BROKER_HOST` | `emqx-main` | Standalone RADAR broker |
+| `RADAR_MQTT_BROKER_HOST` | `emqx-main` | RADAR broker |
 | `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/charger-sim-1/sine` | Concrete topics for the standalone profile (wildcards are rejected); managed monitors use selected readings |
+| `RADAR_SUBSCRIPTION_TOPICS` | Set by TACTIC | Concrete topics from the monitor's selected readings (wildcards are rejected) |
 | `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
 | `RADAR_PIPELINE_CONFIG` | Unset | Version-1 canonical bound execution JSON, emitted by activation. If monitoring JSON is also supplied, it must match the graph-derived strategy settings. Limited to 96 KiB serialized. |
 | `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |

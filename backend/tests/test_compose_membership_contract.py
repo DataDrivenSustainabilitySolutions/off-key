@@ -22,10 +22,6 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filenam
         "MQTT_USERNAME": "fixture-proxy",
         "MQTT_APIKEY": "fixture-proxy-password",
         "MQTT_CA_FILE": "/certs/proxy-ca.pem",
-        "RADAR_MQTT_USE_AUTH": "true",
-        "RADAR_MQTT_USERNAME": "fixture-radar",
-        "RADAR_MQTT_API_KEY": "fixture-radar-password",
-        "RADAR_MQTT_CA_FILE": "/certs/radar-ca.pem",
         "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "fixture-managed-radar",
         "SYNC_HOSTNAME": "schema-service",
         "SYNC_API_PORT": "9009",
@@ -81,11 +77,6 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filenam
         "tactic-middleware": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),
     }
     if filename == "docker-compose.yml":
-        expected["mqtt-radar"] = (
-            "RADAR_MQTT_USERNAME",
-            "RADAR_MQTT_API_KEY",
-            "RADAR_MQTT_CA_FILE",
-        )
         expected["mqtt-simulator"] = (
             "SIMULATOR_BROKER_HOST",
             "SIMULATOR_INTERVAL_SECONDS",

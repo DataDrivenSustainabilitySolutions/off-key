@@ -18,7 +18,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `tactic-middleware` (FastAPI): data adapter and RADAR orchestration.
 - `db-sync`: schema initialization and readiness API.
 - `mqtt-proxy`: selected collection, sampling and accepted MQTT publishing.
-- `mqtt-radar`: anomaly workload, either profile-based or TACTIC-managed.
+- `mqtt-radar`: anomaly workload image; TACTIC launches one workload per monitor.
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.

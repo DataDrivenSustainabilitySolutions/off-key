@@ -136,7 +136,7 @@ class RadarRecoveryStatus(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    storage: Literal["file", "database"] = "file"
+    storage: Literal["none", "database"] = "none"
     restored: bool = False
     restored_processed_count: int | None = Field(default=None, ge=0)
     restored_saved_at: datetime | None = None

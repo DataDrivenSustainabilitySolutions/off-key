@@ -67,7 +67,6 @@ async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsi
                 calibration_window_size=8,
             )
         ),
-        automatic_checkpoints=False,
     )
     wrapped = ResilientAnomalyDetector(detector)
     runtime = DetectorRuntime(wrapped)
@@ -137,9 +136,7 @@ async def test_cancelled_call_finishes_the_model_operation_before_reraising():
 async def test_diagnostic_failure_preserves_inference_and_original_exception(
     monkeypatch, failure_boundary
 ):
-    detector = StaticConformalDetectionService(
-        MQTTRadarConfig(), automatic_checkpoints=False
-    )
+    detector = StaticConformalDetectionService(MQTTRadarConfig())
     wrapped = ResilientAnomalyDetector(detector)
     runtime = DetectorRuntime(wrapped)
     try:

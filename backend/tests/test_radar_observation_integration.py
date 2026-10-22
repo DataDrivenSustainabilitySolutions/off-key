@@ -16,7 +16,7 @@ from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait
 
 @pytest.mark.asyncio
 async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_future(
-    tmp_path, monkeypatch
+    monkeypatch,
 ):
     broker, port = await start_mqtt_broker()
     config = MQTTRadarConfig(
@@ -33,8 +33,6 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
         service_module, "get_radar_settings", lambda: SimpleNamespace(config=config)
     )
     monkeypatch.setenv("SERVICE_ID", "observation-monitor")
-    monkeypatch.setenv("RADAR_CHECKPOINT_STORAGE", "file")
-    monkeypatch.setenv("RADAR_CHECKPOINT_DIR", str(tmp_path))
     clear_radar_runtime_settings_cache()
     monitor = RadarService()
     publisher = MQTTClient(client_id="observation-publisher")

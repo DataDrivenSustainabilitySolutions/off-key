@@ -128,7 +128,7 @@ def test_batch_branching_matches_reference_and_freezes_training_statistics():
 
 def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatch):
     config = AnomalyDetectionConfig(pipeline=execution(), checkpoint_interval=10000)
-    service = StaticPipelineDetectionService(config, automatic_checkpoints=False)
+    service = StaticPipelineDetectionService(config)
     restored = None
     try:
         for index in range(25):
@@ -149,9 +149,7 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
             state["observation"]["passes"]["learn"]["scale"]["state"] == "not_executed"
         )
         snapshot = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = StaticPipelineDetectionService.from_checkpoint_data(
-            snapshot, config, automatic_checkpoints=False
-        )
+        restored = StaticPipelineDetectionService.from_checkpoint_data(snapshot, config)
         assert (
             restored.process_data_point({"sensor/z": 5, "sensor/a": 2}).anomaly_score
             == result.anomaly_score

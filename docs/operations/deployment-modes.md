@@ -17,7 +17,7 @@ Characteristics:
 
 - One EMQX node: `emqx-main`.
 - A local `source-broker` for deterministic development.
-- `mqtt-radar` and `mqtt-simulator` are profile-gated.
+- `mqtt-simulator` is profile-gated. `mqtt-radar` is build-only; TACTIC launches its workloads.
 
 Before creating a TACTIC-managed monitoring service for the first time, build its local image:
 
@@ -26,12 +26,6 @@ docker compose build mqtt-radar
 ```
 
 ## 2. Optional local profiles
-
-=== "Standalone RADAR"
-
-    ```bash
-    docker compose --profile standalone-radar up -d mqtt-radar
-    ```
 
 === "MQTT simulator"
 

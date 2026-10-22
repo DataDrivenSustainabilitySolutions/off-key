@@ -18,15 +18,13 @@ from .plan import ExecutionPlan
 class StaticPipelineDetectionService(StaticConformalDetectionService):
     """Publish an independently fitted, frozen graph atomically with its model."""
 
-    def __init__(self, config, checkpoint=None, *, automatic_checkpoints=True):
+    def __init__(self, config, checkpoint=None):
         if config.pipeline is None:
             raise ValueError("A bound pipeline configuration is required")
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
-        super().__init__(
-            config, checkpoint, automatic_checkpoints=automatic_checkpoints
-        )
+        super().__init__(config, checkpoint)
 
     @staticmethod
     def _build_schema_signature_from_config(config):

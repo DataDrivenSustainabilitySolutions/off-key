@@ -26,7 +26,7 @@ from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait
 
 @pytest.mark.asyncio
 async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
-    tmp_path, monkeypatch
+    monkeypatch,
 ):
     broker, port = await start_mqtt_broker()
     config = MQTTRadarConfig(
@@ -43,8 +43,6 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
         health_check_interval=0.05,
         monitoring=tiny_adaptive_monitoring(),
     )
-    monkeypatch.setenv("RADAR_CHECKPOINT_STORAGE", "file")
-    monkeypatch.setenv("RADAR_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("SERVICE_ID", "activity-monitor")
     clear_radar_runtime_settings_cache()
     monkeypatch.setattr(

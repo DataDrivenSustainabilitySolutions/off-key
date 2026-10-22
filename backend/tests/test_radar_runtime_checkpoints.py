@@ -78,9 +78,9 @@ def _detector(config, checkpoint=None):
         else AdaptiveStreamDetectionService
     )
     return (
-        cls(config, automatic_checkpoints=False)
+        cls(config)
         if checkpoint is None
-        else cls.from_checkpoint_data(checkpoint, config, automatic_checkpoints=False)
+        else cls.from_checkpoint_data(checkpoint, config)
     )
 
 

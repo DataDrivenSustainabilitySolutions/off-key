@@ -12,11 +12,6 @@ import type {
 } from "@/types/monitoring";
 import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 
-export {
-  buildSensorClaims,
-  mqttFiltersOverlap,
-} from "@/lib/monitoring-services";
-
 export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
 export type TopicMode = "selected_sensors" | "direct_patterns";

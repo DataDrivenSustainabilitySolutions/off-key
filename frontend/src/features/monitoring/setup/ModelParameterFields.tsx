@@ -4,7 +4,7 @@ import { humanize } from "./config";
 import type { FieldErrors } from "./config";
 import { CONTROL_CLASS, LABEL_CLASS } from "./formStyles";
 import { SettingLabel } from "./SettingLabel";
-import { FieldError } from "./MonitoringUi";
+import { FieldError } from "./FormParts";
 
 interface Props {
   properties: Record<string, ParameterSchema>;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { startFormMonitor } from "@/pages/monitoring/startMonitor";
+import { startFormMonitor } from "@/features/monitoring/setup/startMonitor";
 import type { MonitoringStartRequest } from "@/types/monitoring";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn(), post: vi.fn() } }));

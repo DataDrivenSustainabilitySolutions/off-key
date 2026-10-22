@@ -17,7 +17,7 @@ import {
 } from "./config";
 import type { FieldErrors } from "./config";
 import { CONTROL_CLASS, HELP_CLASS, LABEL_CLASS } from "./formStyles";
-import { ConfigSection, FieldError } from "./MonitoringUi";
+import { ConfigSection, FieldError } from "./FormParts";
 import { ModelParameterFields } from "./ModelParameterFields";
 import { startFormMonitor } from "./startMonitor";
 

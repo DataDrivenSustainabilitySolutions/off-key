@@ -19,7 +19,7 @@ import {
   CONTROL_CLASS,
   HELP_CLASS,
 } from "./formStyles";
-import { FieldError } from "./MonitoringUi";
+import { FieldError } from "./FormParts";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { SettingLabel } from "./SettingLabel";
 

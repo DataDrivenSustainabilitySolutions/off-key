@@ -6,8 +6,8 @@ import {
   createDefaultAdaptiveDraft,
   createDefaultStaticDraft,
   getModelDefaults,
-  mqttFiltersOverlap,
-} from "../pages/monitoring/config";
+} from "../features/monitoring/setup/config";
+import { mqttFiltersOverlap } from "../lib/monitoring-services";
 import type { ModelDefinition } from "../types/monitoring";
 
 const modelDefinition: ModelDefinition = {

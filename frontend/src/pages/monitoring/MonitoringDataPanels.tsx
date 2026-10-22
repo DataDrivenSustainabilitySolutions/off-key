@@ -23,7 +23,7 @@ import {
 import type { ActiveService } from "@/types/monitoring";
 import { RefreshCw } from "lucide-react";
 
-import { humanize } from "./config";
+import { humanize } from "@/features/monitoring/setup/config";
 
 interface MonitoringDataPanelsProps {
   services: ActiveService[];

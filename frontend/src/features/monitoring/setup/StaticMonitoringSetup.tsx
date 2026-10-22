@@ -39,7 +39,7 @@ import {
 import {
   ConfigSection,
   FieldError,
-} from "./MonitoringUi";
+} from "./FormParts";
 
 interface StaticMonitoringSetupProps {
   draftKey?: string;

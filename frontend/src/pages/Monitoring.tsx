@@ -21,11 +21,11 @@ import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
-import { buildSensorClaims, mqttFiltersOverlap } from "./monitoring/config";
-import { AdaptiveMonitoringSetup } from "./monitoring/AdaptiveMonitoringSetup";
+import { buildSensorClaims, mqttFiltersOverlap } from "@/lib/monitoring-services";
+import { AdaptiveMonitoringSetup } from "@/features/monitoring/setup/AdaptiveMonitoringSetup";
 import { MonitoringDataPanels } from "./monitoring/MonitoringDataPanels";
 import { LaneCard } from "./monitoring/MonitoringUi";
-import { StaticMonitoringSetup } from "./monitoring/StaticMonitoringSetup";
+import { StaticMonitoringSetup } from "@/features/monitoring/setup/StaticMonitoringSetup";
 import { useMonitoringData } from "./monitoring/useMonitoringData";
 import type { PipelineWorkspace } from "@/types/pipelines.generated";
 import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";

@@ -9,7 +9,6 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from off_key_core.api_docs import router as api_docs_router
-from off_key_core.config.app import AppSettings, get_app_settings
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.env import load_env
@@ -21,11 +20,16 @@ from off_key_core.config.logs import (
 )
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.validation import validate_settings
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+
+from off_key_api_gateway.settings import (
+    AppSettings,
+    get_app_settings,
+    get_service_endpoints_settings,
+)
 
 from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler

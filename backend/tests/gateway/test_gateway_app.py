@@ -7,7 +7,7 @@ from off_key_api_gateway.api.middleware import (
     SecurityLoggingMiddleware,
 )
 from off_key_api_gateway.app import build_app
-from off_key_core.config.app import AppSettings
+from off_key_api_gateway.settings import AppSettings
 from off_key_core.config.logs import CorrelationIdMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware

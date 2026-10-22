@@ -1,9 +1,8 @@
 from functools import lru_cache
-from pathlib import Path
 
 from off_key_core.config.database import build_postgres_database_url
 from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
-from off_key_core.config.validation import validate_environment as _validate_environment
+from off_key_core.config.validation import SECRETS_DIR, Environment
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -98,7 +97,7 @@ class RadarCheckpointSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     SERVICE_ID: str = "default"
@@ -106,7 +105,7 @@ class RadarCheckpointSettings(BaseSettings):
     RADAR_CHECKPOINT_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0)
     RADAR_CHECKPOINT_MAX_INTERVAL_SECONDS: float = Field(default=30.0, gt=0)
     RADAR_FATAL_PERSIST_RETRY_SECONDS: float = Field(default=5.0, gt=0, le=30)
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Environment = "development"
 
     @field_validator("SERVICE_ID")
     @classmethod
@@ -115,11 +114,6 @@ class RadarCheckpointSettings(BaseSettings):
         if not normalized:
             raise ValueError("Service id must not be empty")
         return normalized
-
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_checkpoint_secret_for_environment(self) -> "RadarCheckpointSettings":
@@ -152,12 +146,7 @@ class RadarRuntimeFileSettings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     RADAR_CONFIG_FILE: str | None = None
-    ENVIRONMENT: str = "development"
-
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
+    ENVIRONMENT: Environment = "development"
 
 
 # Cache secret-bearing DB settings once; tests reset this cache when mutating env.

@@ -21,7 +21,7 @@ from off_key_core.config.resource_budget import (
     parse_memory_bytes,
     validate_ingress_budget,
 )
-from off_key_core.config.validation import validate_environment as _validate_environment
+from off_key_core.config.validation import Environment
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -248,7 +248,7 @@ class TacticSettings(BaseSettings):
     TACTIC_HOST: str = Field(default="0.0.0.0")
     TACTIC_PORT: int = Field(default=8000)
     TACTIC_LOG_LEVEL: str = Field(default="INFO")
-    ENVIRONMENT: str = Field(default="development")
+    ENVIRONMENT: Environment = Field(default="development")
 
     # Docker API Configuration
     TACTIC_DOCKER_API_URL: str = Field(default=DEFAULT_DOCKER_CONFIG.api_url)
@@ -372,11 +372,6 @@ class TacticSettings(BaseSettings):
     def _parse_additional_networks(self) -> list[str]:
         return self._split_constraints(self.TACTIC_DOCKER_ADDITIONAL_NETWORKS)
 
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
-
     @staticmethod
     def _normalize_lifecycle_policy(raw_value: str) -> RadarWorkloadLifecycle:
         normalized = raw_value.strip().lower()
@@ -478,13 +473,8 @@ class RadarContainerRuntimeSettings(BaseSettings):
     POSTGRES_HOST: str = "timescaledb"
     POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
     POSTGRES_DB: str = "postgres"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Environment = "development"
     RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr(DEVELOPMENT_CHECKPOINT_SECRET)
-
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
 
     @property
     def radar_database_url(self) -> str:

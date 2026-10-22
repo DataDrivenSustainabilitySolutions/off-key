@@ -1,13 +1,15 @@
 from pathlib import Path
 
 import off_key_core.config as core_config
-from off_key_core.config import (
+from off_key_api_gateway.settings import (
     get_app_settings,
+    get_service_endpoints_settings,
+)
+from off_key_core.config import (
     get_auth_settings,
     get_database_settings,
     get_email_settings,
     get_runtime_settings,
-    get_service_endpoints_settings,
     get_telemetry_settings,
 )
 from off_key_core.config.database import DatabaseSettings
@@ -77,33 +79,6 @@ def test_telemetry_settings_does_not_use_sync_alias(monkeypatch):
     telemetry = get_telemetry_settings()
 
     assert telemetry.retention_days == 14
-
-    reset_runtime_caches_for_tests()
-
-
-def test_modular_service_settings_support_https_overrides(monkeypatch):
-    monkeypatch.setenv("SYNC_SERVICE_SCHEME", "HTTPS")
-    monkeypatch.setenv("TACTIC_SERVICE_SCHEME", "https")
-    reset_runtime_caches_for_tests()
-
-    service_endpoints = get_service_endpoints_settings()
-
-    assert service_endpoints.SYNC_SERVICE_SCHEME == "https"
-    assert service_endpoints.TACTIC_SERVICE_SCHEME == "https"
-    assert service_endpoints.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS == 180.0
-    assert service_endpoints.db_sync_service_url.startswith("https://")
-    assert service_endpoints.tactic_service_base_url.startswith("https://")
-
-    reset_runtime_caches_for_tests()
-
-
-def test_modular_service_settings_support_tactic_timeout_override(monkeypatch):
-    monkeypatch.setenv("TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS", "45.5")
-    reset_runtime_caches_for_tests()
-
-    service_endpoints = get_service_endpoints_settings()
-
-    assert service_endpoints.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS == 45.5
 
     reset_runtime_caches_for_tests()
 

@@ -1,8 +1,8 @@
 """Operator-provisioned access to the fixed AmbiBox provider."""
 
 from functools import lru_cache
-from pathlib import Path
 
+from off_key_core.config.validation import SECRETS_DIR
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,7 +11,7 @@ class AmbiboxSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     AMBIBOX_INGRESS_ENABLED: bool = False

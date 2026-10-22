@@ -4,14 +4,16 @@ This module intentionally lives under ``tests`` so cache reset orchestration
 does not become part of the production ``off_key_core.config`` API.
 """
 
-from off_key_core.config.app import get_app_settings
+from off_key_api_gateway.settings import (
+    get_app_settings,
+    get_service_endpoints_settings,
+)
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.database import get_database_settings
 from off_key_core.config.email import get_email_settings
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.runtime import get_runtime_settings
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.config.telemetry import get_telemetry_settings
 from off_key_core.db.base import reset_db_runtime_caches
 from off_key_db_sync.config.config import get_sync_settings

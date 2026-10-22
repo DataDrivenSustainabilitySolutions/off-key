@@ -3,9 +3,9 @@
 import json
 from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Literal
 
+from off_key_core.config.validation import SECRETS_DIR
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -44,7 +44,7 @@ class SystemLiveSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     SYSTEM_LIVE_ENABLED: bool = False

@@ -12,8 +12,9 @@ from urllib.parse import quote
 import aiohttp
 from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.config.services import get_service_endpoints_settings
 from off_key_core.schemas.radar import RadarStartConfig
+
+from off_key_api_gateway.settings import get_service_endpoints_settings
 
 
 class TacticError(Exception):

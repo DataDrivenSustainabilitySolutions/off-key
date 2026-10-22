@@ -5,15 +5,14 @@ MQTT proxy configuration.
 import random
 import uuid
 from functools import lru_cache
-from pathlib import Path
 from typing import Literal, Self
 
-from off_key_core.config.validation import validate_environment as _validate_environment
+from off_key_core.config.validation import SECRETS_DIR, Environment
 from off_key_core.utils.mqtt_topics import (
     DEFAULT_TOPIC_REGEX,
     TopicMetadataExtractor,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Transport = Literal["tcp", "websockets"]
@@ -141,9 +140,9 @@ class MQTTSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Environment = "development"
 
     # MQTT Service Configuration
     MQTT_TELEMETRY_ENABLED: bool = True
@@ -195,11 +194,6 @@ class MQTTSettings(BaseSettings):
     MQTT_HEALTH_API_ENABLED: bool = True
     MQTT_HEALTH_API_HOST: str = Field(default="0.0.0.0", min_length=1)
     MQTT_HEALTH_API_PORT: int = Field(default=8010, ge=1, le=65535)
-
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_mqtt_security_posture(self) -> Self:

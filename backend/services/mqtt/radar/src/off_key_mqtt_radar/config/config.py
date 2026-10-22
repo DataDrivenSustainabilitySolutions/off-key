@@ -11,7 +11,7 @@ from off_key_core.config.resource_budget import (
     DEFAULT_RADAR_MEMORY_MB,
     validate_ingress_budget,
 )
-from off_key_core.config.validation import validate_environment as _validate_environment
+from off_key_core.config.validation import SECRETS_DIR, Environment
 from off_key_core.models.pipelines import derive_monitoring_config
 from off_key_core.schemas.pipelines import (
     MONITORING_STRATEGIES,
@@ -169,7 +169,7 @@ class RadarSettings(BaseSettings):
     """Environment-based settings for RADAR service"""
 
     # Configuration Management
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Environment = "development"
 
     # MQTT Configuration
     RADAR_MQTT_BROKER_HOST: str = "localhost"
@@ -222,7 +222,7 @@ class RadarSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     @field_validator("RADAR_SUBSCRIPTION_TOPICS")
@@ -243,11 +243,6 @@ class RadarSettings(BaseSettings):
     @classmethod
     def validate_monitoring_strategy(cls, value: str) -> str:
         return _normalize_strategy(value, "RADAR_MONITORING_STRATEGY")
-
-    @field_validator("ENVIRONMENT")
-    @classmethod
-    def validate_environment(cls, value: str) -> str:
-        return _validate_environment(value)
 
     @model_validator(mode="after")
     def validate_mqtt_security_posture(self) -> Self:

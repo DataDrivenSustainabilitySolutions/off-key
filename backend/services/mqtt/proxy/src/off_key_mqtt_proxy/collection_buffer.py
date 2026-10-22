@@ -14,6 +14,7 @@ from off_key_core.schemas.system_collection import (
 from off_key_core.utils.payload_decode import PayloadDecoder
 
 from .client.models import MQTTMessage
+from .telemetry_models import TelemetryRecord
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,16 @@ class Observation:
     value: float | bool | str
     received_at: datetime
     snapshot: bool
+
+    def telemetry_record(self, created: datetime | None = None) -> TelemetryRecord:
+        """The numeric telemetry row for this observation, without re-parsing."""
+        return TelemetryRecord(
+            charger_id=self.stream.charger_id,
+            timestamp=self.received_at,
+            value=float(self.value),
+            telemetry_type=self.stream.key,
+            created=created or datetime.now(UTC),
+        )
 
     def message(self) -> MQTTMessage:
         return MQTTMessage(

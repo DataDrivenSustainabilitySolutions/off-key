@@ -22,6 +22,7 @@ from .config.config import MQTTConfig
 from .telemetry_models import (
     HealthStatus,
     ParseFailure,
+    TelemetryRecord,
     WriteBatch,
     WriterHealthStatus,
     WriterPerformanceMetrics,
@@ -202,9 +203,10 @@ class DatabaseWriter:
                 )
             return
 
-        # Extract record from success
-        record = parse_result.record
+        await self.write_record(parse_result.record)
 
+    async def write_record(self, record: TelemetryRecord) -> None:
+        """Queue one telemetry row, waiting while the pending batch is full."""
         # Bound pending records while the single worker owns an in-flight batch.
         async with self._batch_capacity:
             await self._batch_capacity.wait_for(

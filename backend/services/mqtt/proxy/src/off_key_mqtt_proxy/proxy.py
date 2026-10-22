@@ -176,7 +176,9 @@ class MQTTProxyService:
             if observation.stream.value_type == "number" and not observation.snapshot:
                 # Bounded DB writer applies backpressure before publishing downstream.
                 async with asyncio.timeout(self.config.graceful_shutdown_timeout):
-                    await self.database_writer.write_telemetry_message(message)
+                    await self.database_writer.write_record(
+                        observation.telemetry_record()
+                    )
                 if not await self.mqtt_client.publish(
                     message.topic, message.payload, qos=1
                 ):

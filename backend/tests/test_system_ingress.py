@@ -13,9 +13,10 @@ from off_key_core.schemas.system_collection import (
 )
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
+from off_key_mqtt_proxy.collection_buffer import CollectionBuffer, Observation
 from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_proxy.telemetry import DatabaseWriter
+from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services import system_ingress
 
@@ -91,7 +92,7 @@ async def test_original_burst_preserves_every_writer_identity(
     ).config
     writer = DatabaseWriter(config, MagicMock(), TopicMetadataExtractor())
     for observation in observations:
-        await writer.write_telemetry_message(observation.message())
+        await writer.write_record(observation.telemetry_record())
     records = [record.to_dict() for record in writer.pending_batch.records]
     assert len(records) == 16
     assert (
@@ -103,6 +104,20 @@ async def test_original_burst_preserves_every_writer_identity(
         )
         == 16
     )
+
+
+@pytest.mark.parametrize("value", [42, 42.5, -0.25])
+def test_observation_records_match_the_parsed_downstream_message(value):
+    """Direct records equal what the regex parser reads back from the message."""
+    catalog = definition()
+    stream = catalog.streams()[0]
+    observation = Observation(stream, value, datetime.now(UTC), snapshot=False)
+    extractor = MQTTSettings(
+        MQTT_USE_AUTH=False, MQTT_USE_TLS=False, ENVIRONMENT="development"
+    ).config.build_topic_extractor()
+    parsed = parse_telemetry_message(observation.message(), extractor).record
+    record = observation.telemetry_record(created=parsed.created)
+    assert record == parsed
 
 
 @pytest.mark.asyncio

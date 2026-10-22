@@ -2,7 +2,7 @@ import { savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
 import { fitPipelineOverview } from "./helpers/pipelineNavigation";
 import { expectClearPipelineRouting, pipelineRoutingSnapshot } from "./helpers/pipelineRouting";
 import { accessToken } from "./helpers/auth";
@@ -117,12 +117,6 @@ test("reroutes around moved components during native dragging and after reload",
     await expectClearPipelineRouting(page);
     await page.screenshot({ path: testInfo.outputPath("routing-phone.png"), fullPage: true });
   } finally {
-    const response = await page.request.get(endpoint, { headers });
-    expect(response.ok()).toBe(true);
-    const current = await response.json() as PipelineView;
-    const archived = await page.request.patch(endpoint, { headers, data: {
-      expected_version: current.version, name: current.name, description: current.description, archived: true,
-    } });
-    expect(archived.ok(), await archived.text()).toBe(true);
+    await archivePipelines(page.request, headers, [endpoint]);
   }
 });

@@ -8,7 +8,7 @@ import {
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
-import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
 import {
   expectReadablePipeline,
   fitPipelineOverview,
@@ -31,6 +31,8 @@ import type {
 import type { PipelineState } from "../src/features/pipelines/diagnostics";
 import { accessToken } from "./helpers/auth";
 import { inspectMonitoringHistory } from "./helpers/monitoringHistory";
+import { setAppearance } from "./helpers/appearance";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 const selected = (page: Page) =>
   page.getByRole("combobox", { name: "Selected component", exact: true });
@@ -399,11 +401,7 @@ test.describe("visual pipeline real infrastructure", () => {
             exact: true,
           }),
         ).toBeVisible();
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= innerWidth,
-          ),
-        ).toBe(true);
+        await expectNoHorizontalScroll(page);
         await page.screenshot({
           path: testInfo.outputPath(`${strategy}-mobile-pipeline.png`),
           fullPage: true,
@@ -543,24 +541,8 @@ test.describe("visual pipeline real infrastructure", () => {
           }
           for (const id of new Set(serviceIds))
             await api.delete(`/api/v1/monitors/${id}`, { headers });
-          if (pipelineId) {
-            const result = await api.get(
-              `/api/v1/monitors/pipelines/${pipelineId}`,
-              { headers },
-            );
-            if (result.ok()) {
-              const pipeline = (await result.json()) as PipelineView;
-              await api.patch(`/api/v1/monitors/pipelines/${pipelineId}`, {
-                headers,
-                data: {
-                  expected_version: pipeline.version,
-                  name: pipeline.name,
-                  description: pipeline.description,
-                  archived: true,
-                },
-              });
-            }
-          }
+          if (pipelineId)
+            await archivePipelines(api, headers, [`/api/v1/monitors/pipelines/${pipelineId}`], { lenient: true });
           await publisher?.endAsync();
           await removeTestCharger(api, token!, deviceId);
         } catch (reason) {
@@ -785,16 +767,7 @@ test.describe("visual pipeline real infrastructure", () => {
         fullPage: true,
       });
       await locatePipelineSelection(page);
-      await page
-        .getByRole("button", { name: "Application menu", exact: true })
-        .click();
-      await page
-        .getByRole("menuitem", { name: "Preferences", exact: true })
-        .click();
-      await page.getByRole("radio", { name: "Dark", exact: true }).check();
-      await page
-        .getByRole("button", { name: "Close preferences", exact: true })
-        .click();
+      await setAppearance(page, "Dark");
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-dark.png"),
         fullPage: true,
@@ -809,11 +782,7 @@ test.describe("visual pipeline real infrastructure", () => {
         .getByRole("textbox", { name: "Node title", exact: true })
         .fill("Keyboard and mobile inspection");
       await savePipelineTemplate(page);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
+      await expectNoHorizontalScroll(page);
       await selected(page).scrollIntoViewIfNeeded();
       await page.screenshot({
         path: testInfo.outputPath("maximum-graph-mobile.png"),
@@ -860,39 +829,8 @@ test.describe("visual pipeline real infrastructure", () => {
       );
       expect(copy.draft.nodes).toHaveLength(64);
     } finally {
-      if (copyId) {
-        const response = await api.get(`/api/v1/monitors/pipelines/${copyId}`, {
-          headers,
-        });
-        if (response.ok()) {
-          const copy = (await response.json()) as PipelineView;
-          await api.patch(`/api/v1/monitors/pipelines/${copyId}`, {
-            headers,
-            data: {
-              expected_version: copy.version,
-              name: copy.name,
-              archived: true,
-            },
-          });
-        }
-      }
-      if (pipelineId) {
-        const response = await api.get(
-          `/api/v1/monitors/pipelines/${pipelineId}`,
-          { headers },
-        );
-        if (response.ok()) {
-          const pipeline = (await response.json()) as PipelineView;
-          await api.patch(`/api/v1/monitors/pipelines/${pipelineId}`, {
-            headers,
-            data: {
-              expected_version: pipeline.version,
-              name: pipeline.name,
-              archived: true,
-            },
-          });
-        }
-      }
+      await archivePipelines(api, headers, [copyId, pipelineId].filter(Boolean)
+        .map(id => `/api/v1/monitors/pipelines/${id}`), { lenient: true });
       await api.dispose();
     }
   });

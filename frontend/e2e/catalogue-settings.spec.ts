@@ -1,17 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { SystemSnapshot } from "../src/types/system";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
+import { expectDialogFits } from "./helpers/layout";
 
-async function expectDialogFits(dialog: Locator) {
-  expect(await dialog.evaluate(element => {
-    const box = element.getBoundingClientRect();
-    return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
-      && element.scrollWidth <= element.clientWidth;
-  })).toBe(true);
-}
 
 test("reviews a real catalogue export before replacement", async ({ page }) => {
   await page.goto("/sources");

@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
-import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
+import { setAppearance } from "./helpers/appearance";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test("selects only AC1 and AC3 and preserves named template mappings on desktop and mobile", async ({ page }, testInfo) => {
   await loginPipelineWorkspace(page);
@@ -30,7 +32,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
       const reading = workbench.getByRole("checkbox", { name: `Monitor ${name}`, exact: true });
       await reading.scrollIntoViewIfNeeded(); await expect(reading).toBeInViewport({ ratio: 1 });
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     await page.screenshot({ path: testInfo.outputPath("creation-readings-mobile.png"), fullPage: true });
     await workbench.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
     await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
@@ -58,12 +60,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
     await expect(editor.getByRole("combobox", { name: "Reading for AC2", exact: true })).toHaveCount(0);
   } finally {
-    for (const id of templateIds) {
-      const design = await (await page.request.get(`${endpoint}/${id}`, { headers })).json() as PipelineView;
-      const archived = await page.request.patch(`${endpoint}/${id}`, { headers,
-        data: { expected_version: design.version, name: design.name, description: design.description, archived: true } });
-      expect(archived.ok(), await archived.text()).toBe(true);
-    }
+    await archivePipelines(page.request, headers, [...templateIds].map(id => `${endpoint}/${id}`));
     await removeTestCharger(page.request, token, deviceId);
   }
 });
@@ -167,11 +164,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue(`Service ${deviceId}`);
     } finally {
       release(); await page.unrouteAll({ behavior: "wait" });
-      for (const id of createdIds) {
-        const response = await page.request.get(`${endpoint}/${id}`, { headers }); const design = await response.json() as PipelineView;
-        const archived = await page.request.patch(`${endpoint}/${id}`, { headers, data: { expected_version: design.version, name: design.name, description: design.description, archived: true } });
-        expect(archived.ok(), await archived.text()).toBe(true);
-      }
+      await archivePipelines(page.request, headers, [...createdIds].map(id => `${endpoint}/${id}`));
       await removeTestCharger(page.request, token, deviceId);
     }
   });
@@ -210,10 +203,8 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     await expect(workbench.getByRole("textbox", { name: "Unit for temperature", exact: true })).toHaveValue("°C");
     await expect(workbench.getByRole("textbox", { name: "Unit for voltage", exact: true })).toHaveCount(0);
     await workbench.getByRole("button", { name: "Close settings", exact: true }).click();
-    for (const theme of ["Light", "Dark"]) {
-      await page.getByRole("button", { name: "Application menu", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Preferences", exact: true }).click();
-      await page.getByRole("radio", { name: theme, exact: true }).check(); await page.getByRole("button", { name: "Close preferences", exact: true }).click();
+    for (const theme of ["Light", "Dark"] as const) {
+      await setAppearance(page, theme);
       await page.screenshot({ path: testInfo.outputPath(`setup-${theme.toLowerCase()}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
@@ -237,16 +228,12 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
     const dialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
     await page.screenshot({ path: testInfo.outputPath("save-template-mobile.png"), fullPage: true });
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     const copy = await savePipelineTemplate(page, `Independent ${unique}`); ids.push(copy.id);
     expect(copy.draft).toEqual(latest.draft); expect(copy.id).not.toBe(source.id);
     expect(await (await page.request.get(`${endpoint}/${source.id}`, { headers })).json()).toEqual(latest);
     await expect(page.getByRole("region", { name: "Monitoring setup progress", exact: true })).toHaveCount(0);
   } finally {
-    for (const id of ids) {
-      const design = await (await page.request.get(`${endpoint}/${id}`, { headers })).json() as PipelineView;
-      const archived = await page.request.patch(`${endpoint}/${id}`, { headers, data: { expected_version: design.version, name: design.name, description: design.description, archived: true } });
-      expect(archived.ok(), await archived.text()).toBe(true);
-    }
+    await archivePipelines(page.request, headers, ids.map(id => `${endpoint}/${id}`));
   }
 });

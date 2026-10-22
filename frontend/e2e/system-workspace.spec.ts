@@ -5,6 +5,7 @@ import type { SystemSnapshot } from "../src/types/system";
 import { addTestCharger, removeTestCharger, waitForCollectionReady } from "./helpers/collection";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.setTimeout(300_000);
 
@@ -84,7 +85,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const binding = applied.runtime.bindings![stream.id]!;
     expect(binding.entity_id).toMatch(/^entity-[a-f0-9]{64}$/);
     expect(binding.telemetry_key).toMatch(/^reading-[a-f0-9]{64}$/);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     await expect(page.getByRole("button", { name: "Connect", exact: true })).toHaveCount(0);
     await waitForCollectionReady(api, token!, applied, stream.connection_id);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });

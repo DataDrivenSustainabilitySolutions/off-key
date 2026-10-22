@@ -4,6 +4,7 @@ import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/types/system";
 import { setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 async function createFixture(page: Page, count = 40) {
   await page.goto("/");
@@ -123,7 +124,7 @@ test("returns to the catalogue root from collections, branches and search with a
     await root.focus();
     await root.press("Enter");
     await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     await page.screenshot({ path: testInfo.outputPath("catalogue-root-mobile.png"), animations: "disabled" });
   } finally { await fixture.cleanup(); }
 });
@@ -221,7 +222,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
       await navigation.getByRole("link", { name: section, exact: true }).click();
       await expect(page.getByRole("heading", { name: section, exact: true })).toBeVisible();
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expectNoHorizontalScroll(page);
     }
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await expect(search).toHaveValue("North value");
@@ -337,7 +338,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     const box = await toggle.boundingBox();
     expect(box!.width).toBeGreaterThanOrEqual(44); expect(box!.height).toBeGreaterThanOrEqual(44);
     await expect(root).toBeInViewport();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     await page.screenshot({ path: testInfo.outputPath("online-topics-mobile.png"), animations: "disabled" });
     expect(previewStarts).toBe(0); expect(configurationWrites).toBe(0);
   } finally {

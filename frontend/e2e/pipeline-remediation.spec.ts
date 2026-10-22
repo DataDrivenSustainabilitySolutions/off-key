@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 
@@ -74,11 +74,6 @@ test("preserves edits made after a real atomic draft save was submitted", async 
   } finally {
     release();
     await page.unroute(routePattern);
-    const current = await page.request.get(endpoint, { headers });
-    const latest = await current.json() as PipelineView;
-    const archived = await page.request.patch(endpoint, {
-      headers, data: { expected_version: latest.version, name: latest.name, description: latest.description, archived: true },
-    });
-    expect(archived.ok(), await archived.text()).toBe(true);
+    await archivePipelines(page.request, headers, [endpoint]);
   }
 });

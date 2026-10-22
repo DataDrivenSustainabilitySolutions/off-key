@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -7,6 +7,7 @@ from off_key_core.schemas.radar import (
     RadarServiceLabel,
     RadarStartConfig,
 )
+from off_key_core.utils.timestamps import as_utc
 from pydantic import BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
@@ -137,17 +138,9 @@ async def get_monitoring_chart_evidence(
             detail="All monitoring evidence cursor fields are required together",
         )
     if after_created is not None:
-        after_created = (
-            after_created.replace(tzinfo=UTC)
-            if after_created.tzinfo is None
-            else after_created.astimezone(UTC)
-        )
+        after_created = as_utc(after_created)
     if after_timestamp is not None:
-        after_timestamp = (
-            after_timestamp.replace(tzinfo=UTC)
-            if after_timestamp.tzinfo is None
-            else after_timestamp.astimezone(UTC)
-        )
+        after_timestamp = as_utc(after_timestamp)
     return await tactic.get_monitoring_chart_evidence(
         charger_id=charger_id,
         service_id=service_id,

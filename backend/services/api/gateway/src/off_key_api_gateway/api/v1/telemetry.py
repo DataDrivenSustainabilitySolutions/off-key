@@ -1,6 +1,7 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
+from off_key_core.utils.timestamps import as_utc
 
 from ...facades.tactic import tactic
 from ..errors import TacticErrorRoute
@@ -44,23 +45,11 @@ async def get_telemetry(
 
     # Normalize to UTC to keep cursor behavior stable across clients.
     if after_timestamp is not None:
-        after_timestamp = (
-            after_timestamp.replace(tzinfo=UTC)
-            if after_timestamp.tzinfo is None
-            else after_timestamp.astimezone(UTC)
-        )
+        after_timestamp = as_utc(after_timestamp)
     if after_created is not None:
-        after_created = (
-            after_created.replace(tzinfo=UTC)
-            if after_created.tzinfo is None
-            else after_created.astimezone(UTC)
-        )
+        after_created = as_utc(after_created)
     if after_event_timestamp is not None:
-        after_event_timestamp = (
-            after_event_timestamp.replace(tzinfo=UTC)
-            if after_event_timestamp.tzinfo is None
-            else after_event_timestamp.astimezone(UTC)
-        )
+        after_event_timestamp = as_utc(after_event_timestamp)
 
     return await tactic.get_telemetry_data(
         charger_id=charger_id,

@@ -225,11 +225,6 @@ class Tactic:
         Returns:
             Dict: Service stop response
         """
-        if not container_name and not container_id:
-            raise TacticError(
-                "Either container_name or container_id is required to stop a service"
-            )
-
         params = {}
         if container_name:
             params["container_name"] = container_name
@@ -244,9 +239,6 @@ class Tactic:
 
     async def delete_radar_service(self, service_id: str) -> dict[str, Any]:
         """Delete a RADAR service and any backing workload via TACTIC."""
-        if not service_id:
-            raise TacticError("service_id is required to delete a service")
-
         return await self._make_request(
             method="DELETE",
             endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}",
@@ -301,11 +293,6 @@ class Tactic:
         Returns:
             Dict: Service details
         """
-        if not container_name and not container_id:
-            raise TacticError(
-                "Either container_name or container_id is required to get details"
-            )
-
         params = {}
         if container_name:
             params["container_name"] = container_name
@@ -375,10 +362,6 @@ class Tactic:
         if after_timestamp is not None:
             params["after_timestamp"] = after_timestamp.isoformat()
         if after_created is not None:
-            if after_event_timestamp is None:
-                raise TacticError(
-                    "after_event_timestamp is required when after_created is provided"
-                )
             params["after_created"] = after_created.isoformat()
             params["after_event_timestamp"] = after_event_timestamp.isoformat()
 

@@ -40,10 +40,6 @@ def ansible(command, *args, **kwargs):
     return run(sys.executable, "-m", f"ansible.cli.{command}", *args, **kwargs)
 
 
-def load_inventory(path):
-    return json.loads(ansible("inventory", "-i", str(path), "--list").stdout)
-
-
 CLIENTS = ("100.100.10.2", "100.100.10.3")
 TOKEN = "eyJ" + "validation-only-not-a-real-token-" * 3
 

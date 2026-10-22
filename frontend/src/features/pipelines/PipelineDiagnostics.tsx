@@ -107,7 +107,7 @@ export function PipelineDiagnostics({
               <dt>Learning calls</dt>
               <dd>{node.learn_count}</dd>
             </div>
-            {node.learned_updates !== undefined && (
+            {node.learned_updates != null && (
               <div>
                 <dt>Successful learning updates</dt>
                 <dd>{node.learned_updates}</dd>
@@ -134,7 +134,7 @@ export function PipelineDiagnostics({
               <dd>{(node.learn_time_ns / 1_000_000).toFixed(3)} ms total</dd>
             </div>
           </dl>
-          {node.learned_updates !== undefined && (
+          {node.learned_updates != null && (
             <p className="pl-help">
               Successful updates include restored history. Call counts cover the
               current diagnostics session.

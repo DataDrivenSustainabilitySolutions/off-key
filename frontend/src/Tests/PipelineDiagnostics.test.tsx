@@ -116,6 +116,13 @@ describe("pipeline execution inspection", () => {
     );
     expect(onSelect).toHaveBeenCalledWith("projection");
   });
+  it("omits learning updates until the runtime reports one", () => {
+    const snapshot = state();
+    Object.assign(snapshot.nodes.scaler!, { learned_updates: null });
+    render(<PipelineDiagnostics state={snapshot} selected="scaler" expectedRunId="run" />);
+    expect(screen.queryByText("Successful learning updates")).toBeNull();
+    expect(screen.queryByText(/include restored history/)).toBeNull();
+  });
   it("does not interpret an unquantified minimum as ready", () => {
     const snapshot = state();
     Object.assign(snapshot.nodes.scaler!, {

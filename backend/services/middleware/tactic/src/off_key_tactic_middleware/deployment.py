@@ -6,7 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 
-import docker
+import docker.errors
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.models import DeploymentMaintenance, MonitoringService, PipelineRun

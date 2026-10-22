@@ -5,11 +5,12 @@ spell each transition once.
 """
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from off_key_core.db.models import MonitoringService, MqttTopic
 from off_key_core.db.pipeline_locks import complete_stopped_runs
 from off_key_core.schemas.radar import RadarOperationalStatus
-from sqlalchemy import delete
+from sqlalchemy import CursorResult, delete
 
 COLLECTION_CHANGED_DETAIL = "Collection changed. Restart with fresh calibration."
 
@@ -56,8 +57,11 @@ async def purge_service_rows(session, service_ids: list[str]) -> int:
     await session.execute(
         delete(MqttTopic).where(MqttTopic.service_id.in_(service_ids))
     )
-    result = await session.execute(
-        delete(MonitoringService).where(MonitoringService.id.in_(service_ids))
+    result = cast(
+        CursorResult[Any],
+        await session.execute(
+            delete(MonitoringService).where(MonitoringService.id.in_(service_ids))
+        ),
     )
     return int(result.rowcount or 0)
 

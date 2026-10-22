@@ -5,7 +5,8 @@ from threading import RLock
 from uuid import uuid4
 
 from off_key_core.schemas.system import SystemConnection
-from paho.mqtt.client import MQTT_ERR_SUCCESS, CallbackAPIVersion, Client
+from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
+from paho.mqtt.enums import CallbackAPIVersion
 from socks import SOCKS5
 
 from ..config.system_live import LiveCredential, LiveSocksProxy

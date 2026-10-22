@@ -1,11 +1,12 @@
 """Recover persisted RADAR creation intent after request/process interruption."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .radar_environment import build_radar_config_fingerprint, build_radar_environment
@@ -86,7 +87,7 @@ class RadarLifecycleController:
 
         workload = await self.workloads.ensure(service_id, environment)
         await self.workloads.validate_started(workload)
-        result = await self.session.execute(
+        attach = (
             update(MonitoringService)
             .where(
                 MonitoringService.id == service_id,
@@ -97,6 +98,7 @@ class RadarLifecycleController:
             )
             .values(container_id=workload.id)
         )
+        result = cast(CursorResult[Any], await self.session.execute(attach))
         await self.session.commit()
         service = await self.session.get(
             MonitoringService, service_id, populate_existing=True

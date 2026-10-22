@@ -17,7 +17,8 @@ from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
-from paho.mqtt.client import MQTT_ERR_SUCCESS, CallbackAPIVersion, Client
+from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
+from paho.mqtt.enums import CallbackAPIVersion
 from sqlalchemy import select, text, update
 
 from ..config.config import get_tactic_settings

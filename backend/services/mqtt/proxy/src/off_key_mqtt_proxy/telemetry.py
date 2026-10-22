@@ -7,11 +7,13 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
+from typing import Any, TypeGuard, cast
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
 from off_key_core.utils.enum import HealthStatus
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
+from sqlalchemy import CursorResult
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +34,7 @@ class PermanentRecordError(Exception):
     """A database rejection that retrying the same record cannot resolve."""
 
 
-def _is_permanent_record_error(error: SQLAlchemyError) -> bool:
+def _is_permanent_record_error(error: SQLAlchemyError) -> TypeGuard[DBAPIError]:
     if not isinstance(error, DBAPIError):
         return False
     sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
@@ -425,7 +427,7 @@ class DatabaseWriter:
 
             async with self._session_factory() as session:
                 try:
-                    insert_result = await session.execute(stmt)
+                    insert_result = cast(CursorResult[Any], await session.execute(stmt))
                     rowcount = insert_result.rowcount
                     records_written = (
                         batch_size

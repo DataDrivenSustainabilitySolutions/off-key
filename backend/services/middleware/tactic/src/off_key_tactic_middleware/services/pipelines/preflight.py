@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-import docker
+import docker.errors
 from docker.types import Resources, RestartPolicy, ServiceMode
 from off_key_core.models.pipelines import pipeline_catalog_id
 

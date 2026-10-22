@@ -3,6 +3,7 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 class RadarAdmissionSettings(BaseSettings):
@@ -13,7 +14,11 @@ class RadarAdmissionSettings(BaseSettings):
     RADAR_LIFECYCLE_VERSION: int | None = Field(default=None, ge=1)
 
 
-async def require_monitor_admission(*, settings=None, session_factory=None) -> None:
+async def require_monitor_admission(
+    *,
+    settings: RadarAdmissionSettings | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
     """Fail closed before a managed worker starts its detector or subscribes."""
     settings = settings or RadarAdmissionSettings()
     if settings.RADAR_LIFECYCLE_VERSION is None:

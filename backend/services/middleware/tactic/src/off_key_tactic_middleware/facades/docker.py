@@ -3,7 +3,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-import docker
+import docker.errors
 from docker import DockerClient
 from off_key_core.config.logs import log_performance, logger
 
@@ -94,7 +94,7 @@ class AsyncDocker:
 
 
 async def get_workload_status_and_labels(
-    async_docker: AsyncDocker, workload_id: str
+    async_docker: AsyncDocker, workload_id: str | None
 ) -> tuple[str, dict[str, str]]:
     """Return the newest task state and the labels of a RADAR Swarm service.
 
@@ -120,7 +120,7 @@ async def get_workload_status_and_labels(
 
 
 async def get_workload_docker_status(
-    async_docker: AsyncDocker, workload_id: str
+    async_docker: AsyncDocker, workload_id: str | None
 ) -> str:
     """Return only the newest task state of a RADAR Swarm service."""
     return (await get_workload_status_and_labels(async_docker, workload_id))[0]

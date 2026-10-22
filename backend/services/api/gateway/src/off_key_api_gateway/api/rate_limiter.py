@@ -25,7 +25,9 @@ class ProxySettings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def trusted_proxy_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+def trusted_proxy_networks() -> tuple[
+    ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+]:
     return tuple(
         ipaddress.ip_network(cidr, strict=False)
         for cidr in ProxySettings().TRUSTED_PROXY_CIDRS

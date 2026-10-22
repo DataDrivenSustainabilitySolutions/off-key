@@ -23,9 +23,9 @@ class ModelInfo(BaseModel):
         description="Model family (e.g., 'distance', 'forest', 'svm')",
     )
     name: str = Field(..., description="Human-readable model name")
-    description: str | None = Field(None, description="Model description")
-    complexity: str | None = Field(None, description="Computational complexity")
-    memory_usage: str | None = Field(None, description="Memory usage level")
+    description: str | None = Field(default=None, description="Model description")
+    complexity: str | None = Field(default=None, description="Computational complexity")
+    memory_usage: str | None = Field(default=None, description="Memory usage level")
     strategy: str = Field(
         default="static_baseline",
         description="Executable static monitoring lane",

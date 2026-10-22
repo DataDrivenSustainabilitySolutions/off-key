@@ -1,5 +1,7 @@
 """Public lightweight monitoring graph contracts and composition entry points."""
 
+from collections.abc import Mapping, Sequence
+
 from ..schemas.pipelines import BoundInput, PipelineDefinition
 from ..schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
 from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
@@ -40,7 +42,7 @@ def derive_monitoring_config(definition: PipelineDefinition):
 
 
 def execution_fingerprint(
-    definition: PipelineDefinition, bindings: list[BoundInput | dict]
+    definition: PipelineDefinition, bindings: Sequence[BoundInput | Mapping]
 ) -> str:
     normalized = [
         BoundInput.model_validate(item).model_dump(mode="json") for item in bindings

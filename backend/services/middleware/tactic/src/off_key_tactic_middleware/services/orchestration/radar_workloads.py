@@ -7,7 +7,7 @@ import asyncio
 from contextlib import suppress
 from typing import Any
 
-import docker
+import docker.errors
 from docker.types import Resources, RestartPolicy, SecretReference, ServiceMode
 
 from ...config.config import get_tactic_settings
@@ -276,7 +276,7 @@ class RadarWorkloadManager:
 
     async def get_status_and_labels(
         self,
-        workload_id: str,
+        workload_id: str | None,
     ) -> tuple[str, dict[str, str]]:
         """Return normalized status and labels for a service."""
         return await get_workload_status_and_labels(self.async_docker, workload_id)

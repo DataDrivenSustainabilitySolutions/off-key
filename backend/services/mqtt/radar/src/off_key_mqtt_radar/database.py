@@ -16,7 +16,7 @@ import time
 from collections import deque
 from contextlib import suppress
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from off_key_core.db.table_contracts import (
     monitoring_evidence_table,
@@ -27,6 +27,7 @@ from sqlalchemy import (
     JSON,
     TIMESTAMP,
     Column,
+    CursorResult,
     Float,
     Table,
     Text,
@@ -34,8 +35,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.schema import MetaData
 
 from .config.config import MQTTRadarConfig
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 # Lazy-initialized async session factory
-_radar_async_session_factory = None
+_radar_async_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 # Minimal table mapping used for anomaly inserts without importing
 # off_key_core.db.models.
@@ -89,7 +89,7 @@ class CheckpointOwnershipLost(RuntimeError):
     """Another managed worker has advanced this service's durable snapshot."""
 
 
-def get_radar_async_session_factory():
+def get_radar_async_session_factory() -> async_sessionmaker[AsyncSession]:
     """
     Get or create async session factory using RADAR_DATABASE_URL env var.
 
@@ -110,12 +110,8 @@ def get_radar_async_session_factory():
             max_overflow=0,
         )
 
-        _radar_async_session_factory = sessionmaker(
-            bind=engine,
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False,
-            class_=AsyncSession,
+        _radar_async_session_factory = async_sessionmaker(
+            bind=engine, autoflush=False, expire_on_commit=False
         )
 
         logger.info("Created RADAR async session factory")
@@ -137,7 +133,7 @@ class DatabaseWriter:
     def __init__(
         self,
         config: MQTTRadarConfig,
-        session_factory=None,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
         *,
         managed_checkpoints: bool = False,
     ):
@@ -321,17 +317,20 @@ class DatabaseWriter:
             payload = json.dumps({"stage": "failed", "error": error[:4000]})
         async with self._flush_lock, self.session_factory() as session:
             await self._assert_checkpoint_ownership(session)
-            updated = await session.execute(
-                text(
-                    "UPDATE monitoring_pipeline_runs SET status = 'failed', "
-                    "error = :error, ended_at = now() "
-                    "WHERE id = :run_id AND service_id = :service_id"
+            updated = cast(
+                CursorResult[Any],
+                await session.execute(
+                    text(
+                        "UPDATE monitoring_pipeline_runs SET status = 'failed', "
+                        "error = :error, ended_at = now() "
+                        "WHERE id = :run_id AND service_id = :service_id"
+                    ),
+                    {
+                        "error": error[:4000],
+                        "run_id": execution.run_id,
+                        "service_id": self._checkpoint_service_id,
+                    },
                 ),
-                {
-                    "error": error[:4000],
-                    "run_id": execution.run_id,
-                    "service_id": self._checkpoint_service_id,
-                },
             )
             if updated.rowcount != 1:
                 raise self._lose_checkpoint_ownership()
@@ -542,7 +541,9 @@ class DatabaseWriter:
             and not await self._can_publish_pipeline_status(session, service_id)
         ):
             return
-        result = await session.execute(HEARTBEAT_UPDATE, parameters)
+        result = cast(
+            CursorResult[Any], await session.execute(HEARTBEAT_UPDATE, parameters)
+        )
         if self.managed_checkpoints and result.rowcount != 1:
             raise self._lose_checkpoint_ownership()
 

@@ -28,7 +28,7 @@ fails when a workflow file is missing here or a release gate is not marked.
 | `docker-publish.yml` | Docker Publish | `main` and `v*` tags | `publish`: pushes and attests service images in GHCR | yes |
 | `docker-validate.yml` | Docker Validate | Pull requests, merge queue | `docker-validate / docker-validate`: builds the image matrix | no |
 | `docker-images.yml` | Docker Images | Called by Docker Validate and Docker Publish | Reusable image matrix | no |
-| `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**` or `zensical.toml`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
+| `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**`, `zensical.toml` or `requirements-docs.txt`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
 | `deploy-production.yml` | Deploy Production | Completion of every release gate on `main`, manual | Deploys the newest commit whose release gates all succeeded ([Production releases](../operations/production.md)) | no |
 | `pr-triage.yml` | PR triage | Pull requests opened, reopened or marked ready | Assigns a human author and requests the maintainer's review; never fails | no |
 | CodeQL default setup | CodeQL | Repository settings | `CodeQL` | no |
@@ -49,7 +49,10 @@ npm --prefix frontend ci
 npm --prefix frontend run lint
 npm --prefix frontend test
 npm --prefix frontend run build
+python -m pip install -r requirements-docs.txt && zensical build --clean --strict
 ```
+
+Preview the documentation with `zensical serve`.
 
 Run the smallest relevant tests while developing, then run the complete gate before requesting review.
 

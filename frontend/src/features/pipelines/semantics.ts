@@ -86,4 +86,3 @@ export function sampledState(state: string) {
 }
 
 export const strategyLabel = (strategy: string) => strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline";
-

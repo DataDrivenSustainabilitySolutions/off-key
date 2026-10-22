@@ -531,4 +531,3 @@ export function upsertSystemEntity(baseline: SystemDocument, kind: SystemEntityK
   }
   return validateSystemDocument(candidate);
 }
-

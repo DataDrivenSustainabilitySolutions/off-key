@@ -45,4 +45,3 @@ export const predecessorEntity = (predecessor?: PipelineServiceView) => predeces
 export const predecessorTarget = (targets: MonitoringTarget[], predecessor?: PipelineServiceView) =>
   targets.find((target) => target.inputs.some((input) =>
     predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;
-

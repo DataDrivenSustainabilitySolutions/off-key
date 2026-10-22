@@ -61,4 +61,3 @@ describe("replacement setup", () => {
     expect(["a", "b", "c", "d"].map(owned)).toEqual([false, false, true, false]);
   });
 });
-

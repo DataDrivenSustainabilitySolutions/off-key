@@ -59,4 +59,3 @@ export const setSlotUnit = (slots: Slots, id: string, unit: string): Slots =>
   slots.map((slot) => (slot.id === id ? { ...slot, unit: unit || null } : slot));
 
 export const removeSlot = (slots: Slots, id: string): Slots => slots.filter((slot) => slot.id !== id);
-

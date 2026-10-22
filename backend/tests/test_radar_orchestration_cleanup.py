@@ -22,6 +22,7 @@ from off_key_tactic_middleware.services.orchestration.radar_workloads import (
 )
 
 from tests.support.docker import FakeAsyncDocker
+from tests.support.orchestration import purge_results, scalars_result
 
 NOT_FOUND = docker.errors.NotFound("missing")
 TASK_LABELS = {"radar_model_type": "knn", "monitoring_strategy": "static_baseline"}
@@ -69,23 +70,6 @@ def _swarm_service(*tasks, labels=None):
         tasks=MagicMock(return_value=list(tasks)),
         attrs={"Spec": {"Labels": labels or {}}},
     )
-
-
-def _first(row):
-    result = MagicMock()
-    result.scalars.return_value.first.return_value = row
-    return result
-
-
-def _ids(*values):
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = list(values)
-    return result
-
-
-def _deletion(lookup):
-    """Lookup, pipeline-run release, topic delete and service delete results."""
-    return [lookup, MagicMock(rowcount=0), MagicMock(rowcount=0), MagicMock(rowcount=1)]
 
 
 def _session(execute=None, *, row=None):
@@ -232,7 +216,7 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     fake_docker = _fake_docker(
         services=[first, second], service={"svc-1": first, "svc-2": second}
     )
-    session = _session(_deletion(_ids("svc-1")))
+    session = _session(purge_results(scalars_result(all=["svc-1"])))
 
     summary = await _orchestrator(
         monkeypatch, session, fake_docker
@@ -280,7 +264,7 @@ async def test_teardown_managed_radar_workloads_cleans_up_successes_on_partial_f
         services=[ok_workload, broken_workload],
         service={"svc-ok": ok_workload, "svc-broken": broken_workload},
     )
-    session = _session(_deletion(_ids("svc-ok")))
+    session = _session(purge_results(scalars_result(all=["svc-ok"])))
 
     with pytest.raises(RuntimeError, match=REMOVAL_FAILED):
         await _orchestrator(
@@ -405,7 +389,7 @@ async def test_removal_deletes_db_row_after_removing_workload(
     db_row = _db_row()
     workload = MagicMock(id="ctr-1")
     fake_docker = _fake_docker(service=workload if workload_present else NOT_FOUND)
-    session = _session(_deletion(_first(db_row)), row=db_row)
+    session = _session(purge_results(scalars_result(first=db_row)), row=db_row)
     service = _orchestrator(monkeypatch, session, fake_docker)
 
     if operation == "stop":
@@ -435,7 +419,7 @@ async def test_removal_returns_false_when_service_not_found(
     monkeypatch, operation, kwargs
 ):
     fake_docker = _fake_docker(service=MagicMock())
-    session = _session(_first(None))
+    session = _session(scalars_result(first=None))
     service = _orchestrator(monkeypatch, session, fake_docker)
 
     if operation == "stop":
@@ -493,7 +477,7 @@ async def test_get_radar_service_resolves_identifier(
     fake_docker = _fake_docker(
         service=_swarm_service(_task(0, "running"), labels=labels)
     )
-    session = _session(_first(db_row), row=db_row)
+    session = _session(scalars_result(first=db_row), row=db_row)
 
     detail = await _orchestrator(monkeypatch, session, fake_docker).get_radar_service(
         **kwargs
@@ -517,7 +501,7 @@ async def test_delete_radar_service_leaves_db_row_when_workload_remove_fails(
     workload = MagicMock(id="ctr-1")
     workload.remove.side_effect = RuntimeError("boom")
     fake_docker = _fake_docker(service=workload)
-    session = _session(_first(db_row), row=db_row)
+    session = _session(scalars_result(first=db_row), row=db_row)
 
     service = _orchestrator(monkeypatch, session, fake_docker)
 
@@ -571,7 +555,7 @@ async def test_create_radar_service_never_launches_before_intent_commit(
     monkeypatch,
     selected_collection,
 ):
-    session = _session(_first(None))
+    session = _session(scalars_result(first=None))
     session.add = MagicMock()
     session.commit.side_effect = RuntimeError("commit failed")
     monkeypatch.setattr(
@@ -610,8 +594,10 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
         operational_stage="starting",
         operational_updated_at=None,
     )
-    ownership = _ids()
-    session = _session([ownership, *_deletion(_first(db_row)), ownership], row=db_row)
+    ownership = scalars_result()
+    session = _session(
+        [ownership, *purge_results(scalars_result(first=db_row)), ownership], row=db_row
+    )
     session.add = MagicMock()
     monkeypatch.setattr(
         radar_module,
@@ -660,7 +646,7 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
         container_name="radar-existing",
         mqtt_topic=["telemetry/charger-1/sine"],
     )
-    session = _session(_first(db_row), row=db_row)
+    session = _session(scalars_result(first=db_row), row=db_row)
     monkeypatch.setattr(
         radar_module,
         "build_radar_environment",

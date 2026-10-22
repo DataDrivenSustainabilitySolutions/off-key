@@ -16,6 +16,8 @@ from off_key_tactic_middleware.api.v1 import radar as radar_api
 from off_key_tactic_middleware.services.orchestration import radar, radar_queries
 from pydantic import ValidationError
 
+from tests.support.orchestration import scalars_result
+
 
 def configuration():
     return RadarStartConfig(
@@ -42,10 +44,7 @@ def orchestration(record):
     service = object.__new__(radar.RadarOrchestrationService)
     service.session = AsyncMock()
     service.session.scalar.return_value = None
-    result = MagicMock()
-    result.scalars.return_value.first.return_value = record
-    result.scalars.return_value.all.return_value = [record]
-    service.session.execute.return_value = result
+    service.session.execute.return_value = scalars_result(all=[record], first=record)
     service.workloads = SimpleNamespace(
         get_status_and_labels=AsyncMock(return_value=("running", {}))
     )

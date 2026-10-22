@@ -115,13 +115,8 @@ async def member_database():
 
 @pytest.fixture
 def mock_async_session():
-    """Create a mock async database session."""
-    session = AsyncMock()
-    session.execute = AsyncMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-    session.close = AsyncMock()
-    return session
+    """Create a mock async database session; every method is already awaitable."""
+    return AsyncMock()
 
 
 @pytest.fixture

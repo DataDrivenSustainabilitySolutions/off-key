@@ -14,12 +14,7 @@ from off_key_tactic_middleware.services.reconciliation import (
 from off_key_tactic_middleware.services.time_utils import coerce_utc
 
 from tests.support.docker import FakeAsyncDocker
-
-
-def _query_result(services):
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = services
-    return result
+from tests.support.orchestration import purge_results, scalars_result
 
 
 def _service(
@@ -81,12 +76,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
 
     session = AsyncMock()
     session.execute = AsyncMock(
-        side_effect=[
-            _query_result([old_service, recent_service]),
-            MagicMock(rowcount=0),
-            MagicMock(rowcount=0),
-            MagicMock(rowcount=1),
-        ]
+        side_effect=purge_results(scalars_result(all=[old_service, recent_service]))
     )
     session.get.side_effect = [old_service, recent_service]
 
@@ -107,7 +97,7 @@ async def test_reconciliation_revives_inactive_rows_when_docker_is_running():
     )
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([service]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
     session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
@@ -135,7 +125,7 @@ async def test_reconciliation_retains_desired_running_legacy_claims(previous_sta
     )
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([service]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
     session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
@@ -155,7 +145,7 @@ async def test_reconciliation_skips_retry_later_statuses_without_mutation():
         docker_statuses=["error"],
     )
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([service]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
     session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
@@ -192,7 +182,7 @@ async def test_reconciliation_keeps_running_rows_even_with_stale_heartbeat():
     )
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([service]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
     session.get.return_value = service
 
     await reconciliation._reconcile_with_session(session)
@@ -296,7 +286,7 @@ async def test_one_failing_row_does_not_block_the_rest_of_the_pass():
         retention_hours=24, docker_statuses=["running", "running"]
     )
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([broken, healthy]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[broken, healthy]))
     session.get.side_effect = [RuntimeError("constraint failed"), healthy]
 
     await reconciliation._reconcile_with_session(session)
@@ -315,7 +305,7 @@ async def test_lost_database_connection_still_aborts_the_pass():
         retention_hours=24, docker_statuses=["running", "running"]
     )
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_query_result([first, second]))
+    session.execute = AsyncMock(return_value=scalars_result(all=[first, second]))
     session.get.side_effect = [OperationalError("SELECT", {}, Exception()), second]
 
     with pytest.raises(OperationalError):

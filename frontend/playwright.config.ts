@@ -15,6 +15,8 @@ const chromiumUse = {
 
 const SETUP_FILES = /.*\.setup\.ts/;
 const SYSTEM_SPECS = /system-workspace\.spec\.ts/;
+// Route-mocked journeys that need only the frontend.
+const MOCKED_SPECS = /(details-echarts|tandem-charts)\.spec\.ts/;
 // These journeys need TACTIC_PIPELINE_AUTHORING_ENABLED=true; the others need it false.
 const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/;
 
@@ -49,12 +51,17 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: [SETUP_FILES, SYSTEM_SPECS, PIPELINE_SPECS],
+      testIgnore: [SETUP_FILES, SYSTEM_SPECS, PIPELINE_SPECS, MOCKED_SPECS],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
       },
       dependencies: ["auth-setup"],
+    },
+    {
+      name: "mocked-ui",
+      testMatch: MOCKED_SPECS,
+      use: { ...chromiumUse, storageState: { cookies: [], origins: [] } },
     },
     {
       name: "pipeline-workspace",

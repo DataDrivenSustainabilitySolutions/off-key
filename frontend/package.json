@@ -11,8 +11,9 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "playwright test --project=chromium --project=system-workspace",
-    "test:e2e:headed": "playwright test --project=chromium --project=system-workspace --headed",
+    "test:e2e": "playwright test --project=mocked-ui --project=chromium --project=system-workspace",
+    "test:e2e:headed": "playwright test --project=mocked-ui --project=chromium --project=system-workspace --headed",
+    "test:e2e:mocked": "playwright test --project=mocked-ui",
     "test:e2e:pipelines": "playwright test --project=pipeline-workspace --no-deps"
   },
   "dependencies": {

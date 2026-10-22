@@ -80,3 +80,14 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Run route-mocked browser journeys
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npx vite preview --port 5173 --strictPort > "$RUNNER_TEMP/vite-preview.log" 2>&1 &
+          curl --fail --retry 30 --retry-all-errors --retry-delay 1 http://localhost:5173 > /dev/null
+          # The chart journeys compare canvas pixels, so they use deployment smoke's browser image.
+          playwright_version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host --volume "${PWD}:/work" --workdir /work --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e:mocked

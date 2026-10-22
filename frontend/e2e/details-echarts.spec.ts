@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { zoomChart } from "./helpers/chart";
 import { setAppearance } from "./helpers/appearance";
+import { installDetailsMockApi } from "./helpers/detailsMockApi";
 
 const CHARGER_ID = "e2e-echarts";
 const INITIAL_POINTS = [
@@ -87,34 +88,6 @@ const ADAPTIVE_SERVICE = {
   },
 };
 
-/** Serves a polled feed: its first page, then `later` once released. */
-const routeFeed = async (
-  page: Page,
-  path: string,
-  first: unknown[],
-  later: unknown[],
-) => {
-  let released = false;
-  await page.route(`**${path}*`, async (route) => {
-    const isIncremental = new URL(route.request().url()).searchParams.has(
-      "after_created",
-    );
-    await route.fulfill({ json: !isIncremental ? first : released ? later : [] });
-  });
-  return async () => {
-    released = true;
-    const response = page.waitForResponse(
-      (candidate) =>
-        candidate.url().includes(path) &&
-        candidate.url().includes("after_created"),
-    );
-    await page.evaluate(() =>
-      document.dispatchEvent(new Event("visibilitychange")),
-    );
-    await response;
-  };
-};
-
 const installDetailsApi = async (
   page: Page,
   {
@@ -126,30 +99,11 @@ const installDetailsApi = async (
     delayedEvidence = [] as unknown[],
   } = {},
 ) => {
-  await page.route(`**/v1/telemetry/${CHARGER_ID}/type*`, async (route) => {
-    await route.fulfill({ json: telemetryTypes });
+  const api = await installDetailsMockApi(page, {
+    chargerId: CHARGER_ID, sensors: telemetryTypes, telemetry, laterTelemetry: [NEW_POINT],
+    evidence: initialEvidence, laterEvidence: delayedEvidence, anomalies, monitors: services,
   });
-  await page.route(`**/v1/anomalies?charger_id=${CHARGER_ID}*`, async (route) => {
-    await route.fulfill({ json: anomalies });
-  });
-  await page.route("**/v1/monitors/all?*", async (route) => {
-    await route.fulfill({ json: services });
-  });
-
-  return {
-    publishNewTelemetry: await routeFeed(
-      page,
-      `/v1/telemetry/${CHARGER_ID}/data`,
-      telemetry,
-      [NEW_POINT],
-    ),
-    releaseEvidence: await routeFeed(
-      page,
-      "/v1/monitors/evidence/chart",
-      initialEvidence,
-      delayedEvidence,
-    ),
-  };
+  return { publishNewTelemetry: api.publishTelemetry, releaseEvidence: api.releaseEvidence };
 };
 
 test.describe("Details telemetry ECharts", () => {
@@ -158,25 +112,7 @@ test.describe("Details telemetry ECharts", () => {
     colorScheme: "light",
     contextOptions: { reducedMotion: "reduce" },
     viewport: { width: 1440, height: 1000 },
-  });
-
-  test.beforeEach(async ({ page }) => {
-    await page.route("**/v1/system", async (route) => {
-      await route.fulfill({
-        json: {
-          document: { streams: [
-            { id: "voltage", category: "Voltage" }, { id: "current", category: "Current" },
-          ] },
-          runtime: { bindings: {
-            voltage: { entity_id: CHARGER_ID, telemetry_key: "systemVoltage" },
-            current: { entity_id: CHARGER_ID, telemetry_key: "systemCurrent" },
-          } },
-        },
-      });
-    });
-    await page.addInitScript(() => {
-      localStorage.setItem("vite-ui-theme", "light");
-    });
+    storageState: { cookies: [], origins: [] },
   });
 
   test("pins global navbar actions to the right edge on wide screens", async ({

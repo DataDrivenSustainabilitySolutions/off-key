@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { mergeReadingHistory } from "@/features/explorer/readingMonitoring";
 import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
@@ -25,7 +25,6 @@ beforeEach(() => {
     throw new Error("Unexpected endpoint");
   });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("reading monitoring identity and history", () => {
   it("sorts and bounds history, updates corrected samples, and discards invalid points", () => {

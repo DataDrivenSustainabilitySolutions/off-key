@@ -1,7 +1,7 @@
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, createMemoryRouter, RouterProvider, Link } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitoringServiceCreate } from "@/features/monitoring/MonitoringServiceCreate";
 import { apiUtils } from "@/lib/api-client";
 import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
@@ -25,7 +25,6 @@ beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
     url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", service_id: "new-service" } : models);
   vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
 });
-afterEach(cleanup);
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {
   const onStarted = vi.fn(async () => {});
   render(<MemoryRouter><MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="room" initialReading="temperature"

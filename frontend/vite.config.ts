@@ -34,6 +34,10 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/Tests/setup.ts'],
+    // Every test starts from restored spies, globals and environment variables.
+    restoreMocks: true,
+    unstubGlobals: true,
+    unstubEnvs: true,
     exclude: [...configDefaults.exclude, 'e2e/**/*'],
     coverage: {
       provider: 'v8',

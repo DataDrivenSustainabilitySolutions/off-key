@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
@@ -65,7 +65,6 @@ async function advanceRuntime(milliseconds: number) {
 beforeEach(() => {
   vi.resetAllMocks();
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("saved system persistence", () => {
   it("does not request or write saved systems for anonymous previews", async () => {

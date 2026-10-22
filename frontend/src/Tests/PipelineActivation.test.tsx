@@ -1,12 +1,11 @@
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PipelineActivation } from "@/features/pipelines/PipelineActivation";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeDefinition } from "@/features/pipelines/contracts";
@@ -82,11 +81,8 @@ const operation = {
   updated_at: "2026-10-16T12:00:00Z",
 };
 beforeEach(() => {
-  vi.clearAllMocks();
-  sessionStorage.clear();
   clearNavigationDrafts();
 });
-afterEach(cleanup);
 const mount = (input = props()) =>
   render(
     <MemoryRouter>

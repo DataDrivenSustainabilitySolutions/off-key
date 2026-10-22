@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import { createEmptySystem } from "@/features/catalogue/systemDocument";
 import {
@@ -109,9 +109,6 @@ function harness(canStart = true) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-});
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("generic live telemetry receipts", () => {

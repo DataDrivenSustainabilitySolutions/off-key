@@ -147,7 +147,6 @@ const getSubmittedPayload = (): AnomalyDetectionRequest => {
 
 describe("<Monitoring /> static setup", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/models")) return Promise.resolve(modelCatalog);
       if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);

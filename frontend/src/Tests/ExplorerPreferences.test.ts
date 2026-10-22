@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createDefaultExplorerPreferences,
   loadExplorerPreferences,
@@ -40,10 +40,6 @@ const membershipGroups = (count: number): PersonalGroup[] =>
     ),
   );
 
-beforeEach(() => {
-  localStorage.clear();
-  vi.restoreAllMocks();
-});
 
 describe("explorer preference persistence", () => {
   it("persists service and reading favourites by stable identity without altering archived groups or another account", () => {

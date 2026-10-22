@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { act, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TelemetryChartOption } from "@/lib/telemetry-chart";
 
@@ -81,7 +81,6 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", MockResizeObserver);
 });
 
-afterEach(() => vi.unstubAllGlobals());
 
 describe("EChart lifecycle", () => {
   it("initializes once, reuses the instance, and applies stable lazy updates", async () => {

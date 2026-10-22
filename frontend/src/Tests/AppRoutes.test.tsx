@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,10 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
   router.dispose();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
 });
 
 describe("application route recovery", () => {

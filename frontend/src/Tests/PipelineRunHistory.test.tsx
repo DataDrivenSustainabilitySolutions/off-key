@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { pipelinesApi } from "@/features/pipelines/api";
 import { PipelineRunHistory } from "@/features/pipelines/PipelineRunHistory";
@@ -32,7 +32,6 @@ const listed = () => screen.getAllByRole("link").map((link) => link.textContent)
 
 describe("linked monitoring history", () => {
   beforeEach(() => vi.resetAllMocks());
-  afterEach(cleanup);
 
   it("pages older runs without repeating any and links each to its service", async () => {
     vi.mocked(pipelinesApi.history)

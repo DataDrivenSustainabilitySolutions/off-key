@@ -1,8 +1,8 @@
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ isAdmin: true }) }));
 
-import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 import type { ApiRequestOptions } from "../lib/api-client";
 import Monitoring from "../pages/Monitoring";
@@ -33,14 +33,9 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.clearAllMocks();
   get.mockImplementation(async (url) => url.includes("models") ? {} : []);
 });
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
 
 it("shows only monitoring services assigned to the selected entity", async () => {
   get.mockImplementation(async (url) => {

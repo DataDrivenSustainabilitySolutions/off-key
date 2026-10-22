@@ -89,8 +89,6 @@ function renderDetails(initialEntry = "/details/123") {
 
 describe("<Details />", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
     mockChartAnomalyProps.length = 0;
     mockApiGet.mockResolvedValue([]);
     mockLoadAllTelemetryTypes.mockResolvedValue([

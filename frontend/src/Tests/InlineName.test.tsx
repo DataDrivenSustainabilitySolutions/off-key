@@ -1,15 +1,12 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InlineName } from "@/features/catalogue/InlineName";
-
-afterEach(cleanup);
 
 const edit = () => {
   fireEvent.click(screen.getByRole("button", { name: "Rename title" }));

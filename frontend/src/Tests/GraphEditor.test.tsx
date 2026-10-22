@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCatalog,
   normalizeDefinition,
@@ -41,7 +41,6 @@ function beforeUnload() {
 }
 
 beforeEach(clearNavigationDrafts);
-afterEach(cleanup);
 
 describe("shared graph editing controller", () => {
   it("retains layout undo, redo, and the unload guard through navigation", () => {

@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/features/catalogue/collectionRules";
 import { scopeKey } from "@/features/catalogue/collectionRules";
@@ -50,8 +50,6 @@ function lastChange(): RuleChange {
   return vi.mocked(apiUtils.post).mock.lastCall![1] as RuleChange;
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
-afterEach(cleanup);
 
 describe("recording rule composition", () => {
   it.each(["policy first", "include first"])("preserves policy and admission through Apply and Undo: %s", async order => {

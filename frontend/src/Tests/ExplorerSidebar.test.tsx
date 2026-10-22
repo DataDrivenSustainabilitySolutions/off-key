@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,9 +54,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
   if (initialScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", initialScrollTo);
   else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   if (initialWindowObserver) Object.defineProperty(window, "ResizeObserver", initialWindowObserver);

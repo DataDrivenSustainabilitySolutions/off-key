@@ -1,5 +1,5 @@
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCatalog,
   normalizeDefinition,
@@ -51,7 +51,6 @@ const pipeline = (): GraphDocument => ({
 });
 
 beforeEach(() => { clearNavigationDrafts(); });
-afterEach(cleanup);
 
 describe("component placement", () => {
   it("places a new component beside its anchor without covering another card", () => {

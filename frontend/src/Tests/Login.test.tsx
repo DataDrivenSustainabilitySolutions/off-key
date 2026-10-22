@@ -27,8 +27,6 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   fetchMock = vi.fn<typeof fetch>();
   globalThis.fetch = fetchMock;
-  localStorage.clear();
-  sessionStorage.clear();
   mockNavigate.mockReset();
   vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", undefined);
   vi.stubGlobal("location", { hostname: "localhost" });
@@ -37,8 +35,6 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.resetAllMocks();
-  vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
 });
 
 const renderLogin = () =>

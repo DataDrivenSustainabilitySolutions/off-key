@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { useMonitoringServices } from "@/features/monitoring/useMonitoringServices";
 
@@ -7,18 +7,12 @@ vi.mock("@/lib/api-client", () => ({
   apiUtils: { get: vi.fn(), patch: vi.fn() },
 }));
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.mocked(apiUtils.get).mockResolvedValue({
     services: [],
     authoring_enabled: true,
     selected_service_id: "run",
     pipeline_state: { run_id: "run" },
   });
-});
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
 });
 
 describe("coordinated monitoring snapshots", () => {

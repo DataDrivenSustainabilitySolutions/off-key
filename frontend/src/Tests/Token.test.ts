@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { getTokenPayload, getUserIdFromToken, isTokenExpired } from "@/auth/token";
 
@@ -49,7 +49,6 @@ describe("getUserIdFromToken", () => {
 });
 
 describe("isTokenExpired", () => {
-  afterEach(() => vi.useRealTimers());
 
   it("compares the exp claim with the current time in seconds", () => {
     vi.useFakeTimers();

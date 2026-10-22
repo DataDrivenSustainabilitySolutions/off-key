@@ -1,7 +1,7 @@
 import { Suspense } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router-dom";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { captureRouter, auth } = vi.hoisted(() => ({
   captureRouter: vi.fn<(routes: RouteObject[]) => unknown>(),
@@ -37,7 +37,6 @@ beforeEach(() => {
   auth.isAuthenticated = true; auth.isLoading = false;
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function visit(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });

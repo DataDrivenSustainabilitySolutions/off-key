@@ -40,7 +40,6 @@ const collectSourceFiles = (dirPath: string): string[] => {
 };
 
 afterEach(() => {
-  vi.restoreAllMocks();
   setClientLoggerProductionOverride(null);
 });
 

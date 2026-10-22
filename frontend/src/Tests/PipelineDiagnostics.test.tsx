@@ -1,20 +1,15 @@
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PipelineDiagnostics,
   type PipelineState,
 } from "@/features/pipelines/PipelineDiagnostics";
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
 const state = (): PipelineState => ({
   run_id: "run",
   revision_id: "revision",

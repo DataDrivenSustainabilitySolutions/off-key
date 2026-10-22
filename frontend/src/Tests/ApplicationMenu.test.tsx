@@ -1,14 +1,13 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicationMenu } from "@/components/ApplicationMenu";
 import { BrandHome } from "@/components/BrandHome";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const auth = vi.hoisted(() => ({ isAuthenticated: true, member: null as { email: string } | null, logout: vi.fn() }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
-beforeEach(() => localStorage.clear());
-afterEach(() => { cleanup(); auth.isAuthenticated = true; auth.member = null; vi.clearAllMocks(); document.documentElement.className = ""; });
+afterEach(() => { auth.isAuthenticated = true; auth.member = null; document.documentElement.className = ""; });
 
 function Location() {
   const location = useLocation();

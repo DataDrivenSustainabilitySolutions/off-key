@@ -1,6 +1,6 @@
 import { useEffect, type ComponentProps } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EChart } from "@/components/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -147,7 +147,6 @@ const staticEvidence = (timestamp: string, trackerIds: string[]): MonitoringChar
 });
 
 beforeEach(() => {
-  localStorage.clear();
   intersectionCallback = undefined;
   chartMock.mounted.mockClear();
   chartMock.disposed.mockClear();
@@ -155,7 +154,6 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
 });
 
-afterEach(() => vi.unstubAllGlobals());
 
 describe("DynamicTelemetryChart", () => {
   it("observes a chart that first renders without telemetry data", async () => {

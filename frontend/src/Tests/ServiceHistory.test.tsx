@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useServiceHistory } from "@/features/monitoring/useServiceHistory";
 import { ReadingHistoryCache } from "@/features/explorer/readingHistoryCache";
 import type { MonitoringInput } from "@/features/monitoring/serviceModel";
@@ -21,11 +21,9 @@ const evidence: MonitoringChartEvidence = { service_id: "forest", timestamp, cre
   strategy: "adaptive_stream", anomaly_score: 0.7, restarted_martingale: null, threshold: 0.6, alarm: true };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.mocked(getTelemetryData).mockResolvedValue([{ timestamp, value: 20 }]);
   vi.mocked(apiUtils.get).mockResolvedValue([evidence]);
 });
-afterEach(cleanup);
 
 describe("service history polling", () => {
   it("fetches each input but only one service-scoped evidence page for their shared entity", async () => {

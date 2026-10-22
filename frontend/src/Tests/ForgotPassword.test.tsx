@@ -1,14 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ForgotPassword from '../pages/ForgotPassword';
-import { afterAll, vi } from 'vitest';
+import { vi } from 'vitest';
 import { API_CONFIG, getApiUrl } from '@/lib/api-config';
 
 const fetchMock = vi.fn<typeof fetch>();
 const renderForgotPassword = () => render(<ForgotPassword />, { wrapper: MemoryRouter });
-vi.stubGlobal('fetch', fetchMock);
-
-afterAll(() => vi.unstubAllGlobals());
 
 const requestReset = (email: string) => {
     renderForgotPassword();
@@ -19,6 +16,7 @@ const requestReset = (email: string) => {
 describe('ForgotPassword', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.stubGlobal('fetch', fetchMock);
         vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 

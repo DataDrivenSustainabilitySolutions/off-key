@@ -23,7 +23,6 @@ describe("ThemeProvider", () => {
   let mediaListener: (() => void) | undefined;
 
   beforeEach(() => {
-    localStorage.clear();
     document.documentElement.classList.remove("dark", "light");
     prefersDark = false;
     mediaListener = undefined;

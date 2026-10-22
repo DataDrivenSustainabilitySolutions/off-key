@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import { clearNavigationDrafts, readStoredDraft } from "@/lib/navigation-draft";
 import { pipelinesApi } from "@/features/pipelines/api";
@@ -17,7 +17,6 @@ const operation = (phase: PipelineActivationView["phase"] = "requested"): Pipeli
   created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z",
 });
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("durable direct apply", () => {
   it("polls at a bounded interval, pauses while hidden and stops after failure", async () => {

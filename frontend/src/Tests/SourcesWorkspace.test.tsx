@@ -1,6 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearNavigationDrafts, rememberNavigation } from "@/lib/navigation-draft";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import { ApplicationWorkspace } from "@/components/ApplicationWorkspace";
@@ -29,7 +29,7 @@ beforeAll(async () => {
   await import("@/features/explorer/ExplorerPreview");
 });
 beforeEach(() => {
-  localStorage.clear(); clearNavigationDrafts(); vi.clearAllMocks(); saved = fixture();
+  clearNavigationDrafts(); saved = fixture();
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(callback, 0));
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => clearTimeout(handle));
@@ -40,7 +40,6 @@ beforeEach(() => {
     return { data: saved };
   });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 function mount(path = "/sources") {
   const router = createMemoryRouter([{ element: <ApplicationWorkspace />, children: [
     { path: "/sources", element: <SourcesWorkspace /> }, { path: "/", element: <h1>Monitoring home</h1> },

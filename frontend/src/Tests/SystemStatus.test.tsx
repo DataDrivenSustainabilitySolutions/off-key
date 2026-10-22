@@ -19,7 +19,6 @@ const status: StorageStatus = {
   checked_at: "2026-09-27T12:00:00Z",
 };
 beforeEach(() => {
-  vi.clearAllMocks();
   getStorage.mockResolvedValue(status);
   api.get.mockImplementation((url) => url === "/v1/system/storage"
     ? getStorage()

@@ -1,12 +1,11 @@
 import {
-  cleanup,
   act,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
 import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
@@ -156,7 +155,6 @@ beforeEach(() => {
   vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "requested", service_id: "service", run_id: "run", predecessor_service_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
   vi.mocked(pipelinesApi.save).mockImplementation(async (_id, body) => ({ ...pipeline(), name: body.name!, description: body.description!, version: 2, draft: normalizeDefinition(body.definition), layout: normalizeLayout(body.layout) }));
 });
-afterEach(cleanup);
 function mount(overrides: Partial<ReturnType<typeof props>> = {}) {
   const callbacks = { ...props(), ...overrides };
   const result = render(<MemoryRouter><PipelineEditor {...callbacks} /></MemoryRouter>);

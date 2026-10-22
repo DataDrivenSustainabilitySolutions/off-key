@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EChart } from "@/components/EChart";
 import { ExplorerHistoryChart } from "@/features/explorer/ExplorerHistoryChart";
@@ -248,9 +248,6 @@ describe("workspace chart navigation and monitoring", () => {
   });
 });
 afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
   if (initialClipboard) Object.defineProperty(navigator, "clipboard", initialClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
 });

@@ -5,7 +5,6 @@ stack_common_environment: &common
   DEBUG: "{{ debug }}"
   LOG_LEVEL: "{{ log_level }}"
   LOG_TRUNCATE_LENGTH: "{{ log_truncate_length }}"
-  LOG_FILE: "{{ log_file }}"
   LOG_FORMAT: "{{ log_format }}"
   LOG_CORRELATION_HEADER: "{{ log_correlation_header }}"
   LOG_REDACT_PII: "{{ log_redact_pii }}"

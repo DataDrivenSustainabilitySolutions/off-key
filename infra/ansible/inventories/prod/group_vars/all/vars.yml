@@ -211,7 +211,6 @@ sync_api_port:            "8009"
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 log_truncate_length:         "200"
-log_file:                    /tmp/service.log
 log_format:                  json
 log_correlation_header:      X-Correlation-ID
 log_redact_pii:              "True"

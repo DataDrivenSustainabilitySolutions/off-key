@@ -35,13 +35,6 @@ handlers:
     stream: ext://sys.stdout
     filters: [correlation]
 
-  file:
-    class: logging.FileHandler
-    level: ${LOG_LEVEL:INFO}
-    formatter: detailed
-    filename: ${LOG_FILE:/tmp/service.log}
-    filters: [correlation]
-
 root:
   level: ${LOG_LEVEL:INFO}
   handlers: [console]
@@ -49,5 +42,25 @@ root:
 loggers:
   truncated:
     level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
-    handlers: [console_truncated, file]
+    handlers: [console_truncated]
+    propagate: false
+
+  sqlalchemy.engine.Engine:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated]
+    propagate: false
+
+  sqlalchemy.dialects:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated]
+    propagate: false
+
+  sqlalchemy.pool:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated]
+    propagate: false
+
+  sqlalchemy.orm:
+    level: ${SQLALCHEMY_LOG_LEVEL:WARNING}
+    handlers: [console_truncated]
     propagate: false

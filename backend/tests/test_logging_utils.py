@@ -129,19 +129,13 @@ def test_load_yaml_config_applies_root_fallback(monkeypatch):
     )
 
 
-def test_module_logger_and_service_logger_both_emit_when_configured(
-    monkeypatch, tmp_path
-):
+def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch):
     service_config = (
         Path(__file__).resolve().parents[1]
         / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()
 
-    log_file = str(tmp_path / "logging-test.log")
-    monkeypatch.setenv("LOG_FILE", log_file)
-    monkeypatch.setenv("MQTT_PROXY_LOG_FILE", log_file)
-    monkeypatch.setenv("SERVICE_LOG_FILE", log_file)
     root_logger = logging.getLogger()
     service_logger = logging.getLogger("off_key_mqtt_proxy")
     module_logger = logging.getLogger("off_key_mqtt_proxy.router")

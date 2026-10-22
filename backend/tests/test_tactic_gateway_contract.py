@@ -1,7 +1,6 @@
 """Every TACTIC path the gateway calls exists, and every TACTIC route has a caller."""
 
 import ast
-import os
 import re
 from pathlib import Path
 
@@ -100,7 +99,6 @@ def tactic_routes():
         **EMAIL_ENVIRONMENT,
         "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
         "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
-        "SERVICE_LOG_FILE": os.devnull,
     }
     with pytest.MonkeyPatch.context() as monkeypatch:
         set_environment(monkeypatch, environment)

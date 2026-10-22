@@ -315,8 +315,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
-    volumes:
-      - ./logs:/app/logs  # For log persistence
 
   mqtt-simulator:
     build:

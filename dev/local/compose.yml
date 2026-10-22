@@ -60,8 +60,6 @@ services:
 
   mqtt-proxy:
     container_name: !reset null
-    volumes: !override
-      - local_logs:/app/logs
 
   mqtt-simulator:
     container_name: !reset null
@@ -166,6 +164,5 @@ services:
       start_period: 10s
 
 volumes:
-  local_logs:
   local_mailpit_data:
   local_emqx_data:

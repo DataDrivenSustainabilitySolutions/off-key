@@ -398,7 +398,7 @@ def _expand_env_vars(text: str) -> str:
 
     Examples:
         ${LOG_LEVEL:INFO} -> Uses LOG_LEVEL env var, defaults to INFO
-        ${LOG_FILE:/tmp/app.log} -> Uses LOG_FILE env var, defaults to /tmp/app.log
+        ${A:${B:INFO}} -> Uses A, then B, then INFO
     """
 
     def replace_env_var(match):

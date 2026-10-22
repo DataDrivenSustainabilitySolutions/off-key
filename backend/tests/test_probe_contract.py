@@ -1,7 +1,6 @@
 """Tie every orchestrator and deploy-gate probe URL to a route its service serves."""
 
 import importlib.util
-import os
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -75,7 +74,6 @@ def applications(monkeypatch):
             "APP_NAME": "off-key-test",
             "DEBUG": "false",
             "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
-            "SERVICE_LOG_FILE": os.devnull,
         },
     )
     monkeypatch.setattr(

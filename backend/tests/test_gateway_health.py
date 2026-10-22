@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
@@ -12,7 +10,6 @@ _GATEWAY_ENVIRONMENT = {
     "APP_NAME": "off-key-test",
     "DEBUG": "false",
     "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
-    "SERVICE_LOG_FILE": os.devnull,
 }
 
 

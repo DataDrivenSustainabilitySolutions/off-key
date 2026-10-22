@@ -19,7 +19,7 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "off-key-core",
+    "off-key-core[web]",
     "uvicorn>=0.25.0",
     "fastapi>=0.115.8",
 ]

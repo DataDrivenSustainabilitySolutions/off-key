@@ -1919,9 +1919,8 @@ source = { editable = "services/api/gateway" }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
-    { name = "fastapi-mail" },
     { name = "httpx" },
-    { name = "off-key-core" },
+    { name = "off-key-core", extra = ["mail", "web"] },
     { name = "python-jose" },
     { name = "slowapi" },
     { name = "uvicorn" },
@@ -1931,9 +1930,8 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "fastapi-mail", specifier = ">=1.4.2" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "off-key-core", editable = "libs/core" },
+    { name = "off-key-core", extras = ["web", "mail"], editable = "libs/core" },
     { name = "python-jose", specifier = ">=3.4.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "uvicorn", specifier = ">=0.25.0" },
@@ -1954,10 +1952,20 @@ dependencies = [
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
+[package.optional-dependencies]
+mail = [
+    { name = "fastapi-mail" },
+]
+web = [
+    { name = "fastapi" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "email-validator", specifier = ">=2.2.0" },
+    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115.8" },
+    { name = "fastapi-mail", marker = "extra == 'mail'", specifier = ">=1.4.2" },
     { name = "jsonschema", specifier = ">=4.21.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
@@ -1965,6 +1973,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.38" },
 ]
+provides-extras = ["web", "mail"]
 
 [[package]]
 name = "off-key-db-sync"
@@ -1972,14 +1981,14 @@ version = "0.1.0"
 source = { editable = "services/db/sync" }
 dependencies = [
     { name = "fastapi" },
-    { name = "off-key-core" },
+    { name = "off-key-core", extra = ["web"] },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "off-key-core", editable = "libs/core" },
+    { name = "off-key-core", extras = ["web"], editable = "libs/core" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
 
@@ -2006,7 +2015,6 @@ version = "0.1.0"
 source = { editable = "services/mqtt/radar" }
 dependencies = [
     { name = "aberrant", extra = ["faiss"] },
-    { name = "asyncpg" },
     { name = "janus" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
@@ -2021,16 +2029,15 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aberrant", extras = ["faiss"], specifier = "==1.3.0" },
-    { name = "asyncpg", specifier = ">=0.28.0" },
     { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<2" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "off-key-core", editable = "libs/core" },
     { name = "paho-mqtt", specifier = ">=2.1,<3" },
     { name = "psutil", specifier = ">=5.9.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.38" },
 ]
 
 [[package]]
@@ -2056,9 +2063,7 @@ dependencies = [
     { name = "bcrypt" },
     { name = "docker" },
     { name = "fastapi" },
-    { name = "fastapi-mail" },
-    { name = "jsonschema" },
-    { name = "off-key-core" },
+    { name = "off-key-core", extra = ["mail", "web"] },
     { name = "paho-mqtt", extra = ["proxy"] },
     { name = "pydantic-settings" },
     { name = "python-jose" },
@@ -2070,14 +2075,12 @@ dependencies = [
 requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "docker", specifier = ">=7.0.0" },
-    { name = "fastapi", specifier = ">=0.104.0" },
-    { name = "fastapi-mail", specifier = ">=1.4.2" },
-    { name = "jsonschema", specifier = ">=4.21.1" },
-    { name = "off-key-core", editable = "libs/core" },
+    { name = "fastapi", specifier = ">=0.115.8" },
+    { name = "off-key-core", extras = ["web", "mail"], editable = "libs/core" },
     { name = "paho-mqtt", extras = ["proxy"], specifier = ">=2.1.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "python-jose", specifier = ">=3.4.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.38" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
 

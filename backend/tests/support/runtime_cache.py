@@ -4,8 +4,6 @@ This module intentionally lives under ``tests`` so cache reset orchestration
 does not become part of the production ``off_key_core.config`` API.
 """
 
-import logging
-
 from off_key_core.config.app import get_app_settings
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.database import get_database_settings
@@ -30,15 +28,9 @@ def reset_runtime_caches_for_tests() -> None:
     _clear_service_endpoints_settings_cache()
     get_telemetry_settings.cache_clear()
 
-    try:
-        from off_key_core.utils.mail import reset_mail_runtime_caches
-    except ImportError as exc:
-        logging.getLogger(__name__).warning(
-            "Skipping mail cache reset due to import error: %s", exc
-        )
-        reset_mail_runtime_caches = None
+    # The test environment installs core's mail extra with every service.
+    from off_key_core.utils.mail import reset_mail_runtime_caches
 
-    if reset_mail_runtime_caches is not None:
-        reset_mail_runtime_caches()
+    reset_mail_runtime_caches()
 
     reset_db_runtime_caches()

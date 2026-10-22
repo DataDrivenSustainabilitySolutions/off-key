@@ -19,16 +19,14 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "off-key-core",
-    "fastapi>=0.104.0",
-    "fastapi-mail>=1.4.2",
+    "off-key-core[web,mail]",
+    "fastapi>=0.115.8",
     "uvicorn[standard]>=0.24.0",
     "docker>=7.0.0",
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy>=2.0.38",
     "bcrypt>=4.0.1",
     "python-jose>=3.4.0",
-    "jsonschema>=4.21.1",
-    "pydantic-settings>=2.0.0",
+    "pydantic-settings>=2.7.1",
     "paho-mqtt[proxy]>=2.1.0"
 ]
 

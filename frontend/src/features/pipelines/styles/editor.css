@@ -10,7 +10,6 @@
 }
 
 .pl-design-settings,
-.pl-metadata,
 .pl-archive,
 .pl-history {
   border: 1px solid hsl(var(--border));
@@ -21,7 +20,6 @@
 }
 
 .pl-design-settings summary,
-.pl-metadata summary,
 .pl-archive summary,
 .pl-history summary {
   cursor: pointer;
@@ -75,9 +73,7 @@
 
 .pl-error,
 .pl-warning,
-.pl-notice,
-.pl-conflict,
-.pl-validation {
+.pl-notice {
   padding: 12px 16px;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
@@ -114,64 +110,4 @@
 
 .dark .pl-notice {
   color: #86efac;
-}
-
-.pl-conflict {
-  background: hsl(var(--muted));
-}
-
-.pl-conflict h3,
-.pl-validation h3 {
-  font-size: 13px;
-  margin: 0 0 6px;
-}
-
-.pl-conflict button {
-  margin-right: 8px;
-}
-
-.pl-validation ul {
-  margin: 8px 0;
-  padding-left: 16px;
-}
-
-.pl-validation button {
-  border: 0;
-  background: none;
-  text-align: left;
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 3px 0;
-}
-
-.pl-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  margin: 6px 0 4px;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-}
-.pl-steps li {
-  counter-increment: step;
-}
-.pl-steps li::before {
-  content: counter(step) ". ";
-}
-.pl-steps li[aria-current="step"] {
-  color: hsl(var(--foreground));
-  font-weight: 600;
-}
-.pl-toast {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-.pl-toast button {
-  padding: 2px 10px;
-  font-weight: 600;
 }

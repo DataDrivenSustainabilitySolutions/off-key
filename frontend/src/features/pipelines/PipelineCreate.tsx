@@ -95,7 +95,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     onSelect: () => setInspectorPanel("component"),
   });
   const { selected, select, fitRequest, validation, commit, add } = graph;
-  const metadata = useGraphMetadata(undefined, draft.document.definition, canAuthor, selected);
+  const metadata = useGraphMetadata(draft.document.definition, canAuthor, selected);
   const target = targets.find((item) => item.id === draft.targetId);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
@@ -130,7 +130,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     if (!ready || !props.collectionReady || props.activationBlocked) return;
     setChecking(true);
     try {
-      const result = await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected));
+      const result = await graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
       if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceId ?? null });
@@ -207,7 +207,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
         {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
       </div>
       <PipelineWorkbench catalog={catalog} document={draft.document} validation={metadata ?? validation} readOnly={!canAuthor || locked || checking}
-        inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} settingsTitle="Learning settings"
+        inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel}
         selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
         onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
         actions={canAuthor && !locked && <>
@@ -215,7 +215,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
           <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
           <button type="button" disabled={checking} onClick={async () => {
-            try { await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected)); setIssuesRequest((value) => value + 1); }
+            try { await graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected)); setIssuesRequest((value) => value + 1); }
             catch (reason) { setError(getErrorMessage(reason)); }
           }}><Check size={15} />Validate</button>
           {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {

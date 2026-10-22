@@ -34,11 +34,9 @@ vi.mock("@/features/pipelines/api", () => ({
     save: vi.fn(),
     metadata: vi.fn(),
     validate: vi.fn(),
-    publish: vi.fn(),
     create: vi.fn(),
     revision: vi.fn(),
-    revisions: vi.fn(),
-    revisionMetadata: vi.fn(), apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(), catalog: vi.fn(), service: vi.fn(),
+    apply: vi.fn(), activation: vi.fn(), cancel: vi.fn(), list: vi.fn(), catalog: vi.fn(), service: vi.fn(),
   },
 }));
 
@@ -148,7 +146,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => (
 beforeEach(() => {
   vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
-  vi.mocked(pipelinesApi.validate).mockImplementation(async (_id, definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
+  vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: true, definition: normalizeDefinition(definition), issues: [], features: {}, provenance_complete: true }));
   vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
   vi.mocked(pipelinesApi.revision).mockImplementation(async (_id, id) => {
     if (id !== "revision") throw new ApiRequestError("Published revision not found", 404);
@@ -190,7 +188,7 @@ describe("simple monitoring setup", () => {
     const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
     expect(request.definition.input_slots).toEqual([{ id: "value", label: "AC1", unit: "A" }, { id: "input_3", label: "AC3", unit: "A" }]);
     expect(request.bindings).toEqual({ value: "AC1", input_3: "AC3" });
-    expect(pipelinesApi.save).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
+    expect(pipelinesApi.save).not.toHaveBeenCalled();
   });
 
   it("blocks an empty selection and excludes collection-off readings from Select all available", () => {
@@ -266,7 +264,7 @@ describe("simple monitoring setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalled());
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toEqual(expect.objectContaining({ display_name: "Room health", definition, bindings: { value: "current" } }));
-    expect(pipelinesApi.save).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
+    expect(pipelinesApi.save).not.toHaveBeenCalled();
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
   });
   it("focuses the missing name and retains the edited graph", async () => {
@@ -278,7 +276,7 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("blocks an invalid processing graph before reserving a start", async () => {
-    vi.mocked(pipelinesApi.validate).mockImplementation(async (_id, definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
+    vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
     mount(); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
     await screen.findByText("Resolve the highlighted processing issues before applying.");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
@@ -294,7 +292,7 @@ describe("simple monitoring setup", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(pipelinesApi.save).toHaveBeenCalledWith("design", expect.objectContaining({ name: "Reusable health", expected_version: 1 }));
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Room pipeline");
-    expect(pipelinesApi.apply).not.toHaveBeenCalled(); expect(pipelinesApi.publish).not.toHaveBeenCalled();
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("preserves a concurrent template conflict and allows saving a separate copy", async () => {
     vi.mocked(pipelinesApi.save).mockRejectedValueOnce(new ApiRequestError("The template changed", 409));

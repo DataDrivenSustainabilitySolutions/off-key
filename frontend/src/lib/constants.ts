@@ -14,7 +14,7 @@ export const VALIDATION_MESSAGES = {
 // Interval constants for various operations
 export const INTERVALS = {
   DETAILS_UPDATE: 10 * 1000, // 10 seconds for details page live charts
-  REAL_TIME_UPDATE: 60 * 1000, // 60 seconds for real-time data
-  POLLING: 1000, // 1 second for file watching
-  ANOMALY_ZONE_GAP: 5 * 60 * 1000, // 5 minutes max gap between anomaly clusters
 } as const;
+
+// Largest distance between an anomaly and the telemetry sample shown with it
+export const ANOMALY_SAMPLE_TOLERANCE_MS = 5_000;

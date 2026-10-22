@@ -48,7 +48,7 @@ export function nodeOptionLabel(
 }
 
 /** Node IDs and slot IDs are stable; displayed labels never enter connections. */
-export function nextNodeId(nodes: PipelineNode[], component: string): string {
+function nextNodeId(nodes: PipelineNode[], component: string): string {
   const prefix = component.replace(/[^a-zA-Z0-9_-]/g, "_");
   let suffix = 1;
   while (nodes.some((node) => node.id === `${prefix}_${suffix}`)) suffix++;
@@ -61,7 +61,7 @@ export function addComponent(
   position?: { x: number; y: number },
   anchor?: string,
 ): GraphDocument {
-  if (!canAddComponent(document.definition, component)) return document;
+  if (addBlocker(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
@@ -128,13 +128,6 @@ export function freePosition(document: GraphDocument, anchor?: string) {
 }
 
 /** Current V1 execution profile, shared by drag/drop and the component palette. */
-export function canAddComponent(
-  definition: PipelineDefinition,
-  component: PipelineComponent,
-) {
-  return !addBlocker(definition, component);
-}
-
 export function addBlocker(
   definition: PipelineDefinition,
   component: PipelineComponent,

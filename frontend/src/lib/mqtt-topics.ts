@@ -1,4 +1,3 @@
-export const DEVICE_TELEMETRY_FILTER = "telemetry/#";
 export const DEVICE_TELEMETRY_PREFIX = "telemetry";
 
 

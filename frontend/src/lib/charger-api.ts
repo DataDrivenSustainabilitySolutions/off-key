@@ -158,21 +158,6 @@ export const getAllChargers = async (): Promise<Charger[]> => {
   return chargers.map(normalizeChargerLastSeen);
 };
 
-export const getFavorites = (): Promise<string[]> =>
-  apiUtils.get<string[]>(API_CONFIG.ENDPOINTS.FAVORITES.GET);
-
-export const toggleFavorite = async (
-  chargerId: string,
-  isCurrentlyFavorite: boolean,
-): Promise<void> => {
-  const body = { charger_id: chargerId };
-  if (isCurrentlyFavorite) {
-    await apiUtils.delete(API_CONFIG.ENDPOINTS.FAVORITES.REMOVE, body);
-    return;
-  }
-  await apiUtils.post(API_CONFIG.ENDPOINTS.FAVORITES.ADD, body);
-};
-
 export const getAnomalies = (
   chargerId: string,
   signal?: AbortSignal,
@@ -181,14 +166,6 @@ export const getAnomalies = (
     API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId),
     signal,
   );
-
-export const getAnomalyCount = async (since?: string): Promise<number> => {
-  const endpoint = since
-    ? `${API_CONFIG.ENDPOINTS.ANOMALIES.COUNT}?since=${encodeURIComponent(since)}`
-    : API_CONFIG.ENDPOINTS.ANOMALIES.COUNT;
-  const response = await apiUtils.get<{ count: number }>(endpoint);
-  return response.count;
-};
 
 export const deleteAnomaly = async (anomalyId: string): Promise<void> => {
   if (!anomalyId) {

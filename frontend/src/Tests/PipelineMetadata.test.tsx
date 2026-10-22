@@ -61,11 +61,11 @@ describe("bounded focused pipeline metadata", () => {
       )
       .mockResolvedValue(report("second"));
     const hook = renderHook(
-      ({ selected }) => useGraphMetadata("design", definition, true, selected),
+      ({ selected }) => useGraphMetadata(definition, true, selected),
       { initialProps: { selected: "first" } },
     );
     await act(() => vi.advanceTimersByTimeAsync(800));
-    expect(vi.mocked(pipelinesApi.validate).mock.calls[0]?.[3]).toBe("first");
+    expect(vi.mocked(pipelinesApi.validate).mock.calls[0]?.[2]).toBe("first");
     hook.rerender({ selected: "second" });
     await act(async () => finishFirst(report("first")));
     expect(hook.result.current).toBeUndefined();

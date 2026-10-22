@@ -22,7 +22,6 @@ export default function PipelineRunView({
   replaceable = true,
 }: {
   serviceId: string;
-  displayName?: string;
   canEdit: boolean;
   state?: PipelineState | null;
   replaceable?: boolean;

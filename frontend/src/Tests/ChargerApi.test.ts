@@ -6,24 +6,19 @@ import {
   deleteAnomaly,
   getAllChargers,
   getAllTelemetryData,
-  getAnomalyCount,
-  getFavorites,
   getTelemetryCursor,
   getTelemetryTypes,
   mergeTelemetryData,
-  toggleFavorite,
 } from "@/lib/charger-api";
 
 vi.mock("@/lib/api-client", () => ({
   apiUtils: {
     get: vi.fn(),
-    post: vi.fn(),
     delete: vi.fn(),
   },
 }));
 
 const mockGet = vi.mocked(apiUtils.get);
-const mockPost = vi.mocked(apiUtils.post);
 const mockDelete = vi.mocked(apiUtils.delete);
 
 const catalogResponse = {
@@ -245,33 +240,6 @@ describe("charger API", () => {
     const chargers = await getAllChargers();
 
     expect(chargers[0]?.last_seen).toBe("mqtt-time");
-  });
-
-  it("fetches favorites and adds or removes them", async () => {
-    mockGet.mockResolvedValueOnce(["charger-1"]);
-
-    await expect(getFavorites()).resolves.toEqual(["charger-1"]);
-    await toggleFavorite("charger-1", false);
-    await toggleFavorite("charger-1", true);
-
-    const body = { charger_id: "charger-1" };
-    expect(mockPost).toHaveBeenCalledWith(
-      API_CONFIG.ENDPOINTS.FAVORITES.ADD,
-      body,
-    );
-    expect(mockDelete).toHaveBeenCalledWith(
-      API_CONFIG.ENDPOINTS.FAVORITES.REMOVE,
-      body,
-    );
-  });
-
-  it("encodes the anomaly count cursor", async () => {
-    mockGet.mockResolvedValueOnce({ count: 4 });
-
-    await expect(getAnomalyCount("2026-07-24T10:00:00+02:00")).resolves.toBe(4);
-    expect(mockGet).toHaveBeenCalledWith(
-      `${API_CONFIG.ENDPOINTS.ANOMALIES.COUNT}?since=2026-07-24T10%3A00%3A00%2B02%3A00`,
-    );
   });
 
   it("rejects an anomaly deletion without an identifier", async () => {

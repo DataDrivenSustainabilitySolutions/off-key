@@ -63,23 +63,10 @@ const reads: Array<[string, () => Promise<unknown>, string, object]> = [
     optional,
   ],
   [
-    "revisions",
-    () => pipelinesApi.revisions("line/1", 7, signal),
-    "/v1/monitors/pipelines/line%2F1/revisions",
-    { ...optional, params: { before: 7 } },
-  ],
-  [
     "revision",
     () => pipelinesApi.revision("line/1", "rev 2", signal),
     "/v1/monitors/pipelines/line%2F1/revisions/rev%202",
     optional,
-  ],
-  [
-    "revisionMetadata",
-    () =>
-      pipelinesApi.revisionMetadata("line/1", "rev 2", definition, "node", signal),
-    "/v1/monitors/pipelines/line%2F1/revisions/rev%202/metadata",
-    { ...optional, params: { selected_node_id: "node" } },
   ],
   [
     "service",
@@ -137,7 +124,6 @@ describe("pipelines API", () => {
     await pipelinesApi.create({ name: "Line", definition });
     await pipelinesApi.save("line/1", request);
     await pipelinesApi.metadata("line/1", { name: "Renamed" } as never);
-    await pipelinesApi.publish("line/1", { expected_version: 1 } as never);
     await pipelinesApi.saveLayout("svc/1", { nodes: {} });
     await pipelinesApi.activate({ service_id: "svc" } as never);
     await pipelinesApi.cancel("op/1");
@@ -145,7 +131,6 @@ describe("pipelines API", () => {
     expect(mockPost.mock.calls).toEqual([
       ["/v1/monitors/pipelines/apply", { service_id: "svc" }],
       ["/v1/monitors/pipelines", { name: "Line", definition }],
-      ["/v1/monitors/pipelines/line%2F1/revisions", { expected_version: 1 }],
       ["/v1/monitors/pipeline-activations", { service_id: "svc" }],
     ]);
     expect(mockPut.mock.calls).toEqual([
@@ -161,29 +146,23 @@ describe("pipelines API", () => {
     );
   });
 
-  it.each([
-    ["a saved design", "line/1", "/v1/monitors/pipelines/line%2F1/validate"],
-    ["an unsaved draft", undefined, "/v1/monitors/pipelines/validate"],
-  ])(
-    "validates %s and falls back to the submitted definition",
-    async (_, id, url) => {
-      mockPost.mockResolvedValueOnce({ valid: true, definition: null });
+  it("validates a draft and falls back to the submitted definition", async () => {
+    mockPost.mockResolvedValueOnce({ valid: true, definition: null });
 
-      const report = await pipelinesApi.validate(id, definition, signal, "node");
+    const report = await pipelinesApi.validate(definition, signal, "node");
 
-      expect(mockPost).toHaveBeenCalledExactlyOnceWith(
-        url,
-        { definition, selected_node_id: "node" },
-        { signal },
-      );
-      expect(report).toEqual({
-        valid: true,
-        definition: normalized,
-        features: {},
-        issues: [],
-      });
-    },
-  );
+    expect(mockPost).toHaveBeenCalledExactlyOnceWith(
+      "/v1/monitors/pipelines/validate",
+      { definition, selected_node_id: "node" },
+      { signal },
+    );
+    expect(report).toEqual({
+      valid: true,
+      definition: normalized,
+      features: {},
+      issues: [],
+    });
+  });
 
   it("normalizes designs, revisions, templates and running services", async () => {
     const layout = { nodes: { input: { x: 1, y: 2 } } };

@@ -3,18 +3,10 @@
  * and creating visual overlays
  */
 
-import { timestampsAreClose } from './time-utils';
-import { INTERVALS } from './constants';
+import { ANOMALY_SAMPLE_TOLERANCE_MS } from './constants';
 import type { Anomaly, TelemetryDataPoint } from '@/types/charger';
 
-export type { Anomaly };
 export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
-
-export interface RedZone {
-  startMs: number;
-  endMs: number;
-  anomalies: Anomaly[];
-}
 
 export interface AnomalySample extends TelemetryDataPoint {
   time: number;
@@ -28,8 +20,6 @@ export interface AnomalyMarker {
   sample?: AnomalySample;
   value?: number;
 }
-
-const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/u;
 
 export const formatAnomalySensorSet = (
   sensorSet: Anomaly["sensor_set"]
@@ -77,83 +67,13 @@ const ANOMALY_STYLES: Record<string, AnomalyStyle> = {
 };
 
 /**
- * Create red zones from anomaly clusters
- * Groups nearby anomalies into continuous visual zones
- */
-export const createAnomalyZones = (
-  anomalies: Anomaly[]
-): RedZone[] => {
-  if (anomalies.length === 0) return [];
-
-  const parseIsoTimestamp = (value: string): number | null => {
-    if (!ISO_TIMESTAMP_REGEX.test(value)) {
-      return null;
-    }
-    const timestampMs = Date.parse(value);
-    return Number.isFinite(timestampMs) ? timestampMs : null;
-  };
-
-  const validAnomalies = anomalies
-    .map(anomaly => {
-      const timestampMs = parseIsoTimestamp(anomaly.timestamp);
-      if (timestampMs === null) {
-        return null;
-      }
-      return { anomaly, timestampMs };
-    })
-    .filter((item): item is { anomaly: Anomaly; timestampMs: number } => item !== null)
-    .sort((left, right) => left.timestampMs - right.timestampMs);
-
-  if (validAnomalies.length === 0) return [];
-
-  const zones: RedZone[] = [];
-  const first = validAnomalies[0];
-  if (!first) return zones;
-
-  let currentZone: RedZone = {
-    startMs: first.timestampMs,
-    endMs: first.timestampMs,
-    anomalies: [first.anomaly],
-  };
-  for (const current of validAnomalies.slice(1)) {
-    if (current.timestampMs - currentZone.endMs <= INTERVALS.ANOMALY_ZONE_GAP) {
-      currentZone.endMs = current.timestampMs;
-      currentZone.anomalies.push(current.anomaly);
-      continue;
-    }
-    zones.push(currentZone);
-    currentZone = {
-      startMs: current.timestampMs,
-      endMs: current.timestampMs,
-      anomalies: [current.anomaly],
-    };
-  }
-  zones.push(currentZone);
-
-  return zones;
-};
-
-/**
- * Check if a telemetry point has an associated anomaly
- * Returns the anomaly if found, null otherwise
- */
-export const hasAnomaly = (
-  timestamp: string,
-  anomalies: Anomaly[]
-): Anomaly | null => {
-  return anomalies.find(anomaly =>
-    timestampsAreClose(timestamp, anomaly.timestamp, 5 * INTERVALS.POLLING) // 5 second tolerance
-  ) || null;
-};
-
-/**
  * Preserve each event at its recorded time. A nearby finite sample supplies
  * context, rather than changing the event time or marking all nearby samples.
  */
 export const createAnomalyMarkers = (
   telemetry: TelemetryDataPoint[],
   anomalies: Anomaly[],
-  toleranceMs: number = 5 * INTERVALS.POLLING
+  toleranceMs: number = ANOMALY_SAMPLE_TOLERANCE_MS
 ): AnomalyMarker[] => {
   if (anomalies.length === 0 || !Number.isFinite(toleranceMs) || toleranceMs < 0) {
     return [];

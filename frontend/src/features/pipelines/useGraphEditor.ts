@@ -128,7 +128,7 @@ export function useGraphEditor({
   };
 
   return {
-    selected: present, select, fitRequest, requestFit, reveal, validation, setValidation,
+    selected: present, select, fitRequest, requestFit, reveal, validation,
     commit, beginMove, add, arrange, validate, undo, redo, resetHistory,
     canUndo: history.undo.length > 0, canRedo: history.redo.length > 0,
   };

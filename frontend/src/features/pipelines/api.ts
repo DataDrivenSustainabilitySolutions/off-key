@@ -12,8 +12,6 @@ import type {
   PipelineListPage,
   PipelineListQuery,
   PipelineMetadataChange,
-  PipelinePublish,
-  PipelineRevisionPage,
   PipelineRevisionView,
   PipelineServiceView,
   PipelineValidationReport,
@@ -60,28 +58,17 @@ export const pipelinesApi = {
   metadata: (id: string, request: PipelineMetadataChange) =>
     apiUtils.patch<PipelineView>(item(id), request).then(normalizeView),
   validate: (
-    id: string | undefined,
     definition: PipelineDefinition,
     signal?: AbortSignal,
     selectedNodeId?: string,
   ) =>
     apiUtils
       .post<PipelineValidationReport>(
-        id ? `${item(id)}/validate` : `${base}/validate`,
+        `${base}/validate`,
         { definition, selected_node_id: selectedNodeId },
         { signal },
       )
       .then((report) => normalizeValidation(report, definition)),
-  publish: (id: string, request: PipelinePublish) =>
-    apiUtils
-      .post<PipelineRevisionView>(`${item(id)}/revisions`, request)
-      .then(normalizeRevision),
-  revisions: (id: string, before?: number, signal?: AbortSignal) =>
-    apiUtils.get<PipelineRevisionPage>(`${item(id)}/revisions`, {
-      signal,
-      params: { before },
-      redirectOnUnauthorized: false,
-    }),
   revision: (id: string, revisionId: string, signal?: AbortSignal) =>
     apiUtils
       .get<PipelineRevisionView>(
@@ -89,23 +76,6 @@ export const pipelinesApi = {
         { signal, redirectOnUnauthorized: false },
       )
       .then(normalizeRevision),
-  revisionMetadata: (
-    id: string,
-    revisionId: string,
-    definition: PipelineDefinition,
-    selectedNodeId: string,
-    signal?: AbortSignal,
-  ) =>
-    apiUtils
-      .get<PipelineValidationReport>(
-        `${item(id)}/revisions/${encodeURIComponent(revisionId)}/metadata`,
-        {
-          signal,
-          params: { selected_node_id: selectedNodeId },
-          redirectOnUnauthorized: false,
-        },
-      )
-      .then((report) => normalizeValidation(report, definition)),
   service: (id: string, signal?: AbortSignal, selectedNodeId?: string) =>
     apiUtils
       .get<PipelineServiceView>(

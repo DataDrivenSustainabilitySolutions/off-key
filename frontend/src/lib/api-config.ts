@@ -59,13 +59,6 @@ export const API_CONFIG = {
       },
     },
 
-    // Favorites
-    FAVORITES: {
-      GET: "/v1/favorites",
-      ADD: '/v1/favorites',
-      REMOVE: '/v1/favorites',
-    },
-
     // Anomalies
     ANOMALIES: {
       BASE: '/v1/anomalies',
@@ -73,7 +66,6 @@ export const API_CONFIG = {
         `/v1/anomalies?charger_id=${chargerId}`,
       BY_CHARGER_AND_TYPE: (chargerId: string, telemetryType: string) =>
         `/v1/anomalies?charger_id=${chargerId}&telemetry_type=${telemetryType}`,
-      COUNT: '/v1/anomalies/count',
       CREATE: '/v1/anomalies',
       DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
     },

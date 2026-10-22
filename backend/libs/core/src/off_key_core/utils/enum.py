@@ -9,5 +9,4 @@ class RoleEnum(StrEnum):
 class HealthStatus(StrEnum):
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
-    DISABLED = "disabled"
     DEGRADED = "degraded"

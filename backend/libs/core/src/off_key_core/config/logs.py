@@ -457,19 +457,6 @@ class LazyLogger:
         # No YAML config loaded - use basic logging
         return getattr(logging.getLogger("off_key"), name)
 
-    def __call__(self, *args, **kwargs):
-        # Handle cases where logger might be called directly
-        global _default_logger_instance, _service_logger_name
-        if _default_logger_instance == "YAML_CONFIGURED":
-            # When YAML config is used, return the service logger
-            if _service_logger_name:
-                return logging.getLogger(_service_logger_name)
-            # Fallback to root logger if service name not detected
-            return logging.getLogger()
-        # No YAML config loaded - use basic logging
-        return logging.getLogger("off_key")
-
-
 logger = LazyLogger()
 
 

@@ -114,9 +114,6 @@ PARAMETER_LIMITS = {
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
 ABERRANT_VERSION: str = CATALOG["aberrant_version"]
 ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = CATALOG["models"]
-BUILTIN_ADAPTIVE_MODEL_TYPES = frozenset(ADAPTIVE_MODELS_BY_TYPE)
-
-
 def validate_adaptive_model_params(
     model_type: str, params: dict[str, Any] | None
 ) -> dict[str, Any]:

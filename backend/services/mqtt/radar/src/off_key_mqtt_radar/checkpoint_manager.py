@@ -255,7 +255,3 @@ class CheckpointManager:
             finally:
                 self._claimed_lock_path = None
 
-    @property
-    def claimed_lock_path(self) -> str | None:
-        """Get the path of the currently claimed lock, if any."""
-        return self._claimed_lock_path

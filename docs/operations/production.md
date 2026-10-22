@@ -6,8 +6,9 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 
 ## Release sequence
 
-1. All latest main push attempts for CI, Deployment Smoke, MQTT Collection Integration,
-   Infrastructure Validation and Docker Publish must succeed for the same SHA.
+1. The latest main push attempt of every workflow marked as a release gate in
+   [Contributing and CI](../development/contributing-ci.md#current-automated-checks)
+   must succeed for the same SHA.
 2. One GitHub production job connects through an ephemeral management-tailnet runner
    and verified SSH. Superseded automatic candidates stop before deployment.
 3. Runtime files are compared against the manager's last verified release. Documentation

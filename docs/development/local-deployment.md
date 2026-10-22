@@ -62,8 +62,8 @@ port 5432; its optional host mapping uses port 5433.
 
 The local frontend accepts `admin` as a shortcut in the **Email** field for the
 configured `SUPERUSER_MAIL` account when opened on a loopback address. This uses the normal
-authenticated API and the account's saved password. The current rework preview
-uses `admin` / `admin`; restarting or rebuilding preserves that account. Ordinary
+authenticated API and the account's saved password; restarting or rebuilding
+preserves that account. Ordinary
 production builds keep email login and do not enable this local alias.
 
 ## Exercise MQTT locally

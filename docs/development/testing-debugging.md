@@ -24,12 +24,12 @@ Expected result: lint exits with status `0`, and tests complete without failures
 
 ### RADAR production integration
 
-The [RADAR production integration workflow](../../.github/workflows/radar-production-integration.yml)
-runs on pull requests, main, merge queues and manual dispatch. It builds the
+The [RADAR production integration workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/radar-production-integration.yml)
+runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It builds the
 current production `backend/Dockerfile`, uses Python 3.14 and frozen dependencies,
 and selects the TimescaleDB image pinned by the production release manifest.
 Its isolated Ubuntu runner initializes Swarm, runs real MQTT/database/task
-replacement regressions and cleans labelled fixtures within a 30 minute job.
+replacement regressions and cleans labelled fixtures within a 45 minute job.
 Production release selection requires a successful main-push run for the same
 commit, alongside the other release workflows.
 
@@ -48,7 +48,7 @@ Lanes select their tests by marker, never by file list:
 | `deployment` | Deployment smoke rehearsal | Module `pytestmark` |
 
 Each lane fails on an empty report or a skipped case
-([`require_executed_tests.py`](../../.github/scripts/require_executed_tests.py)).
+([`require_executed_tests.py`](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/scripts/require_executed_tests.py)).
 `test_suite_layout.py` fails when a module reads a lane's environment gate
 without carrying that lane's marker, so a new integration test cannot silently
 skip everywhere.

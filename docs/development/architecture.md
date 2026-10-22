@@ -138,16 +138,10 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 See [Deployment modes](../operations/deployment-modes.md) for operational commands.
 
-## Related pages
-
-- [Data model](../reference/data-model.md)
-- [Backend API](../reference/backend-api.md)
-- [Environment variables](../reference/environment-variables.md)
-- [Testing and debugging](testing-debugging.md)
-
 ## Aberrant catalog integration
 
-RADAR pins `aberrant[faiss]==1.1.0`. Shared configuration, Gateway, and TACTIC
+RADAR pins the `aberrant[faiss]` release in
+`backend/services/mqtt/radar/pyproject.toml`. Shared configuration, Gateway, and TACTIC
 read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
 SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
 library and optional dependencies as RADAR. `models/adaptive.py` owns only the
@@ -189,3 +183,10 @@ versions. Cross-version model pickles are incompatible: preserve them for a
 rollback, but allow the upgraded monitors to warm up and calibrate afresh.
 Validate the image and the opt-in `test_adaptive_lane_e2e.py` flow against a
 non-production MQTT/PostgreSQL stack before deploying.
+
+## Related pages
+
+- [Data model](../reference/data-model.md)
+- [Backend API](../reference/backend-api.md)
+- [Environment variables](../reference/environment-variables.md)
+- [Testing and debugging](testing-debugging.md)

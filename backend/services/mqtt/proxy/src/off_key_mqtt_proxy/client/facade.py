@@ -41,9 +41,7 @@ class MQTTClient:
             config, on_connected=self._on_connected
         )
 
-        self.subscription_manager = SubscriptionManager(
-            default_qos=config.subscription_qos
-        )
+        self.subscription_manager = SubscriptionManager()
 
         self.message_handler = MessageHandler(
             max_queue_size=config.max_message_queue_size

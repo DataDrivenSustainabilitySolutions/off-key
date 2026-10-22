@@ -32,8 +32,6 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-RADAR_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-
 
 class RadarWorkloadLifecycle(StrEnum):
     """Lifecycle behavior for TACTIC-managed RADAR workloads."""
@@ -121,14 +119,7 @@ class RadarDefaultsConfig(BaseModel):
     mqtt_username: str = ""
     mqtt_qos: int = Field(default=0, ge=0, le=2)
 
-    # Default Model Settings
-    model_type: str = "pyod_iforest"
-    sensor_key_strategy: str = "full_hierarchy"
-    sensor_freshness_seconds: float = Field(default=30.0, gt=0.0)
-
     # Default Performance Settings
-    batch_size: int = Field(default=100, ge=1, le=10000)
-    batch_timeout: float = Field(default=1.0, ge=0.1, le=3600.0)
     memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
     max_queue_size: int = Field(default=256, gt=0, le=10000)
@@ -153,15 +144,6 @@ class RadarDefaultsConfig(BaseModel):
         )
         return self
 
-    @field_validator("model_type")
-    @classmethod
-    def validate_model_type(cls, v: str) -> str:
-        """Normalize the default; the registry validates family and exact name."""
-        normalized = v.strip().lower()
-        if not normalized:
-            raise ValueError("model_type must not be empty")
-        return normalized
-
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -170,16 +152,6 @@ class RadarDefaultsConfig(BaseModel):
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of: {valid_levels}")
         return v.upper()
-
-    @field_validator("sensor_key_strategy")
-    @classmethod
-    def validate_sensor_key_strategy(cls, v: str) -> str:
-        """Validate feature-key extraction strategy passed to RADAR."""
-        normalized = v.strip().lower()
-        if normalized not in RADAR_SENSOR_KEY_STRATEGIES:
-            allowed = ", ".join(sorted(RADAR_SENSOR_KEY_STRATEGIES))
-            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
 
 
 class TacticConfig(BaseModel):
@@ -216,9 +188,6 @@ class TacticConfig(BaseModel):
     pipeline_heartbeat_timeout_seconds: float = Field(default=120.0, ge=10.0, le=600.0)
     pipeline_max_concurrent_preflights: int = Field(default=2, ge=1, le=32)
     pipeline_max_concurrent_transitions: int = Field(default=8, ge=1, le=64)
-
-    # Database Configuration
-    database_url: str | None = None
 
     # Logging Configuration
     log_level: str = "INFO"
@@ -332,21 +301,6 @@ class TacticSettings(BaseSettings):
     )
     TACTIC_RADAR_DEFAULT_MQTT_USERNAME: str = ""
     TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
-    TACTIC_RADAR_DEFAULT_MODEL_TYPE: str = Field(
-        default=DEFAULT_RADAR_DEFAULTS.model_type
-    )
-    TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY: str = Field(
-        default=DEFAULT_RADAR_DEFAULTS.sensor_key_strategy
-    )
-    TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS: float = Field(
-        default=DEFAULT_RADAR_DEFAULTS.sensor_freshness_seconds
-    )
-    TACTIC_RADAR_DEFAULT_BATCH_SIZE: int = Field(
-        default=DEFAULT_RADAR_DEFAULTS.batch_size
-    )
-    TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT: float = Field(
-        default=DEFAULT_RADAR_DEFAULTS.batch_timeout
-    )
     TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: int = Field(
         default=DEFAULT_RADAR_DEFAULTS.memory_limit_mb
     )
@@ -394,7 +348,6 @@ class TacticSettings(BaseSettings):
     TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(default=8, ge=1, le=64)
 
     # Database Configuration
-    TACTIC_DATABASE_URL: str | None = Field(default=None)
 
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(default=True)
@@ -485,11 +438,6 @@ class TacticSettings(BaseSettings):
             mqtt_use_auth=self.TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH,
             mqtt_username=self.TACTIC_RADAR_DEFAULT_MQTT_USERNAME,
             mqtt_qos=self.TACTIC_RADAR_DEFAULT_MQTT_QOS,
-            model_type=self.TACTIC_RADAR_DEFAULT_MODEL_TYPE,
-            sensor_key_strategy=self.TACTIC_RADAR_DEFAULT_SENSOR_KEY_STRATEGY,
-            sensor_freshness_seconds=self.TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS,
-            batch_size=self.TACTIC_RADAR_DEFAULT_BATCH_SIZE,
-            batch_timeout=self.TACTIC_RADAR_DEFAULT_BATCH_TIMEOUT,
             memory_limit_mb=self.TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB,
             checkpoint_interval=self.TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL,
             max_queue_size=self.TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE,
@@ -518,7 +466,6 @@ class TacticSettings(BaseSettings):
             pipeline_heartbeat_timeout_seconds=self.TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS,
             pipeline_max_concurrent_preflights=self.TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS,
             pipeline_max_concurrent_transitions=self.TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS,
-            database_url=self.TACTIC_DATABASE_URL,
             log_level=self.TACTIC_LOG_LEVEL,
             reconciliation_enabled=self.TACTIC_RECONCILIATION_ENABLED,
             reconciliation_interval=self.TACTIC_RECONCILIATION_INTERVAL,

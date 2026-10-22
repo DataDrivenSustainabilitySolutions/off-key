@@ -56,7 +56,6 @@ async def main():
             "topics": cfg.subscription_topics,
             "model_type": cfg.monitoring.model_type,
             "db_write_enabled": cfg.db_write_enabled,
-            "batch_size": cfg.batch_size,
             "log_level": cfg.log_level,
         },
     )

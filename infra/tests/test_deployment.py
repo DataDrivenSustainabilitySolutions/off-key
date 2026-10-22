@@ -121,7 +121,7 @@ class DeploymentTests(unittest.TestCase):
     def test_credentials_remain_literal_through_compose_and_swarm(self):
         result = self.results["literal-credentials"]
         services, inputs = result["swarm_config"]["services"], result["inputs"]
-        for service in ("postgres", "tactic", "db-sync", "mqtt-proxy", "mqtt-radar"):
+        for service in ("postgres", "tactic", "db-sync", "mqtt-proxy"):
             self.assertEqual(
                 services[service]["environment"]["POSTGRES_PASSWORD"],
                 inputs["postgres_password"],
@@ -170,13 +170,7 @@ class DeploymentTests(unittest.TestCase):
         allowed = {
             "JWT_SECRET": {"api", "tactic"},
             "INTERNAL_API_SECRET": {"api", "tactic"},
-            "POSTGRES_PASSWORD": {
-                "postgres",
-                "tactic",
-                "db-sync",
-                "mqtt-proxy",
-                "mqtt-radar",
-            },
+            "POSTGRES_PASSWORD": {"postgres", "tactic", "db-sync", "mqtt-proxy"},
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
@@ -195,12 +189,9 @@ class DeploymentTests(unittest.TestCase):
                 services["api"]["environment"]["INTERNAL_API_SECRET"],
                 services["tactic"]["environment"]["INTERNAL_API_SECRET"],
             )
-            self.assertTrue(
-                all(
-                    key.startswith(("VITE_", "__VITE_"))
-                    for key in services["frontend"]["environment"]
-                )
-            )
+            self.assertEqual(services["frontend"].get("environment", {}), {})
+            # The secret template never runs; TACTIC copies only its secrets.
+            self.assertEqual(services["mqtt-radar"].get("environment", {}), {})
 
     def test_production_uses_resend(self):
         expected = {
@@ -610,12 +601,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(
             proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
         )
-        self.assertEqual(radar["environment"]["ENVIRONMENT"], "production")
-        self.assertEqual(radar["environment"]["RADAR_MQTT_USE_AUTH"], "true")
-        self.assertNotIn("RADAR_MQTT_API_KEY", radar["environment"])
-        self.assertEqual(
-            radar["environment"]["RADAR_MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
-        )
+        self.assertNotIn("environment", radar)
         self.assertEqual(
             tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "offkey-proxy"
         )
@@ -726,6 +712,45 @@ class DeploymentTests(unittest.TestCase):
                     "ambibox_access"
                 ].values():
                     self.assertNotIn(value, rendered)
+
+    def test_service_environment_is_read(self):
+        """Every key a first-party service receives is read by code it runs."""
+        backend = ROOT.parent / "backend"
+        sources = {
+            "api": [backend / "services/api/gateway/src"],
+            "tactic": [backend / "services/middleware/tactic/src"],
+            "db-sync": [backend / "services/db/sync/src"],
+            # The deploy readiness probe runs inside the proxy container.
+            "mqtt-proxy": [
+                backend / "services/mqtt/proxy/src",
+                ROOT / "scripts/check_application.py",
+            ],
+        }
+        allowed = {
+            # Unread; kept until the ingress-switch readiness test is revisited.
+            ("mqtt-proxy", "AMBIBOX_INGRESS_ENABLED"),
+        }
+        shared = [backend / "libs/core/src"]
+
+        def text(paths):
+            files = (
+                [path] if path.is_file() else sorted(path.rglob("*")) for path in paths
+            )
+            return "\n".join(
+                file.read_text()
+                for group in files
+                for file in group
+                if file.suffix in {".py", ".yaml", ".yml"}
+            )
+
+        services = self.results["prod"]["config"]["services"]
+        for service, paths in sources.items():
+            code = text(paths + shared)
+            for key in services[service]["environment"]:
+                if (service, key) in allowed:
+                    continue
+                with self.subTest(service=service, key=key):
+                    self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]

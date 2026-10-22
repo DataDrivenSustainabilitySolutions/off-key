@@ -105,15 +105,15 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 | `POSTGRES_HOST` | `timescaledb` | Host reachable from backend containers |
 | `POSTGRES_PORT` | `5432` | Database port, `1–65535` |
 
-## MQTT source and proxy
+## MQTT proxy
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `MQTT_BROKER_HOST` | `emqx-main` | Internal EMQX host |
-| `MQTT_BROKER_PORT` | `1883` | Source MQTT port |
-| `MQTT_USE_TLS` | `false` | TLS for the source client |
-| `MQTT_USE_AUTH` | `false` | Source-broker authentication toggle |
-| `MQTT_TELEMETRY_ENABLED` | `true` | Persist parsed source telemetry |
+| `MQTT_BROKER_PORT` | `1883` | Internal EMQX port |
+| `MQTT_USE_TLS` | `false` | TLS to the internal EMQX broker |
+| `MQTT_USE_AUTH` | `false` | EMQX authentication toggle |
+| `MQTT_TELEMETRY_ENABLED` | `true` | Persist collected telemetry; fixed to `true` in the local Compose file |
 
 When `MQTT_USE_AUTH=true`, provide the supported `MQTT_USERNAME` and `MQTT_APIKEY` runtime variables through an ignored file or secret store.
 
@@ -159,7 +159,7 @@ unknown errors remain eligible for retry.
 | `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/#` | Accepted generic topics; managed monitors use selected concrete readings |
+| `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/charger-sim-1/sine` | Concrete topics for the standalone profile (wildcards are rejected); managed monitors use selected readings |
 | `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
 | `RADAR_PIPELINE_CONFIG` | Unset | Version-1 canonical bound execution JSON, emitted by activation. If monitoring JSON is also supplied, it must match the graph-derived strategy settings. Limited to 96 KiB serialized. |
 | `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |

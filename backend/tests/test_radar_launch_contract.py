@@ -140,9 +140,6 @@ def test_tactic_defaults_match_radar_defaults():
         assert tactic_fields[f"TACTIC_RADAR_DEFAULT_{name.upper()}"].default == (
             field.default
         ), name
-        if name == "model_type":
-            # RADAR reads the model from RADAR_MONITORING_CONFIG instead.
-            continue
         radar_name = RADAR_NAMES.get(name, f"RADAR_{name.upper()}")
         assert radar_fields[radar_name].default == field.default, name
 

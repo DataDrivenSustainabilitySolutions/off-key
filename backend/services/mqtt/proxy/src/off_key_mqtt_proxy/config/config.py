@@ -61,22 +61,16 @@ class MQTTConfig(BaseModel):
 
     # Service Configuration
     enabled: bool
-    reconnect_delay: int = Field(ge=1, le=300)
     max_reconnect_attempts: int = Field(ge=1, le=100)
 
     # Message Processing
     batch_size: int = Field(ge=1, le=10_000)
     batch_timeout: float = Field(ge=0.1, le=300.0)
-    subscription_qos: Literal[0, 1, 2]
 
-    # Health Monitoring
-    health_check_interval: int = Field(ge=5, le=3_600)
-    health_log_reminder_interval: int = Field(ge=1, le=1_000)
     connection_timeout: float = Field(ge=1.0, le=120.0)
 
     # Performance Tuning
     max_message_queue_size: int = Field(ge=100, le=100_000)
-    worker_threads: int = Field(ge=1, le=32)
 
     # Retry Configuration
     retry_base_delay: float = Field(default=0.1, ge=0.01, le=10.0)
@@ -86,11 +80,9 @@ class MQTTConfig(BaseModel):
     retry_jitter_magnitude: float = Field(default=0.2, ge=0.0, le=0.5)
 
     # Background Task Intervals
-    metrics_interval: float = Field(default=300.0, ge=30.0, le=7_200.0)
     health_monitor_interval: float = Field(default=30.0, ge=5.0, le=300.0)
 
     # Shutdown Configuration
-    shutdown_timeout: float = Field(default=10.0, ge=1.0, le=60.0)
     graceful_shutdown_timeout: float = Field(default=30.0, ge=5.0, le=300.0)
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -98,16 +90,6 @@ class MQTTConfig(BaseModel):
     @model_validator(mode="after")
     def validate_timing_relationships(self) -> Self:
         """Validate relationships between otherwise valid timing values."""
-        min_health_margin_seconds = 5
-        if self.health_check_interval < (
-            self.connection_timeout + min_health_margin_seconds
-        ):
-            raise ValueError(
-                f"Health check interval ({self.health_check_interval}s) must be > "
-                f"{min_health_margin_seconds}s than connection timeout "
-                f"({self.connection_timeout}s)."
-            )
-
         if self.batch_timeout >= self.connection_timeout:
             raise ValueError(
                 f"Batch timeout ({self.batch_timeout}s) must be less than connection "
@@ -189,15 +171,12 @@ class MQTTSettings(BaseSettings):
     MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
 
     # Connection Management
-    MQTT_RECONNECT_DELAY: int = Field(default=5, ge=1, le=300)
     MQTT_MAX_RECONNECT_ATTEMPTS: int = Field(default=10, ge=1, le=100)
 
     # Message Processing
     MQTT_BATCH_SIZE: int = Field(default=100, ge=1, le=10_000)
     MQTT_BATCH_TIMEOUT: float = Field(default=5.0, ge=0.1, le=300.0)
-    MQTT_SUBSCRIPTION_QOS: int = Field(default=1, ge=0, le=2)
     MQTT_MAX_MESSAGE_QUEUE_SIZE: int = Field(default=10_000, ge=100, le=100_000)
-    MQTT_WORKER_THREADS: int = Field(default=4, ge=1, le=32)
 
     # Retry Configuration
     MQTT_RETRY_BASE_DELAY: float = Field(default=0.1, ge=0.01, le=10.0)
@@ -207,15 +186,9 @@ class MQTTSettings(BaseSettings):
     MQTT_RETRY_JITTER_MAGNITUDE: float = Field(default=0.2, ge=0.0, le=0.5)
 
     # Background Task Intervals
-    MQTT_METRICS_INTERVAL: float = Field(default=300.0, ge=30.0, le=7_200.0)
     MQTT_HEALTH_MONITOR_INTERVAL: float = Field(default=30.0, ge=5.0, le=300.0)
 
-    # Health Monitoring
-    MQTT_HEALTH_CHECK_INTERVAL: int = Field(default=35, ge=5, le=3_600)
-    MQTT_HEALTH_LOG_REMINDER_INTERVAL: int = Field(default=10, ge=1, le=1_000)
-
     # Shutdown Configuration
-    MQTT_SHUTDOWN_TIMEOUT: float = Field(default=10.0, ge=1.0, le=60.0)
     MQTT_GRACEFUL_SHUTDOWN_TIMEOUT: float = Field(
         default=30.0,
         ge=5.0,
@@ -259,24 +232,17 @@ class MQTTSettings(BaseSettings):
             mqtt_api_key=self.MQTT_APIKEY,
             topic_regex=self.MQTT_TOPIC_REGEX,
             enabled=self.MQTT_TELEMETRY_ENABLED,
-            reconnect_delay=self.MQTT_RECONNECT_DELAY,
             max_reconnect_attempts=self.MQTT_MAX_RECONNECT_ATTEMPTS,
             batch_size=self.MQTT_BATCH_SIZE,
             batch_timeout=self.MQTT_BATCH_TIMEOUT,
-            subscription_qos=self.MQTT_SUBSCRIPTION_QOS,
-            health_check_interval=self.MQTT_HEALTH_CHECK_INTERVAL,
-            health_log_reminder_interval=self.MQTT_HEALTH_LOG_REMINDER_INTERVAL,
             connection_timeout=self.MQTT_CONNECTION_TIMEOUT,
             max_message_queue_size=self.MQTT_MAX_MESSAGE_QUEUE_SIZE,
-            worker_threads=self.MQTT_WORKER_THREADS,
             retry_base_delay=self.MQTT_RETRY_BASE_DELAY,
             retry_max_delay=self.MQTT_RETRY_MAX_DELAY,
             retry_exponential_base=self.MQTT_RETRY_EXPONENTIAL_BASE,
             retry_jitter_enabled=self.MQTT_RETRY_JITTER_ENABLED,
             retry_jitter_magnitude=self.MQTT_RETRY_JITTER_MAGNITUDE,
-            metrics_interval=self.MQTT_METRICS_INTERVAL,
             health_monitor_interval=self.MQTT_HEALTH_MONITOR_INTERVAL,
-            shutdown_timeout=self.MQTT_SHUTDOWN_TIMEOUT,
             graceful_shutdown_timeout=self.MQTT_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
 

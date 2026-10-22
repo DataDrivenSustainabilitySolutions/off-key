@@ -14,5 +14,3 @@ class CollectionPolicy(BaseModel):
     @property
     def cadence(self) -> int | None:
         return self.interval_seconds if self.mode == "sample" else None
-
-

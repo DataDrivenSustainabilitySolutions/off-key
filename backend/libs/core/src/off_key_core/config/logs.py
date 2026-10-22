@@ -457,6 +457,7 @@ class LazyLogger:
         # No YAML config loaded - use basic logging
         return getattr(logging.getLogger("off_key"), name)
 
+
 logger = LazyLogger()
 
 

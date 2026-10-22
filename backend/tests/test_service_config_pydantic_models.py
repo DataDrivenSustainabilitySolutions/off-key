@@ -31,16 +31,11 @@ def _base_mqtt_config() -> dict:
         "mqtt_api_key": "secret-key-123",
         "topic_regex": (r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"),
         "enabled": True,
-        "reconnect_delay": 5,
         "max_reconnect_attempts": 10,
         "batch_size": 100,
         "batch_timeout": 5.0,
-        "subscription_qos": 1,
-        "health_check_interval": 35,
-        "health_log_reminder_interval": 10,
         "connection_timeout": 30.0,
         "max_message_queue_size": 10000,
-        "worker_threads": 4,
     }
 
 
@@ -50,8 +45,8 @@ def _base_mqtt_config() -> dict:
         ("broker_port", 0),
         ("transport", "udp"),
         ("client_id_prefix", "invalid prefix"),
-        ("subscription_qos", 3),
-        ("worker_threads", 33),
+        ("batch_size", 0),
+        ("max_message_queue_size", 99),
         ("retry_jitter_magnitude", 0.6),
     ],
 )
@@ -61,9 +56,9 @@ def test_mqtt_config_rejects_invalid_primitive_constraints(field, value):
 
 
 def test_mqtt_settings_validate_primitive_constraints(monkeypatch):
-    monkeypatch.setenv("MQTT_WORKER_THREADS", "0")
+    monkeypatch.setenv("MQTT_BATCH_SIZE", "0")
 
-    with pytest.raises(ValidationError, match="MQTT_WORKER_THREADS"):
+    with pytest.raises(ValidationError, match="MQTT_BATCH_SIZE"):
         MQTTSettings()
 
 

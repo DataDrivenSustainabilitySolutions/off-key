@@ -254,4 +254,3 @@ class CheckpointManager:
                 )
             finally:
                 self._claimed_lock_path = None
-

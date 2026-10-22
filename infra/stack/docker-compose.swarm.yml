@@ -2,10 +2,6 @@ services:
 
   postgres:
     image: "${POSTGRES_IMAGE:-timescale/timescaledb:latest-pg15}"
-    #    ports:
-    #      - target: 5432
-    #        published: "${POSTGRES_PORT}"
-    #        mode: ingress
     #    volumes:
     #      - postgres_data:/var/lib/postgresql/data
     networks:
@@ -26,10 +22,6 @@ services:
 
   api:
     image: "${API_IMAGE:-off-key-api-gateway:latest}"
-    #    ports:
-    #      - target: 8000
-    #        published: "${BACKEND_PORT}"
-    #        mode: ingress
     networks:
       app-network:
         aliases:
@@ -39,8 +31,6 @@ services:
     #      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
     #      interval: 10s
     #      retries: 5
-    environment:
-      - SYNC_ENABLED=false
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--host", "0.0.0.0", "--port", "8000"]
     deploy:
@@ -123,10 +113,6 @@ services:
 
   frontend:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    #    ports:
-    #      - target: 5173
-    #        published: "${FRONTEND_PORT}"
-    #        mode: ingress
     networks:
       - public-network
       - app-network
@@ -163,12 +149,6 @@ services:
     networks:
       - app-network
       - emqx-network
-    environment:
-      - SERVICE_TYPE=mqtt_proxy
-      # The production inventory sets this to production and adds TLS/auth secrets.
-      #  - SERVICE_TYPE=radar
-    #    volumes:
-    #      - mqtt_logs:/app/logs
     deploy:
       mode: replicated
       replicas: 1
@@ -177,6 +157,8 @@ services:
       restart_policy:
         condition: any
 
+  # Secret template for TACTIC-managed RADAR workers; never scaled. TACTIC finds it
+  # through TACTIC_RADAR_SECRET_SERVICE and copies only its secret references.
   mqtt-radar:
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]

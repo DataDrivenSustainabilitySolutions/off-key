@@ -1,7 +1,5 @@
-import pytest
 from off_key_tactic_middleware.config import (
     RadarContainerRuntimeSettings,
-    RadarDefaultsConfig,
     RadarWorkloadLifecycle,
     TacticSettings,
 )
@@ -12,31 +10,6 @@ def test_split_constraints_parses_csv():
         TACTIC_DOCKER_DEFAULT_CONSTRAINTS=" 'node.role == worker' , rack==1,,"
     )
     assert settings._parse_default_constraints() == ["node.role == worker", "rack==1"]
-
-
-def test_radar_defaults_normalize_names_without_classifying_family():
-    assert RadarDefaultsConfig(model_type="PYOD_IFOREST").model_type == "pyod_iforest"
-    assert RadarDefaultsConfig(model_type="CUSTOM_STATIC").model_type == "custom_static"
-
-    with pytest.raises(ValueError, match="must not be empty"):
-        RadarDefaultsConfig(model_type="  ")
-
-
-def test_sensor_key_strategy_validation():
-    config = RadarDefaultsConfig(sensor_key_strategy="TOP_LEVEL")
-    assert config.sensor_key_strategy == "top_level"
-
-    with pytest.raises(ValueError):
-        RadarDefaultsConfig(sensor_key_strategy="invalid")
-
-
-def test_tactic_settings_expose_sensor_freshness_default():
-    settings = TacticSettings(
-        TACTIC_RADAR_DEFAULT_SENSOR_FRESHNESS_SECONDS=18.0,
-    )
-    defaults = settings.config.radar_defaults
-
-    assert defaults.sensor_freshness_seconds == 18.0
 
 
 def test_tactic_settings_expose_radar_workload_image_and_startup_grace():

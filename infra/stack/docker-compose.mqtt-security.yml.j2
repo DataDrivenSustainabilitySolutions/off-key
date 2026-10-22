@@ -65,8 +65,6 @@ services:
         target: MQTT_APIKEY
 
   mqtt-radar:
-    environment:
-      RADAR_MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
     secrets:
       - source: emqx_ca_cert
         target: EMQX_CA_CERT

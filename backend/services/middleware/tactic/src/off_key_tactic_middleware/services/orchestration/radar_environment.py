@@ -119,8 +119,10 @@ def build_radar_environment(
         "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(config.mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-        "RADAR_BATCH_SIZE": str(defaults.batch_size),
-        "RADAR_BATCH_TIMEOUT": str(defaults.batch_timeout),
+        # RADAR ignores these retired keys; they stay so persisted config
+        # fingerprints of running monitors do not change.
+        "RADAR_BATCH_SIZE": "100",
+        "RADAR_BATCH_TIMEOUT": "1.0",
         "RADAR_MEMORY_LIMIT_MB": str(defaults.memory_limit_mb),
         "RADAR_CHECKPOINT_INTERVAL": str(defaults.checkpoint_interval),
         "RADAR_MAX_QUEUE_SIZE": str(defaults.max_queue_size),

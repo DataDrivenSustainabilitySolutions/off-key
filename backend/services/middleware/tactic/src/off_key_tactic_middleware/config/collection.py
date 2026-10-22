@@ -23,7 +23,6 @@ class AmbiboxSettings(BaseSettings):
     AMBIBOX_GOST_API_URL: str = "http://mqtt-tailscale-bridge:18080"
     AMBIBOX_GOST_USERNAME: str = "off-key"
     AMBIBOX_GOST_PASSWORD: SecretStr = SecretStr("")
-    AMBIBOX_FORWARD_HOST: str = "mqtt-tailscale-bridge"
     AMBIBOX_SOCKS_SERVER: str = "tailscale-ambibox:1055"
     AMBIBOX_MQTT_USERNAME: str = ""
     AMBIBOX_MQTT_PASSWORD: SecretStr = SecretStr("")

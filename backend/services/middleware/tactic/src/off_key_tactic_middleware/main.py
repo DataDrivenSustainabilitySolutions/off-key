@@ -38,8 +38,10 @@ from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
     set_shared_async_docker,
 )
+from .services.pipelines.supervisor import PipelineActivationSupervisor
 from .services.reconciliation import RadarStatusReconciliationService
 from .services.system import SystemService
+from .services.system_ingress import SystemIngress
 from .services.system_live import SystemLiveService
 
 
@@ -98,6 +100,11 @@ async def _start_reconciliation(app: FastAPI, config: TacticConfig) -> None:
     )
 
 
+async def _read_live_configuration():
+    async with get_async_session_local()() as session:
+        return await SystemService(session).read()
+
+
 async def _shutdown_system_live(app: FastAPI) -> None:
     live = getattr(app.state, "system_live", None)
     if live is not None:
@@ -152,6 +159,8 @@ async def lifespan(app: FastAPI):
 
     app.state.docker_client = None
     app.state.reconciliation_service = None
+    app.state.pipeline_activation_supervisor = None
+    app.state.system_ingress = None
     app.state.system_live = None
 
     try:
@@ -165,8 +174,6 @@ async def lifespan(app: FastAPI):
             )
 
         await _start_reconciliation(app, config)
-        from .services.pipelines.supervisor import PipelineActivationSupervisor
-
         app.state.pipeline_activation_supervisor = PipelineActivationSupervisor(
             RadarWorkloadManager(app.state.docker_client)
         )
@@ -176,18 +183,11 @@ async def lifespan(app: FastAPI):
             get_system_live_settings(),
             access_resolver=operator_access,
         )
-        from .services.system_ingress import SystemIngress
-
         app.state.system_ingress = SystemIngress(
             access_resolver=operator_access,
         )
         await app.state.system_ingress.start()
-
-        async def read_live_configuration():
-            async with get_async_session_local()() as session:
-                return await SystemService(session).read()
-
-        app.state.system_live.start_supervisor(read_live_configuration)
+        app.state.system_live.start_supervisor(_read_live_configuration)
         yield
     finally:
         await _shutdown_services(app, config)
@@ -244,6 +244,7 @@ def create_app() -> FastAPI:
     @app.get("/ready")
     async def readiness_check(request: Request, response: Response):
         """Readiness endpoint that requires docker connectivity."""
+        # Before the lifespan runs (bare test apps) there is no client yet.
         ready = getattr(request.app.state, "docker_client", None) is not None
         if not ready:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

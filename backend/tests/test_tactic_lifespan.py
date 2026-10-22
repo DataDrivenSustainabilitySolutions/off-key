@@ -90,6 +90,70 @@ async def test_lifespan_closes_unverified_docker_client(monkeypatch):
     assert app.state.docker_client is None
 
 
+def _record_lifecycle(monkeypatch):
+    """Fake every long-lived service and record start and stop calls in order."""
+    calls: list[str] = []
+    docker_client, reconciliation, teardown = _install_lifecycle_fakes(monkeypatch)
+
+    def recorder(name):
+        return AsyncMock(side_effect=lambda *args, **kwargs: calls.append(name))
+
+    reconciliation.stop = recorder("reconciliation.stop")
+    teardown.side_effect = lambda app, phase: calls.append(f"teardown.{phase}")
+    docker_client.close.side_effect = lambda: calls.append("docker.close")
+
+    supervisor = SimpleNamespace(
+        start=recorder("supervisor.start"), stop=recorder("supervisor.stop")
+    )
+    ingress = SimpleNamespace(
+        start=recorder("ingress.start"), stop=recorder("ingress.stop")
+    )
+    live = SimpleNamespace(
+        start_supervisor=lambda reader: calls.append("live.start"),
+        close=recorder("live.close"),
+    )
+    monkeypatch.setattr(
+        tactic_main, "PipelineActivationSupervisor", lambda workloads: supervisor
+    )
+    monkeypatch.setattr(tactic_main, "SystemIngress", lambda **kwargs: ingress)
+    monkeypatch.setattr(tactic_main, "SystemLiveService", lambda *a, **k: live)
+    monkeypatch.setattr(tactic_main, "AmbiboxLiveAccess", lambda settings: object())
+    monkeypatch.setattr(tactic_main, "get_ambibox_settings", lambda: None)
+    monkeypatch.setattr(tactic_main, "get_system_live_settings", lambda: None)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_lifespan_stops_services_in_a_fixed_order(monkeypatch):
+    calls = _record_lifecycle(monkeypatch)
+    app = FastAPI()
+
+    async with tactic_main.lifespan(app):
+        calls.append("serving")
+
+    assert calls == [
+        "teardown.startup",
+        "supervisor.start",
+        "ingress.start",
+        "live.start",
+        "serving",
+        "live.close",
+        "supervisor.stop",
+        "ingress.stop",
+        "reconciliation.stop",
+        "teardown.shutdown",
+        "docker.close",
+    ]
+    for attribute in (
+        "docker_client",
+        "reconciliation_service",
+        "pipeline_activation_supervisor",
+        "system_ingress",
+        "system_live",
+    ):
+        assert getattr(app.state, attribute) is None
+
+
 def test_main_keeps_the_service_logging_config(monkeypatch):
     """uvicorn must not replace the YAML handlers with its default config."""
     config = SimpleNamespace(

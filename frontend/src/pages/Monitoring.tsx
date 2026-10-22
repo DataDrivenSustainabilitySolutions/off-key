@@ -36,13 +36,19 @@ function Monitoring() {
   const [params] = useSearchParams();
   const initialReading = params.get("reading") ?? undefined;
   const catalogue = useOptionalCatalogue();
-  const [graphAuthoring, setGraphAuthoring] = useState(false);
+  // Undecided until the workspace answers, so the legacy page never fetches
+  // before an authoring redirect; an unavailable workspace keeps the legacy page.
+  const [graphAuthoring, setGraphAuthoring] = useState<boolean>();
   useEffect(() => {
     const controller = new AbortController();
     void apiUtils.get<PipelineWorkspace>("/v1/monitors/workspace", { signal: controller.signal, redirectOnUnauthorized: false })
-      .then(snapshot => { if (!controller.signal.aborted) setGraphAuthoring(snapshot.authoring_enabled); }, () => {});
+      .then(
+        snapshot => { if (!controller.signal.aborted) setGraphAuthoring(snapshot?.authoring_enabled === true); },
+        () => { if (!controller.signal.aborted) setGraphAuthoring(false); },
+      );
     return () => controller.abort();
   }, []);
+  if (graphAuthoring === undefined) return <p role="status">Loading monitoring…</p>;
   if (graphAuthoring) {
     const readingId = Object.entries(catalogue?.system.snapshot?.runtime.bindings ?? {}).find(([id, binding]) => binding.entity_id === chargerId && (id === initialReading || binding.telemetry_key === initialReading))?.[0] ?? initialReading;
     if (initialReading && catalogue?.system.status === "loading") return <p role="status">Resolving monitoring inputs…</p>;

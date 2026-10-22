@@ -458,3 +458,51 @@ describe("<Monitoring /> static setup", () => {
     ]);
   });
 });
+
+describe("<Monitoring /> authoring decision", () => {
+  const deferWorkspace = () => {
+    let resolve: (value: unknown) => void = () => {};
+    const workspace = new Promise(next => { resolve = next; });
+    mockGet.mockImplementation((url: string) => {
+      if (url === "/v1/monitors/workspace") return workspace;
+      if (url.includes("/models")) return Promise.resolve(modelCatalog);
+      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
+      return Promise.resolve([]);
+    });
+    return resolve;
+  };
+  const legacyRequests = () =>
+    mockGet.mock.calls.map(([url]) => url).filter(url => url !== "/v1/monitors/workspace");
+
+  beforeEach(() => { mockGet.mockClear(); });
+
+  it("waits for the workspace before rendering or fetching the legacy page", async () => {
+    const resolve = deferWorkspace();
+    render(
+      <MemoryRouter initialEntries={["/monitoring/charger-1?reading=L1"]}>
+        <Routes>
+          <Route path="/monitoring/:chargerId" element={<Monitoring />} />
+          <Route path="/" element={<p>Authoring workspace</p>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("status").textContent).toMatch(/loading monitoring/i);
+    expect(legacyRequests()).toEqual([]);
+
+    resolve({ authoring_enabled: true });
+
+    expect(await screen.findByText("Authoring workspace")).toBeTruthy();
+    expect(legacyRequests()).toEqual([]);
+  });
+
+  it("renders the legacy form once authoring is off", async () => {
+    const resolve = deferWorkspace();
+    renderMonitoring();
+    expect(legacyRequests()).toEqual([]);
+
+    resolve({ authoring_enabled: false });
+
+    expect(await screen.findByText(/topic input mode/i)).toBeTruthy();
+  });
+});

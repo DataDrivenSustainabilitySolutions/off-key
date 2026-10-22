@@ -3,14 +3,19 @@
 import asyncio
 import socket
 from contextlib import suppress
-from threading import Event
 
 import pytest
 from amqtt.client import MQTTClient
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
-from tests.support.mqtt import ANONYMOUS_ACCESS, mqtt_broker, wait_until
+from tests.support.mqtt import (
+    ANONYMOUS_ACCESS,
+    mqtt_broker,
+    paused_socket_creation,
+    wait_until,
+    withholding_server,
+)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -200,55 +205,24 @@ async def test_real_mqtt_queue_overflow_records_every_locally_discarded_message(
 async def test_cancelled_initial_connection_stops_processor_and_network_thread(
     monkeypatch, cancel_during_socket_creation
 ):
-    accepted = asyncio.Event()
-    socket_created = asyncio.Event()
-    release_socket = Event()
-    writers = set()
-
-    if cancel_during_socket_creation:
-        # Keep the real TCP socket in flight until cancellation retires the
-        # client. This exercises the connect/disconnect race deterministically.
-        from paho.mqtt.client import Client
-
-        create_socket = Client._create_socket
-        loop = asyncio.get_running_loop()
-
-        def pause_socket_creation(client):
-            connection = create_socket(client)
-            loop.call_soon_threadsafe(socket_created.set)
-            if not release_socket.wait(5):
-                connection.close()
-                raise TimeoutError("Test did not release the connected socket")
-            return connection
-
-        monkeypatch.setattr(Client, "_create_socket", pause_socket_creation)
-
-    async def withhold_connack(reader, writer):
-        writers.add(writer)
-        accepted.set()
-        try:
-            await reader.read()
-        finally:
-            writer.close()
-            await writer.wait_closed()
-            writers.discard(writer)
-
-    server = await asyncio.start_server(withhold_connack, "127.0.0.1", 0)
-    async with server:
-        port = server.sockets[0].getsockname()[1]
+    paused = (
+        paused_socket_creation(monkeypatch) if cancel_during_socket_creation else None
+    )
+    async with withholding_server("connack") as peer:
         client = RadarMQTTClient(
-            MQTTRadarConfig(broker_host="127.0.0.1", broker_port=port)
+            MQTTRadarConfig(broker_host="127.0.0.1", broker_port=peer.port)
         )
         startup = asyncio.create_task(client.start())
         try:
             async with asyncio.timeout(5):
-                await accepted.wait()
-                if cancel_during_socket_creation:
-                    await socket_created.wait()
+                await peer.accepted.wait()
+                if paused:
+                    await paused.created.wait()
             network_client = client.client
             startup.cancel()
             await wait_until(lambda: client.client is None)
-            release_socket.set()
+            if paused:
+                paused.release.set()
             async with asyncio.timeout(5):
                 with pytest.raises(asyncio.CancelledError):
                     await startup
@@ -257,18 +231,14 @@ async def test_cancelled_initial_connection_stops_processor_and_network_thread(
             assert client.client is None
             assert network_client._thread is None
             assert network_client.socket() is None
-            await wait_until(lambda: not writers)
+            await wait_until(lambda: not peer.writers)
         finally:
-            release_socket.set()
+            if paused:
+                paused.release.set()
             startup.cancel()
             with suppress(asyncio.CancelledError):
                 await startup
             await client.stop()
-            # Even a failed resource assertion must close this fixture's peers
-            # before Server.__aexit__ waits for their transports to disappear.
-            for writer in tuple(writers):
-                writer.close()
-                await writer.wait_closed()
 
 
 async def test_real_broker_acl_rejection_fails_required_subscription_readiness():
@@ -297,44 +267,15 @@ async def test_real_broker_acl_rejection_fails_required_subscription_readiness()
 
 
 async def test_missing_suback_times_out_and_cleans_up_actual_socket():
-    subscribed = asyncio.Event()
-
-    async def read_packet(reader):
-        header = await reader.readexactly(1)
-        size, multiplier = 0, 1
-        while True:
-            digit = (await reader.readexactly(1))[0]
-            size += (digit & 127) * multiplier
-            if not digit & 128:
-                break
-            multiplier *= 128
-        return header, await reader.readexactly(size)
-
-    async def withhold_suback(reader, writer):
-        try:
-            await read_packet(reader)
-            writer.write(b"\x20\x02\x00\x00")  # Real MQTT 3.1.1 CONNACK.
-            await writer.drain()
-            await read_packet(reader)
-            subscribed.set()
-            await reader.read()
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
-    server = await asyncio.start_server(withhold_suback, "127.0.0.1", 0)
-    async with server:
+    async with withholding_server("suback") as peer:
         client = RadarMQTTClient(
-            MQTTRadarConfig(
-                broker_host="127.0.0.1",
-                broker_port=server.sockets[0].getsockname()[1],
-            )
+            MQTTRadarConfig(broker_host="127.0.0.1", broker_port=peer.port)
         )
         client._connection_timeout_seconds = 0.3
         startup = asyncio.create_task(client.start())
         try:
             async with asyncio.timeout(5):
-                await subscribed.wait()
+                await peer.subscribed.wait()
             network_client = client.client
             assert not client.is_connected
             with pytest.raises(RuntimeError, match="acknowledgement timed out"):

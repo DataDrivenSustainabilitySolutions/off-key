@@ -1,7 +1,9 @@
-"""Loopback MQTT brokers and polling helpers for real RADAR integration tests."""
+"""Loopback MQTT brokers, misbehaving peers and polling helpers for socket tests."""
 
 import asyncio
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from threading import Event
 
 from amqtt.broker import Broker
 from off_key_core.schemas.radar import AdaptiveStreamConfig
@@ -30,6 +32,96 @@ async def mqtt_broker(*, plugins=None, port=0):
         yield broker, port
     finally:
         await broker.shutdown()
+
+
+@dataclass
+class WithholdingServer:
+    port: int
+    accepted: asyncio.Event
+    subscribed: asyncio.Event
+    writers: set = field(default_factory=set)
+
+
+async def _read_packet(reader):
+    header = await reader.readexactly(1)
+    size, multiplier = 0, 1
+    while True:
+        digit = (await reader.readexactly(1))[0]
+        size += (digit & 127) * multiplier
+        if not digit & 128:
+            break
+        multiplier *= 128
+    return header, await reader.readexactly(size)
+
+
+@asynccontextmanager
+async def withholding_server(mode: str):
+    """A TCP peer that never sends CONNACK (``connack``) or SUBACK (``suback``)."""
+    assert mode in {"connack", "suback"}
+    accepted, subscribed = asyncio.Event(), asyncio.Event()
+    writers = set()
+
+    async def handle(reader, writer):
+        writers.add(writer)
+        accepted.set()
+        try:
+            if mode == "suback":
+                await _read_packet(reader)
+                writer.write(b"\x20\x02\x00\x00")  # Real MQTT 3.1.1 CONNACK.
+                await writer.drain()
+                await _read_packet(reader)
+                subscribed.set()
+            await reader.read()
+        except asyncio.IncompleteReadError:
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            writers.discard(writer)
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    async with server:
+        peer = WithholdingServer(
+            server.sockets[0].getsockname()[1], accepted, subscribed, writers
+        )
+        try:
+            yield peer
+        finally:
+            # Even a failed resource assertion must close these peers before
+            # Server.__aexit__ waits for their transports to disappear.
+            for writer in tuple(writers):
+                writer.close()
+                await writer.wait_closed()
+
+
+@dataclass
+class PausedSocketCreation:
+    created: asyncio.Event
+    release: Event
+
+
+def paused_socket_creation(monkeypatch) -> PausedSocketCreation:
+    """Hold every Paho TCP socket open but unreturned until ``release`` is set.
+
+    This keeps a real connect in flight while the owner retires the client,
+    exercising the connect/disconnect race deterministically.
+    """
+    from paho.mqtt.client import Client
+
+    create_socket = Client._create_socket
+    loop = asyncio.get_running_loop()
+    paused = PausedSocketCreation(asyncio.Event(), Event())
+
+    def pause(client):
+        connection = create_socket(client)
+        loop.call_soon_threadsafe(paused.created.set)
+        if not paused.release.wait(5):
+            connection.close()
+            raise TimeoutError("Test did not release the connected socket")
+        return connection
+
+    monkeypatch.setattr(Client, "_create_socket", pause)
+    return paused
 
 
 async def wait_until(predicate, deadline_seconds=20):

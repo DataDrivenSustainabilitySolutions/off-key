@@ -88,10 +88,6 @@ class SystemCollectionStream:
         return self.binding.entity_id
 
     @property
-    def sensor(self):
-        return self
-
-    @property
     def key(self):
         return self.binding.telemetry_key
 

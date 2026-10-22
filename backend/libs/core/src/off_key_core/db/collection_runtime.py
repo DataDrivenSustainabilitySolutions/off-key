@@ -17,7 +17,6 @@ class CollectionRuntimeSnapshot:
     catalog: SystemCollectionDefinition
     ingress: dict
     collection: dict
-    status_model: type = SystemCollectionConfiguration
 
 
 async def read_collection_runtime(session):

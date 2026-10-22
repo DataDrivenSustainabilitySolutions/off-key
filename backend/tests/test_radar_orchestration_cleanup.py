@@ -167,7 +167,6 @@ def collection_lock(monkeypatch):
 def selected_collection(monkeypatch, request):
     stream = SimpleNamespace(
         accepted_topic=getattr(request, "param", "telemetry/charger-1/sine"),
-        sensor=SimpleNamespace(value_type="number"),
         value_type="number",
         signature=("source", "charger-1", "sine", "sample", 10),
     )

@@ -42,8 +42,6 @@ class MQTTProxyService:
         self._prepared_configuration: list | None = None
         self._generation = -1
         self.state = {"status": "starting"}
-        self.status_model = SystemCollectionConfiguration
-        self._prepared_model = None
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
@@ -81,7 +79,6 @@ class MQTTProxyService:
             self.buffer.pause()
             raise
         self._prepared_revision = snapshot.revision
-        self._prepared_model = self.status_model
         self._prepared_configuration = runtime_fingerprint(snapshot.catalog)
         self._generation = subscriptions.generation
         self.state = {
@@ -95,7 +92,6 @@ class MQTTProxyService:
     async def _refresh_configuration(self) -> None:
         async with self.session_factory() as session:
             snapshot = await read_collection_runtime(session)
-        self.status_model = SystemCollectionConfiguration
         if not self.mqtt_client.is_connected:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1
@@ -105,7 +101,6 @@ class MQTTProxyService:
                 raise RuntimeError("Local MQTT broker is disconnected")
         if (
             self._prepared_revision >= 0
-            and self._prepared_model == self.status_model
             and self._prepared_revision != snapshot.revision
             and self._generation == self.mqtt_client.subscription_manager.generation
             and self._prepared_configuration == runtime_fingerprint(snapshot.catalog)
@@ -119,7 +114,6 @@ class MQTTProxyService:
             self.state["revision"] = snapshot.revision
         if (
             self._prepared_revision != snapshot.revision
-            or self._prepared_model != self.status_model
             or self._generation != self.mqtt_client.subscription_manager.generation
         ):
             self.revision = -1
@@ -151,10 +145,10 @@ class MQTTProxyService:
         )
         async with self.session_factory() as session:
             await session.execute(
-                update(self.status_model)
+                update(SystemCollectionConfiguration)
                 .where(
-                    self.status_model.id == 1,
-                    self.status_model.revision == revision,
+                    SystemCollectionConfiguration.id == 1,
+                    SystemCollectionConfiguration.revision == revision,
                 )
                 .values(collection_status=self.state.copy())
             )
@@ -172,10 +166,7 @@ class MQTTProxyService:
                     live_seen.get(charger_id, observation.received_at),
                     observation.received_at,
                 )
-            if (
-                observation.stream.sensor.value_type == "number"
-                and not observation.snapshot
-            ):
+            if observation.stream.value_type == "number" and not observation.snapshot:
                 # Bounded DB writer applies backpressure before publishing downstream.
                 async with asyncio.timeout(self.config.graceful_shutdown_timeout):
                     await self.database_writer.write_telemetry_message(message)
@@ -183,9 +174,9 @@ class MQTTProxyService:
                     message.topic, message.payload, qos=1
                 ):
                     self.buffer.count("publish_failed")
-            states[(observation.stream.charger_id, observation.stream.sensor.key)] = {
+            states[(observation.stream.charger_id, observation.stream.key)] = {
                 "charger_id": observation.stream.charger_id,
-                "sensor_key": observation.stream.sensor.key,
+                "sensor_key": observation.stream.key,
                 "value": observation.value,
                 "received_at": observation.received_at,
                 "is_snapshot": observation.snapshot,

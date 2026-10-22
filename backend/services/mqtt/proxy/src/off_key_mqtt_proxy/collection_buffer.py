@@ -102,7 +102,7 @@ class CollectionBuffer:
             if observation.snapshot:
                 self.counters["snapshots"] += 1
             if (
-                stream.sensor.value_type == "number"
+                stream.value_type == "number"
                 and stream.policy.mode == "original"
                 and not observation.snapshot
             ):

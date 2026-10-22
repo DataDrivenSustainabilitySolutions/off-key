@@ -394,7 +394,6 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
             streams=lambda **kw: [
                 SimpleNamespace(
                     accepted_topic=config.mqtt_topics[0],
-                    sensor=SimpleNamespace(value_type="number"),
                     value_type="number",
                     signature=("fixture",),
                 )

@@ -613,7 +613,7 @@ class PipelineActivations:
             )
         if predecessor is not None:
             orchestration = self._orchestration()
-            if not await orchestration._delete_service(predecessor):
+            if not await orchestration.retire_service(predecessor):
                 raise RuntimeError("Predecessor shutdown is not yet confirmed")
         else:
             await self.session.commit()
@@ -718,7 +718,7 @@ class PipelineActivations:
         row = await self._owned_row(row.id, token, "cancelling")
         service = await self.session.get(MonitoringService, row.service_id)
         if service is not None:
-            if not await self._orchestration()._delete_service(service):
+            if not await self._orchestration().retire_service(service):
                 raise RuntimeError("Cancelled successor shutdown is not yet confirmed")
         else:
             await self.session.commit()

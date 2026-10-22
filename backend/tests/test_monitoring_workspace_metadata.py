@@ -13,7 +13,7 @@ from off_key_core.schemas.radar import RadarServiceLabel, RadarStartConfig
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.api.v1 import radar as radar_api
-from off_key_tactic_middleware.services.orchestration import radar
+from off_key_tactic_middleware.services.orchestration import radar, radar_queries
 from pydantic import ValidationError
 
 
@@ -56,7 +56,7 @@ def orchestration(record):
 def isolate_lifecycle(monkeypatch):
     monkeypatch.setattr(radar, "lock_collection_configuration", AsyncMock())
     monkeypatch.setattr(
-        radar, "derive_operational_status", lambda *_: {"stage": "operational"}
+        radar_queries, "derive_operational_status", lambda *_: {"stage": "operational"}
     )
 
 

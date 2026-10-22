@@ -66,9 +66,9 @@ def test_labels_tolerate_missing_specs(identity, attrs, labels):
 
 def test_swarm_task_state_sets_are_pinned():
     done = {"shutdown", "complete", "failed", "rejected", "remove"}
-    assert docker_facade.SWARM_TASK_DONE == done
-    assert docker_facade.SWARM_TASK_SHUTDOWN_DONE == done | {"completed"}
-    assert docker_facade.SWARM_TASK_STARTUP_FAILED == done | {"orphaned"}
+    assert done == docker_facade.SWARM_TASK_DONE
+    assert done | {"completed"} == docker_facade.SWARM_TASK_SHUTDOWN_DONE
+    assert done | {"orphaned"} == docker_facade.SWARM_TASK_STARTUP_FAILED
 
 
 def test_latest_task_status_uses_the_newest_task():

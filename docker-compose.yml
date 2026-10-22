@@ -9,7 +9,7 @@ services:
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
     container_name: react_client
     environment:
-      - "VITE_API_URL=${VITE_API_URL}"
+      - "API_PROXY_TARGET=${API_PROXY_TARGET:-${VITE_API_URL:-http://api-gateway:8000}}"
     ports:
       - "${FRONTEND_PORT}:5173"
     depends_on:

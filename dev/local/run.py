@@ -93,7 +93,6 @@ def initialize(args: argparse.Namespace) -> None:
         COMPOSE_PROJECT_NAME=project,
         FRONTEND_BASE_URL=origin,
         CORS_ALLOWED_ORIGINS=f'["{origin}"]',
-        VITE_API_URL="/api",
         POSTGRES_PORT="5432",
         SUPERUSER_MAIL=args.admin_email,
         AMBIBOX_ALLOWED_HOSTS='["source-broker"]',

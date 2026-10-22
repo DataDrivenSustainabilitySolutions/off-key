@@ -68,7 +68,7 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path, filenam
             if key in service.get("environment", {})
         } == {"api-gateway", "tactic-middleware"}
     assert all(
-        key.startswith("VITE_") or key == "API_UPSTREAM"
+        key in {"API_PROXY_TARGET", "API_UPSTREAM"}
         for key in services["frontend"]["environment"]
     )
     expected = {

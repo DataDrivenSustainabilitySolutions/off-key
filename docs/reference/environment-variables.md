@@ -68,7 +68,7 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 | `FRONTEND_PORT` | `5173` | Frontend host port |
 | `FRONTEND_BASE_URL` | `http://localhost:5173` | Base URL used in emailed links |
 | `CORS_ALLOWED_ORIGINS` | Local frontend and Gateway origins | Valid JSON array of allowed origins |
-| `VITE_API_URL` | `http://api-gateway:8000` | API URL reachable from the frontend runtime; use `http://localhost:8000` for host-run Vite |
+| `API_PROXY_TARGET` | `http://api-gateway:8000` | Development only: where the Vite dev server proxies `/api`; use `http://localhost:8000` for host-run Vite. The old name `VITE_API_URL` is still read. Built images always call `/api` on their own origin |
 
 ## Authentication
 
@@ -234,7 +234,7 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 
 | Symptom | Likely variables | First action |
 | --- | --- | --- |
-| Frontend loads but API calls fail | `VITE_API_URL`, `BACKEND_PORT`, `CORS_ALLOWED_ORIGINS` | Align the URL with host/container reachability and CORS |
+| Frontend loads but API calls fail | `API_PROXY_TARGET`, `BACKEND_PORT`, `CORS_ALLOWED_ORIGINS` | Align the URL with host/container reachability and CORS |
 | Verification/reset links are wrong | `FRONTEND_BASE_URL` | Set the externally reachable frontend URL |
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |

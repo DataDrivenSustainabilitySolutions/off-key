@@ -29,7 +29,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 
 | Service | Owns | Reads from | Writes to | Critical dependencies |
 | --- | --- | --- | --- | --- |
-| Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway and a valid `VITE_API_URL` |
+| Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway, reached through `/api` on the frontend's own origin |
 | API Gateway | External route contract and request composition | TACTIC data, membership, catalogue and monitoring endpoints | HTTP responses | TACTIC readiness |
 | TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model catalogue | Database and container lifecycle | Docker API, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |

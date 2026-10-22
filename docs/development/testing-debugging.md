@@ -148,7 +148,7 @@ docker compose logs --tail 200 tactic-middleware
 
 ### Frontend loads but charger data is empty
 
-1. Confirm that `VITE_API_URL` is reachable from the frontend runtime.
+1. Confirm that `API_PROXY_TARGET` is reachable from the Vite dev server; built images proxy `/api` through nginx.
 2. Check Gateway liveness at <http://localhost:8000/health>.
 3. Check TACTIC readiness at <http://localhost:8001/ready>.
 4. Inspect Gateway and TACTIC logs for the upstream error.

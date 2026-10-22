@@ -5,22 +5,10 @@
 
 import { EVIDENCE_PAGE_SIZE } from "./forward-pages";
 
-// Environment-based API configuration
-const getApiBaseUrl = (): string => {
-  // Use proxy in development, direct URL in production/Docker
-  const isDevelopment = import.meta.env.DEV;
-
-  if (isDevelopment) {
-    // Use Vite proxy configuration
-    return '/api';
-  }
-
-  // Production configuration - use environment variable or fallback
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
-};
-
 export const API_CONFIG = {
-  BASE_URL: getApiBaseUrl(),
+  // Same-origin in every mode: Vite's dev proxy and the production nginx
+  // both forward /api to the gateway.
+  BASE_URL: '/api',
   TIMEOUT: 10000, // 10 seconds
   MONITORING_LIFECYCLE_TIMEOUT: 210000, // 210 seconds
 
@@ -32,6 +20,7 @@ export const API_CONFIG = {
       REFRESH: '/v1/auth/refresh',
       LOGOUT: '/v1/auth/logout',
       FORGOT_PASSWORD: '/v1/auth/forgot-password',
+      RESET_PASSWORD: '/v1/auth/reset-password',
     },
 
     // Chargers

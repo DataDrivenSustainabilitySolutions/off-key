@@ -12,6 +12,7 @@ import {
   AUTH_LINK_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from '@/components/AuthLayout';
+import { API_CONFIG, getApiUrl } from "@/lib/api-config";
 import { clientLogger } from "@/lib/logger";
 import { validatePassword, validatePasswordConfirmation } from "@/lib/validation";
 
@@ -45,7 +46,7 @@ const ResetPassword: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/v1/auth/reset-password', {
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.AUTH.RESET_PASSWORD), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, new_password: newPassword }),

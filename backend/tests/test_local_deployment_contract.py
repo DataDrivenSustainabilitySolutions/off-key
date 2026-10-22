@@ -376,7 +376,6 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
     )
     assert services["frontend"]["build"]["target"] == "production"
     assert services["frontend"]["build"]["args"] == {
-        "VITE_API_URL": "/api",
         "VITE_LOCAL_ADMIN_EMAIL": "admin@example.com",
     }
     assert "--reload" not in services["api-gateway"]["command"]

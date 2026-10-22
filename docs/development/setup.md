@@ -77,7 +77,7 @@ uv run --project backend python -m pytest -q
 | Log access               | Process standard output | `docker compose logs -f <service>`         |
 | Networking               | Published ports         | Compose service DNS                        |
 
-If requests fail after switching modes, check `VITE_API_URL` and the configured CORS origins first.
+If requests fail after switching modes, check `API_PROXY_TARGET` (the Vite dev proxy target) and the configured CORS origins first.
 
 ## Debug patterns
 
@@ -111,7 +111,7 @@ npm --prefix frontend run build
 
 | Symptom                                     | Likely cause                                             | First action                                        |
 | ------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------- |
-| Frontend cannot call the API in host mode   | `VITE_API_URL` still uses container DNS                  | Set it to `http://localhost:8000`                   |
+| Frontend cannot call the API in host mode   | `API_PROXY_TARGET` still uses container DNS              | Set it to `http://localhost:8000`                   |
 | Gateway restarts during boot                | Database schema is not ready                             | Wait, then inspect `db-sync` and gateway logs       |
 | Monitoring endpoints return upstream errors | TACTIC is not ready or cannot reach the Docker API proxy | Check <http://localhost:8001/ready> and TACTIC logs |
 | Pre-commit fails unexpectedly               | Dependencies differ from the lockfiles                   | Re-run the frozen dependency installs               |

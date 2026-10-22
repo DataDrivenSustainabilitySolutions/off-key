@@ -42,7 +42,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
     gateway, monkeypatch
 ):
     remote = AsyncMock(side_effect=TacticError("Invalid token", status=401))
-    monkeypatch.setattr(access.tactic, "_make_request", remote)
+    monkeypatch.setattr(access.tactic, "request", remote)
     paths = (
         "/chargers/available",
         "/telemetry/example/type",
@@ -165,7 +165,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
     remote = AsyncMock(return_value="")
     if status != 204:
         remote.side_effect = TacticError("Cannot remove member", status=status)
-    monkeypatch.setattr(members.tactic, "_make_request", remote)
+    monkeypatch.setattr(members.tactic, "request", remote)
     async with AsyncClient(
         transport=ASGITransport(app=gateway), base_url="http://test"
     ) as client:
@@ -186,7 +186,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
 @pytest.mark.asyncio
 async def test_anonymous_member_removal_cannot_reach_tactic(gateway, monkeypatch):
     remote = AsyncMock()
-    monkeypatch.setattr(access.tactic, "_make_request", remote)
+    monkeypatch.setattr(access.tactic, "request", remote)
     async with AsyncClient(
         transport=ASGITransport(app=gateway), base_url="http://test"
     ) as client:
@@ -199,7 +199,7 @@ async def test_password_reset_does_not_disclose_membership_and_login_is_limited(
     gateway, monkeypatch
 ):
     reset = AsyncMock(side_effect=[None, {"email": PROFILE.email, "token": "x" * 43}])
-    monkeypatch.setattr(auth.tactic, "_make_request", reset)
+    monkeypatch.setattr(auth.tactic, "request", reset)
     monkeypatch.setattr(auth, "send_password_reset_email", AsyncMock())
     authenticate = AsyncMock(side_effect=TacticError("Invalid credentials", status=401))
     monkeypatch.setattr(auth.tactic, "authenticate_user", authenticate)
@@ -294,7 +294,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
             )
         ).status_code == 200
         assert captured[-1][0] == "/api/v1/data/users/17/favorites/%252e%252e%252f99"
-    await facade._make_request(
+    await facade.request(
         "GET", "/api/v1/members/me", headers={"Authorization": "Bearer user"}
     )
     assert captured[-1][1] == {
@@ -430,7 +430,7 @@ async def test_invalid_invitation_is_validation_error_and_remains_rate_limited(
     assert response.status_code == 422
     monkeypatch.setattr(
         auth.tactic,
-        "_make_request",
+        "request",
         AsyncMock(side_effect=TacticError("Invalid or expired invitation", status=422)),
     )
     async with AsyncClient(

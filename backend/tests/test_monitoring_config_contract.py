@@ -105,9 +105,9 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         **legacy_config,
     )
     facade = object.__new__(Tactic)
-    facade._make_request = AsyncMock()
+    facade.request = AsyncMock()
     await facade.start_radar_service(config)
-    payload = facade._make_request.await_args.kwargs["json_data"]
+    payload = facade.request.await_args.kwargs["json_data"]
     assert set(payload) == {
         "launch_version",
         "container_name",

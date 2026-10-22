@@ -5,8 +5,8 @@ HTTP client for communicating with the TACTIC middleware service.
 import asyncio
 import json
 from datetime import datetime
-from functools import lru_cache
-from typing import Any, cast
+from functools import cached_property
+from typing import Any
 from urllib.parse import quote
 
 import aiohttp
@@ -25,7 +25,7 @@ class TacticError(Exception):
         self.body = body
 
 
-def _path_segment(value: str) -> str:
+def path_segment(value: str) -> str:
     if value in {"", ".", ".."} or "/" in value or "\\" in value:
         raise TacticError("Invalid resource identifier", status=422)
     return quote(value, safe="")
@@ -37,14 +37,21 @@ class Tactic:
     """
 
     def __init__(self):
-        settings = get_service_endpoints_settings()
-        self.base_url = settings.tactic_service_base_url
-        self.timeout = aiohttp.ClientTimeout(
-            total=settings.TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS
-        )
         self._session: aiohttp.ClientSession | None = None
         self._max_retries = 2
-        logger.info(f"Tactic facade initialized with base URL: {self.base_url}")
+
+    # Settings are read on first use so importing the gateway needs no environment.
+    @cached_property
+    def base_url(self) -> str:
+        base_url = get_service_endpoints_settings().tactic_service_base_url
+        logger.info(f"Tactic facade initialized with base URL: {base_url}")
+        return base_url
+
+    @cached_property
+    def timeout(self) -> aiohttp.ClientTimeout:
+        return aiohttp.ClientTimeout(
+            total=get_service_endpoints_settings().TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS
+        )
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Create or reuse a shared aiohttp session."""
@@ -57,7 +64,7 @@ class Tactic:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def _make_request(
+    async def request(
         self,
         method: str,
         endpoint: str,
@@ -181,27 +188,9 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
-    async def pipeline_request(
-        self,
-        method: str,
-        path: str,
-        *,
-        authorization: str,
-        body: dict | None = None,
-        params: dict | None = None,
-    ):
-        """Forward monitoring graph operations with current member credentials."""
-        return await self._make_request(
-            method,
-            f"/api/v1/monitors{path}",
-            json_data=body,
-            params=params,
-            headers={"Authorization": authorization},
-        )
-
     async def start_radar_service(self, config: RadarStartConfig) -> dict[str, Any]:
         """Forward the canonical launch configuration to TACTIC."""
-        return await self._make_request(
+        return await self.request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
             json_data=config.model_dump(
@@ -231,7 +220,7 @@ class Tactic:
         if container_id:
             params["container_id"] = container_id
 
-        return await self._make_request(
+        return await self.request(
             method="DELETE",
             endpoint="/api/v1/orchestration/radar/services/stop/",
             params=params,
@@ -239,17 +228,17 @@ class Tactic:
 
     async def delete_radar_service(self, service_id: str) -> dict[str, Any]:
         """Delete a RADAR service and any backing workload via TACTIC."""
-        return await self._make_request(
+        return await self.request(
             method="DELETE",
-            endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}",
+            endpoint=f"/api/v1/orchestration/radar/services/{path_segment(service_id)}",
         )
 
     async def rename_radar_service(
         self, service_id: str, display_name: str
     ) -> dict[str, Any]:
-        return await self._make_request(
+        return await self.request(
             method="PATCH",
-            endpoint=f"/api/v1/orchestration/radar/services/{_path_segment(service_id)}/label",
+            endpoint=f"/api/v1/orchestration/radar/services/{path_segment(service_id)}/label",
             json_data={"display_name": display_name},
         )
 
@@ -272,7 +261,7 @@ class Tactic:
             "include_docker_status": str(include_docker_status).lower(),
         }
 
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/",
             params=params,
@@ -299,7 +288,7 @@ class Tactic:
         if container_id:
             params["container_id"] = container_id
 
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/details/",
             params=params,
@@ -317,7 +306,7 @@ class Tactic:
             "limit": limit,
             "active_only": str(active_only).lower(),
         }
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/data/chargers",
             params=params,
@@ -328,7 +317,7 @@ class Tactic:
     ) -> dict[str, list[str]]:
         """Get active charger IDs from TACTIC data service."""
         params = {"skip": skip, "limit": limit}
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/data/chargers/active/ids",
             params=params,
@@ -337,9 +326,9 @@ class Tactic:
     async def get_telemetry_types(self, charger_id: str, limit: int = 100) -> list[str]:
         """Get telemetry types for a charger from TACTIC data service."""
         params = {"limit": limit}
-        return await self._make_request(
+        return await self.request(
             method="GET",
-            endpoint=f"/api/v1/data/telemetry/{_path_segment(charger_id)}/types",
+            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}/types",
             params=params,
         )
 
@@ -365,15 +354,15 @@ class Tactic:
             params["after_created"] = after_created.isoformat()
             params["after_event_timestamp"] = after_event_timestamp.isoformat()
 
-        return await self._make_request(
+        return await self.request(
             method="GET",
-            endpoint=f"/api/v1/data/telemetry/{_path_segment(charger_id)}",
+            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}",
             params=params,
         )
 
     async def authenticate_user(self, email: str, password: str) -> dict[str, Any]:
         """Validate user credentials via TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="POST",
             endpoint="/api/v1/data/auth/login",
             json_data={"email": email, "password": password},
@@ -381,14 +370,14 @@ class Tactic:
 
     async def get_user_favorites(self, user_id: int) -> list[str]:
         """Get user favorites from TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
         )
 
     async def add_user_favorite(self, user_id: int, charger_id: str) -> dict[str, str]:
         """Add user favorite via TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="POST",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
             json_data={"charger_id": charger_id},
@@ -398,9 +387,9 @@ class Tactic:
         self, user_id: int, charger_id: str
     ) -> dict[str, str]:
         """Remove user favorite via TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="DELETE",
-            endpoint=f"/api/v1/data/users/{user_id}/favorites/{_path_segment(charger_id)}",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites/{path_segment(charger_id)}",
         )
 
     async def get_charger_anomalies(
@@ -413,9 +402,9 @@ class Tactic:
         params: dict[str, Any] = {"limit": limit}
         if telemetry_type:
             params["telemetry_type"] = telemetry_type
-        return await self._make_request(
+        return await self.request(
             method="GET",
-            endpoint=f"/api/v1/data/anomalies/{_path_segment(charger_id)}",
+            endpoint=f"/api/v1/data/anomalies/{path_segment(charger_id)}",
             params=params,
         )
 
@@ -424,7 +413,7 @@ class Tactic:
         params: dict[str, Any] = {}
         if since:
             params["since"] = since.isoformat()
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/data/anomalies/count",
             params=params,
@@ -441,9 +430,9 @@ class Tactic:
         params: dict[str, Any] = {"limit": limit}
         if telemetry_type:
             params["telemetry_type"] = telemetry_type
-        return await self._make_request(
+        return await self.request(
             method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{_path_segment(charger_id)}",
+            endpoint=f"/api/v1/data/monitoring-evidence/{path_segment(charger_id)}",
             params=params,
         )
 
@@ -480,15 +469,15 @@ class Tactic:
                     "after_sequence_number": after_sequence_number,
                 }
             )
-        return await self._make_request(
+        return await self.request(
             method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{_path_segment(charger_id)}/chart",
+            endpoint=f"/api/v1/data/monitoring-evidence/{path_segment(charger_id)}/chart",
             params=params,
         )
 
     async def create_anomaly(self, anomaly_data: dict[str, Any]) -> dict[str, str]:
         """Create anomaly via TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="POST",
             endpoint="/api/v1/data/anomalies",
             json_data=anomaly_data,
@@ -499,31 +488,22 @@ class Tactic:
         anomaly_id: str,
     ) -> dict[str, str]:
         """Delete anomaly via TACTIC data service."""
-        return await self._make_request(
+        return await self.request(
             method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{_path_segment(anomaly_id)}",
+            endpoint=f"/api/v1/data/anomalies/{path_segment(anomaly_id)}",
         )
 
     async def list_available_models(self) -> list[dict[str, Any]]:
         """List models from TACTIC model registry API."""
-        return await self._make_request(
+        return await self.request(
             method="GET",
             endpoint="/api/v1/models/",
         )
 
 
-@lru_cache(maxsize=1)
+tactic = Tactic()
+
+
 def get_tactic_client() -> Tactic:
-    """Return cached tactic client instance."""
-    return Tactic()
-
-
-class _LazyTacticFacade:
-    """Attribute-forwarding facade that defers Tactic creation until first use."""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_tactic_client(), name)
-
-
-# Global facade for existing callsites without import-time Tactic initialization.
-tactic = cast(Tactic, _LazyTacticFacade())
+    """Return the process-wide TACTIC client."""
+    return tactic

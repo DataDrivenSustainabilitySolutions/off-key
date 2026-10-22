@@ -447,7 +447,7 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
 @pytest.mark.asyncio
 async def test_gateway_forwards_revision_document_and_authorization(monkeypatch):
     request = AsyncMock(return_value={"revision": 1})
-    monkeypatch.setattr(gateway_system.tactic, "_make_request", request)
+    monkeypatch.setattr(gateway_system.tactic, "request", request)
     change = SystemChange(expected_revision=0, document=document())
     result = await gateway_system.save_system(change, "Bearer test-token")
     assert result == {"revision": 1}

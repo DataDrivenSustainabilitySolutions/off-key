@@ -24,7 +24,7 @@ class SessionTactic:
     async def authenticate_user(self, *, email, password):
         return {"id": 42, "email": email, "role": "user", "session_version": 3}
 
-    async def _make_request(self, method, endpoint, **kwargs):
+    async def request(self, method, endpoint, **kwargs):
         self.calls.append((endpoint, kwargs))
         if self.failure:
             raise TacticError("Session unavailable", status=self.failure)

@@ -109,7 +109,7 @@ def remembered_token(request: Request) -> str | None:
 async def revoke_remembered_cookie(request: Request) -> None:
     token = remembered_token(request)
     if token:
-        await tactic._make_request(
+        await tactic.request(
             "POST", "/api/v1/members/sessions/revoke", json_data={"token": token}
         )
 
@@ -157,7 +157,7 @@ async def register():
 async def accept_invitation(
     request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
 ):
-    return await tactic._make_request(
+    return await tactic.request(
         "POST",
         "/api/v1/members/accept-invitation",
         json_data=invitation.model_dump(),
@@ -187,7 +187,7 @@ async def login(
     result = access_token_response(authenticated_user)
     await revoke_remembered_cookie(request)
     if user.remember_me:
-        session = await tactic._make_request(
+        session = await tactic.request(
             "POST",
             "/api/v1/members/sessions",
             headers={"Authorization": f"Bearer {result['access_token']}"},
@@ -215,7 +215,7 @@ async def refresh_session(request: Request, response: Response):
     token = remembered_token(request)
     if token:
         try:
-            user = await tactic._make_request(
+            user = await tactic.request(
                 "POST", "/api/v1/members/sessions/refresh", json_data={"token": token}
             )
             response.headers["Cache-Control"] = "no-store"
@@ -269,7 +269,7 @@ async def forgot_password(
     background: BackgroundTasks,
     user: ForgotPasswordRequest = Depends(reset_email_attempt),
 ):
-    result = await tactic._make_request(
+    result = await tactic.request(
         "POST",
         "/api/v1/members/request-password-reset",
         json_data=user.model_dump(),
@@ -288,7 +288,7 @@ async def forgot_password(
 async def reset_password(
     request: Request, reset: PasswordReset = Depends(reset_attempt)
 ):
-    return await tactic._make_request(
+    return await tactic.request(
         "POST",
         "/api/v1/members/reset-password",
         json_data=reset.model_dump(),

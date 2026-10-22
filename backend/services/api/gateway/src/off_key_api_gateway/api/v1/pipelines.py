@@ -28,7 +28,7 @@ from off_key_core.schemas.pipelines import (
     PipelineWorkspace,
 )
 
-from ...facades.tactic import _path_segment, tactic
+from ...facades.tactic import path_segment, tactic
 from ..access import current_member
 from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
@@ -57,12 +57,12 @@ compile_limit = limiter.shared_limit(
 
 
 async def forward(request, method, path, body=None, params=None):
-    return await tactic.pipeline_request(
+    return await tactic.request(
         method,
-        path,
-        authorization=request.headers["Authorization"],
-        body=body.model_dump(mode="json") if body is not None else None,
+        f"/api/v1/monitors{path}",
+        json_data=body.model_dump(mode="json") if body is not None else None,
         params=params,
+        headers={"Authorization": request.headers["Authorization"]},
     )
 
 
@@ -116,7 +116,7 @@ async def validate_unsaved_design(request: Request, change: PipelineValidateRequ
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineView)
 @read_limit
 async def get_pipeline(request: Request, pipeline_id: str):
-    return await forward(request, "GET", f"/pipelines/{_path_segment(pipeline_id)}")
+    return await forward(request, "GET", f"/pipelines/{path_segment(pipeline_id)}")
 
 
 @router.patch("/pipelines/{pipeline_id}", response_model=PipelineView)
@@ -125,7 +125,7 @@ async def update_pipeline(
     request: Request, pipeline_id: str, change: PipelineMetadataChange
 ):
     return await forward(
-        request, "PATCH", f"/pipelines/{_path_segment(pipeline_id)}", change
+        request, "PATCH", f"/pipelines/{path_segment(pipeline_id)}", change
     )
 
 
@@ -133,7 +133,7 @@ async def update_pipeline(
 @write_limit
 async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSave):
     return await forward(
-        request, "PUT", f"/pipelines/{_path_segment(pipeline_id)}/draft", change
+        request, "PUT", f"/pipelines/{path_segment(pipeline_id)}/draft", change
     )
 
 
@@ -145,7 +145,7 @@ async def validate_pipeline(
     request: Request, pipeline_id: str, change: PipelineValidateRequest
 ):
     return await forward(
-        request, "POST", f"/pipelines/{_path_segment(pipeline_id)}/validate", change
+        request, "POST", f"/pipelines/{path_segment(pipeline_id)}/validate", change
     )
 
 
@@ -159,7 +159,7 @@ async def list_revisions(
     return await forward(
         request,
         "GET",
-        f"/pipelines/{_path_segment(pipeline_id)}/revisions",
+        f"/pipelines/{path_segment(pipeline_id)}/revisions",
         params=query.model_dump(exclude_none=True),
     )
 
@@ -172,7 +172,7 @@ async def list_revisions(
 @write_limit
 async def publish_revision(request: Request, pipeline_id: str, change: PipelinePublish):
     return await forward(
-        request, "POST", f"/pipelines/{_path_segment(pipeline_id)}/revisions", change
+        request, "POST", f"/pipelines/{path_segment(pipeline_id)}/revisions", change
     )
 
 
@@ -185,7 +185,7 @@ async def get_revision(request: Request, pipeline_id: str, revision_id: str):
     return await forward(
         request,
         "GET",
-        f"/pipelines/{_path_segment(pipeline_id)}/revisions/{_path_segment(revision_id)}",
+        f"/pipelines/{path_segment(pipeline_id)}/revisions/{path_segment(revision_id)}",
     )
 
 
@@ -203,7 +203,7 @@ async def revision_metadata(
     return await forward(
         request,
         "GET",
-        f"/pipelines/{_path_segment(pipeline_id)}/revisions/{_path_segment(revision_id)}/metadata",
+        f"/pipelines/{path_segment(pipeline_id)}/revisions/{path_segment(revision_id)}/metadata",
         params={"selected_node_id": selected_node_id},
     )
 
@@ -222,7 +222,7 @@ async def activate_pipeline(request: Request, change: PipelineActivationRequest)
 @read_limit
 async def get_activation(request: Request, activation_id: str):
     return await forward(
-        request, "GET", f"/pipeline-activations/{_path_segment(activation_id)}"
+        request, "GET", f"/pipeline-activations/{path_segment(activation_id)}"
     )
 
 
@@ -232,7 +232,7 @@ async def get_activation(request: Request, activation_id: str):
 @write_limit
 async def cancel_activation(request: Request, activation_id: str):
     return await forward(
-        request, "DELETE", f"/pipeline-activations/{_path_segment(activation_id)}"
+        request, "DELETE", f"/pipeline-activations/{path_segment(activation_id)}"
     )
 
 
@@ -246,7 +246,7 @@ async def service_pipeline(
     return await forward(
         request,
         "GET",
-        f"/{_path_segment(service_id)}/pipeline",
+        f"/{path_segment(service_id)}/pipeline",
         params={"selected_node_id": selected_node_id} if selected_node_id else None,
     )
 
@@ -261,7 +261,7 @@ async def service_history(
     return await forward(
         request,
         "GET",
-        f"/{_path_segment(service_id)}/pipeline-history",
+        f"/{path_segment(service_id)}/pipeline-history",
         params=query.model_dump(exclude_none=True),
     )
 
@@ -276,7 +276,7 @@ async def service_metadata(
     return await forward(
         request,
         "GET",
-        f"/{_path_segment(service_id)}/pipeline-metadata",
+        f"/{path_segment(service_id)}/pipeline-metadata",
         params={"selected_node_id": selected_node_id},
     )
 
@@ -284,7 +284,7 @@ async def service_metadata(
 @router.get("/{service_id}/pipeline-state")
 @read_limit
 async def pipeline_state(request: Request, service_id: str):
-    return await forward(request, "GET", f"/{_path_segment(service_id)}/pipeline-state")
+    return await forward(request, "GET", f"/{path_segment(service_id)}/pipeline-state")
 
 
 @router.put("/{service_id}/pipeline-layout", response_model=PipelineLayout)
@@ -293,5 +293,5 @@ async def save_pipeline_layout(
     request: Request, service_id: str, layout: PipelineLayout
 ):
     return await forward(
-        request, "PUT", f"/{_path_segment(service_id)}/pipeline-layout", layout
+        request, "PUT", f"/{path_segment(service_id)}/pipeline-layout", layout
     )

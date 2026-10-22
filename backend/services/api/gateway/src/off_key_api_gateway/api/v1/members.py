@@ -11,7 +11,7 @@ router = APIRouter(route_class=TacticErrorRoute)
 
 
 async def member_request(method, path, authorization, body=None):
-    return await tactic._make_request(
+    return await tactic.request(
         method,
         f"/api/v1/members{path}",
         json_data=body,

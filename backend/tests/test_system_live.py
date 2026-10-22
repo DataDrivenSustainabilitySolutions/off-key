@@ -687,7 +687,7 @@ def test_admin_route_starts_renews_and_releases_with_no_database_telemetry_write
 @pytest.mark.asyncio
 async def test_gateway_preserves_authorization_and_live_request_contract(monkeypatch):
     request = AsyncMock(return_value={"mode": "configured_only"})
-    monkeypatch.setattr(gateway.tactic, "_make_request", request)
+    monkeypatch.setattr(gateway.tactic, "request", request)
     await gateway.start_live(SystemLiveStart(expected_revision=7), "Bearer token")
     request.assert_awaited_with(
         "POST",

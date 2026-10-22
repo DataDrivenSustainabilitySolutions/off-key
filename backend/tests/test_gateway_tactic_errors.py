@@ -12,7 +12,7 @@ from off_key_api_gateway.api.errors import (
 from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
 from off_key_api_gateway.api.v1 import routes
 from off_key_api_gateway.facades import tactic as facade
-from off_key_api_gateway.facades.tactic import Tactic, TacticError
+from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.schemas.members import MemberProfile
 
 
@@ -93,12 +93,7 @@ def gateway_app():
 
 
 def _fail_downstream(monkeypatch, error):
-    client = Tactic.__new__(Tactic)
-    client._make_request = AsyncMock(side_effect=error)
-    monkeypatch.setattr(facade, "get_tactic_client", lambda: client)
-    # Undoing a patch on the lazy facade leaves real bound methods behind on it.
-    for name in list(vars(facade.tactic)):
-        monkeypatch.delattr(facade.tactic, name)
+    monkeypatch.setattr(facade.tactic, "request", AsyncMock(side_effect=error))
 
 
 async def _call(app, method, path, body):

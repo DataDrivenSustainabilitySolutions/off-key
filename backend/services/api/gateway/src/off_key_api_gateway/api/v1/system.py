@@ -24,7 +24,7 @@ async def system_request(
 ):
     if not authorization:
         raise HTTPException(401, "Sign in to view the saved system")
-    return await tactic._make_request(
+    return await tactic.request(
         method,
         f"/api/v1/system{path}",
         json_data=body,

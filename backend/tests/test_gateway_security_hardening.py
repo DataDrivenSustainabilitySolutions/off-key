@@ -80,7 +80,7 @@ async def test_writes_are_not_repeated_after_the_request_may_have_run(
     set_auth_env(monkeypatch)
     session = _attach(facade, aiohttp.ServerDisconnectedError())
     with pytest.raises(TacticError):
-        await facade._make_request(method, "/api/v1/orchestration/start")
+        await facade.request(method, "/api/v1/orchestration/start")
     assert session.calls == 1
 
 
@@ -89,19 +89,19 @@ async def test_reads_and_unsent_writes_are_retried(facade, monkeypatch):
     set_auth_env(monkeypatch)
     session = _attach(facade, aiohttp.ServerDisconnectedError())
     with pytest.raises(TacticError):
-        await facade._make_request("GET", "/api/v1/monitors")
+        await facade.request("GET", "/api/v1/monitors")
     assert session.calls == 3
     refused = aiohttp.ClientConnectorError(
         SimpleNamespace(ssl=None, host="tactic", port=8001), OSError("refused")
     )
     session = _attach(facade, refused)
     with pytest.raises(TacticError):
-        await facade._make_request("POST", "/api/v1/members/invitations")
+        await facade.request("POST", "/api/v1/members/invitations")
     assert session.calls == 3
 
 
 class _RotatingTactic:
-    async def _make_request(self, method, endpoint, **kwargs):
+    async def request(self, method, endpoint, **kwargs):
         return {
             "id": 42,
             "email": "member@example.com",
@@ -142,7 +142,7 @@ async def test_forgot_password_delivers_mail_after_responding(monkeypatch):
         order.append("mail")
         raise RuntimeError("SMTP down")
 
-    monkeypatch.setattr(auth_api.tactic, "_make_request", request)
+    monkeypatch.setattr(auth_api.tactic, "request", request)
     monkeypatch.setattr(auth_api, "send_password_reset_email", send)
     app = FastAPI()
     app.include_router(auth_api.router)
@@ -196,7 +196,7 @@ async def test_member_access_is_checked_on_every_request(monkeypatch):
         "created_at": datetime.now(UTC).isoformat(),
     }
     remote = AsyncMock(return_value=profile)
-    monkeypatch.setattr(access.tactic, "_make_request", remote)
+    monkeypatch.setattr(access.tactic, "request", remote)
     await access.current_member("Bearer member")
     remote.side_effect = TacticError("Revoked", status=401)
     with pytest.raises(HTTPException):

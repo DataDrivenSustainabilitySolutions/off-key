@@ -73,7 +73,7 @@ async def test_gateway_forwards_storage_token_and_denies_anonymous_requests(
     monkeypatch,
 ):
     request = AsyncMock(return_value={"database_size_bytes": 123})
-    monkeypatch.setattr(gateway.tactic, "_make_request", request)
+    monkeypatch.setattr(gateway.tactic, "request", request)
     with pytest.raises(HTTPException) as denied:
         await gateway.storage_status(None)
     assert denied.value.status_code == 401

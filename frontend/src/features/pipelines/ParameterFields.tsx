@@ -2,34 +2,11 @@ import type { JsonValue } from "@/types/monitoring";
 import { AdjacencyField } from "./AdjacencyField";
 import { fieldDefaults } from "./model";
 
-/** Deliberately bounded controls; the server owns schema validation. */
-export type FieldDescriptor = {
-  name: string;
-  label: string;
-  type:
-    | "number"
-    | "integer"
-    | "boolean"
-    | "string"
-    | "enum"
-    | "features"
-    | "rename"
-    | "number_pair"
-    | "number_list"
-    | "object"
-    | "object_list"
-    | "component"
-    | "integer_adjacency";
-  description?: string;
-  default?: JsonValue;
-  minimum?: number;
-  maximum?: number;
-  nullable?: boolean;
-  options?: JsonValue[];
-  fields?: FieldDescriptor[];
-  discriminator?: string;
-  variants?: Record<string, FieldDescriptor[]>;
-};
+import type { FieldDescriptor } from "./contracts";
+
+export type { FieldDescriptor };
+/** Field types the scalar fallback renders; a new backend type fails tsc until it is handled. */
+type ScalarFieldType = "number" | "integer" | "boolean" | "string" | "enum";
 
 type Props = {
   fields: FieldDescriptor[];
@@ -409,6 +386,7 @@ export function ParameterFields({
             </fieldset>
           );
         }
+        field.type satisfies ScalarFieldType;
         return (
           <label
             key={field.name}
@@ -458,8 +436,8 @@ export function ParameterFields({
                 }
                 disabled={readOnly || (field.nullable && value === null)}
                 step={field.type === "integer" ? 1 : "any"}
-                min={field.minimum}
-                max={field.maximum}
+                min={field.minimum ?? undefined}
+                max={field.maximum ?? undefined}
                 value={String(value ?? "")}
                 onChange={(event) =>
                   update(

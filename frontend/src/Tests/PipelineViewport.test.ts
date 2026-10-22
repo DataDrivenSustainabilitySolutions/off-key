@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
-import type { CanvasNode } from "@/features/pipelines/PipelineNodeCard";
+import type { CanvasNode } from "@/features/pipelines/types";
 import { fitReadableView, revealNode } from "@/features/pipelines/viewport";
 
 type Box = { x: number; y: number; width: number; height: number };

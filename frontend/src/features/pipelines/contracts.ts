@@ -1,6 +1,25 @@
 import type * as Wire from "@/types/pipelines.generated";
 import type { JsonValue } from "@/types/monitoring";
-import type { FieldDescriptor } from "./ParameterFields";
+
+/** A catalogue field with JSON values; null is kept exactly as the server sends it. */
+export type FieldDescriptor = Omit<Wire.ComponentField, "default" | "options" | "fields" | "variants"> & {
+  default?: JsonValue | null;
+  options?: JsonValue[] | null;
+  fields?: FieldDescriptor[];
+  variants?: Record<string, FieldDescriptor[]> | null;
+};
+
+function fieldDescriptor(field: Wire.ComponentField): FieldDescriptor {
+  const { default: value, fields, variants, ...rest } = field;
+  // Present keys stay present, null included, so default:null keeps its meaning.
+  return {
+    ...rest,
+    ...(value === undefined ? {} : { default: value as JsonValue | null }),
+    ...(fields === undefined ? {} : { fields: fields.map(fieldDescriptor) }),
+    ...(variants === undefined ? {} : { variants: variants && Object.fromEntries(
+      Object.entries(variants).map(([kind, items]) => [kind, items.map(fieldDescriptor)])) }),
+  };
+}
 
 export type PipelineNode = Omit<Wire.PipelineNode, "params"> & {
   params: Record<string, JsonValue>;
@@ -110,7 +129,7 @@ export function normalizeCatalog(
     ...catalog,
     components: catalog.components.map((component) => ({
       ...component,
-      fields: (component.fields ?? []) as FieldDescriptor[],
+      fields: (component.fields ?? []).map(fieldDescriptor),
     })),
     templates: catalog.templates.map((template) => ({
       ...template,

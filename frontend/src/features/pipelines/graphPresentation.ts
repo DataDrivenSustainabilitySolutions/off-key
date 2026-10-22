@@ -1,6 +1,6 @@
 import { MarkerType, type Edge } from "@xyflow/react";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
-import type { CanvasNode } from "./PipelineNodeCard";
+import type { CanvasNode } from "./types";
 import { incomingEdges, nodeLabel, nodeOptionLabel, type GraphDocument } from "./model";
 import {
   componentFor,

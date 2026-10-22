@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
-import type { HistoryMode } from "./useGraphEditor";
+import type { HistoryMode } from "./types";
 
 /** Keeps the typed text while it is incomplete; only valid numbers reach the design. */
 function NumberSetting({

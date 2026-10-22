@@ -15,7 +15,7 @@ import {
   type GraphDocument,
 } from "./model";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
-import type { HistoryMode } from "./useGraphEditor";
+import type { HistoryMode } from "./types";
 
 type Props = {
   document: GraphDocument;

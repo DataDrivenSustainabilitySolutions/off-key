@@ -358,6 +358,96 @@ else:
             )
             self.assertNotIn("Assertion failed", result.stdout)
 
+    def test_release_maintenance_stops_only_database_writers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            docker = directory / "docker"
+            docker.write_text(
+                f"#!{sys.executable}\n"
+                + r"""
+import sys
+args = sys.argv[1:]
+assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
+listings = {
+    "label=com.docker.stack.namespace=off-key": [
+        "off-key_postgres", "off-key_emqx-main", "off-key_cloudflared",
+        "off-key_traefik", "off-key_landing", "off-key_frontend", "off-key_api",
+        "off-key_tactic", "off-key_db-sync", "off-key_mqtt-proxy", "off-key_retired",
+    ],
+    "label=managed_by=tactic": ["radar-worker"],
+}
+print("\n".join(listings[args[5]]))
+"""
+            )
+            docker.chmod(0o755)
+            database = {"POSTGRES_HOST": "postgres", "POSTGRES_DB": "postgres"}
+            services = {
+                "postgres": {"environment": {"POSTGRES_DB": "postgres"}},
+                "emqx-main": {"environment": {}},
+                "cloudflared": {},
+                "traefik": {},
+                "landing": {},
+                "frontend": {},
+                "api": {"environment": {"LOG_LEVEL": "INFO"}},
+                "tactic": {"environment": database},
+                "db-sync": {"environment": database},
+                "mqtt-proxy": {"environment": database},
+            }
+            output = directory / "writers.json"
+            playbook = directory / "writers.yml"
+            playbook.write_text(
+                yaml.safe_dump(
+                    [
+                        {
+                            "hosts": "localhost",
+                            "connection": "local",
+                            "gather_facts": False,
+                            "vars": {
+                                "stack_name": "off-key",
+                                "stack_compose_model": {"services": services},
+                            },
+                            "tasks": [
+                                {
+                                    "include_tasks": str(
+                                        ROOT
+                                        / "ansible/roles/stack_deploy/tasks/release_writers.yml"
+                                    )
+                                },
+                                {
+                                    "copy": {
+                                        "content": "{{ release_writers | to_json }}",
+                                        "dest": str(output),
+                                    }
+                                },
+                            ],
+                        }
+                    ]
+                )
+            )
+            env = os.environ | {
+                "PATH": str(directory) + os.pathsep + os.environ["PATH"],
+                "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            }
+            ansible(
+                "playbook",
+                "-i",
+                "localhost,",
+                "-e",
+                f"ansible_python_interpreter={sys.executable}",
+                str(playbook),
+                env=env,
+            )
+            self.assertEqual(
+                sorted(json.loads(output.read_text())),
+                [
+                    "off-key_db-sync",
+                    "off-key_mqtt-proxy",
+                    "off-key_retired",
+                    "off-key_tactic",
+                    "radar-worker",
+                ],
+            )
+
     def test_playbook_syntax(self):
         # Populate the actual group names without loading any operator inventory.
         with tempfile.TemporaryDirectory() as directory:

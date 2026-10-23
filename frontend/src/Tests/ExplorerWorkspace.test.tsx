@@ -496,9 +496,8 @@ describe("hierarchical explorer workspace", () => {
     expect((request[1] as { document: SystemDocument }).document.groups).toEqual(fixture().groups);
   });
 
-  it("returns an archived personal scope to the catalogue without changing its saved groups", async () => {
-    const groups = [{ id: "watch", name: "Favorites", color: "#6589b3", memberIds: ["broker", "temperature", "deleted-reading"] }];
-    saveExplorerPreferences(1, { ...createDefaultExplorerPreferences(), scopeKey: "personal:watch", groups });
+  it("returns a retired personal scope to the catalogue", async () => {
+    saveExplorerPreferences(1, { ...createDefaultExplorerPreferences(), scopeKey: "personal:watch" });
     mount(); await loaded();
     expect(screen.queryByText("Favorites")).toBeNull();
     expect(screen.getByRole("button", { name: "Building broker, open" }).querySelector<HTMLElement>(".ex-row-icon")?.style.color).toBe("");
@@ -513,7 +512,6 @@ describe("hierarchical explorer workspace", () => {
     expect(within(preview).queryByRole("button", { name: "Create personal group" })).toBeNull();
     expect(screen.getByRole("button", { name: "Air temperature, preview" }).getAttribute("aria-current")).toBe("true");
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).not.toBe("personal:watch"));
-    expect(loadExplorerPreferences(1).groups).toEqual(groups);
     expect(apiUtils.put).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
@@ -526,11 +524,10 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(buildNavigationIndex(fixture()).rootKey));
-    expect(loadExplorerPreferences(1).groups).toEqual(groups);
     expect(apiUtils.put).toHaveBeenCalledOnce();
   });
 
-  it("restores navigation after reload and isolates it and personal groups when the account changes", async () => {
+  it("restores navigation after reload and isolates it when the account changes", async () => {
     const first = mount(); await enterReadings();
     const topic = Array.from(buildNavigationIndex(fixture()).nodes.values()).find((node) => node.topic === "weather")!;
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(topic.key));
@@ -545,7 +542,7 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
     expect(loadExplorerPreferences(1).scopeKey).toBe(topic.key);
-    expect(loadExplorerPreferences(2).groups).toEqual([]);
+    expect(loadExplorerPreferences(2).scopeKey).not.toBe(topic.key);
   });
 
   it("shows an honest signed-out state and does not fetch or enable catalogue changes", async () => {

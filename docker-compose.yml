@@ -69,9 +69,6 @@ services:
     image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *auth-env, *email-env]
-      SYNC_HOSTNAME: "${SYNC_HOSTNAME:-db-sync}"
-      SYNC_API_PORT: "${SYNC_API_PORT:-8009}"
-      SYNC_SERVICE_SCHEME: "${SYNC_SERVICE_SCHEME:-http}"
       TACTIC_SERVICE_SCHEME: "${TACTIC_SERVICE_SCHEME:-http}"
       TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS: "${TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS:-180}"
       APP_NAME: "${APP_NAME}"

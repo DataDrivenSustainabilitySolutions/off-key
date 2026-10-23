@@ -1,11 +1,9 @@
 """Compose the API gateway application."""
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from off_key_core.api_docs import router as api_docs_router
@@ -44,60 +42,9 @@ VALIDATION_SPECS = [
 ]
 
 
-async def wait_for_db_sync(
-    max_retries: int = 150,
-    retry_delay: int = 2,
-    acceptable_statuses: tuple[str, ...] = ("healthy", "starting"),
-):
-    """Wait for db-sync service to reach an acceptable readiness state.
-
-    The API can safely start once db-sync is either fully healthy or in its
-    long-running "starting" state (initial backfill still in progress).
-    """
-    db_sync_service_url = get_service_endpoints_settings().db_sync_service_url.rstrip(
-        "/"
-    )
-    logger.info(f"Waiting for db-sync service at {db_sync_service_url}")
-
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = await client.get(f"{db_sync_service_url}/health")
-                if response.status_code == 200:
-                    data = response.json()
-                    status = data.get("status")
-                    if status in acceptable_statuses:
-                        logger.info(
-                            "db-sync service is ready "
-                            f"(status={status}, acceptable={acceptable_statuses})"
-                        )
-                        return True
-                    logger.info(
-                        f"db-sync service not ready: {data.get('message', 'unknown')}"
-                    )
-                else:
-                    logger.info(
-                        f"db-sync health check returned status {response.status_code}"
-                    )
-            except Exception as e:
-                logger.info(
-                    f"Waiting for db-sync (attempt {attempt}/{max_retries}): {e}"
-                )
-
-            if attempt < max_retries:
-                await asyncio.sleep(retry_delay)
-
-        logger.warning(
-            f"db-sync service did not become ready after {max_retries} attempts"
-        )
-        return False
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan manager for startup and shutdown events."""
-    await wait_for_db_sync()
-
     logger.info("Application is now running...")
     yield
 

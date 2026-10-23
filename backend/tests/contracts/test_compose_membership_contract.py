@@ -22,7 +22,7 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         "MQTT_APIKEY": "fixture-proxy-password",
         "MQTT_CA_FILE": "/certs/proxy-ca.pem",
         "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "fixture-managed-radar",
-        "SYNC_HOSTNAME": "schema-service",
+        "TACTIC_SERVICE_HOST": "fixture-tactic",
         "SYNC_API_PORT": "9009",
         "SIMULATOR_BROKER_HOST": "fixture-broker",
         "SIMULATOR_INTERVAL_SECONDS": "2.5",
@@ -71,7 +71,8 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         for key in services["frontend"]["environment"]
     )
     expected = {
-        "api-gateway": ("SYNC_HOSTNAME", "SYNC_API_PORT"),
+        "api-gateway": ("TACTIC_SERVICE_HOST",),
+        "db-sync": ("SYNC_API_PORT",),
         "mqtt-proxy": ("MQTT_USERNAME", "MQTT_APIKEY", "MQTT_CA_FILE"),
         "tactic-middleware": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),
         "mqtt-simulator": (

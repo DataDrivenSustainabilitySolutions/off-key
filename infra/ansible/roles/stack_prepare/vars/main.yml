@@ -54,8 +54,6 @@ service_environment:
     CORS_ALLOWED_ORIGINS: "{{ cors_allowed_origins }}"
     TACTIC_SERVICE_HOST: "{{ tactic_service_host }}"
     TACTIC_SERVICE_PORT: "{{ tactic_service_port }}"
-    SYNC_HOSTNAME: "{{ sync_hostname }}"
-    SYNC_API_PORT: "{{ sync_api_port }}"
     ENABLE_REQUEST_LOGGING: "{{ enable_request_logging }}"
     ENABLE_PERFORMANCE_LOGGING: "{{ enable_performance_logging }}"
     UVICORN_ACCESS_LOG_LEVEL: "{{ uvicorn_access_log_level }}"

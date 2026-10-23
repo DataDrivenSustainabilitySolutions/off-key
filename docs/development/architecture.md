@@ -101,8 +101,7 @@ Local Compose starts everything with one command; its `depends_on` health
 conditions form two chains:
 
 - `timescaledb` → `db-sync` (`/ready/schema`) → `tactic-middleware` (`/ready`) →
-  `api-gateway` (`/health`) → `frontend`. The gateway also waits for db-sync
-  `/health` itself before serving.
+  `api-gateway` (`/health`) → `frontend`.
 - `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
   collection revision is applied) → the optional `mqtt-simulator`.
 

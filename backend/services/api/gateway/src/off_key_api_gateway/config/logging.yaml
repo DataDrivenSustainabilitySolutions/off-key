@@ -24,12 +24,6 @@ loggers:
     handlers: [console]
     propagate: false
 
-  # HTTP client logging
-  httpx:
-    level: ${HTTPX_LOG_LEVEL:WARNING}
-    handlers: [console]
-    propagate: false
-
   # Security and rate limiting
   slowapi:
     level: ${RATE_LIMIT_LOG_LEVEL:WARNING}

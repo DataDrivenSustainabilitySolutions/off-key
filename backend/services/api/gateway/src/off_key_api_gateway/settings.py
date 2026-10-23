@@ -29,21 +29,14 @@ def get_app_settings() -> AppSettings:
 
 
 class ServiceEndpointsSettings(BaseSettings):
-    """Where the gateway reaches db-sync and TACTIC."""
+    """Where the gateway reaches TACTIC."""
 
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", frozen=True)
 
-    SYNC_SERVICE_SCHEME: str = "http"
-    SYNC_HOSTNAME: str = "db-sync"
-    SYNC_API_PORT: int = Field(default=8009, ge=1, le=65535)
     TACTIC_SERVICE_SCHEME: str = "http"
     TACTIC_SERVICE_HOST: str = "middleware_tactic"
     TACTIC_SERVICE_PORT: int = Field(default=8000, ge=1, le=65535)
     TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS: float = Field(default=180.0, gt=0)
-
-    @property
-    def db_sync_service_url(self) -> str:
-        return f"{self.SYNC_SERVICE_SCHEME}://{self.SYNC_HOSTNAME}:{self.SYNC_API_PORT}"
 
     @property
     def tactic_service_base_url(self) -> str:
@@ -52,7 +45,7 @@ class ServiceEndpointsSettings(BaseSettings):
             f"{self.TACTIC_SERVICE_HOST}:{self.TACTIC_SERVICE_PORT}"
         )
 
-    @field_validator("SYNC_SERVICE_SCHEME", "TACTIC_SERVICE_SCHEME")
+    @field_validator("TACTIC_SERVICE_SCHEME")
     @classmethod
     def validate_service_scheme(cls, value: str) -> str:
         normalized = value.lower().strip()

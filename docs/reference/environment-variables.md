@@ -189,7 +189,6 @@ prevent startup.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `SYNC_HOSTNAME` | `db-sync` | Where the API gateway reaches DB Sync; read only by the gateway |
 | `SYNC_API_HOST` | `0.0.0.0` | DB Sync bind address |
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |

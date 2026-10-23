@@ -1919,7 +1919,6 @@ source = { editable = "services/api/gateway" }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
-    { name = "httpx" },
     { name = "off-key-core", extra = ["auth", "mail", "web"] },
     { name = "slowapi" },
     { name = "uvicorn" },
@@ -1929,7 +1928,6 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "httpx", specifier = ">=0.27.0" },
     { name = "off-key-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "uvicorn", specifier = ">=0.25.0" },

@@ -70,21 +70,27 @@ export const addTestCharger = async (
   return Object.fromEntries(keys.map((key, index) => [key, `ingress/system/${generation}/${value.runtime.bindings![streamIds[index]!]!.telemetry_key}`]));
 };
 
+/** A stopped monitor finishes its pipeline activation asynchronously; until then the API rejects
+ * changes to its inputs with 409, so cleanup retries on a fresh revision. */
 export const removeTestCharger = async (api: APIRequestContext, token: string, identifier: string): Promise<void> => {
   const headers = { Authorization: `Bearer ${token}` };
-  const response = await api.get("/api/v1/system", { headers });
-  expect(response.ok(), await response.text()).toBeTruthy();
-  const system = await response.json() as SystemSnapshot;
-  const removedReadings = new Set(system.document.streams.filter(stream => stream.device_id === identifier
-    || system.runtime.bindings?.[stream.id]?.entity_id === identifier).map(stream => stream.id));
-  const removedDevices = new Set(system.document.streams.filter(stream => removedReadings.has(stream.id)).flatMap(stream => stream.device_id ?? []));
-  system.document.streams = system.document.streams.filter(stream => !removedReadings.has(stream.id));
-  system.document.devices = system.document.devices.filter(device => !removedDevices.has(device.id));
-  const removedConnections = new Set(system.document.connections.filter(connection => !system.document.streams.some(stream => stream.connection_id === connection.id)
-    && !system.document.devices.some(device => device.connection_id === connection.id)).map(connection => connection.id));
-  system.document.connections = system.document.connections.filter(connection => !removedConnections.has(connection.id));
-  const removedIds = new Set([...removedReadings, ...removedDevices, ...removedConnections]);
-  system.document.groups = system.document.groups.map(group => ({ ...group, member_ids: group.member_ids.filter(id => !removedIds.has(id)) })).filter(group => group.member_ids.length);
-  const saved = await api.put("/api/v1/system", { headers, data: { expected_revision: system.revision, document: system.document, pause_affected_monitors: true } });
-  expect(saved.ok(), await saved.text()).toBeTruthy();
+  await expect.poll(async () => {
+    const response = await api.get("/api/v1/system", { headers });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const system = await response.json() as SystemSnapshot;
+    const removedReadings = new Set(system.document.streams.filter(stream => stream.device_id === identifier
+      || system.runtime.bindings?.[stream.id]?.entity_id === identifier).map(stream => stream.id));
+    const removedDevices = new Set(system.document.streams.filter(stream => removedReadings.has(stream.id)).flatMap(stream => stream.device_id ?? []));
+    system.document.streams = system.document.streams.filter(stream => !removedReadings.has(stream.id));
+    system.document.devices = system.document.devices.filter(device => !removedDevices.has(device.id));
+    const removedConnections = new Set(system.document.connections.filter(connection => !system.document.streams.some(stream => stream.connection_id === connection.id)
+      && !system.document.devices.some(device => device.connection_id === connection.id)).map(connection => connection.id));
+    system.document.connections = system.document.connections.filter(connection => !removedConnections.has(connection.id));
+    const removedIds = new Set([...removedReadings, ...removedDevices, ...removedConnections]);
+    system.document.groups = system.document.groups.map(group => ({ ...group, member_ids: group.member_ids.filter(id => !removedIds.has(id)) })).filter(group => group.member_ids.length);
+    const saved = await api.put("/api/v1/system", { headers, data: { expected_revision: system.revision, document: system.document, pause_affected_monitors: true } });
+    if (saved.status() === 409) return await saved.text();
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    return "removed";
+  }, { timeout: 90_000, intervals: [1_000, 2_000, 5_000] }).toBe("removed");
 };

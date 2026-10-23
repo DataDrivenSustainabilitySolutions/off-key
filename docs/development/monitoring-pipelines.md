@@ -364,8 +364,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`ca17ad4599dea2a518c9bc04e51bb374d35c20f9`, which includes the direct-apply
-backend and migration 014, as well as parameter-sensitive readiness constraints
+`d63f444dbaaf8dec0392dd723394452f2e32fe69`, which includes the direct-apply
+backend and the corrected migration 014, as well as parameter-sensitive readiness constraints
 and bounded inspection APIs. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:

@@ -1,0 +1,27 @@
+---
+# Only services holding database credentials and the RADAR workers TACTIC
+# started can write during a schema upgrade; a service the new model no longer
+# describes is stopped too, since nothing says it cannot write. Ingress
+# (cloudflared, Traefik, landing, frontend, oauth2-proxy), the stateless gateway
+# and the brokers keep running, so a release that stops part-way never takes
+# the public site offline.
+- name: List the existing application services and runtime workers
+  command:
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "{{ item }}"]
+  loop:
+    - "label=com.docker.stack.namespace={{ stack_name }}"
+    - label=managed_by=tactic
+  register: release_writer_services
+  changed_when: false
+
+- name: Select writers to quiesce
+  set_fact:
+    release_writers: >-
+      {{ ((release_writer_services.results[0].stdout_lines | difference(non_writers))
+          + release_writer_services.results[1].stdout_lines) | unique | list }}
+  vars:
+    non_writers: >-
+      {{ stack_compose_model.services | dict2items
+         | rejectattr('value.environment.POSTGRES_HOST', 'defined')
+         | map(attribute='key')
+         | map('regex_replace', '^', stack_name ~ '_') | list }}

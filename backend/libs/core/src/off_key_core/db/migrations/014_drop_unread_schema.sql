@@ -9,8 +9,8 @@ DROP TABLE IF EXISTS model_registry;
 ALTER TABLE services DROP COLUMN IF EXISTS stateful_set_name;
 -- Telemetry indexes no query uses. The primary key serves upserts and the
 -- remaining composites serve the history and cursor reads; TimescaleDB keeps
--- its own time index.
-ALTER TABLE telemetry DROP CONSTRAINT IF EXISTS uq_telemetry_entry;
+-- its own time index. Pre-ledger databases name that primary key
+-- uq_telemetry_entry, so it stays.
 DROP INDEX IF EXISTS ix_telemetry_charger_id;
 DROP INDEX IF EXISTS ix_telemetry_timestamp;
 DROP INDEX IF EXISTS ix_telemetry_value;

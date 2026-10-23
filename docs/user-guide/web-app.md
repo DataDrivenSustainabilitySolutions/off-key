@@ -21,7 +21,6 @@ Use this page for account, charger, favourites, monitoring-service, and anomaly 
 | `/reset-password` | Set a new password with a reset token | Public |
 | `/` | Monitoring services and selected-source evidence | Authenticated |
 | `/details/:chargerId` | Telemetry details for one charger | Authenticated |
-| `/monitoring/:chargerId` | Opens the Create workbench for this entity; shows the setup form when visual authoring is disabled | Authenticated |
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |

@@ -19,7 +19,6 @@ export const MIN_BETTING_TOLERANCE = 0.0001;
 
 export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
-export type TopicMode = "selected_sensors" | "direct_patterns";
 export type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
 
 export interface MartingaleTrackerDraft {
@@ -122,12 +121,6 @@ export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
   sensorFreshness: "30",
   sensorKeyStrategy: "full_hierarchy",
 });
-
-export const parseTopicPatterns = (raw: string): string[] =>
-  raw
-    .split(/[\n,]/)
-    .map((topic) => topic.trim())
-    .filter(Boolean);
 
 export const humanize = (value: string): string =>
   value
@@ -424,7 +417,7 @@ export const buildStaticMonitoringRequest = ({
 }): RequestValidation<StaticAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
   if (!topics.length) {
-    errors.topics = "Select at least one available reading or enter a topic.";
+    errors.topics = "Select at least one available reading.";
   } else if (
     topics.some((topic) =>
       topic.split("/").some((part) => part === "+" || part === "#"),

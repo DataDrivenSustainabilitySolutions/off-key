@@ -12,7 +12,6 @@ export function createAppRoutes() {
   const DataSources = lazy(() => import("@/pages/SystemCatalogue"));
   const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
   const Login = lazy(() => import("@/pages/Login"));
-  const Monitoring = lazy(() => import("@/pages/Monitoring"));
   const Registration = lazy(() => import("@/pages/Registration"));
   const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
   const SystemStatus = lazy(() => import("@/pages/SystemStatus"));
@@ -39,7 +38,6 @@ export function createAppRoutes() {
           <Route path="/services" element={<Navigate to="/" replace />} />
           <Route path="/sources" element={<DataSources />} />
           <Route path="/details/:chargerId" element={<Details />} />
-          <Route path="/monitoring/:chargerId" element={<Monitoring />} />
           <Route path="/account" element={<Account />} />
           <Route path="/system/status" element={<SystemStatus />} />
           <Route path="/account/settings" element={<Navigate to="/system/status" replace />} />

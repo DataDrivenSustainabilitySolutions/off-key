@@ -202,7 +202,7 @@ describe("<Details />", () => {
     renderDetails();
 
     const link = await screen.findByRole("link", { name: /monitoring/i });
-    expect(link.getAttribute("href")).toBe("/monitoring/123");
+    expect(link.getAttribute("href")).toBe("/?create=monitoring&target=123");
   });
 
   it("is titled by the catalogue entity behind the recorded identity and links to it in Sources", async () => {

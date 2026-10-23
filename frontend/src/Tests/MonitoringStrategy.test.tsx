@@ -1,12 +1,13 @@
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ isAdmin: true }) }));
-
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MonitoringServiceCreate } from "@/features/monitoring/MonitoringServiceCreate";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import type { ApiRequestOptions } from "../lib/api-client";
-import Monitoring from "../pages/Monitoring";
-import type { AnomalyDetectionRequest, ModelCapabilities } from "../types/monitoring";
+import type { ActiveService, AnomalyDetectionRequest, ModelCapabilities } from "../types/monitoring";
 
 const mockPost = vi.fn<
   (
@@ -18,13 +19,6 @@ const mockPost = vi.fn<
 const mockGet = vi.fn<
   (endpoint: string, options?: ApiRequestOptions) => Promise<unknown>
 >(() => Promise.resolve([]));
-const mockDelete = vi.fn<
-  (
-    endpoint: string,
-    data?: unknown,
-    options?: ApiRequestOptions
-  ) => Promise<unknown>
->(() => Promise.resolve({}));
 
 vi.mock("../lib/api-client", () => ({
   apiUtils: {
@@ -35,10 +29,17 @@ vi.mock("../lib/api-client", () => ({
       payload: AnomalyDetectionRequest,
       options?: ApiRequestOptions
     ) => mockPost(endpoint, payload, options),
-    delete: (endpoint: string, data?: unknown, options?: ApiRequestOptions) =>
-      mockDelete(endpoint, data, options),
   },
 }));
+const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
+vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => catalogue }));
+
+// One entity with three recorded readings, each accepted on its canonical topic.
+const target: MonitoringTarget = { id: "charger-1", label: "Site / Charger", inputs: ["L1", "L2", "L3"].map(key => ({
+  path: "Site / Charger",
+  stream: { id: `stream-${key}`, label: key, topic: `site/charger-1/${key}`, value_type: "number", category: "Power", connection_id: "broker" },
+  binding: { entity_id: "charger-1", telemetry_key: key, accepted_topic: `telemetry/charger-1/${key}`, policy: { mode: "sample", interval_seconds: 10 } },
+})) };
 
 const vectorCapabilities: ModelCapabilities = {
   event_kind: "tabular",
@@ -126,14 +127,19 @@ const modelCatalog = {
   },
 };
 
-function renderMonitoring() {
-  return render(
-    <MemoryRouter initialEntries={["/monitoring/charger-1"]}>
-      <Routes>
-        <Route path="/monitoring/:chargerId" element={<Monitoring />} />
-      </Routes>
+type Setup = { strategy?: "static" | "adaptive"; initialReading?: string; services?: ActiveService[]; byStream?: Map<string, Set<string>> };
+
+/** Open the create form for the entity and wait until its models have loaded. */
+async function renderCreate({ strategy = "static", initialReading, services = [], byStream = new Map() }: Setup = {}) {
+  render(
+    <MemoryRouter>
+      <MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="charger-1"
+        initialReading={initialReading} collectionReady onStarted={vi.fn(async () => {})} onBack={vi.fn()} />
     </MemoryRouter>
   );
+  if (strategy === "static") fireEvent.click(screen.getByRole("button", { name: "Static baseline" }));
+  const start = await screen.findByRole("button", { name: strategy === "static" ? /^start monitoring$/i : /start adaptive monitoring/i });
+  await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
 }
 
 const getSubmittedPayload = (): AnomalyDetectionRequest => {
@@ -145,32 +151,26 @@ const getSubmittedPayload = (): AnomalyDetectionRequest => {
   return payload;
 };
 
-describe("<Monitoring /> static setup", () => {
+describe("monitoring setup forms", () => {
   beforeEach(() => {
+    vi.clearAllMocks(); clearNavigationDrafts();
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/models")) return Promise.resolve(modelCatalog);
-      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
+      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", service_id: "new-service" });
       return Promise.resolve([]);
     });
+    mockPost.mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
   });
 
   it("submits the static baseline contract", async () => {
-    renderMonitoring();
+    await renderCreate({ initialReading: "stream-L1" });
 
-    await screen.findByText(/topic input mode/i);
-    const [topicModeSelect] = screen.getAllByRole("combobox");
-    if (!topicModeSelect) throw new Error("Expected topic mode selector");
-    fireEvent.change(topicModeSelect, {
-      target: { value: "direct_patterns" },
-    });
-    fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "telemetry/charger-1/L1" },
-    });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = getSubmittedPayload();
 
+    expect(payload.mqtt_topics).toEqual(["telemetry/charger-1/L1"]);
     expect(payload.strategy).toBe("static_baseline");
     expect(payload.model_type).toBe("pyod_iforest");
     expect(payload.static_baseline_config.training_window_size).toBe(1200);
@@ -194,10 +194,8 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("submits concrete sensor topics for multivariate alignment", async () => {
-    renderMonitoring();
+    await renderCreate();
 
-    await screen.findByText(/topic input mode/i);
-    await screen.findAllByText("L1");
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
@@ -212,7 +210,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("submits editable epsilon and alarm threshold", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     fireEvent.change(await screen.findByDisplayValue("360"), {
       target: { value: "400" },
@@ -243,7 +241,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("defaults CUSUM to an automatically calibrated threshold", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     fireEvent.click(
       await screen.findByRole("button", { name: /show advanced settings/i }),
@@ -270,7 +268,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("exposes advanced-setting help on keyboard focus", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     expect(
       screen.queryByRole("button", { name: "About Betting method" }),
@@ -291,7 +289,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("lets numeric fields be cleared while editing", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     const trainingInput = await screen.findByDisplayValue("1200");
     fireEvent.change(trainingInput, { target: { value: "" } });
@@ -299,7 +297,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("blocks below-min training sizes until fixed", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     const trainingInput = await screen.findByDisplayValue("1200");
     fireEvent.change(trainingInput, { target: { value: "10" } });
@@ -315,7 +313,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("keeps invalid detector integer drafts visible and blocks submit", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     fireEvent.click(await screen.findByRole("button", { name: /show advanced settings/i }));
     const estimatorsInput = (await screen.findAllByDisplayValue("100"))[0];
@@ -334,7 +332,7 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("switches to the available adaptive lifecycle", async () => {
-    renderMonitoring();
+    await renderCreate();
 
     expect(await screen.findByText(/Martingale ensemble/i)).toBeTruthy();
     const dynamicLane = screen.getByRole("button", { name: /Adaptive stream/i });
@@ -347,9 +345,8 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("submits an explicit None value for nullable adaptive parameters", async () => {
-    renderMonitoring();
+    await renderCreate({ strategy: "adaptive" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_x_stream" },
     });
@@ -370,9 +367,8 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("uses catalog families, availability, and feature limits for model selection", async () => {
-    renderMonitoring();
+    await renderCreate({ strategy: "adaptive" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
     const scalarModel = screen.getByRole("option", { name: /Rolling Matrix Profile/ }) as HTMLOptionElement;
     expect(scalarModel.parentElement?.getAttribute("label")).toBe("Time Series");
     expect(scalarModel.disabled).toBe(true);
@@ -393,9 +389,8 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("configures unit-interval scaling and rejects incompatible preprocessing", async () => {
-    renderMonitoring();
+    await renderCreate({ strategy: "adaptive" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_half_space_trees" },
     });
@@ -411,9 +406,8 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("validates and submits numeric parameters inside a catalog component", async () => {
-    renderMonitoring();
+    await renderCreate({ strategy: "adaptive" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /Adaptive stream/i }));
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_knn" },
     });
@@ -431,20 +425,10 @@ describe("<Monitoring /> static setup", () => {
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {
-    mockGet.mockImplementation((url: string) => {
-      if (url.includes("/models")) return Promise.resolve(modelCatalog);
-      if (url.includes("/monitors/all")) {
-        return Promise.resolve([{
-          id: 7,
-          container_name: "radar-existing",
-          mqtt_topics: ["telemetry/charger-1/L1"],
-          status: "running",
-        }]);
-      }
-      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
-      return Promise.resolve([]);
-    });
-    renderMonitoring();
+    const existing: ActiveService = { id: "7", container_id: "workload", container_name: "radar-existing", status: true,
+      mqtt_topics: ["telemetry/charger-1/L1"],
+      operational_status: { stage: "operational", is_stale: false, message_count: 1, processed_message_count: 1 } };
+    await renderCreate({ services: [existing], byStream: new Map([["stream-L1", new Set(["7"])]]) });
 
     expect(await screen.findByText("Assigned to radar-existing")).toBeTruthy();
     const l1Checkbox = screen.getByText("Assigned to radar-existing").closest("label")?.querySelector("input");
@@ -456,53 +440,5 @@ describe("<Monitoring /> static setup", () => {
       "telemetry/charger-1/L2",
       "telemetry/charger-1/L3",
     ]);
-  });
-});
-
-describe("<Monitoring /> authoring decision", () => {
-  const deferWorkspace = () => {
-    let resolve: (value: unknown) => void = () => {};
-    const workspace = new Promise(next => { resolve = next; });
-    mockGet.mockImplementation((url: string) => {
-      if (url === "/v1/monitors/workspace") return workspace;
-      if (url.includes("/models")) return Promise.resolve(modelCatalog);
-      if (url.endsWith("/type")) return Promise.resolve(["L1", "L2", "L3"]);
-      return Promise.resolve([]);
-    });
-    return resolve;
-  };
-  const legacyRequests = () =>
-    mockGet.mock.calls.map(([url]) => url).filter(url => url !== "/v1/monitors/workspace");
-
-  beforeEach(() => { mockGet.mockClear(); });
-
-  it("waits for the workspace before rendering or fetching the legacy page", async () => {
-    const resolve = deferWorkspace();
-    render(
-      <MemoryRouter initialEntries={["/monitoring/charger-1?reading=L1"]}>
-        <Routes>
-          <Route path="/monitoring/:chargerId" element={<Monitoring />} />
-          <Route path="/" element={<p>Authoring workspace</p>} />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    expect(screen.getByRole("status").textContent).toMatch(/loading monitoring/i);
-    expect(legacyRequests()).toEqual([]);
-
-    resolve({ authoring_enabled: true });
-
-    expect(await screen.findByText("Authoring workspace")).toBeTruthy();
-    expect(legacyRequests()).toEqual([]);
-  });
-
-  it("renders the legacy form once authoring is off", async () => {
-    const resolve = deferWorkspace();
-    renderMonitoring();
-    expect(legacyRequests()).toEqual([]);
-
-    resolve({ authoring_enabled: false });
-
-    expect(await screen.findByText(/topic input mode/i)).toBeTruthy();
   });
 });

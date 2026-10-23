@@ -2,16 +2,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeviceTelemetryChargerFilter,
   buildDeviceTelemetryTopic,
   parseDeviceTelemetryTopic,
 } from "../lib/mqtt-topics";
 
 describe("canonical device telemetry topics", () => {
-  it("builds the canonical filter and concrete topic", () => {
-    expect(buildDeviceTelemetryChargerFilter("0")).toBe(
-      "telemetry/0/#",
-    );
+  it("builds the canonical concrete topic", () => {
     expect(buildDeviceTelemetryTopic("0", "voltageAc3")).toBe(
       "telemetry/0/voltageAc3",
     );

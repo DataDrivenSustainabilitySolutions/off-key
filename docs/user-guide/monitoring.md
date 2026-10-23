@@ -23,7 +23,7 @@ pipeline workbench described below. A reading's **Configure monitoring** link
 opens it with that reading preselected.
 
 When an operator sets `TACTIC_PIPELINE_AUTHORING_ENABLED=false` (also the
-root `docker-compose.yml` fallback when `.env` omits it), Create and `/monitoring/:chargerId` show the
+root `docker-compose.yml` fallback when `.env` omits it), Create shows the
 form-based setup instead:
 
 1. Select one or more currently unclaimed numeric readings.

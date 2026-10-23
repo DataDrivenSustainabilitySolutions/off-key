@@ -355,7 +355,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
                 hasTelemetry={latestTelemetryTimestamp !== undefined}
               />
               <Button asChild>
-                <Link to={`/monitoring/${chargerId}`}>
+                <Link to={`/?create=monitoring&target=${encodeURIComponent(chargerId)}`}>
                   <Activity className="h-4 w-4" />
                   Set up monitoring
                 </Link>

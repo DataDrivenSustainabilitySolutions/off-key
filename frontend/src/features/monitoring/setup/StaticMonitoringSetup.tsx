@@ -24,17 +24,11 @@ import {
   createDefaultStaticDraft,
   getModelDefaults,
   humanize,
-  parseTopicPatterns,
 } from "./config";
-import type {
-  FieldErrors,
-  TopicMode,
-} from "./config";
+import type { FieldErrors } from "./config";
 import {
   CONTROL_CLASS,
   errorId,
-  HELP_CLASS,
-  LABEL_CLASS,
 } from "./formStyles";
 import {
   ConfigSection,
@@ -66,9 +60,6 @@ export function StaticMonitoringSetup({
   initialReading, sensorLabels, sensorTopics, displayName,
 }: StaticMonitoringSetupProps) {
   const [draft, setDraft] = useNavigationDraft(draftKey && `${draftKey}:parameters`, createDefaultStaticDraft);
-  const [topicMode, setTopicMode] =
-    useNavigationDraft<TopicMode>(draftKey && `${draftKey}:topic-mode`, "selected_sensors");
-  const [topicPatternInput, setTopicPatternInput] = useNavigationDraft(draftKey && `${draftKey}:topic-pattern`, "");
   const [selectedSensors, setSelectedSensors] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [starting, setStarting] = useState(false);
@@ -82,13 +73,10 @@ export function StaticMonitoringSetup({
     [claimsBySensor, selectedSensors, sensorTypes, initialReading],
   );
   const effectiveTopics = useMemo(
-    () =>
-      topicMode === "selected_sensors"
-        ? availableSelectedSensors.map(
-            (sensor) => sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
-          )
-        : parseTopicPatterns(topicPatternInput),
-    [availableSelectedSensors, chargerId, topicMode, topicPatternInput, sensorTopics],
+    () => availableSelectedSensors.map(
+      (sensor) => sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
+    ),
+    [availableSelectedSensors, chargerId, sensorTopics],
   );
   const modelDefinition = staticModels[draft.modelType];
   const modelProperties = modelDefinition?.parameters?.properties ?? {};
@@ -163,86 +151,54 @@ export function StaticMonitoringSetup({
               help="A reading can belong to one active monitor."
               icon={RadioTower}
             >
-              <label className={LABEL_CLASS}>Topic input mode</label>
-              <select
-                className={cn(CONTROL_CLASS, "mt-2")}
-                value={topicMode}
-                onChange={(event) =>
-                  setTopicMode(
-                    event.target.value === "direct_patterns"
-                      ? "direct_patterns"
-                      : "selected_sensors",
-                  )
-                }
-              >
-                <option value="selected_sensors">Select recorded readings</option>
-                <option value="direct_patterns">Enter MQTT topic patterns</option>
-              </select>
-
-              {topicMode === "selected_sensors" ? (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {sensorTypes.map((sensor) => {
-                    const owner = claimsBySensor.get(sensor);
-                    const checked =
-                      !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
-                    return (
-                      <label
-                        key={sensor}
-                        className={cn(
-                          "flex min-w-0 items-start gap-3 rounded-md border p-3 transition-colors",
-                          owner
-                            ? "cursor-not-allowed border-border/60 bg-muted/35 opacity-65"
-                            : checked
-                              ? "cursor-pointer border-primary/25 bg-primary/[0.035] shadow-xs"
-                              : "cursor-pointer border-border/70 bg-card hover:border-primary/20",
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 size-4 accent-primary"
-                          checked={checked}
-                          disabled={Boolean(owner)}
-                          onChange={(event) =>
-                            setSelectedSensors((current) => ({
-                              ...current,
-                              [sensor]: event.target.checked,
-                            }))
-                          }
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">
-                            {sensorLabels?.get(sensor) ?? humanize(sensor)}
-                          </span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {owner
-                              ? `Assigned to ${owner.container_name}`
-                              : sensorLabels?.has(sensor) ? "" : sensor}
-                          </span>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {sensorTypes.map((sensor) => {
+                  const owner = claimsBySensor.get(sensor);
+                  const checked =
+                    !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
+                  return (
+                    <label
+                      key={sensor}
+                      className={cn(
+                        "flex min-w-0 items-start gap-3 rounded-md border p-3 transition-colors",
+                        owner
+                          ? "cursor-not-allowed border-border/60 bg-muted/35 opacity-65"
+                          : checked
+                            ? "cursor-pointer border-primary/25 bg-primary/[0.035] shadow-xs"
+                            : "cursor-pointer border-border/70 bg-card hover:border-primary/20",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 size-4 accent-primary"
+                        checked={checked}
+                        disabled={Boolean(owner)}
+                        onChange={(event) =>
+                          setSelectedSensors((current) => ({
+                            ...current,
+                            [sensor]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {sensorLabels?.get(sensor) ?? humanize(sensor)}
                         </span>
-                      </label>
-                    );
-                  })}
-                  {!sensorTypes.length && (
-                    <p className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                      No recorded readings.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4">
-                  <textarea
-                    className={cn(CONTROL_CLASS, "min-h-28 resize-y")}
-                    value={topicPatternInput}
-                    onChange={(event) =>
-                      setTopicPatternInput(event.target.value)
-                    }
-                    placeholder={`One topic per line, e.g. ${buildDeviceTelemetryTopic(chargerId, "L1")}`}
-                  />
-                  <p className={HELP_CLASS}>
-                    Topic patterns must not overlap another monitor.
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {owner
+                            ? `Assigned to ${owner.container_name}`
+                            : sensorLabels?.has(sensor) ? "" : sensor}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+                {!sensorTypes.length && (
+                  <p className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    No recorded readings.
                   </p>
-                </div>
-              )}
+                )}
+              </div>
               <FieldError field="topics" errors={fieldErrors} />
             </ConfigSection>
 

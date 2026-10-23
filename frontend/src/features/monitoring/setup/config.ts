@@ -12,6 +12,11 @@ import type {
 } from "@/types/monitoring";
 import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 
+// Deliberate floors, stricter than the server: a smaller reading freshness or
+// betting tolerance is almost certainly a typo.
+export const MIN_READING_FRESHNESS_SECONDS = 1;
+export const MIN_BETTING_TOLERANCE = 0.0001;
+
 export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
 export type TopicMode = "selected_sensors" | "direct_patterns";
@@ -293,7 +298,7 @@ export const buildAdaptiveMonitoringRequest = ({
   });
   const sensorFreshness = parseNumber({
     value: draft.sensorFreshness, label: "Reading freshness",
-    field: "sensorFreshness", errors, min: 1,
+    field: "sensorFreshness", errors, min: MIN_READING_FRESHNESS_SECONDS,
   });
   const preprocessingSteps: AdaptivePreprocessingStep[] = [];
   if (draft.scaler === "standard_scaler") {
@@ -550,7 +555,7 @@ export const buildStaticMonitoringRequest = ({
         label: "Power epsilon",
         field: `${prefix}.epsilon`,
         errors,
-        min: 0.0001,
+        min: MIN_BETTING_TOLERANCE,
         max: 1,
       });
       if (epsilon !== undefined && (automaticThreshold || threshold !== undefined)) {
@@ -582,7 +587,7 @@ export const buildStaticMonitoringRequest = ({
         label: "Minimum epsilon",
         field: `${prefix}.minEpsilon`,
         errors,
-        min: 0.0001,
+        min: MIN_BETTING_TOLERANCE,
         max: 1,
       });
       if (
@@ -609,7 +614,7 @@ export const buildStaticMonitoringRequest = ({
       label: "Jumper redistribution",
       field: `${prefix}.jump`,
       errors,
-      min: 0.0001,
+      min: MIN_BETTING_TOLERANCE,
       max: 1,
     });
     if (jump !== undefined && (automaticThreshold || threshold !== undefined)) {
@@ -657,7 +662,7 @@ export const buildStaticMonitoringRequest = ({
     label: "Reading freshness",
     field: "sensorFreshness",
     errors,
-    min: 1,
+    min: MIN_READING_FRESHNESS_SECONDS,
   });
   const modelParams = coerceModelParams(
     draft.modelParams,

@@ -9,7 +9,7 @@ import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useId, useState } from "react";
 
-import { createDefaultMartingaleTracker, humanize } from "./config";
+import { MIN_BETTING_TOLERANCE, MIN_READING_FRESHNESS_SECONDS, createDefaultMartingaleTracker, humanize } from "./config";
 import type {
   FieldErrors,
   SensorKeyStrategy,
@@ -461,7 +461,7 @@ export function AdvancedSettings({
                           <input
                             id={`${controlPrefix}-epsilon`}
                             type="number"
-                            min={0.0001}
+                            min={MIN_BETTING_TOLERANCE}
                             max={1}
                             step="0.01"
                             className={cn(CONTROL_CLASS, "mt-2")}
@@ -507,7 +507,7 @@ export function AdvancedSettings({
                             <input
                               id={`${controlPrefix}-minimum-epsilon`}
                               type="number"
-                              min={0.0001}
+                              min={MIN_BETTING_TOLERANCE}
                               max={1}
                               step="0.01"
                               className={cn(CONTROL_CLASS, "mt-2")}
@@ -531,7 +531,7 @@ export function AdvancedSettings({
                           <input
                             id={`${controlPrefix}-jump`}
                             type="number"
-                            min={0.0001}
+                            min={MIN_BETTING_TOLERANCE}
                             max={1}
                             step="0.01"
                             className={cn(CONTROL_CLASS, "mt-2")}
@@ -671,7 +671,7 @@ export function AdvancedSettings({
               <input
                 id="advanced-sensor-freshness"
                 type="number"
-                min={1}
+                min={MIN_READING_FRESHNESS_SECONDS}
                 className={cn(CONTROL_CLASS, "mt-2")}
                 value={draft.sensorFreshness}
                 aria-invalid={Boolean(fieldErrors.sensorFreshness)}

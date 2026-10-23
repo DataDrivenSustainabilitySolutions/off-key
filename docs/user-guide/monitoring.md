@@ -75,6 +75,11 @@ Shiryaev-Roberts statistic. An anomaly is emitted when any tracker records a new
 threshold crossing. The default is power betting with epsilon `0.5`, the
 restarted statistic, and threshold `100`.
 
+The setup form is deliberately stricter than the server on two values: it asks
+for a reading freshness of at least 1 second and a betting epsilon, minimum
+epsilon or jumper redistribution of at least `0.0001`. Smaller values are almost
+certainly typos.
+
 Ville thresholds on the all-history and harmonic restarted statistics retain
 their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
 change-detection parameters and must be calibrated for the intended null stream;

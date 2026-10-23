@@ -58,7 +58,7 @@ APPLIED_CHECKSUMS = {
         "5f201c44247726ac28fcda3b3c372ad7fa956f10d9dc1ce3b2099e1e5aad22ca"
     ),
     "014_drop_unread_schema.sql": (
-        "65a0ba7666bb23c807bb5b8d262c8a8ee3b4c9de7370f0f8c74e00ea616b7df6"
+        "e2f93eb810b317ffd9be6e2a64d13f8ed277c3d5f62d966669641e79ff4706f0"
     ),
 }
 

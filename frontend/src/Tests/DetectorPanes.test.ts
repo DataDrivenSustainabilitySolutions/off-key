@@ -28,9 +28,8 @@ describe("useDetectorPanes", () => {
     expect(result.pending).toEqual([2000, 3000]);
   });
 
-  it("treats a stopped service as operational only when asked to", () => {
+  it("counts only a running, fresh, operational service as operational", () => {
     expect(panes({ service: service(false) }).operational).toBe(false);
-    expect(panes({ service: service(false), requireActiveService: false }).operational).toBe(true);
     expect(panes({ service: service(true, "warming_up") }).operational).toBe(false);
     expect(panes({}).operational).toBe(false);
   });

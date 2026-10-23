@@ -22,12 +22,12 @@ import { readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
-type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; serviceId?: string; historyCache?: ReadingHistoryCache };
+type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache };
 
-export function ExplorerHistoryChart({ stream, connection, snapshot, binding, serviceId, historyCache }: Props) {
+export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache }: Props) {
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
-  const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}:${serviceId ?? ""}` : undefined;
+  const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}` : undefined;
   const [minutes, setMinutes] = useNavigationDraft(viewKey && `${viewKey}:minutes`, 15);
   const now = useNow(5000);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
@@ -49,19 +49,18 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, se
   const cutoff = inspection?.windowStartMs ?? latestTime - minutes * 60_000;
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
-  const service = useMemo(() => serviceId ? monitoring.services.find(item => item.id === serviceId) : monitoring.binding ? buildSensorClaims(monitoring.binding.entityId, [telemetryType],
+  const service = useMemo(() => monitoring.binding ? buildSensorClaims(monitoring.binding.entityId, [telemetryType],
     monitoring.services.filter((item) => item.status)).get(telemetryType) : undefined,
-  [monitoring.binding, monitoring.services, telemetryType, serviceId]);
+  [monitoring.binding, monitoring.services, telemetryType]);
   const evidence = useMemo(() => monitoring.evidence.filter((item) => item.sensor_set.includes(telemetryType)
-    && (!(serviceId ?? service?.id) || item.service_id === (serviceId ?? service?.id))), [monitoring.evidence, service, telemetryType, serviceId]);
-  const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, serviceId ?? service?.id, telemetryType),
-    [serviceId, service?.id, monitoring.anomalies, evidence, telemetryType]);
+    && (!service || item.service_id === service.id)), [monitoring.evidence, service, telemetryType]);
+  const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, telemetryType),
+    [service?.id, monitoring.anomalies, evidence, telemetryType]);
   const telemetryTimes = useMemo(() => normalizedHistory.map(([time]) => time), [normalizedHistory]);
   const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => Date.parse(point.timestamp))
     .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
-  // A service reached by id may be stopped; the explorer then shows its last stage.
   const panes = useDetectorPanes({ telemetryType, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
-    service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}`, requireActiveService: false });
+    service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}` });
   const { detectors, selectedDetectorIds, pending } = panes;
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,

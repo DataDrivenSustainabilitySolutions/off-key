@@ -60,6 +60,13 @@ beforeEach(() => {
   vi.mocked(useReadingMonitoring).mockReturnValue({ telemetry: [], evidence: [], anomalies: [], services: [], error: "" });
 });
 
+// The running monitor whose topic claims the temperature reading.
+const owner: ActiveService = {
+  id: "selected", container_id: "test", container_name: "Selected monitor", status: true,
+  mqtt_topics: ["telemetry/entity-id/temperature"],
+  operational_status: { stage: "operational", message_count: 1, processed_message_count: 1, is_stale: false },
+};
+
 function receive(telemetry: SystemLiveTelemetry, time: number, value: number, sequence: number) {
   const next = batch("temperature", value);
   next.sequence = sequence;
@@ -162,17 +169,17 @@ describe("workspace chart navigation and monitoring", () => {
     expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("isolates evidence and corroborated alarm events to the selected service, even when the reading has a newer owner", () => {
+  it("isolates evidence and corroborated alarm events to the monitor that owns the reading", () => {
     const time = new Date(NOW).toISOString();
     const otherTime = new Date(NOW - 1000).toISOString();
     const evidence = (id: string, timestamp: string): MonitoringChartEvidence => ({ service_id: id, created: timestamp, timestamp, sequence_number: 1,
       input_timestamps: { temperature: timestamp }, sensor_set: ["temperature"], strategy: "adaptive_stream", anomaly_score: 4, threshold: 3, alarm: true, restarted_martingale: null });
-    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [],
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [owner],
       telemetry: [{ timestamp: time, value: 22 }, { timestamp: otherTime, value: 21 }], evidence: [evidence("selected", time), evidence("other", otherTime)],
       anomalies: [time, otherTime].map((timestamp, index) => ({ anomaly_id: `event-${index}`, charger_id: "entity-id", telemetry_type: "temperature", timestamp,
         anomaly_type: "ml_tailprob_univariate", anomaly_value: .01, value_type: "tail_pvalue" })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
     const option = lastChartProps().option;
     const series = option.series as Array<{ id?: string; markPoint?: { data: unknown[] } }>;
     expect(series[0]).toMatchObject({ data: [[NOW - 1000, 21], [NOW, 22]] });
@@ -186,7 +193,7 @@ describe("workspace chart navigation and monitoring", () => {
     const timestamp = new Date(NOW).toISOString();
     vi.mocked(useReadingMonitoring).mockReturnValue({
       binding: { entityId: "entity-id", telemetryType: "temperature" },
-      error: "", services: [], evidence: [],
+      error: "", services: [owner], evidence: [],
       telemetry: [{ timestamp, value: 22 }],
       anomalies: ["selected", "other"].map(service_id => ({
         anomaly_id: `event-${service_id}`, service_id, charger_id: "entity-id",
@@ -195,7 +202,7 @@ describe("workspace chart navigation and monitoring", () => {
         value_type: "tail_pvalue",
       })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
     const series = lastChartProps().option.series as Array<{ markPoint?: { data: unknown[] } }>;
     expect(series[0]?.markPoint?.data).toHaveLength(1);
     expect(series[0]?.markPoint?.data).toEqual(expect.arrayContaining([

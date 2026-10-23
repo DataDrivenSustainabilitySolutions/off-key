@@ -26,6 +26,14 @@ services:
           - api-gateway
     command: ["uvicorn", "off_key_api_gateway.main:app",
               "--host", "0.0.0.0", "--port", "8000"]
+    # Liveness only: Swarm replaces a task that stops answering. The long start
+    # period covers slow starts such as a migration holding the database lock.
+    healthcheck:
+      test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 5m
     deploy:
       mode: replicated
       replicas: 1
@@ -43,6 +51,14 @@ services:
     environment:
       - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+    # Liveness only: Swarm replaces a task that stops answering. The long start
+    # period covers slow starts such as a migration holding the database lock.
+    healthcheck:
+      test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 5m
     deploy:
       replicas: 1
       placement:
@@ -131,6 +147,14 @@ services:
   mqtt-proxy:
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
+    # Liveness only: Swarm replaces a task that stops answering. The long start
+    # period covers slow starts such as a migration holding the database lock.
+    healthcheck:
+      test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health/live', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 5m
     networks:
       - app-network
       - emqx-network

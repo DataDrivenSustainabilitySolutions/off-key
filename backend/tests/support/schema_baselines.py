@@ -62,3 +62,17 @@ def restore_retired_schema(connection):
     connection.execute(
         text("ALTER TABLE services ADD COLUMN stateful_set_name text UNIQUE")
     )
+    # The pre-ledger ORM named the telemetry primary key after its identical
+    # unique constraint; production databases still carry that name.
+    primary_key = connection.scalar(
+        text(
+            "SELECT conname FROM pg_constraint "
+            "WHERE conrelid = 'telemetry'::regclass AND contype = 'p'"
+        )
+    )
+    connection.execute(
+        text(
+            f"ALTER TABLE telemetry RENAME CONSTRAINT {primary_key} "
+            "TO uq_telemetry_entry"
+        )
+    )

@@ -94,6 +94,29 @@ updates:
         patterns:
           - "ty"
 
+  # Deployment tooling: Ansible and cryptography for ansible-vault.
+  - package-ecosystem: "uv"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:32"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "infrastructure"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      infra-python:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:

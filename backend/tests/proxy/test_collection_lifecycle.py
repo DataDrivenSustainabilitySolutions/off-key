@@ -9,9 +9,11 @@ from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_mqtt_proxy import proxy as proxy_module
 from off_key_mqtt_proxy.config.config import MQTTSettings
+from off_key_mqtt_proxy.health_api import ProxyHealthApp
 
 from tests.support.collection import message
 from tests.support.collection import runtime_catalog as catalog
+from tests.support.http import asgi_client
 
 
 @pytest.fixture
@@ -272,3 +274,13 @@ async def test_state_commit_timestamp_advances_only_after_commit(proxy):
     with pytest.raises(RuntimeError, match="database unavailable"):
         await proxy._emit()
     assert proxy.diagnostics.last_state_write_at == committed_at
+
+
+@pytest.mark.asyncio
+async def test_full_health_reports_the_writer_as_json(proxy):
+    async with asgi_client(ProxyHealthApp(proxy)) as client:
+        response = await client.get("/health/full")
+
+    writer = response.json()["database_writer"]
+    assert writer["status"] == "healthy"
+    assert writer["performance"]["total_records_written"] == 0

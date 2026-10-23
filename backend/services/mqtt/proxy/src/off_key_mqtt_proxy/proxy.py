@@ -4,6 +4,7 @@ import asyncio
 import signal
 import time
 from contextlib import suppress
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 from off_key_core.config.logs import logger
@@ -334,7 +335,7 @@ class MQTTProxyService:
         return {
             **self.get_readiness_status(),
             "counters": self.buffer.metrics(),
-            "database_writer": self.database_writer.get_health_status(),
+            "database_writer": asdict(self.database_writer.get_health_status()),
             "diagnostics": self.diagnostics.snapshot(
                 connected=self.mqtt_client.is_connected
             ),

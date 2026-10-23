@@ -1,4 +1,4 @@
-"""Gateway request middleware: redacted logs and security events."""
+"""Gateway request logging: redacted request logs and security events."""
 
 from unittest.mock import MagicMock
 
@@ -24,7 +24,7 @@ def log(monkeypatch):
     get_logging_settings.cache_clear()
 
 
-def _app(middleware_class) -> FastAPI:
+def _app() -> FastAPI:
     app = FastAPI()
 
     @app.get("/{path:path}")
@@ -35,7 +35,7 @@ def _app(middleware_class) -> FastAPI:
             raise HTTPException(status_code=status)
         return {"path": path}
 
-    app.add_middleware(middleware_class)
+    app.add_middleware(middleware.RequestLoggingMiddleware)
     return app
 
 
@@ -45,7 +45,7 @@ async def _get(app: FastAPI, url: str, headers=None):
 
 
 async def test_request_log_records_performance_for_each_request(log):
-    app = _app(middleware.LoggingMiddleware)
+    app = _app()
 
     await _get(app, "/items")
     await _get(app, "/items")
@@ -54,7 +54,7 @@ async def test_request_log_records_performance_for_each_request(log):
 
 
 async def test_request_log_redacts_secrets_and_truncates_user_agents(log):
-    app = _app(middleware.LoggingMiddleware)
+    app = _app()
 
     await _get(
         app,
@@ -71,7 +71,7 @@ async def test_request_log_redacts_secrets_and_truncates_user_agents(log):
 
 async def test_request_log_records_and_reraises_downstream_failures(log):
     with pytest.raises(RuntimeError, match="downstream failed"):
-        await _get(_app(middleware.LoggingMiddleware), "/items?status=500")
+        await _get(_app(), "/items?status=500")
 
     message, method, path, *_, error = log.exception.call_args.args
     assert message.startswith("event=http.request_failed")
@@ -90,7 +90,7 @@ async def test_request_log_records_and_reraises_downstream_failures(log):
     ],
 )
 async def test_security_log_flags_probing_paths_and_auth_failures(log, url, events):
-    await _get(_app(middleware.SecurityLoggingMiddleware), url)
+    await _get(_app(), url)
 
     logged = [call.args[0].split()[0] for call in log.warning.call_args_list]
     assert logged == [f"event=security.{event}" for event in events]

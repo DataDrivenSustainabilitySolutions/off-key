@@ -2,10 +2,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from off_key_api_gateway.api.middleware import (
-    LoggingMiddleware,
-    SecurityLoggingMiddleware,
-)
+from off_key_api_gateway.api.middleware import RequestLoggingMiddleware
 from off_key_api_gateway.app import build_app
 from off_key_api_gateway.settings import AppSettings
 from off_key_core.config.logs import CorrelationIdMiddleware
@@ -22,8 +19,7 @@ def test_middleware_runs_cors_first_and_request_logging_last():
         CorrelationIdMiddleware,
         GZipMiddleware,
         SlowAPIMiddleware,
-        SecurityLoggingMiddleware,
-        LoggingMiddleware,
+        RequestLoggingMiddleware,
     ]
 
 

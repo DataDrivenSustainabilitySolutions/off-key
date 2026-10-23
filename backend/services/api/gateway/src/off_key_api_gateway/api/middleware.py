@@ -19,38 +19,58 @@ def _safe_user_agent(request: Request) -> str:
     return user_agent if len(user_agent) <= 120 else f"{user_agent[:117]}..."
 
 
-class LoggingMiddleware(BaseHTTPMiddleware):
-    """Log each request; CorrelationIdMiddleware has already bound its ID."""
+SUSPICIOUS_PATTERNS = (
+    "admin",
+    "config",
+    ".env",
+    "backup",
+    "sql",
+    "script",
+    "passwd",
+    "shadow",
+    "etc/",
+    "var/",
+    "proc/",
+    "sys/",
+    "../",
+    "..\\",
+    "eval(",
+    "exec(",
+    "<script",
+)
+SECURITY_STATUS_EVENTS = {
+    401: "event=security.authentication_failed ip=%s path=%s",
+    403: "event=security.authorization_failed ip=%s path=%s",
+}
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log each request and its security events.
+
+    CorrelationIdMiddleware has already bound the request's ID.
+    """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         settings = get_logging_settings()
         start_time = time.time()
         method = request.method
         path = request.url.path
+        client_ip = redact_ip_address(forwarded_client_ip(request))
         safe_user_agent = _safe_user_agent(request)
         safe_query = redact_query_params(dict(request.query_params))
 
+        if any(pattern in path.lower() for pattern in SUSPICIOUS_PATTERNS):
+            logger.warning(
+                "event=security.suspicious_request ip=%s method=%s "
+                "path=%s user_agent=%s",
+                client_ip,
+                method,
+                path,
+                safe_user_agent,
+            )
+
         try:
-            # Process request
             response = await call_next(request)
-            duration_ms = (time.time() - start_time) * 1000
-
-            # Log performance
-            if settings.ENABLE_PERFORMANCE_LOGGING:
-                log_performance(f"{method} {path}", start_time)
-
-            if settings.ENABLE_REQUEST_LOGGING:
-                logger.info(
-                    "event=http.request method=%s path=%s status=%s "
-                    "duration_ms=%.2f query=%s user_agent=%s",
-                    method,
-                    path,
-                    response.status_code,
-                    duration_ms,
-                    safe_query,
-                    safe_user_agent,
-                )
-
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             logger.exception(
@@ -65,75 +85,23 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             )
             raise
 
-        return response
-
-
-class SecurityLoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware for security event logging."""
-
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Log potential security events
-        client_ip = redact_ip_address(forwarded_client_ip(request))
-        path = request.url.path
-        safe_user_agent = _safe_user_agent(request)
-
-        # Log suspicious patterns
-        if self._is_suspicious_request(request):
-            logger.warning(
-                "event=security.suspicious_request ip=%s method=%s "
-                "path=%s user_agent=%s",
-                client_ip,
-                request.method,
+        duration_ms = (time.time() - start_time) * 1000
+        if settings.ENABLE_PERFORMANCE_LOGGING:
+            log_performance(f"{method} {path}", start_time)
+        if settings.ENABLE_REQUEST_LOGGING:
+            logger.info(
+                "event=http.request method=%s path=%s status=%s "
+                "duration_ms=%.2f query=%s user_agent=%s",
+                method,
                 path,
+                response.status_code,
+                duration_ms,
+                safe_query,
                 safe_user_agent,
             )
-
-        response = await call_next(request)
-
-        # Log authentication failures
-        if response.status_code == 401:
-            logger.warning(
-                "event=security.authentication_failed ip=%s path=%s",
-                client_ip,
-                path,
-            )
-
-        # Log authorization failures
-        if response.status_code == 403:
-            logger.warning(
-                "event=security.authorization_failed ip=%s path=%s",
-                client_ip,
-                path,
-            )
-
+        if event := SECURITY_STATUS_EVENTS.get(response.status_code):
+            logger.warning(event, client_ip, path)
         return response
 
-    def _is_suspicious_request(self, request: Request) -> bool:
-        """Detect potentially suspicious request patterns."""
-        path = request.url.path.lower()
 
-        # Common attack patterns
-        suspicious_patterns = [
-            "admin",
-            "config",
-            ".env",
-            "backup",
-            "sql",
-            "script",
-            "passwd",
-            "shadow",
-            "etc/",
-            "var/",
-            "proc/",
-            "sys/",
-            "../",
-            "..\\",
-            "eval(",
-            "exec(",
-            "<script",
-        ]
-
-        return any(pattern in path for pattern in suspicious_patterns)
-
-
-__all__ = ["LoggingMiddleware", "SecurityLoggingMiddleware"]
+__all__ = ["RequestLoggingMiddleware"]

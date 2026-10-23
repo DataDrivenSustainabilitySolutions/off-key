@@ -26,7 +26,7 @@ from off_key_api_gateway.settings import (
     get_service_endpoints_settings,
 )
 
-from .api.middleware import LoggingMiddleware, SecurityLoggingMiddleware
+from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
 from .facades.tactic import tactic
@@ -76,9 +76,8 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # Added innermost first: requests pass CORS, the correlation ID, GZip,
-    # SlowAPI, security logging and request logging in that order.
-    app.add_middleware(LoggingMiddleware)
-    app.add_middleware(SecurityLoggingMiddleware)
+    # SlowAPI and request logging in that order.
+    app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.add_middleware(CorrelationIdMiddleware)

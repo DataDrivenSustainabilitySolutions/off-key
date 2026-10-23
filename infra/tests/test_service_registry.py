@@ -70,16 +70,23 @@ class ServiceRegistryTests(unittest.TestCase):
         self.assertEqual(matrix_builds(), expected)
 
     def test_publishing_skips_the_build_only_images(self):
-        strategy = workflow("docker-images.yml")["jobs"]["build-images"]["strategy"]
-        excluded = [entry["service"] for entry in strategy["matrix"]["exclude"]]
-        self.assertEqual(
-            excluded, ["${{ inputs.publish && 'mqtt-simulator' || 'none' }}"]
-        )
-        services = {
-            entry["image_name"]: entry["service"]
-            for entry in strategy["matrix"]["include"]
+        job = workflow("docker-images.yml")["jobs"]["build-images"]
+        build_only = {
+            entry["image_name"]
+            for entry in job["strategy"]["matrix"]["include"]
+            if entry.get("build_only")
         }
-        self.assertEqual([services[image] for image in BUILD_ONLY], ["mqtt-simulator"])
+        self.assertEqual(build_only, set(BUILD_ONLY))
+        self.assertEqual(
+            job["env"]["PUBLISH"], "${{ inputs.publish && !matrix.build_only }}"
+        )
+        publishing = [
+            step
+            for step in job["steps"]
+            if "inputs.publish" in json.dumps(step)
+            and "!inputs.publish" not in json.dumps(step)
+        ]
+        self.assertEqual(publishing, [])
 
     def test_compose_builds_match_the_image_workflow(self):
         matrix = matrix_builds()

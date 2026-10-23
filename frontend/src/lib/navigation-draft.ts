@@ -2,7 +2,7 @@ import { useCallback, useState, type SetStateAction } from "react";
 
 const drafts = new Map<string, unknown>();
 let generation = 0;
-export const navigationDraftGeneration = () => generation;
+const navigationDraftGeneration = () => generation;
 export function navigationDraft<T>(key: string, initial: () => T): T {
   if (!drafts.has(key)) drafts.set(key, initial());
   return drafts.get(key) as T;
@@ -33,6 +33,29 @@ export function storeDraft(key: string, value: unknown | undefined) {
     if (value === undefined) sessionStorage.removeItem(STORED_PREFIX + key);
     else sessionStorage.setItem(STORED_PREFIX + key, JSON.stringify(value));
   } catch { /* A full or unavailable store only loses reload recovery. */ }
+}
+
+/**
+ * An external store for one draft. Writes from before the last
+ * clearNavigationDrafts are ignored; with a storage key each write stores
+ * persist(snapshot) for reload recovery, and undefined removes it.
+ */
+export function createDraftStore<S>(storageKey: string | undefined, initial: (stored: unknown) => S,
+  persist: (snapshot: S) => unknown) {
+  // Captured before the stored copy is read, so a clear in between wins.
+  const generation = navigationDraftGeneration();
+  let snapshot = initial(storageKey ? readStoredDraft(storageKey) : undefined);
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    update: (next: S) => {
+      if (generation !== navigationDraftGeneration()) return;
+      snapshot = next;
+      if (storageKey) storeDraft(storageKey, persist(next));
+      listeners.forEach((listener) => listener());
+    },
+  };
 }
 
 /** Account-prefixed keys retain form state during a setup detour, in memory only. */

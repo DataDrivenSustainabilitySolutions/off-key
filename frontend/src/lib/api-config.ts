@@ -3,22 +3,12 @@
  * Manages base URLs, endpoints, and API-related constants
  */
 
-// Environment-based API configuration
-const getApiBaseUrl = (): string => {
-  // Use proxy in development, direct URL in production/Docker
-  const isDevelopment = import.meta.env.DEV;
-
-  if (isDevelopment) {
-    // Use Vite proxy configuration
-    return '/api';
-  }
-
-  // Production configuration - use environment variable or fallback
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
-};
+import { EVIDENCE_PAGE_SIZE } from "./forward-pages";
 
 export const API_CONFIG = {
-  BASE_URL: getApiBaseUrl(),
+  // Same-origin in every mode: Vite's dev proxy and the production nginx
+  // both forward /api to the gateway.
+  BASE_URL: '/api',
   TIMEOUT: 10000, // 10 seconds
   MONITORING_LIFECYCLE_TIMEOUT: 210000, // 210 seconds
 
@@ -29,8 +19,6 @@ export const API_CONFIG = {
       LOGIN: '/v1/auth/login',
       REFRESH: '/v1/auth/refresh',
       LOGOUT: '/v1/auth/logout',
-      REGISTER: '/v1/auth/register',
-      VERIFY_EMAIL: '/v1/auth/verify-email',
       FORGOT_PASSWORD: '/v1/auth/forgot-password',
       RESET_PASSWORD: '/v1/auth/reset-password',
     },
@@ -38,9 +26,7 @@ export const API_CONFIG = {
     // Chargers
     CHARGERS: {
       AVAILABLE: '/v1/chargers/available',
-      BY_ID: (chargerId: string) => `/v1/chargers/${chargerId}`,
     },
-
 
     // Telemetry
     TELEMETRY: {
@@ -61,35 +47,20 @@ export const API_CONFIG = {
       },
     },
 
-    // Favorites
-    FAVORITES: {
-      GET: "/v1/favorites",
-      ADD: '/v1/favorites',
-      REMOVE: '/v1/favorites',
-    },
-
     // Anomalies
     ANOMALIES: {
-      BASE: '/v1/anomalies',
       BY_CHARGER: (chargerId: string) =>
         `/v1/anomalies?charger_id=${chargerId}`,
-      BY_CHARGER_AND_TYPE: (chargerId: string, telemetryType: string) =>
-        `/v1/anomalies?charger_id=${chargerId}&telemetry_type=${telemetryType}`,
-      COUNT: '/v1/anomalies/count',
-      CREATE: '/v1/anomalies',
       DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
     },
 
     // Monitoring Services
     MONITORING: {
       START: '/v1/monitors/start',
-      STOP: '/v1/monitors/stop',
       DELETE: (serviceId: string) => `/v1/monitors/${encodeURIComponent(serviceId)}`,
       LIST: '/v1/monitors/all',
       DETAILS: '/v1/monitors',
       MODELS: '/v1/monitors/models',
-      EVIDENCE: (chargerId: string) =>
-        `/v1/monitors/evidence?charger_id=${encodeURIComponent(chargerId)}`,
       CHART_EVIDENCE: (
         chargerId: string,
         cursor?: {
@@ -100,7 +71,10 @@ export const API_CONFIG = {
         },
         serviceId?: string,
       ) => {
-        const params = new URLSearchParams({ charger_id: chargerId });
+        const params = new URLSearchParams({
+          charger_id: chargerId,
+          limit: EVIDENCE_PAGE_SIZE.toString(),
+        });
         if (serviceId) params.set('service_id', serviceId);
         if (cursor) {
           params.set('after_created', cursor.created);
@@ -110,11 +84,6 @@ export const API_CONFIG = {
         }
         return `/v1/monitors/evidence/chart?${params.toString()}`;
       },
-    },
-
-    // Monitoring & Anomaly Detection
-    ANOMALY_DETECTION: {
-      DETECT: '/v1/anomaly-detection/detect',
     },
   },
 } as const;

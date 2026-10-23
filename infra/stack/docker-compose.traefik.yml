@@ -4,7 +4,8 @@
 # (always — Traefik is the ingress). Kept out of the base file so the router lives on its
 # own, reviewable and committable independently. References the base's overlay networks
 # (public/app/emqx), which compose merges across -f files — so this file is NOT valid on its
-# own, only as an overlay. See INGRESS.md.
+# own, only as an overlay. See docs/operations/production.md
+# (Credentials, ingress and certificates).
 #
 # Sits behind the Cloudflare Tunnel connector, host-routing subdomains to services.
 # TLS is terminated upstream (Cloudflare edge /

@@ -11,11 +11,12 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatDateTime } from "@/lib/format-time";
-import { InlineName } from "../catalogue/InlineName";
+import { InlineName } from "@/components/InlineName";
 import { MonitoringHistory } from "./MonitoringHistory";
-import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { SystemDocument } from "../catalogue/systemTypes";
-import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "./serviceModel";
+import { chooseTab as withTab } from "@/domain/monitoring/monitoringView";
+import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { SystemDocument } from "@/types/system";
+import { modelName, serviceName, serviceState, strategyName, type MonitoringInput } from "@/domain/monitoring/serviceModel";
 import type { PipelineState } from "../pipelines/PipelineDiagnostics";
 
 const PipelineRun = lazy(() => import("../pipelines/PipelineRunView"));
@@ -52,11 +53,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     }, reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();
   }, [service.id, service.container_name, retry]);
-  const chooseTab = (next: string, streamId?: string) => {
-    const search = new URLSearchParams(params); search.set("tab", next);
-    if (streamId) search.set("stream", streamId); else if (next !== "evidence") search.delete("stream");
-    setParams(search);
-  };
+  const chooseTab = (next: string, streamId?: string) => setParams(withTab(params, next, streamId));
   const remove = async () => {
     setDeleting(true); setDeleteError("");
     try {
@@ -88,7 +85,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         chooseTab(tabs[next]!.id); window.document.getElementById(`monitor-tab-${tabs[next]!.id}`)?.focus();
       }}>{item.label}</button>)}</div>
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
-      {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} displayName={service.display_name ?? service.container_name} canEdit={canEdit} state={pipelineState} /></Suspense>}
+      {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
         {progress && <section><h3>{state.label}</h3><p className="ex-muted">{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</p>
           <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>

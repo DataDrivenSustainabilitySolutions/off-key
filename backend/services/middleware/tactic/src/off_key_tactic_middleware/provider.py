@@ -1,54 +1,46 @@
 """
 Dependency injection providers for TACTIC middleware service.
+
+Routers under api/v1 are transport-only: they receive services from these
+providers and never touch a database session, query or transaction directly
+(test_tactic_data_api_architecture enforces this). New services take the
+AsyncSession directly; the existing repositories stay but are not extended.
 """
 
-from fastapi import Depends, HTTPException, Request
-from off_key_core.db.base import get_db_async, get_db_sync_transactional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from functools import partial
 
-from .models.registry import ModelRegistryService
+from fastapi import Depends, HTTPException, Request
+from off_key_core.db.base import get_db_async
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .repositories import (
     AnomalyRepository,
     ChargerRepository,
     FavoriteRepository,
-    ModelRegistryAdminRepository,
     MonitoringEvidenceRepository,
     TelemetryRepository,
     UserRepository,
 )
-from .services.admin_models import ModelRegistryAdminService
+from .services.accounts.members import MemberService
+from .services.accounts.remembered_sessions import RememberedSessionService
+from .services.accounts.users import UserService
+from .services.catalogue.system import SystemService
+from .services.catalogue.system_live import SystemLiveService
 from .services.data import (
     AnomalyService,
     ChargerQueryService,
     FavoriteService,
     MonitoringEvidenceService,
     TelemetryQueryService,
-    UserService,
 )
 from .services.orchestration.radar import RadarOrchestrationService
-
-
-def get_model_registry_service(request: Request) -> ModelRegistryService:
-    """Get initialized model registry service from app state."""
-    registry = getattr(request.app.state, "model_registry", None)
-    is_ready = getattr(request.app.state, "model_registry_ready", False)
-
-    if registry is None or not is_ready:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Model registry is not ready. Database/schema initialization may still "
-                "be in progress."
-            ),
-        )
-
-    return registry
+from .services.pipelines.activation import PipelineActivations
+from .services.pipelines.forms import start_form_monitor
+from .services.pipelines.library import PipelineLibrary
 
 
 def get_radar_orchestration_service(
     session: AsyncSession = Depends(get_db_async),
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
 ) -> RadarOrchestrationService:
     """
     Dependency injection provider for RadarOrchestrationService.
@@ -59,7 +51,7 @@ def get_radar_orchestration_service(
     Returns:
         RadarOrchestrationService: Configured service instance
     """
-    return RadarOrchestrationService(session, model_registry)
+    return RadarOrchestrationService(session)
 
 
 def get_charger_query_service(
@@ -104,8 +96,41 @@ def get_monitoring_evidence_service(
     return MonitoringEvidenceService(MonitoringEvidenceRepository(session))
 
 
-def get_model_registry_admin_service(
-    session: Session = Depends(get_db_sync_transactional),
-) -> ModelRegistryAdminService:
-    """Dependency provider for model-registry admin use cases."""
-    return ModelRegistryAdminService(ModelRegistryAdminRepository(session))
+def get_system_service(session: AsyncSession = Depends(get_db_async)) -> SystemService:
+    """Saved catalogue, collection status and policy changes."""
+    return SystemService(session)
+
+
+def get_live_service(request: Request) -> SystemLiveService:
+    """The process-wide live observation manager started with the app."""
+    service = getattr(request.app.state, "system_live", None)
+    if service is None:
+        raise HTTPException(503, "Live observation is unavailable.")
+    return service
+
+
+def get_pipeline_library(
+    session: AsyncSession = Depends(get_db_async),
+) -> PipelineLibrary:
+    return PipelineLibrary(session)
+
+
+def get_pipeline_activations(
+    session: AsyncSession = Depends(get_db_async),
+) -> PipelineActivations:
+    return PipelineActivations(session)
+
+
+def get_form_monitor_starter(session: AsyncSession = Depends(get_db_async)):
+    """Start a setup-form monitor as its equivalent pipeline activation."""
+    return partial(start_form_monitor, session)
+
+
+def get_member_service(session: AsyncSession = Depends(get_db_async)) -> MemberService:
+    return MemberService(session)
+
+
+def get_remembered_session_service(
+    session: AsyncSession = Depends(get_db_async),
+) -> RememberedSessionService:
+    return RememberedSessionService(session)

@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "docs/**"
+      - "requirements-docs.txt"
       - "zensical.toml"
   push:
     branches:
@@ -12,6 +13,7 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "docs/**"
+      - "requirements-docs.txt"
       - "zensical.toml"
   workflow_dispatch:
 
@@ -37,9 +39,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements-docs.txt
 
       - name: Install Zensical
-        run: python -m pip install --disable-pip-version-check zensical==0.0.53
+        run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
       - name: Build site
         run: zensical build --clean --strict

@@ -6,11 +6,9 @@ from collections import Counter
 from time import perf_counter_ns
 
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.random_projection import SparseRandomProjection
 
 from ..execution_errors import FatalExecutionError
+from .components import BATCH_PASSTHROUGH, batch_component
 from .plan import ExecutionPlan
 
 
@@ -24,26 +22,11 @@ class BatchFeatureGraph:
 
     def __init__(self, plan: ExecutionPlan):
         self.plan = plan
-        self.components = {}
-        for node in plan.feature_nodes:
-            params = dict(node.params)
-            if node.component == "static.standard_scaler":
-                self.components[node.id] = StandardScaler(**params)
-            elif node.component == "static.min_max_scaler":
-                self.components[node.id] = MinMaxScaler(**params)
-            elif node.component in {"static.pca", "static.random_projection"}:
-                seed = params.pop("seed", None)
-                constructor = (
-                    PCA if node.component == "static.pca" else SparseRandomProjection
-                )
-                self.components[node.id] = constructor(random_state=seed, **params)
-            elif node.component not in {
-                "features.select",
-                "features.rename",
-                "features.passthrough",
-                "features.merge",
-            }:
-                raise ValueError(f"Unsupported static component: {node.component}")
+        self.components = {
+            node.id: batch_component(node)
+            for node in plan.feature_nodes
+            if node.component not in BATCH_PASSTHROUGH
+        }
         self.fitted = False
 
     def fit_transform(self, matrix: np.ndarray) -> np.ndarray:
@@ -59,7 +42,7 @@ class BatchFeatureGraph:
         return self._execute(matrix, fit=False, observer=observer)
 
     def _execute(self, matrix: np.ndarray, *, fit: bool, observer=None) -> np.ndarray:
-        source = self.plan.compiled.source_id
+        source = self.plan.source_id
         matrix = np.asarray(matrix, dtype=float)
         if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.names(source)):
             raise ValueError("Batch graph input width differs from its compiled schema")
@@ -71,7 +54,7 @@ class BatchFeatureGraph:
             for node in self.plan.feature_nodes
             for parent in self.plan.parents(node.id)
         )
-        output_id = self.plan.compiled.feature_output_id
+        output_id = self.plan.feature_output_id
         remaining[output_id] += 1
         for node in self.plan.feature_nodes:
             started = perf_counter_ns()
@@ -84,12 +67,11 @@ class BatchFeatureGraph:
             available[node.id] = result
             if observer is not None and len(matrix) == 1:
                 inputs = result if node.kind == "merge" else current
-                _observe(
-                    observer,
+                observer.record(
                     node.id,
                     dict(zip(input_names, inputs[0], strict=True)),
                     dict(zip(self.plan.names(node.id), result[0], strict=True)),
-                    perf_counter_ns() - started,
+                    elapsed_ns=perf_counter_ns() - started,
                 )
             for parent in parents:
                 remaining[parent] -= 1
@@ -151,18 +133,10 @@ class FittedStaticPipeline:
         started = perf_counter_ns()
         result = self.conformal.compute_p_values(transformed)
         if self.observer is not None and len(transformed) == 1:
-            _observe(
-                self.observer,
-                self.graph.plan.compiled.detector_id,
+            self.observer.record(
+                self.graph.plan.detector_id,
                 self.last_features,
                 float(np.asarray(result).ravel()[0]),
-                perf_counter_ns() - started,
+                elapsed_ns=perf_counter_ns() - started,
             )
         return result
-
-
-def _observe(observer, identifier, inputs, output, elapsed_ns):
-    try:
-        observer.record(identifier, inputs, output, elapsed_ns=elapsed_ns)
-    except Exception:
-        observer.errors += 1

@@ -4,13 +4,18 @@ import { ParameterFields } from "./ParameterFields";
 import {
   connectNodes,
   connectionIssue,
+  disconnectEdge,
+  incomingEdges,
   moveMergeInput,
   nodeOptionLabel,
   removeNode,
+  replaceComponent,
+  setNodeLabel,
+  setNodeParams,
   type GraphDocument,
 } from "./model";
-import { componentFor, dataKinds, inputKind, nodePosition, outputKind } from "./semantics";
-import type { HistoryMode } from "./useGraphEditor";
+import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
+import type { HistoryMode } from "./types";
 
 type Props = {
   document: GraphDocument;
@@ -39,9 +44,7 @@ export function PipelineInspector({
   const [modelQuery, setModelQuery] = useState("");
   const node = document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
-  const incoming = document.definition.edges
-    .filter((edge) => edge.target === selected)
-    .sort((left, right) => left.order - right.order);
+  const incoming = selected ? incomingEdges(document.definition, selected) : [];
   const features = [
     ...new Set(
       incoming.flatMap(
@@ -132,29 +135,7 @@ export function PipelineInspector({
                     const replacement = catalog.components.find(
                       (item) => item.id === event.target.value,
                     );
-                    if (!replacement) return;
-                    const params = Object.fromEntries(
-                      replacement.fields
-                        .filter((field) => field.default !== undefined)
-                        .map((field) => [field.name, field.default!]),
-                    );
-                    onChange({
-                      ...document,
-                      definition: {
-                        ...document.definition,
-                        nodes: document.definition.nodes.map((item) =>
-                          item.id === node.id
-                            ? {
-                                ...item,
-                                component: replacement.id,
-                                contract_version:
-                                  replacement.contract_version ?? 1,
-                                params,
-                              }
-                            : item,
-                        ),
-                      },
-                    });
+                    if (replacement) onChange(replaceComponent(document, node.id, replacement));
                   }}
                 >
                   {models.map((item) => (
@@ -181,24 +162,7 @@ export function PipelineInspector({
               placeholder={component?.label ?? node.component}
               disabled={readOnly}
               onChange={(event) =>
-                onChange({
-                  ...document,
-                  layout: {
-                    ...document.layout,
-                    nodes: {
-                      ...document.layout.nodes,
-                      [node.id]: {
-                        ...nodePosition(
-                          document.layout,
-                          node.id,
-                          document.definition.nodes.indexOf(node),
-                        ),
-                        ...document.layout.nodes[node.id],
-                        label: event.target.value,
-                      },
-                    },
-                  },
-                }, `title:${node.id}`)
+                onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
               }
             />
           </label>
@@ -215,15 +179,7 @@ export function PipelineInspector({
                   .filter((key) => params[key] !== node.params[key])
                   .sort()
                   .join(",");
-                onChange({
-                  ...document,
-                  definition: {
-                    ...document.definition,
-                    nodes: document.definition.nodes.map((item) =>
-                      item.id === node.id ? { ...item, params } : item,
-                    ),
-                  },
-                }, `param:${node.id}:${changed}`);
+                onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
               }}
             />
           )}
@@ -295,15 +251,7 @@ export function PipelineInspector({
                       type="button"
                       aria-label={`Disconnect ${edge.source} from ${node.id}`}
                       onClick={() =>
-                        onChange({
-                          ...document,
-                          definition: {
-                            ...document.definition,
-                            edges: document.definition.edges.filter(
-                              (item) => item !== edge,
-                            ),
-                          },
-                        })
+                        onChange({ ...document, definition: disconnectEdge(document.definition, edge) })
                       }
                     >
                       ×

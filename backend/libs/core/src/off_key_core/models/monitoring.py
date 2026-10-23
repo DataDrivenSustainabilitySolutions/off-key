@@ -1,7 +1,2 @@
-from .static import STATIC_MODELS
-
 STATIC_MODEL_FAMILY = "static_pyod"
-RETIRED_MODEL_FAMILY = "retired"
 STATIC_MONITORING_STRATEGY = "static_baseline"
-
-BUILTIN_STATIC_MODEL_TYPES = frozenset(STATIC_MODELS)

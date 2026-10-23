@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Star } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
 import { RelativeTime } from "@/components/RelativeTime";
-import { modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "./serviceModel";
+import { modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "@/domain/monitoring/serviceModel";
 
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;

@@ -17,19 +17,32 @@ Use this page when validating local changes, checking runtime health, or diagnos
 
 ```bash
 uv run --project backend ruff check .
+uv run --project backend ty check --project backend
 uv run --project backend python -m pytest -q
 ```
 
-Expected result: lint exits with status `0`, and tests complete without failures.
+For a faster local loop, add `-m "not slow"` to skip the boundary-size
+runtime tests; CI always runs them.
+
+Backend tests live under `backend/tests/`, one folder per area: `core`,
+`database` (schema, migrations, DB sync), `gateway`, `tactic`, `radar`,
+`proxy`, `pipelines`, `simulator` and `contracts` (cross-service, deployment
+and documentation contracts). Shared fakes and fixtures live in
+`backend/tests/support/`; test modules never import each other.
+
+Expected result: lint and the type check exit with status `0`, and tests
+complete without failures. The type check covers the packages listed under
+`[tool.ty.src]` in `backend/pyproject.toml`; RADAR joins once its lifecycle
+attributes are typed.
 
 ### RADAR production integration
 
-The [RADAR production integration workflow](../../.github/workflows/radar-production-integration.yml)
-runs on pull requests, main, merge queues and manual dispatch. It builds the
+The [RADAR production integration workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/radar-production-integration.yml)
+runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It builds the
 current production `backend/Dockerfile`, uses Python 3.14 and frozen dependencies,
 and selects the TimescaleDB image pinned by the production release manifest.
 Its isolated Ubuntu runner initializes Swarm, runs real MQTT/database/task
-replacement regressions and cleans labelled fixtures within a 30 minute job.
+replacement regressions and cleans labelled fixtures within a 45 minute job.
 Production release selection requires a successful main-push run for the same
 commit, alongside the other release workflows.
 
@@ -38,6 +51,21 @@ job requires a nonempty JUnit report with zero skipped cases. Missing integratio
 prerequisites therefore fail that job; the general backend suite still supports
 optional integration skips for local development.
 
+Lanes select their tests by marker, never by file list:
+
+| Marker | Lane | Applied by |
+| --- | --- | --- |
+| `postgres` | MQTT collection integration (`-m "postgres and not radar_integration"`) | Automatically, for every test using `disposable_database` or `member_database` |
+| `radar_integration` | RADAR production integration | Module `pytestmark` |
+| `collection_stack` | MQTT collection integration, broker step | `collection_integration/environment.py` |
+| `deployment` | Deployment smoke rehearsal | Module `pytestmark` |
+
+Each lane fails on an empty report or a skipped case
+([`require_executed_tests.py`](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/scripts/require_executed_tests.py)).
+`test_suite_layout.py` fails when a module reads a lane's environment gate
+without carrying that lane's marker, so a new integration test cannot silently
+skip everywhere.
+
 To reproduce on a dedicated local Docker engine, initialize Swarm and provide a
 disposable PostgreSQL server whose test role can create and drop databases. Set
 its host URL in `TEST_SCHEMA_DATABASE_URL`; tests create uniquely named databases.
@@ -45,25 +73,14 @@ The workflow contains the server bootstrap and readiness commands. Then run:
 
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen --python 3.14
-export TEST_RADAR_DATABASE_IMAGE="$(python3 -c 'import json; print(json.load(open("infra/ansible/inventories/prod/group_vars/all/release.yml"))["release"]["images"]["postgres"])')"
+export TEST_RADAR_DATABASE_IMAGE="$(python3 .github/scripts/release_image.py postgres)"
 export TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:local
 export TEST_RADAR_DOCKER=1
 docker pull eclipse-mosquitto:2.0
 docker build -f backend/Dockerfile -t "$TEST_RADAR_SWARM_IMAGE" \
   --build-arg SERVICE_NAME=off-key-mqtt-radar \
   --build-arg SERVICE_ROOT=services/mqtt/radar backend
-uv run --frozen --project backend python -m pytest -q --tb=short \
-  backend/tests/test_radar_mqtt_integration.py \
-  backend/tests/test_monitor_anomaly_identity_integration.py \
-  backend/tests/test_radar_runtime_checkpoints.py \
-  backend/tests/test_radar_checkpoint_ownership.py \
-  backend/tests/test_radar_lifecycle_integration.py \
-  backend/tests/test_radar_activity_integration.py \
-  backend/tests/test_radar_bounded_runtime.py \
-  backend/tests/test_radar_resource_budget.py \
-  backend/tests/test_radar_observation_integration.py \
-  backend/tests/test_radar_observation_recovery.py \
-  backend/tests/test_radar_swarm_integration.py
+uv run --frozen --project backend python -m pytest -q --tb=short -m radar_integration
 ```
 
 The two opt-in variables enable actual Docker lifecycle tests and current-image
@@ -109,11 +126,16 @@ uv run --project backend pre-commit run --all-files
 === "Internal endpoints"
 
     ```bash
-    docker compose exec mqtt-proxy wget -qO- http://localhost:8010/health
-    docker compose exec mqtt-proxy wget -qO- http://localhost:8010/ready
-    docker compose exec db-sync wget -qO- http://localhost:8009/health
-    docker compose exec db-sync wget -qO- http://localhost:8009/ready/schema
+    # The backend image has no wget or curl; use its Python like the healthchecks do.
+    probe='import sys, urllib.request as u; print(u.urlopen(sys.argv[1]).read().decode())'
+    docker compose exec mqtt-proxy /app/bin/python -c "$probe" http://localhost:8010/health
+    docker compose exec mqtt-proxy /app/bin/python -c "$probe" http://localhost:8010/ready
+    docker compose exec db-sync /app/bin/python -c "$probe" http://localhost:8009/health
+    docker compose exec db-sync /app/bin/python -c "$probe" http://localhost:8009/ready/schema
     ```
+
+    A 503 raises `HTTPError` instead of printing the body; `docker compose ps`
+    shows the same health state.
 
 `/ready` reports an applied collection revision. An empty selection is healthy idle.
 
@@ -122,7 +144,7 @@ uv run --project backend pre-commit run --all-files
 Tail critical services:
 
 ```bash
-docker compose logs -f api-gateway tactic-middleware db-sync mqtt-proxy mqtt-radar
+docker compose logs -f api-gateway tactic-middleware db-sync mqtt-proxy
 ```
 
 Inspect recent output for one service:
@@ -135,14 +157,14 @@ docker compose logs --tail 200 tactic-middleware
 
 ### Frontend loads but charger data is empty
 
-1. Confirm that `VITE_API_URL` is reachable from the frontend runtime.
+1. Confirm that `API_PROXY_TARGET` is reachable from the Vite dev server; built images proxy `/api` through nginx.
 2. Check Gateway liveness at <http://localhost:8000/health>.
 3. Check TACTIC readiness at <http://localhost:8001/ready>.
 4. Inspect Gateway and TACTIC logs for the upstream error.
 
 ### Monitoring start fails
 
-1. Confirm that the model registry is populated:
+1. Confirm that the model catalogue is served:
 
     ```bash
     curl --fail http://localhost:8000/v1/monitors/models

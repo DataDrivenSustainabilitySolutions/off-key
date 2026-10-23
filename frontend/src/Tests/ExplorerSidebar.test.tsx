@@ -1,21 +1,38 @@
-import { act, cleanup, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ExplorerSidebar } from "@/features/explorer/ExplorerSidebar";
-import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/explorer/ExplorerList";
-import { buildNavigationIndex, navigationRows } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+import { ExplorerSidebar } from "@/features/workspace/ExplorerSidebar";
+import { ExplorerList, type ExplorerRow, type ListPosition } from "@/features/workspace/ExplorerList";
+import { buildNavigationIndex, navigationRows } from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemDocument } from "@/types/system";
 import { apiClient } from "@/lib/api-client";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveBatch } from "@/features/catalogue/systemLiveTypes";
-import type { SystemRuntime } from "@/features/catalogue/systemTypes";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveBatch } from "@/types/system-live";
+import type { SystemRuntime } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 const viewportHeight = 360;
 const rowHeight = 72;
 const initialScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
 const initialWindowObserver = Object.getOwnPropertyDescriptor(window, "ResizeObserver");
+
+/** Hold animation frames until the test advances them one at a time. */
+function manualFrames() {
+  const frames = new Map<number, FrameRequestCallback>();
+  let nextFrame = 0;
+  vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+    frames.set(++nextFrame, callback);
+    return nextFrame;
+  });
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((handle) => { frames.delete(handle); });
+  return () => act(() => {
+    const pending = [...frames.values()];
+    frames.clear();
+    pending.forEach((callback) => callback(performance.now()));
+  });
+}
 
 function render(element: ReactNode, path = "/") {
   return renderUI(element, { wrapper: ({ children }) => <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter> });
@@ -54,9 +71,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
   if (initialScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", initialScrollTo);
   else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   if (initialWindowObserver) Object.defineProperty(window, "ResizeObserver", initialWindowObserver);
@@ -66,7 +80,7 @@ afterEach(() => {
 function system(readings = 3): SystemDocument {
   return {
     ...createEmptySystem("Test catalogue"),
-    connections: [{ id: "broker", label: "North laboratory", protocol: "mqtt", host: "private.example.invalid", port: 1883, transport: "tcp", tls: false }],
+    connections: [mqttConnection({ id: "broker", label: "North laboratory", host: "private.example.invalid" })],
     streams: Array.from({ length: readings }, (_, position) => ({
       id: `value-${position}`, label: `Value ${position}`, connection_id: "broker", topic: `site/room/value${position}`,
       value_type: "number", category: "Environment",
@@ -260,18 +274,7 @@ describe("explorer sidebar and catalogue list", () => {
   });
 
   it.each([0, 1])("keeps explicit toolbar focus during deferred branch restoration after %i frames", (elapsedFrames) => {
-    const frames = new Map<number, FrameRequestCallback>();
-    let nextFrame = 0;
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.set(++nextFrame, callback);
-      return nextFrame;
-    });
-    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((handle) => { frames.delete(handle); });
-    const advanceFrame = () => act(() => {
-      const pending = [...frames.values()];
-      frames.clear();
-      pending.forEach((callback) => callback(performance.now()));
-    });
+    const advanceFrame = manualFrames();
     const options = listOptions();
     const content = (viewKey: string) => <><button>Back to catalogue</button><ExplorerList {...options} viewKey={viewKey} /></>;
     const view = render(content(options.viewKey));
@@ -285,6 +288,21 @@ describe("explorer sidebar and catalogue list", () => {
     advanceFrame();
 
     expect(document.activeElement).toBe(toolbar);
+  });
+
+  it("restores focus in a new branch even when the branch re-renders before the deferred frames", () => {
+    const advanceFrame = manualFrames();
+    const options = listOptions();
+    const view = render(<ExplorerList {...options} />);
+    act(() => screen.getByRole("button", { name: "value0, preview" }).focus());
+
+    view.rerender(<ExplorerList {...options} viewKey="other-branch" />);
+    // New row objects with the same content, as a parent re-render produces.
+    view.rerender(<ExplorerList {...options} viewKey="other-branch" rows={[...options.rows]} />);
+    advanceFrame();
+    advanceFrame();
+
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "value0, preview" }));
   });
 
   it("reveals a late search result in its canonical branch instead of restoring an unrelated saved viewport", async () => {

@@ -257,18 +257,14 @@ class StreamRunner:
         if diagnostic:
             diagnostic.begin(self.sequence, "operational")
             diagnostic.select_pass("score")
-            diagnostic.record(self.plan.compiled.source_id, data, data)
+            diagnostic.record(self.plan.source_id, data, data)
         score = self.graph.score_one(data)
         alarm = score > self.threshold
         if diagnostic:
-            diagnostic.record(
-                self.plan.compiled.policy_id, {"score": score}, float(alarm)
-            )
-            diagnostic.record(
-                self.plan.compiled.output_id, {"alarm": float(alarm)}, score
-            )
+            diagnostic.record(self.plan.policy_id, {"score": score}, float(alarm))
+            diagnostic.record(self.plan.output_id, {"alarm": float(alarm)}, score)
             diagnostic.select_pass("learn")
-            diagnostic.record(self.plan.compiled.source_id, data, data)
+            diagnostic.record(self.plan.source_id, data, data)
         self.graph.learn_one(data)
         if diagnostic:
             diagnostic.readiness(self.graph.node_states, self.graph)

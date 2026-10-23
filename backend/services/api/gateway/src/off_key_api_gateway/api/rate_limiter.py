@@ -1,5 +1,6 @@
 import ipaddress
 from functools import lru_cache
+from typing import cast
 
 from fastapi import Request, Response
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,7 +26,9 @@ class ProxySettings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def trusted_proxy_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+def trusted_proxy_networks() -> tuple[
+    ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+]:
     return tuple(
         ipaddress.ip_network(cidr, strict=False)
         for cidr in ProxySettings().TRUSTED_PROXY_CIDRS
@@ -67,5 +70,6 @@ def client_ip(request: Request) -> str:
 limiter = Limiter(key_func=client_ip)
 
 
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
-    return _rate_limit_exceeded_handler(request, exc)
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    # Registered for RateLimitExceeded only; Starlette types handlers by Exception.
+    return _rate_limit_exceeded_handler(request, cast(RateLimitExceeded, exc))

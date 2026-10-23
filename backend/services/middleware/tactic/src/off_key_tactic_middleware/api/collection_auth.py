@@ -2,8 +2,7 @@
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
-from off_key_core.config.auth import get_auth_settings
+from off_key_core.auth.tokens import InvalidAccessToken, decode_access_token
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.utils.enum import RoleEnum
@@ -19,42 +18,23 @@ async def current_member(
 ) -> User:
     if credentials is None:
         raise HTTPException(401, "Sign in to continue")
-    settings = get_auth_settings()
     try:
-        claims = jwt.decode(
-            credentials.credentials,
-            settings.JWT_SECRET.get_secret_value(),
-            algorithms=[settings.ALGORITHM],
-            issuer=settings.JWT_ISSUER,
-            audience=settings.JWT_AUDIENCE,
-            options={
-                "require_exp": True,
-                "require_sub": True,
-                "require_iss": True,
-                "require_aud": True,
-                "leeway": settings.JWT_CLOCK_SKEW_SECONDS,
-            },
+        claims = decode_access_token(credentials.credentials)
+    except InvalidAccessToken as exc:
+        detail = (
+            "Invalid or expired access token"
+            if exc.kind == "token"
+            else "Invalid access token"
         )
-    except JWTError as exc:
-        raise HTTPException(401, "Invalid or expired access token") from exc
-    user_id = claims.get("user_id")
-    version = claims.get("session_version")
-    if (
-        type(user_id) is not int
-        or user_id <= 0
-        or type(version) is not int
-        or version < 0
-        or claims.get("token_type") is not None
-    ):
-        raise HTTPException(401, "Invalid access token")
+        raise HTTPException(401, detail) from exc
     user = await session.scalar(
-        select(User).where(User.id == user_id, User.email == claims["sub"])
+        select(User).where(User.id == claims.user_id, User.email == claims.sub)
     )
     if (
         user is None
         or not user.is_verified
         or not user.is_active
-        or user.session_version != version
+        or user.session_version != claims.session_version
     ):
         raise HTTPException(401, "This session is no longer valid")
     return user

@@ -11,7 +11,7 @@ from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.schemas.members import MemberInvitation
 from off_key_core.utils.enum import RoleEnum
 
-from .services.members import MemberService
+from .services.accounts.members import MemberService
 
 
 async def main(*, send_email: bool = False, resend: bool = False) -> None:

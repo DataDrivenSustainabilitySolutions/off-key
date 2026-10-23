@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,43 +12,22 @@ class SimulatorConfig(BaseModel):
     enabled: bool
     workshop_enabled: bool = False
     broker_host: str
-    broker_port: int
+    broker_port: int = Field(ge=1, le=65535)
     use_tls: bool
     use_auth: bool
     username: str
     api_key: str
     client_id_prefix: str
-    interval_seconds: float
-    qos: int
+    interval_seconds: float = Field(ge=0.1, le=3600.0)
+    qos: int = Field(ge=0, le=2)
     charger_ids: list[str]
     features: list[str]
     topic_template: str
     value_min: float
     value_max: float
-    blip_probability: float
-    blip_multiplier_min: float
-    blip_multiplier_max: float
-
-    @field_validator("broker_port")
-    @classmethod
-    def validate_port(cls, value: int) -> int:
-        if not 1 <= value <= 65535:
-            raise ValueError("Broker port must be between 1 and 65535")
-        return value
-
-    @field_validator("interval_seconds")
-    @classmethod
-    def validate_interval(cls, value: float) -> float:
-        if not 0.1 <= value <= 3600.0:
-            raise ValueError("Interval must be between 0.1 and 3600 seconds")
-        return value
-
-    @field_validator("qos")
-    @classmethod
-    def validate_qos(cls, value: int) -> int:
-        if value not in {0, 1, 2}:
-            raise ValueError("QoS must be one of: 0, 1, 2")
-        return value
+    blip_probability: float = Field(ge=0.0, le=1.0)
+    blip_multiplier_min: float = Field(ge=1.0)
+    blip_multiplier_max: float = Field(ge=1.0)
 
     @field_validator("features")
     @classmethod
@@ -66,20 +45,6 @@ class SimulatorConfig(BaseModel):
             raise ValueError("At least one charger ID is required")
         return normalized
 
-    @field_validator("blip_probability")
-    @classmethod
-    def validate_blip_probability(cls, value: float) -> float:
-        if not 0.0 <= value <= 1.0:
-            raise ValueError("Blip probability must be between 0.0 and 1.0")
-        return value
-
-    @field_validator("blip_multiplier_min")
-    @classmethod
-    def validate_blip_multiplier_min(cls, value: float) -> float:
-        if value < 1.0:
-            raise ValueError("Blip multiplier min must be >= 1.0")
-        return value
-
     @field_validator("value_max")
     @classmethod
     def validate_range_max(cls, value: float, info) -> float:
@@ -91,8 +56,6 @@ class SimulatorConfig(BaseModel):
     @field_validator("blip_multiplier_max")
     @classmethod
     def validate_blip_multiplier_range(cls, value: float, info) -> float:
-        if value < 1.0:
-            raise ValueError("Blip multiplier max must be >= 1.0")
         blip_multiplier_min = info.data.get("blip_multiplier_min")
         if blip_multiplier_min is not None and value < blip_multiplier_min:
             raise ValueError("blip_multiplier_max must be >= blip_multiplier_min")

@@ -25,12 +25,8 @@ class SyncService:
 
     def __init__(self):
         self.is_running = False
-        self.initial_sync_complete = False
         self.schema_ready = False
         self.shutdown_event = asyncio.Event()
-
-        # Logging context
-        self._log_context = {"component": "sync_service", "service": "db_sync"}
 
     async def _initialize_database(self) -> bool:
         """
@@ -40,20 +36,19 @@ class SyncService:
             bool: True if successful, False otherwise
         """
         try:
-            logger.info("Starting database initialization", extra=self._log_context)
+            logger.info("Starting database initialization")
 
             async with get_async_engine().begin() as conn:
                 await conn.run_sync(bootstrap_schema)
 
             self.schema_ready = True
-            logger.info("Database tables created successfully", extra=self._log_context)
+            logger.info("Database tables created successfully")
             return True
 
         except Exception as e:
             self.schema_ready = False
             logger.error(
                 f"Database initialization failed: {e}",
-                extra=self._log_context,
                 exc_info=True,
             )
             return False
@@ -73,7 +68,6 @@ class SyncService:
         except Exception as e:
             logger.error(
                 f"Database connection failed: {e}",
-                extra=self._log_context,
                 exc_info=True,
             )
             return False
@@ -92,35 +86,30 @@ class SyncService:
         for attempt in range(1, max_retries + 1):
             logger.info(
                 f"Database connection attempt {attempt}/{max_retries}",
-                extra=self._log_context,
             )
 
             if await self._check_database_connection():
-                logger.info("Database connection successful", extra=self._log_context)
+                logger.info("Database connection successful")
                 return True
 
             if attempt < max_retries:
                 logger.info(
                     f"Waiting {delay} seconds before next attempt",
-                    extra=self._log_context,
                 )
                 await asyncio.sleep(delay)
 
         logger.error(
             f"Database not available after {max_retries} attempts",
-            extra=self._log_context,
         )
         return False
 
     async def start(self):
         """Start the database sync service"""
         if self.is_running:
-            logger.warning(
-                "Database sync service already running", extra=self._log_context
-            )
+            logger.warning("Database sync service already running")
             return
 
-        logger.info("Starting database sync service", extra=self._log_context)
+        logger.info("Starting database sync service")
 
         try:
             # Wait for database to be available
@@ -131,17 +120,13 @@ class SyncService:
             if not await self._initialize_database():
                 raise RuntimeError("Database initialization failed")
 
-            self.initial_sync_complete = True
             self.is_running = True
 
-            logger.info(
-                "Database sync service started successfully", extra=self._log_context
-            )
+            logger.info("Database sync service started successfully")
 
         except Exception as e:
             logger.error(
                 f"Failed to start database sync service: {e}",
-                extra=self._log_context,
                 exc_info=True,
             )
 
@@ -152,35 +137,14 @@ class SyncService:
     async def stop(self):
         """Stop the database sync service"""
         if not self.is_running:
-            logger.info(
-                "Database sync service already stopped", extra=self._log_context
-            )
+            logger.info("Database sync service already stopped")
             return
 
-        logger.info("Stopping database sync service", extra=self._log_context)
-        shutdown_start_time = asyncio.get_event_loop().time()
-
-        # Signal shutdown
+        logger.info("Stopping database sync service")
         self.shutdown_event.set()
         self.is_running = False
         self.schema_ready = False
-
-        try:
-            shutdown_duration = asyncio.get_event_loop().time() - shutdown_start_time
-
-            logger.info(
-                f"Database sync service stopped successfully in "
-                f"{shutdown_duration:.2f}s",
-                extra={**self._log_context, "shutdown_duration": shutdown_duration},
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Error during database sync service shutdown: {e}",
-                extra=self._log_context,
-                exc_info=True,
-            )
-            raise
+        logger.info("Database sync service stopped")
 
     async def run(self):
         """Run the database sync service"""
@@ -189,7 +153,6 @@ class SyncService:
         def signal_handler(signum, frame):
             logger.info(
                 f"Received signal {signum}, initiating graceful shutdown",
-                extra=self._log_context,
             )
             self.shutdown_event.set()
 
@@ -203,14 +166,12 @@ class SyncService:
             # Keep running until shutdown signal
             logger.info(
                 "Database sync service running, waiting for shutdown signal",
-                extra=self._log_context,
             )
             await self.shutdown_event.wait()
 
         except Exception as e:
             logger.error(
                 f"Unexpected error in database sync service: {e}",
-                extra=self._log_context,
                 exc_info=True,
             )
 
@@ -220,16 +181,13 @@ class SyncService:
 
     def get_health_status(self):
         """Get current health status"""
-        is_healthy = (
-            self.is_running and self.schema_ready and self.initial_sync_complete
-        )
-
         return {
             "status": (
                 "healthy"
-                if is_healthy
+                if self.is_running and self.schema_ready
                 else ("starting" if self.is_running else "stopped")
             ),
             "schema_ready": self.schema_ready,
-            "initial_sync_complete": self.initial_sync_complete,
+            # Kept in the /health shape the gateway waits on; equals schema_ready.
+            "initial_sync_complete": self.schema_ready,
         }

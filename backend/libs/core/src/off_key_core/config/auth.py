@@ -1,8 +1,9 @@
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import EmailStr, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from off_key_core.config.validation import SECRETS_DIR
 
 _ALLOWED_JWT_ALGORITHMS = frozenset({"HS256", "HS384", "HS512"})
 _MIN_SECRET_LENGTH = 32
@@ -13,7 +14,7 @@ class AuthSettings(BaseSettings):
     """Authentication and authorization settings."""
 
     model_config = SettingsConfigDict(
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
         case_sensitive=True,
         extra="ignore",
         frozen=True,

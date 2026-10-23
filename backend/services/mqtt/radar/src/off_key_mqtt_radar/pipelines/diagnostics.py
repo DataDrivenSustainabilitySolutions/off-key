@@ -66,10 +66,6 @@ class PipelineDiagnostics:
         self._pass = "learn"
         self._captured_at = datetime.now(UTC).isoformat()
 
-    @property
-    def sampling(self) -> bool:
-        return self._pending is not None
-
     def begin(self, sequence: int, phase: str) -> None:
         self.sequence_number = sequence
         self.phase = phase

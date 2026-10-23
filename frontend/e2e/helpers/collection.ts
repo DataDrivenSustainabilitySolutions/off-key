@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { expect, type APIRequestContext } from "@playwright/test";
 import type { CollectionPolicy } from "../../src/types/collection";
-import type { SystemSnapshot } from "../../src/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "../../src/types/system";
 
 const stableKey = (kind: string, identity: string) => `${kind}-${createHash("sha256").update(identity).digest("hex")}`;
 export const fixtureEntityId = (deviceId: string) => stableKey("entity", deviceId);

@@ -30,29 +30,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          version: "0.13.0"
-
-      - name: Install locked backend dependencies
-        run: uv sync --project backend --all-packages --all-groups --frozen
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
 
       - name: Select the production database and current RADAR image
         run: |
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          release = json.loads(Path("infra/ansible/inventories/prod/group_vars/all/release.yml").read_text())["release"]
-          with open(os.environ["GITHUB_ENV"], "a") as output:
-              output.write(f"TEST_RADAR_DATABASE_IMAGE={release['images']['postgres']}\n")
-              output.write(f"TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:{os.environ['GITHUB_SHA']}\n")
-          PY
+          image="$(python3 .github/scripts/release_image.py postgres)"
+          echo "TEST_RADAR_DATABASE_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Build the current production RADAR Dockerfile
         run: |
@@ -105,43 +90,10 @@ jobs:
             --timeout=300 --timeout-method=thread -o faulthandler_timeout=60 \
             --durations=10 \
             --junitxml="$RUNNER_TEMP/radar-results.xml" \
-            backend/tests/test_radar_mqtt_integration.py \
-            backend/tests/test_monitor_anomaly_identity_integration.py \
-            backend/tests/test_radar_runtime_checkpoints.py \
-            backend/tests/test_radar_checkpoint_ownership.py \
-            backend/tests/test_radar_lifecycle_integration.py \
-            backend/tests/test_radar_activity_integration.py \
-            backend/tests/test_radar_bounded_runtime.py \
-            backend/tests/test_radar_resource_budget.py \
-            backend/tests/test_radar_observation_integration.py \
-            backend/tests/test_radar_observation_recovery.py \
-            backend/tests/test_radar_swarm_integration.py \
-            backend/tests/test_pipeline_contracts.py \
-            backend/tests/test_pipeline_report_bounds.py \
-            backend/tests/test_pipeline_report_api.py \
-            backend/tests/test_static_pipeline_runtime.py \
-            backend/tests/test_adaptive_pipeline_runtime.py \
-            backend/tests/test_pipeline_runtime_bounds.py \
-            backend/tests/test_pipeline_processing_integration.py \
-            backend/tests/test_pipeline_failure_status.py \
-            backend/tests/test_monitoring_pipelines_integration.py \
-            backend/tests/test_pipeline_activation_swarm.py
+            -m radar_integration
 
       - name: Require executed integration coverage without skips
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          cases = ET.parse(Path(os.environ["RUNNER_TEMP"]) / "radar-results.xml").findall(".//testcase")
-          if not cases:
-              raise SystemExit("RADAR integration executed no tests")
-          skipped = [case.get("name") for case in cases if case.find("skipped") is not None]
-          if skipped:
-              raise SystemExit("Skipped required RADAR integration tests: " + ", ".join(skipped))
-          print(f"Verified {len(cases)} RADAR integration tests with zero skips")
-          PY
+        run: python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/radar-results.xml" "RADAR integration"
 
       - name: Save RADAR integration test results
         if: always()

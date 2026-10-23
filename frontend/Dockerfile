@@ -22,10 +22,8 @@ CMD ["npm", "run", "dev"]
 
 FROM dependencies AS build
 
-ARG VITE_API_URL=/api
 ARG VITE_LOCAL_ADMIN_EMAIL=
-ENV VITE_API_URL=${VITE_API_URL} \
-    VITE_LOCAL_ADMIN_EMAIL=${VITE_LOCAL_ADMIN_EMAIL}
+ENV VITE_LOCAL_ADMIN_EMAIL=${VITE_LOCAL_ADMIN_EMAIL}
 
 COPY --chown=node:node . .
 RUN npm run build

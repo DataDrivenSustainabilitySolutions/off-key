@@ -13,6 +13,13 @@ const chromiumUse = {
   ...(chromiumChannel ? { channel: chromiumChannel } : {}),
 };
 
+const SETUP_FILES = /.*\.setup\.ts/;
+const SYSTEM_SPECS = /system-workspace\.spec\.ts/;
+// Route-mocked journeys that need only the frontend.
+const MOCKED_SPECS = /(details-echarts|tandem-charts)\.spec\.ts/;
+// These journeys need TACTIC_PIPELINE_AUTHORING_ENABLED=true; the others need it false.
+const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -24,7 +31,6 @@ export default defineConfig({
   expect: {
     timeout: 30_000,
   },
-  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{platform}{ext}",
   outputDir: "test-results",
   reporter: [
     ["list"],
@@ -45,7 +51,7 @@ export default defineConfig({
     },
     {
       name: "chromium",
-      testIgnore: [/.*\.setup\.ts/, /system-workspace\.spec\.ts/, /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/],
+      testIgnore: [SETUP_FILES, SYSTEM_SPECS, PIPELINE_SPECS, MOCKED_SPECS],
       use: {
         ...chromiumUse,
         storageState: authStateFile,
@@ -53,8 +59,13 @@ export default defineConfig({
       dependencies: ["auth-setup"],
     },
     {
+      name: "mocked-ui",
+      testMatch: MOCKED_SPECS,
+      use: { ...chromiumUse, storageState: { cookies: [], origins: [] } },
+    },
+    {
       name: "pipeline-workspace",
-      testMatch: /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/,
+      testMatch: PIPELINE_SPECS,
       // Every journey signs in afresh; a previous invocation's output is disposable.
       use: {
         ...chromiumUse,
@@ -64,7 +75,7 @@ export default defineConfig({
     },
     {
       name: "system-workspace",
-      testMatch: /system-workspace\.spec\.ts/,
+      testMatch: SYSTEM_SPECS,
       use: { ...chromiumUse, storageState: authStateFile },
       // Keep mutations of the shared fixture catalogue sequential.
       dependencies: ["chromium"],

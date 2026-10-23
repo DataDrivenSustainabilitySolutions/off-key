@@ -1,21 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { StorageStatus } from "../src/types/collection";
+import { openPreferences as openSettings } from "./helpers/appearance";
+import { expectDialogFits } from "./helpers/layout";
 
 test.use({ locale: "en-US" });
 
-async function openSettings(page: Page) {
-  await page.getByRole("button", { name: "Application menu", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Preferences", exact: true }).click();
-  return page.getByRole("dialog", { name: "Preferences", exact: true });
-}
-
-async function expectDialogFits(dialog: Locator) {
-  expect(await dialog.evaluate(element => {
-    const box = element.getBoundingClientRect();
-    return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight
-      && element.scrollWidth <= element.clientWidth;
-  })).toBe(true);
-}
 
 test("changes appearance without replacing the workspace and follows the device preference", async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: "light" });

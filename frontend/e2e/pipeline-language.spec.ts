@@ -5,7 +5,7 @@ import type {
   PipelineDefinition,
   PipelineView,
 } from "../src/types/pipelines.generated";
-import { loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
 import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
@@ -16,6 +16,8 @@ import {
   expectReadablePipeline,
 } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
+import { setAppearance } from "./helpers/appearance";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
 
@@ -236,16 +238,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await openPipelineSettings(editor, "Component");
       await expect(node("raw")).toContainText("Raw reference");
       await expect(node("raw")).toContainText("Pass through");
-      await page
-        .getByRole("button", { name: "Application menu", exact: true })
-        .click();
-      await page
-        .getByRole("menuitem", { name: "Preferences", exact: true })
-        .click();
-      await page.getByRole("radio", { name: "Dark", exact: true }).check();
-      await page
-        .getByRole("button", { name: "Close preferences", exact: true })
-        .click();
+      await setAppearance(page, "Dark");
       await fitPipelineOverview(page);
       await graph.getByRole("button", { name: "Readable size", exact: true }).click();
       await expectReadablePipeline(page);
@@ -264,29 +257,13 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expect(
         editor.getByRole("textbox", { name: "Node title", exact: true }),
       ).toHaveValue("Raw reference");
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
+      await expectNoHorizontalScroll(page);
       await page.screenshot({
         path: testInfo.outputPath(`visual-language-${strategy}-mobile.png`),
         fullPage: true,
       });
     } finally {
-      const current = await page.request.get(endpoint, { headers });
-      expect(current.ok(), await current.text()).toBe(true);
-      const latest = (await current.json()) as PipelineView;
-      const archived = await page.request.patch(endpoint, {
-        headers,
-        data: {
-          expected_version: latest.version,
-          name: latest.name,
-          description: latest.description,
-          archived: true,
-        },
-      });
-      expect(archived.ok(), await archived.text()).toBe(true);
+      await archivePipelines(page.request, headers, [endpoint]);
     }
   });
 }

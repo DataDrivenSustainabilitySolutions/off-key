@@ -1,8 +1,6 @@
 .pl-library,
 .pl-editor,
 .pl-run {
-  --pl-surface: hsl(var(--background));
-  --pl-border: hsl(var(--border));
   color: hsl(var(--foreground));
   min-width: 0;
 }
@@ -62,7 +60,6 @@
 
 .pl-actions button,
 .pl-canvas-toolbar button,
-.pl-conflict button,
 .pl-archive button,
 .pl-inspector button,
 .pl-activation button,

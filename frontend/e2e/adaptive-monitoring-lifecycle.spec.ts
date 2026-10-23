@@ -82,7 +82,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         { ...ingressOptions(), clientId: `playwright-${chargerId}` },
       );
       publisher = activePublisher;
-      await page.goto(`/monitoring/${chargerId}`);
+      await page.goto("/");
       authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       // Inject broker envelopes for precise delayed timestamps; the separate
@@ -142,7 +142,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
           { timeout: 120_000, intervals: [1_000, 2_000, 3_000] },
         )
         .toEqual(expectedTelemetryTypes);
-      await page.reload();
+      await page.goto(`/?create=monitoring&target=${encodeURIComponent(chargerId)}`);
 
       await expect(page.getByText("L1", { exact: true }).first()).toBeVisible({
         timeout: 30_000,

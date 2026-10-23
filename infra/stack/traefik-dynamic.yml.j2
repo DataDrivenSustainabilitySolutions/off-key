@@ -5,11 +5,11 @@
 # the Swarm provider. A Traefik compromise therefore cannot reach the Docker API at all.
 # Delivered as a Swarm config (see docker-compose.swarm.yml `configs:`) and shipped by the
 # stack_prepare ansible role. Hostnames come from each inventory. Changing routes = edit this
-# file + redeploy (same operational model as tailscale-serve.json). See INGRESS.md.
+# file + redeploy. See docs/operations/production.md (Credentials, ingress and certificates).
 #
 # Load balancing is Docker's built-in mesh: each service `url` is the service name, which
 # resolves to the Swarm VIP over the shared overlay. Traefik must share a network with each
-# target (public-network: frontend/mailpit/oauth2-proxy, app-network: api, emqx-network: emqx-main).
+# target (public-network: frontend/oauth2-proxy, app-network: api, emqx-network: emqx-main).
 #
 # AUTH: emqx./traefik. sit behind oauth2-proxy via a forwardAuth middleware (oauth2-proxy
 # is never in the data path — only the /oauth2/auth sub-request). oauth2-proxy's public endpoints
@@ -19,7 +19,6 @@
 
 http:
   routers:
-{% if offkey_env == 'prod' %}
     landing:
       rule: "Host(`{{ ingress_base_domain }}`)"
       entryPoints: [web]
@@ -35,7 +34,6 @@ http:
       middlewares: [dashboard-redirect]
       service: noop@internal
 
-{% endif %}
     frontend:
       rule: "Host(`{{ frontend_hostname }}`)"
       entryPoints: [web]
@@ -71,12 +69,10 @@ http:
       service: api@internal
 
   services:
-{% if offkey_env == 'prod' %}
     landing:
       loadBalancer:
         servers:
           - url: "http://landing:80"
-{% endif %}
     frontend:
       loadBalancer:
         servers:
@@ -95,7 +91,6 @@ http:
           - url: "http://oauth2-proxy:4180"
 
   middlewares:
-{% if offkey_env == 'prod' %}
     dashboard-redirect:
       redirectRegex:
         regex: '^https?://[^/]+/(.*)'
@@ -111,7 +106,6 @@ http:
         contentTypeNosniff: true
         referrerPolicy: no-referrer
         contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-{% endif %}
     api-strip:
       stripPrefix:
         prefixes:

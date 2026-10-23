@@ -1,19 +1,18 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, apiClient, apiUtils } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { useSystemDocument } from "@/features/catalogue/useSystemDocument";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiRequestError, apiUtils } from "@/lib/api-client";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { useSystemDocument } from "@/domain/system/useSystemDocument";
 import type {
   SystemDocument,
   SystemSnapshot,
-} from "@/features/catalogue/systemTypes";
+} from "@/types/system";
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
   return {
     ...actual,
-    apiUtils: { ...actual.apiUtils, get: vi.fn(), post: vi.fn() },
-    apiClient: { ...actual.apiClient, put: vi.fn() },
+    apiUtils: { ...actual.apiUtils, get: vi.fn(), post: vi.fn(), put: vi.fn() },
   };
 });
 
@@ -35,7 +34,7 @@ const snapshot = (
     message: "Saved configuration",
   },
 });
-const acknowledgement = (value: SystemSnapshot) => ({ data: value });
+const acknowledgement = (value: SystemSnapshot) => value;
 
 const runtimeSnapshot = (status = "applied", revision = 1): SystemSnapshot => ({
   ...snapshot(revision),
@@ -65,7 +64,6 @@ async function advanceRuntime(milliseconds: number) {
 beforeEach(() => {
   vi.resetAllMocks();
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("saved system persistence", () => {
   it("does not request or write saved systems for anonymous previews", async () => {
@@ -77,7 +75,7 @@ describe("saved system persistence", () => {
       expect(await result.current.save(document())).toBe(false);
     });
     expect(apiUtils.get).not.toHaveBeenCalled();
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("loads viewer configurations without granting write permission", async () => {
@@ -92,13 +90,13 @@ describe("saved system persistence", () => {
     await act(async () => {
       expect(await result.current.save(document("Unauthorized"))).toBe(false);
     });
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
   it("sends the full configuration and expected revision, then updates titles only on acknowledgement", async () => {
     vi.mocked(apiUtils.get).mockResolvedValue(snapshot());
     let resolve!: (value: ReturnType<typeof acknowledgement>) => void;
-    vi.mocked(apiClient.put).mockImplementation(
+    vi.mocked(apiUtils.put).mockImplementation(
       () =>
         new Promise((ack) => {
           resolve = ack;
@@ -115,7 +113,7 @@ describe("saved system persistence", () => {
     });
     expect(result.current.saving).toBe(true);
     expect(result.current.document?.devices[0]?.label).toBe("Original device");
-    expect(apiClient.put).toHaveBeenCalledWith(
+    expect(apiUtils.put).toHaveBeenCalledWith(
       "/v1/system",
       { expected_revision: 1, document: document("Saved name") },
       expect.objectContaining({ redirectOnUnauthorized: false }),
@@ -123,7 +121,7 @@ describe("saved system persistence", () => {
     await act(async () => {
       expect(await result.current.save(document("Second"))).toBe(false);
     });
-    expect(apiClient.put).toHaveBeenCalledTimes(1);
+    expect(apiUtils.put).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolve(acknowledgement(snapshot(2, "Saved name")));
       expect(await pending).toBe(true);
@@ -137,7 +135,7 @@ describe("saved system persistence", () => {
     vi.mocked(apiUtils.get)
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot(3, "Other editor"));
-    vi.mocked(apiClient.put).mockRejectedValue(
+    vi.mocked(apiUtils.put).mockRejectedValue(
       new ApiRequestError("Revision conflict", 409),
     );
     const { result } = renderHook(() =>
@@ -153,13 +151,13 @@ describe("saved system persistence", () => {
     await act(async () => {
       expect(await result.current.save(draft, 1)).toBe(false);
     });
-    expect(apiClient.put).toHaveBeenCalledTimes(1);
+    expect(apiUtils.put).toHaveBeenCalledTimes(1);
     expect(draft.devices[0]?.label).toBe("My unsaved change");
   });
 
   it("keeps canonical names when the database cannot save", async () => {
     vi.mocked(apiUtils.get).mockResolvedValue(snapshot());
-    vi.mocked(apiClient.put).mockRejectedValue(
+    vi.mocked(apiUtils.put).mockRejectedValue(
       new ApiRequestError("Database unavailable", 503),
     );
     const { result } = renderHook(() =>
@@ -208,7 +206,7 @@ describe("saved system persistence", () => {
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot(1, "Original device", false));
     let resolve!: (value: ReturnType<typeof acknowledgement>) => void;
-    vi.mocked(apiClient.put).mockImplementation(
+    vi.mocked(apiUtils.put).mockImplementation(
       () =>
         new Promise((ack) => {
           resolve = ack;
@@ -330,7 +328,7 @@ describe("canonical system runtime polling", () => {
     vi.mocked(apiUtils.post).mockReturnValueOnce(new Promise<RuntimeResponse>(resolve => { resolveOld = resolve; }));
     const changed = runtimeSnapshot("applying");
     changed.runtime.collection_revision = 3;
-    vi.mocked(apiClient.put).mockResolvedValue(acknowledgement(changed));
+    vi.mocked(apiUtils.put).mockResolvedValue(acknowledgement(changed));
     const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true }));
     await act(async () => {});
     expect(result.current.canEdit).toBe(true);
@@ -338,7 +336,8 @@ describe("canonical system runtime polling", () => {
     const signal = vi.mocked(apiUtils.post).mock.calls[0]![2]!.signal!;
     await act(async () => {
       expect(await result.current.applyCollection({ expected_revision: 1, expected_collection_revision: 2,
-        stream_ids: ["temperature"], policy: { mode: "original", interval_seconds: 10 } })).toBe(true);
+        rule_changes: [{ scope: { kind: "reading", connection_id: "broker", reading_id: "temperature" }, operation: "set",
+          policy: { mode: "original", interval_seconds: 10 } }] })).toBe(true);
     });
     expect(signal.aborted).toBe(true);
     const stale = runtimeSnapshot("applied");

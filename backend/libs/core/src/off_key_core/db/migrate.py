@@ -9,24 +9,41 @@ from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection
 
 from .base import get_engine
+from .locks import MIGRATION_LOCK
 from .models import Base
 from .schema import bootstrap_schema, validate_existing_schema
 
-MIGRATION_LOCK = 73128004
 LEDGER = "off_key_schema_migrations"
 SYSTEM_TABLES = {
     "system_configuration",
     "system_revisions",
     "system_collection_configuration",
 }
-SESSION_TABLES = {"remembered_sessions"}
-CHECKPOINT_TABLES = {"radar_runtime_checkpoints"}
-PIPELINE_TABLES = {
-    "monitoring_pipelines",
-    "monitoring_pipeline_revisions",
-    "monitoring_pipeline_runs",
-    "monitoring_pipeline_activations",
-}
+# Tables a database created before the ledger existed must already hold. Frozen
+# here instead of derived from the ORM, so a new table cannot silently change
+# which historical databases are adopted.
+PRE_LEDGER_TABLES = frozenset(
+    {
+        "anomalies",
+        "anomaly_identity",
+        "chargers",
+        "collection_bindings",
+        "collection_configuration",
+        "collection_revisions",
+        "collection_state",
+        "deployment_maintenance",
+        "favorites",
+        "model_registry",
+        "monitoring_evidence",
+        "mqtt_topics",
+        "services",
+        "telemetry",
+        "users",
+    }
+)
+BASELINE_TABLES = PRE_LEDGER_TABLES - {"deployment_maintenance"}
+# Columns a historical database may still carry; migration 014 drops them.
+RETIRED_COLUMNS = {"services": {"stateful_set_name"}}
 
 
 def migration_files() -> dict[str, str]:
@@ -83,15 +100,12 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
         return []
-    if (
-        application_tables
-        - SYSTEM_TABLES
-        - SESSION_TABLES
-        - CHECKPOINT_TABLES
-        - PIPELINE_TABLES
-        <= existing
-    ):
-        validate_existing_schema(connection, excluded_columns=excluded_columns)
+    if existing >= PRE_LEDGER_TABLES:
+        validate_existing_schema(
+            connection,
+            excluded_columns=excluded_columns,
+            retired_columns=RETIRED_COLUMNS,
+        )
         adopted = [
             "001_membership.sql",
             "002_monitor_stop_intent.sql",
@@ -101,14 +115,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             adopted.append("004_system_catalogue.sql")
         return adopted
     baseline = [
-        table
-        for table in Base.metadata.sorted_tables
-        if table.name
-        not in SYSTEM_TABLES
-        | SESSION_TABLES
-        | CHECKPOINT_TABLES
-        | PIPELINE_TABLES
-        | {"deployment_maintenance"}
+        table for table in Base.metadata.sorted_tables if table.name in BASELINE_TABLES
     ]
     if not {table.name for table in baseline} <= existing:
         raise ValueError("A reviewed baseline is required for this database")
@@ -117,6 +124,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         tables=baseline,
         excluded_columns=excluded_columns
         | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
+        retired_columns=RETIRED_COLUMNS,
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

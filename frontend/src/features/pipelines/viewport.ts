@@ -1,5 +1,5 @@
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { CanvasNode } from "./PipelineNodeCard";
+import type { CanvasNode } from "./types";
 
 /** Fit small graphs; start larger ones at the input without shrinking the type. */
 export async function fitReadableView(

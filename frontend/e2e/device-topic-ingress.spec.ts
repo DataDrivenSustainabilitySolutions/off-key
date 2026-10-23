@@ -14,8 +14,6 @@ const telemetry = [
 ] as const;
 
 test.describe("device topic ingress", () => {
-  test.setTimeout(180_000);
-
   test("collects catalog charger 0 under its application ID and renders selected series", async ({
     page,
     playwright,

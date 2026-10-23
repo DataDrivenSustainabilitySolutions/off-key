@@ -1,12 +1,12 @@
 import { useEffect, type ComponentProps } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EChart } from "@/components/EChart";
+import type { EChart } from "@/features/charts/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
 import type { ActiveService, MonitoringChartEvidence, MartingaleTrackerResult } from "@/types/monitoring";
 import type { Anomaly } from "@/types/charger";
-import { formatTelemetryEventTime } from "@/lib/telemetry-events";
+import { formatTelemetryEventTime } from "@/features/charts/telemetry-events";
 
 const chartMock = vi.hoisted(() => ({
   mounted: vi.fn(),
@@ -14,7 +14,7 @@ const chartMock = vi.hoisted(() => ({
   latestProps: undefined as ComponentProps<typeof EChart> | undefined,
 }));
 
-vi.mock("@/components/EChart", () => ({
+vi.mock("@/features/charts/EChart", () => ({
   EChart: (props: ComponentProps<typeof EChart>) => {
     chartMock.latestProps = props;
     useEffect(() => {
@@ -34,7 +34,8 @@ vi.mock("@/components/EChart", () => ({
   },
 }));
 
-import { DynamicTelemetryChart } from "@/components/DynamicTelemetryChart";
+import { DynamicTelemetryChart } from "@/features/charts/DynamicTelemetryChart";
+import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 
 let intersectionCallback: IntersectionObserverCallback | undefined;
 
@@ -118,28 +119,12 @@ const operationalService: ActiveService = {
   },
 };
 
-const scoreEvidence = (timestamp: string, sequenceNumber: number): MonitoringChartEvidence => ({
-  service_id: operationalService.id,
-  timestamp,
-  sequence_number: sequenceNumber,
-  sensor_set: ["voltage"],
-  input_timestamps: { voltage: timestamp },
-  strategy: "adaptive_stream",
-  anomaly_score: sequenceNumber,
-  restarted_martingale: null,
-  threshold: 5,
-  alarm: false,
-  created: timestamp,
+const scoreEvidence = (timestamp: string, sequenceNumber: number): MonitoringChartEvidence => chartEvidence({
+  service_id: operationalService.id, timestamp, sequence_number: sequenceNumber, sensor_set: ["voltage"],
+  input_timestamps: { voltage: timestamp }, strategy: "adaptive_stream", anomaly_score: sequenceNumber, threshold: 5,
 });
 
-const staticTracker = (id: string, value = 2): MartingaleTrackerResult => ({
-  tracker_id: id, betting_function: "power", betting_parameters: {},
-  alarm_statistic: "restarted_martingale", statistic_value: value,
-  statistic_is_infinite: false, log_statistic_value: Math.log(value),
-  statistics: {}, e_value: 1, e_value_is_infinite: false, log_e_value: 0,
-  threshold: 100, alarm_fired: false, alarm_active: false,
-  alarm_count: 0, tested_count: 1,
-});
+const staticTracker = (id: string, value = 2): MartingaleTrackerResult => trackerResult({ tracker_id: id, statistic_value: value });
 
 const staticEvidence = (timestamp: string, trackerIds: string[]): MonitoringChartEvidence => ({
   ...scoreEvidence(timestamp, 1), strategy: "static_baseline", restarted_martingale: 1,
@@ -147,7 +132,6 @@ const staticEvidence = (timestamp: string, trackerIds: string[]): MonitoringChar
 });
 
 beforeEach(() => {
-  localStorage.clear();
   intersectionCallback = undefined;
   chartMock.mounted.mockClear();
   chartMock.disposed.mockClear();
@@ -155,7 +139,6 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
 });
 
-afterEach(() => vi.unstubAllGlobals());
 
 describe("DynamicTelemetryChart", () => {
   it("observes a chart that first renders without telemetry data", async () => {

@@ -1,6 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 import Account from "@/pages/Account";
 import Registration from "@/pages/Registration";
@@ -11,7 +11,6 @@ const { auth, getMembers, inviteMember, updateMember, removeMember, post } = vi.
 }));
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("@/components/NavigationBar", () => ({ NavigationBar: () => null }));
 vi.mock("@/components/AuthLayout", () => ({
   AuthLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AUTH_LINK_CLASS: "", AUTH_ERROR_CLASS: "", AUTH_SUBMIT_BUTTON_CLASS: "",
@@ -21,7 +20,6 @@ vi.mock("@/lib/api-client", () => ({ apiUtils: { post } }));
 
 const member = { id: 2, email: "member@example.com", role: "user", is_active: true, is_verified: true };
 beforeEach(() => {
-  vi.clearAllMocks();
   auth.isAdmin = true;
   getMembers.mockResolvedValue([{ ...member, id: 1, email: auth.member.email, role: "admin" }, member]);
   inviteMember.mockResolvedValue({ message: "Invitation sent." });
@@ -29,7 +27,6 @@ beforeEach(() => {
   removeMember.mockResolvedValue(undefined);
   post.mockResolvedValue({ message: "Accepted" });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it("shows member access without offering administrator controls", async () => {
   auth.isAdmin = false;

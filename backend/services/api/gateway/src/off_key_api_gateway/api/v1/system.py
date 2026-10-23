@@ -10,10 +10,10 @@ from off_key_core.schemas.system_collection import (
 )
 from off_key_core.schemas.system_live import SystemLiveScope, SystemLiveStart
 
-from ...facades.tactic import TacticError, tactic
-from ..errors import raise_tactic_http_error
+from ...facades.tactic import tactic
+from ..errors import TacticErrorRoute
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 
 
 async def system_request(
@@ -24,15 +24,12 @@ async def system_request(
 ):
     if not authorization:
         raise HTTPException(401, "Sign in to view the saved system")
-    try:
-        return await tactic._make_request(
-            method,
-            f"/api/v1/system{path}",
-            json_data=body,
-            headers={"Authorization": authorization},
-        )
-    except TacticError as exc:
-        raise_tactic_http_error(exc)
+    return await tactic.request(
+        method,
+        f"/api/v1/system{path}",
+        json_data=body,
+        headers={"Authorization": authorization},
+    )
 
 
 @router.get("")

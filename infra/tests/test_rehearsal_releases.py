@@ -115,6 +115,9 @@ class RehearsalReleaseTests(unittest.TestCase):
         paths = [
             "backend/libs/core/src/off_key_core/models/adaptive_catalog.json",
             "backend/libs/core/src/off_key_core/db/migrations/010_monitoring_pipelines.sql",
+            "backend/libs/core/src/off_key_core/db/catalogue_upgrade.py",
+            "backend/libs/core/src/off_key_core/db/catalogue_v1.py",
+            "backend/libs/core/src/off_key_core/db/catalogue_v1_models.py",
         ]
 
         def lock(aberrant, fastapi):

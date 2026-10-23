@@ -18,10 +18,8 @@ type Options = {
   onSelect?: (id: string) => void;
 };
 
-/** History entry: `true` records a step, `false` skips it, and a string merges
- * consecutive edits of the same field (typing) into one step. */
-export type HistoryMode = boolean | string;
-export type PlacementRequest = { id: string; request: number };
+import type { HistoryMode, PlacementRequest } from "./types";
+export type { HistoryMode, PlacementRequest } from "./types";
 
 /** The same graph operations serve new designs and saved drafts. */
 export function useGraphEditor({
@@ -128,7 +126,7 @@ export function useGraphEditor({
   };
 
   return {
-    selected: present, select, fitRequest, requestFit, reveal, validation, setValidation,
+    selected: present, select, fitRequest, requestFit, reveal, validation,
     commit, beginMove, add, arrange, validate, undo, redo, resetHistory,
     canUndo: history.undo.length > 0, canRedo: history.redo.length > 0,
   };
@@ -154,16 +152,4 @@ export function useUndoShortcuts(enabled: boolean, undo: () => void, redo: () =>
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [enabled]);
-}
-
-export function useUnsavedChanges(dirty: boolean) {
-  useEffect(() => {
-    if (!dirty) return;
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [dirty]);
 }

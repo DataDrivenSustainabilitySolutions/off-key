@@ -55,7 +55,6 @@ class HealthMonitor:
 
         # Service state
         self.start_time: datetime | None = None
-        self.last_health_check = time.time()
         self._shutdown_event: asyncio.Event | None = None
         self._health_check_task: asyncio.Task | None = None
 
@@ -66,6 +65,7 @@ class HealthMonitor:
         self._memory_manager = None
         self._message_processor = None
         self._recovery_status: Callable[[], dict[str, Any]] | None = None
+        self._publication_suspended = False
 
         self._log_context = {"component": "health_monitor"}
         logging_settings = get_logging_settings()
@@ -142,8 +142,14 @@ class HealthMonitor:
                 exc_info=True,
             )
 
+    def suspend_publication(self) -> None:
+        """Publish no further heartbeat once execution state is uncertain."""
+        self._publication_suspended = True
+
     async def _perform_health_check(self) -> None:
         """Perform comprehensive health check."""
+        if self._publication_suspended:
+            return
         try:
             status = self.get_health_status()
 
@@ -159,11 +165,9 @@ class HealthMonitor:
 
             # Write metrics if database writer is available
             if self._database_writer:
-                await self._database_writer.write_service_metrics(
+                await self._database_writer.write_heartbeat(
                     self.build_metrics_snapshot(status)
                 )
-
-            self.last_health_check = time.time()
 
         except Exception as e:
             logger.error(

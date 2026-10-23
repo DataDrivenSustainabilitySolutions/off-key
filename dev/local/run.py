@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import ipaddress
 import json
 import os
@@ -20,15 +21,25 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / "dev" / "local"
 ENV_FILE = LOCAL / ".env"
 API_KEYS = LOCAL / "state" / "emqx-api-keys"
+
+
+def _load_broker_fixture():
+    """Load the sibling fixture module by path, whoever imports this launcher."""
+    spec = importlib.util.spec_from_file_location(
+        "broker_fixture", LOCAL / "broker_fixture.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# The source broker plus every fixture broker; compose.yml repeats this list as
+# its allowlist default, pinned by the local deployment contract test.
 LOCAL_LIVE_HOSTS = [
     "source-broker",
-    "fixture-broker-campus",
-    "fixture-broker-production",
-    "fixture-broker-greenhouse",
-    "fixture-broker-meter",
-    "fixture-broker-weather",
-    "fixture-broker-pump",
+    *(broker.host for broker in _load_broker_fixture().BROKERS),
 ]
+
 PORTS = {
     "LOCAL_FRONTEND_PORT": 5174,
     "LOCAL_API_PORT": 8002,
@@ -93,7 +104,6 @@ def initialize(args: argparse.Namespace) -> None:
         COMPOSE_PROJECT_NAME=project,
         FRONTEND_BASE_URL=origin,
         CORS_ALLOWED_ORIGINS=f'["{origin}"]',
-        VITE_API_URL="/api",
         POSTGRES_PORT="5432",
         SUPERUSER_MAIL=args.admin_email,
         AMBIBOX_ALLOWED_HOSTS='["source-broker"]',
@@ -283,6 +293,38 @@ def execute(command: list[str], environment: dict[str, str] | None = None) -> No
     subprocess.run(command, cwd=ROOT, env=environment, check=True)
 
 
+def ensure_swarm(environment: dict[str, str]) -> None:
+    """TACTIC runs RADAR as Swarm services, so the local engine must manage one."""
+    ensure_local_docker(environment)
+    state = subprocess.run(
+        [
+            "docker",
+            "info",
+            "--format",
+            "{{.Swarm.LocalNodeState}} {{.Swarm.ControlAvailable}}",
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    ).stdout.split()
+    if state == ["active", "true"]:
+        return
+    if state[:1] != ["inactive"]:
+        raise ValueError(
+            "RADAR needs this Docker engine to be a Swarm manager; "
+            f"its Swarm state is {' '.join(state) or 'unknown'}."
+        )
+    print("Starting a single-node Docker Swarm for RADAR workloads.")
+    subprocess.run(
+        ["docker", "swarm", "init", "--advertise-addr", "127.0.0.1"],
+        env=environment,
+        timeout=60,
+        check=True,
+    )
+
+
 def start_stack(
     command: list[str],
     *,
@@ -297,6 +339,7 @@ def start_stack(
         else nullcontext(environment)
     )
     with scope as scoped:
+        ensure_swarm(scoped)
         execute([*command, "build", "mqtt-radar"], scoped)
         profile = ["--profile", "mqtt-sim"] if simulator else []
         if broker_fixture:

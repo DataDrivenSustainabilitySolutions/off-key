@@ -23,6 +23,16 @@ EMAIL_ENVIRONMENT = {
 }
 
 
+# Every service reads the database from these; none has defaults for them.
+DATABASE_ENVIRONMENT = {
+    "POSTGRES_USER": "postgres",
+    "POSTGRES_PASSWORD": "postgres",
+    "POSTGRES_HOST": "timescaledb",
+    "POSTGRES_PORT": "5432",
+    "POSTGRES_DB": "postgres",
+}
+
+
 def set_environment(monkeypatch, environment: dict[str, str]) -> None:
     for name, value in environment.items():
         monkeypatch.setenv(name, value)

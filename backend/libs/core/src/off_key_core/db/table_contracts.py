@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -14,9 +15,92 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.schema import MetaData, PrimaryKeyConstraint, Table
+from sqlalchemy.schema import (
+    MetaData,
+    PrimaryKeyConstraint,
+    Table,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 from sqlalchemy.types import TIMESTAMP
+
+
+def anomalies_table(metadata: MetaData) -> Table:
+    """Alarm rows; RADAR writes them, core and the gateway read them."""
+    return Table(
+        "anomalies",
+        metadata,
+        Column("charger_id", Text, nullable=False, index=True),
+        Column("timestamp", TIMESTAMP(timezone=True), nullable=False, index=True),
+        Column("telemetry_type", Text, nullable=False, index=True),
+        # Empty scope belongs to historical and manually created records. Monitor
+        # IDs stay in history after the monitor is deleted, so this is not a
+        # foreign key.
+        Column(
+            "service_id", Text, nullable=False, default="", server_default=text("''")
+        ),
+        Column("anomaly_type", Text, nullable=False, index=True),
+        Column("anomaly_value", Float, nullable=False, index=True),
+        # 'conformal_pvalue' for static conformal monitoring; NULL predates it.
+        Column("value_type", Text, nullable=True),
+        # Exact telemetry streams involved, so multivariate rows highlight only
+        # the charts whose sensors contributed to the aligned vector.
+        Column("sensor_set", JSON, nullable=True),
+        PrimaryKeyConstraint(
+            "charger_id", "timestamp", "telemetry_type", "service_id", name="pk_anomaly"
+        ),
+        Index("idx_anomaly_lookup", "charger_id", "timestamp", "telemetry_type"),
+        Index("idx_anomaly_charger_timestamp", "charger_id", "timestamp"),
+        Index(
+            "idx_anomaly_timestamp_desc",
+            "timestamp",
+            postgresql_using="btree",
+            postgresql_ops={"timestamp": "DESC"},
+        ),
+    )
+
+
+def anomaly_identity_table(metadata: MetaData) -> Table:
+    """Stable public IDs for anomaly rows, which have a composite natural key."""
+    return Table(
+        "anomaly_identity",
+        metadata,
+        Column(
+            "anomaly_id",
+            Text,
+            primary_key=True,
+            nullable=False,
+            server_default=text("gen_random_uuid()::text"),
+        ),
+        Column("charger_id", Text, nullable=False, index=True),
+        Column("timestamp", TIMESTAMP(timezone=True), nullable=False, index=True),
+        Column("telemetry_type", Text, nullable=False, index=True),
+        Column(
+            "service_id", Text, nullable=False, default="", server_default=text("''")
+        ),
+        Column(
+            "created", DateTime(timezone=True), server_default=func.now(), index=True
+        ),
+        UniqueConstraint(
+            "charger_id",
+            "timestamp",
+            "telemetry_type",
+            "service_id",
+            name="uq_anomaly_identity_target",
+        ),
+        ForeignKeyConstraint(
+            ["charger_id", "timestamp", "telemetry_type", "service_id"],
+            [
+                "anomalies.charger_id",
+                "anomalies.timestamp",
+                "anomalies.telemetry_type",
+                "anomalies.service_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_anomaly_identity_anomaly",
+        ),
+        Index("idx_anomaly_identity_charger_timestamp", "charger_id", "timestamp"),
+    )
 
 
 def radar_runtime_checkpoints_table(metadata: MetaData) -> Table:

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { AxiosError } from "axios";
@@ -26,9 +26,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
   apiClient.defaults.adapter = originalAdapter;
   tokenManager.removeToken();
 });

@@ -10,6 +10,7 @@ Use this page when selecting or switching a run mode.
 
 ```bash
 cp .env.example .env
+docker swarm init --advertise-addr 127.0.0.1  # once; RADAR runs as Swarm services
 docker compose up -d --build
 ```
 
@@ -17,7 +18,7 @@ Characteristics:
 
 - One EMQX node: `emqx-main`.
 - A local `source-broker` for deterministic development.
-- `mqtt-radar` and `mqtt-simulator` are profile-gated.
+- `mqtt-simulator` is profile-gated. `mqtt-radar` is build-only; TACTIC launches its workloads.
 
 Before creating a TACTIC-managed monitoring service for the first time, build its local image:
 
@@ -26,12 +27,6 @@ docker compose build mqtt-radar
 ```
 
 ## 2. Optional local profiles
-
-=== "Standalone RADAR"
-
-    ```bash
-    docker compose --profile standalone-radar up -d mqtt-radar
-    ```
 
 === "MQTT simulator"
 
@@ -50,6 +45,7 @@ docker compose build mqtt-radar
 ```bash
 docker compose \
   -f docker-compose.yml \
+  -f docker-compose.override.yml \
   -f docker-compose.cluster.yml \
   up -d --build
 ```
@@ -63,7 +59,8 @@ GitHub Actions after all main checks pass. See [GitHub setup](github-setup.md),
 [Production releases](production.md), and [Recovery](recovery.md).
 
 ```bash
-make deploy-prod REVISION=<full-tested-main-SHA>
+make check-infra                                  # validate Ansible and the rendered stack
+make deploy-prod REVISION=<full-tested-main-SHA>  # dispatch Deploy Production
 ```
 
 ## Safe mode switching
@@ -72,6 +69,13 @@ Stop the current mode before starting another:
 
 ```bash
 docker compose down
+```
+
+If containers keep resolving stale names or networks after switching between the
+local, ingress and cluster modes, remove the shared networks too:
+
+```bash
+docker network rm off-key_app-network off-key_emqx-network || true
 ```
 
 !!! warning

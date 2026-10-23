@@ -1,11 +1,19 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
   addComponent,
   connectNodes,
+  disconnectEdge,
   executableChanges,
   moveMergeInput,
+  removeElements,
   removeNode,
+  replaceComponent,
+  setNodeLabel,
+  type GraphDocument,
 } from "@/features/pipelines/model";
+import { addSlot, removeSlot, renameSlot, setSlotUnit } from "@/features/pipelines/slots";
+import { strategyLabel } from "@/features/pipelines/semantics";
 import {
   normalizeDefinition,
   normalizeLayout,
@@ -199,5 +207,58 @@ describe("visual pipeline documents", () => {
         .map((node) => ({ ...node, label: "Cosmetic title" })),
     };
     expect(executableChanges(before, after)).toEqual([]);
+  });
+});
+
+describe("graph document helpers", () => {
+  const graph = (): GraphDocument => ({
+    definition: definition(),
+    layout: normalizeLayout({ nodes: { source: { x: 0, y: 0 }, raw: { x: 0, y: 100 }, merge: { x: 200, y: 0 } } }),
+  });
+
+  it("resets parameters and the contract version when a model is swapped", () => {
+    const document = graph();
+    document.definition.nodes[4]!.params = { k: 5 };
+    const replacement = { ...components[4]!, id: "detector:other", contract_version: 3,
+      fields: [{ name: "window", label: "Window", type: "integer", default: 10 }, { name: "seed", label: "Seed", type: "integer" }] };
+    const next = replaceComponent(document, "model", replacement as PipelineComponent);
+    expect(next.definition.nodes[4]).toMatchObject({ component: "detector:other", contract_version: 3, params: { window: 10 } });
+    expect(next.definition.edges).toBe(document.definition.edges);
+  });
+
+  it("removes several elements with incident edges and layout, without renumbering merge order", () => {
+    const next = removeElements(graph(), { nodeIds: ["raw"], edgeIds: [JSON.stringify(["merge", "model"])] });
+    expect(next.definition.nodes.map((node) => node.id)).toEqual(["source", "scale", "merge", "model"]);
+    expect(next.definition.edges.map((edge) => [edge.source, edge.target, edge.order])).toEqual([
+      ["source", "scale", 0], ["scale", "merge", 0],
+    ]);
+    expect(Object.keys(next.layout.nodes)).toEqual(["source", "merge"]);
+  });
+
+  it("disconnects one edge by its endpoints", () => {
+    const next = disconnectEdge(definition(), { source: "raw", target: "merge" });
+    expect(next.edges.some((edge) => edge.source === "raw" && edge.target === "merge")).toBe(false);
+    expect(next.edges).toHaveLength(4);
+  });
+
+  it("titles a node at its default position when it has none", () => {
+    const next = setNodeLabel(graph(), "model", "Detector");
+    expect(next.layout.nodes.model).toMatchObject({ label: "Detector" });
+    expect(typeof next.layout.nodes.model?.x).toBe("number");
+    expect(setNodeLabel(graph(), "raw", "Raw").layout.nodes.raw).toMatchObject({ x: 0, y: 100, label: "Raw" });
+  });
+
+  it("adds the first free input slot and edits slots by id", () => {
+    const slots = [{ id: "input_1", label: "A", unit: null }, { id: "input_3", label: "C", unit: null }];
+    expect(addSlot(slots)[2]).toEqual({ id: "input_2", label: "Input 2", unit: null });
+    expect(renameSlot(slots, "input_3", "Third")[1]?.label).toBe("Third");
+    expect(setSlotUnit(slots, "input_1", "")[0]?.unit).toBeNull();
+    expect(setSlotUnit(slots, "input_1", "°C")[0]?.unit).toBe("°C");
+    expect(removeSlot(slots, "input_1").map((slot) => slot.id)).toEqual(["input_3"]);
+  });
+
+  it("names learning strategies", () => {
+    expect(strategyLabel("adaptive_stream")).toBe("Adaptive stream");
+    expect(strategyLabel("static_baseline")).toBe("Static baseline");
   });
 });

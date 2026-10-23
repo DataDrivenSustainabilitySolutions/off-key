@@ -1,30 +1,39 @@
 """Typed martingale tracker factory and bounded ensemble controller."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-_ALARM_TRIGGER_NAMES = {
-    "martingale": "ville",
-    "restarted_martingale": "restarted_ville",
-    "cusum": "cusum",
-    "shiryaev_roberts": "shiryaev_roberts",
-}
-_ALARM_CONFIG_FIELDS = {
-    "martingale": "ville_threshold",
-    "restarted_martingale": "restarted_ville_threshold",
-    "cusum": "cusum_threshold",
-    "shiryaev_roberts": "shiryaev_roberts_threshold",
-}
-_STATE_VALUE_FIELDS = {
-    "martingale": ("martingale", "log_martingale"),
-    "restarted_martingale": (
+from .betting import betting_function
+
+
+@dataclass(frozen=True)
+class _Statistic:
+    trigger: str
+    config_field: str
+    value_field: str
+    log_field: str
+
+
+_STATISTICS = {
+    "martingale": _Statistic(
+        "ville", "ville_threshold", "martingale", "log_martingale"
+    ),
+    "restarted_martingale": _Statistic(
+        "restarted_ville",
+        "restarted_ville_threshold",
         "restarted_martingale",
         "log_restarted_martingale",
     ),
-    "cusum": ("cusum", "log_cusum"),
-    "shiryaev_roberts": ("shiryaev_roberts", "log_shiryaev_roberts"),
+    "cusum": _Statistic("cusum", "cusum_threshold", "cusum", "log_cusum"),
+    "shiryaev_roberts": _Statistic(
+        "shiryaev_roberts",
+        "shiryaev_roberts_threshold",
+        "shiryaev_roberts",
+        "log_shiryaev_roberts",
+    ),
 }
 
 
@@ -33,9 +42,9 @@ def _finite_or_none(value: float) -> float | None:
 
 
 def _statistic_payload(state: Any, statistic: str) -> dict[str, Any]:
-    value_field, log_field = _STATE_VALUE_FIELDS[statistic]
-    value = float(getattr(state, value_field))
-    log_value = float(getattr(state, log_field))
+    fields = _STATISTICS[statistic]
+    value = float(getattr(state, fields.value_field))
+    log_value = float(getattr(state, fields.log_field))
     return {
         "value": _finite_or_none(value),
         "is_infinite": bool(np.isposinf(value)),
@@ -52,11 +61,6 @@ class MartingaleTrackerController:
         *,
         threshold: float,
         threshold_horizon: int | None = None,
-        alarm_count: int = 0,
-        tested_count: int = 0,
-        threshold_window_position: int = 0,
-        martingale: Any = None,
-        alarm_active: bool = False,
     ) -> None:
         self.config = config
         self.threshold = float(threshold)
@@ -64,58 +68,28 @@ class MartingaleTrackerController:
             raise ValueError("Resolved tracker thresholds must be positive and finite")
         if threshold_horizon is not None and threshold_horizon < 1:
             raise ValueError("Automatic threshold horizons must be positive")
-        if threshold_window_position < 0 or (
-            threshold_horizon is not None
-            and threshold_window_position > threshold_horizon
-        ):
-            raise ValueError("Threshold window position is outside its horizon")
         self.threshold_horizon = threshold_horizon
-        self.threshold_window_position = int(threshold_window_position)
-        self.alarm_count = int(alarm_count)
-        self.tested_count = int(tested_count)
-        self._alarm_active = bool(alarm_active)
-        self._martingale = martingale or self._new_martingale()
+        self.threshold_window_position = 0
+        self.alarm_count = 0
+        self.tested_count = 0
+        self._alarm_active = False
+        self._martingale = self._new_martingale()
 
     def _new_martingale(self) -> Any:
-        from nonconform.martingales import (
-            AlarmConfig,
-            PowerMartingale,
-            SimpleJumperMartingale,
-            SimpleMixtureMartingale,
-        )
+        from nonconform.martingales import AlarmConfig
 
-        alarm_config = AlarmConfig(
-            **{_ALARM_CONFIG_FIELDS[self.config.alarm_statistic]: self.threshold}
-        )
-        if self.config.betting_function == "power":
-            return PowerMartingale(
-                epsilon=self.config.epsilon,
-                alarm_config=alarm_config,
-            )
-        if self.config.betting_function == "simple_mixture":
-            return SimpleMixtureMartingale(
-                epsilons=self.config.epsilons,
-                n_grid=self.config.n_grid,
-                min_epsilon=self.config.min_epsilon,
-                alarm_config=alarm_config,
-            )
-        if self.config.betting_function == "simple_jumper":
-            return SimpleJumperMartingale(
-                jump=self.config.jump,
-                alarm_config=alarm_config,
-            )
-        raise ValueError(
-            f"Unsupported martingale betting function: {self.config.betting_function}"
+        field = _STATISTICS[self.config.alarm_statistic].config_field
+        alarm_config = AlarmConfig(**{field: self.threshold})
+        return betting_function(self.config.betting_function).build(
+            self.config, alarm_config
         )
 
     def _log_e_value(self, p_value: float, previous_log_martingale: float) -> float:
-        if self.config.betting_function == "power":
-            if p_value == 0.0:
-                return float("inf") if self.config.epsilon < 1.0 else 0.0
-            return float(
-                np.log(self.config.epsilon)
-                + (self.config.epsilon - 1.0) * np.log(p_value)
-            )
+        closed_form = betting_function(self.config.betting_function).closed_form_log_e(
+            self.config, p_value
+        )
+        if closed_form is not None:
+            return closed_form
 
         current_log_martingale = float(self._martingale.state.log_martingale)
         if np.isfinite(previous_log_martingale) and np.isfinite(current_log_martingale):
@@ -146,11 +120,11 @@ class MartingaleTrackerController:
             self.threshold_window_position += 1
 
         statistic = self.config.alarm_statistic
+        fields = _STATISTICS[statistic]
         selected = _statistic_payload(state, statistic)
-        raw_selected_value = float(getattr(state, _STATE_VALUE_FIELDS[statistic][0]))
-        trigger_name = _ALARM_TRIGGER_NAMES[statistic]
+        raw_selected_value = float(getattr(state, fields.value_field))
         threshold_crossed = (
-            trigger_name in state.triggered_alarms
+            fields.trigger in state.triggered_alarms
             or raw_selected_value >= self.threshold
         )
         alarm_fired = threshold_crossed and not self._alarm_active
@@ -165,9 +139,7 @@ class MartingaleTrackerController:
             if np.isfinite(log_e_value) and log_e_value <= max_log_float
             else None
         )
-        statistics = {
-            name: _statistic_payload(state, name) for name in _STATE_VALUE_FIELDS
-        }
+        statistics = {name: _statistic_payload(state, name) for name in _STATISTICS}
         parameters = self.config.model_dump(
             exclude={
                 "tracker_id",

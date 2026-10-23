@@ -38,7 +38,8 @@
       The failed assertion names the incorrect SMTP setting. Resend requires
       email_username=resend, use_credentials=True, validate_certs=True, and exactly
       one of mail_starttls or mail_ssl_tls. Check production vars.yml and any vault
-      overrides; see docs/email-delivery.md.
+      overrides; see docs/operations/production.md (production email) and
+      docs/single-organization.md (Resend settings).
   when: smtp_server == 'smtp.resend.com'
 
 # Shared by deployment and offline configuration checks. All inputs are supplied
@@ -51,7 +52,6 @@
       - release.images.values() | reject('match', '^.+@sha256:[0-9a-f]{64}$') | list | length == 0
       - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
     fail_msg: The resolved production release must contain the complete set of immutable image references.
-  when: offkey_env == 'prod'
 
 - name: Require the existing Cloudflare Tunnel token in production
   assert:
@@ -61,7 +61,6 @@
     fail_msg: >-
       Set cloudflare_tunnel_token in the production vault to the eyJ... token
       for the existing production Cloudflare Tunnel, not the installation command.
-  when: offkey_env == 'prod'
 
 - name: Initialise deployment secrets
   set_fact:
@@ -89,7 +88,6 @@
       - "'TEST_ONLY' not in mqtt_radar_password"
       - "'TEST_ONLY' not in radar_checkpoint_secret"
     fail_msg: Add a dedicated EMQX CA, broker certificate/key and separate MQTT credentials to the production vault.
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Define production deployment secret material
@@ -107,7 +105,6 @@
           {'user_id': mqtt_local_proxy_username, 'password': mqtt_proxy_password, 'is_superuser': false},
           {'user_id': radar_mqtt_username, 'password': mqtt_radar_password, 'is_superuser': false}
         ] | to_json }}
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Require collection controller access
@@ -209,7 +206,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: offkey_env == 'prod'
 
 - name: Copy production landing page overlay
   copy:
@@ -218,7 +214,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: offkey_env == 'prod'
 
 - name: Render the public landing page
   template:
@@ -227,7 +222,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: offkey_env == 'prod'
 
 - name: Render production Cloudflare Tunnel connector overlay
   template:
@@ -236,7 +230,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: offkey_env == 'prod'
 
 - name: Render MQTT security and collection controller overlay
   template:
@@ -245,7 +238,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: offkey_env == 'prod' or ambibox_ingress_enabled | bool
 
 - name: Render persistence overlay
   template:

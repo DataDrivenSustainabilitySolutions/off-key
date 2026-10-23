@@ -15,8 +15,7 @@ from .preflight_cleanup import PreflightOrphans
 
 
 class PipelineActivationSupervisor:
-    def __init__(self, registry, workloads, *, sessions=None):
-        self.registry = registry
+    def __init__(self, workloads, *, sessions=None):
         self.workloads = workloads
         self.sessions = sessions
         self.tasks: dict[str, asyncio.Task] = {}
@@ -100,9 +99,7 @@ class PipelineActivationSupervisor:
     async def _advance(self, identifier, group):
         try:
             async with self._session() as session:
-                await PipelineActivations(
-                    session, self.registry, self.workloads
-                ).advance(identifier)
+                await PipelineActivations(session, self.workloads).advance(identifier)
         except asyncio.CancelledError:
             raise
         except Exception:

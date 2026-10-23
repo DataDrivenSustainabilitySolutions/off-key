@@ -1,37 +1,22 @@
-"""
-Entry point for MQTT proxy service package execution.
-
-This module serves as the main entry point when running the MQTT service package
-with `python -m off_key.services.mqtt`. It prevents RuntimeWarning issues that
-occur when a module is both imported as a package component and executed as a script.
-"""
+"""Entry point for `python -m off_key_mqtt_proxy`."""
 
 import asyncio
-from contextlib import suppress
 from pathlib import Path
 
-from off_key_core.config.env import load_env
-from off_key_core.config.logs import (
-    load_yaml_config,
-    log_startup_logging_configuration,
-    logger,
-)
-from off_key_core.config.validation import validate_settings
+from off_key_core.config.bootstrap import start_service
+from off_key_core.config.logs import logger
+from off_key_core.utils.tasks import run_until_first_exit
 
 from .config.config import get_mqtt_settings
 from .health_api import run_health_api
 from .proxy import MQTTProxyService
 
-# Load logging configuration from YAML files
-service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-load_yaml_config(str(service_logging_config))
-
 
 async def main():
     """Main entry point for MQTT proxy service"""
-    load_env()
-    log_startup_logging_configuration("mqtt-proxy")
-    validate_settings(
+    start_service(
+        "mqtt-proxy",
+        Path(__file__).parent / "config" / "logging.yaml",
         [
             ("mqtt_proxy", lambda: get_mqtt_settings().config),
         ],
@@ -54,21 +39,8 @@ async def main():
         tasks.add(health_task)
 
     try:
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            task.result()
+        await run_until_first_exit(tasks)
     finally:
-        for task in tasks:
-            if task.done():
-                continue
-            task.cancel()
-
-        for task in tasks:
-            if task.done():
-                continue
-            with suppress(asyncio.CancelledError):
-                await task
-
         logger.info("MQTT proxy service shutdown complete")
 
 

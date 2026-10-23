@@ -1,28 +1,25 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import RadarServiceLabel
-from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
+from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
 from pydantic import BaseModel
 
-from ...models.registry import ModelRegistryService
-from ...provider import (
-    get_model_registry_service,
-    get_radar_orchestration_service,
-)
+from ...domain import DomainError
+from ...provider import get_form_monitor_starter, get_radar_orchestration_service
 from ...services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from ..errors import http_error
 
 router = APIRouter()
 
 
 class RadarServiceResponse(BaseModel):
-    """Response model for RADAR service operations."""
+    """A form monitor accepted as a pipeline activation; its workload starts next."""
 
     service_id: str
-    container_id: str
+    activation_id: str
     container_name: str
     status: str
     mqtt_topics: list[str]
@@ -30,7 +27,6 @@ class RadarServiceResponse(BaseModel):
 
 @router.get("/radar/services/", response_model=list[dict[str, Any]])
 async def list_radar_services(
-    request: Request,
     active_only: bool = False,
     include_docker_status: bool = False,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -51,44 +47,30 @@ async def list_radar_services(
         ) from e
 
 
-@router.post("/radar/services/start/", response_model=RadarServiceResponse)
+@router.post(
+    "/radar/services/start/",
+    response_model=RadarServiceResponse,
+    status_code=202,
+)
 async def start_radar_service(
-    request: Request,
-    config: RadarConfig,
-    service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
+    config: FormMonitorConfig, start_form_monitor=Depends(get_form_monitor_starter)
 ):
-    """
-    Starts a new RADAR Docker service for anomaly detection on specified MQTT topics.
-
-    The RADAR service will:
-    - Subscribe to the specified MQTT topics
-    - Apply the configured ML model for anomaly detection
-    - Use the provided thresholds and performance settings
-    - Store results in the database
-    """
+    """Start a monitor configured with a setup form as an equivalent pipeline."""
     try:
-        radar_service = await service.create_radar_service(config)
-
-        return {
-            "service_id": radar_service.id,
-            "container_id": radar_service.container_id,
-            "container_name": radar_service.container_name,
-            "status": "running" if radar_service.status else "stopped",
-            "mqtt_topics": radar_service.mqtt_topic,
-        }
-    except DeploymentInProgressError:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start RADAR service: {e!s}"
-        ) from e
+        activation = await start_form_monitor(config)
+    except DomainError as exc:
+        raise http_error(exc) from exc
+    return {
+        "service_id": activation.service_id,
+        "activation_id": activation.id,
+        "container_name": f"pipeline-{activation.service_id}",
+        "status": activation.phase,
+        "mqtt_topics": config.mqtt_topics,
+    }
 
 
 @router.get("/radar/services/details/", response_model=dict[str, Any])
 async def get_radar_service_details(
-    request: Request,
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -125,7 +107,6 @@ async def get_radar_service_details(
 
 @router.delete("/radar/services/stop/")
 async def stop_radar_service(
-    request: Request,
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -172,7 +153,6 @@ async def stop_radar_service(
 
 @router.patch("/radar/services/{service_id}/label")
 async def rename_radar_service(
-    request: Request,
     service_id: str,
     change: RadarServiceLabel,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
@@ -184,7 +164,6 @@ async def rename_radar_service(
 
 @router.delete("/radar/services/{service_id}")
 async def delete_radar_service(
-    request: Request,
     service_id: str,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
@@ -212,31 +191,4 @@ async def delete_radar_service(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to delete RADAR service: {e!s}"
-        ) from e
-
-
-@router.get("/radar/models/", response_model=list[dict[str, Any]])
-async def list_available_models(
-    request: Request,
-    model_registry: ModelRegistryService = Depends(get_model_registry_service),
-):
-    """
-    Lists all available anomaly detection models and their hyperparameters.
-
-    Returns information about each model including:
-    - family: Model family (forest, distance, svm, etc.)
-    - description: What the model does
-    - complexity: Computational complexity
-    - memory_usage: Expected memory footprint
-    - parameter_schema: JSON schema for hyperparameters
-    - default_parameters: Default parameter values
-
-    Use this endpoint to discover available models and their configuration options
-    before starting a RADAR service.
-    """
-    try:
-        return model_registry.get_available_models()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get available models: {e!s}"
         ) from e

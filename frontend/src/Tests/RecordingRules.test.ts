@@ -1,11 +1,12 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/features/catalogue/collectionRules";
-import { scopeKey } from "@/features/catalogue/collectionRules";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemCollectionPreview, SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/domain/system/collectionRules";
+import { scopeKey } from "@/domain/system/collectionRules";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemCollectionPreview, SystemSnapshot } from "@/types/system";
 import { useRecordingRules } from "@/features/catalogue/useRecordingRules";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
 
@@ -22,9 +23,7 @@ function fixture(): SystemSnapshot {
     value_type: "number" as const, category: "Environment",
   }));
   return {
-    document: { ...createEmptySystem(), streams, connections: ["broker", "other-broker"].map(id => ({
-      id, label: id, host: "localhost", port: 1883, protocol: "mqtt" as const, transport: "tcp" as const, tls: false,
-    })) }, revision: 3, can_edit: true, storage_origin: "saved",
+    document: { ...createEmptySystem(), streams, connections: ["broker", "other-broker"].map(id => mqttConnection({ id, label: id, host: "localhost" })) }, revision: 3, can_edit: true, storage_origin: "saved",
     runtime: {
       mode: "configured_only", message: "", collection_revision: 4, collection_rules: [original],
       bindings: Object.fromEntries(streams.map(stream => [stream.id, {
@@ -50,8 +49,6 @@ function lastChange(): RuleChange {
   return vi.mocked(apiUtils.post).mock.lastCall![1] as RuleChange;
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
-afterEach(cleanup);
 
 describe("recording rule composition", () => {
   it.each(["policy first", "include first"])("preserves policy and admission through Apply and Undo: %s", async order => {

@@ -1,7 +1,8 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { filterSourceReports } from "@/features/workspace/reporting-scope";
 import type { Anomaly } from "@/types/charger";
-import type { SystemRuntime } from "@/features/catalogue/systemTypes";
+import type { SystemRuntime } from "@/types/system";
 
 const runtime: SystemRuntime = { mode: "configured_only", message: "", bindings: Object.fromEntries([
   ["temperature", "accepted-a", "temperature-key"], ["pressure", "accepted-a", "pressure-key"], ["remote", "accepted-b", "temperature-key"],

@@ -13,6 +13,7 @@ import { nodeOptionLabel } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
 import { PipelineRunHistory } from "./PipelineRunHistory";
+import { editFromRun } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 export default function PipelineRunView({
@@ -22,7 +23,6 @@ export default function PipelineRunView({
   replaceable = true,
 }: {
   serviceId: string;
-  displayName?: string;
   canEdit: boolean;
   state?: PipelineState | null;
   replaceable?: boolean;
@@ -63,14 +63,7 @@ export default function PipelineRunView({
     );
     return () => controller.abort();
   }, [serviceId, retry]);
-  const edit = () => {
-    const next = new URLSearchParams(params);
-    ["service", "tab", "pipeline", "revision", "activation"].forEach((key) => next.delete(key));
-    next.set("create", "monitoring");
-    if (replaceable) next.set("replace", serviceId);
-    else next.set("from", serviceId);
-    setParams(next);
-  };
+  const edit = () => setParams(editFromRun(params, serviceId, replaceable));
   return (
     <section className="pl-run" aria-label="Running pipeline">
       {error && (

@@ -1,7 +1,7 @@
-import { afterEach, expect, it, vi } from "vitest";
+// @vitest-environment node
+import { expect, it, vi } from "vitest";
 import { publishPipelineSamples } from "../../e2e/helpers/pipelineSamples";
 
-afterEach(() => vi.useRealTimers());
 
 it("publishes coherent real-time frames without duplicate observation timestamps, even across batches and immediate acknowledgements", async () => {
   vi.useFakeTimers();

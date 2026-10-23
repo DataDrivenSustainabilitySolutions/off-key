@@ -32,6 +32,10 @@ so invitations remain available after restarting.
 
 The first build can take several minutes. Startup waits for service health.
 `local-up` also builds the RADAR image used by the normal monitoring workflow.
+TACTIC runs every RADAR workload as a Swarm service, as in production, so
+`local-up` turns a non-Swarm Docker engine into a single-node Swarm manager
+(`docker swarm init --advertise-addr 127.0.0.1`) before starting. `docker swarm
+leave --force` undoes it once no other Swarm workload needs it.
 
 If Docker Desktop's credential helper hangs while fetching public dependency
 images, use `make local-up LOCAL_ARGS="--simulator --public-images"`. This mode
@@ -58,8 +62,8 @@ port 5432; its optional host mapping uses port 5433.
 
 The local frontend accepts `admin` as a shortcut in the **Email** field for the
 configured `SUPERUSER_MAIL` account when opened on a loopback address. This uses the normal
-authenticated API and the account's saved password. The current rework preview
-uses `admin` / `admin`; restarting or rebuilding preserves that account. Ordinary
+authenticated API and the account's saved password; restarting or rebuilding
+preserves that account. Ordinary
 production builds keep email login and do not enable this local alias.
 
 ## Exercise MQTT locally

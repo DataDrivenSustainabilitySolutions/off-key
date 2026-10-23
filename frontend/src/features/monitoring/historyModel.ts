@@ -1,9 +1,9 @@
 import type { TelemetryDataPoint } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
-import type { MonitoringChartModel } from "@/lib/telemetry-chart";
-import { normalizeTelemetry } from "@/lib/telemetry-data";
-import { buildSelectedDetectorSeries, collectMonitoringChartDetectors, type SelectedDetectorIds } from "@/lib/telemetry-detectors";
-import type { MonitoringInput } from "./serviceModel";
+import type { MonitoringChartModel } from "@/features/charts/telemetry-chart";
+import { normalizeTelemetry } from "@/features/charts/telemetry-data";
+import { buildSelectedDetectorSeries, collectMonitoringChartDetectors, type SelectedDetectorIds } from "@/features/charts/telemetry-detectors";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 
 export const MAX_VISIBLE_READINGS = 6;
 const READING_COLORS = ["#3a7e72", "#7161b5", "#b36b32", "#3d7fa5", "#a75679", "#6f8434"];

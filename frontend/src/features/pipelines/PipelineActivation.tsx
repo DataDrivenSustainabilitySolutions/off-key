@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useLocation } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import { ApiRequestError } from "@/lib/api-client";
@@ -6,13 +7,15 @@ import { useAuth } from "@/auth/AuthContext";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import type { ActiveService } from "@/types/monitoring";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
-import type { MonitoringTarget } from "../monitoring/serviceModel";
-import { MonitoringTargetPicker } from "../monitoring/MonitoringTargetPicker";
-import { sourceHref } from "../catalogue/collectionRules";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { MonitoringTargetPicker } from "../workspace/MonitoringTargetPicker";
+import { sourceHref } from "@/domain/system/collectionRules";
 import { useCatalogue } from "../workspace/catalogue-context";
 import type { PipelineDefinition, PipelineRevisionView } from "./contracts";
 import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
+import { strategyLabel } from "./semantics";
+import { readingOwnedElsewhere } from "./bindings";
 import {
   readActivationRequest,
   retainActivationRequest,
@@ -105,13 +108,7 @@ export function PipelineActivation({
   const [operation, setOperation] = useState<PipelineActivationView>();
   const key = useRef<string | null>(null);
   const target = targets.find((item) => item.id === targetId);
-  const active = new Set(
-    services
-      .filter((service) => service.status && service.id !== replaceService?.id)
-      .map((service) => service.id),
-  );
-  const owned = (readingId: string) =>
-    [...(byStream.get(readingId) ?? [])].some((id) => active.has(id));
+  const owned = readingOwnedElsewhere(services, byStream, replaceService?.id);
   const completeBindings =
     revision.definition.input_slots.every((slot) => {
       const reading = target?.inputs.find(
@@ -130,41 +127,22 @@ export function PipelineActivation({
     ? executableChanges(previous, revision.definition)
     : [];
   const operationPhase = operation?.phase;
-  useEffect(() => {
+  const pollActivation = useCallback(async (signal: AbortSignal) => {
     if (!operationId) return;
-    const controller = new AbortController();
-    let pending = false;
-    const poll = async () => {
-      if (pending || window.document.hidden) return;
-      pending = true;
-      try {
-        const next = await pipelinesApi.activation(
-          operationId,
-          controller.signal,
-        );
-        if (!controller.signal.aborted) {
-          setOperation(next);
-          setError("");
-          if (next.phase === "succeeded") onComplete(next.service_id);
-        }
-      } catch (reason) {
-        if (!controller.signal.aborted) setError(getErrorMessage(reason));
-      } finally {
-        pending = false;
-      }
-    };
-    void poll();
-    const timer = window.setInterval(() => {
-      if (!operationPhase || !terminal.has(operationPhase)) void poll();
-    }, 3_000);
-    const visible = () => void poll();
-    window.document.addEventListener("visibilitychange", visible);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-      window.document.removeEventListener("visibilitychange", visible);
-    };
-  }, [operationId, operationPhase, onComplete]);
+    try {
+      const next = await pipelinesApi.activation(operationId, signal);
+      if (signal.aborted) return;
+      setOperation(next);
+      setError("");
+      if (next.phase === "succeeded") onComplete(next.service_id);
+    } catch (reason) {
+      if (!signal.aborted) setError(getErrorMessage(reason));
+    }
+  }, [operationId, onComplete]);
+  usePollingLoop(pollActivation, {
+    enabled: !!operationId && !(operationPhase && terminal.has(operationPhase)),
+    intervalMs: 3_000, overlap: "skip", pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true,
+  });
   const activate = async () => {
     if (
       busy ||
@@ -260,9 +238,7 @@ export function PipelineActivation({
         <>
           <p>
             Revision {revision.number} ·{" "}
-            {revision.definition.strategy === "adaptive_stream"
-              ? "Adaptive stream"
-              : "Static baseline"}
+            {strategyLabel(revision.definition.strategy)}
           </p>
           {previous && (
             <>

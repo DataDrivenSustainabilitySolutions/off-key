@@ -96,7 +96,7 @@ const TimeInput: React.FC<TimeInputProps> = ({
   );
 };
 
-export const DateTimePicker: React.FC<DateTimePickerProps> = ({
+const DateTimePicker: React.FC<DateTimePickerProps> = ({
   value,
   onChange,
   placeholder = "Pick a date and time",

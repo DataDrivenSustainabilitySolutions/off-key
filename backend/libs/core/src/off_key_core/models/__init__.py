@@ -3,13 +3,10 @@ from .adaptive import (
     ADAPTIVE_MODEL_FAMILY,
     ADAPTIVE_MODELS_BY_TYPE,
     ADAPTIVE_MONITORING_STRATEGY,
-    BUILTIN_ADAPTIVE_MODEL_TYPES,
     adaptive_model_metadata,
     validate_adaptive_model_params,
 )
 from .monitoring import (
-    BUILTIN_STATIC_MODEL_TYPES,
-    RETIRED_MODEL_FAMILY,
     STATIC_MODEL_FAMILY,
     STATIC_MONITORING_STRATEGY,
 )
@@ -19,9 +16,6 @@ __all__ = [
     "ADAPTIVE_MODELS_BY_TYPE",
     "ADAPTIVE_MODEL_FAMILY",
     "ADAPTIVE_MONITORING_STRATEGY",
-    "BUILTIN_ADAPTIVE_MODEL_TYPES",
-    "BUILTIN_STATIC_MODEL_TYPES",
-    "RETIRED_MODEL_FAMILY",
     "STATIC_MODEL_FAMILY",
     "STATIC_MONITORING_STRATEGY",
     "adaptive_model_metadata",

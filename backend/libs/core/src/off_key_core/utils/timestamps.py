@@ -4,6 +4,13 @@ from datetime import UTC, datetime
 from math import isfinite
 
 
+def as_utc(value: datetime) -> datetime:
+    """Read a naive datetime as UTC and convert an aware one to UTC."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def parse_utc_timestamp(value: object) -> datetime:
     """Parse a Unix timestamp or ISO-8601 value and normalize it to UTC."""
     if isinstance(value, int | float):
@@ -23,7 +30,4 @@ def parse_utc_timestamp(value: object) -> datetime:
             raise ValueError("Timestamp must be finite")
         return datetime.fromtimestamp(unix_value, tz=UTC)
 
-    timestamp = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
-    if timestamp.tzinfo is None:
-        return timestamp.replace(tzinfo=UTC)
-    return timestamp.astimezone(UTC)
+    return as_utc(datetime.fromisoformat(normalized.replace("Z", "+00:00")))

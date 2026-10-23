@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic import (
     EmailStr,
@@ -10,6 +9,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from off_key_core.config.validation import SECRETS_DIR
+
 _RECIPIENTS_ADAPTER = TypeAdapter(list[EmailStr])
 
 
@@ -17,7 +18,7 @@ class EmailSettings(BaseSettings):
     """Email and notification settings."""
 
     model_config = SettingsConfigDict(
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
         case_sensitive=True,
         extra="ignore",
         frozen=True,

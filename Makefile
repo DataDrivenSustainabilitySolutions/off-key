@@ -3,6 +3,7 @@ REVISION ?= $(shell git rev-parse HEAD)
 BOOTSTRAP ?= false
 check-infra:
 	$(MAKE) -C infra check-deploy
+# Dispatches the Deploy Production workflow; infra/Makefile deploy-prod runs Ansible directly.
 deploy-prod:
 	gh workflow run deploy-production.yml --ref main -f revision=$(REVISION) -f bootstrap=$(BOOTSTRAP)
 

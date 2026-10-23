@@ -1,7 +1,8 @@
-import { useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ExplorerSidebar } from "../explorer/ExplorerSidebar";
-import { navigationRows, navigationTrail, searchNavigation } from "../explorer/navigationIndex";
-import { onlineNavigationIndex } from "../explorer/onlineNavigation";
+import { useNow } from "@/hooks/use-now";
+import { useDeferredValue, useMemo, useSyncExternalStore } from "react";
+import { ExplorerSidebar } from "./ExplorerSidebar";
+import { navigationRows, navigationTrail, searchNavigation } from "@/domain/system/navigationIndex";
+import { onlineNavigationIndex } from "@/domain/system/onlineNavigation";
 import { useCatalogue } from "./catalogue-context";
 
 const subscribeNothing = () => () => {};
@@ -10,14 +11,9 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   const { document, index, system, telemetry, liveStreamIds, selected, scopeKey, query, setQuery, positions,
     preferences, setPreferences, browse, back, selectSource, openSettings } = useCatalogue();
   const onlineOnly = preferences.onlineOnly ?? false;
-  const [now, setNow] = useState(() => Date.now());
+  const now = useNow(1000, onlineOnly);
   const liveStatus = useSyncExternalStore(onlineOnly ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
   const activity = useMemo(() => ({ telemetry, liveStreamIds, runtime: system.snapshot?.runtime }), [telemetry, liveStreamIds, system.snapshot?.runtime]);
-  useEffect(() => {
-    if (!onlineOnly) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [onlineOnly]);
   const visibleIndex = useMemo(() => onlineOnly ? onlineNavigationIndex(index, activity, liveStatus, now) : index,
     [onlineOnly, index, activity, liveStatus, now]);
   const deferredQuery = useDeferredValue(query);
@@ -44,7 +40,7 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
     : current?.label) ?? document.label;
   return <ExplorerSidebar index={index} scopeKey={scopeKey} title={title} catalogueGroups={document.groups}
     activity={activity} onlineOnly={onlineOnly} readingCount={visibleIndex.counts.readings}
-    onOnlineOnlyChange={value => { setNow(Date.now()); setPreferences(previous => ({ ...previous, onlineOnly: value })); }}
+    onOnlineOnlyChange={value => { setPreferences(previous => ({ ...previous, onlineOnly: value })); }}
     rows={rows} query={query} resultsQuery={deferredQuery} selectedKey={selected?.key ?? null} positions={positions} loading={system.status === "loading"}
     onQuery={setQuery} onScope={browse} onBack={back} onBrowse={node => browse(node.key)}
     onOpen={node => { selectSource(node); onDismiss?.(); }}

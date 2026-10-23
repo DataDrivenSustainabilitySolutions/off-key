@@ -12,7 +12,7 @@ async def current_member(
     if not authorization:
         raise HTTPException(401, "Sign in to continue")
     try:
-        result = await tactic._make_request(
+        result = await tactic.request(
             "GET",
             "/api/v1/members/me",
             headers={"Authorization": authorization},

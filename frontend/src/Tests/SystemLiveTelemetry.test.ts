@@ -1,16 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment node
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { createEmptySystem } from "@/domain/system/systemDocument";
 import {
   LIVE_HISTORY_LIMIT,
   SystemLiveTelemetry,
-} from "@/features/catalogue/systemLiveTelemetry";
+} from "@/domain/system/systemLiveTelemetry";
 import type {
   LiveBatch,
   LiveLease,
   LiveStream,
-} from "@/features/catalogue/systemLiveTypes";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+} from "@/types/system-live";
+import type { SystemDocument } from "@/types/system";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const iso = (offset = 0) => new Date(NOW + offset).toISOString();
@@ -109,9 +110,6 @@ function harness(canStart = true) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-});
-afterEach(() => {
-  vi.useRealTimers();
 });
 
 describe("generic live telemetry receipts", () => {

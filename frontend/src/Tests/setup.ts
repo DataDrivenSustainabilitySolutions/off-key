@@ -1,3 +1,5 @@
+import { afterEach, vi } from "vitest";
+
 const createTestStorage = (): Storage => {
   const entries = new Map<string, string>();
 
@@ -23,7 +25,7 @@ const bindTestStorage = (
   storageName: "localStorage" | "sessionStorage",
   storage: Storage
 ) => {
-  for (const target of [globalThis, window]) {
+  for (const target of typeof window === "undefined" ? [globalThis] : [globalThis, window]) {
     Object.defineProperty(target, storageName, {
       configurable: true,
       value: storage,
@@ -45,4 +47,28 @@ Object.defineProperty(globalThis, "ResizeObserver", {
   configurable: true,
   value: TestResizeObserver,
   writable: true,
+});
+
+if (typeof window !== "undefined") {
+  // A light-scheme, no-preference default; tests needing a match stub their own.
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (media: string) => ({
+      matches: false,
+      media,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
+afterEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+  vi.useRealTimers();
 });

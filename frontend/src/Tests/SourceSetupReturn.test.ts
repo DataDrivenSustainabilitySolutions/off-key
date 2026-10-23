@@ -1,5 +1,6 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { safeServiceReturn } from "@/features/catalogue/collectionRules";
+import { safeServiceReturn } from "@/domain/system/collectionRules";
 
 describe("source setup return destinations", () => {
   it("preserves same-origin legacy and saved pipeline setup routes", () => {

@@ -8,24 +8,16 @@ API while delegating responsibilities to specialized managers.
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
-from datetime import datetime
+from collections.abc import Callable
 from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
-from off_key_core.utils.enum import HealthStatus
 
-from ..auth import ApiKeyAuthHandler
 from ..config.config import MQTTConfig
 from .connection import ConnectionManager
 from .messaging import MessageHandler
-from .models import (
-    ClientConnectionInfo,
-    ClientHealthStatus,
-    ConnectionState,
-    MQTTMessage,
-)
+from .models import ConnectionState, MQTTMessage
 from .subscriptions import SubscriptionManager
 
 
@@ -41,38 +33,21 @@ class MQTTClient:
     Provides a unified, clean API while maintaining separation of concerns.
     """
 
-    def __init__(
-        self, config: MQTTConfig, auth_handler: ApiKeyAuthHandler | None = None
-    ):
+    def __init__(self, config: MQTTConfig):
         self.config = config
-        self.auth_handler = auth_handler
 
         # Initialize component managers
         self.connection_manager = ConnectionManager(
-            config,
-            auth_handler,
-            on_connected=self._on_connected,
+            config, on_connected=self._on_connected
         )
 
-        self.subscription_manager = SubscriptionManager(
-            default_qos=config.subscription_qos
-        )
+        self.subscription_manager = SubscriptionManager()
 
         self.message_handler = MessageHandler(
             max_queue_size=config.max_message_queue_size
         )
 
-        # Track messages sent for metrics
-        self.messages_sent = 0
         self._pending_publishes: list[mqtt.MQTTMessageInfo] = []
-
-    async def __aenter__(self):
-        """Async context manager entry"""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
-        await self.disconnect()
 
     @property
     def state(self) -> ConnectionState:
@@ -84,17 +59,8 @@ class MQTTClient:
         """Check if currently connected"""
         return self.connection_manager.is_connected
 
-    def set_message_handler(
-        self,
-        handler: Callable[[MQTTMessage], None]
-        | Callable[[MQTTMessage], Awaitable[None]],
-    ) -> None:
-        """
-        Set message handler callback
-
-        Args:
-            handler: Sync or async message handler function
-        """
+    def set_message_handler(self, handler: Callable[[MQTTMessage], None]) -> None:
+        """Route received messages to a synchronous, thread-safe callback."""
         self.message_handler.set_handler(handler)
 
     async def connect(self) -> bool:
@@ -109,14 +75,7 @@ class MQTTClient:
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
         await self.connection_manager.disconnect()
-        await self.message_handler.stop(
-            drain=True,
-            timeout_seconds=self.config.graceful_shutdown_timeout,
-        )
-
-    async def stop(self) -> None:
-        """Stop MQTT client (implements Stoppable protocol)"""
-        await self.disconnect()
+        self.message_handler.clear_handler()
 
     async def subscribe(self, topic: str, qos: int | None = None) -> bool:
         """
@@ -187,7 +146,6 @@ class MQTTClient:
                         if not item.is_published()
                     ]
                     self._pending_publishes.append(result)
-                self.messages_sent += 1
                 logger.debug(f"Published message to {topic}")
                 return True
             logger.error(f"Failed to publish to {topic}: {result.rc}")
@@ -205,67 +163,11 @@ class MQTTClient:
             if self._pending_publishes:
                 await asyncio.sleep(0.05)
 
-    def get_connection_info(self) -> ClientConnectionInfo:
-        """Get current connection information"""
-        base_info = self.connection_manager.get_connection_info()
-
-        return ClientConnectionInfo(
-            state=base_info["state"],
-            broker_host=base_info["broker_host"],
-            broker_port=base_info["broker_port"],
-            client_id=base_info["client_id"],
-            connection_start_time=base_info["connection_start_time"],
-            reconnect_attempts=base_info["reconnect_attempts"],
-            subscriptions=list(self.subscription_manager.get_subscriptions()),
-            pending_subscriptions=list(
-                self.subscription_manager.get_pending_subscriptions()
-            ),
-            messages_sent=self.messages_sent,
-        )
-
-    def get_health_status(self) -> ClientHealthStatus:
-        """Get health status for monitoring"""
-        # Get metrics from components
-        connection_info = self.connection_manager.get_connection_info()
-        message_metrics = self.message_handler.get_metrics()
-
-        # Calculate derived metrics
-        uptime_seconds = self.connection_manager.get_uptime_seconds()
-        message_rate = self.message_handler.get_message_rate(
-            self.connection_manager.connection_start_time
-        )
-
-        return ClientHealthStatus(
-            status=(
-                HealthStatus.HEALTHY
-                if self.state == ConnectionState.CONNECTED
-                else HealthStatus.UNHEALTHY
-            ),
-            state=self.state.value,
-            uptime_seconds=uptime_seconds,
-            messages_received=message_metrics["messages_received"],
-            messages_sent=self.messages_sent,
-            message_rate=round(message_rate, 2),
-            active_subscriptions=self.subscription_manager.get_subscription_count(),
-            reconnect_attempts=connection_info["reconnect_attempts"],
-            queue_size=message_metrics["queue_size"],
-            last_message_time=message_metrics["last_message_time"],
-            last_message_age_seconds=(
-                (
-                    datetime.now() - self.message_handler.last_message_time
-                ).total_seconds()
-                if self.message_handler.last_message_time
-                else None
-            ),
-        )
-
-    def get_queued_messages(self, count: int | None = None):
-        """Get messages from the message queue"""
-        return self.message_handler.get_queued_messages(count)
-
     async def _on_connected(self) -> None:
         """Called when connection is established"""
         client = self.connection_manager.client
+        if client is None:
+            raise RuntimeError("MQTT connected without a client")
         self._pending_publishes.clear()
         self.subscription_manager.set_client(client)
         self.message_handler.set_client(client)

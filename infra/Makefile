@@ -15,6 +15,7 @@ check-deploy:
 	$(UV) run --frozen python -m unittest discover -s tests -v
 provision-prod:
 	$(ANSIBLE) -i $(INVENTORY) provision.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
+# Runs Ansible from this machine; the root Makefile deploy-prod dispatches CI instead.
 deploy-prod:
 	$(ANSIBLE) -i $(INVENTORY) deploy.yml $(VAULT) -e release_bootstrap=$(BOOTSTRAP) -e persistence_switch_confirm=$(CONFIRM)
 update-labels-prod:

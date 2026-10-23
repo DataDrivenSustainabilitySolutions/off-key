@@ -18,7 +18,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `tactic-middleware` (FastAPI): data adapter and RADAR orchestration.
 - `db-sync`: schema initialization and readiness API.
 - `mqtt-proxy`: selected collection, sampling and accepted MQTT publishing.
-- `mqtt-radar`: anomaly workload, either profile-based or TACTIC-managed.
+- `mqtt-radar`: anomaly workload image; TACTIC launches one workload per monitor.
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.
@@ -29,9 +29,9 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 
 | Service | Owns | Reads from | Writes to | Critical dependencies |
 | --- | --- | --- | --- | --- |
-| Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway and a valid `VITE_API_URL` |
-| API Gateway | External route contract and request composition | TACTIC data/orchestration endpoints | HTTP responses | TACTIC readiness |
-| TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model registry | Database and container lifecycle | Docker API, model registry, database |
+| Frontend | User workflows and UI state | API Gateway `/v1` | Browser state | API Gateway, reached through `/api` on the frontend's own origin |
+| API Gateway | External route contract and request composition | TACTIC data, membership, catalogue and monitoring endpoints | HTTP responses | TACTIC readiness |
+| TACTIC | Domain data adapter and RADAR lifecycle | Database services, Docker API proxy, model catalogue | Database and container lifecycle | Docker API, database |
 | DB Sync | Schema bootstrap and readiness | Database | Database schema | Database availability |
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
@@ -97,14 +97,16 @@ completed monitor stops remain durable.
 
 ## Startup order and readiness
 
-The normal local startup remains one command, but dependencies become ready in this order:
+Local Compose starts everything with one command; its `depends_on` health
+conditions form two chains:
 
-1. `timescaledb`
-2. `db-sync` at `/ready/schema`
-3. `tactic-middleware` at `/ready`
-4. `api-gateway` at `/health`
-5. `mqtt-proxy` at `/ready` once the collection revision is applied
-6. `frontend`
+- `timescaledb` → `db-sync` (`/ready/schema`) → `tactic-middleware` (`/ready`) →
+  `api-gateway` (`/health`) → `frontend`.
+- `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
+  collection revision is applied) → the optional `mqtt-simulator`.
+
+Production Swarm has no start order; the release gates on
+`infra/scripts/check_application.py` instead.
 
 Gateway liveness can succeed while TACTIC-backed data or monitoring operations remain unavailable.
 
@@ -113,11 +115,13 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 | Caller | Callee | Critical paths | Purpose |
 | --- | --- | --- | --- |
 | Frontend | API Gateway | `/v1/auth/*`, `/v1/chargers/*`, `/v1/telemetry/*`, `/v1/monitors/*`, `/v1/anomalies*` | Primary user contract |
-| API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access and orchestration |
+| API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/members/*`, `/api/v1/system/*`, `/api/v1/monitors/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access, membership, catalogue, pipelines and orchestration; `test_tactic_gateway_contract.py` checks every call |
+| API Gateway (startup) | DB Sync | `/health` | Waits for the schema service before serving |
 | Health tooling | API Gateway | `/health` | Gateway liveness |
 | Health tooling | TACTIC | `/health`, `/ready` | Orchestration and registry readiness |
 | Internal checks | DB Sync | `/health`, `/ready/schema` | Schema readiness |
 | Internal checks | MQTT Proxy | `/health`, `/ready` | Collection readiness |
+| Release gate | Every service | `infra/scripts/check_application.py` | Production readiness after deployment |
 
 ## Failure modes and recovery checkpoints
 
@@ -131,23 +135,17 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 ## Deployment context
 
-- **Local default:** `docker compose up -d --build`
+- **Local default:** `docker compose up -d --build` (loads `docker-compose.override.yml` for container names, ports, file sync and reload)
 - **Cluster override:** `docker-compose.cluster.yml`
 - **Swarm:** `infra/stack/docker-compose.swarm.yml`
 - **Swarm ingress overlay:** add the integrated production ingress overlays
 
 See [Deployment modes](../operations/deployment-modes.md) for operational commands.
 
-## Related pages
-
-- [Data model](../reference/data-model.md)
-- [Backend API](../reference/backend-api.md)
-- [Environment variables](../reference/environment-variables.md)
-- [Testing and debugging](testing-debugging.md)
-
 ## Aberrant catalog integration
 
-RADAR pins `aberrant[faiss]==1.1.0`. Shared configuration, Gateway, and TACTIC
+RADAR pins the `aberrant[faiss]` release in
+`backend/services/mqtt/radar/pyproject.toml`. Shared configuration, Gateway, and TACTIC
 read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
 SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
 library and optional dependencies as RADAR. `models/adaptive.py` owns only the
@@ -174,7 +172,11 @@ validation at startup. Models needing observer-, bucket-, or graph-based
 readiness cannot be added by simply editing the allowlist.
 
 `AdaptiveStreamConfig.detector_mapping()` produces the versioned Aberrant
-configuration, with a feature-schema guard first. RADAR constructs the pipeline
+configuration, with a feature-schema guard first. Pipeline monitors build the
+same configuration in `pipelines/adapters.py` (see
+[Monitoring pipelines](monitoring-pipelines.md)); both fill the detector's
+feature-bound parameters (`abs_diff`, `key`, `keys`) through
+`bind_detector_parameters` in `off_key_core.models.adaptive`. RADAR constructs the pipeline
 through `DetectorConfig`, then applies Offkey's explicit unit-interval input
 policy where required. Checkpoints contain the normalized configuration,
 configuration fingerprint, input keys, package version, and lifecycle state.
@@ -189,3 +191,10 @@ versions. Cross-version model pickles are incompatible: preserve them for a
 rollback, but allow the upgraded monitors to warm up and calibrate afresh.
 Validate the image and the opt-in `test_adaptive_lane_e2e.py` flow against a
 non-production MQTT/PostgreSQL stack before deploying.
+
+## Related pages
+
+- [Data model](../reference/data-model.md)
+- [Backend API](../reference/backend-api.md)
+- [Environment variables](../reference/environment-variables.md)
+- [Testing and debugging](testing-debugging.md)

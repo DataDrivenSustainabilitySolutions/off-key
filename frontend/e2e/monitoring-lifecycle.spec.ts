@@ -7,7 +7,7 @@ import { accessToken } from "./helpers/auth";
 test.describe("monitoring lifecycle smoke", () => {
   test.setTimeout(300_000);
 
-  test("starts and stops a RADAR workload from the monitoring page", async ({
+  test("starts and stops a static monitor from the create form", async ({
     page,
     playwright,
   }) => {
@@ -15,7 +15,6 @@ test.describe("monitoring lifecycle smoke", () => {
     const chargerId = fixtureEntityId(deviceId);
     const topic = `telemetry/${chargerId}/${fixtureReadingKey(deviceId, "L1")}`;
     let serviceId: string | undefined;
-    let containerName: string | undefined;
     let authToken: string | null = null;
     const cleanupRequest = await playwright.request.newContext({
       baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173",
@@ -23,22 +22,19 @@ test.describe("monitoring lifecycle smoke", () => {
     });
 
     try {
-      await page.goto(`/monitoring/${chargerId}`);
+      await page.goto("/");
       authToken = await accessToken(page);
       expect(authToken).toBeTruthy();
       await addTestCharger(cleanupRequest, authToken!, deviceId, deviceId, [
         "L1",
       ]);
-      await page.reload();
+      await page.goto(`/?create=monitoring&target=${encodeURIComponent(chargerId)}`);
 
       await expect(
-        page.getByRole("heading", { name: `Monitoring · Entity ${deviceId}` }),
+        page.getByRole("heading", { name: "Create service", exact: true }),
       ).toBeVisible();
-
-      await page.getByRole("combobox").first().selectOption("direct_patterns");
-      const topicPatternInput = page.getByRole("textbox");
-      await topicPatternInput.fill(topic);
-      await expect(topicPatternInput).toHaveValue(topic);
+      await page.getByRole("button", { name: "Static baseline", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "L1", exact: true })).toBeChecked();
 
       await page
         .getByRole("button", { name: /show advanced settings/i })
@@ -75,12 +71,14 @@ test.describe("monitoring lifecycle smoke", () => {
       expect(startResponse.ok()).toBeTruthy();
 
       const startPayload = startResponse.request().postDataJSON() as {
+        mqtt_topics?: string[];
         static_baseline_config?: {
           martingale_config?: {
             trackers?: Array<Record<string, unknown>>;
           };
         };
       };
+      expect(startPayload.mqtt_topics).toEqual([topic]);
       expect(
         startPayload.static_baseline_config?.martingale_config?.trackers,
       ).toEqual([
@@ -97,18 +95,15 @@ test.describe("monitoring lifecycle smoke", () => {
         }),
       ]);
 
-      const startedService = (await startResponse.json()) as {
-        service_id?: string;
-        container_name?: string;
-      };
-      serviceId = startedService.service_id;
-      containerName = startedService.container_name;
+      serviceId = ((await startResponse.json()) as { service_id?: string })
+        .service_id;
       expect(serviceId).toBeTruthy();
-      expect(containerName).toBeTruthy();
-      const serviceRow = page
-        .getByRole("row")
-        .filter({ hasText: containerName! });
-      await expect(serviceRow).toBeVisible({ timeout: 60_000 });
+      const details = page.getByRole("region", {
+        name: "Monitoring service details",
+        exact: true,
+      });
+      // The form opens the service once its pipeline activation created the workload.
+      await expect(details).toBeVisible({ timeout: 240_000 });
 
       const stopResponsePromise = page.waitForResponse(
         (response) =>
@@ -116,31 +111,25 @@ test.describe("monitoring lifecycle smoke", () => {
           new URL(response.url()).pathname.includes("/v1/monitors/"),
         { timeout: 240_000 },
       );
-      await serviceRow
-        .getByRole("button", { name: /stop and delete service/i })
+      await page
+        .getByRole("button", { name: "Service actions", exact: true })
         .click();
       await page
-        .getByRole("dialog")
-        .getByRole("button", { name: /stop and delete service/i })
+        .getByRole("menuitem", { name: "Stop and remove service", exact: true })
+        .click();
+      await page
+        .getByRole("dialog", { name: "Stop and remove service?", exact: true })
+        .getByRole("button", { name: "Remove service", exact: true })
         .click();
 
       const stopResponse = await stopResponsePromise;
       expect(stopResponse.ok()).toBeTruthy();
-      await expect(serviceRow).toBeHidden({ timeout: 60_000 });
+      await expect(details).toBeHidden({ timeout: 60_000 });
       serviceId = undefined;
-      containerName = undefined;
     } finally {
       if (serviceId && authToken) {
         await cleanupRequest.delete(
           `/api/v1/monitors/${encodeURIComponent(serviceId)}`,
-          {
-            failOnStatusCode: false,
-            headers: { Authorization: `Bearer ${authToken}` },
-          },
-        );
-      } else if (containerName && authToken) {
-        await cleanupRequest.delete(
-          `/api/v1/monitors/stop?container_name=${encodeURIComponent(containerName)}`,
           {
             failOnStatusCode: false,
             headers: { Authorization: `Bearer ${authToken}` },

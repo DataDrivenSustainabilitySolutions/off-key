@@ -60,9 +60,9 @@ class TelemetryRepository:
     async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
         snapshot = await read_collection_runtime(self._session)
         return sorted(
-            stream.sensor.key
+            stream.key
             for stream in snapshot.catalog.streams(selected_only=True)
-            if stream.charger_id == charger_id and stream.sensor.value_type == "number"
+            if stream.charger_id == charger_id and stream.value_type == "number"
         )[:limit]
 
     async def list_data(
@@ -116,12 +116,6 @@ class UserRepository:
             select(User).where(User.email == normalize_email(email))
         )
         return result.scalars().first()
-
-    async def add(self, user: User) -> User:
-        self._session.add(user)
-        await self._session.flush()
-        await self._session.refresh(user)
-        return user
 
 
 class FavoriteRepository:

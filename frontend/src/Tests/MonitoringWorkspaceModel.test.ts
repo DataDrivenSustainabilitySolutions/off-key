@@ -1,7 +1,8 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { buildMonitoringIndex, serviceName, serviceState, servicesForScope } from "@/features/monitoring/serviceModel";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
+import { buildMonitoringIndex, serviceName, serviceState, servicesForScope } from "@/domain/monitoring/serviceModel";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, OperationalStage } from "@/types/monitoring";
 
 const monitor = (id: string, topic: string, stage: OperationalStage = "operational"): ActiveService => ({

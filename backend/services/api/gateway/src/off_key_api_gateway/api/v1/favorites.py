@@ -4,18 +4,15 @@ from off_key_core.schemas.members import MemberProfile
 
 from ...facades.tactic import TacticError, tactic
 from ..access import current_member
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 
 
 @router.get("")
 async def get_favorites(user: MemberProfile = Depends(current_member)):
     """Get user favorites via TACTIC data service."""
-    try:
-        return await tactic.get_user_favorites(user_id=user.id)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.get_user_favorites(user_id=user.id)
 
 
 @router.post("")
@@ -33,7 +30,7 @@ async def add_favorite(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Charger already favorited",
             ) from e
-        raise_tactic_http_error(e)
+        raise
 
 
 @router.delete("")
@@ -51,4 +48,4 @@ async def remove_favorite(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Favorite not found",
             ) from e
-        raise_tactic_http_error(e)
+        raise

@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import type { Member } from "../src/lib/member-types";
-import { loginWithEmail, accessToken } from "./helpers/auth";
+import { accessToken, loginWithEmail, PASSWORD } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 
-const PASSWORD = "PlaywrightPass123!";
 const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
 
 async function accountFixture(page: Page) {

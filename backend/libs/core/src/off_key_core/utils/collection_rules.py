@@ -1,7 +1,7 @@
 """Resolve policy inheritance without allocating descendant lists per topic."""
 
 from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.collection_rules import CollectionRule, CollectionRuleScope
+from off_key_core.schemas.collection_rules import CollectionRuleScope
 
 
 class CollectionRuleResolver:
@@ -56,16 +56,3 @@ class CollectionRuleResolver:
     def materialize(self):
         for stream in self.definition.document.streams:
             stream.policy = self.resolve(stream)[0]
-
-
-def legacy_rules(document):
-    return [
-        CollectionRule(
-            scope=CollectionRuleScope(
-                kind="reading", connection_id=stream.connection_id, reading_id=stream.id
-            ),
-            policy=stream.policy or document.default_policy,
-        )
-        for stream in document.streams
-        if (stream.policy or document.default_policy).mode != "off"
-    ]

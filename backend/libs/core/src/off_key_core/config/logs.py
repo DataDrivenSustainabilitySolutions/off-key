@@ -1,3 +1,11 @@
+"""Core logging: YAML configuration, correlation IDs, redaction and formatters.
+
+Convention: a message starts with ``event=<area>.<name>`` and carries its own
+``key=value`` pairs. Context passed as ``extra=`` is rendered too: as trailing
+``key=value`` pairs in text output and under ``extra`` in JSON output, with
+sensitive keys redacted in both.
+"""
+
 import contextvars
 import hashlib
 import ipaddress
@@ -6,6 +14,7 @@ import logging.config
 import os
 import re
 import time
+import uuid
 from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
@@ -24,7 +33,16 @@ _SENSITIVE_KEY_PATTERN = re.compile(
     r"\b(password|token|secret|api[_-]?key|authorization|cookie|session|email|user|ip)\b",
     re.IGNORECASE,
 )
-_STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys())
+# Formatter.format adds message and asctime; the filter adds correlation_id.
+_STANDARD_RECORD_FIELDS = set(logging.makeLogRecord({}).__dict__.keys()) | {
+    "message",
+    "asctime",
+    "correlation_id",
+}
+
+
+# Inbound IDs are echoed into logs and headers, so only plain tokens are kept.
+_CORRELATION_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 
 class LogFormat(Enum):
@@ -38,6 +56,29 @@ class CorrelationFilter(logging.Filter):
     def filter(self, record):
         record.correlation_id = correlation_id.get() or "none"
         return True
+
+
+def _record_extras(record: logging.LogRecord) -> dict[str, Any]:
+    """Fields a call site passed through ``extra=``, redacted for the level."""
+    extra = {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
+    }
+    return redact_query_params(extra, level=record.levelno) if extra else {}
+
+
+class KeyValueFormatter(logging.Formatter):
+    """Text formatter that appends ``extra=`` context as ``key=value`` pairs."""
+
+    def formatMessage(self, record):
+        # Before any traceback, which Formatter.format appends afterwards.
+        formatted = super().formatMessage(record)
+        extra = _record_extras(record)
+        if not extra:
+            return formatted
+        pairs = " ".join(f"{key}={value}" for key, value in extra.items())
+        return f"{formatted} {pairs}"
 
 
 class JsonFormatter(logging.Formatter):
@@ -60,13 +101,9 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        extra = {
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
-        }
+        extra = _record_extras(record)
         if extra:
-            log_data["extra"] = redact_query_params(extra, level=record.levelno)
+            log_data["extra"] = extra
 
         return json.dumps(log_data, default=str)
 
@@ -75,7 +112,7 @@ class TruncatingFormatter(logging.Formatter):
     """Formatter that truncates long messages for stdout."""
 
     def __init__(self, base_format=None, truncate_length=40):
-        self.base_formatter = logging.Formatter(base_format) if base_format else None
+        self.base_formatter = KeyValueFormatter(base_format) if base_format else None
         self.truncate_length = truncate_length
 
     def format(self, record):
@@ -98,6 +135,59 @@ class TruncatingFormatter(logging.Formatter):
             return " - ".join([*prefix_parts, message_part])
 
         return formatted_msg
+
+
+class CorrelationIdMiddleware:
+    """Bind one correlation ID per HTTP request before any other middleware logs.
+
+    A valid inbound header is kept so a request carries one ID across services;
+    otherwise a new UUID is assigned. The response echoes the ID.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header = get_logging_settings().LOG_CORRELATION_HEADER.lower().encode("latin-1")
+        inbound = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope["headers"]
+                if name == header
+            ),
+            "",
+        )
+        request_id = (
+            inbound if _CORRELATION_ID_PATTERN.fullmatch(inbound) else str(uuid.uuid4())
+        )
+        token = correlation_id.set(request_id)
+
+        async def send_with_id(message) -> None:
+            if message["type"] == "http.response.start":
+                headers = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != header
+                ]
+                headers.append((header, request_id.encode("latin-1")))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            correlation_id.reset(token)
+
+
+def correlation_headers() -> dict[str, str]:
+    """Headers that forward the current request's correlation ID downstream."""
+    request_id = correlation_id.get()
+    if request_id is None:
+        return {}
+    return {get_logging_settings().LOG_CORRELATION_HEADER: request_id}
 
 
 def set_correlation_id(request_id: str) -> None:
@@ -213,7 +303,7 @@ def redact_query_params(
 def log_performance(
     operation: str,
     start_time: float,
-    logger_instance: logging.Logger | None = None,
+    logger_instance: "logging.Logger | LazyLogger | None" = None,
     slow_threshold_seconds: float = 1.0,
 ) -> None:
     """Log performance timing for operations."""
@@ -398,7 +488,7 @@ def _expand_env_vars(text: str) -> str:
 
     Examples:
         ${LOG_LEVEL:INFO} -> Uses LOG_LEVEL env var, defaults to INFO
-        ${LOG_FILE:/tmp/app.log} -> Uses LOG_FILE env var, defaults to /tmp/app.log
+        ${A:${B:INFO}} -> Uses A, then B, then INFO
     """
 
     def replace_env_var(match):
@@ -456,18 +546,6 @@ class LazyLogger:
             return getattr(logging.getLogger(), name)
         # No YAML config loaded - use basic logging
         return getattr(logging.getLogger("off_key"), name)
-
-    def __call__(self, *args, **kwargs):
-        # Handle cases where logger might be called directly
-        global _default_logger_instance, _service_logger_name
-        if _default_logger_instance == "YAML_CONFIGURED":
-            # When YAML config is used, return the service logger
-            if _service_logger_name:
-                return logging.getLogger(_service_logger_name)
-            # Fallback to root logger if service name not detected
-            return logging.getLogger()
-        # No YAML config loaded - use basic logging
-        return logging.getLogger("off_key")
 
 
 logger = LazyLogger()

@@ -1,7 +1,6 @@
 """Integration checks for actual Ansible rendering and Docker config parsing."""
 
 import hashlib
-import importlib.util
 import ipaddress
 import json
 import os
@@ -12,13 +11,9 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 import yaml
-from support import CLIENTS, ROOT, TOKEN, ansible, discovery, render, run
+from support import CLIENTS, ROOT, TOKEN, ansible, discovery, load_script, render, run
 
-spec = importlib.util.spec_from_file_location(
-    "compile_stack", ROOT / "scripts/compile_stack.py"
-)
-compiler = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(compiler)
+compiler = load_script("compile_stack")
 
 MOUNTS = {
     "persist_postgres": ("postgres", "/var/lib/postgresql/data"),
@@ -94,7 +89,7 @@ class DeploymentTests(unittest.TestCase):
             ),
             ("prod-moved", "prod", {"ambibox_nfs_addr": "100.100.10.99"}),
             ("prod-rotated", "prod", {"cloudflare_tunnel_token": TOKEN + "rotated"}),
-            ("prod-ephemeral", "prod", all_off | {"persist_mailpit": True}),
+            ("prod-ephemeral", "prod", all_off),
             ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
             ("prod-collection-disabled", "prod", {"mqtt_telemetry_enabled": "false"}),
             (
@@ -121,7 +116,7 @@ class DeploymentTests(unittest.TestCase):
     def test_credentials_remain_literal_through_compose_and_swarm(self):
         result = self.results["literal-credentials"]
         services, inputs = result["swarm_config"]["services"], result["inputs"]
-        for service in ("postgres", "tactic", "db-sync", "mqtt-proxy", "mqtt-radar"):
+        for service in ("postgres", "tactic", "db-sync", "mqtt-proxy"):
             self.assertEqual(
                 services[service]["environment"]["POSTGRES_PASSWORD"],
                 inputs["postgres_password"],
@@ -170,13 +165,7 @@ class DeploymentTests(unittest.TestCase):
         allowed = {
             "JWT_SECRET": {"api", "tactic"},
             "INTERNAL_API_SECRET": {"api", "tactic"},
-            "POSTGRES_PASSWORD": {
-                "postgres",
-                "tactic",
-                "db-sync",
-                "mqtt-proxy",
-                "mqtt-radar",
-            },
+            "POSTGRES_PASSWORD": {"postgres", "tactic", "db-sync", "mqtt-proxy"},
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
@@ -195,12 +184,9 @@ class DeploymentTests(unittest.TestCase):
                 services["api"]["environment"]["INTERNAL_API_SECRET"],
                 services["tactic"]["environment"]["INTERNAL_API_SECRET"],
             )
-            self.assertTrue(
-                all(
-                    key.startswith(("VITE_", "__VITE_"))
-                    for key in services["frontend"]["environment"]
-                )
-            )
+            self.assertEqual(services["frontend"].get("environment", {}), {})
+            # The secret template never runs; TACTIC copies only its secrets.
+            self.assertEqual(services["mqtt-radar"].get("environment", {}), {})
 
     def test_production_uses_resend(self):
         expected = {
@@ -301,15 +287,16 @@ class DeploymentTests(unittest.TestCase):
                     ]
                 )
             )
-            for environment in ("prod", "prod"):
-                with self.subTest(environment=environment):
+            # Retiring twice must be idempotent: the repeat finds nothing to remove.
+            for attempt in ("first", "repeat"):
+                with self.subTest(attempt=attempt):
                     ansible(
                         "playbook",
                         "-i",
                         "localhost,",
                         str(playbook),
                         "-e",
-                        f"offkey_env={environment}",
+                        "offkey_env=prod",
                     )
                     expected = [
                         name
@@ -398,9 +385,6 @@ class DeploymentTests(unittest.TestCase):
         for name, result in self.results.items():
             with self.subTest(case=name):
                 config = result["config"]
-                if result["inputs"]["validation_environment"] != "prod":
-                    self.assertNotIn("cloudflared", config["services"])
-                    continue
                 tunnel = config["services"]["cloudflared"]
                 secret = tunnel["secrets"][0]
                 target = PurePosixPath("/run/secrets") / secret["target"]
@@ -610,12 +594,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(
             proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
         )
-        self.assertEqual(radar["environment"]["ENVIRONMENT"], "production")
-        self.assertEqual(radar["environment"]["RADAR_MQTT_USE_AUTH"], "true")
-        self.assertNotIn("RADAR_MQTT_API_KEY", radar["environment"])
-        self.assertEqual(
-            radar["environment"]["RADAR_MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
-        )
+        self.assertNotIn("environment", radar)
         self.assertEqual(
             tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "offkey-proxy"
         )
@@ -719,13 +698,44 @@ class DeploymentTests(unittest.TestCase):
                 self.assertEqual(
                     forwarder["secrets"][0]["target"], "ambibox_gost_config.json"
                 )
-                if environment != "prod":
-                    self.assertNotIn("emqx_security_cfg", config.get("configs", {}))
                 rendered = json.dumps(config)
                 for value in self.results[environment]["inputs"][
                     "ambibox_access"
                 ].values():
                     self.assertNotIn(value, rendered)
+
+    def test_service_environment_is_read(self):
+        """Every key a first-party service receives is read by code it runs."""
+        backend = ROOT.parent / "backend"
+        sources = {
+            "api": [backend / "services/api/gateway/src"],
+            "tactic": [backend / "services/middleware/tactic/src"],
+            "db-sync": [backend / "services/db/sync/src"],
+            # The deploy readiness probe runs inside the proxy container.
+            "mqtt-proxy": [
+                backend / "services/mqtt/proxy/src",
+                ROOT / "scripts/check_application.py",
+            ],
+        }
+        shared = [backend / "libs/core/src"]
+
+        def text(paths):
+            files = (
+                [path] if path.is_file() else sorted(path.rglob("*")) for path in paths
+            )
+            return "\n".join(
+                file.read_text()
+                for group in files
+                for file in group
+                if file.suffix in {".py", ".yaml", ".yml"}
+            )
+
+        services = self.results["prod"]["config"]["services"]
+        for service, paths in sources.items():
+            code = text(paths + shared)
+            for key in services[service]["environment"]:
+                with self.subTest(service=service, key=key):
+                    self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]
@@ -734,7 +744,7 @@ class DeploymentTests(unittest.TestCase):
             "false",
         )
 
-    def test_readiness_receives_the_same_ingress_switches_as_the_controller(self):
+    def test_readiness_receives_the_same_collection_switch_as_the_controller(self):
         for name in ("prod", "prod-ingress-disabled"):
             services = self.results[name]["swarm_config"]["services"]
             expected = "false" if name == "prod-ingress-disabled" else "true"
@@ -743,10 +753,9 @@ class DeploymentTests(unittest.TestCase):
                     services[service]["environment"]["SYSTEM_COLLECTION_ENABLED"],
                     expected,
                 )
-                self.assertEqual(
-                    services[service]["environment"]["AMBIBOX_INGRESS_ENABLED"],
-                    expected,
-                )
+            self.assertEqual(
+                services["tactic"]["environment"]["AMBIBOX_INGRESS_ENABLED"], expected
+            )
 
     @unittest.skipUnless(
         os.environ.get("OFFKEY_GOST_SMOKE") == "1",

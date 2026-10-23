@@ -54,10 +54,11 @@ See [Environment variables](reference/environment-variables.md) for the configur
 From the repository root:
 
 ```bash
+docker swarm init --advertise-addr 127.0.0.1  # once; RADAR runs as Swarm services
 docker compose up -d --build
 ```
 
-The standalone RADAR and MQTT simulator services are profile-gated and do not start in the baseline stack.
+The MQTT simulator is profile-gated and does not start in the baseline stack. RADAR workloads start only when TACTIC launches a monitoring service.
 
 ## 3. Verify the stack
 
@@ -116,8 +117,8 @@ docker compose down -v
 | --- | --- | --- |
 | API gateway keeps restarting | Database schema or TACTIC is not ready | Wait for startup, then inspect `db-sync`, `tactic-middleware`, and gateway logs |
 | EMQX fails its health check | Dashboard password is missing or the persisted node state has incompatible bootstrap settings | Check `.env`; recreate the local EMQX volume only if its data can be discarded |
-| Verification email is missing | Mailpit is unavailable | Check the `mailpit` service and open its UI |
-| Frontend cannot reach the API | Vite proxy target or runtime API URL is wrong | Check `VITE_API_URL` for the selected run mode |
+| Invitation email is missing | Mailpit is unavailable | Check the `mailpit` service and open its UI |
+| Frontend cannot reach the API | Vite proxy target is wrong | Check `API_PROXY_TARGET` for the selected run mode |
 | Monitoring start cannot find its image | Local RADAR image has not been built | Run `docker compose build mqtt-radar` |
 
 ## Related pages

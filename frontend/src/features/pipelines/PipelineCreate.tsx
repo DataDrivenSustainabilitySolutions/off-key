@@ -7,16 +7,17 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
-import { MonitoringTargetPicker } from "../monitoring/MonitoringTargetPicker";
-import type { MonitoringTarget } from "../monitoring/serviceModel";
-import { sourceHref } from "../catalogue/collectionRules";
+import { MonitoringTargetPicker } from "../workspace/MonitoringTargetPicker";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { sourceHref } from "@/domain/system/collectionRules";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { normalizeDefinition, normalizeLayout, type PipelineCatalog, type PipelineServiceView, type PipelineView } from "./contracts";
 import type { GraphDocument } from "./model";
 import { useCreationSession, type CreationDraft } from "./creationSession";
 import { pipelinesApi } from "./api";
 import { useGraphMetadata } from "./useGraphMetadata";
-import { useGraphEditor, useUnsavedChanges } from "./useGraphEditor";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useGraphEditor } from "./useGraphEditor";
 import { PipelineDesignSettings } from "./PipelineDesignSettings";
 import { PipelineTemplateMenu } from "./PipelineTemplateMenu";
 import { PipelineSaveTemplate } from "./PipelineSaveTemplate";
@@ -25,8 +26,9 @@ import { PipelineInputBindings } from "./PipelineInputBindings";
 import { PipelineReadingPicker } from "./PipelineReadingPicker";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
-import { bindingsReady, suggestBindings } from "./bindings";
+import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
+import { strategyLabel } from "./semantics";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -59,8 +61,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const sourceId = props.sourceService?.id ?? replaceId;
   const startingId = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")?.id ?? catalog.templates[0]?.id;
   const initial = useCallback((): CreationDraft => {
-    const targetId = initialTarget ?? targets.find((target) => target.inputs.some((input) =>
-      predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;
+    const targetId = initialTarget ?? predecessorTarget(targets, predecessor);
     const target = targets.find((item) => item.id === targetId);
     const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
@@ -69,7 +70,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
-        Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))) : starting.bindings };
+        previousBindings(predecessor)) : starting.bindings };
   }, [catalog, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
   const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
@@ -95,12 +96,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
     onSelect: () => setInspectorPanel("component"),
   });
   const { selected, select, fitRequest, validation, commit, add } = graph;
-  const metadata = useGraphMetadata(undefined, draft.document.definition, canAuthor, selected);
+  const metadata = useGraphMetadata(draft.document.definition, canAuthor, selected);
   const target = targets.find((item) => item.id === draft.targetId);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
-  const active = new Set(props.services.filter((service) => service.status && service.id !== replaceService?.id).map((service) => service.id));
-  const owned = (id: string) => [...(props.byStream.get(id) ?? [])].some((service) => active.has(service));
+  const validateGraph = () => graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
+  const owned = readingOwnedElsewhere(props.services, props.byStream, replaceService?.id);
   const ready = bindingsReady(slots, target, bindings, owned);
   const dirty = session.isDirty();
   useUnsavedChanges(dirty && !locked);
@@ -130,7 +131,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     if (!ready || !props.collectionReady || props.activationBlocked) return;
     setChecking(true);
     try {
-      const result = await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected));
+      const result = await validateGraph();
       if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceId ?? null });
@@ -184,7 +185,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
               commit(document);
               setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
             }} /></div>
-          <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{draft.document.definition.strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline"}</strong>
+          <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{strategyLabel(draft.document.definition.strategy)}</strong>
             <small>{draft.document.definition.strategy === "adaptive_stream" ? "Learns from live readings" : "Learns a baseline, then monitors"}</small></div>
         </div>
         {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
@@ -207,7 +208,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
         {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
       </div>
       <PipelineWorkbench catalog={catalog} document={draft.document} validation={metadata ?? validation} readOnly={!canAuthor || locked || checking}
-        inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} settingsTitle="Learning settings"
+        inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel}
         selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
         onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
         actions={canAuthor && !locked && <>
@@ -215,7 +216,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
           <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
           <button type="button" disabled={checking} onClick={async () => {
-            try { await graph.validate((definition, selected) => pipelinesApi.validate(undefined, definition, undefined, selected)); setIssuesRequest((value) => value + 1); }
+            try { await validateGraph(); setIssuesRequest((value) => value + 1); }
             catch (reason) { setError(getErrorMessage(reason)); }
           }}><Check size={15} />Validate</button>
           {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {

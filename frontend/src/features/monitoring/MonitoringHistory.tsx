@@ -1,17 +1,16 @@
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import { EChart } from "@/components/EChart";
-import { TelemetryDetectorControls } from "@/components/TelemetryDetectorControls";
-import { useTheme } from "@/components/theme-provider";
-import { useDetectorSelection } from "@/hooks/use-detector-selection";
-import { resolveChartThemeColors } from "@/lib/echarts-theme";
+import { EChart } from "@/features/charts/EChart";
+import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
+import { useChartColors } from "@/features/charts/use-chart-colors";
+import { useDetectorSelection } from "@/features/charts/use-detector-selection";
 import { useNavigationDraft } from "@/lib/navigation-draft";
-import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/lib/telemetry-chart";
-import { getChartDomain } from "@/lib/telemetry-thresholds";
+import { buildMonitoringChartOption, formatChartTime, formatNumber, getLocalTimeZone } from "@/features/charts/telemetry-chart";
+import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { ActiveService } from "@/types/monitoring";
-import type { SystemConnection } from "../catalogue/systemTypes";
-import type { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import type { MonitoringInput } from "./serviceModel";
+import type { SystemConnection } from "@/types/system";
+import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
 
@@ -21,7 +20,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   service: ActiveService; inputs: MonitoringInput[]; connections: SystemConnection[];
   historyCache?: ReadingHistoryCache; initialReading?: string;
 }) {
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, colors } = useChartColors();
   const key = `monitoring-chart:${historyCache?.owner ?? "local"}:${service.id}:${initialReading ?? "all"}`;
   const [chosen, setChosen] = useNavigationDraft<string[]>(`${key}:readings`,
     initialReading ? [initialReading] : inputs.slice(0, MAX_VISIBLE_READINGS).map(input => input.stream.id));
@@ -32,7 +31,6 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   }, [inputs, chosen]);
   const history = useServiceHistory(service.id, selectedInputs, inputs, connections, historyCache);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
-  const colors = useMemo(() => resolveChartThemeColors(resolvedTheme), [resolvedTheme]);
   const histories = useMemo(() => new Map([...history.histories].map(([id, value]) => [id, value.telemetry])), [history.histories]);
   const operational = service.status && service.operational_status.stage === "operational" && !service.operational_status.is_stale;
   const base = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,

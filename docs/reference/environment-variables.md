@@ -61,14 +61,14 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `APP_NAME` | `off-key` | Application display name; non-empty string |
+| `APP_NAME` | Required, no default; `.env.example` sets `aberration` | API title shown by the gateway; non-empty string |
 | `ENVIRONMENT` | `development` | Runtime environment label |
 | `DEBUG` | `false` | Debug-mode toggle; keep disabled in production |
 | `BACKEND_PORT` | `8000` | Gateway host port |
 | `FRONTEND_PORT` | `5173` | Frontend host port |
 | `FRONTEND_BASE_URL` | `http://localhost:5173` | Base URL used in emailed links |
 | `CORS_ALLOWED_ORIGINS` | Local frontend and Gateway origins | Valid JSON array of allowed origins |
-| `VITE_API_URL` | `http://api-gateway:8000` | API URL reachable from the frontend runtime; use `http://localhost:8000` for host-run Vite |
+| `API_PROXY_TARGET` | `http://api-gateway:8000` | Development only: where the Vite dev server proxies `/api`; use `http://localhost:8000` for host-run Vite. The old name `VITE_API_URL` is still read. Built images always call `/api` on their own origin |
 
 ## Authentication
 
@@ -97,6 +97,10 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 ## PostgreSQL and TimescaleDB
 
+Every backend service reads these with the same rules and no code defaults; the
+defaults below come from `.env.example`. Managed RADAR workers receive the
+resulting URL as `RADAR_DATABASE_URL` from TACTIC.
+
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `POSTGRES_USER` | `postgres` | Database user |
@@ -105,15 +109,15 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 | `POSTGRES_HOST` | `timescaledb` | Host reachable from backend containers |
 | `POSTGRES_PORT` | `5432` | Database port, `1–65535` |
 
-## MQTT source and proxy
+## MQTT proxy
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `MQTT_BROKER_HOST` | `emqx-main` | Internal EMQX host |
-| `MQTT_BROKER_PORT` | `1883` | Source MQTT port |
-| `MQTT_USE_TLS` | `false` | TLS for the source client |
-| `MQTT_USE_AUTH` | `false` | Source-broker authentication toggle |
-| `MQTT_TELEMETRY_ENABLED` | `true` | Persist parsed source telemetry |
+| `MQTT_BROKER_PORT` | `1883` | Internal EMQX port |
+| `MQTT_USE_TLS` | `false` | TLS to the internal EMQX broker |
+| `MQTT_USE_AUTH` | `false` | EMQX authentication toggle |
+| `MQTT_TELEMETRY_ENABLED` | `true` | Persist collected telemetry; fixed to `true` in the local Compose file |
 
 When `MQTT_USE_AUTH=true`, provide the supported `MQTT_USERNAME` and `MQTT_APIKEY` runtime variables through an ignored file or secret store.
 
@@ -140,28 +144,36 @@ unknown errors remain eligible for retry.
 | --- | --- | --- |
 | `TACTIC_DOCKER_API_URL` | `http://socket-proxy` | Restricted Docker API proxy URL |
 | `TACTIC_DOCKER_API_PORT` | `2375` | Docker API proxy port |
-| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads |
-| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR broker port |
-| `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR TLS default |
-| `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR authentication default |
+| `TACTIC_DOCKER_MAX_CONCURRENT_CALLS` | `5` | Concurrent Docker calls per client: one shared by requests and the activation supervisor, one for the reconciliation sweep |
+| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST` | `emqx-main` | Broker supplied to managed RADAR workloads; TACTIC's collection publisher uses it too, so it must be the broker mqtt-proxy subscribes on (`MQTT_BROKER_HOST`) |
+| `TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT` | `1883` | Managed RADAR and collection publisher broker port |
+| `TACTIC_RADAR_DEFAULT_MQTT_USE_TLS` | `false` | Managed RADAR and collection publisher TLS |
+| `TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH` | `false` | Managed RADAR and collection publisher authentication; the publisher falls back to `TACTIC_RADAR_DEFAULT_MQTT_USERNAME` when `SYSTEM_COLLECTION_MQTT_USERNAME` is empty |
 | `TACTIC_RADAR_WORKLOAD_LIFECYCLE` | `ephemeral` | `ephemeral` or `persistent` |
-| `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to use legacy creation while existing graph execution, inspection, stopping and release recovery remain available. |
+| `TACTIC_PIPELINE_AUTHORING_ENABLED` | `true` | Enables the visual Create workbench, new designs, publication and activations. Set `false` to hide the workbench; the setup forms still start monitors as pipelines, and existing graph execution, inspection, stopping and release recovery remain available. |
 | `TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS` | `90` | Constructor preflight deadline, 5–300 seconds. Jobs have no broker/database credentials or subscriptions. |
 | `TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS` | `120` | Successor heartbeat deadline after creation, 10–600 seconds. |
-| `TACTIC_SERVICE_HOST` | `tactic-middleware` | Internal service-discovery host |
-| `TACTIC_SERVICE_PORT` | `8000` | Internal service-discovery port |
+| `TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS`, `TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS` | `2`, `8` | Activation concurrency bounds; see [Monitoring pipelines](../development/monitoring-pipelines.md) |
+| `TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB`, `TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE`, `TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES` | `384`, `256`, `65536` | Managed worker budgets; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `TACTIC_RADAR_MAX_ACTIVE_MONITORS` | `20` | Monitor count limit; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT`, `TACTIC_DOCKER_DEFAULT_CPU_LIMIT` | `512m`, `0.5` | Swarm service limits for managed workers; see [RADAR deployment capacity](../operations/radar-capacity.md) |
+| `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
+| `TACTIC_SERVICE_HOST` | `middleware_tactic` (Compose sets `tactic-middleware`) | Where the API gateway reaches TACTIC; read only by the gateway |
+| `TACTIC_SERVICE_PORT` | `8000` | TACTIC port the API gateway calls; read only by the gateway |
 
-## Standalone RADAR profile
+## RADAR workloads
+
+TACTIC sets these on each workload it launches.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `RADAR_MQTT_BROKER_HOST` | `emqx-main` | Standalone RADAR broker |
+| `RADAR_MQTT_BROKER_HOST` | `emqx-main` | RADAR broker |
 | `RADAR_MQTT_BROKER_PORT` | `1883` | Broker port |
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
-| `RADAR_SUBSCRIPTION_TOPICS` | `telemetry/#` | Accepted generic topics; managed monitors use selected concrete readings |
-| `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
-| `RADAR_PIPELINE_CONFIG` | Unset | Version-1 canonical bound execution JSON, emitted by activation. If monitoring JSON is also supplied, it must match the graph-derived strategy settings. Limited to 96 KiB serialized. |
+| `RADAR_SUBSCRIPTION_TOPICS` | Set by TACTIC | Concrete topics from the monitor's selected readings (wildcards are rejected) |
+| `RADAR_MONITORING_CONFIG` | Set by TACTIC | Strategy settings derived from the pipeline; when supplied, they must match the graph |
+| `RADAR_PIPELINE_CONFIG` | Required | Version-1 canonical bound execution JSON, emitted by activation. Every monitor runs a pipeline; RADAR does not start without one. Limited to 96 KiB serialized. |
 | `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |
 | `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
 | `RADAR_MAX_QUEUE_SIZE` | `256` | Maximum admitted messages waiting for the serial processor, bounded before the network thread schedules asyncio work. |
@@ -170,27 +182,24 @@ unknown errors remain eligible for retry.
 | `RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS` | `5` | Maximum permitted observation time ahead of the worker clock. |
 | `RADAR_ALIGNMENT_MAX_SKEW_SECONDS` | `5` | Maximum time spread between observations in one aligned vector. |
 
-TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
-monitoring configuration. Standalone RADAR still accepts the legacy
-`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`, `RADAR_MODEL_PARAMS`,
-`RADAR_STATIC_BASELINE_CONFIG`, and `RADAR_ADAPTIVE_STREAM_CONFIG` variables when
-the canonical variable is absent. Do not mix the formats; conflicting settings
-prevent startup.
+The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
+`RADAR_MODEL_PARAMS`, `RADAR_STATIC_BASELINE_CONFIG` and
+`RADAR_ADAPTIVE_STREAM_CONFIG`) are no longer read.
 
 ## Internal services, retention, and logging
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `SYNC_HOSTNAME` | `db-sync` | DB Sync service hostname |
 | `SYNC_API_HOST` | `0.0.0.0` | DB Sync bind address |
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
 | `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
-| `LOG_FORMAT` | `simple` | Supported log output format |
+| `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |
 | `LOG_PII_DEBUG_UNMASK` | `false` | Never enable in shared or production environments |
-| `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle |
-| `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle |
+| `ENABLE_REQUEST_LOGGING` | `true` | HTTP request logging toggle (gateway only) |
+| `ENABLE_PERFORMANCE_LOGGING` | `true` | Performance logging toggle (gateway only) |
+| `LOG_CORRELATION_HEADER` | `X-Correlation-ID` | Request header that carries the correlation ID; the gateway forwards it to TACTIC and both echo it in responses. Inbound IDs other than 1 to 128 letters, digits or `._:-` are replaced |
 
 ## Production images and collection ingress
 
@@ -200,9 +209,13 @@ tested main commit. Images are recorded in the verified server release; local
 
 | Variable | Default / requirement | Purpose |
 | --- | --- | --- |
-| `SYSTEM_COLLECTION_ENABLED` | `false` in service defaults; enabled in deployments | Run persistent generic collection independently of previews |
+| `SYSTEM_COLLECTION_ENABLED` | `true` | Run persistent generic collection independently of previews |
 | `SYSTEM_LIVE_ENABLED` | `false` in service defaults | Permit temporary in-memory previews |
-| `SYSTEM_LIVE_ALLOWED_HOSTS`, `SYSTEM_LIVE_ALLOWED_HOST_SUFFIXES` | Operator configuration | Allowed generic upstream brokers |
+| `SYSTEM_LIVE_ALLOWED_HOSTS` | Operator configuration | Allowed generic upstream brokers |
+| `SYSTEM_LIVE_DATA_SOURCE` | `broker` | `simulated` replaces upstream brokers with generated preview data |
+| `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` | `15` | Upstream broker connection deadline for previews |
+| `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
+| `SIMULATOR_WORKSHOP_ENABLED` | `false` | Local simulator also publishes the workshop fixture topics |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
 | `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |
 | `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Allow reuse of operator-provisioned private broker access |
@@ -221,18 +234,12 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 
 | Symptom | Likely variables | First action |
 | --- | --- | --- |
-| Frontend loads but API calls fail | `VITE_API_URL`, `BACKEND_PORT`, `CORS_ALLOWED_ORIGINS` | Align the URL with host/container reachability and CORS |
+| Frontend loads but API calls fail | `API_PROXY_TARGET`, `BACKEND_PORT`, `CORS_ALLOWED_ORIGINS` | Align the URL with host/container reachability and CORS |
 | Verification/reset links are wrong | `FRONTEND_BASE_URL` | Set the externally reachable frontend URL |
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
 | Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
-| Swarm ingress has no traffic | `INGRESS_*` | Verify persisted state, tailnet reachability, and upstream host |
-
-## Related pages
-
-- [Getting started](../getting-started.md)
-- [Developer setup](../development/setup.md)
-- [Deployment modes](../operations/deployment-modes.md)
+| Vendor broker has no traffic | `AMBIBOX_INGRESS_ENABLED`, `AMBIBOX_SOCKS_SERVER` | Verify persisted vendor identity, tailnet reachability, and upstream host |
 
 ## RADAR configuration files
 
@@ -243,3 +250,9 @@ limit are described in [RADAR deployment capacity](../operations/radar-capacity.
 settings and components are constructed. File values override environment values.
 Restart the workload after changing configuration; running services do not watch
 or reload the file.
+
+## Related pages
+
+- [Getting started](../getting-started.md)
+- [Developer setup](../development/setup.md)
+- [Deployment modes](../operations/deployment-modes.md)

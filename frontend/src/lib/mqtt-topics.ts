@@ -1,5 +1,4 @@
-export const DEVICE_TELEMETRY_FILTER = "telemetry/#";
-export const DEVICE_TELEMETRY_PREFIX = "telemetry";
+const DEVICE_TELEMETRY_PREFIX = "telemetry";
 
 
 export interface DeviceTelemetryTopic {
@@ -29,13 +28,6 @@ export const buildDeviceTelemetryTopic = (
     throw new Error("Telemetry type must be a concrete MQTT hierarchy.");
   }
   return `${DEVICE_TELEMETRY_PREFIX}/${chargerId}/${telemetryType}`;
-};
-
-export const buildDeviceTelemetryChargerFilter = (chargerId: string): string => {
-  if (!isConcreteHierarchy(chargerId) || chargerId.includes("/")) {
-    throw new Error("Entity ID must be one concrete MQTT level.");
-  }
-  return `${DEVICE_TELEMETRY_PREFIX}/${chargerId}/#`;
 };
 
 export const parseDeviceTelemetryTopic = (

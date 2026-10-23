@@ -35,15 +35,8 @@ export const getTokenPayload = (token: string): Record<string, unknown> | null =
 };
 
 export const getUserIdFromToken = (token: string): number | null => {
-  try {
-    const payload = getTokenPayload(token);
-    if (!payload) {
-      return null;
-    }
-    return parseNumericUserId(payload.user_id) ?? parseNumericUserId(payload.sub);
-  } catch {
-    return null;
-  }
+  const payload = getTokenPayload(token);
+  return payload ? parseNumericUserId(payload.user_id) ?? parseNumericUserId(payload.sub) : null;
 };
 
 export const isTokenExpired = (token: string): boolean => {

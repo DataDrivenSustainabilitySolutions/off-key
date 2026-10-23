@@ -1,10 +1,11 @@
 """Private operator controls for temporary generic MQTT observation."""
 
 import json
+from dataclasses import dataclass, field
 from functools import lru_cache
-from pathlib import Path
 from typing import Annotated, Literal
 
+from off_key_core.config.validation import SECRETS_DIR
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -27,11 +28,23 @@ class LiveSocksProxy(LiveCredential):
         return SystemConnection(id="validation", label="Proxy", host=value).host
 
 
+@dataclass(frozen=True)
+class CollectionOutputEndpoint:
+    """Where TACTIC publishes accepted readings for mqtt-proxy to store."""
+
+    host: str
+    port: int
+    use_tls: bool
+    ca_file: str | None
+    username: str | None = None
+    password: SecretStr | None = field(default=None, repr=False)
+
+
 class SystemLiveSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     SYSTEM_LIVE_ENABLED: bool = False
@@ -52,6 +65,23 @@ class SystemLiveSettings(BaseSettings):
     SYSTEM_LIVE_MAX_SAMPLES: int = Field(default=8192, ge=64, le=65536)
     SYSTEM_LIVE_LEASE_SECONDS: int = Field(default=45, ge=15, le=120)
     SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS: int = Field(default=15, ge=5, le=120)
+
+    def collection_output_endpoint(self, radar_defaults) -> CollectionOutputEndpoint:
+        """The broker mqtt-proxy subscribes on, reached with the managed RADAR
+        broker defaults; the collection account falls back to RADAR's user."""
+        auth = radar_defaults.mqtt_use_auth
+        return CollectionOutputEndpoint(
+            host=radar_defaults.mqtt_broker_host,
+            port=radar_defaults.mqtt_broker_port,
+            use_tls=radar_defaults.mqtt_use_tls,
+            ca_file=self.SYSTEM_COLLECTION_MQTT_CA_FILE,
+            username=(
+                self.SYSTEM_COLLECTION_MQTT_USERNAME or radar_defaults.mqtt_username
+                if auth
+                else None
+            ),
+            password=self.SYSTEM_COLLECTION_MQTT_API_KEY if auth else None,
+        )
 
     @field_validator(
         "SYSTEM_LIVE_CREDENTIALS", "SYSTEM_LIVE_SOCKS_PROXIES", mode="before"

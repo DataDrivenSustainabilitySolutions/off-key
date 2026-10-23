@@ -4,34 +4,27 @@ services:
     environment:
       EMQX_API_KEY__BOOTSTRAP_FILE: /run/secrets/ambibox_api_bootstrap
 {% endif %}
-{% if offkey_env == 'prod' %}
     configs:
       - source: emqx_security_cfg
         target: /opt/emqx/etc/base.hocon
-{% endif %}
     secrets:
-{% if offkey_env == 'prod' %}
       - source: emqx_server_cert
         target: emqx_server_cert.pem
       - source: emqx_server_key
         target: emqx_server_key.pem
       - source: emqx_auth_users
         target: emqx_auth_users.json
-{% endif %}
 {% if ambibox_ingress_enabled | bool %}
       - source: ambibox_api_bootstrap
         target: ambibox_api_bootstrap
 {% endif %}
 
-{% if offkey_env == 'prod' or ambibox_ingress_enabled | bool %}
   tactic:
     secrets:
-{% if offkey_env == 'prod' %}
       - source: emqx_ca_cert
         target: EMQX_CA_CERT
       - source: mqtt_proxy_password
         target: SYSTEM_COLLECTION_MQTT_API_KEY
-{% endif %}
 {% if ambibox_ingress_enabled | bool %}
       - source: ambibox_api_key
         target: AMBIBOX_EMQX_API_KEY
@@ -44,7 +37,6 @@ services:
       - source: ambibox_mqtt_password
         target: AMBIBOX_MQTT_PASSWORD
 {% endif %}
-{% endif %}
 
 {% if ambibox_ingress_enabled | bool %}
   mqtt-tailscale-bridge:
@@ -54,7 +46,6 @@ services:
         target: ambibox_gost_config.json
 {% endif %}
 
-{% if offkey_env == 'prod' %}
   mqtt-proxy:
     environment:
       MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
@@ -65,8 +56,6 @@ services:
         target: MQTT_APIKEY
 
   mqtt-radar:
-    environment:
-      RADAR_MQTT_CA_FILE: /run/secrets/EMQX_CA_CERT
     secrets:
       - source: emqx_ca_cert
         target: EMQX_CA_CERT
@@ -79,7 +68,6 @@ configs:
   emqx_security_cfg:
     name: emqx_security_cfg_${EMQX_SECURITY_CFG_HASH}
     file: ./emqx-security.hocon
-{% endif %}
 
 # Shared declarations; each service above mounts only the credentials it needs.
 secrets:

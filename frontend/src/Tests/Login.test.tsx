@@ -4,8 +4,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 
 import { AuthProvider } from "@/auth/AuthContext";
-import { tokenManager } from "@/lib/api-client";
+import { tokenManager } from "@/auth/session";
 import Login from "../pages/Login";
+import { unsignedJwt as createUnsignedToken } from "./support/fixtures/auth";
 
 const mockNavigate = vi.fn();
 
@@ -27,8 +28,6 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   fetchMock = vi.fn<typeof fetch>();
   globalThis.fetch = fetchMock;
-  localStorage.clear();
-  sessionStorage.clear();
   mockNavigate.mockReset();
   vi.stubEnv("VITE_LOCAL_ADMIN_EMAIL", undefined);
   vi.stubGlobal("location", { hostname: "localhost" });
@@ -37,8 +36,6 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.resetAllMocks();
-  vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
 });
 
 const renderLogin = () =>
@@ -50,18 +47,6 @@ const renderLogin = () =>
     </AuthProvider>
   );
 
-const encodeBase64Url = (value: object): string =>
-  btoa(JSON.stringify(value))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-
-const createUnsignedToken = (payload: object): string =>
-  [
-    encodeBase64Url({ alg: "none", typ: "JWT" }),
-    encodeBase64Url(payload),
-    "",
-  ].join(".");
 
 describe("Login", () => {
   it("shows form fields and submit button", () => {

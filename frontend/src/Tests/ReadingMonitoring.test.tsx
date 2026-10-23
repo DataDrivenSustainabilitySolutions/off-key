@@ -1,13 +1,14 @@
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
-import { mergeReadingHistory } from "@/features/explorer/readingMonitoring";
-import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
-import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/features/explorer/readingHistoryCache";
-import type { SystemConnection, SystemStream } from "@/features/catalogue/systemTypes";
+import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
+import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
+import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/domain/readings/readingHistoryCache";
+import type { SystemConnection, SystemStream } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
-const connection: SystemConnection = { id: "broker", label: "Building", protocol: "mqtt", host: "broker.test", port: 1883, transport: "tcp", tls: false };
+const connection: SystemConnection = mqttConnection({ id: "broker", label: "Building", host: "broker.test" });
 const stream: SystemStream = { id: "reading", label: "Temperature", connection_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
 const savedBinding = { entity_id: "canonical-entity", telemetry_key: "temperature/air", accepted_topic: "telemetry/canonical-entity/temperature/air", policy: { mode: "original" as const, interval_seconds: 10 } };
 const time = "2026-10-10T12:00:00Z";
@@ -21,11 +22,11 @@ beforeEach(() => {
   vi.mocked(apiUtils.get).mockImplementation(async (endpoint) => {
     if (endpoint.includes("/data?")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
-    if (endpoint.startsWith("/v1/anomalies?") || endpoint.startsWith("/v1/monitors/all?")) return [];
+    if (endpoint.startsWith("/v1/anomalies?")) return [];
+    if (endpoint.startsWith("/v1/monitors/workspace")) return { services: [], authoring_enabled: false };
     throw new Error("Unexpected endpoint");
   });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("reading monitoring identity and history", () => {
   it("sorts and bounds history, updates corrected samples, and discards invalid points", () => {
@@ -110,7 +111,20 @@ describe("selected-reading monitoring subscription", () => {
     expect(signal?.aborted).toBe(true);
     expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
     expect(hook.result.current.telemetry).toEqual(points);
-    expect(apiUtils.get).toHaveBeenCalledTimes(8);
+    // Three history requests per selection; the service list is one shared request.
+    expect(apiUtils.get).toHaveBeenCalledTimes(7);
+  });
+
+  it("filters the shared service list to the reading's accepted topic", async () => {
+    const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/workspace")
+      ? Promise.resolve({ services: [
+        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"] },
+        { id: "other", mqtt_topics: ["telemetry/other-entity/#"] },
+      ] }) : baseGet(endpoint, options));
+    const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
+    await waitFor(() => expect(hook.result.current.services.map(service => service.id)).toEqual(["match"]));
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace"))).toHaveLength(1);
   });
 
   it("polls with ingestion cursors, pauses in hidden tabs, and recovers from partial failures", async () => {

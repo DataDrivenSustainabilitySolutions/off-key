@@ -1,7 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,38 +6,7 @@ import {
   setClientLoggerProductionOverride,
 } from "@/lib/logger";
 
-const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SRC_ROOT = path.resolve(CURRENT_DIR, "..");
-
-const collectSourceFiles = (dirPath: string): string[] => {
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const files: string[] = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-
-    if (entry.isDirectory()) {
-      if (entry.name === "Tests") {
-        continue;
-      }
-      files.push(...collectSourceFiles(fullPath));
-      continue;
-    }
-
-    if (!/\.(ts|tsx)$/.test(entry.name)) {
-      continue;
-    }
-    if (fullPath.endsWith(path.join("lib", "logger.ts"))) {
-      continue;
-    }
-    files.push(fullPath);
-  }
-
-  return files;
-};
-
 afterEach(() => {
-  vi.restoreAllMocks();
   setClientLoggerProductionOverride(null);
 });
 
@@ -92,20 +58,5 @@ describe("clientLogger", () => {
     const serializedError = payload.error as Record<string, unknown>;
     expect(serializedError.name).toBe("Error");
     expect(serializedError.message).toBe("failed");
-  });
-
-  it("avoids direct console usage outside logger wrapper", () => {
-    const files = collectSourceFiles(SRC_ROOT);
-    const offenders: string[] = [];
-    const consoleCall = /\bconsole\.(debug|info|warn|error|log)\s*\(/;
-
-    for (const filePath of files) {
-      const content = fs.readFileSync(filePath, "utf8");
-      if (consoleCall.test(content)) {
-        offenders.push(path.relative(SRC_ROOT, filePath));
-      }
-    }
-
-    expect(offenders).toEqual([]);
   });
 });

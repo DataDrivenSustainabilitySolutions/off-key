@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { setAppearance } from "./helpers/appearance";
+import { expectNoHorizontalScroll } from "./helpers/layout";
 
 async function bounds(locator: Locator) {
   const box = await locator.boundingBox();
@@ -133,7 +134,7 @@ test("mobile drawers leave the header and content geometry intact and restore ke
     await page.locator(".app-catalogue-mobile-overlay").click({ position: { x: width - 4, y: 80 } });
     await expect(drawer).toHaveCount(0);
     await expect(show).toBeFocused();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expectNoHorizontalScroll(page);
     await setAppearance(page, "Follow system");
   }
 

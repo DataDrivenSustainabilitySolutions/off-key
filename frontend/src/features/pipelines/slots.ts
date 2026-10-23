@@ -1,4 +1,5 @@
-import type { MonitoringInput, MonitoringTarget } from "../monitoring/serviceModel";
+import type { MonitoringInput, MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import type { PipelineDefinition } from "./contracts";
 
 /** One slot per enabled reading of the target; the first keeps the design's own slot ID. */
@@ -11,7 +12,7 @@ export function targetInputs(
     && (!reading || !target.inputs.some((item) => item.stream.id === reading) || input.stream.id === reading)) ?? [];
   if (!readings.length) return undefined;
   const used = new Set<string>();
-  const next = readings.slice(0, 100).map((input, index) => {
+  const next = readings.slice(0, PIPELINE_LIMITS.slots).map((input, index) => {
     let id = index === 0 ? (slots[0]?.id ?? "input_1") : `input_${index + 1}`;
     for (let suffix = index + 1; used.has(id); suffix++) id = `input_${suffix}`;
     used.add(id);
@@ -22,7 +23,7 @@ export function targetInputs(
 
 /** Keep removed bindings for undo/reselection; never give their IDs to a different reading. */
 export function addReading(slots: PipelineDefinition["input_slots"], bindings: Record<string, string>, input: MonitoringInput) {
-  if (slots.length >= 100 || slots.some((slot) => bindings[slot.id] === input.stream.id)) return { slots, bindings };
+  if (slots.length >= PIPELINE_LIMITS.slots || slots.some((slot) => bindings[slot.id] === input.stream.id)) return { slots, bindings };
   const previous = Object.keys(bindings).find((id) => bindings[id] === input.stream.id && !slots.some((slot) => slot.id === id));
   let id = previous ?? "input_1";
   for (let index = 2; !previous && (slots.some((slot) => slot.id === id) || id in bindings); index++) id = `input_${index}`;
@@ -35,8 +36,26 @@ export function selectReadings(target: MonitoringTarget, slots: PipelineDefiniti
   let next = { slots: slots.filter((slot) => selected.includes(bindings[slot.id]!)), bindings };
   for (const input of target.inputs) {
     if (selected.includes(input.stream.id) && input.binding.policy.mode !== "off"
-      && !next.slots.some((slot) => next.bindings[slot.id] === input.stream.id) && next.slots.length < 100)
+      && !next.slots.some((slot) => next.bindings[slot.id] === input.stream.id) && next.slots.length < PIPELINE_LIMITS.slots)
       next = addReading(next.slots, next.bindings, input);
   }
   return next;
 }
+
+type Slots = PipelineDefinition["input_slots"];
+
+/** A design-settings slot takes the first free input_N among the slot ids. */
+export function addSlot(slots: Slots): Slots {
+  let index = 1;
+  while (slots.some((slot) => slot.id === `input_${index}`)) index++;
+  return [...slots, { id: `input_${index}`, label: `Input ${index}`, unit: null }];
+}
+
+export const renameSlot = (slots: Slots, id: string, label: string): Slots =>
+  slots.map((slot) => (slot.id === id ? { ...slot, label } : slot));
+
+/** An empty unit means unspecified. */
+export const setSlotUnit = (slots: Slots, id: string, unit: string): Slots =>
+  slots.map((slot) => (slot.id === id ? { ...slot, unit: unit || null } : slot));
+
+export const removeSlot = (slots: Slots, id: string): Slots => slots.filter((slot) => slot.id !== id);

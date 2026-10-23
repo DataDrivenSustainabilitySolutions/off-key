@@ -20,16 +20,23 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
+from off_key_core.models.adaptive import bind_detector_parameters
 from off_key_core.models.static import (
     get_static_model_definition,
     validate_static_model_params,
 )
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
+    normalize_sensor_key_strategy,
     normalize_static_monitoring_topics,
 )
 
-from .pipelines import PipelineExecutionConfig
+from .pipelines import (
+    DEFAULT_CALIBRATION_WINDOW_SIZE,
+    DEFAULT_TRAINING_WINDOW_SIZE,
+    PipelineExecutionConfig,
+    PipelineStrategy,
+)
 
 __all__ = [
     "AdaptivePreprocessingStep",
@@ -38,6 +45,7 @@ __all__ = [
     "AlarmStatistic",
     "AutomaticAlarmThresholdConfig",
     "AutomaticThresholdCalibrationConfig",
+    "FormMonitorConfig",
     "LegacyMonitoringConfig",
     "ManualAlarmThresholdConfig",
     "MartingaleTrackerConfig",
@@ -60,8 +68,7 @@ __all__ = [
     "validate_service_name",
 ]
 
-_SENSOR_KEY_STRATEGIES = {"full_hierarchy", "top_level", "leaf"}
-MonitoringStrategy = Literal["static_baseline", "adaptive_stream"]
+MonitoringStrategy = PipelineStrategy
 _MAX_AUTOMATIC_CALIBRATION_WORK = 1_000_000_000
 AlarmStatistic = Literal[
     "martingale",
@@ -136,7 +143,7 @@ class RadarRecoveryStatus(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    storage: Literal["file", "database"] = "file"
+    storage: Literal["none", "database"] = "none"
     restored: bool = False
     restored_processed_count: int | None = Field(default=None, ge=0)
     restored_saved_at: datetime | None = None
@@ -186,11 +193,7 @@ class PerformanceConfig(BaseModel):
     @field_validator("sensor_key_strategy")
     @classmethod
     def validate_sensor_key_strategy(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in _SENSOR_KEY_STRATEGIES:
-            allowed = ", ".join(sorted(_SENSOR_KEY_STRATEGIES))
-            raise ValueError(f"sensor_key_strategy must be one of: {allowed}")
-        return normalized
+        return normalize_sensor_key_strategy(value)
 
 
 class StandardScalerConfig(BaseModel):
@@ -264,8 +267,12 @@ class AdaptiveStreamConfig(BaseModel):
     aberrant_version: str = ABERRANT_VERSION
     model_type: str = "aberrant_online_isolation_forest"
     model_params: dict[str, Any] = Field(default_factory=dict)
-    training_window_size: int = Field(default=1200, ge=2, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=2, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     preprocessing_steps: list[AdaptivePreprocessingStep] = Field(
         default_factory=list,
         max_length=2,
@@ -387,14 +394,9 @@ class AdaptiveStreamConfig(BaseModel):
                     f"component_{index}" for index in range(step.n_components)
                 ]
             transformers.append({"id": step.type, "params": params})
-        params = dict(self.model_params)
-        for name in definition["bound_parameters"]:
-            if name == "abs_diff":
-                params[name] = True
-            elif name == "key":
-                params[name] = current_keys[0] if current_keys else None
-            else:
-                params[name] = current_keys
+        params = bind_detector_parameters(
+            definition["bound_parameters"], self.model_params, current_keys
+        )
         return {
             "version": 1,
             "transformers": transformers,
@@ -529,7 +531,7 @@ def _calibration_betting_width(
     return 1
 
 
-def _default_martingale_trackers() -> list[PowerMartingaleTrackerConfig]:
+def _default_martingale_trackers() -> list[MartingaleTrackerConfig]:
     return [PowerMartingaleTrackerConfig(tracker_id="primary")]
 
 
@@ -607,8 +609,12 @@ class StaticBaselineConfig(BaseModel):
     strategy: Literal["static_baseline"] = "static_baseline"
     model_type: str = "pyod_iforest"
     model_params: dict[str, Any] = Field(default_factory=dict)
-    training_window_size: int = Field(default=1200, ge=20, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=20, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     conformal_strategy: Literal["split"] = "split"
     seed: int | None = 42
     martingale_config: StaticMartingaleConfig = Field(
@@ -643,7 +649,7 @@ MonitoringConfig = Annotated[
 
 
 class LegacyMonitoringConfig(BaseModel):
-    """The former wire format, accepted only at API and environment ingress."""
+    """The setup forms' strategy fields, accepted only at form ingress."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -725,11 +731,10 @@ class RadarMqttOverrides(BaseModel):
         return {key: value for key, value in handler(self).items() if value is not None}
 
 
-class RadarStartConfig(BaseModel):
-    """One validated launch contract, from the HTTP boundary to orchestration."""
+class _MonitorLaunch(BaseModel):
+    """Fields shared by a setup-form request and a bound pipeline launch."""
 
     model_config = ConfigDict(extra="forbid")
-    launch_version: Literal[1, 2] = 1
 
     container_name: str = Field(min_length=1)
     display_name: str | None = Field(
@@ -739,15 +744,37 @@ class RadarStartConfig(BaseModel):
     monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
     performance_config: PerformanceConfig = Field(default_factory=PerformanceConfig)
     mqtt_config: RadarMqttOverrides = Field(default_factory=RadarMqttOverrides)
-    pipeline: PipelineExecutionConfig | None = None
-    runtime_image: str | None = Field(
-        default=None, max_length=512, pattern=r"^(?:[^\s]+@)?sha256:[a-f0-9]{64}$"
-    )
 
     @field_validator("display_name")
     @classmethod
     def validate_display_name(cls, value: str | None) -> str | None:
         return validate_service_name(value) if value is not None else None
+
+    @field_validator("mqtt_topics")
+    @classmethod
+    def validate_topics(cls, value: list[str]) -> list[str]:
+        return normalize_static_monitoring_topics(value)
+
+    @field_validator("performance_config", "mqtt_config", mode="before")
+    @classmethod
+    def normalize_optional_options(cls, value: Any) -> Any:
+        return {} if value is None else value
+
+    def sensor_keys(self) -> list[str]:
+        return derive_monitoring_sensor_keys(
+            self.mqtt_topics,
+            sensor_key_strategy=self.performance_config.sensor_key_strategy,
+        )
+
+
+class FormMonitorConfig(_MonitorLaunch):
+    """A setup-form monitor, before TACTIC turns it into a bound pipeline.
+
+    It is also the shape of launches saved before every monitor ran as a
+    pipeline; a release converts those.
+    """
+
+    launch_version: Literal[1] = 1
 
     @model_validator(mode="before")
     @classmethod
@@ -771,66 +798,48 @@ class RadarStartConfig(BaseModel):
             "monitoring": LegacyMonitoringConfig(**legacy).to_monitoring(),
         }
 
-    @field_validator("mqtt_topics")
-    @classmethod
-    def validate_topics(cls, value: list[str]) -> list[str]:
-        return normalize_static_monitoring_topics(value)
+    @model_validator(mode="after")
+    def validate_feature_schema(self) -> "FormMonitorConfig":
+        if isinstance(self.monitoring, AdaptiveStreamConfig):
+            self.monitoring.validate_feature_schema(self.sensor_keys())
+        return self
 
-    @field_validator("performance_config", "mqtt_config", mode="before")
-    @classmethod
-    def normalize_optional_options(cls, value: Any) -> Any:
-        return {} if value is None else value
+
+class RadarStartConfig(_MonitorLaunch):
+    """One validated pipeline launch, from activation to orchestration."""
+
+    launch_version: Literal[2] = 2
+    pipeline: PipelineExecutionConfig
+    runtime_image: str | None = Field(
+        default=None, max_length=512, pattern=r"^(?:[^\s]+@)?sha256:[a-f0-9]{64}$"
+    )
 
     @model_validator(mode="after")
-    def validate_feature_schema(self) -> "RadarStartConfig":
-        version = 2 if self.pipeline is not None else 1
-        if "launch_version" in self.model_fields_set and self.launch_version != version:
-            raise ValueError(
-                "Launch version must match legacy or pipeline configuration"
-            )
-        self.launch_version = version
-        if self.pipeline is not None:
-            from off_key_core.models.pipelines import (
-                derive_monitoring_config,
-                execution_fingerprint,
-            )
+    def validate_pipeline(self) -> "RadarStartConfig":
+        from off_key_core.models.pipelines import (
+            derive_monitoring_config,
+            execution_fingerprint,
+        )
 
-            derived = derive_monitoring_config(self.pipeline.definition)
-            if "monitoring" in self.model_fields_set and self.monitoring != derived:
-                raise ValueError(
-                    "Monitoring configuration must equal "
-                    "the executable pipeline definition"
-                )
-            self.monitoring = derived
-            bindings = self.pipeline.bindings
-            if set(self.mqtt_topics) != {
-                binding.accepted_topic for binding in bindings
-            }:
-                raise ValueError(
-                    "Pipeline bindings must exactly match subscription topics"
-                )
-            keys = derive_monitoring_sensor_keys(
-                self.mqtt_topics,
-                sensor_key_strategy=self.performance_config.sensor_key_strategy,
+        derived = derive_monitoring_config(self.pipeline.definition)
+        if "monitoring" in self.model_fields_set and self.monitoring != derived:
+            raise ValueError(
+                "Monitoring configuration must equal the executable pipeline definition"
             )
-            keys_by_topic = dict(zip(self.mqtt_topics, keys, strict=True))
-            if any(
-                binding.input_key != keys_by_topic[binding.accepted_topic]
-                for binding in bindings
-            ):
-                raise ValueError(
-                    "Bound input keys must match the alignment feature schema"
-                )
-            if self.pipeline.fingerprint != execution_fingerprint(
-                self.pipeline.definition, bindings
-            ):
-                raise ValueError(
-                    "Pipeline execution fingerprint does not match its bound definition"
-                )
-        elif isinstance(self.monitoring, AdaptiveStreamConfig):
-            keys = derive_monitoring_sensor_keys(
-                self.mqtt_topics,
-                sensor_key_strategy=self.performance_config.sensor_key_strategy,
+        self.monitoring = derived
+        bindings = self.pipeline.bindings
+        if set(self.mqtt_topics) != {binding.accepted_topic for binding in bindings}:
+            raise ValueError("Pipeline bindings must exactly match subscription topics")
+        keys_by_topic = dict(zip(self.mqtt_topics, self.sensor_keys(), strict=True))
+        if any(
+            binding.input_key != keys_by_topic[binding.accepted_topic]
+            for binding in bindings
+        ):
+            raise ValueError("Bound input keys must match the alignment feature schema")
+        if self.pipeline.fingerprint != execution_fingerprint(
+            self.pipeline.definition, bindings
+        ):
+            raise ValueError(
+                "Pipeline execution fingerprint does not match its bound definition"
             )
-            self.monitoring.validate_feature_schema(keys)
         return self

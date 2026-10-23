@@ -1,19 +1,18 @@
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PipelineActivation } from "@/features/pipelines/PipelineActivation";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeDefinition } from "@/features/pipelines/contracts";
 import { ApiRequestError } from "@/lib/api-client";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
+import { createEmptySystem } from "@/domain/system/systemDocument";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
 const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
@@ -82,11 +81,8 @@ const operation = {
   updated_at: "2026-10-16T12:00:00Z",
 };
 beforeEach(() => {
-  vi.clearAllMocks();
-  sessionStorage.clear();
   clearNavigationDrafts();
 });
-afterEach(cleanup);
 const mount = (input = props()) =>
   render(
     <MemoryRouter>

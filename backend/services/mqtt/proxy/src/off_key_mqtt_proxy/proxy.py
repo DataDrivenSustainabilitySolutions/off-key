@@ -4,6 +4,7 @@ import asyncio
 import signal
 import time
 from contextlib import suppress
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 from off_key_core.config.logs import logger
@@ -14,11 +15,20 @@ from off_key_core.db.collection import (
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import Charger, CollectionState
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.schemas.collection_status import (
+    COLLECTION_APPLIED,
+    COLLECTION_APPLYING,
+    COLLECTION_DISABLED,
+    COLLECTION_ERROR,
+    COLLECTION_PREPARED,
+    COLLECTION_STARTING,
+    CollectionWorkerState,
+    is_applied,
+)
 from off_key_core.schemas.system_collection import runtime_fingerprint
 from sqlalchemy import case, delete, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .auth import ApiKeyAuthHandler
 from .client.facade import MQTTClient
 from .collection_buffer import CollectionBuffer
 from .collection_diagnostics import CollectionDiagnostics
@@ -29,12 +39,7 @@ from .telemetry import DatabaseWriter
 class MQTTProxyService:
     def __init__(self):
         self.config = get_mqtt_settings().config
-        auth = (
-            ApiKeyAuthHandler(self.config.mqtt_username, self.config.mqtt_api_key)
-            if self.config.use_auth
-            else None
-        )
-        self.mqtt_client = MQTTClient(self.config, auth)
+        self.mqtt_client = MQTTClient(self.config)
         self.buffer = CollectionBuffer(self.config.max_message_queue_size)
         self.mqtt_client.set_message_handler(self.buffer.receive)
         self.session_factory = get_async_session_local()
@@ -47,9 +52,7 @@ class MQTTProxyService:
         self._prepared_revision = -1
         self._prepared_configuration: list | None = None
         self._generation = -1
-        self.state = {"status": "starting"}
-        self.status_model = SystemCollectionConfiguration
-        self._prepared_model = None
+        self.state: CollectionWorkerState = {"status": COLLECTION_STARTING}
         self._task: asyncio.Task | None = None
         self.diagnostics = CollectionDiagnostics(self.buffer, self.database_writer)
 
@@ -60,7 +63,7 @@ class MQTTProxyService:
 
     async def _apply(self, snapshot) -> None:
         self.buffer.pause()
-        self.state = {"revision": snapshot.revision, "status": "applying"}
+        self.state = {"revision": snapshot.revision, "status": COLLECTION_APPLYING}
         await self._save_status(snapshot.revision)
         async with asyncio.timeout(self.config.graceful_shutdown_timeout):
             await self.database_writer.drain()
@@ -87,12 +90,11 @@ class MQTTProxyService:
             self.buffer.pause()
             raise
         self._prepared_revision = snapshot.revision
-        self._prepared_model = self.status_model
         self._prepared_configuration = runtime_fingerprint(snapshot.catalog)
         self._generation = subscriptions.generation
         self.state = {
             "revision": snapshot.revision,
-            "status": "prepared",
+            "status": COLLECTION_PREPARED,
             "selected_sensors": len(desired),
             "idle": not desired,
         }
@@ -101,17 +103,15 @@ class MQTTProxyService:
     async def _refresh_configuration(self) -> None:
         async with self.session_factory() as session:
             snapshot = await read_collection_runtime(session)
-        self.status_model = SystemCollectionConfiguration
         if not self.mqtt_client.is_connected:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1
-            if self.mqtt_client.state.value not in {"connecting", "reconnecting"}:
+            if self.mqtt_client.state.value != "connecting":
                 await self.mqtt_client.connect()
             if not self.mqtt_client.is_connected:
                 raise RuntimeError("Local MQTT broker is disconnected")
         if (
             self._prepared_revision >= 0
-            and self._prepared_model == self.status_model
             and self._prepared_revision != snapshot.revision
             and self._generation == self.mqtt_client.subscription_manager.generation
             and self._prepared_configuration == runtime_fingerprint(snapshot.catalog)
@@ -125,15 +125,11 @@ class MQTTProxyService:
             self.state["revision"] = snapshot.revision
         if (
             self._prepared_revision != snapshot.revision
-            or self._prepared_model != self.status_model
             or self._generation != self.mqtt_client.subscription_manager.generation
         ):
             self.revision = -1
             await self._apply(snapshot)
-        ingress_ready = (
-            snapshot.ingress.get("revision") == snapshot.revision
-            and snapshot.ingress.get("status") == "applied"
-        )
+        ingress_ready = is_applied(snapshot.ingress, snapshot.revision)
         if self.revision != snapshot.revision and (
             ingress_ready or not snapshot.catalog.streams(selected_only=True)
         ):
@@ -145,10 +141,10 @@ class MQTTProxyService:
                         "Broker did not acknowledge collection activation"
                     )
             self.revision = snapshot.revision
-            self.state["status"] = "applied"
+            self.state["status"] = COLLECTION_APPLIED
         await self._save_status(snapshot.revision)
 
-    async def _save_status(self, revision: int) -> None:
+    async def _save_status(self, revision: int | None) -> None:
         self.state["checked_at"] = datetime.now(UTC).isoformat()
         self.state["counters"] = self.buffer.metrics()
         self.state["records_written"] = self.database_writer.total_records_written
@@ -157,10 +153,10 @@ class MQTTProxyService:
         )
         async with self.session_factory() as session:
             await session.execute(
-                update(self.status_model)
+                update(SystemCollectionConfiguration)
                 .where(
-                    self.status_model.id == 1,
-                    self.status_model.revision == revision,
+                    SystemCollectionConfiguration.id == 1,
+                    SystemCollectionConfiguration.revision == revision,
                 )
                 .values(collection_status=self.state.copy())
             )
@@ -178,20 +174,19 @@ class MQTTProxyService:
                     live_seen.get(charger_id, observation.received_at),
                     observation.received_at,
                 )
-            if (
-                observation.stream.sensor.value_type == "number"
-                and not observation.snapshot
-            ):
+            if observation.stream.value_type == "number" and not observation.snapshot:
                 # Bounded DB writer applies backpressure before publishing downstream.
                 async with asyncio.timeout(self.config.graceful_shutdown_timeout):
-                    await self.database_writer.write_telemetry_message(message)
+                    await self.database_writer.write_record(
+                        observation.telemetry_record()
+                    )
                 if not await self.mqtt_client.publish(
                     message.topic, message.payload, qos=1
                 ):
                     self.buffer.count("publish_failed")
-            states[(observation.stream.charger_id, observation.stream.sensor.key)] = {
+            states[(observation.stream.charger_id, observation.stream.key)] = {
                 "charger_id": observation.stream.charger_id,
-                "sensor_key": observation.stream.sensor.key,
+                "sensor_key": observation.stream.key,
                 "value": observation.value,
                 "received_at": observation.received_at,
                 "is_snapshot": observation.snapshot,
@@ -237,7 +232,7 @@ class MQTTProxyService:
 
     async def _collect(self) -> None:
         if not self.config.enabled:
-            self.state = {"status": "disabled"}
+            self.state = {"status": COLLECTION_DISABLED}
             await self.shutdown_event.wait()
             return
         # Losing this DB connection terminates the worker; it cannot continue as
@@ -287,7 +282,7 @@ class MQTTProxyService:
                 self.revision = self._prepared_revision = -1
                 self.state = {
                     "revision": self.state.get("revision"),
-                    "status": "error",
+                    "status": COLLECTION_ERROR,
                     "error": "Collection could not be applied or written; retrying",
                 }
                 with suppress(Exception):
@@ -320,6 +315,8 @@ class MQTTProxyService:
             loop.add_signal_handler(signum, self.shutdown_event.set)
         try:
             await self.start()
+            if self._task is None:
+                raise RuntimeError("Collection loop did not start")
             await self._task
         finally:
             await self.stop()
@@ -330,7 +327,7 @@ class MQTTProxyService:
             and self._task
             and not self._task.done()
             and self.mqtt_client.is_connected
-            and self.state.get("status") == "applied"
+            and self.state.get("status") == COLLECTION_APPLIED
         )
         return {"ready": ready, "service": "mqtt-proxy", **self.state}
 
@@ -338,7 +335,7 @@ class MQTTProxyService:
         return {
             **self.get_readiness_status(),
             "counters": self.buffer.metrics(),
-            "database_writer": self.database_writer.get_health_status(),
+            "database_writer": asdict(self.database_writer.get_health_status()),
             "diagnostics": self.diagnostics.snapshot(
                 connected=self.mqtt_client.is_connected
             ),

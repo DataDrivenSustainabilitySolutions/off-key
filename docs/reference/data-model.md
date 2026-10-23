@@ -27,7 +27,29 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `anomalies` | `(charger_id, timestamp, telemetry_type, service_id)` | Detected anomaly events and contributing sensor set |
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
-| `model_registry` | `id` | Active model definitions, import paths, schemas, and defaults |
+| `remembered_sessions` | `token_hash` | Rotating remember-me refresh tokens grouped by session family |
+
+### Catalogue and collection
+
+| Entity | Primary key | Purpose |
+| --- | --- | --- |
+| `system_configuration` | `id` (singleton) | Current saved catalogue document and its revision |
+| `system_revisions` | `revision` | Every saved catalogue document, for conflict checks and history |
+| `system_collection_configuration` | `id` (singleton) | Collection policy per reading plus ingress and collector status |
+| `collection_state` | `(charger_id, sensor_key)` | Latest boolean, text and identifier values per reading |
+| `collection_bindings` | `charger_id` | Stable mapping from a catalogue entity to its runtime charger ID |
+| `collection_configuration` | `id` (singleton) | Pre-catalogue collection settings, read once by the catalogue upgrade |
+| `collection_revisions` | `revision` | Pre-catalogue collection history, kept as an archive |
+
+### Pipelines and RADAR runtime
+
+| Entity | Primary key | Purpose |
+| --- | --- | --- |
+| `monitoring_pipelines` | `id` | Pipeline designs and templates with their editable draft |
+| `monitoring_pipeline_revisions` | `id` | Immutable compiled revisions of a pipeline |
+| `monitoring_pipeline_runs` | `id` | A revision bound to inputs and running as one monitoring service |
+| `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
+| `radar_runtime_checkpoints` | `service_id` | Signed detector checkpoint for each running RADAR service |
 
 ## Relationship highlights
 
@@ -79,17 +101,6 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - Migration `009_radar_lifecycle_intent.sql` preserves attached workers and marks
   already inactive services as stopped. Older attached workers without saved
   configuration remain observable and removable; they are not auto-created.
-
-## Model registry
-
-`model_registry` is the database-backed source for model discovery:
-
-- model metadata and family
-- import paths
-- JSON parameter schema and defaults
-- version and activation state
-
-TACTIC and the Gateway monitoring endpoints use these definitions for discovery and validation.
 
 ## Data access paths
 

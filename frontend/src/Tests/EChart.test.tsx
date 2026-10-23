@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { act, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TelemetryChartOption } from "@/lib/telemetry-chart";
+import type { TelemetryChartOption } from "@/features/charts/telemetry-chart";
 
 const echartsMock = vi.hoisted(() => {
   const instances: Array<{
@@ -57,7 +57,7 @@ vi.mock("echarts/components", () => ({
 }));
 vi.mock("echarts/renderers", () => ({ CanvasRenderer: {} }));
 
-import { EChart } from "@/components/EChart";
+import { EChart } from "@/features/charts/EChart";
 
 const option = (id: string): TelemetryChartOption =>
   ({ series: [{ id, type: "line", data: [] }] }) as TelemetryChartOption;
@@ -81,7 +81,6 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", MockResizeObserver);
 });
 
-afterEach(() => vi.unstubAllGlobals());
 
 describe("EChart lifecycle", () => {
   it("initializes once, reuses the instance, and applies stable lazy updates", async () => {

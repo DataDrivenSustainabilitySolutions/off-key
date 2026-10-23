@@ -1,5 +1,6 @@
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
+import { drainForward, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { clientLogger } from "@/lib/logger";
 import type {
   Anomaly,
@@ -9,10 +10,8 @@ import type {
   TelemetryTypeData,
 } from "@/types/charger";
 import { normalizeChargerLastSeen } from "@/types/charger";
-import type { SystemSnapshot } from "@/features/catalogue/systemTypes";
+import type { SystemSnapshot } from "@/types/system";
 
-const TELEMETRY_PAGE_SIZE = 1000;
-const MAX_FORWARD_PAGES = 10;
 type TelemetryApiPoint = TelemetryDataPoint & { created?: string };
 
 export const getTelemetryCursor = (
@@ -64,10 +63,12 @@ export const getAllTelemetryData = async (
   chargerId: string,
   signal?: AbortSignal,
   cursorByType?: ReadonlyMap<string, TelemetryCursor>,
+  // A loaded catalogue snapshot saves fetching /v1/system on every refresh.
+  catalogue?: Pick<SystemSnapshot, "document" | "runtime">,
 ): Promise<TelemetryTypeData[]> => {
   const [telemetryTypes, snapshot] = await Promise.all([
     getTelemetryTypes(chargerId, signal),
-    get<SystemSnapshot>("/v1/system", signal),
+    catalogue ?? get<SystemSnapshot>("/v1/system", signal),
   ]);
   const definitions = new Map(
     snapshot.document.streams.flatMap(stream => {
@@ -78,21 +79,12 @@ export const getAllTelemetryData = async (
   const telemetryData = await Promise.all(
     telemetryTypes.map(async (type): Promise<TelemetryTypeData | null> => {
       try {
-        const initialCursor = cursorByType?.get(type);
-        let cursor = initialCursor;
-        const data: TelemetryApiPoint[] = [];
-        for (let pageNumber = 0; pageNumber < MAX_FORWARD_PAGES; pageNumber += 1) {
-          const page = await getTelemetryData(chargerId, type, signal, cursor);
-          data.push(...page);
-          if (!initialCursor || page.length < TELEMETRY_PAGE_SIZE) break;
-          const nextCursor = getTelemetryCursor(page);
-          if (
-            !nextCursor ||
-            (nextCursor.created === cursor?.created &&
-              nextCursor.timestamp === cursor.timestamp)
-          ) break;
-          cursor = nextCursor;
-        }
+        const data = await drainForward({
+          cursor: cursorByType?.get(type),
+          fetchPage: cursor => getTelemetryData(chargerId, type, signal, cursor),
+          cursorOf: getTelemetryCursor,
+          pageSize: TELEMETRY_PAGE_SIZE,
+        });
         const nextCursor = getTelemetryCursor(data);
         return {
           type,
@@ -158,21 +150,6 @@ export const getAllChargers = async (): Promise<Charger[]> => {
   return chargers.map(normalizeChargerLastSeen);
 };
 
-export const getFavorites = (): Promise<string[]> =>
-  apiUtils.get<string[]>(API_CONFIG.ENDPOINTS.FAVORITES.GET);
-
-export const toggleFavorite = async (
-  chargerId: string,
-  isCurrentlyFavorite: boolean,
-): Promise<void> => {
-  const body = { charger_id: chargerId };
-  if (isCurrentlyFavorite) {
-    await apiUtils.delete(API_CONFIG.ENDPOINTS.FAVORITES.REMOVE, body);
-    return;
-  }
-  await apiUtils.post(API_CONFIG.ENDPOINTS.FAVORITES.ADD, body);
-};
-
 export const getAnomalies = (
   chargerId: string,
   signal?: AbortSignal,
@@ -181,14 +158,6 @@ export const getAnomalies = (
     API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId),
     signal,
   );
-
-export const getAnomalyCount = async (since?: string): Promise<number> => {
-  const endpoint = since
-    ? `${API_CONFIG.ENDPOINTS.ANOMALIES.COUNT}?since=${encodeURIComponent(since)}`
-    : API_CONFIG.ENDPOINTS.ANOMALIES.COUNT;
-  const response = await apiUtils.get<{ count: number }>(endpoint);
-  return response.count;
-};
 
 export const deleteAnomaly = async (anomalyId: string): Promise<void> => {
   if (!anomalyId) {

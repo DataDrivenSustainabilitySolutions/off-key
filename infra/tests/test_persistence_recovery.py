@@ -92,7 +92,7 @@ class RecoveryWriterTests(unittest.TestCase):
             "ansible_become": False,
             "ansible_python_interpreter": sys.executable,
             "ansible_remote_tmp": str(self.root / "remote-tmp"),
-            "offkey_env": "dev",
+            "persistence_switch_confirm": True,
             "stack_name": "off-key",
             "postgres_user": "fixture",
             "stack_dir": str(self.root / "stack"),

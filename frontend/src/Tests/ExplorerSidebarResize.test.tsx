@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ExplorerSidebarResize } from "@/features/explorer/ExplorerSidebarResize";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ExplorerSidebarResize } from "@/features/workspace/ExplorerSidebarResize";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -19,7 +19,6 @@ beforeEach(() => {
     return new DOMRect(0, 0, Number.parseFloat(this.closest<HTMLElement>(".ex-shell")?.style.getPropertyValue("--ex-sidebar-width") ?? "288"), 900);
   });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function mount() {
   const committed = vi.fn();

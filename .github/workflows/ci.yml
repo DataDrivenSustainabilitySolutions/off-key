@@ -20,6 +20,7 @@ jobs:
   pre-commit:
     name: pre-commit (${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -29,21 +30,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          version: "0.12.0"
-
-      - name: Sync backend tooling
-        run: uv sync --project backend --all-packages --all-groups --frozen
+      - name: Type check backend
+        # ty checks against Python 3.12 whichever interpreter runs it.
+        if: matrix.python == '3.12'
+        run: uv run --project backend ty check --project backend
 
       - name: Test backend
-        run: uv run --project backend python -m pytest -q
+        run: uv run --project backend python -m pytest -q --timeout=300 --timeout-method=thread
 
       - name: Check generated monitoring contracts and catalog
         run: |
@@ -76,6 +74,10 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: Check for unused frontend files, dependencies and exports
+        working-directory: frontend
+        run: npm run knip
+
       - name: Test frontend
         working-directory: frontend
         run: npm test
@@ -83,3 +85,14 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Run route-mocked browser journeys
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npx vite preview --port 5173 --strictPort > "$RUNNER_TEMP/vite-preview.log" 2>&1 &
+          curl --fail --retry 30 --retry-all-errors --retry-delay 1 http://localhost:5173 > /dev/null
+          # The chart journeys compare canvas pixels, so they use deployment smoke's browser image.
+          playwright_version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host --volume "${PWD}:/work" --workdir /work --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e:mocked

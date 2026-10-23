@@ -6,9 +6,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SystemStructureEditor } from "@/features/catalogue/SystemStructureEditor";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemDocument } from "@/features/catalogue/systemTypes";
+import { SystemStructureEditor } from "@/features/workspace/SystemStructureEditor";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemDocument } from "@/types/system";
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem("Weather observations"),

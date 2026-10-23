@@ -1,4 +1,6 @@
-"""Aberrant-backed score-then-learn adaptive stream detector."""
+"""Aberrant-backed score-then-learn adaptive pipeline runs: readiness-aware
+feature graphs that warm transforms without contaminating the model or its
+calibration."""
 
 import hashlib
 import json
@@ -7,7 +9,6 @@ import math
 import os
 import time
 from collections import deque
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -16,33 +17,16 @@ import numpy as np
 import psutil
 from aberrant import __version__ as aberrant_version
 from aberrant.base import ModelProtocol
-from aberrant.base.pipeline import ModelPipeline, Pipeline
-from aberrant.catalog import DetectorConfig, WarmupUnit
+from aberrant.catalog import DetectorConfig
+from aberrant.compose import GraphPipeline
 from off_key_core.models import ABERRANT_VERSION
-from off_key_core.schemas.radar import AdaptiveStreamConfig, IncrementalPCAConfig
+from off_key_core.schemas.radar import AdaptiveStreamConfig
 
-from .checkpoint_manager import CheckpointManager
 from .config.config import AnomalyDetectionConfig
-from .models import AnomalyResult
-
-
-@dataclass(frozen=True)
-class _UnitInterval:
-    """Bound scaled features, or reject out-of-domain raw features."""
-
-    clip: bool
-
-    def learn_one(self, x: dict[str, float]) -> None:
-        self.transform_one(x)
-
-    def transform_one(self, x: dict[str, float]) -> dict[str, float]:
-        if self.clip:
-            return {key: min(1.0, max(0.0, value)) for key, value in x.items()}
-        if any(value < 0.0 or value > 1.0 for value in x.values()):
-            raise ValueError(
-                "This detector requires features in [0, 1]; configure min-max scaling"
-            )
-        return x
+from .execution_errors import FatalExecutionError, ObservationRejected
+from .models import AnomalyResult, inference_key
+from .pipelines.adapters import adaptive_graph, detector_config
+from .pipelines.execution import PipelineExecutionMixin
 
 
 class AdaptiveStreamState(Enum):
@@ -52,18 +36,19 @@ class AdaptiveStreamState(Enum):
     FAILED = "failed"
 
 
-class AdaptiveStreamDetectionService:
+class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     """Online detector with bounded warm-up and frozen score calibration."""
 
     def __init__(
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
-        *,
-        automatic_checkpoints: bool = True,
     ) -> None:
+        self._init_pipeline_execution(config)
+        if self.plan.execution.definition.strategy != "adaptive_stream":
+            raise ValueError("Adaptive execution requires an adaptive pipeline")
+        self._scored_features: dict[str, float] | None = None
         self.config = config
-        self.automatic_checkpoints = automatic_checkpoints
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, AdaptiveStreamConfig):
             raise ValueError("adaptive_stream_config is required")
@@ -84,10 +69,14 @@ class AdaptiveStreamDetectionService:
             self._initialize_fresh()
         else:
             self._restore(checkpoint)
+        self._raw_unit_interval_slots = self._unit_interval_slots()
+        self._diagnose(
+            self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
+        )
 
     def _initialize_fresh(self) -> None:
         self.state = AdaptiveStreamState.WARMUP
-        self.feature_keys: list[str] = []
+        self.feature_keys: list[str] = self._initial_feature_keys()
         # Validate constructors at startup, before subscribing or learning data.
         self.pipeline: ModelProtocol = self._build_pipeline(self.detector_config)
         self.calibration_scores: list[float] = []
@@ -98,13 +87,14 @@ class AdaptiveStreamDetectionService:
         self.calibration_count = 0
         self.operational_count = 0
         self.anomaly_count = 0
-        self.schema_mismatch_count = 0
         self.last_checkpoint = 0
 
     def _restore(self, checkpoint: dict[str, Any]) -> None:
+        if checkpoint.get("schema_signature") != self.schema_signature:
+            raise ValueError("Adaptive graph checkpoint configuration is incompatible")
         self.state = AdaptiveStreamState(checkpoint["adaptive_state"])
         self.feature_keys = list(checkpoint["feature_keys"])
-        self.detector_config = self._detector_config(self.feature_keys or None)
+        self.detector_config = self._detector_config()
         self.detector_fingerprint = self.detector_config.fingerprint()
         self.model_capabilities = self.detector_config.capabilities().as_dict()
         if checkpoint.get("detector_fingerprint") != self.detector_fingerprint:
@@ -124,7 +114,6 @@ class AdaptiveStreamDetectionService:
         self.calibration_count = int(checkpoint.get("calibration_count", 0))
         self.operational_count = int(checkpoint.get("operational_count", 0))
         self.anomaly_count = int(checkpoint.get("anomaly_count", 0))
-        self.schema_mismatch_count = int(checkpoint.get("schema_mismatch_count", 0))
         self.last_checkpoint = self.processed_count
         self.training_error = checkpoint.get("training_error")
         if self.pipeline is None or (
@@ -133,21 +122,17 @@ class AdaptiveStreamDetectionService:
             raise ValueError("Adaptive checkpoint is missing pipeline state")
         if self.state == AdaptiveStreamState.OPERATIONAL and self.threshold is None:
             raise ValueError("Operational adaptive checkpoint has no threshold")
-
-    @classmethod
-    def from_checkpoint(
-        cls, checkpoint_path: str, config: AnomalyDetectionConfig
-    ) -> "AdaptiveStreamDetectionService":
-        checkpoint = CheckpointManager().load(checkpoint_path)
-        return cls.from_checkpoint_data(checkpoint, config)
+        if not isinstance(self.pipeline, GraphPipeline) or self.pipeline.failed:
+            raise ValueError("Checkpoint has no usable adaptive graph")
+        if self.state == AdaptiveStreamState.FAILED:
+            raise ValueError("Failed adaptive executions cannot be restored")
+        self.pipeline.observer = self._observe
 
     @classmethod
     def from_checkpoint_data(
         cls,
         checkpoint: dict[str, Any],
         config: AnomalyDetectionConfig,
-        *,
-        automatic_checkpoints: bool = True,
     ) -> "AdaptiveStreamDetectionService":
         if checkpoint.get("strategy") != "adaptive_stream":
             raise ValueError("Checkpoint strategy does not match adaptive_stream")
@@ -155,12 +140,16 @@ class AdaptiveStreamDetectionService:
             raise ValueError("Checkpoint aberrant version is incompatible")
         if checkpoint.get("schema_signature") != cls._build_schema_signature(config):
             raise ValueError("Adaptive checkpoint configuration is incompatible")
-        return cls(
-            config, checkpoint=checkpoint, automatic_checkpoints=automatic_checkpoints
-        )
+        return cls(config, checkpoint=checkpoint)
 
     @staticmethod
     def _build_schema_signature(config: AnomalyDetectionConfig) -> str:
+        return PipelineExecutionMixin._pipeline_signature(
+            AdaptiveStreamDetectionService._settings_signature(config), config
+        )
+
+    @staticmethod
+    def _settings_signature(config: AnomalyDetectionConfig) -> str:
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, AdaptiveStreamConfig):
             raise ValueError("Adaptive detector requires adaptive_stream configuration")
@@ -182,49 +171,14 @@ class AdaptiveStreamDetectionService:
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode()).hexdigest()
 
-    def _detector_config(self, feature_keys: list[str] | None = None) -> DetectorConfig:
-        detector_config = DetectorConfig.from_mapping(
-            self.adaptive_config.detector_mapping(feature_keys)
-        ).normalized()
-        capabilities = detector_config.capabilities()
-        if capabilities.higher_is_more_anomalous is not True:
-            raise ValueError("RADAR requires higher scores to mean more anomalous")
-        warmup = capabilities.warmup
-        if (
-            warmup.unit not in {WarmupUnit.EVENTS, WarmupUnit.RETAINED_VALUES}
-            or warmup.minimum is None
-        ):
-            raise ValueError("RADAR requires a known warm-up in aligned observations")
-        minimum = warmup.minimum
-        for step in self.adaptive_config.preprocessing_steps:
-            if isinstance(step, IncrementalPCAConfig):
-                minimum = max(minimum, step.n0)
-        if self.adaptive_config.training_window_size < minimum:
-            raise ValueError(
-                "training_window_size must cover model and preprocessing "
-                f"warm-up ({minimum})"
-            )
-        return detector_config
+    def _detector_config(self) -> DetectorConfig:
+        return detector_config(self.plan)
 
-    def _build_pipeline(self, detector_config: DetectorConfig) -> ModelProtocol:
-        pipeline = detector_config.build()
-        if detector_config.capabilities().requires_unit_interval:
-            assert isinstance(pipeline, ModelPipeline)
-            # MinMaxScaler can extrapolate before learning a new extreme. Clipping
-            # is RADAR's explicit input-domain policy for unit-interval detectors.
-            guard = _UnitInterval(clip=bool(self.adaptive_config.preprocessing_steps))
-            pipeline = Pipeline(Pipeline(pipeline.first, guard), pipeline.second)
-        return pipeline
+    def _initial_feature_keys(self) -> list[str]:
+        return sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
 
-    def _freeze_schema_and_build_pipeline(self, data: dict[str, float]) -> None:
-        feature_keys = sorted(data)
-        detector_config = self._detector_config(feature_keys)
-        pipeline = self._build_pipeline(detector_config)
-        self.feature_keys = feature_keys
-        self.detector_config = detector_config
-        self.detector_fingerprint = detector_config.fingerprint()
-        self.model_capabilities = detector_config.capabilities().as_dict()
-        self.pipeline = pipeline
+    def _build_pipeline(self, config: DetectorConfig) -> ModelProtocol:
+        return adaptive_graph(self.plan, self._observe, config)[0]
 
     def process_data_point(
         self,
@@ -232,29 +186,65 @@ class AdaptiveStreamDetectionService:
         topic: str | None = None,
         charger_id: str | None = None,
     ) -> AnomalyResult:
-        started = time.time()
+        if self._execution_failed or self.pipeline.failed:
+            raise FatalExecutionError(
+                self.training_error or "Pipeline execution has failed"
+            )
+        bound = self._validated_observation(data)
+        self._scored_features = None
+        self._diagnose(
+            self.diagnostics.begin, self.processed_count + 1, self.state.value
+        )
         try:
-            normalized = self._validate_data(data)
-            if not self.feature_keys:
-                self._freeze_schema_and_build_pipeline(normalized)
-            elif sorted(normalized) != self.feature_keys:
-                self.schema_mismatch_count += 1
-                raise ValueError(
-                    f"Adaptive feature schema changed; expected {self.feature_keys}"
-                )
-
-            result = self._process_current_state(normalized, topic, charger_id, started)
-        except Exception as exc:
+            result = self._process(bound, topic, charger_id)
+            result.raw_data = dict(data)
+            result.processed_features = self._scored_features
+            self._record_result(result)
+            return result
+        except Exception as error:
+            self._execution_failed = True
             self.state = AdaptiveStreamState.FAILED
-            self.training_error = str(exc)
-            raise
+            self.training_error = str(error)
+            identifier = self._failure_node(error)
+            self._diagnose(self.diagnostics.fail, identifier, error)
+            raise FatalExecutionError(str(error), node_id=identifier) from error
+        finally:
+            self._diagnose(self.diagnostics.finish)
 
-        if (
-            self.processed_count
-            and self.processed_count % self.config.checkpoint_interval == 0
-        ):
-            self._checkpoint_model()
-        return result
+    def _validated_observation(self, data):
+        try:
+            if not isinstance(data, dict):
+                raise ObservationRejected("Pipeline inputs must be a feature mapping")
+            bound = self.plan.bind(data)
+            if not all(math.isfinite(value) for value in bound.values()):
+                raise ObservationRejected("Pipeline inputs must be finite")
+            for slot in self._raw_unit_interval_slots:
+                if not 0.0 <= bound[slot] <= 1.0:
+                    raise ObservationRejected(
+                        f"Raw feature {slot!r} must be in [0, 1] for this detector"
+                    )
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ObservationRejected(str(error)) from error
+        return bound
+
+    def _unit_interval_slots(self) -> frozenset[str]:
+        if not self.detector_config.capabilities().requires_unit_interval:
+            return frozenset()
+        return frozenset(
+            slot
+            for feature in self.plan.compiled.features[self.plan.feature_output_id]
+            if feature.raw
+            for slot in feature.slots
+        )
+
+    def _process(
+        self,
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
+    ) -> AnomalyResult:
+        # Binding has checked the schema and finiteness; failures stop the run.
+        return self._process_current_state(data, topic, charger_id, time.time())
 
     def _process_current_state(
         self,
@@ -279,9 +269,12 @@ class AdaptiveStreamDetectionService:
         started: float,
     ) -> AnomalyResult:
         self._learn(data)
-        self.warmup_count += 1
+        self.warmup_count = self.pipeline.last_learning_outcome.model_updates
         self.processed_count += 1
-        if self.warmup_count >= self.adaptive_config.training_window_size:
+        if (
+            self.warmup_count >= self.adaptive_config.training_window_size
+            and self.pipeline.readiness.ready
+        ):
             self.state = AdaptiveStreamState.CALIBRATING
         return self._result(data, 0.0, False, "warmup", topic, charger_id, started)
 
@@ -310,7 +303,6 @@ class AdaptiveStreamDetectionService:
                 max(self.calibration_scores) - min(self.calibration_scores),
             )
             self.state = AdaptiveStreamState.OPERATIONAL
-            self._checkpoint_model()
         return self._result(
             data, score, False, "calibration", topic, charger_id, started
         )
@@ -335,24 +327,44 @@ class AdaptiveStreamDetectionService:
             data, score, is_anomaly, "operational", topic, charger_id, started
         )
 
-    @staticmethod
-    def _validate_data(data: dict[str, float]) -> dict[str, float]:
-        if not data:
-            raise ValueError("Adaptive detector requires at least one feature")
-        normalized = {str(key): float(value) for key, value in data.items()}
-        if not all(math.isfinite(value) for value in normalized.values()):
-            raise ValueError("Adaptive detector input must be finite")
-        return normalized
-
     def _score(self, data: dict[str, float]) -> float:
+        self._diagnose(self.diagnostics.select_pass, "score")
+        self.diagnostics.record(self.plan.source_id, data, data)
         score = float(self.pipeline.score_one(data))
         if not math.isfinite(score):
             raise ValueError("Aberrant returned a non-finite anomaly score")
         return score
 
     def _learn(self, data: dict[str, float]) -> None:
-        """One learning hook shared by legacy and graph monitoring lifecycles."""
+        self._diagnose(self.diagnostics.select_pass, "learn")
+        self.diagnostics.record(self.plan.source_id, data, data)
         self.pipeline.learn_one(data)
+        self._diagnose(
+            self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
+        )
+
+    def _observe(self, event):
+        if event.node_id == "$model" and event.phase == "score":
+            self._scored_features = dict(event.inputs)
+        self.diagnostics.observe(event)
+
+    def _record_result(self, result):
+        if inference_key(result.context) != "adaptive_stream":
+            return
+        self._diagnose(self.diagnostics.select_pass, "score")
+        self.diagnostics.record(
+            self.plan.policy_id,
+            {"score": result.anomaly_score},
+            float(result.is_anomaly),
+        )
+        self.diagnostics.record(
+            self.plan.output_id,
+            {"alarm": float(result.is_anomaly)},
+            result.anomaly_score,
+        )
+
+    def _pipeline_failed(self) -> bool:
+        return self.pipeline.failed
 
     def _result(
         self,
@@ -409,6 +421,7 @@ class AdaptiveStreamDetectionService:
 
     def export_checkpoint(self) -> dict[str, Any]:
         """Export state without I/O for the managed persistence barrier."""
+        self._require_exportable()
         return {
             "strategy": "adaptive_stream",
             "adaptive_state": self.state.value,
@@ -424,28 +437,25 @@ class AdaptiveStreamDetectionService:
             "calibration_count": self.calibration_count,
             "operational_count": self.operational_count,
             "anomaly_count": self.anomaly_count,
-            "schema_mismatch_count": self.schema_mismatch_count,
             "training_error": self.training_error,
             "schema_signature": self.schema_signature,
             "aberrant_version": aberrant_version,
         }
 
-    def _checkpoint_model(self) -> None:
-        if not self.automatic_checkpoints:
-            return
-        try:
-            manager = CheckpointManager()
-            manager.save(
-                {**self.export_checkpoint(), "service_id": manager.service_id},
-                processed_count=self.processed_count,
-            )
-            self.last_checkpoint = self.processed_count
-        except Exception as exc:
-            self.logger.error(
-                "event=radar.adaptive_checkpoint_save_failed error=%s",
-                exc,
-                exc_info=True,
-            )
+    def refresh_background_state(self) -> None:
+        """Adaptive models train inline and have no background state."""
+
+    def get_pipeline_state(self) -> dict[str, Any]:
+        snapshot = self.diagnostics.snapshot()
+        snapshot["adaptive_learning"] = {
+            "state": self.state.value,
+            "model_updates": self.pipeline.model_updates,
+            "warmup_updates": self.warmup_count,
+            "warmup_required": self.adaptive_config.training_window_size,
+            "ready": self.pipeline.readiness.ready,
+            "reason": self.pipeline.readiness.reason,
+        }
+        return snapshot
 
     def get_model_info(self) -> dict[str, Any]:
         return {
@@ -465,7 +475,6 @@ class AdaptiveStreamDetectionService:
             "calibration_window_size": self.adaptive_config.calibration_window_size,
             "threshold": self.threshold,
             "training_error": self.training_error,
-            "schema_mismatch_count": self.schema_mismatch_count,
             "memory_usage_mb": self._memory_usage(),
             "avg_processing_time_ms": (
                 sum(self.processing_times) / max(len(self.processing_times), 1) * 1000

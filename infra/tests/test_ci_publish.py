@@ -1,24 +1,15 @@
 """Production rehearsal must distinguish failed publication from missing images."""
 
-import importlib.util
 import sys
 import unittest
 from unittest.mock import patch
 
 import yaml
-from support import ROOT
+from support import ROOT, load_script
 
-
-def load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-release = load("pin_release")
+release = load_script("pin_release")
 with patch.dict(sys.modules, {"pin_release": release}):
-    publisher = load("wait_for_publish")
+    publisher = load_script("wait_for_publish")
 
 REVISION = "a" * 40
 RUN = {

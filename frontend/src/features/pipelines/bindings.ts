@@ -1,5 +1,6 @@
-import type { MonitoringTarget } from "../monitoring/serviceModel";
-import type { PipelineDefinition } from "./contracts";
+import type { ActiveService } from "@/types/monitoring";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import type { PipelineDefinition, PipelineServiceView } from "./contracts";
 
 /** Suggest only unambiguous matches; never guess between two equivalent readings. */
 export function suggestBindings(slots: PipelineDefinition["input_slots"], target?: MonitoringTarget, previous: Record<string, string> = {}) {
@@ -23,3 +24,24 @@ export function bindingsReady(slots: PipelineDefinition["input_slots"], target: 
       && input.binding.policy.mode !== "off" && !owned(input.stream.id)
       && (slot.unit == null || slot.unit === input.stream.unit)));
 }
+
+/** The predecessor run's slot-to-reading bindings. */
+export const previousBindings = (predecessor?: PipelineServiceView): Record<string, string> =>
+  Object.fromEntries((predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]));
+
+/** Whether another active service (not the one being replaced) already monitors a reading. */
+export function readingOwnedElsewhere(services: ActiveService[], byStream: Map<string, Set<string>>, replaceServiceId?: string) {
+  const active = new Set(services.filter((service) => service.status && service.id !== replaceServiceId).map((service) => service.id));
+  return (readingId: string) => [...(byStream.get(readingId) ?? [])].some((id) => active.has(id));
+}
+
+/**
+ * The target a replacement starts on: the workspace's explicit target, else
+ * the entity of the predecessor's first binding, else the target that holds
+ * any of the predecessor's readings today.
+ */
+export const predecessorEntity = (predecessor?: PipelineServiceView) => predecessor?.run?.execution?.bindings[0]?.entity_id;
+
+export const predecessorTarget = (targets: MonitoringTarget[], predecessor?: PipelineServiceView) =>
+  targets.find((target) => target.inputs.some((input) =>
+    predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;

@@ -41,7 +41,7 @@ lint = [
     "pre-commit",
 ]
 typing = [
-    # "ty"
+    "ty==0.0.90",
 ]
 
 [tool.uv.workspace]
@@ -89,6 +89,14 @@ exclude = [
     "site-packages",
     "venv",
 ]
+# Migration 005's ledger checksum hashes these modules byte for byte, so no
+# formatter or autofix may touch them (see tests/test_migration_ledger.py).
+extend-exclude = [
+    "libs/core/src/off_key_core/db/catalogue_upgrade.py",
+    "libs/core/src/off_key_core/db/catalogue_v1.py",
+    "libs/core/src/off_key_core/db/catalogue_v1_models.py",
+]
+force-exclude = true
 
 [tool.ruff.lint]
 select = [
@@ -119,3 +127,26 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+# Packages join the gate once they check clean; RADAR follows its lifecycle
+# typing work. The migration-005 files are checksum-pinned and never edited.
+include = [
+    "libs/core/src",
+    "services/api/gateway/src",
+    "services/db/sync/src",
+    "services/middleware/tactic/src",
+    "services/mqtt/proxy/src",
+    "services/mqtt/simulator/src",
+]
+exclude = [
+    "libs/core/src/off_key_core/db/catalogue_upgrade.py",
+    "libs/core/src/off_key_core/db/catalogue_v1.py",
+    "libs/core/src/off_key_core/db/catalogue_v1_models.py",
+]
+
+[tool.ty.rules]
+possibly-missing-submodule = "error"

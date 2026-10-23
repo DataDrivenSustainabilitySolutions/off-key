@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
-import type { GraphDocument } from "./model";
-import type { HistoryMode } from "./useGraphEditor";
+import { PIPELINE_LIMITS, type GraphDocument } from "./model";
+import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
+import type { HistoryMode } from "./types";
 
 /** Keeps the typed text while it is incomplete; only valid numbers reach the design. */
 function NumberSetting({
@@ -69,6 +70,8 @@ export function PipelineDesignSettings({
       ...document,
       definition: { ...definition, settings: { ...settings, ...change } },
     }, `setting:${field}`);
+  const setSlots = (input_slots: typeof definition.input_slots, history?: HistoryMode) =>
+    onChange({ ...document, definition: { ...definition, input_slots } }, history);
   return (
     <>
       <div className="pl-settings-grid">
@@ -123,17 +126,7 @@ export function PipelineDesignSettings({
                   value={slot.label}
                   disabled={readOnly}
                   onChange={(event) =>
-                    onChange({
-                      ...document,
-                      definition: {
-                        ...definition,
-                        input_slots: definition.input_slots.map((item) =>
-                          item.id === slot.id
-                            ? { ...item, label: event.target.value }
-                            : item,
-                        ),
-                      },
-                    }, `slot-label:${slot.id}`)
+                    setSlots(renameSlot(definition.input_slots, slot.id, event.target.value), `slot-label:${slot.id}`)
                   }
                 />
               </label>
@@ -146,17 +139,7 @@ export function PipelineDesignSettings({
                   placeholder="Unspecified"
                   disabled={readOnly}
                   onChange={(event) =>
-                    onChange({
-                      ...document,
-                      definition: {
-                        ...definition,
-                        input_slots: definition.input_slots.map((item) =>
-                          item.id === slot.id
-                            ? { ...item, unit: event.target.value || null }
-                            : item,
-                        ),
-                      },
-                    }, `slot-unit:${slot.id}`)
+                    setSlots(setSlotUnit(definition.input_slots, slot.id, event.target.value), `slot-unit:${slot.id}`)
                   }
                 />
               </label>
@@ -164,17 +147,7 @@ export function PipelineDesignSettings({
                 <button
                   type="button"
                   aria-label={`Remove slot ${slot.id}`}
-                  onClick={() =>
-                    onChange({
-                      ...document,
-                      definition: {
-                        ...definition,
-                        input_slots: definition.input_slots.filter(
-                          (item) => item.id !== slot.id,
-                        ),
-                      },
-                    })
-                  }
+                  onClick={() => setSlots(removeSlot(definition.input_slots, slot.id))}
                 >
                   Remove
                 </button>
@@ -185,26 +158,8 @@ export function PipelineDesignSettings({
         {!readOnly && (
           <button
             type="button"
-            disabled={definition.input_slots.length >= 100}
-            onClick={() => {
-              let index = 1;
-              while (
-                definition.input_slots.some(
-                  (slot) => slot.id === `input_${index}`,
-                )
-              )
-                index++;
-              onChange({
-                ...document,
-                definition: {
-                  ...definition,
-                  input_slots: [
-                    ...definition.input_slots,
-                    { id: `input_${index}`, label: `Input ${index}`, unit: null },
-                  ],
-                },
-              });
-            }}
+            disabled={definition.input_slots.length >= PIPELINE_LIMITS.slots}
+            onClick={() => setSlots(addSlot(definition.input_slots))}
           >
             Add input slot
           </button>

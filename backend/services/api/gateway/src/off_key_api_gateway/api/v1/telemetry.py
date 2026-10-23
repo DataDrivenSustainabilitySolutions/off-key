@@ -1,11 +1,12 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
+from off_key_core.utils.timestamps import as_utc
 
-from ...facades.tactic import TacticError, tactic
-from ..errors import raise_tactic_http_error
+from ...facades.tactic import tactic
+from ..errors import TacticErrorRoute
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 
 
 @router.get("/{charger_id}/type")
@@ -15,10 +16,7 @@ async def get_telemetry_types_from_id(
         100, ge=1, le=1000, description="Maximum number of telemetry types to return"
     ),
 ):
-    try:
-        return await tactic.get_telemetry_types(charger_id=charger_id, limit=limit)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.get_telemetry_types(charger_id=charger_id, limit=limit)
 
 
 @router.get("/{charger_id}/data")
@@ -47,33 +45,18 @@ async def get_telemetry(
 
     # Normalize to UTC to keep cursor behavior stable across clients.
     if after_timestamp is not None:
-        after_timestamp = (
-            after_timestamp.replace(tzinfo=UTC)
-            if after_timestamp.tzinfo is None
-            else after_timestamp.astimezone(UTC)
-        )
+        after_timestamp = as_utc(after_timestamp)
     if after_created is not None:
-        after_created = (
-            after_created.replace(tzinfo=UTC)
-            if after_created.tzinfo is None
-            else after_created.astimezone(UTC)
-        )
+        after_created = as_utc(after_created)
     if after_event_timestamp is not None:
-        after_event_timestamp = (
-            after_event_timestamp.replace(tzinfo=UTC)
-            if after_event_timestamp.tzinfo is None
-            else after_event_timestamp.astimezone(UTC)
-        )
+        after_event_timestamp = as_utc(after_event_timestamp)
 
-    try:
-        return await tactic.get_telemetry_data(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-            after_timestamp=after_timestamp,
-            after_created=after_created,
-            after_event_timestamp=after_event_timestamp,
-            paginated=paginated,
-        )
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.get_telemetry_data(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+        after_timestamp=after_timestamp,
+        after_created=after_created,
+        after_event_timestamp=after_event_timestamp,
+        paginated=paginated,
+    )

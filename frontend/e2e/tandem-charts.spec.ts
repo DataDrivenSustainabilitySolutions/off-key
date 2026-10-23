@@ -1,7 +1,8 @@
-import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { zoomChart } from "./helpers/chart";
 import { setAppearance } from "./helpers/appearance";
+import { fulfillJson, installDetailsMockApi } from "./helpers/detailsMockApi";
 
 const CHARGER_ID = "e2e-tandem";
 const SENSOR = "systemVoltage";
@@ -112,81 +113,18 @@ const anomalies = [
   },
 ];
 
-const fulfillJson = (route: Route, json: unknown) => route.fulfill({
-  json,
-  headers: {
-    "access-control-allow-origin": "*",
-    "access-control-allow-headers": "authorization, content-type",
-    "access-control-allow-methods": "GET, OPTIONS",
-  },
-});
-
 const installMockApi = async (
   page: Page,
   mode: EvidenceMode,
   theme: Theme,
   sensors: string[] = [SENSOR],
-) => {
-  let published = false;
-  const evidence = mode === "static" ? staticEvidence : mode === "adaptive" ? adaptiveEvidence : [...staticEvidence, ...adaptiveEvidence];
-
-  await page.addInitScript((preferredTheme) => {
-    const payload = btoa(JSON.stringify({ sub: "1", user_id: 1, exp: 4_102_444_800 }));
-    // An unchecked session keeps its token in sessionStorage, so no refresh is mocked.
-    sessionStorage.setItem("auth_token", `e2e.${payload}.signature`);
-    localStorage.setItem("token_storage_type", "sessionStorage");
-    localStorage.setItem("vite-ui-theme", preferredTheme);
-  }, theme);
-
-  await page.route("**/v1/**", async (route) => {
-    const url = new URL(route.request().url());
-    const incremental = url.searchParams.has("after_created");
-    if (route.request().method() === "OPTIONS") {
-      return route.fulfill({ status: 204, headers: {
-        "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type",
-        "access-control-allow-methods": "GET, OPTIONS",
-      } });
-    }
-    switch (url.pathname.replace(/^\/api(?=\/v1\/)/u, "")) {
-      case "/v1/members/me":
-        return fulfillJson(route, {
-          id: 1, email: "tandem@example.test", role: "admin", is_active: true,
-          is_verified: true, created_at: timestamp(0),
-        });
-      case "/v1/system":
-        return fulfillJson(route, {
-          document: { streams: sensors.map(key => ({ id: key, category: key === SENSOR ? "Voltage" : "Current" })) },
-          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: CHARGER_ID, telemetry_key: key }])) },
-        });
-      case `/v1/telemetry/${CHARGER_ID}/type`:
-        return fulfillJson(route, sensors);
-      case `/v1/telemetry/${CHARGER_ID}/data`:
-        return fulfillJson(route, incremental ? published ? [{ timestamp: timestamp(300), created: timestamp(301), value: 233 }] : [] : telemetry);
-      case "/v1/anomalies/count":
-        return fulfillJson(route, { count: anomalies.length });
-      case "/v1/anomalies":
-        return fulfillJson(route, [...anomalies, anomalies[0]]);
-      case "/v1/monitors/all":
-        return fulfillJson(route, []);
-      case "/v1/monitors/evidence/chart":
-        return fulfillJson(route, incremental ? published && mode !== "static" ? [adaptiveRow("adaptive-z", 300, 3)] : [] : evidence);
-      default:
-        throw new Error(`Unexpected mocked API request: ${url.pathname}`);
-    }
-  });
-
-  return {
-    publish: async () => {
-      published = true;
-      const response = page.waitForResponse((candidate) =>
-        candidate.url().includes(`/telemetry/${CHARGER_ID}/data`) &&
-        candidate.url().includes("after_created"),
-      );
-      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-      await response;
-    },
-  };
-};
+) => installDetailsMockApi(page, {
+  chargerId: CHARGER_ID, sensors, theme, telemetry,
+  laterTelemetry: [{ timestamp: timestamp(300), created: timestamp(301), value: 233 }],
+  evidence: mode === "static" ? staticEvidence : mode === "adaptive" ? adaptiveEvidence : [...staticEvidence, ...adaptiveEvidence],
+  laterEvidence: mode === "static" ? [] : [adaptiveRow("adaptive-z", 300, 3)],
+  anomalies: [...anomalies, anomalies[0]],
+});
 
 type PixelGlyph = { count: number; left: number; right: number; top: number; bottom: number };
 type CanvasReadout = {

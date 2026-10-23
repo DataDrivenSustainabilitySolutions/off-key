@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
   buildNavigationIndex,
@@ -5,12 +6,13 @@ import {
   navigationTrail,
   searchNavigation,
   type NavigationIndex,
-} from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import type { SystemConnection, SystemDocument, SystemStream } from "@/features/catalogue/systemTypes";
+} from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { SystemConnection, SystemDocument, SystemStream } from "@/types/system";
+import { mqttConnection } from "./support/fixtures/system";
 
 function connection(id = "broker", label = "Workshop broker"): SystemConnection {
-  return { id, label, host: "private-endpoint.invalid", port: 1883, protocol: "mqtt", transport: "tcp", tls: false };
+  return mqttConnection({ id, label, host: "private-endpoint.invalid" });
 }
 
 function stream(id: string, topic: string, changes: Partial<SystemStream> = {}): SystemStream {

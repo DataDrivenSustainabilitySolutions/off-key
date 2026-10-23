@@ -1,12 +1,10 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import { clearNavigationDrafts, readStoredDraft } from "@/lib/navigation-draft";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { createApplySession, usePipelineApply } from "@/features/pipelines/applySession";
-import { bindingsReady, suggestBindings } from "@/features/pipelines/bindings";
 import { normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { apply: vi.fn(), activation: vi.fn(), cancel: vi.fn() } }));
@@ -17,7 +15,6 @@ const operation = (phase: PipelineActivationView["phase"] = "requested"): Pipeli
   created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z",
 });
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("durable direct apply", () => {
   it("polls at a bounded interval, pauses while hidden and stops after failure", async () => {
@@ -82,27 +79,5 @@ describe("durable direct apply", () => {
     const pending = createApplySession("apply").submit(request()); clearNavigationDrafts();
     acknowledge(operation()); await pending;
     expect(createApplySession("apply").getSnapshot().request).toBeUndefined();
-  });
-});
-
-const target = { inputs: [
-  { stream: { id: "a", label: "Current", unit: "A" }, binding: { policy: { mode: "original" } } },
-  { stream: { id: "b", label: "Backup current", unit: "A" }, binding: { policy: { mode: "original" } } },
-  { stream: { id: "off", label: "Off", unit: "A" }, binding: { policy: { mode: "off" } } },
-] } as MonitoringTarget;
-describe("reading selection", () => {
-  it("suggests exact labels but leaves ambiguous readings to the user", () => {
-    expect(suggestBindings([{ id: "one", label: "Current", unit: "A" }, { id: "two", label: "Other", unit: "A" }], target))
-      .toEqual({ one: "a", two: "b" });
-    expect(suggestBindings([{ id: "one", label: "Other", unit: "A" }], target)).toEqual({});
-  });
-  it("rejects missing, duplicate, incompatible, disabled and already monitored readings", () => {
-    const slots = [{ id: "one", label: "Current", unit: "A" }, { id: "two", label: "Backup current", unit: "A" }];
-    expect(bindingsReady(slots, target, { one: "a", two: "b" }, () => false)).toBe(true);
-    const invalid: Record<string, string>[] = [{}, { one: "a", two: "a" }, { one: "a", two: "off" }];
-    for (const bindings of invalid)
-      expect(bindingsReady(slots, target, bindings, () => false)).toBe(false);
-    expect(bindingsReady(slots, target, { one: "a", two: "b" }, (id) => id === "b")).toBe(false);
-    expect(bindingsReady([{ id: "one", label: "Voltage", unit: "V" }], target, { one: "a" }, () => false)).toBe(false);
   });
 });

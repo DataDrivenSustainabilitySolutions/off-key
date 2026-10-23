@@ -1,20 +1,21 @@
 """
 MQTT Connection Manager
 
-Handles all connection lifecycle management including connect/disconnect,
-TLS configuration, authentication, and automatic reconnection with backoff.
+Connects, authenticates and disconnects one paho client. Reconnection is the
+collection loop's job (MQTTProxyService._refresh_configuration): it pauses the
+buffer, reconnects and re-applies subscriptions, so this class never retries.
 """
 
 import asyncio
 import ssl
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from collections.abc import Callable, Coroutine
 from datetime import datetime
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_lifecycle import close_client, connack_refusal
 
-from ..auth import ApiKeyAuthError, ApiKeyAuthHandler
 from ..config.config import MQTTConfig
 from .models import ConnectionState
 
@@ -23,44 +24,31 @@ class ConnectionManager:
     """
     Manages MQTT connection lifecycle and state
 
-    Handles connection establishment, TLS setup, authentication,
-    disconnection, and automatic reconnection with exponential backoff.
+    Handles connection establishment, TLS setup, authentication and
+    disconnection.
     """
 
     def __init__(
         self,
         config: MQTTConfig,
-        auth_handler: ApiKeyAuthHandler | None = None,
-        on_connected: Callable[[], Awaitable[None]] | None = None,
-        on_disconnected: Callable[[bool], Awaitable[None]] | None = None,
+        on_connected: Callable[[], Coroutine[Any, Any, None]] | None = None,
     ):
         self.config = config
-        self.auth_handler = auth_handler
         self.on_connected = on_connected
-        self.on_disconnected = on_disconnected
 
         # Connection state
         self.state = ConnectionState.DISCONNECTED
         self.client: mqtt.Client | None = None
-        self.last_connection_attempt = 0
-        self.reconnect_attempts = 0
         self.connection_start_time: datetime | None = None
 
         # Async coordination
         self._connection_event = asyncio.Event()
-        self._shutdown_event = asyncio.Event()
-        self._reconnect_task: asyncio.Task | None = None
         self._event_loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def is_connected(self) -> bool:
         """Check if currently connected"""
         return self.state == ConnectionState.CONNECTED
-
-    @property
-    def is_shutdown(self) -> bool:
-        """Check if shutdown has been requested"""
-        return self._shutdown_event.is_set()
 
     async def connect(self) -> bool:
         """
@@ -76,7 +64,6 @@ class ConnectionManager:
             logger.info("MQTT client already connected")
             return True
 
-        self._shutdown_event.clear()
         self._connection_event.clear()
         self.state = ConnectionState.CONNECTING
         logger.info(
@@ -89,9 +76,12 @@ class ConnectionManager:
             client_id = self.config.get_client_id()
 
             transport = self.config.transport
-            self._cleanup_failed_client()
+            await self._cleanup_failed_client()
             self.client = mqtt.Client(
-                client_id=client_id, transport=transport, reconnect_on_failure=False
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                client_id=client_id,
+                transport=transport,
+                reconnect_on_failure=False,
             )
             self.client.max_queued_messages_set(self.config.max_message_queue_size)
             self.client.max_inflight_messages_set(20)
@@ -101,10 +91,10 @@ class ConnectionManager:
                 context = ssl.create_default_context(cafile=self.config.ca_file)
                 self.client.tls_set_context(context)
 
-            # Set authentication if auth handler is provided
-            if self.auth_handler:
-                username, password = await self.auth_handler.get_mqtt_credentials()
-                self.client.username_pw_set(username, password)
+            if self.config.use_auth:
+                self.client.username_pw_set(
+                    self.config.mqtt_username, self.config.mqtt_api_key
+                )
 
             # Set callbacks
             self.client.on_connect = self._on_connect
@@ -131,7 +121,6 @@ class ConnectionManager:
                 if self.state == ConnectionState.CONNECTED:
                     logger.info("MQTT connection established successfully")
                     self.connection_start_time = datetime.now()
-                    self.reconnect_attempts = 0
 
                     # Notify connected callback
                     if self.on_connected:
@@ -144,84 +133,51 @@ class ConnectionManager:
             except TimeoutError:
                 logger.error("MQTT connection timeout")
                 self.state = ConnectionState.FAILED
-                self._cleanup_failed_client()
+                await self._cleanup_failed_client()
                 return False
 
-        except ApiKeyAuthError as e:
-            logger.error(f"API-Key authentication error: {e}")
+        except asyncio.CancelledError:
             self.state = ConnectionState.FAILED
-            self._cleanup_failed_client()
-            return False
+            await self._cleanup_failed_client()
+            raise
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             self.state = ConnectionState.FAILED
-            self._cleanup_failed_client()
+            await self._cleanup_failed_client()
             return False
 
     async def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
-        if self.state == ConnectionState.DISCONNECTED:
+        if self.client is None:
             return
 
         logger.info("Disconnecting from MQTT broker")
         self.state = ConnectionState.DISCONNECTED
-        self._shutdown_event.set()
-
-        # Cancel reconnect task
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._reconnect_task
-
-        # Disconnect client
-        if self.client:
-            self.client.loop_stop()
-            self.client.disconnect()
+        client, self.client = self.client, None
+        await close_client(client)
 
         # Clear event loop reference
         self._event_loop = None
 
         logger.info("MQTT client disconnected")
 
-    def _cleanup_failed_client(self) -> None:
+    async def _cleanup_failed_client(self) -> None:
         """Stop and discard a paho client that did not reach connected state."""
         if not self.client:
             return
         client, self.client = self.client, None
         try:
-            client.disconnect()
-            client.loop_stop()
+            await close_client(client)
         except Exception:
             logger.debug("Failed MQTT client cleanup raised", exc_info=True)
         finally:
             self.client = None
 
-    def get_connection_info(self) -> dict:
-        """Get connection information for monitoring"""
-        return {
-            "state": self.state.value,
-            "broker_host": self.config.broker_host,
-            "broker_port": self.config.broker_port,
-            "client_id": self.client.client_id if self.client else None,
-            "connection_start_time": (
-                self.connection_start_time.isoformat()
-                if self.connection_start_time
-                else None
-            ),
-            "reconnect_attempts": self.reconnect_attempts,
-        }
-
-    def get_uptime_seconds(self) -> float:
-        """Get connection uptime in seconds"""
-        if not self.connection_start_time:
-            return 0
-        return (datetime.now() - self.connection_start_time).total_seconds()
-
-    def _on_connect(self, client, userdata, flags, rc):
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
         """MQTT connection callback"""
         if client is not self.client:
             return
-        if rc == 0:
+        if reason_code == 0:
             self.state = ConnectionState.CONNECTED
             logger.info("MQTT broker connection successful")
             if self._event_loop and not self._event_loop.is_closed():
@@ -229,48 +185,22 @@ class ConnectionManager:
         else:
             self.state = ConnectionState.FAILED
             logger.error(
-                f"MQTT connection failed with code {rc}: "
-                f"{self._get_connection_error_message(rc)}"
+                f"MQTT connection failed with code {reason_code}: "
+                f"{connack_refusal(reason_code)}"
             )
             if self._event_loop and not self._event_loop.is_closed():
                 self._event_loop.call_soon_threadsafe(self._connection_event.set)
 
-    def _on_disconnect(self, client, userdata, rc):
-        """MQTT disconnection callback"""
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
+        """MQTT disconnection callback; the collection loop reconnects."""
         if client is not self.client:
             return
         self.state = ConnectionState.DISCONNECTED
         self._connection_event.clear()
-
-        if rc != 0:
-            logger.warning(f"Unexpected MQTT disconnection: {rc}")
-            # Start reconnection process
-            if not self._shutdown_event.is_set():
-                self._schedule_reconnect()
-                # Notify disconnected callback
-                if (
-                    self.on_disconnected
-                    and self._event_loop
-                    and not self._event_loop.is_closed()
-                ):
-                    # Capture callback to avoid lambda mutable state issues
-                    callback = self.on_disconnected
-                    self._event_loop.call_soon_threadsafe(
-                        lambda: asyncio.create_task(callback(True))
-                    )
+        if reason_code != 0:
+            logger.warning(f"Unexpected MQTT disconnection: {reason_code}")
         else:
             logger.info("MQTT disconnection completed")
-            # Notify disconnected callback
-            if (
-                self.on_disconnected
-                and self._event_loop
-                and not self._event_loop.is_closed()
-            ):
-                # Capture callback to avoid lambda mutable state issues
-                callback = self.on_disconnected
-                self._event_loop.call_soon_threadsafe(
-                    lambda: asyncio.create_task(callback(False))
-                )
 
     def _on_log(self, client, userdata, level, buf):
         """MQTT log callback"""
@@ -280,66 +210,3 @@ class ConnectionManager:
             logger.warning(f"MQTT: {buf}")
         else:
             logger.debug(f"MQTT: {buf}")
-
-    def _schedule_reconnect(self):
-        """Schedule reconnection attempt from callback thread"""
-        if self._reconnect_task and not self._reconnect_task.done():
-            return
-
-        # Schedule reconnection in the event loop thread-safely
-        if self._event_loop and not self._event_loop.is_closed():
-
-            def create_reconnect_task():
-                if not self._shutdown_event.is_set():
-                    self._reconnect_task = asyncio.create_task(self._reconnect_loop())
-
-            self._event_loop.call_soon_threadsafe(create_reconnect_task)
-        else:
-            logger.warning("Cannot schedule reconnection: no event loop available")
-
-    async def _reconnect_loop(self):
-        """Reconnection loop with exponential backoff"""
-        while (
-            not self._shutdown_event.is_set()
-            and self.state != ConnectionState.CONNECTED
-        ):
-            if self.reconnect_attempts >= self.config.max_reconnect_attempts:
-                logger.error("Maximum reconnection attempts reached")
-                self.state = ConnectionState.FAILED
-                break
-
-            self.reconnect_attempts += 1
-            self.state = ConnectionState.RECONNECTING
-
-            # Exponential backoff with jitter
-            delay = self.config.get_jittered_backoff_delay(self.reconnect_attempts - 1)
-            logger.info(
-                f"Reconnecting in {delay:.1f} seconds "
-                f"(attempt {self.reconnect_attempts})"
-            )
-
-            try:
-                await asyncio.sleep(delay)
-
-                if self._shutdown_event.is_set():
-                    break
-
-                success = await self.connect()
-                if success:
-                    logger.info("Reconnection successful")
-                    break
-
-            except Exception as e:
-                logger.error(f"Reconnection attempt failed: {e}")
-
-    def _get_connection_error_message(self, rc: int) -> str:
-        """Get human-readable connection error message"""
-        error_messages = {
-            1: "Connection refused - incorrect protocol version",
-            2: "Connection refused - invalid client identifier",
-            3: "Connection refused - server unavailable",
-            4: "Connection refused - bad username or password (check API key)",
-            5: "Connection refused - not authorized (check permissions)",
-        }
-
-        return error_messages.get(rc, f"Unknown error code {rc}")

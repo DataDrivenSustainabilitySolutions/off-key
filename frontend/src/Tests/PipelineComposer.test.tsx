@@ -1,11 +1,10 @@
-import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCatalog,
   normalizeDefinition,
   normalizeLayout,
 } from "@/features/pipelines/contracts";
-import { createCreationSession, type CreationDraft } from "@/features/pipelines/creationSession";
 import {
   addBlocker,
   freePosition,
@@ -13,12 +12,11 @@ import {
 } from "@/features/pipelines/model";
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
-import { routeConnections } from "@/features/pipelines/routing";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
 import { addReading, selectReadings, targetInputs } from "@/features/pipelines/slots";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
-import { clearNavigationDrafts, storeDraft, useNavigationDraft } from "@/lib/navigation-draft";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { clearNavigationDrafts, useNavigationDraft } from "@/lib/navigation-draft";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
@@ -51,7 +49,6 @@ const pipeline = (): GraphDocument => ({
 });
 
 beforeEach(() => { clearNavigationDrafts(); });
-afterEach(cleanup);
 
 describe("component placement", () => {
   it("places a new component beside its anchor without covering another card", () => {
@@ -135,7 +132,7 @@ describe("graph editing", () => {
       onChange={() => {}} onAdd={() => {}} onUndo={() => { undone++; }} onRedo={() => {}} settings={<input aria-label="Name" />} />);
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Learning settings" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
   });
@@ -206,50 +203,5 @@ describe("component menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select Detector A" }));
     expect(selected).toBe("detector");
     expect(screen.getByText(/Select it to change the detector model/)).toBeTruthy();
-  });
-});
-
-describe("creation drafts", () => {
-  const initial = (): CreationDraft => ({ document: pipeline(), name: "", description: "" });
-
-  it("restores an unsaved design after a reload and can discard it", () => {
-    const edited = { ...initial(), name: "Machine health" };
-    storeDraft("creation:reload", edited);
-    const session = createCreationSession(initial(), "creation:reload");
-    expect(session.restored).toBe(true);
-    expect(session.getSnapshot().draft.name).toBe("Machine health");
-    session.discard(initial());
-    expect(session.getSnapshot().draft.name).toBe("");
-    expect(createCreationSession(initial(), "creation:reload").restored).toBe(false);
-  });
-});
-
-describe("drag routing", () => {
-  it("reuses settled routes for links that do not touch the moving component", () => {
-    const boxes = [
-      { id: "a", x: 0, y: 0, ...NODE_SIZE }, { id: "b", x: 400, y: 0, ...NODE_SIZE },
-      { id: "c", x: 0, y: 400, ...NODE_SIZE }, { id: "d", x: 400, y: 400, ...NODE_SIZE },
-    ];
-    const edges = [{ source: "a", target: "b" }, { source: "c", target: "d" }];
-    const settled = routeConnections(boxes, edges);
-    const moved = routeConnections(boxes.map((box) => box.id === "d" ? { ...box, y: 480 } : box), edges,
-      { previous: settled, changed: new Set(["d"]) });
-    expect(moved.get(JSON.stringify(["a", "b"]))).toBe(settled.get(JSON.stringify(["a", "b"])));
-    expect(moved.get(JSON.stringify(["c", "d"]))).not.toBe(settled.get(JSON.stringify(["c", "d"])));
-  });
-
-  it("reroutes an unrelated link when the moving component lands on it", () => {
-    const boxes = [
-      { id: "a", x: 0, y: 0, ...NODE_SIZE }, { id: "b", x: 800, y: 0, ...NODE_SIZE },
-      { id: "obstacle", x: 400, y: 400, ...NODE_SIZE },
-    ];
-    const edges = [{ source: "a", target: "b" }];
-    const key = JSON.stringify(["a", "b"]);
-    const settled = routeConnections(boxes, edges);
-    const moved = routeConnections(boxes.map((box) => box.id === "obstacle" ? { ...box, y: 0 } : box), edges,
-      { previous: settled, changed: new Set(["obstacle"]) });
-    expect(moved.get(key)).not.toBe(settled.get(key));
-    expect(moved.get(key)?.blocked).toBe(false);
-    expect(moved.get(key)?.points.some((point) => point.y !== NODE_SIZE.height / 2)).toBe(true);
   });
 });

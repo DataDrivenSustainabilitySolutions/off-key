@@ -20,6 +20,7 @@ import janus
 import paho.mqtt.client as mqtt
 from off_key_core.config.logging import get_logging_settings
 from off_key_core.config.logs import logger
+from off_key_core.utils.mqtt_lifecycle import close_client, connack_refusal
 
 from .config.config import MQTTRadarConfig
 from .coverage import CoverageTracker
@@ -37,11 +38,13 @@ class RadarMQTTClient:
     - Rate limiting and error handling
     """
 
-    def __init__(self, config: MQTTRadarConfig):
+    def __init__(
+        self, config: MQTTRadarConfig, coverage: CoverageTracker | None = None
+    ):
         self.config = config
         self.client: mqtt.Client | None = None
         self.message_handler: Callable[[MQTTMessage], Awaitable[None]] | None = None
-        self.coverage = CoverageTracker()
+        self.coverage = coverage if coverage is not None else CoverageTracker()
 
         # Connection state
         self.is_connected = False
@@ -228,15 +231,7 @@ class RadarMQTTClient:
         self._pending_subscriptions.clear()
         self._confirmed_subscriptions.clear()
         if client is not None:
-            try:
-                client.disconnect()
-            finally:
-                await asyncio.to_thread(client.loop_stop)
-                # A TCP connect can finish after disconnect() saw no socket.
-                # Once the network thread has joined it cannot create another
-                # socket, and Paho can finish disconnecting synchronously.
-                if client.socket() is not None:
-                    client.disconnect()
+            await close_client(client)
 
     def _notify_connection_result(self, error: RuntimeError | None = None) -> None:
         """Resolve the active connection attempt on the asyncio event loop."""
@@ -298,15 +293,7 @@ class RadarMQTTClient:
                 )
 
         else:
-            error_messages = {
-                1: "Connection refused - incorrect protocol version",
-                2: "Connection refused - invalid client identifier",
-                3: "Connection refused - server unavailable",
-                4: "Connection refused - bad username or password",
-                5: "Connection refused - not authorized",
-            }
-
-            error_msg = error_messages.get(rc, f"Unknown error code {rc}")
+            error_msg = connack_refusal(rc)
             logger.error("event=radar.mqtt_connection_refused error=%s", error_msg)
             self.is_connected = False
             self._notify_connection_result(RuntimeError(error_msg))
@@ -502,11 +489,6 @@ class RadarMQTTClient:
             return
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
-    async def _schedule_reconnect(self):
-        """Compatibility wrapper used by tests and explicit callers."""
-        self._ensure_reconnect_task()
-        await asyncio.sleep(0)
-
     async def _reconnect_loop(self):
         """Keep one owner retrying through outages with bounded backoff."""
         delay = min(self.reconnect_delay, 300.0)
@@ -538,39 +520,6 @@ class RadarMQTTClient:
             # Doubling the already capped delay avoids unbounded exponentiation
             # when a worker survives an extended broker outage.
             delay = min(delay * 2, 300.0)
-
-    def get_connection_info(self) -> dict[str, Any]:
-        """Get connection information for monitoring"""
-        uptime = None
-        if self.connection_time:
-            uptime = (datetime.now() - self.connection_time).total_seconds()
-
-        last_message_age = None
-        if self.last_message_time:
-            last_message_age = (datetime.now() - self.last_message_time).total_seconds()
-
-        return {
-            "connected": self.is_connected,
-            "broker_host": self.config.broker_host,
-            "broker_port": self.config.broker_port,
-            "client_id": self.client._client_id if self.client else None,
-            "subscribed_topics": sorted(self._confirmed_subscriptions),
-            "pending_subscriptions": sorted(self._pending_subscriptions.values()),
-            "connection_time": (
-                self.connection_time.isoformat() if self.connection_time else None
-            ),
-            "uptime_seconds": uptime,
-            "reconnect_attempts": self.reconnect_attempts,
-            "message_count": self.message_count,
-            "error_count": self.error_count,
-            "queue_size": self.message_queue.qsize(),
-            "last_message_age_seconds": last_message_age,
-            "rate_limit_status": {
-                "current_rate": len(self.rate_limiter),
-                "limit": self.config.rate_limit_per_minute,
-            },
-            "coverage": self.coverage.snapshot().model_dump(mode="json"),
-        }
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""

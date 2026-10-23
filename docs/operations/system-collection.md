@@ -84,6 +84,13 @@ is applied, the collector enables admission. Failure remains visible and retries
 an empty selection is healthy idle. Old queued generations cannot enter a new
 mapping. Turning an input Off preserves previously recorded history.
 
+The collector's reconciliation loop is the only reconnect owner for the local
+broker. When the connection drops it pauses admission, reports `error` and
+reconnects on its next poll, about every two seconds, without an attempt
+cutoff; the MQTT client itself never retries. A new connection is a new
+subscription generation, so the collector reinstalls its subscriptions and
+re-requests retained snapshots before admitting again.
+
 ## Upgrade from the previous runtime
 
 Use the production release's packaged migration workflow; do not execute SQL
@@ -123,6 +130,23 @@ evidence. DB sync reconciles those policies on startup without changing other
 jobs. Shortening retention makes old chunks eligible for scheduled cleanup; it
 does not affect accounts, catalogues or anomalies. Increasing retention cannot
 recover data already removed.
+
+## MQTT client policy
+
+The services use separate Paho clients. Their connection policies differ on
+purpose in some places and have drifted in others; this table is the current
+record, so a change to one client is visible against the rest.
+
+| Client | Keepalive | TLS | Reconnect owner and give-up | Ready when | Payload limit |
+| --- | --- | --- | --- | --- | --- |
+| TACTIC upstream readers | 30 s | system CA store | Paho, 1–30 s backoff; ingress has no cutoff, the live view ends a broker after `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` (15 s) | every subscription acknowledged | ingress forwards payloads up to 64 KiB |
+| TACTIC ingress publisher | 30 s | configured CA file | Paho, 1–30 s backoff, no cutoff | connected | one envelope per forwarded payload |
+| Collection worker | 15 s | configured CA file | collection loop, about every 2 s, no cutoff | connected and catalogue applied | envelopes up to six times the payload limit; payloads up to 64 KiB |
+| RADAR worker | 60 s | configured CA file | one owner, 5 s doubling to 5 min, no cutoff | every required subscription acknowledged | `RADAR_MAX_PAYLOAD_BYTES`, 64 KiB by default |
+| Simulator | 60 s | system CA store | none (blocking connect at start) | not reported | not applicable |
+
+A refused connection (wrong credentials or permissions) is retried on the same
+schedule as an outage, so the broker sees the same credentials again.
 
 For local MQTT examples and private catalogue simulation, see
 [Local deployment](../development/local-deployment.md).

@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   normalizeDefinition,
   normalizeValidation,
@@ -28,11 +28,6 @@ const report = (selected: string) =>
     },
     definition,
   );
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
-  vi.useRealTimers();
-});
 
 describe("bounded focused pipeline metadata", () => {
   it("retains the inspected graph when an oversized invalid definition echo is omitted", () => {
@@ -61,11 +56,11 @@ describe("bounded focused pipeline metadata", () => {
       )
       .mockResolvedValue(report("second"));
     const hook = renderHook(
-      ({ selected }) => useGraphMetadata("design", definition, true, selected),
+      ({ selected }) => useGraphMetadata(definition, true, selected),
       { initialProps: { selected: "first" } },
     );
     await act(() => vi.advanceTimersByTimeAsync(800));
-    expect(vi.mocked(pipelinesApi.validate).mock.calls[0]?.[3]).toBe("first");
+    expect(vi.mocked(pipelinesApi.validate).mock.calls[0]?.[2]).toBe("first");
     hook.rerender({ selected: "second" });
     await act(async () => finishFirst(report("first")));
     expect(hook.result.current).toBeUndefined();

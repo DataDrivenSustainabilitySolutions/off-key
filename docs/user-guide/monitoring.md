@@ -12,21 +12,31 @@ Use this page when starting, validating, or stopping monitoring workloads from t
 
 ## What monitoring does
 
-- Creates a RADAR workload for selected MQTT sensor topics.
+- Starts one RADAR workload for the selected numeric readings, always as a monitoring pipeline.
 - Runs either a static-baseline or adaptive-stream detection strategy.
 - Persists monitoring evidence and detected anomaly records for the web app.
 
-!!! important
-    A sensor can be owned by only one active monitoring service. Stop or remove the existing service before assigning that sensor elsewhere.
+## Create a monitor
 
-## Standard workflow
+**Create** in the Monitoring workspace (`/?create=monitoring`) opens the
+pipeline workbench described below. A reading's **Configure monitoring** link
+opens it with that reading preselected.
 
-1. Open `/monitoring/:chargerId`.
-2. Select one or more currently unclaimed telemetry sensors.
-3. Choose a monitoring strategy and model.
-4. Keep the defaults for a first-run validation; tune parameters only when the baseline is understood.
-5. Start monitoring.
-6. Observe the service stage, monitoring evidence, and resulting anomalies.
+When an operator sets `TACTIC_PIPELINE_AUTHORING_ENABLED=false` (also the
+root `docker-compose.yml` fallback when `.env` omits it), Create shows the
+form-based setup instead:
+
+1. Select one or more currently unclaimed numeric readings.
+2. Choose a monitoring strategy and model.
+3. Keep the defaults for a first-run validation; tune parameters only when the baseline is understood.
+4. Start monitoring. The form's configuration becomes the equivalent pipeline,
+   so the started service is inspected, stopped and replaced like any other.
+5. Observe the service stage, monitoring evidence, and resulting anomalies.
+
+Either way, every selected reading must already be collected as a numeric
+reading in **Sources**.
+
+## Service health and coverage
 
 Coverage in the service overview reports known discarded observations and possible
 interruptions. RADAR currently consumes a best-effort MQTT stream without a
@@ -46,49 +56,129 @@ waits too long to commit. The service overview names missing or stale inputs and
 shows the last successful inference and evidence commit. Activity recovers when
 fresh inputs and scoring resume; historical coverage warnings remain visible.
 
-### Strategy summary
+## Strategy summary
 
 | Strategy | Best suited to | Runtime behaviour |
 | --- | --- | --- |
 | Static baseline | Signals with a representative training/calibration period | Trains and calibrates first, then scores later observations; exposes conformal and martingale evidence |
 | Adaptive stream | Signals whose behaviour should be learned continuously | Warms up, scores each observation before learning it, and adapts its preprocessing/detector state |
 
+
+## Detector and alarm semantics
+
+A static service consumes consecutive, non-overlapping phases: baseline training,
+calibration, and online inference. Inference produces one conformal p-value and
+feeds the same ordered stream to every configured martingale tracker. Trackers may
+use `power`, `simple_mixture`, or `simple_jumper` betting and may alarm on the
+all-history martingale, harmonic restarted martingale, CUSUM, or
+Shiryaev-Roberts statistic. An anomaly is emitted when any tracker records a new
+threshold crossing. The default is power betting with epsilon `0.5`, the
+restarted statistic, and threshold `100`.
+
+The setup form is deliberately stricter than the server on two values: it asks
+for a reading freshness of at least 1 second and a betting epsilon, minimum
+epsilon or jumper redistribution of at least `0.0001`. Smaller values are almost
+certainly typos.
+
+Ville thresholds on the all-history and harmonic restarted statistics retain
+their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
+change-detection parameters and must be calibrated for the intended null stream;
+`1 / threshold` is not presented as their false-alarm probability.
+
+Every ready-phase inference is persisted in `monitoring_evidence`, including the
+p-value or score, sensor set, aggregate alarm flag, and bounded `tracker_results`
+evidence for every configured martingale. Charts draw each selected alarm
+statistic on a logarithmic secondary axis with its threshold. Telemetry and
+evidence use the same payload event timestamp and share zoom and crosshair, so
+observations from one inference stay vertically aligned; receive time is used
+only when a publisher omits its event timestamp.
+
+## Reading ownership
+
+A reading may belong to only one active monitoring service. TACTIC serializes
+claims in PostgreSQL and rejects overlapping MQTT filters, including `+` and `#`
+wildcard overlap. Topic levels are literal: for example, charger IDs `charger-1`
+and `charger-10` do not overlap. Stop or remove the existing service before
+assigning its readings elsewhere.
+
 ## Visual monitoring pipelines
 
-When visual pipeline authoring is enabled, the Monitoring workspace provides a
-shared pipeline library. Administrators create designs from a static or adaptive
-template, arrange and configure their components, then save a draft. Publishing
-creates a revision. Activation separately reviews input bindings and any service
-being replaced. Members can inspect published designs and running services.
+The setup page holds the service name, the entity (**Readings from**), the
+**Readings to monitor** checklist and the processing graph. Its main actions are
+**Load template**, **Save template** and **Apply monitoring**. Starting a
+service never requires saving a template.
 
-Read a graph from left to right. Each card shows its role, title, underlying
-operation and input/output data types. Renaming a card helps explain its purpose;
-the operation name remains visible. Connections have arrows, labels and line
-patterns for features, scores, P-values and decisions. Scores are model-specific;
-the static strategy's P-values come from conformal calibration.
+**Load template** offers the built-in static and adaptive starting flows plus
+**Your templates**; **Manage templates** opens the shared template library.
+Loading never changes the source template, and **Undo** restores the previous
+flow. **Save template** stores the current graph and layout under its own
+template name, independently of the service name. A concurrent edit keeps your
+work and offers to save it as a new template.
 
-Use **Selected component** to navigate a larger graph, then **Locate selected
-component** to bring its card into a readable view. Fit view returns to the full
-graph. The inspector provides the same connection editing on keyboards and narrow
-screens. It lists compatible, cycle-free upstream choices. **Arrange** changes
-positions while preserving processing order.
+Read a graph from left to right. Each card shows its role, title and underlying
+operation; renaming a card helps explain its purpose while the operation name
+remains visible. Ports carry their data type as a colored dot, and connections are
+solid directional links in the same color, without text labels. The canvas has no
+separate legend; type names appear on hover, in the inspector and in accessible
+descriptions. Scores are model-specific; the static strategy's P-values come from
+conformal calibration.
+
+Drag components from **Add component** onto the canvas, or add one beside the
+selected component without changing connections. Components a design can contain
+only once (input, detector, decision policy and output) stay listed with a
+shortcut to the existing one. The inspector switches between **Learning
+settings** and **Component settings** and provides the same connection editing on
+keyboards and narrow screens, listing compatible, cycle-free upstream choices.
+**Locate selected component** brings its card into a readable view and **Fit
+entire graph** shows the whole graph. **Arrange** lays out the graph while
+preserving processing order; the magnet button (**Snap to grid**) toggles grid
+snapping. Undo and redo also work with Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z outside
+text fields. Click empty canvas or press Escape to release a selection before
+using Delete. The validation button lists current issues; selecting one opens
+that component. An unsaved setup survives a reload of the same browser tab, and
+**Reset** discards it.
 
 To keep features raw, branch from **Aligned inputs** and select the required
 features. **Pass through** preserves the values at its input. **Merge features**
 combines columns from the same aligned observation in the explicit input order;
-rename colliding feature names before combining branches.
+rename colliding feature names before combining branches. A card title changes
+presentation only; the **Rename features** component changes execution.
 
-Configuration issues appear on the affected cards. A running revision shows
-separate sampled runtime badges; check snapshot age, readiness and coverage in
-its diagnostics. In an adaptive graph, preprocessing initialization and detector
-warm-up are separate. Warm-up counts successful detector learning updates.
+Unchecking readings in **Readings to monitor** changes the input slots and
+bindings together; a service accepts up to 100 readings. Every slot binds a
+distinct numeric reading on one entity. Labels are cosmetic; expected units
+require an exact match, and unknown units remain unknown.
 
-Editing a running service opens a reusable draft. Saving or publishing that draft
-leaves the running revision active until an explicit activation replaces it.
+**Apply monitoring** validates the graph and starts the service through the same
+preflight, reading claims, capacity checks and worker heartbeat as every other
+start. Progress stays visible across navigation and reload: **Recover start
+request** resumes an uncertain request, **Cancel start** stops it, and a failed
+start offers **Return to setup**. A rejected request keeps the setup editable.
+
+A running service always displays its bound, immutable execution. Its
+arrangement can be saved independently. The live inspector shows one coherent
+sampled observation, separates score and post-learning passes, and marks nodes
+that did not execute. Snapshot age is visible; fresh diagnostics do not imply
+persisted evidence is current. Static training appears as a batch summary.
+Configuration issues and sampled runtime state have separate badges.
+
+**Edit service** opens the running definition, layout and bindings. **Apply
+changes** explains the interruption and fresh learning, then replaces the
+service through the same preflight and handoff. Both sets of readings stay
+reserved during preflight and handoff, and a failed preflight leaves the
+predecessor running. After retirement, cancellation or failure does not silently
+revive it. History remains inspectable after a service is removed. Older library,
+revision and in-flight activation links still open.
+
+Static preprocessing fits only the training window and stays frozen. Adaptive
+preprocessing initializes before downstream learning; its warm-up counter counts
+successful detector updates. PCA has separate centered batch and uncentered
+incremental implementations. Changing online preprocessing does not transform
+historical geometry already retained by the detector.
 
 ## Adaptive model selection
 
-Adaptive monitoring uses Aberrant 1.3.0. Models are grouped by the library's
+Adaptive monitoring uses the Aberrant release pinned by RADAR. Models are grouped by the library's
 algorithm family and filtered by the number of features after preprocessing.
 The original 24 numeric detectors remain available; scalar and multivariate
 rolling matrix profiles add detection of unusual sequences across one or multiple
@@ -117,83 +207,11 @@ Existing saved model IDs and the legacy flat KNN parameters are translated on
 input. Legacy histogram `max_bins` becomes `max_depth`; conflicting old and new
 parameter values are rejected.
 
-## Visual pipeline designs
-
-When visual authoring is enabled, **Create** opens the monitoring workbench
-directly. Drag components from the left toolbox onto the canvas and connect their
-typed ports. The right inspector switches between **Service settings** (name,
-entity, input slots and learning settings) and **Component settings**. On narrow
-screens, the panel buttons expose the same tools.
-Component ports describe their data types. Connections are solid directional links
-without text labels; their color matches the ports. Merge ordering and feature
-details appear in the inspector.
-The canvas has no separate legend.
-
-The optional **Templates** menu loads a static or adaptive starting flow, or a
-saved design. A published design loads its latest immutable revision; an
-unpublished design loads its saved draft. Changes apply to your own copy, and
-**Undo** restores the previous flow. **Manage saved designs** in that menu opens
-the shared library; returning preserves your workbench. Opening Create and loading
-templates save nothing until **Save draft**. If the operator has disabled visual
-authoring, Create continues to use the form-based setup.
-
-Choosing readings under **Inputs** rewrites the input slots to match that
-entity's enabled readings; if you change the slots afterwards, a notice offers to
-match them again. **Add component** places the new component beside the selected
-one without changing any connections; connect it in **Component settings**.
-Components a design can contain only once (input, detector, decision policy and
-output) stay listed with a shortcut that selects the existing one; change the
-detector model in its **Component settings**, where the model list can be
-filtered. Click empty canvas or press Escape to release a selection before using
-Delete. Undo and redo also work with Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z outside text
-fields; typing in one field counts as a single step. The validation button next to
-the panel buttons shows the current issue count and lists the issues; selecting
-one opens that component. An unsaved creation design survives a reload of the
-same browser tab, and **Start over** discards it.
-
-The canvas has a subtle blueprint grid. Dropped and moved components snap to it
-by default. Use the magnet button (**Snap to grid**) for free placement; the grid
-texture stays visible. Changing this setting preserves existing arrangements.
-**Arrange** lays out the graph explicitly; manual arrangement is preserved.
-The node list and connection menus
-provide the same editing operations on a keyboard or narrow screen.
-
-Select input slots by stable identity. Bind every slot to a distinct enabled
-numeric reading on one entity during activation review. Labels are cosmetic;
-expected units require an exact match, and unknown units remain unknown. Suggested
-bindings must be reviewed. Use selection to split features into branches, renaming
-to avoid collisions, and ordered merge connections to join them again. **Node
-title** changes presentation; the **Rename features** component changes execution.
-
-**Save draft** saves shared work without changing a running monitor. **Publish
-revision** validates and creates an immutable executable revision. **Start revision**
-or **Review replacement** reviews bindings, executable changes, predecessor and
-fresh training/calibration before activation. An existing draft is never silently
-overwritten when editing a running revision. Concurrent saves offer reload or
-save as copy. **Activate replacement** confirms the reviewed handoff.
-
-A running monitor always displays its bound immutable revision. Its arrangement
-can be saved independently. The live inspector shows one coherent sampled
-observation, separates score and post-learning passes, and marks nodes that did
-not execute. Snapshot age is visible; fresh diagnostics do not imply persisted
-evidence is current. Static training appears as a batch summary.
-
-Static preprocessing fits only the training window and stays frozen. Adaptive
-preprocessing initializes before downstream learning; its warm-up counter counts
-successful detector updates. PCA has separate centered batch and uncentered
-incremental implementations. Changing online preprocessing does not transform
-historical geometry already retained by the detector.
-
-Replacement reserves both sets of inputs during preflight and handoff. A failed
-preflight leaves the predecessor running. After retirement, cancellation or failure
-does not silently revive it. Reusing an earlier revision starts a fresh run.
-History remains inspectable after a service is removed.
-
 ## Stop and cleanup workflow
 
-1. Open the charger monitoring view or `/services`.
-2. Stop or remove the active service.
-3. Confirm that the service is absent from the service list and that its sensors are available again.
+1. Open **Monitoring** at `/` and select the service.
+2. Choose **Stop and remove service** (or **Remove service** once it has stopped).
+3. Confirm that the service is absent from the service list and that its readings are available again.
 
 With the default `ephemeral` lifecycle, TACTIC also cleans up managed workloads when it restarts.
 
@@ -213,17 +231,8 @@ curl --fail http://localhost:8000/v1/anomalies/count
 | Start fails with a validation error | Invalid model parameters or sensors already claimed | Retry with defaults and check active services |
 | Service runs but evidence is empty | No MQTT data flow or warm-up/calibration is incomplete | Verify the topic stream and allow the initial window to complete |
 | Service disappears after a restart | Ephemeral lifecycle is configured | Use `TACTIC_RADAR_WORKLOAD_LIFECYCLE=persistent` only when persistence is required |
-| Model endpoint is empty | Model registry has not initialized | Check TACTIC `/ready` and its logs |
+| Model endpoint fails | TACTIC is unreachable | Check TACTIC `/ready` and its logs |
 | Evidence exists but no anomalies appear | Current observations have not crossed the detector threshold | Inspect evidence before changing model parameters |
-
-## Related pages
-
-- [Backend API](../reference/backend-api.md)
-- [Architecture](../development/architecture.md)
-- [Environment variables](../reference/environment-variables.md)
-- [Testing and debugging](../development/testing-debugging.md)
-- [RADAR recovery](../operations/radar-recovery.md)
-- [RADAR deployment capacity](../operations/radar-capacity.md)
 
 ## Telemetry persistence during outages
 
@@ -252,3 +261,12 @@ Standalone workers expose the corresponding `RADAR_*` environment settings.
 Keep source and worker clocks synchronized. These settings form part of the
 checkpoint compatibility signature; a changed alignment contract requires a new
 monitor baseline.
+
+## Related pages
+
+- [Backend API](../reference/backend-api.md)
+- [Architecture](../development/architecture.md)
+- [Environment variables](../reference/environment-variables.md)
+- [Testing and debugging](../development/testing-debugging.md)
+- [RADAR recovery](../operations/radar-recovery.md)
+- [RADAR deployment capacity](../operations/radar-capacity.md)

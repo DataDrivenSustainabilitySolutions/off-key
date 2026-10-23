@@ -6,7 +6,6 @@ These schemas define the data transfer objects used for API requests and respons
 
 from datetime import datetime
 
-from off_key_core.utils.enum import RoleEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 # =============================================================================
@@ -41,12 +40,6 @@ class ChargerResponse(BaseModel):
 # =============================================================================
 
 
-class TelemetryTypeResponse(BaseModel):
-    """Response schema for telemetry types."""
-
-    types: list[str]
-
-
 class TelemetryDataPoint(BaseModel):
     """Single telemetry data point."""
 
@@ -70,19 +63,6 @@ class TelemetryPaginationResponse(BaseModel):
     next_cursor: TelemetryCursorResponse | None
 
 
-class TelemetryResponse(BaseModel):
-    """Response schema for telemetry data."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    charger_id: str
-    type: str
-    timestamp: datetime
-    value: float | None
-    data_source: str
-    created: datetime | None = None
-
-
 class TelemetryPaginatedResponse(BaseModel):
     """Paginated response for telemetry data."""
 
@@ -95,30 +75,6 @@ class TelemetryPaginatedResponse(BaseModel):
 # =============================================================================
 
 
-class UserResponse(BaseModel):
-    """Response schema for user data."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    email: str
-    is_verified: bool
-    is_active: bool
-    session_version: int
-    role: RoleEnum
-    updated_at: datetime
-    created_at: datetime
-
-
-class UserCreateRequest(BaseModel):
-    """Request schema for creating a user."""
-
-    email: str = Field(..., max_length=255)
-    hashed_password: str
-    verification_token: str | None = None
-    role: RoleEnum = RoleEnum.user
-
-
 class UserLoginRequest(BaseModel):
     """Request schema for user login."""
 
@@ -126,40 +82,9 @@ class UserLoginRequest(BaseModel):
     password: str
 
 
-class UserUpdateRequest(BaseModel):
-    """Request schema for updating user."""
-
-    hashed_password: str | None = None
-    is_verified: bool | None = None
-    verification_token: str | None = None
-
-
-class UserPasswordUpdateRequest(BaseModel):
-    """Request schema for password updates."""
-
-    new_password_hash: str
-
-
 # =============================================================================
 # Favorite Schemas
 # =============================================================================
-
-
-class FavoriteResponse(BaseModel):
-    """Response schema for favorites."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    favorite_id: int
-    charger_id: str
-    user_id: int
-
-
-class FavoriteCreateRequest(BaseModel):
-    """Request schema for creating a favorite."""
-
-    user_id: int
-    charger_id: str
 
 
 class FavoriteMutationRequest(BaseModel):
@@ -244,23 +169,6 @@ class MonitoringChartEvidenceResponse(BaseModel):
 
 
 # =============================================================================
-# Generic Response Schemas
-# =============================================================================
-
-
-class MessageResponse(BaseModel):
-    """Generic message response."""
-
-    message: str
-
-
-class ErrorResponse(BaseModel):
-    """Error response schema."""
-
-    detail: str
-
-
-# =============================================================================
 # Exports
 # =============================================================================
 
@@ -268,22 +176,12 @@ __all__ = [
     "AnomalyCreateRequest",
     "AnomalyResponse",
     "ChargerResponse",
-    "ErrorResponse",
-    "FavoriteCreateRequest",
     "FavoriteMutationRequest",
-    "FavoriteResponse",
-    "MessageResponse",
     "MonitoringChartEvidenceResponse",
     "MonitoringEvidenceResponse",
     "TelemetryCursorResponse",
     "TelemetryDataPoint",
     "TelemetryPaginatedResponse",
     "TelemetryPaginationResponse",
-    "TelemetryResponse",
-    "TelemetryTypeResponse",
-    "UserCreateRequest",
     "UserLoginRequest",
-    "UserPasswordUpdateRequest",
-    "UserResponse",
-    "UserUpdateRequest",
 ]

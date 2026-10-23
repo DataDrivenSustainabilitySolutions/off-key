@@ -4,7 +4,7 @@ Aberration's mark uses two opposing angular forms. Its geometry is kept in the
 repository's assets/brand/logo.svg master; the folder also contains plain black
 and white SVGs and the adaptive favicon for reuse.
 
-<img class="brand-reference" src="../../assets/brand/logo-black.svg" width="96" height="96" alt="Aberration mark">
+<img class="brand-reference" src="../assets/brand/logo-black.svg" width="96" height="96" alt="Aberration mark">
 
 ## Placement and colour
 
@@ -20,13 +20,9 @@ surface. Keep the mark free of outlines, coloured fills, and visual effects.
 ## Source and exports
 
 The frontend, documentation, and self-contained public page use exports from the
-same master. Regenerate them after changing the master:
-
-    python assets/brand/export.py
-    python assets/brand/export.py --check
-
-The second command checks for stale assets without changing files and runs in
-pre-commit/CI. The standalone favicon follows the browser colour scheme.
+same master. See the
+[brand asset README](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/assets/brand/README.md)
+for regenerating and checking them.
 
 Reusable SVGs:
 

@@ -17,6 +17,7 @@ from off_key_core.models.pipeline_reports import (
 )
 from off_key_core.models.pipelines import (
     compile_pipeline,
+    lower_form_monitor,
     pipeline_catalog_id,
     validate_pipeline,
 )
@@ -35,6 +36,7 @@ from off_key_core.schemas.pipelines import (
     PipelineServiceView,
     PipelineView,
 )
+from off_key_core.schemas.radar import FormMonitorConfig
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import select
 
@@ -214,6 +216,21 @@ class PipelineLibrary:
             raise NotFoundError("Pipeline revision not found")
         return revision_view(revision)
 
+    async def pipeline_state(self, service_id: str):
+        service = await self.session.get(MonitoringService, service_id)
+        if service is None:
+            raise NotFoundError("Monitoring service not found")
+        return (service.operational_status or {}).get("pipeline_state")
+
+    async def selected_state(self, service_id: str | None):
+        """The workspace's selected service state; a missing selection is None."""
+        if not service_id:
+            return None
+        service = await self.session.get(MonitoringService, service_id)
+        if service is None:
+            return None
+        return (service.operational_status or {}).get("pipeline_state")
+
     async def _service_source(self, service_id):
         run = await self.session.scalar(
             select(PipelineRun).where(PipelineRun.service_id == service_id)
@@ -295,85 +312,11 @@ class PipelineLibrary:
         return layout
 
 
-def legacy_definition(config: dict) -> PipelineDefinition:
-    """Presentation of existing saved monitor semantics, never an implicit migration."""
-    from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
-
-    from .release import normalize_saved_launch
+def legacy_definition(config: dict | FormMonitorConfig) -> PipelineDefinition:
+    """The graph equivalent of a form-configured monitor."""
+    from .release import saved_form_monitor
 
     # Read reviewed older launch schemas without changing their saved provenance.
-    parsed = normalize_saved_launch(config)
-    keys = derive_monitoring_sensor_keys(
-        parsed.mqtt_topics,
-        sensor_key_strategy=parsed.performance_config.sensor_key_strategy,
-    )
-    slots = [
-        {"id": f"input_{index + 1}", "label": key} for index, key in enumerate(keys)
-    ]
-    nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
-    previous = "input"
-    edges = []
-    for index, step in enumerate(getattr(parsed.monitoring, "preprocessing_steps", [])):
-        params = step.model_dump(mode="json")
-        kind = params.pop("type")
-        node_id = f"transform_{index + 1}"
-        component = (
-            f"adaptive.{kind if kind != 'incremental_pca' else 'uncentered_pca'}"
-        )
-        nodes.append(
-            {
-                "id": node_id,
-                "kind": "transform",
-                "component": component,
-                "params": params,
-            }
-        )
-        edges.append({"source": previous, "target": node_id})
-        previous = node_id
-    policy = (
-        "policy.martingale"
-        if parsed.monitoring.strategy == "static_baseline"
-        else "policy.quantile"
-    )
-    policy_params = (
-        parsed.monitoring.martingale_config
-        if parsed.monitoring.strategy == "static_baseline"
-        else parsed.monitoring.threshold_config
-    )
-    nodes.extend(
-        [
-            {
-                "id": "detector",
-                "kind": "detector",
-                "component": f"detector:{parsed.monitoring.model_type}",
-                "params": parsed.monitoring.model_params,
-            },
-            {
-                "id": "policy",
-                "kind": "policy",
-                "component": policy,
-                "params": policy_params.model_dump(mode="json"),
-            },
-            {"id": "output", "kind": "output", "component": "output.evidence"},
-        ]
-    )
-    edges.extend(
-        [
-            {"source": previous, "target": "detector"},
-            {"source": "detector", "target": "policy"},
-            {"source": "policy", "target": "output"},
-        ]
-    )
-    return PipelineDefinition.model_validate(
-        {
-            "strategy": parsed.monitoring.strategy,
-            "input_slots": slots,
-            "nodes": nodes,
-            "edges": edges,
-            "settings": {
-                "training_window_size": parsed.monitoring.training_window_size,
-                "calibration_window_size": parsed.monitoring.calibration_window_size,
-                "seed": getattr(parsed.monitoring, "seed", 42),
-            },
-        }
+    return lower_form_monitor(
+        config if isinstance(config, FormMonitorConfig) else saved_form_monitor(config)
     )

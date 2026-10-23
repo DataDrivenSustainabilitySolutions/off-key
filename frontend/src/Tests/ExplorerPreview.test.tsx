@@ -1,20 +1,21 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EChart } from "@/components/EChart";
-import { ExplorerHistoryChart } from "@/features/explorer/ExplorerHistoryChart";
-import ExplorerPreview from "@/features/explorer/ExplorerPreview";
-import { useReadingMonitoring } from "@/features/explorer/useReadingMonitoring";
-import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/features/explorer/readingHistoryCache";
-import { buildNavigationIndex, type ExplorerNode } from "@/features/explorer/navigationIndex";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveBatch, LiveValue } from "@/features/catalogue/systemLiveTypes";
-import type { SystemDocument, SystemRuntime } from "@/features/catalogue/systemTypes";
+import { EChart } from "@/features/charts/EChart";
+import { ExplorerHistoryChart } from "@/features/readings/ExplorerHistoryChart";
+import ExplorerPreview from "@/features/readings/ExplorerPreview";
+import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
+import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readingHistoryCache";
+import { buildNavigationIndex, type ExplorerNode } from "@/domain/system/navigationIndex";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveBatch, LiveValue } from "@/types/system-live";
+import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
+import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
-vi.mock("@/features/explorer/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
-vi.mock("@/components/EChart", () => ({
+vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
+vi.mock("@/features/charts/EChart", () => ({
   EChart: vi.fn(({ accessibleDescription, resolvedTheme }: { accessibleDescription: string; resolvedTheme: string }) =>
     <div role="img" aria-label={accessibleDescription} data-theme={resolvedTheme} />),
 }));
@@ -26,7 +27,7 @@ const lastChartProps = () => {
 };
 const system: SystemDocument = {
   ...createEmptySystem(), label: "Test system",
-  connections: [{ id: "broker", label: "North building", protocol: "mqtt", host: "broker.test", port: 1883, tls: false, transport: "tcp" }],
+  connections: [mqttConnection({ id: "broker", label: "North building", host: "broker.test" })],
   devices: [{ id: "device", label: "Room sensor", kind: "sensor", connection_id: "broker" }],
   streams: [
     { id: "temperature", label: "Air temperature", topic: "site/room/temperature", value_type: "number", unit: "°C" },
@@ -58,6 +59,13 @@ beforeEach(() => {
   vi.mocked(EChart).mockClear();
   vi.mocked(useReadingMonitoring).mockReturnValue({ telemetry: [], evidence: [], anomalies: [], services: [], error: "" });
 });
+
+// The running monitor whose topic claims the temperature reading.
+const owner: ActiveService = {
+  id: "selected", container_id: "test", container_name: "Selected monitor", status: true,
+  mqtt_topics: ["telemetry/entity-id/temperature"],
+  operational_status: { stage: "operational", message_count: 1, processed_message_count: 1, is_stale: false },
+};
 
 function receive(telemetry: SystemLiveTelemetry, time: number, value: number, sequence: number) {
   const next = batch("temperature", value);
@@ -161,17 +169,17 @@ describe("workspace chart navigation and monitoring", () => {
     expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("isolates evidence and corroborated alarm events to the selected service, even when the reading has a newer owner", () => {
+  it("isolates evidence and corroborated alarm events to the monitor that owns the reading", () => {
     const time = new Date(NOW).toISOString();
     const otherTime = new Date(NOW - 1000).toISOString();
     const evidence = (id: string, timestamp: string): MonitoringChartEvidence => ({ service_id: id, created: timestamp, timestamp, sequence_number: 1,
       input_timestamps: { temperature: timestamp }, sensor_set: ["temperature"], strategy: "adaptive_stream", anomaly_score: 4, threshold: 3, alarm: true, restarted_martingale: null });
-    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [],
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [owner],
       telemetry: [{ timestamp: time, value: 22 }, { timestamp: otherTime, value: 21 }], evidence: [evidence("selected", time), evidence("other", otherTime)],
       anomalies: [time, otherTime].map((timestamp, index) => ({ anomaly_id: `event-${index}`, charger_id: "entity-id", telemetry_type: "temperature", timestamp,
         anomaly_type: "ml_tailprob_univariate", anomaly_value: .01, value_type: "tail_pvalue" })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
     const option = lastChartProps().option;
     const series = option.series as Array<{ id?: string; markPoint?: { data: unknown[] } }>;
     expect(series[0]).toMatchObject({ data: [[NOW - 1000, 21], [NOW, 22]] });
@@ -185,7 +193,7 @@ describe("workspace chart navigation and monitoring", () => {
     const timestamp = new Date(NOW).toISOString();
     vi.mocked(useReadingMonitoring).mockReturnValue({
       binding: { entityId: "entity-id", telemetryType: "temperature" },
-      error: "", services: [], evidence: [],
+      error: "", services: [owner], evidence: [],
       telemetry: [{ timestamp, value: 22 }],
       anomalies: ["selected", "other"].map(service_id => ({
         anomaly_id: `event-${service_id}`, service_id, charger_id: "entity-id",
@@ -194,7 +202,7 @@ describe("workspace chart navigation and monitoring", () => {
         value_type: "tail_pvalue",
       })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} serviceId="selected" />);
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
     const series = lastChartProps().option.series as Array<{ markPoint?: { data: unknown[] } }>;
     expect(series[0]?.markPoint?.data).toHaveLength(1);
     expect(series[0]?.markPoint?.data).toEqual(expect.arrayContaining([
@@ -248,9 +256,6 @@ describe("workspace chart navigation and monitoring", () => {
   });
 });
 afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
   if (initialClipboard) Object.defineProperty(navigator, "clipboard", initialClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
 });

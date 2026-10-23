@@ -3,6 +3,7 @@ import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
+import layers from './eslint-layers.js'
 
 export default tseslint.config(
   {
@@ -39,5 +40,17 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/Tests/**'],
+    plugins: { layers },
+    rules: { 'layers/allowed-imports': 'error' },
+  },
+  {
+    // Application code logs through clientLogger, which redacts and gates by environment.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/logger.ts', 'src/Tests/**'],
+    rules: { 'no-console': 'error' },
   },
 )

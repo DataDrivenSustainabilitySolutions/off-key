@@ -18,6 +18,8 @@ jobs:
   build-images:
     name: build-${{ matrix.service }}
     runs-on: ubuntu-latest
+    env:
+      PUBLISH: ${{ inputs.publish && !matrix.build_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +59,9 @@ jobs:
               SERVICE_ROOT=services/mqtt/proxy
           - service: mqtt-simulator
             image_name: off-key-mqtt-simulator
+            # Only local stacks use it and they build it from source, so it is
+            # built on every run but never published.
+            build_only: true
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
@@ -78,7 +83,7 @@ jobs:
 
       - name: Normalize registry owner
         id: owner
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH == 'true' }}
         shell: bash
         run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
@@ -86,16 +91,16 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH == 'true' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Extract Docker metadata
         id: meta
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH == 'true' }}
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}
@@ -112,17 +117,19 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build image
-        if: ${{ !inputs.publish }}
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           build-args: ${{ matrix.build_args }}
-          push: false
-          load: ${{ matrix.service == 'frontend' }}
-          tags: off-key-${{ matrix.service }}:validation
+          push: ${{ env.PUBLISH == 'true' }}
+          # Validation loads only the frontend, for the nginx startup check below.
+          load: ${{ !inputs.publish && matrix.service == 'frontend' }}
           provenance: false
           sbom: false
+          tags: ${{ env.PUBLISH == 'true' && steps.meta.outputs.tags || format('off-key-{0}:validation', matrix.service) }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
             type=gha,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
             ${{ inputs.cache-fallback-scope-prefix && format('type=gha,scope={0}-{1}', inputs.cache-fallback-scope-prefix, matrix.service) || '' }}
@@ -132,26 +139,8 @@ jobs:
         if: ${{ !inputs.publish && matrix.service == 'frontend' }}
         run: python3 frontend/check_nginx_startup.py off-key-frontend:validation
 
-      - name: Build and push image
-        id: build
-        if: ${{ inputs.publish }}
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          build-args: ${{ matrix.build_args }}
-          push: true
-          provenance: false
-          sbom: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
-            ${{ inputs.cache-fallback-scope-prefix && format('type=gha,scope={0}-{1}', inputs.cache-fallback-scope-prefix, matrix.service) || '' }}
-          cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
-
       - name: Attest build provenance
-        if: ${{ inputs.publish }}
+        if: ${{ env.PUBLISH == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}

@@ -1,14 +1,16 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { createEmptySystem } from "@/features/catalogue/systemDocument";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
-import type { LiveStatus, LiveNodeSnapshot } from "@/features/catalogue/systemLiveTypes";
-import type { SystemRuntime } from "@/features/catalogue/systemTypes";
-import { buildNavigationIndex } from "@/features/explorer/navigationIndex";
-import { readingActivity, type ReadingActivitySource } from "@/features/explorer/readingActivity";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { LiveStatus, LiveNodeSnapshot } from "@/types/system-live";
+import type { SystemRuntime } from "@/types/system";
+import { buildNavigationIndex } from "@/domain/system/navigationIndex";
+import { readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
+import { mqttConnection } from "./support/fixtures/system";
 
 const now = Date.parse("2026-10-13T12:00:00Z");
 const time = (age = 0) => new Date(now - age).toISOString();
-const document = { ...createEmptySystem(), connections: [{ id: "broker", label: "Broker", host: "localhost", protocol: "mqtt" as const, port: 1883, tls: false, transport: "tcp" as const }],
+const document = { ...createEmptySystem(), connections: [mqttConnection({ id: "broker", label: "Broker", host: "localhost" })],
   streams: [{ id: "temperature", label: "Temperature", connection_id: "broker", topic: "room/temperature", value_type: "number" as const, category: "Environment" }] };
 const index = buildNavigationIndex(document);
 const node = index.nodes.get(index.objectKeys.get("temperature")![0]!)!;

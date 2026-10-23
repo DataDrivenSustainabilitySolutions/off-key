@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-const PASSWORD = "PlaywrightPass123!";
+export const PASSWORD = "PlaywrightPass123!";
 
 type LoginOptions = {
   rememberMe?: boolean;

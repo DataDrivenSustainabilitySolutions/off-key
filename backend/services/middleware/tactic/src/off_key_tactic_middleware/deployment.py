@@ -6,7 +6,7 @@ import json
 import re
 from datetime import UTC, datetime
 
-import docker
+import docker.errors
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.models import DeploymentMaintenance, MonitoringService, PipelineRun
@@ -17,25 +17,33 @@ from off_key_core.db.pipeline_claims import (
 from off_key_core.schemas.radar import RadarStartConfig
 from sqlalchemy import select, text
 
-from .models.registry import ModelRegistryService
+from .facades.docker import SWARM_TASK_DONE
 from .services.orchestration.radar import RadarOrchestrationService
+from .services.orchestration.radar_status import (
+    RUNTIME_STATUS_STALE_AFTER_SECONDS,
+    heartbeat_age_seconds,
+)
 from .services.orchestration.radar_workloads import (
     RadarWorkloadManager,
     get_async_docker,
 )
+from .services.pipelines.forms import (
+    UnconvertibleFormMonitor,
+    convert_saved_form_monitor,
+)
 from .services.pipelines.release import (
+    is_saved_form_monitor,
     normalize_saved_launch,
     prepare_release_monitors,
     record_release_run,
+    saved_form_monitor,
 )
-
-TERMINAL_TASKS = {"shutdown", "complete", "failed", "rejected", "remove"}
 
 
 def captured_configuration(name: str, environment: list[str]) -> dict:
     """One-time capture of pre-integration workers, excluding runtime credentials."""
     values = dict(value.split("=", 1) for value in environment if "=" in value)
-    config = normalize_saved_launch(
+    config = saved_form_monitor(
         {
             "container_name": name,
             "mqtt_topics": values["RADAR_SUBSCRIPTION_TOPICS"].split(","),
@@ -108,19 +116,21 @@ async def prepare_operation(session, workloads, revision: str):
             raise ValueError(
                 "Capture existing active monitor configuration before cutover"
             )
-        config = normalize_saved_launch(service.launch_config) if restart else None
-        snapshots.append(
-            {
-                "previous_id": service.id,
-                "workload_id": service.container_id,
-                "stopped": False,
-                "config": config.model_dump(mode="json")
-                if config is not None
-                else None,
-                "replacement_id": None,
-                "previous_config": service.launch_config,
-            }
-        )
+        snapshot = {
+            "previous_id": service.id,
+            "workload_id": service.container_id,
+            "stopped": False,
+            "config": None,
+            "replacement_id": None,
+            "previous_config": service.launch_config,
+        }
+        if restart and is_saved_form_monitor(service.launch_config):
+            snapshot |= await _converted_form_monitor(session, service)
+        elif restart:
+            snapshot["config"] = normalize_saved_launch(
+                service.launch_config
+            ).model_dump(mode="json")
+        snapshots.append(snapshot)
     if operation is None:
         operation = DeploymentMaintenance(id=1)
         session.add(operation)
@@ -130,6 +140,22 @@ async def prepare_operation(session, workloads, revision: str):
     operation.updated_at = datetime.now(UTC)
     await session.commit()
     return operation
+
+
+async def _converted_form_monitor(session, service) -> dict:
+    """Restart a form monitor as a pipeline, or retire it when that cannot work."""
+    try:
+        async with session.begin_nested():
+            config, metadata = await convert_saved_form_monitor(
+                session, service.launch_config
+            )
+    except UnconvertibleFormMonitor as exc:
+        # Its readings left the catalogue; the monitor stops and keeps history.
+        return {"retired": str(exc)[:500]}
+    return {
+        "config": config.model_dump(mode="json"),
+        "binding_metadata": metadata.model_dump(mode="json"),
+    }
 
 
 async def reserve(session, revision: str) -> dict:
@@ -208,7 +234,7 @@ async def wait_stopped(workloads, workload_id: str, *, attempts: int = 120):
             workloads.async_docker.client.api.tasks,
             filters={"service": workload_id},
         )
-        if all(task["Status"]["State"] in TERMINAL_TASKS for task in tasks):
+        if all(task["Status"]["State"] in SWARM_TASK_DONE for task in tasks):
             return
         await asyncio.sleep(1)
     raise ValueError("A retiring RADAR task did not stop; deployment remains blocked")
@@ -230,7 +256,11 @@ async def begin(session, orchestration, revision: str) -> dict:
     operation.phase = "stopped"
     operation.updated_at = datetime.now(UTC)
     await session.commit()
-    return {"phase": operation.phase, "monitors": len(operation.monitors)}
+    return {
+        "phase": operation.phase,
+        "monitors": len(operation.monitors),
+        "retired": [m["previous_id"] for m in operation.monitors if m.get("retired")],
+    }
 
 
 async def stop_release_monitor(session, orchestration, monitor, revision):
@@ -317,8 +347,8 @@ async def verify_restarted(session, revision: str, *, lock: bool = False) -> dic
             or service is None
             or not service.status
             or service.operational_updated_at is None
-            or (datetime.now(UTC) - service.operational_updated_at).total_seconds()
-            > 120
+            or heartbeat_age_seconds(service.operational_updated_at)
+            > RUNTIME_STATUS_STALE_AFTER_SECONDS
             or service.operational_stage in {"failed", "stopped", "degraded"}
         ):
             raise ValueError(
@@ -372,9 +402,7 @@ async def run(action: str, revision: str) -> dict:
                 "phase": operation.phase if operation else "complete",
                 "revision": operation.revision if operation else None,
             }
-        registry = ModelRegistryService()
-        await registry.initialize(max_retries=1)
-        orchestration = RadarOrchestrationService(session, registry)
+        orchestration = RadarOrchestrationService(session)
         return await (
             begin(session, orchestration, revision)
             if action == "begin"

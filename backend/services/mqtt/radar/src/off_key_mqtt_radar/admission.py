@@ -3,6 +3,16 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from .database_status import TERMINAL_RUN
+
+MONITOR_INTENT = text(
+    "SELECT desired_state, lifecycle_version, stop_requested_at, "
+    "EXISTS (SELECT 1 FROM monitoring_pipeline_runs "
+    f"WHERE monitoring_pipeline_runs.service_id = services.id AND {TERMINAL_RUN}) "
+    "AS execution_failed FROM services WHERE id = :service_id"
+)
 
 
 class RadarAdmissionSettings(BaseSettings):
@@ -13,7 +23,11 @@ class RadarAdmissionSettings(BaseSettings):
     RADAR_LIFECYCLE_VERSION: int | None = Field(default=None, ge=1)
 
 
-async def require_monitor_admission(*, settings=None, session_factory=None) -> None:
+async def require_monitor_admission(
+    *,
+    settings: RadarAdmissionSettings | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> None:
     """Fail closed before a managed worker starts its detector or subscribes."""
     settings = settings or RadarAdmissionSettings()
     if settings.RADAR_LIFECYCLE_VERSION is None:
@@ -24,16 +38,7 @@ async def require_monitor_admission(*, settings=None, session_factory=None) -> N
         session_factory = get_radar_async_session_factory()
     async with session_factory() as session:
         row = (
-            await session.execute(
-                text(
-                    "SELECT desired_state, lifecycle_version, stop_requested_at, "
-                    "EXISTS (SELECT 1 FROM monitoring_pipeline_runs r "
-                    "WHERE r.service_id = services.id "
-                    "AND (r.status = 'failed' OR r.ended_at IS NOT NULL)) "
-                    "AS execution_failed FROM services WHERE id = :service_id"
-                ),
-                {"service_id": settings.SERVICE_ID},
-            )
+            await session.execute(MONITOR_INTENT, {"service_id": settings.SERVICE_ID})
         ).first()
     if (
         row is None

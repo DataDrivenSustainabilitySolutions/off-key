@@ -1,7 +1,7 @@
 """Versioned monitoring designs; safe to import in the control plane."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -9,7 +9,11 @@ from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
 
+# The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
 PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
+MONITORING_STRATEGIES: frozenset[str] = frozenset(get_args(PipelineStrategy))
+DEFAULT_TRAINING_WINDOW_SIZE = 1200
+DEFAULT_CALIBRATION_WINDOW_SIZE = 360
 NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
 Identifier = str
@@ -43,8 +47,12 @@ class PipelineEdge(PipelineModel):
 
 
 class PipelineSettings(PipelineModel):
-    training_window_size: int = Field(default=1200, ge=2, le=1_000_000)
-    calibration_window_size: int = Field(default=360, ge=1, le=1_000_000)
+    training_window_size: int = Field(
+        default=DEFAULT_TRAINING_WINDOW_SIZE, ge=2, le=1_000_000
+    )
+    calibration_window_size: int = Field(
+        default=DEFAULT_CALIBRATION_WINDOW_SIZE, ge=1, le=1_000_000
+    )
     seed: int | None = 42
     conformal_strategy: Literal["split"] = "split"
 
@@ -221,24 +229,27 @@ class PipelineValidationReport(PipelineModel):
     issues_truncated: bool = False
 
 
+FieldType = Literal[
+    "number",
+    "integer",
+    "boolean",
+    "string",
+    "enum",
+    "features",
+    "rename",
+    "number_pair",
+    "number_list",
+    "component",
+    "object",
+    "object_list",
+    "integer_adjacency",
+]
+
+
 class ComponentField(PipelineModel):
     name: str
     label: str
-    type: Literal[
-        "number",
-        "integer",
-        "boolean",
-        "string",
-        "enum",
-        "features",
-        "rename",
-        "number_pair",
-        "number_list",
-        "component",
-        "object",
-        "object_list",
-        "integer_adjacency",
-    ]
+    type: FieldType
     default: Any = None
     minimum: float | None = None
     maximum: float | None = None
@@ -489,6 +500,81 @@ class PipelineWorkspace(PipelineModel):
     authoring_enabled: bool
     selected_service_id: str | None = None
     pipeline_state: dict[str, Any] | None = None
+
+
+class PipelineNodePreview(PipelineModel):
+    """One node's bounded inputs and output from a sampled observation pass."""
+
+    input: dict[str, float] | None
+    output: dict[str, float] | float | None
+    state: str
+    reason: str | None = None
+
+
+class PipelineObservationPasses(PipelineModel):
+    score: dict[str, PipelineNodePreview]
+    learn: dict[str, PipelineNodePreview]
+
+
+class PipelineObservation(PipelineModel):
+    sequence_number: int
+    timestamp: str
+    phase: str
+    input_timestamps: dict[str, str]
+    passes: PipelineObservationPasses
+
+
+class PipelineNodeRuntime(PipelineModel):
+    state: str
+    learn_count: int
+    score_count: int
+    learn_time_ns: int
+    score_time_ns: int
+    ready: bool
+    learned_updates: int | None
+    readiness_observed: int | None
+    readiness_required: int | None
+    readiness_reason: str | None
+    blocked_by: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class AdaptiveLearningState(PipelineModel):
+    state: str
+    model_updates: int
+    warmup_updates: int
+    warmup_required: int
+    ready: bool
+    reason: str | None
+
+
+class BatchTrainingState(PipelineModel):
+    state: str
+    training_samples: int
+    calibration_samples: int
+    frozen: bool
+
+
+class PipelineRuntimeState(PipelineModel):
+    """What RADAR reports about a running pipeline.
+
+    The workspace serves stored status JSON, so PipelineWorkspace keeps its
+    pipeline_state lenient; this model is the browser's type and RADAR's test
+    contract.
+    """
+
+    run_id: str
+    revision_id: str
+    fingerprint: str
+    captured_at: str
+    phase: str
+    sequence_number: int
+    nodes: dict[str, PipelineNodeRuntime]
+    observation: PipelineObservation | None
+    truncated: bool
+    diagnostic_errors: int
+    adaptive_learning: AdaptiveLearningState | None = None
+    batch_training: BatchTrainingState | None = None
 
 
 class StandardScalerParameters(PipelineModel):

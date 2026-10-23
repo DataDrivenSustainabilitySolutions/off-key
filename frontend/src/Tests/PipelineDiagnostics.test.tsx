@@ -1,20 +1,15 @@
 import {
-  cleanup,
   fireEvent,
   render,
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PipelineDiagnostics,
   type PipelineState,
 } from "@/features/pipelines/PipelineDiagnostics";
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
 const state = (): PipelineState => ({
   run_id: "run",
   revision_id: "revision",
@@ -30,6 +25,10 @@ const state = (): PipelineState => ({
       learn_time_ns: 1_000_000,
       score_time_ns: 500_000,
       ready: true,
+      learned_updates: null,
+      readiness_observed: null,
+      readiness_required: null,
+      readiness_reason: null,
     },
   },
   observation: {
@@ -120,6 +119,12 @@ describe("pipeline execution inspection", () => {
       screen.getByRole("button", { name: "Inspect prerequisite Online PCA" }),
     );
     expect(onSelect).toHaveBeenCalledWith("projection");
+  });
+  it("omits learning updates until the runtime reports one", () => {
+    const snapshot = state();
+    render(<PipelineDiagnostics state={snapshot} selected="scaler" expectedRunId="run" />);
+    expect(screen.queryByText("Successful learning updates")).toBeNull();
+    expect(screen.queryByText(/include restored history/)).toBeNull();
   });
   it("does not interpret an unquantified minimum as ready", () => {
     const snapshot = state();

@@ -76,7 +76,7 @@ class PersistenceTests(unittest.TestCase):
         variables = {
             "ansible_become": False,
             "ansible_python_interpreter": sys.executable,
-            "offkey_env": "dev",
+            "persistence_switch_confirm": True,
             "stack_name": "off-key",
             "stack_dir": str(root / "stack"),
             "stack_compose_files": [str(root / "stack/compose.yml")],
@@ -246,7 +246,7 @@ class PersistenceTests(unittest.TestCase):
                     "ansible_connection": "local",
                     "ansible_become": False,
                     "ansible_python_interpreter": sys.executable,
-                    "offkey_env": "dev",
+                    "persistence_switch_confirm": True,
                     "stack_name": "off-key",
                     "stack_dir": str(root / "stack"),
                     "persistence_run_ts": "fixture",
@@ -292,7 +292,7 @@ class PersistenceTests(unittest.TestCase):
                 (ROOT / "ansible/validate-inventory.yml").read_text()
             )
             timestamp = "20260807T120000Z"
-            backup = root / "stack/state/dev/postgres" / timestamp
+            backup = root / "stack/state/prod/postgres" / timestamp
             backup.mkdir(parents=True)
             (backup / "roles.sql").write_text("-- fixture roles")
             (backup / "fixture_db.dump").write_text("fixture saved data")
@@ -329,7 +329,8 @@ class PersistenceTests(unittest.TestCase):
             variables = {
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
-                "offkey_env": "dev",
+                "offkey_env": "prod",
+                "persistence_switch_confirm": True,
                 "stack_name": "off-key",
                 "postgres_user": "fixture",
                 "stack_dir": str(root / "live-stack"),
@@ -514,7 +515,7 @@ class PersistenceTests(unittest.TestCase):
                         "ansible_connection": "local",
                         "ansible_become": False,
                         "ansible_python_interpreter": sys.executable,
-                        "offkey_env": "dev",
+                        "persistence_switch_confirm": True,
                         "stack_dir": str(root / "stack"),
                         "persistence_backup_dir": str(root / "backups"),
                         "restore_from": timestamp,
@@ -593,7 +594,7 @@ class PersistenceTests(unittest.TestCase):
             variables = {
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
-                "offkey_env": "dev",
+                "persistence_switch_confirm": True,
                 "stack_name": "off-key",
                 "postgres_user": "fixture",
                 "stack_dir": str(root / "stack"),
@@ -815,7 +816,7 @@ class PersistenceTests(unittest.TestCase):
                 "ansible_connection": "local",
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
-                "offkey_env": "dev",
+                "persistence_switch_confirm": True,
                 "stack_name": "off-key",
                 "stack_dir": str(root / "stack"),
                 "persist_emqx_log": True,

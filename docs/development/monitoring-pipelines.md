@@ -25,8 +25,15 @@ change execution fingerprints. Historical legacy launches retain their original
 configuration; a reviewed compatibility normalization is used only when rendering
 their graph or preparing an explicit release restart.
 
-Each component carries its implementation identity and contract version. Launch
-version 1 represents legacy linear monitors; version 2 carries a bound graph.
+Each component carries its implementation identity and contract version. Every
+monitor runs a bound graph (launch version 2). The setup forms submit their
+configuration, and TACTIC converts it with `legacy_definition()` into the
+equivalent graph and activates it like a direct apply. Inputs follow the sorted
+sensor-key order of the form, and a min-max step in front of a unit-interval
+detector clips to its range. Monitors saved by the setup forms before they ran
+as pipelines (launch version 1) are converted the same way at the next release:
+each restarts as a pipeline and learns again, and one whose readings left the
+catalogue is stopped instead, keeping its history.
 Internal image pins and typed MQTT launch overrides are accepted only by trusted
 activation/release paths, never public monitor creation.
 Published revisions retain the catalog hash as provenance. Activation recompiles
@@ -170,7 +177,7 @@ requires the entire graph to validate.
 
 Activation persists reservations before remote work. Claims cover the union of
 predecessor and successor inputs and reserve one successor capacity slot. Every
-legacy start, graph activation, collection mutation and release consults this
+form start, graph activation, collection mutation and release consults this
 authority under the collection configuration lock.
 
 The controller runs credential-free constructor preflight in the exact target
@@ -357,8 +364,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`fb58d1b2d0f4f838c613405c74b98fec7eadc896`, which includes the direct-apply
-backend and migration 013, as well as parameter-sensitive readiness constraints
+`ca17ad4599dea2a518c9bc04e51bb374d35c20f9`, which includes the direct-apply
+backend and migration 014, as well as parameter-sensitive readiness constraints
 and bounded inspection APIs. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:
@@ -377,7 +384,7 @@ The initial compatibility release shipped with authoring off. The visual
 workbench is now enabled by default with `TACTIC_PIPELINE_AUTHORING_ENABLED=true`;
 numerical, real infrastructure, lifecycle, browser and resource gates must pass
 before release. An explicit operator override to `false` is preserved. Disabling
-authoring blocks new designs and activations while
+authoring blocks new designs and workbench activations while the setup forms,
 existing graph runs, inspection, stopping and release recovery remain supported.
 
 The software rollback floor is a pipeline-compatible release. Older binaries

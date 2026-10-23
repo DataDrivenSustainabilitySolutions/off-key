@@ -1,9 +1,10 @@
 from functools import lru_cache
-from pathlib import Path
 from urllib.parse import quote
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from off_key_core.config.validation import SECRETS_DIR
 
 
 def build_postgres_database_url(
@@ -29,7 +30,7 @@ class DatabaseSettings(BaseSettings):
     """Database connection settings."""
 
     model_config = SettingsConfigDict(
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
         case_sensitive=True,
         extra="ignore",
         frozen=True,

@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .collection_policy import CollectionPolicy
-from .collection_rules import CollectionRule
+from .collection_rules import CollectionRule, legacy_rules
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
 
@@ -39,17 +39,11 @@ class SystemCollectionDefinition(SystemModel):
             and "rules_version" not in value
             and "document" in value
         ):
-            from off_key_core.utils.collection_rules import legacy_rules
-
             value = dict(value)
             document = SystemDocument.model_validate(value["document"])
             value["rules"] = legacy_rules(document)
             value["registered_at"] = {stream.id: 0 for stream in document.streams}
         return value
-
-    @property
-    def sources(self):
-        return self.document.connections
 
     def streams(self, *, selected_only: bool = False) -> list:
         connections = {
@@ -86,10 +80,6 @@ class SystemCollectionStream:
     def charger_id(self):
         # Storage identities are independent of catalogue and upstream topic IDs.
         return self.binding.entity_id
-
-    @property
-    def sensor(self):
-        return self
 
     @property
     def key(self):

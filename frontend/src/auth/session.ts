@@ -32,7 +32,7 @@ try {
 let renewal: Promise<string | null> | null = null;
 let logoutRequest: Promise<void> | null = null;
 
-export class SessionRequestError extends Error {
+class SessionRequestError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
     this.name = 'SessionRequestError';

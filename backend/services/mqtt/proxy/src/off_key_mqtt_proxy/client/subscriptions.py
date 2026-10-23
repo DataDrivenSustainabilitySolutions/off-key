@@ -11,7 +11,7 @@ class SubscriptionManager:
         self.client: mqtt.Client | None = None
         self.subscriptions: set[str] = set()
         self.pending_subscriptions: set[str] = set()
-        self._acks: dict[tuple[str, int], asyncio.Future] = {}
+        self._acks: dict[tuple[str, int | None], asyncio.Future] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self.generation = 0
 
@@ -76,9 +76,6 @@ class SubscriptionManager:
     def get_all_topics(self) -> set[str]:
         return self.subscriptions | self.pending_subscriptions
 
-    def get_subscription_count(self) -> int:
-        return len(self.subscriptions)
-
     def _ack(self, client, operation: str, mid: int, success: bool) -> None:
         def finish():
             future = self._acks.get((operation, mid))
@@ -88,13 +85,15 @@ class SubscriptionManager:
         if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(finish)
 
-    def _on_subscribe(self, client, userdata, mid, granted_qos):
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties=None):
         self._ack(
             client,
             "subscribe",
             mid,
-            bool(granted_qos) and all(code < 128 for code in granted_qos),
+            bool(reason_codes) and all(code < 128 for code in reason_codes),
         )
 
-    def _on_unsubscribe(self, client, userdata, mid):
+    def _on_unsubscribe(
+        self, client, userdata, mid, reason_codes=None, properties=None
+    ):
         self._ack(client, "unsubscribe", mid, True)

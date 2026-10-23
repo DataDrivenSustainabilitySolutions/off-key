@@ -1,20 +1,21 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from off_key_core.schemas.radar import (
+    FormMonitorConfig,
     MonitoringStrategy,
     RadarServiceLabel,
-    RadarStartConfig,
 )
+from off_key_core.utils.timestamps import as_utc
 from pydantic import BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
-from ..errors import raise_tactic_http_error
+from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 from .pipelines import router as pipeline_router
 
-router = APIRouter()
+router = APIRouter(route_class=TacticErrorRoute)
 router.include_router(pipeline_router)
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
@@ -29,40 +30,37 @@ def _normalize_models_for_gateway(
 
     Data source stays TACTIC; only the transport shape is adapted for consumers.
     """
-    normalized: dict[str, dict[str, Any]] = {}
-    for model in models_from_tactic:
-        model_type = model.get("model_type")
-        if not model_type:
-            continue
-
-        normalized[model_type] = {
-            "name": model.get("name"),
-            "description": model.get("description", ""),
+    # TACTIC's ModelInfo always carries every field; nulls pass through unchanged.
+    return {
+        model["model_type"]: {
+            "name": model["name"],
+            "description": model["description"],
             "family": model["family"],
-            "strategy": model.get("strategy", "static_baseline"),
-            "complexity": model.get("complexity", "unknown"),
-            "memory_usage": model.get("memory_usage", "unknown"),
-            "parameters": model.get("parameter_schema", model.get("parameters", {})),
-            "default_parameters": model.get("default_parameters", {}),
-            "version": model.get("version"),
-            "requires_special_handling": model.get("requires_special_handling", False),
-            "catalog_id": model.get("catalog_id"),
-            "algorithm_family": model.get("algorithm_family"),
-            "available": model.get("available", True),
-            "default_capabilities": model.get("default_capabilities"),
+            "strategy": model["strategy"],
+            "complexity": model["complexity"],
+            "memory_usage": model["memory_usage"],
+            "parameters": model["parameter_schema"],
+            "default_parameters": model["default_parameters"],
+            "version": model["version"],
+            "requires_special_handling": model["requires_special_handling"],
+            "catalog_id": model["catalog_id"],
+            "algorithm_family": model["algorithm_family"],
+            "available": model["available"],
+            "default_capabilities": model["default_capabilities"],
         }
+        for model in models_from_tactic
+    }
 
-    return normalized
 
-
-class MonitoringServiceConfig(RadarStartConfig):
+class MonitoringServiceConfig(FormMonitorConfig):
     service_type: Literal["radar"] = Field(default="radar", exclude=True)
-    mqtt_config: None = Field(default=None, exclude=True)
+    # The gateway never forwards MQTT overrides, so the field is pinned to None.
+    mqtt_config: None = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
 
 
 class ServiceResponse(BaseModel):
     service_id: str
-    container_id: str
+    activation_id: str
     container_name: str
     status: str
     mqtt_topics: list[str]
@@ -104,14 +102,11 @@ async def get_monitoring_evidence(
     telemetry_type: str | None = None,
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
-    try:
-        return await tactic.get_monitoring_evidence(
-            charger_id=charger_id,
-            telemetry_type=telemetry_type,
-            limit=limit,
-        )
-    except TacticError as error:
-        raise_tactic_http_error(error)
+    return await tactic.get_monitoring_evidence(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        limit=limit,
+    )
 
 
 @router.get("/evidence/chart", response_model=list[dict[str, Any]])
@@ -140,44 +135,31 @@ async def get_monitoring_chart_evidence(
             detail="All monitoring evidence cursor fields are required together",
         )
     if after_created is not None:
-        after_created = (
-            after_created.replace(tzinfo=UTC)
-            if after_created.tzinfo is None
-            else after_created.astimezone(UTC)
-        )
+        after_created = as_utc(after_created)
     if after_timestamp is not None:
-        after_timestamp = (
-            after_timestamp.replace(tzinfo=UTC)
-            if after_timestamp.tzinfo is None
-            else after_timestamp.astimezone(UTC)
-        )
-    try:
-        return await tactic.get_monitoring_chart_evidence(
-            charger_id=charger_id,
-            service_id=service_id,
-            after_created=after_created,
-            after_timestamp=after_timestamp,
-            after_service_id=after_service_id,
-            after_sequence_number=after_sequence_number,
-            limit=limit,
-        )
-    except TacticError as error:
-        raise_tactic_http_error(error)
+        after_timestamp = as_utc(after_timestamp)
+    return await tactic.get_monitoring_chart_evidence(
+        charger_id=charger_id,
+        service_id=service_id,
+        after_created=after_created,
+        after_timestamp=after_timestamp,
+        after_service_id=after_service_id,
+        after_sequence_number=after_sequence_number,
+        limit=limit,
+    )
 
 
-@router.post("/start", response_model=ServiceResponse)
+@router.post("/start", response_model=ServiceResponse, status_code=202)
 @shared_limit_execute
 async def start_monitoring_service(
     request: Request,
     config: MonitoringServiceConfig,
 ):
-    """
-    Starts a new monitoring service container via TACTIC orchestration.
-    """
+    """Start a form-configured monitor; TACTIC runs it as a pipeline."""
     try:
         return await tactic.start_radar_service(config)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -268,8 +250,8 @@ async def stop_monitoring_service(
             "message": f"Container '{container_name or container_id}'"
             f" stopped successfully",
         }
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -283,10 +265,7 @@ async def stop_monitoring_service(
 async def rename_monitoring_service(
     request: Request, service_id: str, change: RadarServiceLabel
 ):
-    try:
-        return await tactic.rename_radar_service(service_id, change.display_name)
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    return await tactic.rename_radar_service(service_id, change.display_name)
 
 
 @router.delete("/{service_id}")
@@ -309,8 +288,8 @@ async def delete_monitoring_service(request: Request, service_id: str):
             "service_id": service_id,
             "message": f"Service '{service_id}' deleted successfully",
         }
-    except TacticError as e:
-        raise_tactic_http_error(e)
+    except TacticError:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -344,17 +323,10 @@ async def list_available_models_endpoint(
     # Enable client-side caching - models rarely change
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        models = await tactic.list_available_models()
-        normalized = _normalize_models_for_gateway(models)
-        if strategy:
-            return {
-                key: model
-                for key, model in normalized.items()
-                if model.get("strategy") == strategy
-            }
-        return normalized
-    except TacticError as e:
-        raise_tactic_http_error(e)
+        models = await tactic.list_available_models(strategy)
+        return _normalize_models_for_gateway(models)
+    except TacticError:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get available models: {e!s}"

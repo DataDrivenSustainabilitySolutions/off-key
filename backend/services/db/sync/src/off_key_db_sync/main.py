@@ -5,19 +5,14 @@ Orchestrates both the core sync service and optional FastAPI server.
 """
 
 import asyncio
-from contextlib import suppress
 from pathlib import Path
 
 import uvicorn
+from off_key_core.config.bootstrap import start_service
 from off_key_core.config.database import get_database_settings
-from off_key_core.config.env import load_env
 from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.logs import (
-    load_yaml_config,
-    log_startup_logging_configuration,
-    logger,
-)
-from off_key_core.config.validation import validate_settings
+from off_key_core.config.logs import logger
+from off_key_core.utils.tasks import run_until_first_exit
 
 from .api import app, set_sync_service
 from .config.config import get_sync_settings
@@ -52,14 +47,9 @@ async def run_api_server(sync_service: SyncService):
 async def main():
     """Main entry point for database sync service"""
 
-    load_env()
-
-    # Initialize logging before validation so startup failures are structured.
-    service_logging_config = Path(__file__).parent / "config" / "logging.yaml"
-    load_yaml_config(str(service_logging_config))
-    log_startup_logging_configuration("db-sync")
-
-    validate_settings(
+    start_service(
+        "db-sync",
+        Path(__file__).parent / "config" / "logging.yaml",
         [
             ("logging", get_logging_settings),
             ("database", get_database_settings),
@@ -78,26 +68,9 @@ async def main():
 
     tasks = {sync_task, api_task}
     try:
-        # Wait until either the sync service stops or the API server exits
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-        # Propagate exceptions from whichever task finished first
-        for task in done:
-            task.result()
-
+        # Stop when either the sync service or the API server exits.
+        await run_until_first_exit(tasks)
     finally:
-        # Ensure both tasks are stopped
-        for task in tasks:
-            if task.done():
-                continue
-            task.cancel()
-
-        for task in tasks:
-            if task.done():
-                continue
-            with suppress(asyncio.CancelledError):
-                await task
-
         logger.info("Database sync service shutdown complete")
 
 

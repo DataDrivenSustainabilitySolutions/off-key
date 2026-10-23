@@ -1,10 +1,9 @@
 # RADAR recovery
 
-TACTIC starts managed workers with `RADAR_CHECKPOINT_STORAGE=database`. Each
-worker stores one signed recovery snapshot in `radar_runtime_checkpoints`, owned
-by its `services` row and deleted when that monitor is deleted. Apply migration
-008 before launching these workers. Standalone detectors retain their file
-checkpoint API and default to `RADAR_CHECKPOINT_STORAGE=file`.
+Each RADAR worker stores one signed recovery snapshot in
+`radar_runtime_checkpoints`, owned by its `services` row and deleted when that
+monitor is deleted. A worker started with `RADAR_DB_WRITE_ENABLED=false` keeps no
+snapshot and starts fresh.
 
 A managed snapshot contains the detector, cumulative processing counters and
 versioned coverage history. Its signature binds the service ID, monitoring and
@@ -57,10 +56,8 @@ the current worker and include time spent waiting in its ingress queue.
 A managed snapshot with processed observations but no observation history fails
 startup. This revision is unreleased and does not accept an older payload that
 would reopen the replay boundary. An initial snapshot before the first
-observation may have empty history. Standalone file checkpoints restore detector
-state and report a possible restart gap; their detector-only payloads do not
-preserve processor observation watermarks. Changing freshness, age, future-time
-tolerance or alignment-skew policy invalidates both managed and file snapshots.
+observation may have empty history. Changing freshness, age, future-time
+tolerance or alignment-skew policy invalidates the snapshot.
 
 The signed snapshot signature also fences overlapping managed workers. An initial
 snapshot has one database winner, and each later checkpoint must replace the

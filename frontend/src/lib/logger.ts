@@ -1,8 +1,8 @@
-export type ClientLogLevel = "debug" | "info" | "warn" | "error";
+type ClientLogLevel = "debug" | "info" | "warn" | "error";
 
-export type ClientLogContext = Record<string, unknown>;
+type ClientLogContext = Record<string, unknown>;
 
-export interface ClientLogEntry {
+interface ClientLogEntry {
   event: string;
   message?: string;
   context?: ClientLogContext;

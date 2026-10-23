@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useNow } from "@/hooks/use-now";
+import { useState } from "react";
 import type { NodePass, PipelineState } from "./diagnostics";
 import { PipelineLearningSummary } from "./PipelineLearningSummary";
 export type { PipelineState } from "./diagnostics";
@@ -45,13 +46,7 @@ export function PipelineDiagnostics({
   onSelect?: (id: string) => void;
 }) {
   const [pass, setPass] = useState<"score" | "learn">("score");
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!window.document.hidden) setNow(Date.now());
-    }, 5_000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(5_000);
   if (!state || (expectedRunId && state.run_id !== expectedRunId))
     return (
       <section
@@ -107,7 +102,7 @@ export function PipelineDiagnostics({
               <dt>Learning calls</dt>
               <dd>{node.learn_count}</dd>
             </div>
-            {node.learned_updates !== undefined && (
+            {node.learned_updates != null && (
               <div>
                 <dt>Successful learning updates</dt>
                 <dd>{node.learned_updates}</dd>
@@ -134,7 +129,7 @@ export function PipelineDiagnostics({
               <dd>{(node.learn_time_ns / 1_000_000).toFixed(3)} ms total</dd>
             </div>
           </dl>
-          {node.learned_updates !== undefined && (
+          {node.learned_updates != null && (
             <p className="pl-help">
               Successful updates include restored history. Call counts cover the
               current diagnostics session.

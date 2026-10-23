@@ -1,34 +1,27 @@
 """Authenticated leases control ephemeral generic MQTT workers."""
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
-from off_key_core.db.base import get_db_async
-from off_key_core.db.maintenance import require_application_writes
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from off_key_core.db.models import User
 from off_key_core.schemas.system_live import SystemLiveScope, SystemLiveStart
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...services.system import SystemService
-from ...services.system_live import LiveSessionError, SystemLiveService
+from ...provider import get_live_service, get_system_service
+from ...services.catalogue.system import SystemService
+from ...services.catalogue.system_live import LiveSessionError, SystemLiveService
 from ..collection_auth import current_member, require_admin
 
 router = APIRouter(prefix="/live", tags=["system-live"])
 
-
-def live_service(request: Request) -> SystemLiveService:
-    service = getattr(request.app.state, "system_live", None)
-    if service is None:
-        raise HTTPException(503, "Live observation is unavailable.")
-    return service
+live_service = get_live_service
 
 
 @router.get("")
 async def get_live(
     after_sequence: int = Query(default=0, ge=0),
     user: User = Depends(current_member),
-    session: AsyncSession = Depends(get_db_async),
-    service: SystemLiveService = Depends(live_service),
+    system: SystemService = Depends(get_system_service),
+    service: SystemLiveService = Depends(get_live_service),
 ):
-    await service.reconcile(await SystemService(session).read())
+    await service.reconcile(await system.read())
     return service.snapshot(after_sequence)
 
 
@@ -36,13 +29,13 @@ async def get_live(
 async def start_live(
     change: SystemLiveStart,
     user: User = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_async),
-    service: SystemLiveService = Depends(live_service),
+    system: SystemService = Depends(get_system_service),
+    service: SystemLiveService = Depends(get_live_service),
 ):
-    await require_application_writes(session)
+    await system.require_writes()
     try:
         return await service.acquire(
-            await SystemService(session).read(),
+            await system.read(),
             user.id,
             change.expected_revision,
             change.stream_ids,
@@ -56,13 +49,13 @@ async def renew_live(
     change: SystemLiveScope | None = None,
     lease_id: str = Path(pattern=r"^[0-9a-f]{32}$"),
     user: User = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_async),
-    service: SystemLiveService = Depends(live_service),
+    system: SystemService = Depends(get_system_service),
+    service: SystemLiveService = Depends(get_live_service),
 ):
-    await require_application_writes(session)
+    await system.require_writes()
     try:
         return await service.renew(
-            await SystemService(session).read(),
+            await system.read(),
             user.id,
             lease_id,
             change.stream_ids if change else None,
@@ -75,7 +68,7 @@ async def renew_live(
 async def stop_live(
     lease_id: str = Path(pattern=r"^[0-9a-f]{32}$"),
     user: User = Depends(require_admin),
-    service: SystemLiveService = Depends(live_service),
+    service: SystemLiveService = Depends(get_live_service),
 ):
     try:
         await service.release(user.id, lease_id)

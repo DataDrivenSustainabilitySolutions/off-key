@@ -74,6 +74,14 @@ def main() -> None:
         )
         + "\n"
     )
+    # Authoring limits come from the definition schema, so --check catches drift.
+    limits = pipelines.PipelineDefinition.model_json_schema()["properties"]
+    text += (
+        "\nexport const PIPELINE_LIMITS = { "
+        f"nodes: {limits['nodes']['maxItems']}, "
+        f"edges: {limits['edges']['maxItems']}, "
+        f"slots: {limits['input_slots']['maxItems']} }} as const;\n"
+    )
     target = (
         Path(__file__).resolve().parents[2]
         / "frontend/src/types/pipelines.generated.ts"

@@ -6,6 +6,7 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from off_key_core.schemas.collection_wire import decode_ingress_envelope
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
     SystemCollectionStream,
@@ -13,6 +14,7 @@ from off_key_core.schemas.system_collection import (
 from off_key_core.utils.payload_decode import PayloadDecoder
 
 from .client.models import MQTTMessage
+from .telemetry_models import TelemetryRecord
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,16 @@ class Observation:
     value: float | bool | str
     received_at: datetime
     snapshot: bool
+
+    def telemetry_record(self, created: datetime | None = None) -> TelemetryRecord:
+        """The numeric telemetry row for this observation, without re-parsing."""
+        return TelemetryRecord(
+            charger_id=self.stream.charger_id,
+            timestamp=self.received_at,
+            value=float(self.value),
+            telemetry_type=self.stream.key,
+            created=created or datetime.now(UTC),
+        )
 
     def message(self) -> MQTTMessage:
         return MQTTMessage(
@@ -35,19 +47,8 @@ class Observation:
 def parse_observation(
     stream: SystemCollectionStream, message: MQTTMessage
 ) -> Observation:
-    envelope = message.payload
-    if not isinstance(envelope, dict):
-        raise ValueError("Expected ingress envelope")
-    value = PayloadDecoder(envelope["payload"].encode("utf-8")).value(stream.definition)
-    millis = envelope["received_at"]
-    if isinstance(millis, bool) or not isinstance(millis, (int, float)):
-        raise ValueError("Expected broker observation time")
-    received_at = datetime.fromtimestamp(millis / 1000, UTC)
-    if received_at.timestamp() > time.time() + 300:
-        raise ValueError("Future observation")
-    retained = envelope["upstream_retained"]
-    if not isinstance(retained, bool):
-        raise ValueError("Expected retained flag")
+    payload, received_at, retained = decode_ingress_envelope(message.payload)
+    value = PayloadDecoder(payload.encode("utf-8")).value(stream.definition)
     return Observation(stream, value, received_at, message.retain or retained)
 
 
@@ -102,7 +103,7 @@ class CollectionBuffer:
             if observation.snapshot:
                 self.counters["snapshots"] += 1
             if (
-                stream.sensor.value_type == "number"
+                stream.value_type == "number"
                 and stream.policy.mode == "original"
                 and not observation.snapshot
             ):

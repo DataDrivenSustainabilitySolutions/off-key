@@ -1,5 +1,5 @@
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeCatalog,
   normalizeDefinition,
@@ -7,7 +7,8 @@ import {
   type PipelineValidation,
 } from "@/features/pipelines/contracts";
 import type { GraphDocument } from "@/features/pipelines/model";
-import { useGraphEditor, useUnsavedChanges } from "@/features/pipelines/useGraphEditor";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import { clearNavigationDrafts, useNavigationDraft } from "@/lib/navigation-draft";
 
 const initial: GraphDocument = {
@@ -41,7 +42,6 @@ function beforeUnload() {
 }
 
 beforeEach(clearNavigationDrafts);
-afterEach(cleanup);
 
 describe("shared graph editing controller", () => {
   it("retains layout undo, redo, and the unload guard through navigation", () => {

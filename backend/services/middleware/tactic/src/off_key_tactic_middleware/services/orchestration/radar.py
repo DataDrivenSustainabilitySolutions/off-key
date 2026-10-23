@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -9,32 +8,36 @@ from off_key_core.db.collection import (
 )
 from off_key_core.db.collection_runtime import monitoring_collection_fingerprint
 from off_key_core.db.maintenance import require_application_writes
-from off_key_core.db.models import MonitoringService, MqttTopic
-from off_key_core.db.pipeline_claims import monitor_claim_condition, pending_activations
-from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
+from off_key_core.db.models import MonitoringService
+from off_key_core.db.pipeline_claims import (
+    claim_owners,
+    first_overlap,
+    monitor_claim_condition,
+    pending_activations,
+)
+from off_key_core.db.pipeline_locks import lock_execution_records
 from off_key_core.schemas.radar import (
     RadarOperationalStatus,
     RadarStartConfig,
     validate_service_name,
 )
 from off_key_core.utils.mqtt_topics import (
-    mqtt_topic_filters_overlap,
     normalize_telemetry_topic_filters,
 )
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ...models.registry import ModelRegistryService
-from ..radar_status import (
-    TERMINAL_WORKLOAD_STATES,
-    derive_operational_status,
-)
+from .monitor_intent import mark_deleting, purge_service_rows, retire_workload
 from .radar_environment import (
     build_radar_config_fingerprint,
     build_radar_environment,
 )
 from .radar_lifecycle import RadarLifecycleController
+from .radar_queries import RadarServiceQueries, exactly_one, find_service
+from .radar_status import (
+    TERMINAL_WORKLOAD_STATES,
+)
 from .radar_workloads import RadarWorkloadManager, get_async_docker
 
 
@@ -52,13 +55,11 @@ class RadarOrchestrationService:
     def __init__(
         self,
         session: AsyncSession,
-        model_registry: ModelRegistryService,
         *,
         workloads: RadarWorkloadManager | None = None,
     ):
         self.session: AsyncSession = session
         self._workloads = workloads
-        self.model_registry = model_registry
         logger.info("RadarOrchestrationService initialized.")
 
     @property
@@ -80,17 +81,9 @@ class RadarOrchestrationService:
         execution_service_id: str | None = None,
     ) -> MonitoringService:
         """Claim catalog sensors and launch the validated RADAR configuration."""
-        if (
-            (
-                config.pipeline is not None
-                or config.runtime_image is not None
-                or config.mqtt_config.model_dump()
-            )
-            and activation_id is None
-            and deployment_revision is None
-        ):
+        if activation_id is None and deployment_revision is None:
             raise ValueError(
-                "Internal launch settings require a pipeline activation or deployment"
+                "Monitors start only from a pipeline activation or a release"
             )
         mqtt_topics = config.mqtt_topics
         container_name = config.container_name
@@ -116,7 +109,7 @@ class RadarOrchestrationService:
         env_vars = build_radar_environment(
             service_id=db_service_id,
             config=config,
-            model_registry=self.model_registry,
+            validate_params=True,
         )
         env_vars["RADAR_COLLECTION_FINGERPRINT"] = collection_fingerprint
         config_fingerprint = build_radar_config_fingerprint(env_vars)
@@ -187,7 +180,6 @@ class RadarOrchestrationService:
             operational_updated_at=None,
             launch_config=config.model_dump(mode="json")
             | {
-                "monitoring": json.loads(env_vars["RADAR_MONITORING_CONFIG"]),
                 "mqtt_config": config.mqtt_config.model_dump()
                 | {
                     "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),
@@ -251,13 +243,8 @@ class RadarOrchestrationService:
         active_services = await self._reconcile_active_topic_claims()
         activations = await self._pipeline_claims(mqtt_topics, activation_id)
         limit = get_tactic_settings().config.radar_max_active_monitors
-        activation_targets = {item.service_id for item in activations}
-        predecessor_ids = {item.predecessor_service_id for item in activations}
-        owner_ids = {
-            item.id for item in active_services if item.id not in predecessor_ids
-        } | activation_targets
         if (
-            len(owner_ids) >= limit
+            len(claim_owners(active_services, activations)) >= limit
             and activation_id is None
             and not any(
                 service.container_name == container_name for service in active_services
@@ -270,30 +257,24 @@ class RadarOrchestrationService:
         for active_service in active_services:
             if active_service.container_name == container_name:
                 continue
-            active_topics = active_service.mqtt_topic or []
-            for requested_topic in mqtt_topics:
-                for active_topic in active_topics:
-                    if mqtt_topic_filters_overlap(requested_topic, str(active_topic)):
-                        raise ValueError(
-                            f"MQTT topic '{requested_topic}' overlaps active service "
-                            f"'{active_service.container_name}' topic "
-                            f"'{active_topic}'. A sensor stream can belong to only "
-                            "one monitoring service."
-                        )
+            overlap = first_overlap(mqtt_topics, active_service.mqtt_topic or [])
+            if overlap is not None:
+                requested_topic, active_topic = overlap
+                raise ValueError(
+                    f"MQTT topic '{requested_topic}' overlaps active service "
+                    f"'{active_service.container_name}' topic "
+                    f"'{active_topic}'. A sensor stream can belong to only "
+                    "one monitoring service."
+                )
 
     async def _pipeline_claims(self, topics, activation_id):
         activations = await pending_activations(self.session)
-        for activation in activations:
-            if activation.id == activation_id:
-                continue
-            if any(
-                mqtt_topic_filters_overlap(requested, claimed)
-                for requested in topics
-                for claimed in activation.claim_topics
-            ):
-                raise ValueError(
-                    "A pending pipeline activation reserves requested inputs"
-                )
+        if any(
+            activation.id != activation_id
+            and first_overlap(topics, activation.claim_topics) is not None
+            for activation in activations
+        ):
+            raise ValueError("A pending pipeline activation reserves requested inputs")
         return activations
 
     async def _reconcile_active_topic_claims(self) -> list[MonitoringService]:
@@ -366,7 +347,7 @@ class RadarOrchestrationService:
             )
 
         if docker_status != "running":
-            if not await self._delete_service(existing_service):
+            if not await self.retire_service(existing_service):
                 raise ValueError(
                     "RADAR workload removal is pending; retry after it stops"
                 )
@@ -478,35 +459,22 @@ class RadarOrchestrationService:
         }
 
     async def _delete_service_rows_by_ids(self, service_ids: list[str]) -> int:
-        if not service_ids:
-            return 0
-        await complete_stopped_runs(self.session, service_ids)
+        return await purge_service_rows(self.session, service_ids)
 
-        await self.session.execute(
-            delete(MqttTopic).where(MqttTopic.service_id.in_(service_ids))
-        )
-        delete_result = await self.session.execute(
-            delete(MonitoringService).where(MonitoringService.id.in_(service_ids))
-        )
-        return int(delete_result.rowcount or 0)
-
-    async def _delete_service(self, service: MonitoringService) -> bool:
+    async def retire_service(self, service: MonitoringService) -> bool:
+        """Persist delete intent, remove the worker and purge the rows."""
         try:
             if service.desired_state != "deleted" or service.stop_requested_at is None:
-                service.desired_state = "deleted"
-                service.lifecycle_version = (
-                    getattr(service, "lifecycle_version", None) or 1
-                ) + 1
-                service.stop_requested_at = datetime.now(UTC)
+                mark_deleting(service)
             service_id, workload_id = service.id, service.container_id
             version = service.lifecycle_version
             await self.session.commit()
-            if getattr(service, "config_fingerprint", None):
-                removed_workload = await self.workloads.remove_intent(
-                    service_id, workload_id
-                )
-            else:
-                removed_workload = await self.workloads.remove(workload_id)
+            removed_workload = await retire_workload(
+                self.workloads,
+                service_id,
+                workload_id,
+                getattr(service, "config_fingerprint", None),
+            )
             await lock_execution_records(self.session, [service_id])
             current = await self.session.get(
                 MonitoringService,
@@ -551,7 +519,7 @@ class RadarOrchestrationService:
             logger.warning("No RADAR service found with id: %s", service_id)
             return False
 
-        return await self._delete_service(service)
+        return await self.retire_service(service)
 
     async def _cancel_pipeline_activations(self, service_id: str) -> bool:
         affected = [
@@ -582,13 +550,7 @@ class RadarOrchestrationService:
         Returns:
             bool: True if service was stopped, False otherwise
         """
-        if (not container_name and not container_id) or (
-            container_name and container_id
-        ):
-            logger.warning(
-                "Invalid stop request: provide exactly one identifier "
-                "(container_name or container_id)"
-            )
+        if not exactly_one(container_name, container_id, "stop"):
             return False
 
         await lock_collection_configuration(self.session)
@@ -596,87 +558,23 @@ class RadarOrchestrationService:
             self.session, deployment_revision=deployment_revision
         )
 
-        # Find the service in the database
-        stmt = select(MonitoringService)
-        lookup_target = container_name or container_id
-
-        if container_name:
-            stmt = stmt.where(MonitoringService.container_name == container_name)
-        elif container_id:
-            stmt = stmt.where(MonitoringService.container_id == container_id)
-
-        result = await self.session.execute(stmt)
-        service = result.scalars().first()
-
+        service = await find_service(self.session, container_name, container_id)
         if not service:
             logger.warning(
                 "No RADAR service found with identifier: %s",
-                lookup_target,
+                container_name or container_id,
             )
             return False
 
         await self._cancel_pipeline_activations(service.id)
-        return await self._delete_service(service)
+        return await self.retire_service(service)
 
     async def list_radar_services(
         self, active_only: bool = False, include_docker_status: bool = False
     ) -> list[dict[str, Any]]:
-        """
-        List all RADAR services.
-
-        Args:
-            active_only (bool): If True, only return active services
-            include_docker_status (bool): If True, check actual Docker container
-                status for each service (slower but more accurate)
-
-        Returns:
-            List[Dict]: List of RADAR services with their details
-        """
-        query = select(MonitoringService)
-        if active_only:
-            query = query.where(MonitoringService.status.is_(True))
-
-        result = await self.session.execute(query)
-        services = result.scalars().all()
-
-        service_list = []
-        for service in services:
-            configuration = getattr(service, "launch_config", None) or {}
-            monitoring = configuration.get("monitoring") or {}
-            service_dict = {
-                "id": service.id,
-                "container_id": service.container_id,
-                "container_name": service.container_name,
-                "display_name": configuration.get("display_name"),
-                "monitoring_strategy": monitoring.get("strategy"),
-                "model_type": monitoring.get("model_type"),
-                "mqtt_topics": service.mqtt_topic,
-                "status": service.status,
-                "operational_status": derive_operational_status(service),
-                "created_at": (
-                    service.created_at.isoformat() if service.created_at else None
-                ),
-            }
-            # Optionally check actual Docker state
-            if include_docker_status:
-                docker_status, labels = await self.workloads.get_status_and_labels(
-                    service.container_id
-                )
-                service_dict["docker_status"] = docker_status
-                service_dict["operational_status"] = derive_operational_status(
-                    service, docker_status
-                )
-                if labels:
-                    service_dict["monitoring_strategy"] = labels.get(
-                        "monitoring_strategy"
-                    )
-                    service_dict["model_type"] = labels.get("radar_model_type")
-
-            # Large graph snapshots are returned only for the selected service.
-            service_dict["operational_status"].pop("pipeline_state", None)
-            service_list.append(service_dict)
-
-        return service_list
+        return await RadarServiceQueries(self.session, self.workloads).list(
+            active_only=active_only, include_docker_status=include_docker_status
+        )
 
     async def rename_radar_service(self, service_id: str, display_name: str) -> bool:
         """Persist a presentation name without changing the workload or its inputs."""
@@ -701,66 +599,6 @@ class RadarOrchestrationService:
     async def get_radar_service(
         self, container_name: str | None = None, container_id: str | None = None
     ) -> dict[str, Any] | None:
-        """
-        Get details for a specific RADAR service.
-
-        Args:
-            container_name (str): Name of the container
-            container_id (str): ID of the container
-
-        Returns:
-            Optional[Dict]: Service details or None if not found
-        """
-        if (not container_name and not container_id) or (
-            container_name and container_id
-        ):
-            logger.warning(
-                "Invalid get request: provide exactly one identifier "
-                "(container_name or container_id)"
-            )
-            return None
-
-        stmt = select(MonitoringService)
-
-        if container_name:
-            stmt = stmt.where(MonitoringService.container_name == container_name)
-        elif container_id:
-            stmt = stmt.where(MonitoringService.container_id == container_id)
-
-        result = await self.session.execute(stmt)
-        service = result.scalars().first()
-
-        if not service:
-            return None
-
-        # Check actual workload status in Docker
-        docker_service_status, labels = await self.workloads.get_status_and_labels(
-            service.container_id
+        return await RadarServiceQueries(self.session, self.workloads).get(
+            container_name=container_name, container_id=container_id
         )
-
-        configuration = getattr(service, "launch_config", None) or {}
-        monitoring = configuration.get("monitoring") or {}
-
-        return {
-            "id": service.id,
-            "container_id": service.container_id,
-            "container_name": service.container_name,
-            "display_name": configuration.get("display_name"),
-            "configuration": {
-                "monitoring": monitoring,
-                "performance_config": configuration.get("performance_config") or {},
-            },
-            "mqtt_topics": service.mqtt_topic,
-            "db_status": service.status,
-            "docker_status": docker_service_status,
-            "operational_status": derive_operational_status(
-                service, docker_service_status
-            ),
-            "monitoring_strategy": monitoring.get("strategy")
-            or labels.get("monitoring_strategy"),
-            "model_type": monitoring.get("model_type")
-            or labels.get("radar_model_type"),
-            "created_at": (
-                service.created_at.isoformat() if service.created_at else None
-            ),
-        }

@@ -5,7 +5,7 @@ from typing import Any
 
 _MAX_ABSOLUTE_FEATURE_VALUE = 1e10
 _MAX_FEATURE_NAME_LENGTH = 100
-_DEFAULT_METADATA_FEATURE_KEYS = frozenset(
+_METADATA_FEATURE_KEYS = frozenset(
     {
         "timestamp",
         "time",
@@ -26,12 +26,9 @@ class TelemetryFeatureValidator:
         self,
         max_feature_count: int = 100,
         max_string_length: int = 1000,
-        metadata_feature_keys: set[str] | None = None,
     ) -> None:
         self.max_feature_count = max_feature_count
         self.max_string_length = max_string_length
-        keys = metadata_feature_keys or set(_DEFAULT_METADATA_FEATURE_KEYS)
-        self.metadata_feature_keys = {key.lower() for key in keys}
 
     def validate_and_sanitize(self, data: dict[str, Any]) -> dict[str, float]:
         if not isinstance(data, dict):
@@ -46,7 +43,7 @@ class TelemetryFeatureValidator:
             if (
                 not isinstance(key, str)
                 or len(key) > _MAX_FEATURE_NAME_LENGTH
-                or key.lower() in self.metadata_feature_keys
+                or key.lower() in _METADATA_FEATURE_KEYS
             ):
                 continue
             numeric_value = self._coerce_numeric(value)

@@ -12,18 +12,10 @@ import { refreshSession, tokenManager } from '@/auth/session';
 import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
-export { tokenManager } from '@/auth/session';
 
-// Types for API responses
-export interface ApiError {
+interface ApiError {
   detail: string | { loc: (string | number)[]; msg: string }[];
   status: number;
-}
-
-export interface ApiResponse<T = unknown> {
-  data: T;
-  status: number;
-  message?: string;
 }
 
 export interface ApiRequestOptions {
@@ -162,8 +154,12 @@ export const apiUtils = {
   /**
    * Generic PUT request
    */
-  async put<T>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await apiClient.put<T>(endpoint, data);
+  async put<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: ApiRequestOptions
+  ): Promise<T> {
+    const response = await apiClient.put<T>(endpoint, data, options);
     return response.data;
   },
 

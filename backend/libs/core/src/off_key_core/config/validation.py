@@ -1,30 +1,30 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from pathlib import Path
+from typing import Annotated, Any
 
-from pydantic import ValidationError
+from pydantic import AfterValidator, ValidationError
 
 ALLOWED_ENVIRONMENTS: frozenset[str] = frozenset(
     {"development", "test", "staging", "production"}
 )
 
 
+# Docker and Swarm secrets; evaluated once at import, before settings classes.
+SECRETS_DIR = "/run/secrets" if Path("/run/secrets").is_dir() else None
+
+
 def validate_environment(value: str) -> str:
-    """Normalise and validate an ENVIRONMENT setting value.
-
-    Intended for use inside Pydantic @field_validator methods:
-
-        @field_validator("ENVIRONMENT")
-        @classmethod
-        def validate_environment(cls, value: str) -> str:
-            return _validate_environment(value)
-    """
+    """Normalise and validate an ENVIRONMENT setting value."""
     normalized = value.strip().lower()
     if normalized not in ALLOWED_ENVIRONMENTS:
         allowed = ", ".join(sorted(ALLOWED_ENVIRONMENTS))
         raise ValueError(f"ENVIRONMENT must be one of: {allowed}")
     return normalized
+
+
+Environment = Annotated[str, AfterValidator(validate_environment)]
 
 
 def _format_validation_error(error: ValidationError) -> list[str]:

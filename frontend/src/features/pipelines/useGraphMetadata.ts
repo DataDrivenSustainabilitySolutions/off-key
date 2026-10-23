@@ -4,17 +4,14 @@ import { pipelinesApi } from "./api";
 
 /** Inferred names come from the canonical compiler; diagnostics remain an explicit action. */
 export function useGraphMetadata(
-  id: string | undefined,
   definition: PipelineDefinition,
   enabled: boolean,
   selectedNodeId?: string,
-  revisionId?: string,
 ) {
   const [snapshot, setSnapshot] = useState<{
     definition: PipelineDefinition;
     validation: PipelineValidation;
     selectedNodeId: string | undefined;
-    revisionId: string | undefined;
   }>();
   useEffect(() => {
     if (!enabled) return;
@@ -25,26 +22,13 @@ export function useGraphMetadata(
       if (document.hidden) return;
       timer = window.setTimeout(async () => {
         try {
-          let validation: PipelineValidation;
-          if (revisionId && id) {
-            if (!selectedNodeId) return;
-            validation = await pipelinesApi.revisionMetadata(
-              id,
-              revisionId,
-              definition,
-              selectedNodeId,
-              controller.signal,
-            );
-          } else {
-            validation = await pipelinesApi.validate(
-              id,
-              definition,
-              controller.signal,
-              selectedNodeId,
-            );
-          }
+          const validation = await pipelinesApi.validate(
+            definition,
+            controller.signal,
+            selectedNodeId,
+          );
           if (!controller.signal.aborted)
-            setSnapshot({ definition, validation, selectedNodeId, revisionId });
+            setSnapshot({ definition, validation, selectedNodeId });
         } catch {
           /* Explicit Validate reports transport and compiler failures. */
         }
@@ -57,10 +41,9 @@ export function useGraphMetadata(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [id, definition, enabled, selectedNodeId, revisionId]);
+  }, [definition, enabled, selectedNodeId]);
   return snapshot?.definition === definition &&
-    snapshot.selectedNodeId === selectedNodeId &&
-    snapshot.revisionId === revisionId
+    snapshot.selectedNodeId === selectedNodeId
     ? snapshot.validation
     : undefined;
 }

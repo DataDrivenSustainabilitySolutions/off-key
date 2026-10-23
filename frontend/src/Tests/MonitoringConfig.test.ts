@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,8 +7,8 @@ import {
   createDefaultAdaptiveDraft,
   createDefaultStaticDraft,
   getModelDefaults,
-  mqttFiltersOverlap,
-} from "../pages/monitoring/config";
+} from "../features/monitoring/setup/config";
+import { mqttFiltersOverlap } from "../lib/monitoring-services";
 import type { ModelDefinition } from "../types/monitoring";
 
 const modelDefinition: ModelDefinition = {
@@ -81,6 +82,19 @@ describe("monitoring configuration", () => {
 
     expect(result.request).toBeUndefined();
     expect(result.errors.projectionComponents).toMatch(/selected readings/);
+  });
+
+  it("requires the two warm-up samples the backend requires", () => {
+    const build = (trainingWindow: string) => buildAdaptiveMonitoringRequest({
+      chargerId: "charger-1",
+      topics: ["telemetry/charger-1/L1"],
+      draft: { ...createDefaultAdaptiveDraft(), trainingWindow },
+      modelDefinition: undefined,
+      containerName: "unused",
+    });
+
+    expect(build("1").errors.trainingWindow).toBe("Warm-up samples must be at least 2.");
+    expect(build("2").errors.trainingWindow).toBeUndefined();
   });
 
   it("preserves explicit null adaptive model parameters", () => {

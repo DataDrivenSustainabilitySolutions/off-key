@@ -10,7 +10,7 @@ from typing import Any
 
 from off_key_core.schemas.radar import RadarActivityStatus
 
-from .models import AnomalyResult, MQTTMessage
+from .models import AnomalyResult, MQTTMessage, is_inference
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,20 +69,11 @@ class ActivityTracker:
 
     def record_result(self, result: AnomalyResult) -> None:
         context = result.context or {}
-        if context.get("fallback_reason") or context.get("service_state") == "failed":
-            return
         event = _ActivityEvent(datetime.now(UTC), self._clock())
-        is_inference = any(
-            isinstance(context.get(key), dict) and context[key].get("phase") == phase
-            for key, phase in (
-                ("static_conformal", "ready"),
-                ("adaptive_stream", "operational"),
-            )
-        )
         with self._lock:
             self._last_processed = event
             self._processed_count += 1
-            if is_inference:
+            if is_inference(context):
                 self._last_inference = event
 
     def snapshot(self) -> dict[str, Any]:

@@ -1,9 +1,10 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pipelinesApi } from "@/features/pipelines/api";
 import { normalizeDefinition, normalizeLayout, normalizeView } from "@/features/pipelines/contracts";
 import { createCreationSession, type CreationDraft } from "@/features/pipelines/creationSession";
 import { isDraftDirty } from "@/features/pipelines/editorSession";
-import { clearNavigationDrafts, navigationDraft } from "@/lib/navigation-draft";
+import { clearNavigationDrafts, navigationDraft, storeDraft } from "@/lib/navigation-draft";
 
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { create: vi.fn(), save: vi.fn() } }));
 
@@ -101,5 +102,18 @@ describe("account-scoped pipeline creation session", () => {
     expect(next).not.toBe(first);
     expect(next.getSnapshot().save.status).toBe("idle");
     expect(next.getSnapshot().draft.name).toBe("");
+  });
+});
+
+describe("creation drafts", () => {
+  it("restores an unsaved design after a reload and can discard it", () => {
+    const edited = { ...initial(), name: "Machine health" };
+    storeDraft("creation:reload", edited);
+    const session = createCreationSession(initial(), "creation:reload");
+    expect(session.restored).toBe(true);
+    expect(session.getSnapshot().draft.name).toBe("Machine health");
+    session.discard(initial());
+    expect(session.getSnapshot().draft.name).toBe("");
+    expect(createCreationSession(initial(), "creation:reload").restored).toBe(false);
   });
 });

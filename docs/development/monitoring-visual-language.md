@@ -1,29 +1,12 @@
 # Monitoring graph visual language
 
-This review treats the graph as the application's real-time process model. Its
+This page treats the graph as the application's real-time process model. Its
 visual language must make a process understandable before it is activated and
 explain the same process while it runs. A collection of draggable settings forms
 would not meet that standard.
 
-The review starts from feature head `1b5cb09` and incorporates main `73fec3c`.
-The foundation is suitable for continued development after the corrections below.
 Execution, presentation, reusable designs, immutable revisions, bound runs and
-observation envelopes already have separate owners. Keep those boundaries.
-
-## Corrections made in this review
-
-| Finding | Correction |
-| --- | --- |
-| Canvas and keyboard connections accepted incompatible data kinds until validation. | Both use one authoring guard over the generated catalog's types, occupied inputs, cycles and resource limits. The backend compiler remains authoritative. |
-| Custom titles could hide the underlying operation. | A custom title retains the operation name beneath it. Roles use text and a subtle stage color; colored connection dots expose types on hover and through accessible names. |
-| Edge identity used array positions. Sparse merge order values produced misleading input numbers. | Renderer identity uses the stable endpoint pair. Inspector order and accessible connection ranks use executable order, independent of storage order. Adding an input preserves relative order and assigns bounded contiguous ordinals. |
-| Role colors, wire meaning and runtime text lacked a shared grammar. | Drafts and runs share one presentation adapter, solid directional wires and data-type colors. Dots are centered on the left and right card edges. Configuration issues and sampled execution state have separate badges. |
-| Repeating data types on cards and every connection interrupted the flow. | Matching colored dots replace visible input/output labels. Valid targets gain a ring during connection; unavailable targets fade. Type names appear on hover and in settings. Wires carry no visible text, and the canvas has no separate legend. Accessible descriptions retain the type and merge rank. |
-| “Keep raw” implied that a passthrough could recover original readings after a transform. | The operation is named “Pass through.” Raw bypass follows an explicit branch from aligned inputs; passthrough preserves its incoming representation. |
-| The zoom floor prevented a long maximum-sized chain from fitting in the canvas. | “Fit entire graph” supports the bounded V1 graph size, while “Locate selected component” restores a readable detail view. Browser checks verify both after automatic arrangement. |
-| Automatic fitting made laptop and phone labels too small. | Opening and arranging use a readable working scale. Larger graphs start near the input or selected component; the explicit overview control still fits the whole graph. Saving, manual moves and diagnostic polling preserve the camera. |
-| Permanent component and settings sidebars crowded the canvas. | A searchable Add component popover supports clicking and dragging. One collapsible inspector opens on selection; service settings use the same space. Mobile uses the same controls with an overlay inspector. |
-| Curved connections could pass through boxes after manual moves. | Completed connections use orthogonal segments with small rounded corners, routed around all boxes. Moving an unrelated box also recalculates affected geometry. |
+observation envelopes have separate owners. Keep those boundaries.
 
 Unknown component contracts retain their topology for explanation, display
 unavailable data types and prevent new connections. The editor must never invent

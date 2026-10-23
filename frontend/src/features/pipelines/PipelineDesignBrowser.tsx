@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import type { PipelineListPage } from "@/types/pipelines.generated";
 import { pipelinesApi } from "./api";
+import { strategyLabel } from "./semantics";
 
 /** Shared, bounded browsing for template selection and library management. */
 export function PipelineDesignBrowser({
@@ -89,7 +90,7 @@ export function PipelineDesignBrowser({
           aria-label={`${selecting ? "Use" : "Open"} ${pipeline.name}`}>
           <strong>{pipeline.name}</strong>
           <span>{pipeline.description || "Reusable monitoring flow"}</span>
-          <small>{pipeline.strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline"}
+          <small>{strategyLabel(pipeline.strategy)}
           </small>
         </button>
       </li>)}

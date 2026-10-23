@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { routeConnections, type ConnectionRoute, type RoutingBox } from "@/features/pipelines/routing";
 import { edgeId, NODE_SIZE } from "@/features/pipelines/semantics";
@@ -90,5 +91,35 @@ describe("pipeline obstacle routing", () => {
     const edges = ids.slice(1).map((target, index) => ({ source: ids[index]!, target }));
     const result = routeConnections(boxes, edges);
     expect([...result.values()].filter((item) => item.blocked)).toHaveLength(0);
+  });
+});
+
+describe("drag routing", () => {
+  it("reuses settled routes for links that do not touch the moving component", () => {
+    const boxes = [
+      { id: "a", x: 0, y: 0, ...NODE_SIZE }, { id: "b", x: 400, y: 0, ...NODE_SIZE },
+      { id: "c", x: 0, y: 400, ...NODE_SIZE }, { id: "d", x: 400, y: 400, ...NODE_SIZE },
+    ];
+    const edges = [{ source: "a", target: "b" }, { source: "c", target: "d" }];
+    const settled = routeConnections(boxes, edges);
+    const moved = routeConnections(boxes.map((box) => box.id === "d" ? { ...box, y: 480 } : box), edges,
+      { previous: settled, changed: new Set(["d"]) });
+    expect(moved.get(JSON.stringify(["a", "b"]))).toBe(settled.get(JSON.stringify(["a", "b"])));
+    expect(moved.get(JSON.stringify(["c", "d"]))).not.toBe(settled.get(JSON.stringify(["c", "d"])));
+  });
+
+  it("reroutes an unrelated link when the moving component lands on it", () => {
+    const boxes = [
+      { id: "a", x: 0, y: 0, ...NODE_SIZE }, { id: "b", x: 800, y: 0, ...NODE_SIZE },
+      { id: "obstacle", x: 400, y: 400, ...NODE_SIZE },
+    ];
+    const edges = [{ source: "a", target: "b" }];
+    const key = JSON.stringify(["a", "b"]);
+    const settled = routeConnections(boxes, edges);
+    const moved = routeConnections(boxes.map((box) => box.id === "obstacle" ? { ...box, y: 0 } : box), edges,
+      { previous: settled, changed: new Set(["obstacle"]) });
+    expect(moved.get(key)).not.toBe(settled.get(key));
+    expect(moved.get(key)?.blocked).toBe(false);
+    expect(moved.get(key)?.points.some((point) => point.y !== NODE_SIZE.height / 2)).toBe(true);
   });
 });

@@ -10,6 +10,20 @@ repos:
         language: system
         pass_filenames: false
         files: ^(assets/brand/|frontend/public/(brand/|favicon\.svg)|docs/(assets/brand/|overrides/\.icons/brand/)|infra/stack/landing\.html\.j2)
+      # Ruff comes from backend/uv.lock, the same pin local runs and Dependabot use.
+      - id: ruff
+        name: ruff (linter)
+        entry: uv run --project backend --frozen ruff check --force-exclude
+        args: [--fix, --exit-non-zero-on-fix]
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+      - id: ruff-format
+        name: ruff (formatter)
+        entry: uv run --project backend --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter, markdown]
+        require_serial: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -26,20 +40,3 @@ repos:
       - id: check-merge-conflict # Checks for files that contain merge conflict strings.
       - id: debug-statements # Checks for leftover debugger imports and calls (e.g., pdb, breakpoint()).
       - id: detect-private-key
-
-  # Ruff for linting and formatting
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Check for updates: https://github.com/astral-sh/ruff-pre-commit/releases
-    rev: v0.17.1
-    hooks:
-      # Run Ruff's linter.
-      - id: ruff
-        name: ruff (linter)
-        # Apply fixes for fixable violations and exit with a non-zero code if fixes were made.
-        # This ensures that if Ruff modifies files, the commit will be stopped,
-        # prompting you to `git add` the changes and re-commit.
-        args: [--fix, --exit-non-zero-on-fix]
-        # Ruff will automatically find and use your pyproject.toml configuration
-        # for selected rules, exclusions, target version, etc.
-      # Run Ruff's formatter.
-      - id: ruff-format

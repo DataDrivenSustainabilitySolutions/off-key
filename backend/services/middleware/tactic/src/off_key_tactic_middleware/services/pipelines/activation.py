@@ -22,6 +22,8 @@ from off_key_core.db.models import (
 )
 from off_key_core.db.pipeline_claims import (
     TERMINAL_ACTIVATION_PHASES,
+    claim_owners,
+    first_overlap,
     monitor_claim_condition,
     pending_activations,
 )
@@ -31,6 +33,7 @@ from off_key_core.models.pipelines import (
     execution_fingerprint,
     pipeline_catalog_id,
 )
+from off_key_core.schemas.collection_status import is_applied
 from off_key_core.schemas.pipelines import (
     BoundInput,
     PipelineActivationRequest,
@@ -42,6 +45,7 @@ from off_key_core.schemas.pipelines import (
     PipelineReadingMetadata,
 )
 from off_key_core.schemas.radar import (
+    FormMonitorConfig,
     PerformanceConfig,
     RadarOperationalStatus,
     RadarStartConfig,
@@ -49,16 +53,22 @@ from off_key_core.schemas.radar import (
 from off_key_core.utils.json_budget import bounded_utf8_text
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
-    mqtt_topic_filters_overlap,
 )
 from sqlalchemy import select
 
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..orchestration.radar import RadarOrchestrationService
+from ..orchestration.radar_status import (
+    PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS,
+    heartbeat_age_seconds,
+)
 from ..orchestration.radar_workloads import RadarWorkloadManager, get_async_docker
 from .library import require_authoring
 from .preflight import PipelinePreflight, PreflightRejected
+from .runs import ensure_predecessor_run
+
+FORM_DESCRIPTION = "Created by the monitoring setup form"
 
 
 def activation_view(row):
@@ -72,9 +82,8 @@ class ActivationOwnershipLost(RuntimeError):
 
 
 class PipelineActivations:
-    def __init__(self, session, registry=None, workloads=None):
+    def __init__(self, session, workloads=None):
         self.session = session
-        self.registry = registry
         self._workloads = workloads
 
     @property
@@ -84,9 +93,7 @@ class PipelineActivations:
         return self._workloads
 
     def _orchestration(self):
-        return RadarOrchestrationService(
-            self.session, self.registry, workloads=self.workloads
-        )
+        return RadarOrchestrationService(self.session, workloads=self.workloads)
 
     async def get(self, identifier):
         return activation_view(await self._row(identifier))
@@ -121,8 +128,53 @@ class PipelineActivations:
         """Atomically snapshot, bind and reserve a directly configured service."""
         return await self._submit(request)
 
-    async def _submit(self, request: PipelineActivationRequest | PipelineApplyRequest):
-        require_authoring()
+    async def apply_form(
+        self, request: PipelineApplyRequest, performance: PerformanceConfig
+    ):
+        """Run a setup-form monitor as a pipeline, also while the workbench is off."""
+        return await self._submit(request, performance=performance, workbench=False)
+
+    async def form_launch(
+        self, request: PipelineApplyRequest, form: FormMonitorConfig
+    ) -> tuple[RadarStartConfig, PipelineBindingMetadata]:
+        """Snapshot a saved form monitor as a design for its release restart."""
+        revision, _, definition = await self._snapshot(
+            request, description=FORM_DESCRIPTION
+        )
+        performance, topics, bindings, snapshot = await self._bindings(
+            request, definition, form.performance_config
+        )
+        launch = RadarStartConfig(
+            container_name=form.container_name,
+            display_name=request.display_name,
+            mqtt_topics=topics,
+            performance_config=performance,
+            mqtt_config=form.mqtt_config,
+            pipeline=PipelineExecutionConfig(
+                definition=definition,
+                bindings=bindings,
+                revision_id=revision.id,
+                # The release reserves the run that replaces this placeholder.
+                run_id=str(uuid4()),
+                fingerprint=execution_fingerprint(definition, bindings),
+            ),
+        )
+        metadata = await self._binding_metadata(
+            bindings,
+            snapshot,
+            await monitoring_collection_fingerprint(self.session, topics),
+        )
+        return launch, metadata
+
+    async def _submit(
+        self,
+        request: PipelineActivationRequest | PipelineApplyRequest,
+        *,
+        performance: PerformanceConfig | None = None,
+        workbench: bool = True,
+    ):
+        if workbench:
+            require_authoring()
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
         request_hash = hashlib.sha256(
@@ -142,13 +194,16 @@ class PipelineActivations:
                 )
             return activation_view(existing)
         revision, design, definition = (
-            await self._snapshot(request)
+            await self._snapshot(
+                request,
+                description="" if workbench else FORM_DESCRIPTION,
+            )
             if isinstance(request, PipelineApplyRequest)
             else await self._published_design(request)
         )
         predecessor = await self._predecessor(request)
         performance, topics, bindings, snapshot = await self._bindings(
-            request, definition
+            request, definition, performance or PerformanceConfig()
         )
         claims = await self._claims(request, predecessor, topics)
         now = datetime.now(UTC)
@@ -213,7 +268,7 @@ class PipelineActivations:
         await self.session.commit()
         return activation_view(row)
 
-    async def _snapshot(self, request: PipelineApplyRequest):
+    async def _snapshot(self, request: PipelineApplyRequest, *, description: str):
         try:
             compiled = compile_pipeline(request.definition)
         except ValueError as exc:
@@ -223,7 +278,7 @@ class PipelineActivations:
         design = MonitoringPipeline(
             id=str(uuid4()),
             name=request.display_name,
-            description="",
+            description=description,
             archived=False,
             is_template=False,
             version=1,
@@ -289,12 +344,9 @@ class PipelineActivations:
             )
         return predecessor
 
-    async def _bindings(self, request, definition):
+    async def _bindings(self, request, definition, performance):
         snapshot = await read_collection_runtime(self.session)
-        if (
-            snapshot.collection.get("revision") != snapshot.revision
-            or snapshot.collection.get("status") != "applied"
-        ):
+        if not is_applied(snapshot.collection, snapshot.revision):
             raise ConflictError("Wait for the collection configuration to be applied")
         streams = {
             stream.definition.id: stream
@@ -313,7 +365,6 @@ class PipelineActivations:
             raise ValidationError(
                 "Input bindings require selected numeric catalogue readings"
             ) from exc
-        performance = PerformanceConfig()
         topics = [selected[slot.id].accepted_topic for slot in definition.input_slots]
         keys = derive_monitoring_sensor_keys(
             topics, sensor_key_strategy=performance.sensor_key_strategy
@@ -379,12 +430,7 @@ class PipelineActivations:
         claims = sorted(
             set(topics) | set(predecessor.mqtt_topic if predecessor else [])
         )
-        if any(
-            mqtt_topic_filters_overlap(topic, claimed)
-            for item in pending
-            for topic in claims
-            for claimed in item.claim_topics
-        ):
+        if any(first_overlap(claims, item.claim_topics) for item in pending):
             raise ConflictError(
                 "A pending activation already reserves one or more inputs"
             )
@@ -397,18 +443,15 @@ class PipelineActivations:
         )
         if any(
             item.id != request.replace_service_id
-            and mqtt_topic_filters_overlap(topic, claimed)
+            and first_overlap(claims, item.mqtt_topic or [])
             for item in active
-            for topic in claims
-            for claimed in item.mqtt_topic
         ):
             raise ConflictError("A reading can belong to only one monitoring service")
-        owners = (
-            {item.id for item in active}
-            - {item.predecessor_service_id for item in pending}
-            - {request.replace_service_id}
+        owners = claim_owners(
+            active,
+            pending,
+            released=[request.replace_service_id] if request.replace_service_id else [],
         )
-        owners |= {item.service_id for item in pending}
         if len(owners) >= get_tactic_settings().config.radar_max_active_monitors:
             raise ConflictError(
                 "RADAR capacity reached; stop another monitor before activation"
@@ -416,27 +459,14 @@ class PipelineActivations:
         return claims
 
     async def _predecessor_run(self, predecessor, now):
-        predecessor_run = (
-            await self.session.scalar(
-                select(PipelineRun).where(PipelineRun.service_id == predecessor.id)
-            )
-            if predecessor
-            else None
+        if predecessor is None:
+            return None
+        return await ensure_predecessor_run(
+            self.session,
+            service_id=predecessor.id,
+            launch_config=predecessor.launch_config,
+            created_at=now,
         )
-        if predecessor is not None and predecessor_run is None:
-            predecessor_run = PipelineRun(
-                id=str(uuid4()),
-                service_id=predecessor.id,
-                revision_id=None,
-                execution=None,
-                launch_config=predecessor.launch_config,
-                layout={},
-                status="running",
-                created_at=now,
-            )
-            self.session.add(predecessor_run)
-            await self.session.flush()
-        return predecessor_run
 
     async def cancel(self, identifier):
         await lock_collection_configuration(self.session)
@@ -601,7 +631,7 @@ class PipelineActivations:
             )
         if predecessor is not None:
             orchestration = self._orchestration()
-            if not await orchestration._delete_service(predecessor):
+            if not await orchestration.retire_service(predecessor):
                 raise RuntimeError("Predecessor shutdown is not yet confirmed")
         else:
             await self.session.commit()
@@ -661,7 +691,8 @@ class PipelineActivations:
         healthy = (
             service is not None
             and service.operational_updated_at is not None
-            and (now - service.operational_updated_at).total_seconds() <= 30
+            and heartbeat_age_seconds(service.operational_updated_at, now)
+            <= PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS
             and first_heartbeat is not None
             and (
                 row.heartbeat_deadline is None
@@ -706,28 +737,14 @@ class PipelineActivations:
         row = await self._owned_row(row.id, token, "cancelling")
         service = await self.session.get(MonitoringService, row.service_id)
         if service is not None:
-            if not await self._orchestration()._delete_service(service):
+            if not await self._orchestration().retire_service(service):
                 raise RuntimeError("Cancelled successor shutdown is not yet confirmed")
         else:
             await self.session.commit()
             await self.workloads.remove_intent(row.service_id, None)
         row = await self._owned_row(row.id, token, "cancelling")
-        name = f"radar-preflight-{row.id}"
         await self.session.commit()
-        collection = (
-            self.workloads.async_docker.client.services
-            if await self.workloads._is_swarm_manager()
-            else self.workloads.async_docker.client.containers
-        )
-        import docker
-
-        try:
-            preflight = await self.workloads.async_docker.run(collection.get, name)
-        except docker.errors.NotFound:
-            pass
-        else:
-            PipelinePreflight.validate_cleanup_identity(preflight, row.id)
-            await self.workloads.remove(preflight.id)
+        await PipelinePreflight(self.workloads).remove_for(row.id)
         row = await self._owned_row(row.id, token, "cancelling")
         row.phase = "failed" if row.error else "cancelled"
         await self.session.commit()

@@ -1,25 +1,9 @@
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
-import type { PipelineNode } from "./contracts";
 import { dataKinds, nodeKinds, sampledState, type DataKind } from "./semantics";
+import type { CanvasNode } from "./types";
 
-export type CanvasData = {
-  label: string;
-  kind: PipelineNode["kind"];
-  operation: string;
-  available: boolean;
-  inputPort: boolean;
-  outputPort: boolean;
-  inputType?: DataKind | null;
-  outputType?: DataKind;
-  /** Undefined at rest, null for a valid target, otherwise the rejection reason. */
-  inputIssue?: string | null;
-  outputIssue?: string | null;
-  state?: string;
-  issueCount: number;
-  [key: string]: unknown;
-};
-export type CanvasNode = Node<CanvasData, "component">;
+export type { CanvasNode } from "./types";
 
 function ConnectionDot({ direction, kind, connectable, issue }: {
   direction: "input" | "output";

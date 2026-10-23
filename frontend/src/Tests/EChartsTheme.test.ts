@@ -1,6 +1,6 @@
 import { color } from "echarts/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveChartThemeColors } from "@/lib/echarts-theme";
+import { resolveChartThemeColors } from "@/features/charts/echarts-theme";
 
 afterEach(() => document.documentElement.removeAttribute("style"));
 

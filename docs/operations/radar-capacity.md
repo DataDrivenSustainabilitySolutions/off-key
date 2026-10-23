@@ -51,5 +51,5 @@ Increase the measured worker budget and its reservation together, or reduce mode
 size, before increasing the fleet limit. No static calibration-memory estimate is
 used to promise safety for arbitrary models.
 
-The development container fallback has cgroup CPU/memory limits and a memory
-reservation hint; production requires Swarm for scheduler admission.
+Every deployment, local development included, runs RADAR as Swarm services, so
+the scheduler admits each worker against its reservation.

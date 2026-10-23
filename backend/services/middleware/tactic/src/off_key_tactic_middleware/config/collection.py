@@ -1,8 +1,8 @@
 """Operator-provisioned access to the fixed AmbiBox provider."""
 
 from functools import lru_cache
-from pathlib import Path
 
+from off_key_core.config.validation import SECRETS_DIR
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,7 +11,7 @@ class AmbiboxSettings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=True,
         extra="ignore",
-        secrets_dir="/run/secrets" if Path("/run/secrets").is_dir() else None,
+        secrets_dir=SECRETS_DIR,
     )
 
     AMBIBOX_INGRESS_ENABLED: bool = False
@@ -23,7 +23,6 @@ class AmbiboxSettings(BaseSettings):
     AMBIBOX_GOST_API_URL: str = "http://mqtt-tailscale-bridge:18080"
     AMBIBOX_GOST_USERNAME: str = "off-key"
     AMBIBOX_GOST_PASSWORD: SecretStr = SecretStr("")
-    AMBIBOX_FORWARD_HOST: str = "mqtt-tailscale-bridge"
     AMBIBOX_SOCKS_SERVER: str = "tailscale-ambibox:1055"
     AMBIBOX_MQTT_USERNAME: str = ""
     AMBIBOX_MQTT_PASSWORD: SecretStr = SecretStr("")

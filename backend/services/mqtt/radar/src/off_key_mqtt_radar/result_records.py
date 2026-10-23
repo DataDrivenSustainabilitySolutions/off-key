@@ -10,9 +10,18 @@ from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .config.runtime import get_radar_checkpoint_settings
-from .models import AnomalyResult
+from .models import (
+    AnomalyResult,
+    inference_key,
+    is_inference,
+    strategy_context_key,
+)
 
 logger = logging.getLogger(__name__)
+VALUE_TYPES = {
+    "static_conformal": "conformal_pvalue",
+    "adaptive_stream": "anomaly_score",
+}
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 
 
@@ -128,7 +137,13 @@ class PreparedResult:
 
 
 class ResultProjector:
-    def __init__(self):
+    def __init__(self, service_id: str | None = None):
+        # Rows are scoped to one monitor; the worker's settings name it by default.
+        self.service_id = (
+            service_id
+            if service_id is not None
+            else get_radar_checkpoint_settings().SERVICE_ID
+        )
         self.topic_extractor = TopicMetadataExtractor()
 
     def prepare(self, result: AnomalyResult) -> PreparedResult:
@@ -136,14 +151,7 @@ class ResultProjector:
             [result] if result.is_anomaly else []
         )
         evidence = self._build_evidence_records([result])
-        if (
-            (
-                self._is_static_ready_result(result)
-                or self._is_adaptive_operational_result(result)
-            )
-            and not evidence
-            and not anomalies
-        ):
+        if is_inference(result.context) and not evidence and not anomalies:
             raise ValueError("Operational result is missing valid evidence references")
         return PreparedResult(result, anomalies, identities, evidence)
 
@@ -162,39 +170,19 @@ class ResultProjector:
         return self._extract_telemetry_type(result.topic, result.raw_data)
 
     @staticmethod
-    def _is_static_conformal_result(result: AnomalyResult) -> bool:
-        return isinstance((result.context or {}).get("static_conformal"), dict)
-
-    @staticmethod
-    def _is_static_ready_result(result: AnomalyResult) -> bool:
-        static_context = (result.context or {}).get("static_conformal")
-        return (
-            isinstance(static_context, dict) and static_context.get("phase") == "ready"
-        )
-
-    @staticmethod
-    def _is_adaptive_operational_result(result: AnomalyResult) -> bool:
-        adaptive_context = (result.context or {}).get("adaptive_stream")
-        return (
-            isinstance(adaptive_context, dict)
-            and adaptive_context.get("phase") == "operational"
-        )
-
-    @staticmethod
     def _derive_anomaly_type(result: AnomalyResult) -> str:
         """Map detector output to stored anomaly semantics."""
         alignment_context = (result.context or {}).get("alignment", {})
-        if ResultProjector._is_static_conformal_result(result):
+        strategy = strategy_context_key(result.context)
+        if strategy == "static_conformal":
             if bool(alignment_context.get("aligned_vector")):
                 return "ml_conformal_static_multivariate"
             return "ml_conformal_static_univariate"
-        if isinstance((result.context or {}).get("adaptive_stream"), dict):
+        if strategy == "adaptive_stream":
             if bool(alignment_context.get("aligned_vector")):
                 return "ml_adaptive_stream_multivariate"
             return "ml_adaptive_stream_univariate"
-        if bool(alignment_context.get("aligned_vector")):
-            return "ml_tailprob_multivariate"
-        return "ml_tailprob_univariate"
+        raise ValueError("Result carries no detector context")
 
     @staticmethod
     def _derive_anomaly_value(result: AnomalyResult) -> float:
@@ -205,13 +193,6 @@ class ResultProjector:
             conformal_pvalue = float(conformal_pvalue)
             if math.isfinite(conformal_pvalue):
                 return conformal_pvalue
-
-        score_window = (result.context or {}).get("score_window", {})
-        tail_pvalue = score_window.get("tail_pvalue")
-        if isinstance(tail_pvalue, int | float):
-            tail_pvalue = float(tail_pvalue)
-            if math.isfinite(tail_pvalue):
-                return tail_pvalue
         return float(result.anomaly_score)
 
     @staticmethod
@@ -288,7 +269,7 @@ class ResultProjector:
         self,
         results: list[AnomalyResult],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        service_id = get_radar_checkpoint_settings().SERVICE_ID or ""
+        service_id = self.service_id or ""
         anomaly_records = [
             {
                 "charger_id": result.charger_id or "unknown",
@@ -297,17 +278,7 @@ class ResultProjector:
                 "service_id": service_id,
                 "anomaly_type": self._derive_anomaly_type(result),
                 "anomaly_value": self._derive_anomaly_value(result),
-                "value_type": (
-                    "conformal_pvalue"
-                    if self._is_static_conformal_result(result)
-                    else (
-                        "anomaly_score"
-                        if isinstance(
-                            (result.context or {}).get("adaptive_stream"), dict
-                        )
-                        else "tail_pvalue"
-                    )
-                ),
+                "value_type": VALUE_TYPES[strategy_context_key(result.context)],
                 "sensor_set": self._derive_sensor_set(result),
             }
             for result in results
@@ -326,18 +297,18 @@ class ResultProjector:
     def _build_evidence_records(
         self, results: list[AnomalyResult]
     ) -> list[dict[str, Any]]:
-        service_id = get_radar_checkpoint_settings().SERVICE_ID
+        service_id = self.service_id
         if not service_id:
             return []
 
         records = []
         for result in results:
-            is_static = self._is_static_ready_result(result)
-            is_adaptive = self._is_adaptive_operational_result(result)
-            if not is_static and not is_adaptive:
+            context_key = inference_key(result.context)
+            if context_key is None:
                 continue
-            context_key = "static_conformal" if is_static else "adaptive_stream"
-            context = (result.context or {}).get(context_key, {})
+            context = result.context[context_key]
+            is_static = context_key == "static_conformal"
+            is_adaptive = not is_static
             p_value = context.get("p_value")
             sequence_number = context.get(
                 "tested_count", context.get("sequence_number")

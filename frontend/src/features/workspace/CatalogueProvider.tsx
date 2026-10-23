@@ -2,16 +2,17 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { navigationDraft, useNavigationDraft } from "@/lib/navigation-draft";
-import { useSystemDocument } from "../catalogue/useSystemDocument";
-import { createEmptySystem } from "../catalogue/systemDocument";
-import { scopeReadingIds, safeServiceReturn } from "../catalogue/collectionRules";
-import { SystemLiveTelemetry } from "../catalogue/systemLiveTelemetry";
-import { ReadingHistoryCache } from "../explorer/readingHistoryCache";
-import { buildNavigationIndex } from "../explorer/navigationIndex";
-import { loadExplorerPreferences, saveExplorerPreferences, toggleExplorerFavourite } from "../explorer/preferences";
-import type { ListPosition } from "../explorer/ExplorerList";
+import { useSystemDocument } from "@/domain/system/useSystemDocument";
+import { createEmptySystem } from "@/domain/system/systemDocument";
+import { scopeReadingIds, safeServiceReturn } from "@/domain/system/collectionRules";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
+import { buildNavigationIndex } from "@/domain/system/navigationIndex";
+import { loadExplorerPreferences, saveExplorerPreferences, toggleExplorerFavourite } from "./preferences";
+import type { ListPosition } from "./ExplorerList";
 import { CatalogueContext, type CatalogueContextValue, type CatalogueDialog } from "./catalogue-context";
 import { catalogueSelection, hasCatalogueSelection, isWorkspacePath, selectedSourceHref, withCatalogueSource } from "./catalogue-navigation";
+import { monitoringNavigationKey } from "@/domain/monitoring/monitoringView";
 
 const empty = createEmptySystem();
 
@@ -101,7 +102,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     let href = path;
     if (path === "/" && location.pathname !== "/") {
       const returnTo = safeServiceReturn(params.get("returnTo"));
-      const remembered = navigationDraft(`monitoring:${userId}:url`, () => "/");
+      const remembered = navigationDraft(monitoringNavigationKey(userId), () => "/");
       const oldSource = catalogueSelection(index, new URL(remembered, "https://workspace.invalid").searchParams);
       if (returnTo !== "/") href = returnTo;
       else if (oldSource?.key === selected?.key) href = remembered;

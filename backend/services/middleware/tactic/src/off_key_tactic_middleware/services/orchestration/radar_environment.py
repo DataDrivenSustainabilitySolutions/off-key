@@ -13,7 +13,7 @@ from ...config.config import (
     get_radar_container_runtime_settings,
     get_tactic_settings,
 )
-from ...models.registry import ModelRegistryService
+from ...models.catalog import validate_model_params
 
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
@@ -78,9 +78,13 @@ def build_radar_environment(
     *,
     service_id: str,
     config: RadarStartConfig,
-    model_registry: ModelRegistryService | None,
+    validate_params: bool,
 ) -> dict[str, str]:
-    """Compile validated service configuration into RADAR environment variables."""
+    """Compile validated service configuration into RADAR environment variables.
+
+    ``validate_params`` merges catalogue defaults into the model parameters. A
+    persisted launch already holds merged parameters, so rebuilding it skips this.
+    """
     monitoring = config.monitoring
     mqtt_config = RadarMqttOverrides.model_validate(
         config.mqtt_config or {}
@@ -101,6 +105,8 @@ def build_radar_environment(
             raise ValueError("Production MQTT connection settings cannot be overridden")
     environment = {
         "SERVICE_ID": service_id,
+        # RADAR no longer reads this key. It stays so persisted config
+        # fingerprints of running monitors do not change.
         "RADAR_CHECKPOINT_STORAGE": "database",
         "ENVIRONMENT": runtime.ENVIRONMENT,
         "RADAR_MQTT_BROKER_HOST": mqtt_config.get("host", defaults.mqtt_broker_host),
@@ -119,8 +125,10 @@ def build_radar_environment(
         "RADAR_MQTT_USERNAME": mqtt_config.get("username", defaults.mqtt_username),
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(config.mqtt_topics),
         "RADAR_SUBSCRIPTION_QOS": str(mqtt_config.get("qos", defaults.mqtt_qos)),
-        "RADAR_BATCH_SIZE": str(defaults.batch_size),
-        "RADAR_BATCH_TIMEOUT": str(defaults.batch_timeout),
+        # RADAR ignores these retired keys; they stay so persisted config
+        # fingerprints of running monitors do not change.
+        "RADAR_BATCH_SIZE": "100",
+        "RADAR_BATCH_TIMEOUT": "1.0",
         "RADAR_MEMORY_LIMIT_MB": str(defaults.memory_limit_mb),
         "RADAR_CHECKPOINT_INTERVAL": str(defaults.checkpoint_interval),
         "RADAR_MAX_QUEUE_SIZE": str(defaults.max_queue_size),
@@ -151,32 +159,26 @@ def build_radar_environment(
         if mqtt_config.get("api_key"):
             environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
-    try:
-        validated_params = (
-            model_registry.validate_model_params(
+    if validate_params:
+        try:
+            validate_model_params(
                 monitoring.model_type,
                 monitoring.model_params,
-                category="model",
                 family=(
                     ADAPTIVE_MODEL_FAMILY
                     if monitoring.strategy == "adaptive_stream"
                     else STATIC_MODEL_FAMILY
                 ),
             )
-            if model_registry is not None
-            else monitoring.model_params
-        )
-    except ValueError as exc:
-        logger.error("Invalid model parameters for %s: %s", monitoring.model_type, exc)
-        raise ValueError(f"Invalid model parameters: {exc}") from exc
+        except ValueError as exc:
+            logger.error(
+                "Invalid model parameters for %s: %s", monitoring.model_type, exc
+            )
+            raise ValueError(f"Invalid model parameters: {exc}") from exc
 
-    monitoring = monitoring.model_copy(update={"model_params": validated_params})
+    # The pipeline defines the monitoring; RADAR rejects any other copy.
     environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
-    if config.pipeline is not None:
-        environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
+    environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
     if config.runtime_image is not None:
         environment["RADAR_RUNTIME_IMAGE"] = config.runtime_image
-    logger.info(
-        "Model params validated for %s: %s", monitoring.model_type, validated_params
-    )
     return environment

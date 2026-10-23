@@ -1,3 +1,42 @@
+# Environment and healthcheck blocks shared by the backend services.
+x-runtime-env: &runtime-env
+  ENVIRONMENT: "${ENVIRONMENT}"
+  DEBUG: "${DEBUG}"
+x-logging-env: &logging-env
+  LOG_LEVEL: "${LOG_LEVEL}"
+  LOG_FORMAT: "${LOG_FORMAT}"
+  LOG_REDACT_PII: "${LOG_REDACT_PII}"
+  LOG_PII_DEBUG_UNMASK: "${LOG_PII_DEBUG_UNMASK}"
+x-database-env: &database-env
+  POSTGRES_USER: "${POSTGRES_USER}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+  POSTGRES_DB: "${POSTGRES_DB}"
+  POSTGRES_HOST: "${POSTGRES_HOST}"
+  POSTGRES_PORT: "${POSTGRES_PORT}"
+x-auth-env: &auth-env
+  JWT_SECRET: "${JWT_SECRET}"
+  INTERNAL_API_SECRET: "${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}"
+  ALGORITHM: "${ALGORITHM}"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES}"
+  SUPERUSER_MAIL: "${SUPERUSER_MAIL}"
+x-email-env: &email-env
+  FRONTEND_BASE_URL: "${FRONTEND_BASE_URL}"
+  EMAIL_USERNAME: "${EMAIL_USERNAME}"
+  EMAIL_PASSWORD: "${EMAIL_PASSWORD}"
+  EMAIL_FROM: "${EMAIL_FROM}"
+  SMTP_SERVER: "${SMTP_SERVER}"
+  SMTP_PORT: "${SMTP_PORT}"
+  MAIL_STARTTLS: "${MAIL_STARTTLS}"
+  MAIL_SSL_TLS: "${MAIL_SSL_TLS}"
+  USE_CREDENTIALS: "${USE_CREDENTIALS}"
+  VALIDATE_CERTS: "${VALIDATE_CERTS}"
+  ANOMALY_ALERT_RECIPIENTS: "${ANOMALY_ALERT_RECIPIENTS}"
+x-backend-healthcheck: &backend-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 20
+  start_period: 10s
+
 services:
 ### =============================================== ###
 ###               INTERNAL SERVICES                 ###
@@ -7,11 +46,8 @@ services:
       context: ./frontend
       target: development
     image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
-    container_name: react_client
     environment:
-      - "VITE_API_URL=${VITE_API_URL}"
-    ports:
-      - "${FRONTEND_PORT}:5173"
+      - "API_PROXY_TARGET=${API_PROXY_TARGET:-${VITE_API_URL:-http://api-gateway:8000}}"
     depends_on:
       api-gateway:
         condition: service_healthy
@@ -23,17 +59,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend
-          target: /src
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/package.json
-        - action: rebuild
-          path: ./frontend/package-lock.json
 
   api-gateway:
     build:
@@ -42,43 +67,16 @@ services:
         SERVICE_NAME: off-key-api-gateway
         SERVICE_ROOT: services/api/gateway
     image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
-    container_name: api_gateway
     environment:
-      - "SYNC_HOSTNAME=${SYNC_HOSTNAME:-db-sync}"
-      - "SYNC_API_PORT=${SYNC_API_PORT:-8009}"
-      - "SYNC_SERVICE_SCHEME=${SYNC_SERVICE_SCHEME:-http}"
-      - "TACTIC_SERVICE_SCHEME=${TACTIC_SERVICE_SCHEME:-http}"
-      - "TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS=${TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS:-180}"
-      - "APP_NAME=${APP_NAME}"
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "FRONTEND_BASE_URL=${FRONTEND_BASE_URL}"
-      - "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}"
-      - "JWT_SECRET=${JWT_SECRET}"
-      - "INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}"
-      - "ALGORITHM=${ALGORITHM}"
-      - "ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}"
-      - "SUPERUSER_MAIL=${SUPERUSER_MAIL}"
-      - "EMAIL_USERNAME=${EMAIL_USERNAME}"
-      - "EMAIL_PASSWORD=${EMAIL_PASSWORD}"
-      - "EMAIL_FROM=${EMAIL_FROM}"
-      - "SMTP_SERVER=${SMTP_SERVER}"
-      - "SMTP_PORT=${SMTP_PORT}"
-      - "MAIL_STARTTLS=${MAIL_STARTTLS}"
-      - "MAIL_SSL_TLS=${MAIL_SSL_TLS}"
-      - "USE_CREDENTIALS=${USE_CREDENTIALS}"
-      - "VALIDATE_CERTS=${VALIDATE_CERTS}"
-      - "ANOMALY_ALERT_RECIPIENTS=${ANOMALY_ALERT_RECIPIENTS}"
-      - "TACTIC_SERVICE_HOST=${TACTIC_SERVICE_HOST}"
-      - "TACTIC_SERVICE_PORT=${TACTIC_SERVICE_PORT}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
-      - "ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING}"
-      - "ENABLE_PERFORMANCE_LOGGING=${ENABLE_PERFORMANCE_LOGGING}"
-    ports:
-      - "${BACKEND_PORT}:8000"
+      <<: [*runtime-env, *logging-env, *auth-env, *email-env]
+      TACTIC_SERVICE_SCHEME: "${TACTIC_SERVICE_SCHEME:-http}"
+      TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS: "${TACTIC_SERVICE_REQUEST_TIMEOUT_SECONDS:-180}"
+      APP_NAME: "${APP_NAME}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS}"
+      TACTIC_SERVICE_HOST: "${TACTIC_SERVICE_HOST}"
+      TACTIC_SERVICE_PORT: "${TACTIC_SERVICE_PORT}"
+      ENABLE_REQUEST_LOGGING: "${ENABLE_REQUEST_LOGGING}"
+      ENABLE_PERFORMANCE_LOGGING: "${ENABLE_PERFORMANCE_LOGGING}"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -92,25 +90,14 @@ services:
       - app-network
     restart: always
     healthcheck:
+      <<: *backend-healthcheck
       test:
         - "CMD"
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
     command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.14/site-packages/off_key_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
-    develop:
-      watch:
-        - action: sync
-          path: backend/services/api/gateway/src/off_key_api_gateway
-          target: /app/lib/python3.14/site-packages/off_key_api_gateway
-        - action: rebuild
-          path: ./backend/uv.lock
 
   tactic-middleware:
     build:
@@ -119,9 +106,6 @@ services:
         SERVICE_NAME: off-key-tactic-middleware
         SERVICE_ROOT: services/middleware/tactic
     image: "${TACTIC_MIDDLEWARE_IMAGE:-off-key-tactic-middleware:latest}"
-    container_name: tactic_middleware
-    ports:
-      - "127.0.0.1:8001:8000"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -134,132 +118,73 @@ services:
       - socket-network
       - emqx-network
     environment:
-      - "TACTIC_RADAR_DEFAULT_MQTT_USERNAME=${TACTIC_RADAR_DEFAULT_MQTT_USERNAME:-}"
-      - "AMBIBOX_MQTT_USERNAME=${AMBIBOX_MQTT_USERNAME:-}"
-      - "AMBIBOX_MQTT_PASSWORD=${AMBIBOX_MQTT_PASSWORD:-}"
-      - "SYSTEM_LIVE_ENABLED=${SYSTEM_LIVE_ENABLED:-false}"
-      - "SYSTEM_COLLECTION_ENABLED=${SYSTEM_COLLECTION_ENABLED:-true}"
-      - "SYSTEM_COLLECTION_MQTT_USERNAME=${SYSTEM_COLLECTION_MQTT_USERNAME:-}"
-      - "SYSTEM_COLLECTION_MQTT_API_KEY=${SYSTEM_COLLECTION_MQTT_API_KEY:-}"
-      - "SYSTEM_COLLECTION_MQTT_CA_FILE=${SYSTEM_COLLECTION_MQTT_CA_FILE:-}"
-      - "SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS=${SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS:-15}"
-      - "SYSTEM_LIVE_ALLOWED_HOSTS=${SYSTEM_LIVE_ALLOWED_HOSTS:-[]}"
-      - "SYSTEM_LIVE_CREDENTIALS=${SYSTEM_LIVE_CREDENTIALS:-}"
-      - "SYSTEM_LIVE_SOCKS_PROXIES=${SYSTEM_LIVE_SOCKS_PROXIES:-}"
-      - "SYSTEM_LIVE_DATA_SOURCE=${SYSTEM_LIVE_DATA_SOURCE:-broker}"
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "FRONTEND_BASE_URL=${FRONTEND_BASE_URL}"
-      - "JWT_SECRET=${JWT_SECRET}"
-      - "INTERNAL_API_SECRET=${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}"
-      - "ALGORITHM=${ALGORITHM}"
-      - "ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}"
-      - "SUPERUSER_MAIL=${SUPERUSER_MAIL}"
-      - "EMAIL_USERNAME=${EMAIL_USERNAME}"
-      - "EMAIL_PASSWORD=${EMAIL_PASSWORD}"
-      - "EMAIL_FROM=${EMAIL_FROM}"
-      - "SMTP_SERVER=${SMTP_SERVER}"
-      - "SMTP_PORT=${SMTP_PORT}"
-      - "MAIL_STARTTLS=${MAIL_STARTTLS}"
-      - "MAIL_SSL_TLS=${MAIL_SSL_TLS}"
-      - "USE_CREDENTIALS=${USE_CREDENTIALS}"
-      - "VALIDATE_CERTS=${VALIDATE_CERTS}"
-      - "ANOMALY_ALERT_RECIPIENTS=${ANOMALY_ALERT_RECIPIENTS}"
-      - "POSTGRES_USER=${POSTGRES_USER}"
-      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-      - "POSTGRES_DB=${POSTGRES_DB}"
-      - "POSTGRES_HOST=${POSTGRES_HOST}"
-      - "POSTGRES_PORT=${POSTGRES_PORT}"
-      - "AMBIBOX_INGRESS_ENABLED=${AMBIBOX_INGRESS_ENABLED}"
-      - "AMBIBOX_ALLOWED_HOSTS=${AMBIBOX_ALLOWED_HOSTS}"
-      - "AMBIBOX_ALLOWED_HOST_SUFFIXES=${AMBIBOX_ALLOWED_HOST_SUFFIXES}"
-      - "AMBIBOX_EMQX_API_URL=${AMBIBOX_EMQX_API_URL}"
-      - "AMBIBOX_EMQX_API_KEY=${AMBIBOX_EMQX_API_KEY}"
-      - "AMBIBOX_EMQX_API_SECRET=${AMBIBOX_EMQX_API_SECRET}"
-      - "AMBIBOX_GOST_API_URL=${AMBIBOX_GOST_API_URL}"
-      - "AMBIBOX_GOST_USERNAME=${AMBIBOX_GOST_USERNAME}"
-      - "AMBIBOX_GOST_PASSWORD=${AMBIBOX_GOST_PASSWORD}"
-      - "AMBIBOX_SOCKS_SERVER=${AMBIBOX_SOCKS_SERVER}"
-      - "TACTIC_DOCKER_API_URL=${TACTIC_DOCKER_API_URL}"
-      - "TACTIC_DOCKER_API_PORT=${TACTIC_DOCKER_API_PORT}"
-      - "TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST=${TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST}"
-      - "TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=${TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT}"
-      - "TACTIC_RADAR_DEFAULT_MQTT_USE_TLS=${TACTIC_RADAR_DEFAULT_MQTT_USE_TLS}"
-      - "TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=${TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH}"
-      - "TACTIC_RADAR_WORKLOAD_LIFECYCLE=${TACTIC_RADAR_WORKLOAD_LIFECYCLE}"
-      - "TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB=${TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB:-384}"
-      - "TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE=${TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE:-256}"
-      - "TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES=${TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES:-65536}"
-      - "TACTIC_RADAR_MAX_ACTIVE_MONITORS=${TACTIC_RADAR_MAX_ACTIVE_MONITORS:-20}"
-      - "TACTIC_PIPELINE_AUTHORING_ENABLED=${TACTIC_PIPELINE_AUTHORING_ENABLED:-false}"
-      - "TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS=${TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS:-90}"
-      - "TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS=${TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS:-120}"
-      - "TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS=${TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS:-2}"
-      - "TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS=${TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS:-8}"
-      - "TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT=${TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT:-512m}"
-      - "TACTIC_DOCKER_DEFAULT_CPU_LIMIT=${TACTIC_DOCKER_DEFAULT_CPU_LIMIT:-0.5}"
-      - "TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION=${TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION:-}"
-      - "TACTIC_DOCKER_DEFAULT_CPU_RESERVATION=${TACTIC_DOCKER_DEFAULT_CPU_RESERVATION:-}"
-      - "TACTIC_SERVICE_HOST=${TACTIC_SERVICE_HOST}"
-      - "TACTIC_SERVICE_PORT=${TACTIC_SERVICE_PORT}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
-      - TACTIC_DOCKER_DEFAULT_NETWORK=${COMPOSE_PROJECT_NAME:-off-key}_app-network
-      - TACTIC_RADAR_IMAGE=${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}
-      - "RADAR_CHECKPOINT_SECRET=${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
+      <<: [*runtime-env, *logging-env, *database-env, *auth-env, *email-env]
+      TACTIC_RADAR_DEFAULT_MQTT_USERNAME: "${TACTIC_RADAR_DEFAULT_MQTT_USERNAME:-}"
+      AMBIBOX_MQTT_USERNAME: "${AMBIBOX_MQTT_USERNAME:-}"
+      AMBIBOX_MQTT_PASSWORD: "${AMBIBOX_MQTT_PASSWORD:-}"
+      SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-false}"
+      SYSTEM_COLLECTION_ENABLED: "${SYSTEM_COLLECTION_ENABLED:-true}"
+      SYSTEM_COLLECTION_MQTT_USERNAME: "${SYSTEM_COLLECTION_MQTT_USERNAME:-}"
+      SYSTEM_COLLECTION_MQTT_API_KEY: "${SYSTEM_COLLECTION_MQTT_API_KEY:-}"
+      SYSTEM_COLLECTION_MQTT_CA_FILE: "${SYSTEM_COLLECTION_MQTT_CA_FILE:-}"
+      SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS: "${SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS:-15}"
+      SYSTEM_LIVE_ALLOWED_HOSTS: "${SYSTEM_LIVE_ALLOWED_HOSTS:-[]}"
+      SYSTEM_LIVE_CREDENTIALS: "${SYSTEM_LIVE_CREDENTIALS:-}"
+      SYSTEM_LIVE_SOCKS_PROXIES: "${SYSTEM_LIVE_SOCKS_PROXIES:-}"
+      SYSTEM_LIVE_DATA_SOURCE: "${SYSTEM_LIVE_DATA_SOURCE:-broker}"
+      AMBIBOX_INGRESS_ENABLED: "${AMBIBOX_INGRESS_ENABLED}"
+      AMBIBOX_ALLOWED_HOSTS: "${AMBIBOX_ALLOWED_HOSTS}"
+      AMBIBOX_ALLOWED_HOST_SUFFIXES: "${AMBIBOX_ALLOWED_HOST_SUFFIXES}"
+      AMBIBOX_EMQX_API_URL: "${AMBIBOX_EMQX_API_URL}"
+      AMBIBOX_EMQX_API_KEY: "${AMBIBOX_EMQX_API_KEY}"
+      AMBIBOX_EMQX_API_SECRET: "${AMBIBOX_EMQX_API_SECRET}"
+      AMBIBOX_GOST_API_URL: "${AMBIBOX_GOST_API_URL}"
+      AMBIBOX_GOST_USERNAME: "${AMBIBOX_GOST_USERNAME}"
+      AMBIBOX_GOST_PASSWORD: "${AMBIBOX_GOST_PASSWORD}"
+      AMBIBOX_SOCKS_SERVER: "${AMBIBOX_SOCKS_SERVER}"
+      TACTIC_DOCKER_API_URL: "${TACTIC_DOCKER_API_URL}"
+      TACTIC_DOCKER_API_PORT: "${TACTIC_DOCKER_API_PORT}"
+      TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: "${TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST}"
+      TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: "${TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT}"
+      TACTIC_RADAR_DEFAULT_MQTT_USE_TLS: "${TACTIC_RADAR_DEFAULT_MQTT_USE_TLS}"
+      TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: "${TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH}"
+      TACTIC_RADAR_WORKLOAD_LIFECYCLE: "${TACTIC_RADAR_WORKLOAD_LIFECYCLE}"
+      TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: "${TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB:-384}"
+      TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: "${TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE:-256}"
+      TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: "${TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES:-65536}"
+      TACTIC_RADAR_MAX_ACTIVE_MONITORS: "${TACTIC_RADAR_MAX_ACTIVE_MONITORS:-20}"
+      TACTIC_PIPELINE_AUTHORING_ENABLED: "${TACTIC_PIPELINE_AUTHORING_ENABLED:-false}"
+      TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: "${TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS:-90}"
+      TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: "${TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS:-120}"
+      TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: "${TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS:-2}"
+      TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: "${TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS:-8}"
+      TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: "${TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT:-512m}"
+      TACTIC_DOCKER_DEFAULT_CPU_LIMIT: "${TACTIC_DOCKER_DEFAULT_CPU_LIMIT:-0.5}"
+      TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION: "${TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION:-}"
+      TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: "${TACTIC_DOCKER_DEFAULT_CPU_RESERVATION:-}"
+      TACTIC_DOCKER_DEFAULT_NETWORK: "${COMPOSE_PROJECT_NAME:-off-key}_app-network"
+      TACTIC_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+      RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
     restart: always
     healthcheck:
+      <<: *backend-healthcheck
       test:
         - "CMD"
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
 
   mqtt-radar:
+    # Build-only: TACTIC launches every RADAR workload from this image.
     build:
       context: ./backend/
       args:
         SERVICE_NAME: off-key-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
     image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    container_name: mqtt_radar
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      tactic-middleware:
-        condition: service_healthy
-      mqtt-proxy:
-        condition: service_healthy
-    networks:
-      - app-network
-      - emqx-network
-    restart: always
-    environment:
-      - "RADAR_MQTT_USERNAME=${RADAR_MQTT_USERNAME:-}"
-      - "RADAR_MQTT_API_KEY=${RADAR_MQTT_API_KEY:-}"
-      - "RADAR_MQTT_CA_FILE=${RADAR_MQTT_CA_FILE:-}"
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "RADAR_MQTT_BROKER_HOST=${RADAR_MQTT_BROKER_HOST}"
-      - "RADAR_MQTT_BROKER_PORT=${RADAR_MQTT_BROKER_PORT}"
-      - "RADAR_MQTT_USE_TLS=${RADAR_MQTT_USE_TLS}"
-      - "RADAR_MQTT_USE_AUTH=${RADAR_MQTT_USE_AUTH}"
-      - "RADAR_SUBSCRIPTION_TOPICS=${RADAR_SUBSCRIPTION_TOPICS}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
-      - RADAR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
     profiles:
-      - standalone-radar
+      - radar-image
 
   mqtt-proxy:
     build:
@@ -268,29 +193,16 @@ services:
         SERVICE_NAME: off-key-mqtt-proxy
         SERVICE_ROOT: services/mqtt/proxy
     image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
-    container_name: mqtt_proxy
     environment:
-      - "MQTT_USERNAME=${MQTT_USERNAME:-}"
-      - "MQTT_APIKEY=${MQTT_APIKEY:-}"
-      - "MQTT_CA_FILE=${MQTT_CA_FILE:-}"
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "POSTGRES_USER=${POSTGRES_USER}"
-      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-      - "POSTGRES_DB=${POSTGRES_DB}"
-      - "POSTGRES_HOST=${POSTGRES_HOST}"
-      - "POSTGRES_PORT=${POSTGRES_PORT}"
-      - "MQTT_USE_TLS=${MQTT_USE_TLS}"
-      - "MQTT_USE_AUTH=${MQTT_USE_AUTH}"
-      - "AMBIBOX_INGRESS_ENABLED=${AMBIBOX_INGRESS_ENABLED}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "SYSTEM_COLLECTION_ENABLED=${SYSTEM_COLLECTION_ENABLED:-true}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
-      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-emqx-main}
-      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
-      - MQTT_TELEMETRY_ENABLED=true
+      <<: [*runtime-env, *logging-env, *database-env]
+      MQTT_USERNAME: "${MQTT_USERNAME:-}"
+      MQTT_APIKEY: "${MQTT_APIKEY:-}"
+      MQTT_CA_FILE: "${MQTT_CA_FILE:-}"
+      MQTT_USE_TLS: "${MQTT_USE_TLS}"
+      MQTT_USE_AUTH: "${MQTT_USE_AUTH}"
+      MQTT_BROKER_HOST: "${MQTT_BROKER_HOST:-emqx-main}"
+      MQTT_BROKER_PORT: "${MQTT_BROKER_PORT:-1883}"
+      MQTT_TELEMETRY_ENABLED: "true"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
     depends_on:
       db-sync:
@@ -306,17 +218,12 @@ services:
       - emqx-network
     restart: always
     healthcheck:
+      <<: *backend-healthcheck
       test:
         - "CMD"
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready', timeout=2)"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-    volumes:
-      - ./logs:/app/logs  # For log persistence
 
   mqtt-simulator:
     build:
@@ -325,7 +232,6 @@ services:
         SERVICE_NAME: off-key-mqtt-simulator
         SERVICE_ROOT: services/mqtt/simulator
     image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
-    container_name: mqtt_simulator
     environment:
       - "SIMULATOR_ENABLED=${SIMULATOR_ENABLED:-true}"
       - "SIMULATOR_WORKSHOP_ENABLED=${SIMULATOR_WORKSHOP_ENABLED:-false}"
@@ -365,23 +271,11 @@ services:
         SERVICE_ROOT: services/db/sync
         SERVICE_NAME: off-key-db-sync
     image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
-    container_name: db_sync
     environment:
-      - "ENVIRONMENT=${ENVIRONMENT}"
-      - "DEBUG=${DEBUG}"
-      - "POSTGRES_USER=${POSTGRES_USER}"
-      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-      - "POSTGRES_DB=${POSTGRES_DB}"
-      - "POSTGRES_HOST=${POSTGRES_HOST}"
-      - "POSTGRES_PORT=${POSTGRES_PORT}"
-      - "SYNC_HOSTNAME=${SYNC_HOSTNAME}"
-      - "SYNC_API_HOST=${SYNC_API_HOST}"
-      - "SYNC_API_PORT=${SYNC_API_PORT}"
-      - "TELEMETRY_RETENTION_DAYS=${TELEMETRY_RETENTION_DAYS}"
-      - "LOG_LEVEL=${LOG_LEVEL}"
-      - "LOG_FORMAT=${LOG_FORMAT}"
-      - "LOG_REDACT_PII=${LOG_REDACT_PII}"
-      - "LOG_PII_DEBUG_UNMASK=${LOG_PII_DEBUG_UNMASK}"
+      <<: [*runtime-env, *logging-env, *database-env]
+      SYNC_API_HOST: "${SYNC_API_HOST}"
+      SYNC_API_PORT: "${SYNC_API_PORT}"
+      TELEMETRY_RETENTION_DAYS: "${TELEMETRY_RETENTION_DAYS}"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -389,36 +283,23 @@ services:
       - app-network
     restart: always
     healthcheck:
+      <<: *backend-healthcheck
       test:
         - "CMD"
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)"
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
     command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
-    develop:
-      watch:
-        - action: sync
-          path: backend/services/db/sync/src/off_key_db_sync
-          target: /app/lib/python3.14/site-packages/off_key_db_sync
-        - action: rebuild
-          path: ./backend/uv.lock
 
 ### =============================================== ###
 ###            THIRD-PARTY DEPENDENCIES             ###
 ### =============================================== ###
   timescaledb:
     image: timescale/timescaledb:latest-pg15
-    container_name: timescaledb
     environment:
       - "POSTGRES_USER=${POSTGRES_USER}"
       - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
       - "POSTGRES_DB=${POSTGRES_DB}"
-    ports:
-      - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -431,7 +312,6 @@ services:
       retries: 5
 
   socket-proxy:
-    container_name: socket_proxy
     image: tecnativa/docker-socket-proxy
     restart: always
     networks:
@@ -456,7 +336,7 @@ services:
       - BUILD=0
       - COMMIT=0
       - CONFIGS=0
-      - CONTAINERS=1 # Required by TACTIC RADAR container fallback and cleanup.
+      - CONTAINERS=0
       - DISTRIBUTION=0
       - EXEC=0
       - IMAGES=1 # Required when TACTIC pulls a missing RADAR image.
@@ -473,13 +353,9 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: mailpit
     restart: unless-stopped
     volumes:
       - ./data:/data
-    ports:
-      - "8025:8025" # Web UI
-      - "1025:1025" # SMTP port
 
     networks:
       - app-network
@@ -509,12 +385,6 @@ services:
     networks:
       - emqx-network
       - app-network
-    ports:
-      - 1883:1883
-      - 8083:8083
-      - 8084:8084
-      - 8883:8883
-      - 18083:18083
     # volumes:
     #   - $PWD/emqx1_data:/opt/emqx/data
 
@@ -531,12 +401,9 @@ services:
 
   source-broker:
     image: eclipse-mosquitto:2.0
-    container_name: source_broker
     command: [ "mosquitto", "-c", "/mosquitto/config/mosquitto.conf" ]
     volumes:
       - ./dev/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-    ports:
-      - "127.0.0.1:1884:1883"
     networks:
       app-network:
         aliases:
@@ -544,8 +411,10 @@ services:
     restart: unless-stopped
 
 networks:
+  # RADAR workloads are Swarm services that TACTIC attaches to this network.
   app-network:
-    driver: bridge
+    driver: overlay
+    attachable: true
   socket-network:
     driver: bridge
   emqx-network:

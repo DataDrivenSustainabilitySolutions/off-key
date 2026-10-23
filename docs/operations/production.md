@@ -6,8 +6,9 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 
 ## Release sequence
 
-1. All latest main push attempts for CI, Deployment Smoke, MQTT Collection Integration,
-   Infrastructure Validation and Docker Publish must succeed for the same SHA.
+1. The latest main push attempt of every workflow marked as a release gate in
+   [Contributing and CI](../development/contributing-ci.md#current-automated-checks)
+   must succeed for the same SHA.
 2. One GitHub production job connects through an ephemeral management-tailnet runner
    and verified SSH. Superseded automatic candidates stop before deployment.
 3. Runtime files are compared against the manager's last verified release. Documentation
@@ -103,12 +104,8 @@ Use authenticated **Sources** to import an `aberration-system` catalogue or edit
 brokers, entities and readings. Recording is explicitly opt-in. Operator networking,
 credentials and TLS settings remain private and separate from catalogue exports.
 
-Migration `005_generic_runtime.sql` converts saved configuration once while keeping
-existing sensor measurements/latest values, accounts, favourites, catalogue
-revisions, monitor settings and monitoring evidence. Recording and retention
-continue unchanged. Do not reset
-an existing database or use the retired catalogue API during the cutover. See
-[Collection](system-collection.md).
+Do not reset an existing database during an upgrade; see
+[Collection](system-collection.md) for what the catalogue migrations preserve.
 
 Real observations and vendor registration/recovery notes remain private operator
 material. They are not required for hosted CI.

@@ -1,6 +1,6 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is test-only feature code with migration 013 and Aberrant 1.3.0.
+The reference is test-only feature code with migration 014 and Aberrant 1.3.0.
 It is not an eligible production release and proves no pre-feature compatibility.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "fb58d1b2d0f4f838c613405c74b98fec7eadc896"
+COMPATIBLE_REVISION = "ca17ad4599dea2a518c9bc04e51bb374d35c20f9"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)
@@ -171,6 +171,15 @@ def validate_compatible_source(source, project):
     """A binary rollback never bypasses a changed migration or numeric contract."""
     compatibility = [
         Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
+        # Migration 005's checksum covers these converter modules too.
+        *(
+            Path("backend/libs/core/src/off_key_core/db") / name
+            for name in (
+                "catalogue_upgrade.py",
+                "catalogue_v1.py",
+                "catalogue_v1_models.py",
+            )
+        ),
     ]
     migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
     compatibility.extend(

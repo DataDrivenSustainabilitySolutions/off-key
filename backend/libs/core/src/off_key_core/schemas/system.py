@@ -14,6 +14,12 @@ EntityId = Annotated[
 ]
 
 
+def _has_control(value: str, *, forbid_space: bool = False) -> bool:
+    """C0 controls and DEL; paths also reject the space character."""
+    floor = 33 if forbid_space else 32
+    return any(ord(character) < floor or ord(character) == 127 for character in value)
+
+
 class SystemModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,9 +39,7 @@ class NamedEntity(SystemModel):
     @classmethod
     def readable_label(cls, value: str) -> str:
         value = value.strip()
-        if not value or any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if not value or _has_control(value):
             raise ValueError("Use a non-empty name without control characters")
         return value
 
@@ -61,7 +65,7 @@ class SystemConnection(NamedEntity):
     def broker_host(cls, value: str) -> str:
         value = value.lower().rstrip(".")
         try:
-            return ipaddress.ip_address(value).compressed
+            address = ipaddress.ip_address(value)
         except ValueError:
             label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
             if not re.fullmatch(rf"{label}(?:\.{label})*", value):
@@ -69,16 +73,17 @@ class SystemConnection(NamedEntity):
                     "Use a broker hostname or IP address, without a URL or port"
                 ) from None
             return value
+        # A zone index names an interface on one machine, not a broker address.
+        if getattr(address, "scope_id", None):
+            raise ValueError("Use an IPv6 address without a zone index")
+        return address.compressed
 
     @model_validator(mode="after")
     def transport_fields(self) -> Self:
         if self.websocket_path is not None and (
             self.transport != "websocket"
             or not self.websocket_path.startswith("/")
-            or any(
-                ord(character) < 33 or ord(character) == 127
-                for character in self.websocket_path
-            )
+            or _has_control(self.websocket_path, forbid_space=True)
             or "#" in self.websocket_path
         ):
             raise ValueError(
@@ -95,9 +100,7 @@ class SystemDevice(NamedEntity):
     @field_validator("kind")
     @classmethod
     def bounded_kind(cls, value: str) -> str:
-        if not value.strip() or any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if not value.strip() or _has_control(value):
             raise ValueError("Use a device kind without control characters")
         return value.strip()
 
@@ -122,7 +125,7 @@ class SystemStream(NamedEntity):
                 "Use a concrete MQTT topic of at most 512 UTF-8 bytes, "
                 "without wildcards or NUL"
             )
-        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        if _has_control(value):
             raise ValueError("MQTT topics must not contain control characters")
         return value
 
@@ -130,8 +133,7 @@ class SystemStream(NamedEntity):
     @classmethod
     def json_pointer(cls, value: str | None) -> str | None:
         if value is not None and (
-            not re.fullmatch(r"(?:/(?:[^~/]|~[01])*)*", value)
-            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+            not re.fullmatch(r"(?:/(?:[^~/]|~[01])*)*", value) or _has_control(value)
         ):
             raise ValueError(
                 "Use an RFC 6901 JSON Pointer, such as /readings/temperature"
@@ -141,15 +143,17 @@ class SystemStream(NamedEntity):
     @field_validator("unit", "category")
     @classmethod
     def readable_metadata(cls, value: str | None) -> str | None:
-        if value is not None and any(
-            ord(character) < 32 or ord(character) == 127 for character in value
-        ):
+        if value is not None and _has_control(value):
             raise ValueError("Metadata must not contain control characters")
         return value
 
 
+# The editor shows this colour for a group without one, so it is also saved.
+DEFAULT_GROUP_COLOR = "#397f74"
+
+
 class SystemGroup(NamedEntity):
-    color: str = Field(default="#7d9b8b", pattern=r"^#[0-9a-fA-F]{6}$")
+    color: str = Field(default=DEFAULT_GROUP_COLOR, pattern=r"^#[0-9a-fA-F]{6}$")
     member_ids: list[EntityId] = Field(default_factory=list, max_length=8192)
 
 

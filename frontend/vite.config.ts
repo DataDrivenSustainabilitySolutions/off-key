@@ -17,7 +17,8 @@ export default defineConfig({
     strictPort: true, // Prevents Vite from using a fallback port
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        // VITE_API_URL is the pre-rename name of the same dev-only setting.
+        target: process.env.API_PROXY_TARGET || process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
@@ -34,6 +35,10 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/Tests/setup.ts'],
+    // Every test starts from restored spies, globals and environment variables.
+    restoreMocks: true,
+    unstubGlobals: true,
+    unstubEnvs: true,
     exclude: [...configDefaults.exclude, 'e2e/**/*'],
     coverage: {
       provider: 'v8',

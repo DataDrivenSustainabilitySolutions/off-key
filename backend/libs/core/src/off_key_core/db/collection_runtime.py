@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from ..schemas.collection_status import is_applied
 from ..schemas.system import SystemDocument
 from ..schemas.system_collection import SystemCollectionDefinition
 from .system import SystemCollectionConfiguration
@@ -17,7 +18,6 @@ class CollectionRuntimeSnapshot:
     catalog: SystemCollectionDefinition
     ingress: dict
     collection: dict
-    status_model: type = SystemCollectionConfiguration
 
 
 async def read_collection_runtime(session):
@@ -53,10 +53,7 @@ async def monitoring_collection_fingerprint(session, topics: list[str]) -> str:
         raise ValueError(
             "Monitoring requires selected numeric sensors from the catalog"
         )
-    if (
-        collection.collection.get("revision") != collection.revision
-        or collection.collection.get("status") != "applied"
-    ):
+    if not is_applied(collection.collection, collection.revision):
         raise ValueError("Wait until the collection configuration is applied")
     return hashlib.sha256(
         json.dumps([streams[topic].signature for topic in sorted(topics)]).encode()

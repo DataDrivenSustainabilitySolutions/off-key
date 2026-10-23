@@ -141,16 +141,7 @@
       ingress_ts_authkey in the production vault is empty. Add a valid reusable
       auth key there, or log this node in interactively, then rerun provisioning.
   when:
-    - offkey_env == 'prod'
     - ts_backend_state != 'Running'
-
-- name: Warn when a disconnected non-production node has no management auth key
-  debug:
-    msg: "tailscale_os_authkey is not defined — the node cannot join the management tailnet"
-  when:
-    - offkey_env != 'prod'
-    - ts_backend_state != 'Running'
-    - tailscale_os_authkey is not defined or tailscale_os_authkey | trim | length == 0
 
 - name: Join management tailnet
   command:
@@ -173,7 +164,6 @@
   register: ts_verify
   changed_when: false
   failed_when: false
-  when: offkey_env == 'prod' or tailscale_os_authkey is defined
 
 - name: Require management tailnet connection
   assert:
@@ -184,4 +174,3 @@
       {{ inventory_hostname }} is not connected to the management tailnet.
       Set tailscale_os_authkey in this environment's inventory (or log in once
       interactively), then rerun provisioning.
-  when: offkey_env == 'prod' or tailscale_os_authkey is defined

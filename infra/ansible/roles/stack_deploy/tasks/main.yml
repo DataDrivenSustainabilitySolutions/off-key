@@ -26,7 +26,6 @@
       - label=service_type=radar
   register: tactic_radar_services
   changed_when: false
-  when: offkey_env == 'prod'
 
 - name: Inspect existing TACTIC-managed RADAR services
   command:
@@ -34,7 +33,6 @@
   loop: "{{ tactic_radar_services.stdout_lines | default([]) }}"
   register: tactic_radar_specs
   changed_when: false
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Require secure TACTIC-managed RADAR services from the intended release
@@ -69,7 +67,6 @@
       RADAR_CHECKPOINT_SECRET: >-
         {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'RADAR_CHECKPOINT_SECRET') | map(attribute='SecretName') | list }}
   loop: "{{ tactic_radar_specs.results | default([]) }}"
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Deploy and restore the production service model

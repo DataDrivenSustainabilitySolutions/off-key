@@ -19,12 +19,8 @@ classifiers = [
     "Development Status :: 3 - Alpha"
 ]
 dependencies = [
-    "off-key-core",
-    "bcrypt>=4.0.1",
-    "python-jose>=3.4.0",
+    "off-key-core[web,mail,auth]",
     "fastapi>=0.115.8",
-    "fastapi-mail>=1.4.2",
-    "httpx>=0.27.0",
     "slowapi>=0.1.9",
     "uvicorn>=0.25.0",
     "aiohttp>=3.14.3",

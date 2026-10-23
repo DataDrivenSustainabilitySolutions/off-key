@@ -3,7 +3,6 @@
 
 - name: Identify the production release before changing the stack
   include_tasks: release.yml
-  when: offkey_env == 'prod'
 
 - name: Discover the Ambibox NFS host's Tailscale address
   command: tailscale ip -4
@@ -38,7 +37,6 @@
   delegate_to: localhost
   become: false
   changed_when: false
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Reuse vendor access and provision collection controller credentials
@@ -55,7 +53,6 @@
     content: >-
       {{ release | combine({'infrastructure_revision': infrastructure_revision.stdout,
          'attempted_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ')}) | to_nice_json }}
-  when: offkey_env == 'prod'
 
 - name: Inspect existing production MQTT client secret references
   command:
@@ -66,7 +63,6 @@
   register: existing_mqtt_clients
   changed_when: false
   failed_when: false
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Require broker user rotation before changing MQTT client passwords
@@ -88,7 +84,6 @@
          selectattr('File.Name', 'equalto', item.item.target) |
          map(attribute='SecretName') | first | default('') }}
   loop: "{{ existing_mqtt_clients.results | default([]) }}"
-  when: offkey_env == 'prod'
   no_log: true
 
 - name: Create content-addressed deployment secrets

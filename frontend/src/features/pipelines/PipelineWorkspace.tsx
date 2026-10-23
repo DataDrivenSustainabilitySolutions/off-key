@@ -3,13 +3,16 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type { ActiveService } from "@/types/monitoring";
-import type { MonitoringIndex } from "../monitoring/serviceModel";
+import type { MonitoringIndex } from "@/domain/monitoring/serviceModel";
 import { useCatalogue } from "../workspace/catalogue-context";
+import { collectionApplied } from "@/domain/system/collectionRules";
+import { predecessorEntity } from "./bindings";
 import { pipelinesApi } from "./api";
 import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
+import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {
@@ -46,6 +49,7 @@ export default function PipelineWorkspace({
   const predecessor = source?.id === sourceId ? source.view : undefined;
   const sourceError = source?.id === sourceId ? source.error : undefined;
   const replacement = services.find((service) => service.id === replacementId);
+  const collectionReady = collectionApplied(system.snapshot?.runtime);
   useEffect(() => {
     const controller = new AbortController();
     void pipelinesApi.catalog(controller.signal).then(
@@ -69,30 +73,9 @@ export default function PipelineWorkspace({
       });
     return () => controller.abort();
   }, [sourceId, retry]);
-  const open = (pipelineId: string, targetId?: string) => {
-    const next = new URLSearchParams(params);
-    next.set("pipeline", pipelineId);
-    if (params.get("view") === "pipelines") next.delete("create");
-    if (targetId) next.set("target", targetId);
-    next.delete("revision");
-    next.delete("activation");
-    next.delete("view");
-    setParams(next);
-  };
-  const create = () => {
-    const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "view", "replace", "from"].forEach((key) => next.delete(key));
-    next.set("create", "monitoring");
-    setParams(next);
-  };
-  const library = () => {
-    const next = new URLSearchParams(params);
-    ["pipeline", "revision", "activation", "replace"].forEach((key) =>
-      next.delete(key),
-    );
-    next.set("view", "pipelines");
-    setParams(next);
-  };
+  const open = (pipelineId: string, targetId?: string) => setParams(openPipeline(params, pipelineId, targetId));
+  const create = () => setParams(createPipeline(params));
+  const library = () => setParams(showLibrary(params));
   if (!catalog)
     return (
       <section aria-label="Pipelines">
@@ -124,7 +107,7 @@ export default function PipelineWorkspace({
   if (!id) return <>
     {(error || sourceError) && <p role="alert" className="pl-error">{error || sourceError}<button onClick={() => setRetry((value) => value + 1)}>Retry</button></p>}
     <PipelineCreate key={`${initialTarget ?? ""}:${contextReading ?? ""}:${sourceId ?? ""}:${replacementId ? "replace" : "new"}`} catalog={catalog} canEdit={canEdit} targets={index.targets}
-    services={services} byStream={index.byStream} collectionReady={system.snapshot?.runtime.collection?.status === "applied"}
+    services={services} byStream={index.byStream} collectionReady={collectionReady}
     initialDocument={sourceId ? predecessor && { definition: predecessor.definition, layout: predecessor.layout } : undefined}
     replaceService={replacement} predecessor={sourceId ? predecessor : undefined}
     sourceService={sourceId ? { id: sourceId, replace: !!replacementId } : undefined}
@@ -143,11 +126,7 @@ export default function PipelineWorkspace({
           The requested predecessor is no longer available.{" "}
           <button
             type="button"
-            onClick={() => {
-              const next = new URLSearchParams(params);
-              next.delete("replace");
-              setParams(next);
-            }}
+            onClick={() => setParams(dropReplacement(params))}
           >
             Choose to start a new service instead
           </button>
@@ -164,13 +143,11 @@ export default function PipelineWorkspace({
         initialTarget={
           initialTarget ??
           (replacement
-            ? predecessor?.run?.execution?.bindings[0]?.entity_id
+            ? predecessorEntity(predecessor)
             : undefined)
         }
         initialReading={contextReading}
-        collectionReady={
-          system.snapshot?.runtime.collection?.status === "applied"
-        }
+        collectionReady={collectionReady}
         revisionId={params.get("revision") ?? undefined}
         activationId={params.get("activation") ?? undefined}
         replaceService={replacement}
@@ -184,18 +161,8 @@ export default function PipelineWorkspace({
         onBack={creating ? onBack : library}
         backLabel={creating ? "Monitoring" : "Templates"}
         onManage={library}
-        onRevision={(revision) => {
-          const next = new URLSearchParams(params);
-          if (revision) next.set("revision", revision);
-          else next.delete("revision");
-          next.delete("activation");
-          setParams(next);
-        }}
-        onOperation={(activation) => {
-          const next = new URLSearchParams(params);
-          next.set("activation", activation);
-          setParams(next);
-        }}
+        onRevision={(revision) => setParams(setRevision(params, revision))}
+        onOperation={(activation) => setParams(setActivation(params, activation))}
         onStarted={onStarted}
       />
     </>

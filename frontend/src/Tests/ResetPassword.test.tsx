@@ -1,13 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clientLogger } from "@/lib/logger";
 import ResetPassword from "@/pages/ResetPassword";
 
 const fetchMock = vi.fn<typeof fetch>();
-vi.stubGlobal("fetch", fetchMock);
-afterAll(() => vi.unstubAllGlobals());
 
 const PASSWORD = "a-long-enough-password";
 
@@ -42,11 +40,7 @@ const json = (status: number, body: unknown) =>
 describe("ResetPassword", () => {
   beforeEach(() => {
     fetchMock.mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
   });
 
   it("explains an incomplete link and offers a new one instead of the form", () => {

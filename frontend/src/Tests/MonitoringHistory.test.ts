@@ -1,11 +1,13 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
-import type { MonitoringInput } from "@/features/monitoring/serviceModel";
-import { buildMonitoringChartOption } from "@/lib/telemetry-chart";
-import { formatMonitoringObservationTooltip } from "@/lib/monitoring-tooltip";
+import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
+import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
+import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { filterServiceAnomalies } from "@/lib/monitoring-chart";
 import type { Anomaly } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
+import { trackerResult } from "./support/fixtures/monitoring";
 
 const first = "2026-10-21T10:00:00.000Z";
 const second = "2026-10-21T10:00:00.075Z";
@@ -119,9 +121,8 @@ describe("joint monitoring history", () => {
 
   it("retains static logarithmic evidence and overflow alongside multiple readings", () => {
     const { model } = build([{ ...row, strategy: "static_baseline", anomaly_score: undefined,
-      tracker_results: [{ tracker_id: "primary", betting_function: "power", betting_parameters: {}, alarm_statistic: "restarted_martingale",
-        statistic_value: null, statistic_is_infinite: true, log_statistic_value: 1000, statistics: {}, e_value: 1,
-        e_value_is_infinite: false, log_e_value: 0, threshold: 100, alarm_fired: true, alarm_active: true, alarm_count: 1, tested_count: 1 }],
+      tracker_results: [trackerResult({ statistic_value: null, statistic_is_infinite: true, log_statistic_value: 1000,
+        alarm_fired: true, alarm_active: true, alarm_count: 1 })],
     }]);
     expect(model.secondarySeries[0]!.overflow).toHaveLength(1);
     const option = buildMonitoringChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Joint static", layout: "monitoring", viewport: { mode: "live" } });

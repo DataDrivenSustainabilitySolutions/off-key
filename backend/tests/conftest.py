@@ -10,6 +10,31 @@ import pytest_asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
+from tests.support.pipeline_database import pipeline_database  # noqa: F401
+from tests.support.runtime_cache import reset_settings_caches
+
+DATABASE_FIXTURES = frozenset({"disposable_database", "member_database"})
+
+
+def pytest_collection_modifyitems(items):
+    """Mark every test that reaches a database fixture, however indirectly."""
+    for item in items:
+        if DATABASE_FIXTURES & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.postgres)
+
+
+@pytest.fixture(autouse=True)
+def fresh_settings():
+    """Read settings from each test's own environment.
+
+    It requests no monkeypatch, so its teardown runs after monkeypatch has
+    restored the environment.
+    """
+    reset_settings_caches()
+    yield
+    reset_settings_caches()
+
+
 # ============================================================================
 # Sample Data Fixtures
 # ============================================================================
@@ -29,7 +54,7 @@ def sample_anomaly_result():
         raw_data={"cpu_usage": 95.5},
         topic="telemetry/charger-001/cpu",
         charger_id="charger-001",
-        context={"processing_time_ms": 5.2},
+        context={"static_conformal": {"phase": "ready", "p_value": 0.01}},
     )
 
 
@@ -90,13 +115,8 @@ async def member_database():
 
 @pytest.fixture
 def mock_async_session():
-    """Create a mock async database session."""
-    session = AsyncMock()
-    session.execute = AsyncMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-    session.close = AsyncMock()
-    return session
+    """Create a mock async database session; every method is already awaitable."""
+    return AsyncMock()
 
 
 @pytest.fixture

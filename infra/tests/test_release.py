@@ -1,6 +1,5 @@
 """Release identity and readiness failures that public HTTP alone cannot detect."""
 
-import importlib.util
 import json
 import os
 import sys
@@ -16,19 +15,11 @@ from unittest.mock import patch
 
 import yaml
 from jinja2 import Environment
-from support import ROOT, ansible, run
+from support import ROOT, ansible, load_script, run
 
-
-def load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-application = load("check_application")
-swarm = load("check_swarm")
-release = load("pin_release")
+application = load_script("check_application")
+swarm = load_script("check_swarm")
+release = load_script("pin_release")
 
 
 class ReleaseTests(unittest.TestCase):
@@ -540,7 +531,10 @@ class ReleaseTests(unittest.TestCase):
     def test_new_database_needs_no_catalog_row_before_the_first_ui_save(self):
         snapshot = SimpleNamespace(
             revision=0,
-            catalog=SimpleNamespace(sources=[], streams=lambda **kwargs: []),
+            catalog=SimpleNamespace(
+                document=SimpleNamespace(connections=[]),
+                streams=lambda **kwargs: [],
+            ),
             collection={},
             ingress={},
         )
@@ -563,11 +557,13 @@ class ReleaseTests(unittest.TestCase):
         snapshot = SimpleNamespace(
             revision=9,
             catalog=SimpleNamespace(
-                sources=[
-                    SimpleNamespace(
-                        id="broker", label="Lab", host="source-broker", port=1883
-                    )
-                ],
+                document=SimpleNamespace(
+                    connections=[
+                        SimpleNamespace(
+                            id="broker", label="Lab", host="source-broker", port=1883
+                        )
+                    ]
+                ),
                 streams=lambda **kwargs: selected,
             ),
             collection={

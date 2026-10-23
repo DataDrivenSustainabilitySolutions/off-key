@@ -10,10 +10,13 @@ from off_key_core.db.schema import bootstrap_schema
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-pytestmark = pytest.mark.skipif(
-    os.getenv("OFFKEY_COLLECTION_INTEGRATION") != "1",
-    reason="Requires the isolated MQTT collection compose fixture",
-)
+pytestmark = [
+    pytest.mark.collection_stack,
+    pytest.mark.skipif(
+        os.getenv("OFFKEY_COLLECTION_INTEGRATION") != "1",
+        reason="Requires the isolated MQTT collection compose fixture",
+    ),
+]
 
 
 async def until(check):

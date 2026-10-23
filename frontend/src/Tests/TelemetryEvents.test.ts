@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 
 import { createAnomalyMarkers, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
@@ -6,7 +7,7 @@ import {
   formatEventSampleOffset,
   formatTelemetryEventTooltip,
   groupTelemetryEvents,
-} from "@/lib/telemetry-events";
+} from "@/features/charts/telemetry-events";
 import type { Anomaly } from "@/types/charger";
 
 const anomaly: Anomaly = {

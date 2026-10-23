@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import {
   normalizeDefinition,
   normalizeLayout,
@@ -99,7 +99,6 @@ const fixture = () => ({
     nodes: { left: { x: 10, y: 20, label: "Unmodified temperature" } },
   }),
 });
-afterEach(cleanup);
 
 describe("monitoring graph visual language", () => {
   it("retains operation identity beneath a custom title and keeps validation separate from execution", () => {

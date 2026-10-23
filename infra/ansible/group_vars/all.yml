@@ -20,9 +20,9 @@ stack_compose_files: >-
       stack_dir ~ '/docker-compose.traefik.yml',
       stack_dir ~ '/docker-compose.oauth2.yml',
       stack_dir ~ '/docker-compose.environment.yml']
-     + ([stack_dir ~ '/docker-compose.cloudflared.yml'] if offkey_env == 'prod' else [])
-     + ([stack_dir ~ '/docker-compose.landing.yml'] if offkey_env == 'prod' else [])
-     + ([stack_dir ~ '/docker-compose.mqtt-security.yml'] if offkey_env == 'prod' or (ambibox_ingress_enabled | default(true) | bool) else [])
+     + [stack_dir ~ '/docker-compose.cloudflared.yml']
+     + [stack_dir ~ '/docker-compose.landing.yml']
+     + [stack_dir ~ '/docker-compose.mqtt-security.yml']
      + ([stack_dir ~ '/docker-compose.persistence.yml'] if persistence_any_enabled | bool else []) }}
 
 # NOTE: there is deliberately no static "stateful node" variable here. Volumes are node-local,

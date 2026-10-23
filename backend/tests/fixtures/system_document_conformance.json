@@ -1,0 +1,35 @@
+{
+  "description": "Connection and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
+  "default_group_color": "#397f74",
+  "base": {
+    "format": "aberration-system",
+    "schema_version": 1,
+    "label": "Conformance",
+    "default_policy": {"mode": "off", "interval_seconds": 10},
+    "connections": [
+      {"id": "broker", "label": "Broker", "protocol": "mqtt", "host": "broker.example.test", "port": 1883, "transport": "tcp", "tls": false}
+    ],
+    "devices": [],
+    "streams": [],
+    "groups": []
+  },
+  "cases": [
+    {"name": "hostname", "valid": true, "connection": {"host": "broker.example.test"}},
+    {"name": "trailing dot hostname", "valid": true, "connection": {"host": "broker.example.test."}},
+    {"name": "IPv4", "valid": true, "connection": {"host": "192.168.1.20"}},
+    {"name": "IPv6", "valid": true, "connection": {"host": "2001:db8::1"}},
+    {"name": "IPv4-mapped IPv6", "valid": true, "connection": {"host": "::ffff:1.2.3.4"}},
+    {"name": "colons only", "valid": false, "connection": {"host": ":::::"}},
+    {"name": "scoped IPv6", "valid": false, "connection": {"host": "fe80::1%eth0"}},
+    {"name": "URL instead of host", "valid": false, "connection": {"host": "mqtt://broker.example.test"}},
+    {"name": "host with port", "valid": false, "connection": {"host": "broker.example.test:1883"}},
+    {"name": "websocket path", "valid": true, "connection": {"transport": "websocket", "websocket_path": "/mqtt"}},
+    {"name": "websocket path with a no-break space", "valid": true, "connection": {"transport": "websocket", "websocket_path": "/mqtt feed"}},
+    {"name": "websocket path with a space", "valid": false, "connection": {"transport": "websocket", "websocket_path": "/mqtt feed"}},
+    {"name": "websocket path with a fragment", "valid": false, "connection": {"transport": "websocket", "websocket_path": "/mqtt#feed"}},
+    {"name": "relative websocket path", "valid": false, "connection": {"transport": "websocket", "websocket_path": "mqtt"}},
+    {"name": "websocket path on TCP", "valid": false, "connection": {"transport": "tcp", "websocket_path": "/mqtt"}},
+    {"name": "group without a colour", "valid": true, "group": {"id": "group", "label": "Group", "member_ids": ["broker"]}},
+    {"name": "group with a short colour", "valid": false, "group": {"id": "group", "label": "Group", "color": "#abc", "member_ids": []}}
+  ]
+}

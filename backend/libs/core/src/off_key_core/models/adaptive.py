@@ -1,6 +1,7 @@
 """RADAR policy and generated Aberrant metadata, without importing its runtime."""
 
 import json
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from importlib.resources import files
 from typing import Any
@@ -114,7 +115,27 @@ PARAMETER_LIMITS = {
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
 ABERRANT_VERSION: str = CATALOG["aberrant_version"]
 ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = CATALOG["models"]
-BUILTIN_ADAPTIVE_MODEL_TYPES = frozenset(ADAPTIVE_MODELS_BY_TYPE)
+
+
+# Detector parameters bound from the feature schema, never from user input.
+BOUND_PARAMETER_NAMES = ("abs_diff", "key", "keys")
+
+
+def bind_detector_parameters(
+    bound_parameters: Iterable[str],
+    params: Mapping[str, Any],
+    feature_names: list[str] | None,
+) -> dict[str, Any]:
+    """Fill a detector's bound parameters from the features it receives."""
+    result = dict(params)
+    for name in bound_parameters:
+        if name == "abs_diff":
+            result[name] = True
+        elif name == "key":
+            result[name] = feature_names[0] if feature_names else None
+        else:
+            result[name] = feature_names
+    return result
 
 
 def validate_adaptive_model_params(

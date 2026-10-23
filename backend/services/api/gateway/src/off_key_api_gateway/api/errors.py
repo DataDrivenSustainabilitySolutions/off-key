@@ -1,8 +1,10 @@
 """Translate downstream service failures at the HTTP API boundary."""
 
-from typing import Never
+from collections.abc import Callable, Coroutine
+from typing import Any, Never
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, Response, status
+from fastapi.routing import APIRoute
 
 from ..facades.tactic import TacticError
 
@@ -22,3 +24,18 @@ def raise_tactic_http_error(error: TacticError) -> Never:
         status_code=error.status or status.HTTP_502_BAD_GATEWAY,
         detail=tactic_error_detail(error),
     ) from error
+
+
+class TacticErrorRoute(APIRoute):
+    """Route whose handler may let a TacticError propagate."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def route_handler(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except TacticError as exc:
+                raise_tactic_http_error(exc)
+
+        return route_handler

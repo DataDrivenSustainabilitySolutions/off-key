@@ -1,12 +1,12 @@
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, createMemoryRouter, RouterProvider, Link } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitoringServiceCreate } from "@/features/monitoring/MonitoringServiceCreate";
 import { apiUtils } from "@/lib/api-client";
-import type { MonitoringTarget } from "@/features/monitoring/serviceModel";
+import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { ActiveService } from "@/types/monitoring";
-import { SystemLiveTelemetry } from "@/features/catalogue/systemLiveTelemetry";
+import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn(), post: vi.fn() } }));
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
@@ -20,8 +20,11 @@ const models = {
   pyod_iforest: { strategy: "static_baseline", parameters: { properties: {} } },
   aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } },
 };
-beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); vi.mocked(apiUtils.get).mockResolvedValue(models); vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service" }); });
-afterEach(cleanup);
+beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
+  vi.mocked(apiUtils.get).mockImplementation(async (url: string) =>
+    url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", service_id: "new-service" } : models);
+  vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
+});
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {
   const onStarted = vi.fn(async () => {});
   render(<MemoryRouter><MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="room" initialReading="temperature"
@@ -38,8 +41,9 @@ describe("integrated monitor creation", () => {
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(start);
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledOnce());
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors/start", expect.objectContaining({ display_name: "Room climate monitor", mqtt_topics: ["telemetry/room/temperature"] }), expect.anything());
-    expect(onStarted).toHaveBeenCalledWith("new-service");
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors/start", expect.objectContaining({ display_name: "Room climate monitor", mqtt_topics: ["telemetry/room/temperature"] }));
+    await waitFor(() => expect(onStarted).toHaveBeenCalledWith("new-service"));
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/pipeline-activations/activation", expect.anything());
   });
 
   it("keeps start disabled until the explicitly selected collection revision is applied", async () => {

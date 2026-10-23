@@ -4,6 +4,7 @@ import { pipelinesApi } from "./api";
 import type { PipelineRevisionView, PipelineView } from "./contracts";
 import { PipelineCreate, type PipelineSetupProps } from "./PipelineCreate";
 import { PipelineActivation } from "./PipelineActivation";
+import { previousBindings } from "./bindings";
 import { Breadcrumb } from "@/components/Breadcrumb";
 
 type Props = Omit<PipelineSetupProps, "initialDesign" | "initialDocument"> & {
@@ -34,13 +35,18 @@ export default function PipelineEditor(props: Props) {
   </section>;
   // Recover existing links to an in-flight start created by earlier releases.
   if (props.activationId && revision) return <PipelineActivation revision={revision} previous={props.predecessor?.definition}
-    previousBindings={Object.fromEntries((props.predecessor?.run?.execution?.bindings ?? []).map((binding) => [binding.slot_id, binding.reading_id]))}
+    previousBindings={previousBindings(props.predecessor)}
     replaceService={props.replaceService} targets={props.targets} services={props.services} byStream={props.byStream}
     initialTarget={props.initialTarget} initialReading={props.initialReading} defaultName={pipeline.name}
     collectionReady={props.collectionReady} operationId={props.activationId} onOperation={props.onOperation}
     onComplete={props.onStarted} onClose={() => props.onRevision(undefined)} />;
   return <>
-    <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`} {...props} initialDesign={pipeline}
+    <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`}
+      catalog={props.catalog} canEdit={props.canEdit} targets={props.targets} services={props.services} byStream={props.byStream}
+      collectionReady={props.collectionReady} initialTarget={props.initialTarget} initialReading={props.initialReading}
+      replaceService={props.replaceService} predecessor={props.predecessor} revisionId={props.revisionId}
+      sourceService={props.sourceService} activationBlocked={props.activationBlocked} onManage={props.onManage}
+      onBack={props.onBack} onStarted={props.onStarted} backLabel={props.backLabel} initialDesign={pipeline}
       initialDocument={revision ? { definition: revision.definition, layout: pipeline.layout } : undefined} />
     {props.canEdit && props.catalog.authoring_enabled && <details className="pl-archive">
       <summary>Template options</summary>

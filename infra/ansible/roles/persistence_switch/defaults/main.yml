@@ -12,7 +12,8 @@ persist_emqx_log:  false
 persistence_restore_on_switch: true
 
 # Runtime gate. Never set this in an inventory — pass it per-run:
-#   make deploy-prod ANSIBLE_EXTRA="-e persistence_switch_confirm=true"
+#   make -C infra deploy-prod REVISION=<sha> CONFIRM=true
+# The GitHub-dispatched root `make deploy-prod` can never supply it.
 # Required only in prod, and only when a flip is actually detected.
 persistence_switch_confirm: false
 

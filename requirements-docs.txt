@@ -1,2 +1,2 @@
 # Documentation toolchain for docs.yml and the local docs build; Dependabot keeps it current.
-zensical==0.0.53
+zensical==0.0.71

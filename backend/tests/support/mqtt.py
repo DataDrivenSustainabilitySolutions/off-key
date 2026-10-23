@@ -41,6 +41,7 @@ class WithholdingServer:
     accepted: asyncio.Event
     subscribed: asyncio.Event
     writers: set = field(default_factory=set)
+    connections: int = 0
 
 
 async def _read_packet(reader):
@@ -57,15 +58,21 @@ async def _read_packet(reader):
 
 @asynccontextmanager
 async def withholding_server(mode: str):
-    """A TCP peer that never sends CONNACK (``connack``) or SUBACK (``suback``)."""
-    assert mode in {"connack", "suback"}
+    """A TCP peer that never sends CONNACK (``connack``) or SUBACK (``suback``),
+    or that refuses every CONNECT as not authorised (``refuse``)."""
+    assert mode in {"connack", "suback", "refuse"}
     accepted, subscribed = asyncio.Event(), asyncio.Event()
     writers = set()
 
     async def handle(reader, writer):
         writers.add(writer)
+        peer.connections += 1
         accepted.set()
         try:
+            if mode == "refuse":
+                await _read_packet(reader)
+                writer.write(b"\x20\x02\x00\x05")  # CONNACK: not authorised.
+                await writer.drain()
             if mode == "suback":
                 await _read_packet(reader)
                 writer.write(b"\x20\x02\x00\x00")  # Real MQTT 3.1.1 CONNACK.
@@ -80,11 +87,10 @@ async def withholding_server(mode: str):
             await writer.wait_closed()
             writers.discard(writer)
 
+    peer = WithholdingServer(0, accepted, subscribed, writers)
     server = await asyncio.start_server(handle, "127.0.0.1", 0)
     async with server:
-        peer = WithholdingServer(
-            server.sockets[0].getsockname()[1], accepted, subscribed, writers
-        )
+        peer.port = server.sockets[0].getsockname()[1]
         try:
             yield peer
         finally:

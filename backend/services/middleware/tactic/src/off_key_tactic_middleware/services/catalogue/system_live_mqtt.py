@@ -124,6 +124,9 @@ class LiveMqttWorker:
                 self.on_state(
                     "error", "The broker rejected the connection credentials."
                 )
+                # Paho would otherwise reconnect and resend the refused credentials,
+                # which can lock the account; a settings change starts a new worker.
+                client.disconnect()
                 return
             self.connected = True
             self.pending.clear()

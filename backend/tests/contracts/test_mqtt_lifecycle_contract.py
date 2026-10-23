@@ -8,6 +8,7 @@ where a client has that path:
 | stop during in-flight socket creation     | yes   | yes   | yes         |
 | withheld CONNACK takes the timeout path   | yes   | yes   | no (retries)|
 | one live subscriber after a broker drop   | yes   | yes   | yes         |
+| refused credentials are not resent        | n/a   | n/a   | yes         |
 
 The RADAR column lives in test_radar_mqtt_integration.py, which the RADAR
 production workflow also runs against its image.
@@ -176,3 +177,22 @@ async def test_live_reconnect_after_broker_drop_keeps_one_subscriber():
         finally:
             await asyncio.to_thread(worker.stop)
             await publisher.disconnect()
+
+
+async def test_live_refused_credentials_are_not_resent():
+    states = []
+    async with withholding_server("refuse") as peer:
+        worker = live_worker(
+            peer.port,
+            ["room/values"],
+            on_state=lambda state, detail: states.append(state),
+        )
+        worker.start()
+        try:
+            await wait_until(lambda: states[-1:] == ["error"])
+            # Paho's first reconnect would come after its 1 s minimum delay.
+            await asyncio.sleep(2.5)
+            assert peer.connections == 1
+            assert states == ["error"]
+        finally:
+            await asyncio.to_thread(worker.stop)

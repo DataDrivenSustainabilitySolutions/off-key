@@ -154,3 +154,27 @@ def test_failed_scope_update_does_not_claim_a_connected_subscription():
     worker._subscribed(client, None, 1, [good], None)
     assert all(call.args[0] != "connected" for call in state.call_args_list)
     worker.stop()
+
+
+def test_refused_credentials_stop_the_worker_instead_of_resending_them():
+    client = MagicMock()
+    state = MagicMock()
+    worker = LiveMqttWorker(
+        SystemConnection(id="broker", label="Broker", host="broker"),
+        ["room/values"],
+        None,
+        MagicMock(),
+        state,
+        client_factory=lambda *_args, **_kwargs: client,
+    )
+    worker.start()
+    worker._connected(client, None, None, SimpleNamespace(is_failure=True), None)
+    assert worker.denied
+    client.disconnect.assert_called_once()
+    worker._disconnected(client, None, None, SimpleNamespace(is_failure=True), None)
+    state.assert_called_once_with(
+        "error", "The broker rejected the connection credentials."
+    )
+    assert not worker.update_topics(["room/other"])
+    client.subscribe.assert_not_called()
+    worker.stop()

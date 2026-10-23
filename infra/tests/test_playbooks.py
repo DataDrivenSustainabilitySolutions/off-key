@@ -401,6 +401,7 @@ print("\n".join(listings[args[5]]))
                         {
                             "hosts": "localhost",
                             "connection": "local",
+                            "become": False,
                             "gather_facts": False,
                             "vars": {
                                 "stack_name": "off-key",

@@ -98,6 +98,27 @@ def test_template_migration_preserves_existing_designs(disposable_database):
         )
 
 
+def test_retired_schema_migration_keeps_the_telemetry_primary_key(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        restore_retired_schema(connection)
+        rewind_ledger(connection, "014_drop_unread_schema.sql")
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == ["014_drop_unread_schema.sql"]
+        schema = inspect(connection)
+        assert schema.get_pk_constraint("telemetry")["constrained_columns"] == [
+            "charger_id",
+            "timestamp",
+            "type",
+        ]
+        assert "model_registry" not in schema.get_table_names()
+        assert "stateful_set_name" not in {
+            column["name"] for column in schema.get_columns("services")
+        }
+
+
 def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
     disposable_database,
 ):

@@ -84,18 +84,8 @@
 - name: Stop application writers and back up before upgrading the schema
   when: release_migration_status.pending | length > 0 or ((release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete')
   block:
-    - name: List the existing application services and runtime workers
-      command:
-        argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "{{ item }}"]
-      loop:
-        - "label=com.docker.stack.namespace={{ stack_name }}"
-        - label=managed_by=tactic
-      register: release_writer_services
-      changed_when: false
-
-    - name: Select writers to quiesce
-      set_fact:
-        release_writers: "{{ release_writer_services.results | map(attribute='stdout_lines') | flatten | unique | difference([stack_name ~ '_postgres', stack_name ~ '_emqx-main']) }}"
+    - name: Select the database writers to quiesce
+      include_tasks: release_writers.yml
 
     - name: Stop writers before the database backup
       command:

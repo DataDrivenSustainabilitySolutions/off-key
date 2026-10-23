@@ -17,15 +17,19 @@ from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.reasoncodes import ReasonCode
 
+from tests.support.form_pipeline import form_radar_config
+
 
 @pytest.fixture
 def config():
-    return MQTTRadarConfig(
+    return form_radar_config(
+        None,
+        ["telemetry/test/sine"],
+        MQTTRadarConfig,
         broker_host="localhost",
         broker_port=1883,
         use_tls=False,
         use_auth=False,
-        subscription_topics=["telemetry/test/sine"],
         subscription_qos=0,
         max_queue_size=100,
         rate_limit_per_minute=60,

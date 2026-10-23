@@ -21,6 +21,7 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
 pytestmark = pytest.mark.radar_integration
@@ -31,19 +32,16 @@ async def test_real_monitor_reports_stale_peer_and_total_silence_and_recovers(
     monkeypatch,
 ):
     broker, port = await start_mqtt_broker()
-    config = MQTTRadarConfig(
+    config = form_radar_config(
+        tiny_adaptive_monitoring(),
+        ["telemetry/activity/a", "telemetry/activity/b"],
+        MQTTRadarConfig,
         broker_host="127.0.0.1",
         broker_port=port,
-        subscription_topics=["telemetry/activity/a", "telemetry/activity/b"],
         db_write_enabled=False,
-        # This shared pytest process imports every monorepo/scientific package.
-        # Size its real RSS budget separately from the isolated worker budget
-        # asserted by the production-image Swarm test, so full GC on every input
-        # does not dominate the deliberately short freshness interval below.
         memory_limit_mb=2048,
         sensor_freshness_seconds=0.3,
         health_check_interval=0.05,
-        monitoring=tiny_adaptive_monitoring(),
     )
     monkeypatch.setenv("SERVICE_ID", "activity-monitor")
     clear_radar_runtime_settings_cache()
@@ -130,7 +128,13 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
     )
     blocker_engine = create_async_engine(engine.url, pool_size=1, max_overflow=0)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    config = MQTTRadarConfig(sensor_freshness_seconds=0.1, db_batch_timeout=0.05)
+    config = form_radar_config(
+        None,
+        ["telemetry/charger-sim-1/sine"],
+        MQTTRadarConfig,
+        sensor_freshness_seconds=0.1,
+        db_batch_timeout=0.05,
+    )
     writer = DatabaseWriter(
         config, session_factory=sessions, service_id="activity-writer"
     )

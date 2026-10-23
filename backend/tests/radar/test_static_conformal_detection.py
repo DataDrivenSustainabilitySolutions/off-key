@@ -13,10 +13,17 @@ from off_key_mqtt_radar.detector import (
 )
 from off_key_mqtt_radar.detector_handle import DetectorHandle
 from off_key_mqtt_radar.detector_runtime import DetectorRuntime
+from off_key_mqtt_radar.execution_errors import ObservationRejected
 from off_key_mqtt_radar.martingales import MartingaleAlarmController
+
+from tests.support.form_pipeline import form_radar_config
+
+TOPICS = ["telemetry/c1/L1", "telemetry/c1/L2"]
 
 
 class FakeConformalDetector:
+    last_features = None
+
     def __init__(self, p_value: float = 0.001):
         self.p_value = p_value
 
@@ -62,14 +69,15 @@ def _static_config(
     calibration_window_size: int = 5,
 ) -> AnomalyDetectionConfig:
     model_params = model_params or {"n_estimators": 100}
-    return AnomalyDetectionConfig(
-        monitoring=StaticBaselineConfig(
+    return form_radar_config(
+        StaticBaselineConfig(
             model_type=model_type,
             model_params=model_params,
             training_window_size=training_window_size,
             calibration_window_size=calibration_window_size,
             martingale_config=martingale_config or StaticMartingaleConfig(),
         ),
+        TOPICS,
         checkpoint_interval=100000,
     )
 
@@ -146,22 +154,6 @@ def test_static_conformal_collects_calibrates_trains_then_detects(monkeypatch):
     ]
 
 
-def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatch):
-    config = _static_config()
-    service = StaticConformalDetectionService(config)
-
-    service.conformal_detector = FakeConformalDetector()
-    service.alarm_controller = service._create_alarm_controller()
-    service.feature_keys = ["L1", "L2"]
-    service.state = StaticConformalState.READY
-
-    result = service.process_data_point({"L1": 1.0, "L3": 2.0})
-
-    assert result.is_anomaly is False
-    assert result.context["static_conformal"]["phase"] == "schema_mismatch"
-    assert "schema_error" in result.context["static_conformal"]
-
-
 @pytest.mark.parametrize(
     "state",
     [
@@ -170,31 +162,20 @@ def test_static_conformal_rejects_schema_mismatch_after_schema_freeze(monkeypatc
         StaticConformalState.READY,
     ],
 )
-def test_schema_mismatch_counts_without_buffering_or_changing_state(state):
+def test_other_readings_are_rejected_without_buffering_or_changing_state(state):
     service = StaticConformalDetectionService(_static_config())
     service.conformal_detector = FakeConformalDetector()
     service.alarm_controller = service._create_alarm_controller()
-    service.feature_keys = ["L1", "L2"]
     service.state = state
 
-    result = service.process_data_point({"L1": 1.0, "L3": 2.0})
-    context = result.context["static_conformal"]
+    with pytest.raises(ObservationRejected, match=r"missing=\['L2'\], extra=\['L3'\]"):
+        service.process_data_point({"L1": 1.0, "L3": 2.0})
 
     assert service.state == state
     assert service.training_buffer == []
     assert service.calibration_buffer == []
-    assert (service.processed_count, service.schema_mismatch_count) == (1, 1)
-    assert (result.anomaly_score, result.is_anomaly, result.severity) == (
-        1.0,
-        False,
-        "low",
-    )
-    assert result.processed_features is None
-    assert context["phase"] == "schema_mismatch"
-    assert context["schema_error"] == (
-        "feature schema mismatch missing=['L2'] extra=['L3']"
-    )
-    assert context["schema_mismatch_count"] == 1
+    assert service.processed_count == 0
+    assert service.feature_keys == ["input_1", "input_2"]
 
 
 def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
@@ -202,7 +183,6 @@ def test_static_conformal_martingale_ignores_non_crossing_p_values(monkeypatch):
     service = StaticConformalDetectionService(config)
     service.conformal_detector = FakeConformalDetector(p_value=1.0)
     service.alarm_controller = service._create_alarm_controller()
-    service.feature_keys = ["L1", "L2"]
     service.state = StaticConformalState.READY
 
     result = service.process_data_point({"L1": 1.0, "L2": 2.0})
@@ -482,13 +462,12 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch):
         "static_state": "ready",
         "training_buffer": [],
         "calibration_buffer": [],
-        "feature_keys": ["L1", "L2"],
+        "feature_keys": ["input_1", "input_2"],
         "conformal_detector": FakeConformalDetector(),
         "alarm_controller": alarm_controller,
         "processed_count": 42,
         "anomaly_count": 3,
         "discarded_during_training_count": 2,
-        "schema_mismatch_count": 1,
         "training_error": None,
         "schema_signature": (
             StaticConformalDetectionService._build_schema_signature_from_config(config)
@@ -500,7 +479,7 @@ def test_static_conformal_restores_ready_checkpoint(monkeypatch):
 
     assert restored.state == StaticConformalState.READY
     assert restored.processed_count == 42
-    assert restored.feature_keys == ["L1", "L2"]
+    assert restored.feature_keys == ["input_1", "input_2"]
     assert restored.alarm_controller.alarm_count == 2
     assert restored.alarm_controller.tested_count == 7
     assert isinstance(restored.alarm_controller, MartingaleAlarmController)
@@ -526,7 +505,7 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
         "static_state": "ready",
         "training_buffer": [],
         "calibration_buffer": [],
-        "feature_keys": ["L1", "L2"],
+        "feature_keys": ["input_1", "input_2"],
         "conformal_detector": FakeConformalDetector(),
         "alarm_controller": _manual_restarted_controller(),
         "processed_count": 42,
@@ -544,14 +523,9 @@ def test_static_conformal_rejects_incomplete_ready_checkpoint(
 
 
 def test_static_conformal_uses_static_config_model_params(monkeypatch):
-    config = AnomalyDetectionConfig(
-        monitoring=StaticBaselineConfig(
-            model_type="pyod_knn",
-            model_params={"n_neighbors": 7, "contamination": 0.08},
-            training_window_size=20,
-            calibration_window_size=5,
-        ),
-        checkpoint_interval=100000,
+    config = _static_config(
+        model_type="pyod_knn",
+        model_params={"n_neighbors": 7, "contamination": 0.08},
     )
     service = StaticConformalDetectionService(config)
     captured = {}
@@ -580,7 +554,7 @@ def test_old_namespace_checkpoint_requires_fresh_calibration_after_clean_break()
             "b9e29f162055df516aa44c3dfc9cc9826681f3109c83d597872893b7857b78d1"
         ),
     }
-    config = AnomalyDetectionConfig(subscription_topics=["telemetry/c1/L1"])
+    config = form_radar_config(None, ["telemetry/c1/L1"])
 
     with pytest.raises(ValueError, match="schema signature"):
         StaticConformalDetectionService.from_checkpoint_data(checkpoint, config)

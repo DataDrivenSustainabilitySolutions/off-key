@@ -505,15 +505,6 @@ class RadarService:
 
     @staticmethod
     def _detector_service_class(config):
-        if config.pipeline is not None:
-            from .pipelines.adaptive import AdaptivePipelineDetectionService
-            from .pipelines.static import StaticPipelineDetectionService
-
-            return (
-                AdaptivePipelineDetectionService
-                if config.monitoring.strategy == "adaptive_stream"
-                else StaticPipelineDetectionService
-            )
         return (
             AdaptiveStreamDetectionService
             if config.monitoring.strategy == "adaptive_stream"

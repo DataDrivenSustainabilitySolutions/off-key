@@ -32,6 +32,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
+
 pytestmark = pytest.mark.radar_integration
 
 
@@ -79,7 +81,9 @@ def test_default_worker_and_scheduler_budgets_agree():
     budget = config.docker.resource_budget
     assert (
         config.radar_defaults.memory_limit_mb
-        == MQTTRadarConfig().memory_limit_mb
+        == form_radar_config(
+            None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig
+        ).memory_limit_mb
         == 384
     )
     assert (
@@ -102,7 +106,15 @@ def test_internal_target_cannot_reach_the_hard_container_limit(target):
         )
 
 
-@pytest.mark.parametrize("factory", [MQTTRadarConfig, RadarDefaultsConfig])
+def _runtime_config(**fields):
+    return form_radar_config(
+        None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig, **fields
+    )
+
+
+@pytest.mark.parametrize(
+    "factory", [_runtime_config, RadarDefaultsConfig], ids=["runtime", "defaults"]
+)
 def test_queue_payload_capacity_must_fit_inside_memory_target(factory):
     with pytest.raises(ValidationError, match="queued MQTT payload bytes"):
         factory(max_queue_size=1024, max_payload_bytes=1048576)

@@ -1,4 +1,4 @@
-"""Execution members shared by the static and adaptive pipeline wrappers."""
+"""Execution members shared by the static and adaptive detectors."""
 
 from __future__ import annotations
 
@@ -10,23 +10,21 @@ from .plan import ExecutionPlan
 
 
 class PipelineExecutionMixin:
-    """Listed before the legacy detector base so its overrides win."""
+    """Plan, diagnostics and failure bookkeeping of one bound pipeline run."""
 
     plan: ExecutionPlan
     diagnostics: PipelineDiagnostics
     _execution_failed: bool
 
     def _init_pipeline_execution(self, config) -> None:
-        if config.pipeline is None:
-            raise ValueError("A bound pipeline configuration is required")
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
 
     @staticmethod
-    def _pipeline_signature(legacy: str, config) -> str:
+    def _pipeline_signature(settings: str, config) -> str:
         return hashlib.sha256(
-            f"{legacy}:{config.pipeline.fingerprint}".encode()
+            f"{settings}:{config.pipeline.fingerprint}".encode()
         ).hexdigest()
 
     def _failure_node(self, error: BaseException) -> str:
@@ -41,10 +39,6 @@ class PipelineExecutionMixin:
     def _require_exportable(self) -> None:
         if self._execution_failed or self._pipeline_failed():
             raise FatalExecutionError("Failed pipeline state cannot be checkpointed")
-
-    def export_checkpoint(self):
-        self._require_exportable()
-        return super().export_checkpoint()
 
     def attach_observation_metadata(self, timestamp, input_timestamps):
         self._diagnose(

@@ -9,6 +9,7 @@ from amqtt.client import MQTTClient
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import (
     ANONYMOUS_ACCESS,
     mqtt_broker,
@@ -24,10 +25,12 @@ async def test_repeated_socket_failures_keep_one_subscriber_and_stop_all_threads
     topic = "telemetry/reconnect/value"
     async with mqtt_broker() as (broker, port):
         client = RadarMQTTClient(
-            MQTTRadarConfig(
+            form_radar_config(
+                None,
+                [topic],
+                MQTTRadarConfig,
                 broker_host="127.0.0.1",
                 broker_port=port,
-                subscription_topics=[topic],
                 rate_limit_per_minute=1000,
             )
         )
@@ -85,10 +88,12 @@ async def test_real_broker_returns_after_more_than_ten_failed_reconnect_attempts
     try:
         async with mqtt_broker() as (initial_broker, port):
             client = RadarMQTTClient(
-                MQTTRadarConfig(
+                form_radar_config(
+                    None,
+                    [topic],
+                    MQTTRadarConfig,
                     broker_host="127.0.0.1",
                     broker_port=port,
-                    subscription_topics=[topic],
                 )
             )
             client.reconnect_delay = 0.000001
@@ -123,10 +128,12 @@ async def test_real_mqtt_burst_exposes_configured_throttling_and_persistent_loss
     topic = "telemetry/coverage/value"
     async with mqtt_broker() as (_, port):
         client = RadarMQTTClient(
-            MQTTRadarConfig(
+            form_radar_config(
+                None,
+                [topic],
+                MQTTRadarConfig,
                 broker_host="127.0.0.1",
                 broker_port=port,
-                subscription_topics=[topic],
                 rate_limit_per_minute=limit,
             )
         )
@@ -164,10 +171,12 @@ async def test_real_mqtt_queue_overflow_records_every_locally_discarded_message(
     topic = "telemetry/overflow/value"
     async with mqtt_broker() as (_, port):
         client = RadarMQTTClient(
-            MQTTRadarConfig(
+            form_radar_config(
+                None,
+                [topic],
+                MQTTRadarConfig,
                 broker_host="127.0.0.1",
                 broker_port=port,
-                subscription_topics=[topic],
                 max_queue_size=2,
             )
         )
@@ -210,7 +219,13 @@ async def test_cancelled_initial_connection_stops_processor_and_network_thread(
     )
     async with withholding_server("connack") as peer:
         client = RadarMQTTClient(
-            MQTTRadarConfig(broker_host="127.0.0.1", broker_port=peer.port)
+            form_radar_config(
+                None,
+                ["telemetry/charger-sim-1/sine"],
+                MQTTRadarConfig,
+                broker_host="127.0.0.1",
+                broker_port=peer.port,
+            )
         )
         startup = asyncio.create_task(client.start())
         try:
@@ -250,10 +265,12 @@ async def test_real_broker_acl_rejection_fails_required_subscription_readiness()
     }
     async with mqtt_broker(plugins=plugins) as (_, port):
         client = RadarMQTTClient(
-            MQTTRadarConfig(
+            form_radar_config(
+                None,
+                ["telemetry/acl/allowed", "telemetry/acl/denied"],
+                MQTTRadarConfig,
                 broker_host="127.0.0.1",
                 broker_port=port,
-                subscription_topics=["telemetry/acl/allowed", "telemetry/acl/denied"],
             )
         )
         try:
@@ -269,7 +286,13 @@ async def test_real_broker_acl_rejection_fails_required_subscription_readiness()
 async def test_missing_suback_times_out_and_cleans_up_actual_socket():
     async with withholding_server("suback") as peer:
         client = RadarMQTTClient(
-            MQTTRadarConfig(broker_host="127.0.0.1", broker_port=peer.port)
+            form_radar_config(
+                None,
+                ["telemetry/charger-sim-1/sine"],
+                MQTTRadarConfig,
+                broker_host="127.0.0.1",
+                broker_port=peer.port,
+            )
         )
         client._connection_timeout_seconds = 0.3
         startup = asyncio.create_task(client.start())

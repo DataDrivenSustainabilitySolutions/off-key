@@ -11,8 +11,6 @@ from off_key_mqtt_radar.execution_errors import FatalExecutionError, Observation
 from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
 from off_key_mqtt_radar.memory import MemoryManager
 from off_key_mqtt_radar.models import AnomalyResult
-from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionService
-from off_key_mqtt_radar.pipelines.static import StaticPipelineDetectionService
 
 
 def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:
@@ -90,8 +88,6 @@ class TestDetectorHandle:
     [
         StaticConformalDetectionService,
         AdaptiveStreamDetectionService,
-        StaticPipelineDetectionService,
-        AdaptivePipelineDetectionService,
     ],
 )
 def test_detectors_define_every_protocol_operation(detector):

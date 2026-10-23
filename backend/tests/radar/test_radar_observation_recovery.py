@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
 pytestmark = pytest.mark.radar_integration
@@ -59,15 +60,16 @@ async def test_managed_replacement_rejects_retained_replay_without_partial_frame
     monkeypatch.setenv("RADAR_CHECKPOINT_SECRET", "retained-integration-secret")
     clear_radar_runtime_settings_cache()
     broker, port = await start_mqtt_broker()
-    config = MQTTRadarConfig(
+    config = form_radar_config(
+        tiny_adaptive_monitoring(),
+        topics,
+        MQTTRadarConfig,
         broker_host="127.0.0.1",
         broker_port=port,
-        subscription_topics=topics,
         db_write_enabled=True,
         checkpoint_interval=1,
         observation_max_age_seconds=120,
         health_check_interval=0.1,
-        monitoring=tiny_adaptive_monitoring(),
     )
     monkeypatch.setattr(
         service_module, "get_radar_settings", lambda: SimpleNamespace(config=config)
@@ -189,9 +191,8 @@ async def test_managed_restore_requires_history_after_first_observation(
     disposable_database, monkeypatch, processed_count
 ):
     """An authentic older payload cannot silently reopen a replay boundary."""
-    config = MQTTRadarConfig(
-        subscription_topics=["telemetry/entity/x"],
-        monitoring=tiny_adaptive_monitoring(),
+    config = form_radar_config(
+        tiny_adaptive_monitoring(), ["telemetry/entity/x"], MQTTRadarConfig
     )
     with disposable_database.begin() as connection:
         apply_migrations(connection)
@@ -267,9 +268,7 @@ def test_checkpoint_rejects_changed_alignment_policy(
         if strategy == "static_baseline"
         else tiny_adaptive_monitoring()
     )
-    config = MQTTRadarConfig(
-        monitoring=monitoring, subscription_topics=["telemetry/entity/x"]
-    )
+    config = form_radar_config(monitoring, ["telemetry/entity/x"], MQTTRadarConfig)
     cls = (
         StaticConformalDetectionService
         if strategy == "static_baseline"

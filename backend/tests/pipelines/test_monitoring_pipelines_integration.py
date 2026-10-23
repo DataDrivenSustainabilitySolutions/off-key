@@ -544,7 +544,7 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
 async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
     pipeline_database, monkeypatch
 ):
-    from off_key_core.schemas.radar import RadarStartConfig
+    from off_key_core.schemas.radar import FormMonitorConfig
     from off_key_tactic_middleware.services.pipelines.forms import start_form_monitor
 
     monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "false")
@@ -555,7 +555,7 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
             stream.definition.id: stream.accepted_topic
             for stream in catalog.streams(selected_only=True)
         }
-        config = RadarStartConfig(
+        config = FormMonitorConfig(
             container_name="radar-device",
             mqtt_topics=[topics["temperature"], topics["current"]],
             performance_config={"sensor_freshness_seconds": 12},
@@ -593,3 +593,46 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
         )
         assert design.description == "Created by the monitoring setup form"
         assert (await PipelineLibrary(session).list()).items == []
+
+
+@pytest.mark.asyncio
+async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_database):
+    from off_key_core.db.models import PipelineRevision
+    from off_key_tactic_middleware.services.pipelines.forms import (
+        UnconvertibleFormMonitor,
+        convert_saved_form_monitor,
+    )
+
+    async with pipeline_database() as session:
+        catalog = (await read_collection_runtime(session)).catalog
+        topics = {
+            stream.definition.id: stream.accepted_topic
+            for stream in catalog.streams(selected_only=True)
+        }
+        # Saved by the setup form before every monitor ran as a pipeline.
+        saved = {
+            "container_name": "radar-device",
+            "display_name": "Device",
+            "mqtt_topics": [topics["temperature"], topics["current"]],
+            "monitoring": {"strategy": "static_baseline"},
+            "performance_config": {"sensor_freshness_seconds": 12},
+            "mqtt_config": {"qos": 1},
+            "pipeline": None,
+        }
+        launch, metadata = await convert_saved_form_monitor(session, saved)
+
+        assert launch.container_name == "radar-device"
+        assert launch.mqtt_config.qos == 1
+        assert launch.performance_config.sensor_freshness_seconds == 12
+        assert {item.reading_id for item in launch.pipeline.bindings} == {
+            "current",
+            "temperature",
+        }
+        assert launch.monitoring.strategy == "static_baseline"
+        revision = await session.get(PipelineRevision, launch.pipeline.revision_id)
+        assert revision is not None
+        assert metadata.collection_fingerprint
+        with pytest.raises(UnconvertibleFormMonitor, match="Select these topics"):
+            await convert_saved_form_monitor(
+                session, saved | {"mqtt_topics": ["telemetry/device/unknown"]}
+            )

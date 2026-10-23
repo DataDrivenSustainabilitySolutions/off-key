@@ -14,7 +14,6 @@ from off_key_core.db.collection import lock_collection_configuration
 from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.radar import RadarStartConfig
 from off_key_core.schemas.system import SystemChange
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_mqtt_radar.admission import (
@@ -47,6 +46,7 @@ from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
+from tests.support.form_pipeline import form_launch
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
@@ -94,7 +94,7 @@ async def pending_monitor(
     sessions, workloads, owned, *, command=None, constraints=None
 ):
     service_id = str(uuid4())
-    config = RadarStartConfig(
+    config = form_launch(
         container_name="review-" + service_id, mqtt_topics=["telemetry/entity/value"]
     )
     environment = build_radar_environment(
@@ -350,7 +350,7 @@ async def test_pending_configuration_failure_is_visible_without_releasing_claim(
 ):
     set_environment(monkeypatch, DATABASE_ENVIRONMENT)
     sessions = lifecycle_database
-    config = RadarStartConfig(
+    config = form_launch(
         container_name="failed", mqtt_topics=["telemetry/entity/value"]
     )
     async with sessions.begin() as session:

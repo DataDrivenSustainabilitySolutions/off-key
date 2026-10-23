@@ -10,33 +10,34 @@ from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.pipelines import minimal_static_execution
 
 TOPICS = ["telemetry/c1/L2", "telemetry/c1/L1"]
 
 
 def _static():
-    return AnomalyDetectionConfig(
-        monitoring=StaticBaselineConfig(
+    return form_radar_config(
+        StaticBaselineConfig(
             model_type="pyod_knn",
             model_params={"n_neighbors": 7, "contamination": 0.08},
             training_window_size=20,
             calibration_window_size=5,
         ),
-        subscription_topics=TOPICS,
+        TOPICS,
         sensor_freshness_seconds=20.0,
     )
 
 
 def _adaptive():
-    return AnomalyDetectionConfig(
-        monitoring=AdaptiveStreamConfig(
+    return form_radar_config(
+        AdaptiveStreamConfig(
             model_type="aberrant_online_isolation_forest",
             model_params={"num_trees": 2},
             training_window_size=1200,
             calibration_window_size=360,
         ),
-        subscription_topics=TOPICS,
+        TOPICS,
         alignment_max_skew_seconds=2.5,
     )
 
@@ -51,14 +52,14 @@ def _pipeline():
 def test_static_detector_schema_signature_is_unchanged():
     assert (
         StaticConformalDetectionService._build_schema_signature_from_config(_static())
-        == "f84508e7fffed6715b68161d0d05547d039f09e46927df84f1b80004ffc25d22"
+        == "b0f51a0f8f43c57ce52495035991203a6a537449be6109b3a323999e525eebee"
     )
 
 
 def test_adaptive_detector_schema_signature_is_unchanged():
     # Includes the installed Aberrant version: an upgrade invalidates states.
     assert AdaptiveStreamDetectionService._build_schema_signature(_adaptive()) == (
-        "aa73ec5d160882af7cd6aea28879469921af07c0848991a9d67908802deb7bc0"
+        "00233f99755ef2486f6e4e1e9bd7bd32fffb8323a9f814df6b261ec6cc694dd0"
     )
 
 
@@ -75,7 +76,7 @@ def test_runtime_checkpoint_configuration_fingerprint_is_unchanged():
     }
 
     assert fingerprints == {
-        "static": "db94415b399249ae985510db0562336d6ae4e6ac37a73596e51ecc015d304675",
-        "adaptive": "e75494dee6103b58052a94ab794be1233b039c985d33d87d65d5a127515d3d33",
+        "static": "8a48accbec59655e0409bcd2955797ae1049ea94c166853a9a9dbbc33994e176",
+        "adaptive": "b8553ecd96fdbff10e02e68ce11665767f63853868913ffc07efc90bad77f83c",
         "pipeline": "d4f00448d44de0e86c95f0e553a0fa20f189e1ad6bf4878cd59ed3ce6c323c21",
     }

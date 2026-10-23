@@ -36,6 +36,7 @@ from off_key_core.schemas.pipelines import (
     PipelineServiceView,
     PipelineView,
 )
+from off_key_core.schemas.radar import FormMonitorConfig
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import select
 
@@ -311,9 +312,11 @@ class PipelineLibrary:
         return layout
 
 
-def legacy_definition(config: dict) -> PipelineDefinition:
-    """The graph equivalent of a saved form-configured monitor."""
-    from .release import normalize_saved_launch
+def legacy_definition(config: dict | FormMonitorConfig) -> PipelineDefinition:
+    """The graph equivalent of a form-configured monitor."""
+    from .release import saved_form_monitor
 
     # Read reviewed older launch schemas without changing their saved provenance.
-    return lower_form_monitor(normalize_saved_launch(config))
+    return lower_form_monitor(
+        config if isinstance(config, FormMonitorConfig) else saved_form_monitor(config)
+    )

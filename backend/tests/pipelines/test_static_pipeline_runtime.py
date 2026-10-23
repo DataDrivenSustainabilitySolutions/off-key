@@ -11,11 +11,11 @@ from off_key_core.schemas.pipelines import (
     PipelineRuntimeState,
 )
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from off_key_mqtt_radar.detector import StaticConformalDetectionService
 from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
-from off_key_mqtt_radar.pipelines.static import StaticPipelineDetectionService
 from off_key_mqtt_radar.preflight import preflight
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
@@ -134,7 +134,7 @@ def test_batch_branching_matches_reference_and_freezes_training_statistics():
 
 def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatch):
     config = AnomalyDetectionConfig(pipeline=execution(), checkpoint_interval=10000)
-    service = StaticPipelineDetectionService(config)
+    service = StaticConformalDetectionService(config)
     restored = None
     try:
         for index in range(25):
@@ -155,7 +155,9 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
             state["observation"]["passes"]["learn"]["scale"]["state"] == "not_executed"
         )
         snapshot = pickle.loads(pickle.dumps(service.export_checkpoint()))
-        restored = StaticPipelineDetectionService.from_checkpoint_data(snapshot, config)
+        restored = StaticConformalDetectionService.from_checkpoint_data(
+            snapshot, config
+        )
         assert (
             restored.process_data_point({"sensor/z": 5, "sensor/a": 2}).anomaly_score
             == result.anomaly_score

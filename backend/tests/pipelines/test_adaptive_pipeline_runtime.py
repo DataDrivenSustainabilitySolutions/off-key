@@ -7,15 +7,17 @@ from datetime import UTC, datetime
 
 import pytest
 from off_key_core.schemas.pipelines import PipelineRuntimeState
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamState
+from off_key_mqtt_radar import adaptive_detector as adaptive_module
+from off_key_mqtt_radar.adaptive_detector import (
+    AdaptiveStreamDetectionService,
+    AdaptiveStreamState,
+)
 from off_key_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
 )
 from off_key_mqtt_radar.pipelines import adapters
-from off_key_mqtt_radar.pipelines import adaptive as adaptive_module
 from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
-from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionService
 from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 
@@ -48,7 +50,7 @@ def test_smallest_admissible_retained_windows_reach_real_runtime_readiness(
     model, params, required
 ):
     config = adaptive_pipeline_config(model=model, branched=False, model_params=params)
-    service = AdaptivePipelineDetectionService(config)
+    service = AdaptiveStreamDetectionService(config)
     for index in range(1, 12):
         result = service.process_data_point({"reading_a": float(index)})
     state = service.get_pipeline_state()["nodes"]["model"]
@@ -74,7 +76,7 @@ def test_fresh_start_builds_the_graph_and_normalizes_its_detector_once(monkeypat
     monkeypatch.setattr(
         adaptive_module, "adaptive_graph", counted("graph", adapters.adaptive_graph)
     )
-    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     pipeline = service.pipeline
     for index in range(1, 4):
         service.process_data_point(_point(index))
@@ -86,7 +88,7 @@ def test_fresh_start_builds_the_graph_and_normalizes_its_detector_once(monkeypat
 
 def test_branched_monitor_matches_standalone_numeric_reference():
     config = adaptive_pipeline_config()
-    service = AdaptivePipelineDetectionService(config)
+    service = AdaptiveStreamDetectionService(config)
     reference, _ = adaptive_graph(ExecutionPlan(config.pipeline))
     states = []
     for index in range(1, 9):
@@ -116,7 +118,7 @@ def test_branched_monitor_matches_standalone_numeric_reference():
 
 
 def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
-    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     initial = service.get_pipeline_state()["nodes"]
     assert initial["pca"]["readiness_observed"] == 0
     assert initial["pca"]["readiness_required"] == 3
@@ -155,11 +157,11 @@ def test_real_pca_readiness_reports_progress_and_model_dependency_chain():
 @pytest.mark.parametrize("processed", [2, 5, 7])
 def test_graph_checkpoints_restore_every_learning_phase(processed):
     config = adaptive_pipeline_config()
-    original = AdaptivePipelineDetectionService(config)
+    original = AdaptiveStreamDetectionService(config)
     for index in range(1, processed + 1):
         original.process_data_point(_point(index))
     checkpoint = pickle.loads(pickle.dumps(original.export_checkpoint()))
-    restored = AdaptivePipelineDetectionService.from_checkpoint_data(checkpoint, config)
+    restored = AdaptiveStreamDetectionService.from_checkpoint_data(checkpoint, config)
     assert restored.pipeline.observer is not None
     for index in range(processed + 1, 10):
         expected = original.process_data_point(_point(index))
@@ -179,7 +181,7 @@ def test_graph_checkpoints_restore_every_learning_phase(processed):
     ],
 )
 def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
-    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     before = pickle.dumps(service.pipeline)
     with pytest.raises(ObservationRejected):
         service.process_data_point(invalid)
@@ -192,7 +194,7 @@ def test_invalid_observations_do_not_mutate_or_fail_graph(invalid):
 
 
 def test_raw_unit_interval_rejection_precedes_all_branch_learning():
-    service = AdaptivePipelineDetectionService(
+    service = AdaptiveStreamDetectionService(
         adaptive_pipeline_config(model="aberrant_half_space_trees", clipped=True),
     )
     valid = {"reading_a": 100.0, "reading_b": -50.0, "reading_temperature": 0.5}
@@ -214,7 +216,7 @@ def test_raw_unit_interval_rejection_precedes_all_branch_learning():
     ],
 )
 def test_retained_history_blocks_calibration_until_reference_exists(model, ignored):
-    service = AdaptivePipelineDetectionService(
+    service = AdaptiveStreamDetectionService(
         adaptive_pipeline_config(model=model, branched=False)
     )
     for value in ignored:
@@ -231,7 +233,7 @@ def test_retained_history_blocks_calibration_until_reference_exists(model, ignor
 
 
 def test_execution_failure_stops_model_and_blocks_checkpoint():
-    service = AdaptivePipelineDetectionService(
+    service = AdaptiveStreamDetectionService(
         adaptive_pipeline_config(
             model="aberrant_moving_geometric_average", branched=False
         ),
@@ -254,7 +256,7 @@ def test_execution_failure_stops_model_and_blocks_checkpoint():
 
 
 def test_live_values_come_from_real_score_pass_with_original_metadata():
-    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)
     for index in range(1, 8):
         result = service.process_data_point(_point(index))
@@ -279,7 +281,7 @@ def test_live_values_come_from_real_score_pass_with_original_metadata():
 
 
 def test_diagnostic_failure_does_not_replace_inference_result(monkeypatch):
-    service = AdaptivePipelineDetectionService(adaptive_pipeline_config())
+    service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
 
     def broken(*args):
         raise RuntimeError("diagnostics failed")

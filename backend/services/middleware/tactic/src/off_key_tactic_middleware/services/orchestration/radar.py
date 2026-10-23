@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -82,17 +81,9 @@ class RadarOrchestrationService:
         execution_service_id: str | None = None,
     ) -> MonitoringService:
         """Claim catalog sensors and launch the validated RADAR configuration."""
-        if (
-            (
-                config.pipeline is not None
-                or config.runtime_image is not None
-                or config.mqtt_config.model_dump()
-            )
-            and activation_id is None
-            and deployment_revision is None
-        ):
+        if activation_id is None and deployment_revision is None:
             raise ValueError(
-                "Internal launch settings require a pipeline activation or deployment"
+                "Monitors start only from a pipeline activation or a release"
             )
         mqtt_topics = config.mqtt_topics
         container_name = config.container_name
@@ -189,7 +180,6 @@ class RadarOrchestrationService:
             operational_updated_at=None,
             launch_config=config.model_dump(mode="json")
             | {
-                "monitoring": json.loads(env_vars["RADAR_MONITORING_CONFIG"]),
                 "mqtt_config": config.mqtt_config.model_dump()
                 | {
                     "qos": int(env_vars["RADAR_SUBSCRIPTION_QOS"]),

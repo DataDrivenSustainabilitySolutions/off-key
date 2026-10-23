@@ -13,6 +13,7 @@ from off_key_tactic_middleware.services.data.anomalies import AnomalyService
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
@@ -65,7 +66,11 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
                 },
             )
             writer = DatabaseWriter(
-                MQTTRadarConfig(), session_factory=sessions, service_id=service_id
+                form_radar_config(
+                    None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig
+                ),
+                session_factory=sessions,
+                service_id=service_id,
             )
             for _ in range(2):
                 await writer.write_result(result)

@@ -25,14 +25,15 @@ change execution fingerprints. Historical legacy launches retain their original
 configuration; a reviewed compatibility normalization is used only when rendering
 their graph or preparing an explicit release restart.
 
-Each component carries its implementation identity and contract version. Launch
-version 1 represents legacy linear monitors; version 2 carries a bound graph.
-New monitors are always version 2: the setup forms submit their configuration,
-TACTIC converts it with `legacy_definition()` into the equivalent graph and
-activates it like a direct apply. Inputs follow the sorted sensor-key order the
-form detectors used, so a graph without transforms reproduces their scores and
-alarms exactly. With incremental PCA the graph only feeds the detector once the
-projection is initialised, so warm-up lasts `n0 - 1` samples longer.
+Each component carries its implementation identity and contract version. Every
+monitor runs a bound graph (launch version 2). The setup forms submit their
+configuration, and TACTIC converts it with `legacy_definition()` into the
+equivalent graph and activates it like a direct apply. Inputs follow the sorted
+sensor-key order of the form, and a min-max step in front of a unit-interval
+detector clips to its range. Monitors saved by the setup forms before they ran
+as pipelines (launch version 1) are converted the same way at the next release:
+each restarts as a pipeline and learns again, and one whose readings left the
+catalogue is stopped instead, keeping its history.
 Internal image pins and typed MQTT launch overrides are accepted only by trusted
 activation/release paths, never public monitor creation.
 Published revisions retain the catalog hash as provenance. Activation recompiles

@@ -2,8 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import RadarServiceLabel
-from off_key_core.schemas.radar import RadarStartConfig as RadarConfig
+from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
 from pydantic import BaseModel
 
 from ...domain import DomainError
@@ -54,7 +53,7 @@ async def list_radar_services(
     status_code=202,
 )
 async def start_radar_service(
-    config: RadarConfig, start_form_monitor=Depends(get_form_monitor_starter)
+    config: FormMonitorConfig, start_form_monitor=Depends(get_form_monitor_starter)
 ):
     """Start a monitor configured with a setup form as an equivalent pipeline."""
     try:

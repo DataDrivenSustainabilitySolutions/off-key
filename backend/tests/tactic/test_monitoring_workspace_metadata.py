@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from off_key_api_gateway.api.access import current_member, operational_access
 from off_key_api_gateway.api.v1 import monitors
 from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import RadarServiceLabel, RadarStartConfig
+from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.api.v1 import radar as radar_api
@@ -20,7 +20,7 @@ from tests.support.orchestration import scalars_result
 
 
 def configuration():
-    return RadarStartConfig(
+    return FormMonitorConfig(
         container_name="stable-workload",
         mqtt_topics=["telemetry/room-input/temperature"],
         display_name="Climate",
@@ -66,7 +66,7 @@ def test_service_names_are_strict_at_both_boundaries(value):
     with pytest.raises(ValidationError):
         RadarServiceLabel(display_name=value)
     with pytest.raises(ValidationError):
-        RadarStartConfig(
+        FormMonitorConfig(
             container_name="stable",
             mqtt_topics=["telemetry/room-input/value"],
             display_name=value,
@@ -195,7 +195,7 @@ async def test_renamed_legacy_monitor_still_captures_restart_configuration(monke
     ) == {"captured": 1}
     assert record.launch_config["display_name"] == "New legacy name"
     assert (
-        RadarStartConfig.model_validate(record.launch_config).container_name
+        FormMonitorConfig.model_validate(record.launch_config).container_name
         == "stable-workload"
     )
 

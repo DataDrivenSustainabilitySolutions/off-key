@@ -18,9 +18,6 @@ from off_key_api_gateway.api.v1.monitors import (
 from off_key_core.schemas.radar import (
     PerformanceConfig as GatewayPerformanceConfig,
 )
-from off_key_core.schemas.radar import (
-    RadarStartConfig,
-)
 from off_key_tactic_middleware.config.config import TacticSettings
 from off_key_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_environment,
@@ -32,6 +29,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
+from tests.support.form_pipeline import form_launch
 
 
 def _build_request() -> Request:
@@ -305,7 +303,7 @@ def test_tactic_builds_static_environment(monkeypatch):
     env = build_radar_environment(
         service_id="svc-static",
         validate_params=True,
-        config=RadarStartConfig(
+        config=form_launch(
             container_name="radar",
             mqtt_topics=[
                 "telemetry/c1/L1",
@@ -360,10 +358,9 @@ def test_tactic_builds_static_environment(monkeypatch):
             "threshold_config": {"mode": "manual", "value": 100.0},
         }
     ]
-    assert static_config["model_params"] == {
-        "n_estimators": 100,
-        "contamination": 0.1,
-    }
+    # The pipeline's parameters are checked, then forwarded unchanged.
+    assert static_config["model_params"]["n_estimators"] == 100
+    assert validator.call_args.args[1] == static_config["model_params"]
     assert validator.call_args.args[0] == "pyod_iforest"
     assert validator.call_args.kwargs["family"] == "static_pyod"
 
@@ -383,7 +380,7 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
         ENVIRONMENT="production",
         radar_database_url="postgresql+asyncpg://user:pass@postgres/radar",
     )
-    config = RadarStartConfig(container_name="radar", mqtt_topics=["telemetry/c1/L1"])
+    config = form_launch(container_name="radar", mqtt_topics=["telemetry/c1/L1"])
     module = "off_key_tactic_middleware.services.orchestration.radar_environment"
     with (
         patch(f"{module}.get_tactic_settings", return_value=settings),
@@ -413,7 +410,7 @@ def test_tactic_builds_adaptive_environment(monkeypatch):
     env = build_radar_environment(
         service_id="svc-dynamic",
         validate_params=True,
-        config=RadarStartConfig(
+        config=form_launch(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
             strategy="adaptive_stream",
@@ -447,7 +444,7 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
     env = build_radar_environment(
         service_id="svc-dynamic-default",
         validate_params=True,
-        config=RadarStartConfig(
+        config=form_launch(
             container_name="radar",
             mqtt_topics=["telemetry/charger-1/L1"],
             strategy="adaptive_stream",
@@ -467,7 +464,7 @@ def test_tactic_resolves_minimal_adaptive_request_and_rejects_mirror_conflict(
         build_radar_environment(
             service_id="svc-dynamic-conflict",
             validate_params=True,
-            config=RadarStartConfig(
+            config=form_launch(
                 container_name="radar",
                 mqtt_topics=["telemetry/charger-1/L1"],
                 strategy="adaptive_stream",

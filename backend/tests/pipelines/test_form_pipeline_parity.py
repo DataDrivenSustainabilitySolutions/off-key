@@ -1,21 +1,18 @@
-"""Form monitors run as pipelines with the detections the form detectors produced."""
+"""Setup forms lower to the pipelines that now run every form monitor."""
 
 from itertools import pairwise
 
 import numpy as np
 import pytest
-from off_key_core.models.pipelines import (
-    compile_pipeline,
-    execution_fingerprint,
-    form_inputs,
-)
-from off_key_core.schemas.pipelines import PipelineExecutionConfig
-from off_key_core.schemas.radar import RadarStartConfig
+from off_key_core.models.pipelines import form_inputs
+from off_key_core.schemas.radar import FormMonitorConfig
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.service import RadarService
 from off_key_tactic_middleware.services.pipelines.library import legacy_definition
 
-# Unsorted on purpose: form detectors order features by sensor key.
+from tests.support.form_pipeline import form_pipeline
+
+# Unsorted on purpose: form inputs are ordered by sensor key.
 TOPICS = ["telemetry/c1/L2", "telemetry/c1/L1"]
 STANDARD = {"type": "standard_scaler", "with_std": True}
 
@@ -68,37 +65,14 @@ def adaptive_form(*steps):
     }
 
 
-def detectors(form):
-    config = RadarStartConfig.model_validate(form)
-    definition = compile_pipeline(
-        legacy_definition(config.model_dump(mode="json"))
-    ).definition
-    bindings = [
-        dict(
-            slot_id=slot.id,
-            reading_id=f"reading-{key}",
-            entity_id="c1",
-            accepted_topic=topic,
-            input_key=key,
-        )
-        for slot, (key, topic) in zip(
-            definition.input_slots, form_inputs(config), strict=True
-        )
-    ]
-    execution = PipelineExecutionConfig(
-        definition=definition,
-        bindings=bindings,
-        revision_id="revision",
-        run_id="run",
-        fingerprint=execution_fingerprint(definition, bindings),
+def detector(form):
+    parsed = FormMonitorConfig.model_validate(form)
+    config = AnomalyDetectionConfig(
+        pipeline=form_pipeline(parsed.monitoring, parsed.mqtt_topics)
     )
-    form_config = AnomalyDetectionConfig(monitoring=config.monitoring)
-    pipeline_config = AnomalyDetectionConfig(pipeline=execution)
-    services = [
-        RadarService._detector_service_class(item)(item)
-        for item in (form_config, pipeline_config)
-    ]
-    return [key for key, _ in form_inputs(config)], services
+    return [key for key, _ in form_inputs(parsed)], (
+        RadarService._detector_service_class(config)(config)
+    )
 
 
 def trace(service, keys, count=140):
@@ -140,32 +114,25 @@ def trace(service, keys, count=140):
         ),
     ],
 )
-def test_form_preset_matches_its_pipeline_exactly(form):
-    keys, (form_detector, pipeline_detector) = detectors(form)
-    assert type(pipeline_detector).__name__.endswith("PipelineDetectionService")
-    expected = trace(form_detector, keys)
+def test_form_preset_runs_as_a_reproducible_pipeline(form):
+    keys, first = detector(form)
+    expected = trace(first, keys)
     assert expected[-1][0] in {"ready", "operational"}
-    assert trace(pipeline_detector, keys) == expected
+    assert trace(detector(form)[1], keys) == expected
 
 
 def test_incremental_pca_pipeline_warms_the_projection_before_the_model():
     n0 = 30
-    keys, (form_detector, pipeline_detector) = detectors(
+    keys, service = detector(
         adaptive_form(
             STANDARD,
             {"type": "incremental_pca", "n_components": 2, "n0": n0, "tol": 1e-7},
         )
     )
+    phases = [phase for phase, _, _ in trace(service, keys)]
 
-    def calibration_start(service):
-        phases = [phase for phase, _, _ in trace(service, keys)]
-        return phases.index("calibration")
-
-    # The form detector counted projection initialisation as model warm-up; the
-    # pipeline only feeds the model once the projection is ready.
-    assert calibration_start(pipeline_detector) == (
-        calibration_start(form_detector) + n0 - 1
-    )
+    # The model learns its 40 warm-up points only after the projection's own.
+    assert phases.index("calibration") == 40 + n0 - 1
 
 
 # Pin the graph each setup form lowers to.
@@ -175,7 +142,7 @@ OUTPUT = {"id": "output", "kind": "output", "component": "output.evidence"}
 
 
 def lowered(form):
-    config = RadarStartConfig.model_validate(form).model_dump(mode="json")
+    config = FormMonitorConfig.model_validate(form).model_dump(mode="json")
     return legacy_definition(config).model_dump(mode="json", exclude_defaults=True)
 
 
@@ -281,3 +248,17 @@ def test_adaptive_form_lowers_steps_in_order_and_renames_incremental_pca():
         ),
         "settings": {"training_window_size": 40, "calibration_window_size": 20},
     }
+
+
+@pytest.mark.parametrize(
+    "model_type,clipped",
+    [("aberrant_half_space_trees", True), ("aberrant_online_isolation_forest", False)],
+)
+def test_min_max_scaling_clips_only_for_unit_interval_detectors(model_type, clipped):
+    form = adaptive_form({"type": "min_max_scaler"})
+    form["model_type"] = form["adaptive_stream_config"]["model_type"] = model_type
+    form["model_params"] = form["adaptive_stream_config"]["model_params"] = {}
+    [scaler] = [node for node in lowered(form)["nodes"] if node["kind"] == "transform"]
+
+    assert scaler["component"] == "adaptive.min_max_scaler"
+    assert scaler.get("params", {}).get("clip", False) is clipped

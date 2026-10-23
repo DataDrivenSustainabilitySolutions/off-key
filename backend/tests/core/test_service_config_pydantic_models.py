@@ -6,17 +6,28 @@ from off_key_core.schemas.radar import (
 )
 from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 from off_key_mqtt_radar.config.config import (
-    AnomalyDetectionConfig,
     MQTTRadarConfig,
     RadarSettings,
 )
 from pydantic import ValidationError
+
+from tests.support.form_pipeline import form_pipeline, form_radar_config
+
+TOPIC = "telemetry/charger-sim-1/sine"
+
+
+def _run(monkeypatch, monitoring):
+    monkeypatch.setenv(
+        "RADAR_PIPELINE_CONFIG", form_pipeline(monitoring, [TOPIC]).model_dump_json()
+    )
 
 
 @pytest.fixture(autouse=True)
 def _isolated_topic_environment(monkeypatch):
     monkeypatch.delenv("MQTT_SOURCE_TOPICS", raising=False)
     monkeypatch.delenv("RADAR_SUBSCRIPTION_TOPICS", raising=False)
+    monkeypatch.delenv("RADAR_MONITORING_CONFIG", raising=False)
+    _run(monkeypatch, None)
 
 
 def _base_mqtt_config() -> dict:
@@ -62,14 +73,15 @@ def test_mqtt_settings_validate_primitive_constraints(monkeypatch):
 
 
 def test_mqtt_radar_config_mutable_defaults_are_isolated():
-    cfg_one = MQTTRadarConfig()
-    cfg_two = MQTTRadarConfig()
+    cfg_one = form_radar_config(None, [TOPIC], MQTTRadarConfig)
+    cfg_two = form_radar_config(None, [TOPIC], MQTTRadarConfig)
+    defaults = dict(cfg_two.monitoring.model_params)
 
     cfg_one.subscription_topics.append("telemetry/charger-sim-1/cosine")
     cfg_one.monitoring.model_params["n_estimators"] = 8
 
-    assert cfg_two.subscription_topics == ["telemetry/charger-sim-1/sine"]
-    assert cfg_two.monitoring.model_params == {}
+    assert cfg_two.subscription_topics == [TOPIC]
+    assert cfg_two.monitoring.model_params == defaults
 
 
 @pytest.mark.parametrize(
@@ -87,43 +99,42 @@ def test_mqtt_radar_config_mutable_defaults_are_isolated():
 )
 def test_mqtt_radar_config_rejects_ambiguous_static_sensor_assignments(topics, message):
     with pytest.raises(ValidationError, match=message):
-        MQTTRadarConfig(subscription_topics=topics)
+        form_radar_config(None, topics, MQTTRadarConfig)
 
 
 def test_anomaly_detection_config_uses_strategy_specific_adaptive_config():
     with pytest.raises(ValidationError, match="preprocessing_steps"):
-        AnomalyDetectionConfig(preprocessing_steps=[])
+        form_radar_config(None, ("telemetry/entity/a",), preprocessing_steps=[])
 
-    config = AnomalyDetectionConfig(
-        monitoring=AdaptiveStreamConfig(training_window_size=1200),
+    config = form_radar_config(
+        AdaptiveStreamConfig(training_window_size=1200), ("telemetry/entity/a",)
     )
     assert config.monitoring.strategy == "adaptive_stream"
     assert config.monitoring.training_window_size == 1200
 
 
 def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
-    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "static_baseline")
-    monkeypatch.setenv("RADAR_MODEL_TYPE", "pyod_iforest")
-    monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"n_estimators": 128}')
-    monkeypatch.setenv(
-        "RADAR_STATIC_BASELINE_CONFIG",
-        """
-        {
-          "model_type": "pyod_iforest",
-          "model_params": {"n_estimators": 128},
-          "training_window_size": 240,
-          "calibration_window_size": 80,
-          "martingale_config": {
-            "trackers": [{
-              "tracker_id": "primary",
-              "betting_function": "power",
-              "alarm_statistic": "restarted_martingale",
-              "epsilon": 0.5,
-              "threshold_config": {"mode": "manual", "value": 100}
-            }]
-          }
-        }
-        """,
+    _run(
+        monkeypatch,
+        StaticBaselineConfig.model_validate(
+            {
+                "model_type": "pyod_iforest",
+                "model_params": {"n_estimators": 128},
+                "training_window_size": 240,
+                "calibration_window_size": 80,
+                "martingale_config": {
+                    "trackers": [
+                        {
+                            "tracker_id": "primary",
+                            "betting_function": "power",
+                            "alarm_statistic": "restarted_martingale",
+                            "epsilon": 0.5,
+                            "threshold_config": {"mode": "manual", "value": 100},
+                        }
+                    ]
+                },
+            }
+        ),
     )
 
     cfg = RadarSettings().config
@@ -136,14 +147,17 @@ def test_radar_settings_parse_static_baseline_strategy(monkeypatch):
     threshold = cfg.monitoring.martingale_config.trackers[0].threshold_config
     assert threshold.mode == "manual"
     assert threshold.value == 100
+    assert cfg.subscription_topics == [TOPIC]
 
 
 def test_radar_settings_parse_adaptive_strategy(monkeypatch):
-    monkeypatch.setenv("RADAR_MONITORING_STRATEGY", "adaptive_stream")
-    monkeypatch.setenv("RADAR_MODEL_TYPE", "aberrant_online_isolation_forest")
-    monkeypatch.setenv(
-        "RADAR_ADAPTIVE_STREAM_CONFIG",
-        '{"training_window_size": 1200, "calibration_window_size": 360}',
+    _run(
+        monkeypatch,
+        AdaptiveStreamConfig(
+            model_type="aberrant_online_isolation_forest",
+            training_window_size=1200,
+            calibration_window_size=360,
+        ),
     )
 
     config = RadarSettings().config
@@ -152,28 +166,22 @@ def test_radar_settings_parse_adaptive_strategy(monkeypatch):
     assert config.monitoring.threshold_config.quantile == 1.0
 
 
-def test_radar_settings_reject_conflicting_static_compatibility_mirrors(monkeypatch):
-    monkeypatch.setenv("RADAR_MODEL_TYPE", "pyod_iforest")
-    monkeypatch.setenv("RADAR_MODEL_PARAMS", '{"n_estimators": 128}')
+def test_radar_settings_reject_monitoring_that_conflicts_with_the_pipeline(
+    monkeypatch,
+):
     monkeypatch.setenv(
-        "RADAR_STATIC_BASELINE_CONFIG",
-        """
-        {
-          "model_type": "pyod_knn",
-          "model_params": {"n_neighbors": 7, "contamination": 0.08},
-          "training_window_size": 240
-        }
-        """,
+        "RADAR_MONITORING_CONFIG",
+        StaticBaselineConfig(model_type="pyod_knn").model_dump_json(),
     )
 
-    with pytest.raises(ValueError, match="model_type conflicts"):
+    with pytest.raises(ValueError, match="conflicts with pipeline"):
         _ = RadarSettings().config
 
 
-def test_radar_settings_reject_non_object_model_params(monkeypatch):
-    monkeypatch.setenv("RADAR_MODEL_PARAMS", '["not-a-mapping"]')
+def test_radar_settings_require_a_pipeline(monkeypatch):
+    monkeypatch.delenv("RADAR_PIPELINE_CONFIG")
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="RADAR_PIPELINE_CONFIG"):
         RadarSettings()
 
 

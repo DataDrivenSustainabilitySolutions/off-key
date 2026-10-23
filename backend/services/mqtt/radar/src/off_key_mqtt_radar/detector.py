@@ -1,20 +1,18 @@
-"""
-MQTT RADAR Anomaly Detection Service
-
-Implements anomaly detection patterns from guide.md for real-time processing
-of MQTT telemetry data with resilient error handling and monitoring.
-"""
+"""Static pipeline runs: a frozen, independently fitted graph and baseline
+scored with conformal p-values and martingale alarms."""
 
 import concurrent.futures
 import hashlib
 import importlib
 import json
 import logging
+import math
 import os
 import time
 from collections import deque
 from datetime import UTC, datetime
 from enum import Enum
+from time import perf_counter_ns
 from typing import Any
 
 import numpy as np
@@ -27,12 +25,11 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .alarm_calibration import resolve_tracker_thresholds
 from .config.config import AnomalyDetectionConfig
+from .execution_errors import FatalExecutionError, ObservationRejected
 from .martingales import MartingaleAlarmController
 from .models import AnomalyResult
-
-# =============================================================================
-# Checkpoint Security
-# =============================================================================
+from .pipelines.batch import BatchFeatureGraph, FittedStaticPipeline
+from .pipelines.execution import PipelineExecutionMixin
 
 
 class StaticConformalState(Enum):
@@ -45,24 +42,15 @@ class StaticConformalState(Enum):
     FAILED = "failed"
 
 
-# States that consume the feature vector and therefore validate its schema.
-_SCHEMA_CHECKED_STATES = frozenset(
-    {
-        StaticConformalState.COLLECTING,
-        StaticConformalState.CALIBRATING,
-        StaticConformalState.READY,
-    }
-)
-
-
-class StaticConformalDetectionService:
-    """Train-once static baseline detector using conformal p-values and martingales."""
+class StaticConformalDetectionService(PipelineExecutionMixin):
+    """Publish an independently fitted, frozen graph atomically with its model."""
 
     def __init__(
         self,
         config: AnomalyDetectionConfig,
         checkpoint: dict[str, Any] | None = None,
     ):
+        self._init_pipeline_execution(config)
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.schema_signature = self._build_schema_signature_from_config(config)
@@ -91,14 +79,16 @@ class StaticConformalDetectionService:
         self.state = StaticConformalState.COLLECTING
         self.training_buffer: list[dict[str, float]] = []
         self.calibration_buffer: list[dict[str, float]] = []
-        self.feature_keys: list[str] = []
+        # Binding guarantees every observation carries exactly these slots.
+        self.feature_keys = sorted(
+            slot.id for slot in self.plan.compiled.definition.input_slots
+        )
         self.conformal_detector = None
         self.alarm_controller: MartingaleAlarmController | None = None
         self.processed_count = 0
         self.anomaly_count = 0
         self.last_checkpoint = 0
         self.discarded_during_training_count = 0
-        self.schema_mismatch_count = 0
 
     def shutdown(self) -> None:
         """Stop background static-baseline training resources."""
@@ -128,7 +118,6 @@ class StaticConformalDetectionService:
         self.discarded_during_training_count = int(
             checkpoint.get("discarded_during_training_count", 0)
         )
-        self.schema_mismatch_count = int(checkpoint.get("schema_mismatch_count", 0))
         self.training_error = checkpoint.get("training_error")
         if self.state == StaticConformalState.TRAINING:
             if (
@@ -185,6 +174,12 @@ class StaticConformalDetectionService:
 
     @staticmethod
     def _build_schema_signature_from_config(config: AnomalyDetectionConfig) -> str:
+        return PipelineExecutionMixin._pipeline_signature(
+            StaticConformalDetectionService._settings_signature(config), config
+        )
+
+    @staticmethod
+    def _settings_signature(config: AnomalyDetectionConfig) -> str:
         static_config = config.monitoring
         if not isinstance(static_config, StaticBaselineConfig):
             raise ValueError("Static detector requires static_baseline configuration")
@@ -213,26 +208,50 @@ class StaticConformalDetectionService:
         topic: str | None = None,
         charger_id: str | None = None,
     ) -> AnomalyResult:
+        if self._execution_failed:
+            raise FatalExecutionError(
+                self.training_error or "Pipeline execution has failed"
+            )
+        try:
+            bound = self.plan.bind(data)
+            if not all(math.isfinite(value) for value in bound.values()):
+                raise ObservationRejected("Pipeline inputs must be finite")
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ObservationRejected(str(error)) from error
+        self._diagnose(
+            self.diagnostics.begin, self.processed_count + 1, self.state.value
+        )
+        self._diagnose(
+            self.diagnostics.select_pass,
+            "score" if self.state == StaticConformalState.READY else "learn",
+        )
+        self.diagnostics.record(self.plan.source_id, bound, bound)
+        try:
+            result = self._process(bound, topic, charger_id)
+            result.raw_data = dict(data)
+            if result.should_persist:
+                result.processed_features = self.conformal_detector.last_features
+                self.diagnostics.record(self.plan.output_id, None, result.anomaly_score)
+            return result
+        except Exception as error:
+            self._execution_failed = True
+            self.state = StaticConformalState.FAILED
+            self.training_error = str(error)
+            identifier = self._failure_node(error)
+            self._diagnose(self.diagnostics.fail, identifier, error)
+            raise FatalExecutionError(str(error), node_id=identifier) from error
+        finally:
+            self._diagnose(self.diagnostics.finish)
+
+    def _process(
+        self,
+        data: dict[str, float],
+        topic: str | None,
+        charger_id: str | None,
+    ) -> AnomalyResult:
         start_time = time.time()
         self._complete_training_if_ready()
-
-        schema_error = (
-            self._validate_or_freeze_feature_schema(data)
-            if self.state in _SCHEMA_CHECKED_STATES
-            else None
-        )
-        if schema_error:
-            self.processed_count += 1
-            self.schema_mismatch_count += 1
-            result = self._non_inference_result(
-                data,
-                topic,
-                charger_id,
-                start_time,
-                phase="schema_mismatch",
-                extra_context={"schema_error": schema_error},
-            )
-        elif self.state == StaticConformalState.COLLECTING:
+        if self.state == StaticConformalState.COLLECTING:
             result = self._process_collecting(data, topic, charger_id, start_time)
         elif self.state == StaticConformalState.CALIBRATING:
             result = self._process_calibrating(data, topic, charger_id, start_time)
@@ -350,6 +369,8 @@ class StaticConformalDetectionService:
         charger_id: str | None,
         start_time: float,
     ) -> AnomalyResult:
+        self._diagnose(self.diagnostics.select_pass, "score")
+        self.conformal_detector.observer = self.diagnostics
         self.processed_count += 1
         vector = self._vectorize(data)
         p_value = self._compute_p_value(vector)
@@ -406,7 +427,20 @@ class StaticConformalDetectionService:
         """Apply the configured alarm policy once for this inference."""
         if self.alarm_controller is None:
             raise RuntimeError("Static alarm policy has not been initialized")
-        return self.alarm_controller.update(p_value)
+        started = perf_counter_ns()
+        try:
+            context = self.alarm_controller.update(p_value)
+        except Exception as error:
+            raise FatalExecutionError(
+                str(error), node_id=self.plan.policy_id
+            ) from error
+        self.diagnostics.record(
+            self.plan.policy_id,
+            {"p_value": p_value},
+            float(context["alarm_fired"]),
+            elapsed_ns=perf_counter_ns() - started,
+        )
+        return context
 
     def _process_failed(
         self,
@@ -426,22 +460,9 @@ class StaticConformalDetectionService:
             extra_context={"training_error": self.training_error},
         )
 
-    def _validate_or_freeze_feature_schema(self, data: dict[str, float]) -> str | None:
-        keys = sorted(data.keys())
-        if not keys:
-            return "empty feature vector"
-        if not self.feature_keys:
-            self.feature_keys = keys
-            return None
-        if keys != self.feature_keys:
-            missing = sorted(set(self.feature_keys) - set(keys))
-            extra = sorted(set(keys) - set(self.feature_keys))
-            return f"feature schema mismatch missing={missing} extra={extra}"
-        return None
-
     def _feature_order(self) -> list[str]:
-        """Column order of model matrices; pipelines order by their source."""
-        return self.feature_keys
+        """Column order of model matrices: the order of the graph's source."""
+        return self.plan.names(self.plan.source_id)
 
     def _vectorize(self, data: dict[str, float]) -> list[float]:
         return [float(data[key]) for key in self._feature_order()]
@@ -469,6 +490,14 @@ class StaticConformalDetectionService:
         return self._fit_static_matrices(training_matrix, calibration_matrix)
 
     def _fit_static_matrices(self, training_matrix, calibration_matrix):
+        """Fit the graph, then the detector and calibration on its features."""
+        graph = BatchFeatureGraph(self.plan)
+        fitted, policy = self._fit_baseline_matrices(
+            graph.fit_transform(training_matrix), graph.transform(calibration_matrix)
+        )
+        return FittedStaticPipeline(graph, fitted), policy
+
+    def _fit_baseline_matrices(self, training_matrix, calibration_matrix):
         """Fit and calibrate with an already materialized numerical schema."""
         from nonconform import ConformalDetector, Split
 
@@ -529,6 +558,33 @@ class StaticConformalDetectionService:
         )
 
     def _complete_training_if_ready(self) -> None:
+        previous = self.state
+        fitting_error = (
+            self._training_future.exception()
+            if self._training_future is not None and self._training_future.done()
+            else None
+        )
+        self._publish_training()
+        if (
+            previous != StaticConformalState.READY
+            and self.state == StaticConformalState.READY
+        ):
+            self._diagnose(self._publish_fit_readiness)
+        if self.state == StaticConformalState.FAILED:
+            self._execution_failed = True
+            error = FatalExecutionError(
+                self.training_error or "Static pipeline fitting failed",
+                node_id=self._failure_node(fitting_error),
+            )
+            self._diagnose(self.diagnostics.fail, error.node_id, error)
+            raise error
+
+    def _publish_fit_readiness(self):
+        for node in self.plan.feature_nodes:
+            self.diagnostics.nodes[node.id].update(state="ready", ready=True)
+        self.diagnostics.nodes[self.plan.detector_id].update(state="ready", ready=True)
+
+    def _publish_training(self) -> None:
         if self.state != StaticConformalState.TRAINING or self._training_future is None:
             return
         if not self._training_future.done():
@@ -628,7 +684,6 @@ class StaticConformalDetectionService:
                 "discarded_during_training_count": (
                     self.discarded_during_training_count
                 ),
-                "schema_mismatch_count": self.schema_mismatch_count,
                 **(extra_context or {}),
             },
         }
@@ -647,6 +702,7 @@ class StaticConformalDetectionService:
 
     def export_checkpoint(self) -> dict[str, Any]:
         """Export state without performing I/O; the caller freezes model bytes."""
+        self._require_exportable()
         return {
             "strategy": "static_baseline",
             "static_state": self.state.value,
@@ -658,19 +714,20 @@ class StaticConformalDetectionService:
             "processed_count": self.processed_count,
             "anomaly_count": self.anomaly_count,
             "discarded_during_training_count": self.discarded_during_training_count,
-            "schema_mismatch_count": self.schema_mismatch_count,
             "training_error": self.training_error,
             "schema_signature": self.schema_signature,
         }
 
-    def get_pipeline_state(self) -> dict[str, Any] | None:
-        """Form detectors have no node graph to report."""
-        return None
-
-    def attach_observation_metadata(
-        self, timestamp: datetime, input_timestamps: dict[str, Any]
-    ) -> None:
-        """Form detectors keep no per-observation diagnostics."""
+    def get_pipeline_state(self) -> dict[str, Any]:
+        state = self.diagnostics.snapshot()
+        state["phase"] = self.state.value
+        state["batch_training"] = {
+            "state": self.state.value,
+            "training_samples": len(self.training_buffer),
+            "calibration_samples": len(self.calibration_buffer),
+            "frozen": self.state == StaticConformalState.READY,
+        }
+        return state
 
     def get_model_info(self) -> dict[str, Any]:
         return {
@@ -696,7 +753,6 @@ class StaticConformalDetectionService:
                 else 0
             ),
             "discarded_during_training_count": self.discarded_during_training_count,
-            "schema_mismatch_count": self.schema_mismatch_count,
             "memory_usage_mb": self._get_memory_usage(),
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)

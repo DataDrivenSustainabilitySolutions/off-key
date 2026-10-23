@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -27,10 +28,14 @@ from sqlalchemy import insert, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
+
 pytestmark = pytest.mark.radar_integration
 
 SECRET = b"disposable-integration-checkpoint-key"
 TEST_FILE = str(Path(__file__).resolve())
+# The replacement process imports the shared test support from the backend.
+PROBE_ENVIRONMENT = {**os.environ, "PYTHONPATH": str(Path(TEST_FILE).parents[2])}
 
 
 def test_durable_development_key_is_stable_and_forbidden_in_production():
@@ -66,10 +71,8 @@ def _config(strategy="static_baseline"):
             calibration_window_size=3,
         )
     )
-    return MQTTRadarConfig(
-        monitoring=monitoring,
-        subscription_topics=["telemetry/entity/x"],
-        checkpoint_interval=10,
+    return form_radar_config(
+        monitoring, ["telemetry/entity/x"], MQTTRadarConfig, checkpoint_interval=10
     )
 
 
@@ -179,7 +182,7 @@ def test_empty_adaptive_snapshot_can_resume_first_observation():
     restored = _detector(
         config, codec.decode(codec.encode(_snapshot(detector))).detector
     )
-    assert restored.feature_keys == []
+    assert restored.feature_keys == detector.feature_keys == ["input_1"]
     assert _comparison(_observe(restored, 1), restored) == _comparison(
         _observe(detector, 1), detector
     )
@@ -269,6 +272,7 @@ async def test_real_detector_restores_in_replacement_process(
             sys.executable,
             TEST_FILE,
             "--replacement-probe",
+            env=PROBE_ENVIRONMENT,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

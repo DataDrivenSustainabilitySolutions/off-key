@@ -159,8 +159,8 @@ def build_radar_environment(
         if mqtt_config.get("api_key"):
             environment["RADAR_MQTT_API_KEY"] = mqtt_config["api_key"]
 
-    try:
-        validated_params = (
+    if validate_params:
+        try:
             validate_model_params(
                 monitoring.model_type,
                 monitoring.model_params,
@@ -170,20 +170,15 @@ def build_radar_environment(
                     else STATIC_MODEL_FAMILY
                 ),
             )
-            if validate_params
-            else monitoring.model_params
-        )
-    except ValueError as exc:
-        logger.error("Invalid model parameters for %s: %s", monitoring.model_type, exc)
-        raise ValueError(f"Invalid model parameters: {exc}") from exc
+        except ValueError as exc:
+            logger.error(
+                "Invalid model parameters for %s: %s", monitoring.model_type, exc
+            )
+            raise ValueError(f"Invalid model parameters: {exc}") from exc
 
-    monitoring = monitoring.model_copy(update={"model_params": validated_params})
+    # The pipeline defines the monitoring; RADAR rejects any other copy.
     environment["RADAR_MONITORING_CONFIG"] = monitoring.model_dump_json()
-    if config.pipeline is not None:
-        environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
+    environment["RADAR_PIPELINE_CONFIG"] = config.pipeline.model_dump_json()
     if config.runtime_image is not None:
         environment["RADAR_RUNTIME_IMAGE"] = config.runtime_image
-    logger.info(
-        "Model params validated for %s: %s", monitoring.model_type, validated_params
-    )
     return environment

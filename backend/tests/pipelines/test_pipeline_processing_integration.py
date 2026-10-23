@@ -19,6 +19,7 @@ from off_key_core.models.pipelines import (
     pipeline_catalog_id,
 )
 from off_key_mqtt_radar import database as radar_database
+from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
 from off_key_mqtt_radar.admission import (
     RadarAdmissionSettings,
     require_monitor_admission,
@@ -29,7 +30,6 @@ from off_key_mqtt_radar.config.config import (
 )
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.execution_errors import FatalExecutionError
-from off_key_mqtt_radar.pipelines.adaptive import AdaptivePipelineDetectionService
 from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 
@@ -243,7 +243,7 @@ async def test_real_mqtt_graph_restores_numeric_state_and_coherent_preview(
                     include=set(AnomalyDetectionConfig.model_fields)
                 )
             )
-            reference = AdaptivePipelineDetectionService.from_checkpoint_data(
+            reference = AdaptiveStreamDetectionService.from_checkpoint_data(
                 snapshot.detector, config
             )
         async with supervised_service() as (replacement, _):

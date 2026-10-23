@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import docker
 import pytest
 from off_key_core.db import collection_runtime
-from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware.config.config import DockerConfig
 from off_key_tactic_middleware.facades.docker import get_workload_docker_status
 from off_key_tactic_middleware.services.orchestration import (
@@ -22,6 +21,7 @@ from off_key_tactic_middleware.services.orchestration.radar_workloads import (
 )
 
 from tests.support.docker import FakeAsyncDocker
+from tests.support.form_pipeline import form_launch
 from tests.support.orchestration import purge_results, scalars_result
 
 NOT_FOUND = docker.errors.NotFound("missing")
@@ -569,11 +569,12 @@ async def test_create_radar_service_never_launches_before_intent_commit(
 
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.create_radar_service(
-            RadarStartConfig(
+            form_launch(
                 container_name="radar-duplicate",
                 mqtt_topics=[selected_collection.accepted_topic],
                 model_type="pyod_knn",
-            )
+            ),
+            deployment_revision="release",
         )
 
     session.rollback.assert_awaited_once()
@@ -622,11 +623,12 @@ async def test_existing_active_service_with_missing_workload_is_recreated(
     )
 
     created = await service.create_radar_service(
-        RadarStartConfig(
+        form_launch(
             container_name="radar-stale",
             mqtt_topics=["telemetry/charger-1/sine"],
             model_type="pyod_iforest",
-        )
+        ),
+        deployment_revision="release",
     )
 
     assert created.container_name == "radar-stale"
@@ -659,11 +661,12 @@ async def test_existing_active_service_rejects_config_fingerprint_mismatch(
 
     with pytest.raises(ValueError, match="different RADAR configuration"):
         await service.create_radar_service(
-            RadarStartConfig(
+            form_launch(
                 container_name="radar-existing",
                 mqtt_topics=["telemetry/charger-1/sine"],
                 model_type="pyod_knn",
-            )
+            ),
+            deployment_revision="release",
         )
 
     assert db_row.status is True

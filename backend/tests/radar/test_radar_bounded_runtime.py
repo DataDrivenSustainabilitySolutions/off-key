@@ -12,11 +12,17 @@ from off_key_mqtt_radar.detector_handle import DetectorHandle
 from off_key_mqtt_radar.detector_runtime import DetectorRuntime
 from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
+from tests.support.form_pipeline import form_radar_config
+
 pytestmark = pytest.mark.radar_integration
 
 
 async def test_network_thread_burst_is_bounded_while_event_loop_cannot_run():
-    client = RadarMQTTClient(MQTTRadarConfig(max_queue_size=8))
+    client = RadarMQTTClient(
+        form_radar_config(
+            None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig, max_queue_size=8
+        )
+    )
     loop = asyncio.get_running_loop()
     client._loop = loop
     client.client = object()
@@ -46,7 +52,14 @@ async def test_network_thread_burst_is_bounded_while_event_loop_cannot_run():
 
 
 async def test_oversized_payload_is_rejected_before_queue_or_loop_notification():
-    client = RadarMQTTClient(MQTTRadarConfig(max_payload_bytes=16))
+    client = RadarMQTTClient(
+        form_radar_config(
+            None,
+            ["telemetry/charger-sim-1/sine"],
+            MQTTRadarConfig,
+            max_payload_bytes=16,
+        )
+    )
     client._loop = asyncio.get_running_loop()
     client._on_message(
         None,
@@ -62,12 +75,14 @@ async def test_oversized_payload_is_rejected_before_queue_or_loop_notification()
 
 async def test_model_owner_serializes_real_detector_work_and_keeps_loop_responsive():
     detector = StaticConformalDetectionService(
-        MQTTRadarConfig(
-            monitoring=StaticBaselineConfig(
+        form_radar_config(
+            StaticBaselineConfig(
                 model_params={"n_estimators": 8},
                 training_window_size=20,
                 calibration_window_size=8,
-            )
+            ),
+            ["telemetry/charger-sim-1/x"],
+            MQTTRadarConfig,
         ),
     )
     wrapped = DetectorHandle(detector)
@@ -142,7 +157,9 @@ async def test_cancelled_call_finishes_the_model_operation_before_reraising():
 async def test_diagnostic_failure_preserves_inference_and_original_exception(
     monkeypatch, failure_boundary
 ):
-    detector = StaticConformalDetectionService(MQTTRadarConfig())
+    detector = StaticConformalDetectionService(
+        form_radar_config(None, ["telemetry/charger-sim-1/x"], MQTTRadarConfig)
+    )
     wrapped = DetectorHandle(detector)
     runtime = DetectorRuntime(wrapped)
     try:

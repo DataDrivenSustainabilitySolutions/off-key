@@ -4,11 +4,16 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ..schemas.pipelines import BoundInput, PipelineDefinition
-from ..schemas.radar import AdaptiveStreamConfig, RadarStartConfig, StaticBaselineConfig
+from ..schemas.radar import (
+    AdaptiveStreamConfig,
+    FormMonitorConfig,
+    StaticBaselineConfig,
+)
 from ..utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
     normalize_static_monitoring_topics,
 )
+from .adaptive import ADAPTIVE_MODELS_BY_TYPE
 from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
 from .pipeline_compiler import compile_pipeline, validate_pipeline
 from .pipeline_digest import digest
@@ -62,7 +67,7 @@ def execution_fingerprint(
     )
 
 
-def form_inputs(config: RadarStartConfig) -> list[tuple[str, str]]:
+def form_inputs(config: FormMonitorConfig) -> list[tuple[str, str]]:
     """Sensor keys with their topics, in the sorted order form detectors use."""
     topics = normalize_static_monitoring_topics(config.mqtt_topics)
     keys = derive_monitoring_sensor_keys(
@@ -71,7 +76,7 @@ def form_inputs(config: RadarStartConfig) -> list[tuple[str, str]]:
     return sorted(zip(keys, topics, strict=True))
 
 
-def lower_form_monitor(parsed: RadarStartConfig) -> PipelineDefinition:
+def lower_form_monitor(parsed: FormMonitorConfig) -> PipelineDefinition:
     """The graph equivalent of a form-configured monitor."""
     slots = [
         {"id": f"input_{index + 1}", "label": key}
@@ -80,9 +85,17 @@ def lower_form_monitor(parsed: RadarStartConfig) -> PipelineDefinition:
     nodes = [{"id": "input", "kind": "source", "component": "source.aligned"}]
     previous = "input"
     edges = []
+    # Form monitors clipped scaled features for unit-interval detectors.
+    clip = parsed.monitoring.strategy == "adaptive_stream" and bool(
+        ADAPTIVE_MODELS_BY_TYPE[parsed.monitoring.model_type]["default_capabilities"][
+            "requires_unit_interval"
+        ]
+    )
     for index, step in enumerate(getattr(parsed.monitoring, "preprocessing_steps", [])):
         params = step.model_dump(mode="json")
         kind = params.pop("type")
+        if kind == "min_max_scaler" and clip:
+            params["clip"] = True
         node_id = f"transform_{index + 1}"
         component = (
             f"adaptive.{kind if kind != 'incremental_pca' else 'uncentered_pca'}"

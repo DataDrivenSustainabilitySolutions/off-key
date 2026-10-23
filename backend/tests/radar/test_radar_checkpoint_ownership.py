@@ -19,15 +19,15 @@ from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import observe, tiny_adaptive_monitoring
 
 pytestmark = pytest.mark.radar_integration
 
 
 def config():
-    return MQTTRadarConfig(
-        subscription_topics=["telemetry/entity/x"],
-        monitoring=tiny_adaptive_monitoring(),
+    return form_radar_config(
+        tiny_adaptive_monitoring(), ["telemetry/entity/x"], MQTTRadarConfig
     )
 
 

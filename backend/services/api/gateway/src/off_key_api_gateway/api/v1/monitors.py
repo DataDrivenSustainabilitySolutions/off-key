@@ -3,9 +3,9 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from off_key_core.schemas.radar import (
+    FormMonitorConfig,
     MonitoringStrategy,
     RadarServiceLabel,
-    RadarStartConfig,
 )
 from off_key_core.utils.timestamps import as_utc
 from pydantic import BaseModel, Field
@@ -52,7 +52,7 @@ def _normalize_models_for_gateway(
     }
 
 
-class MonitoringServiceConfig(RadarStartConfig):
+class MonitoringServiceConfig(FormMonitorConfig):
     service_type: Literal["radar"] = Field(default="radar", exclude=True)
     # The gateway never forwards MQTT overrides, so the field is pinned to None.
     mqtt_config: None = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]

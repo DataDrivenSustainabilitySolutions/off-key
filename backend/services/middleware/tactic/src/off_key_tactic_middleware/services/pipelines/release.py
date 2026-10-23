@@ -12,15 +12,15 @@ from off_key_core.models.pipelines import (
     execution_fingerprint,
 )
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
-from off_key_core.schemas.radar import RadarStartConfig
+from off_key_core.schemas.radar import FormMonitorConfig, RadarStartConfig
 from sqlalchemy import select
 
 from .preflight import PipelinePreflight
 from .runs import ensure_predecessor_run
 
 
-def normalize_saved_launch(value: dict) -> RadarStartConfig:
-    """A release restarts learning; historical records remain unmodified."""
+def _reviewed_saved_launch(value: dict) -> dict:
+    """A copy whose adaptive model version this release can run."""
     value = deepcopy(value)
     monitoring = value.get("monitoring", {})
     if monitoring.get("strategy") == "adaptive_stream":
@@ -30,19 +30,38 @@ def normalize_saved_launch(value: dict) -> RadarStartConfig:
                 f"No reviewed release normalization for Aberrant {previous}"
             )
         monitoring["aberrant_version"] = ABERRANT_VERSION
-    if value.get("pipeline"):
-        execution = PipelineExecutionConfig.model_validate(value["pipeline"])
-        definition = compile_pipeline(execution.definition).definition
-        execution = execution.model_copy(
-            update={
-                "definition": definition,
-                "fingerprint": execution_fingerprint(definition, execution.bindings),
-            }
-        )
-        value["pipeline"] = execution.model_dump(mode="json")
-        value["monitoring"] = derive_monitoring_config(definition).model_dump(
-            mode="json"
-        )
+    return value
+
+
+def is_saved_form_monitor(value: dict) -> bool:
+    """Launches saved before every monitor ran as a pipeline carry none."""
+    return not value.get("pipeline")
+
+
+def saved_form_monitor(value: dict) -> FormMonitorConfig:
+    """Read a launch saved by the setup forms; historical records stay as saved."""
+    value = _reviewed_saved_launch(value)
+    for key in ("pipeline", "runtime_image"):
+        if value.get(key) is None:
+            value.pop(key, None)
+    return FormMonitorConfig.model_validate(value)
+
+
+def normalize_saved_launch(value: dict) -> RadarStartConfig:
+    """A release restarts learning; historical records remain unmodified."""
+    if is_saved_form_monitor(value):
+        raise ValueError("Convert the saved form monitor to a pipeline first")
+    value = _reviewed_saved_launch(value)
+    execution = PipelineExecutionConfig.model_validate(value["pipeline"])
+    definition = compile_pipeline(execution.definition).definition
+    execution = execution.model_copy(
+        update={
+            "definition": definition,
+            "fingerprint": execution_fingerprint(definition, execution.bindings),
+        }
+    )
+    value["pipeline"] = execution.model_dump(mode="json")
+    value["monitoring"] = derive_monitoring_config(definition).model_dump(mode="json")
     # The target release image must be resolved again, never the predecessor image.
     value["runtime_image"] = None
     return RadarStartConfig.model_validate(value)
@@ -70,19 +89,16 @@ async def prepare_release_monitors(session, operation, workloads):
         if not monitor.get("previous_run_id"):
             previous = await _previous_run(session, monitor, config)
             monitor = monitor | {"previous_run_id": previous.id}
-        if config.pipeline is not None:
-            monitor = await _prepare_graph_run(session, monitor, config, workloads)
-        else:
-            monitor = monitor | {"config": config.model_dump(mode="json")}
+        monitor = await _prepare_graph_run(session, monitor, config, workloads)
         snapshots[index] = monitor
         operation.monitors = list(snapshots)
         await session.commit()
-        if config.pipeline is not None and not monitor.get("preflight"):
+        if not monitor.get("preflight"):
             config = RadarStartConfig.model_validate(monitor["config"])
             pipeline, image = config.pipeline, config.runtime_image
-            if pipeline is None or image is None:
-                # _prepare_graph_run always writes both into the stored config.
-                raise RuntimeError("Prepared pipeline release lost its run or image")
+            if image is None:
+                # _prepare_graph_run always writes it into the stored config.
+                raise RuntimeError("Prepared pipeline release lost its image")
             report = await PipelinePreflight(workloads).run(
                 f"release-{pipeline.run_id}", pipeline, image
             )
@@ -114,7 +130,9 @@ async def _prepare_graph_run(session, monitor, config, workloads):
             execution=execution.model_dump(mode="json"),
             launch_config=config.model_dump(mode="json"),
             layout=previous.layout,
-            binding_metadata=previous.binding_metadata,
+            # A converted form monitor brings the metadata of its new bindings.
+            binding_metadata=monitor.get("binding_metadata")
+            or previous.binding_metadata,
             status="reserved",
             created_at=datetime.now(UTC),
         )
@@ -134,18 +152,6 @@ async def record_release_run(session, monitor, service):
         .execution_options(populate_existing=True)
     )
     if run is None:
-        config = RadarStartConfig.model_validate(monitor["config"])
-        run = PipelineRun(
-            id=str(uuid4()),
-            service_id=service.id,
-            revision_id=None,
-            execution=None,
-            launch_config=config.model_dump(mode="json"),
-            layout={},
-            predecessor_run_id=monitor.get("previous_run_id"),
-            status="starting",
-            created_at=datetime.now(UTC),
-        )
-        session.add(run)
-    elif run.ended_at is None:
+        raise RuntimeError("The prepared release run is missing")
+    if run.ended_at is None:
         run.status = "starting"

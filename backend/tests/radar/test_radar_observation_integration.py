@@ -11,6 +11,7 @@ from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.service import RadarService
 
+from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until
 
 pytestmark = pytest.mark.radar_integration
@@ -21,15 +22,16 @@ async def test_real_single_sensor_monitor_rejects_replay_regression_age_and_futu
     monkeypatch,
 ):
     broker, port = await start_mqtt_broker()
-    config = MQTTRadarConfig(
+    config = form_radar_config(
+        tiny_adaptive_monitoring(),
+        ["telemetry/observation/x"],
+        MQTTRadarConfig,
         broker_host="127.0.0.1",
         broker_port=port,
-        subscription_topics=["telemetry/observation/x"],
         db_write_enabled=False,
         observation_max_age_seconds=2,
         observation_future_tolerance_seconds=1,
         health_check_interval=0.05,
-        monitoring=tiny_adaptive_monitoring(),
     )
     monkeypatch.setattr(
         service_module, "get_radar_settings", lambda: SimpleNamespace(config=config)

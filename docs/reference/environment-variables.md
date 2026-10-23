@@ -172,8 +172,8 @@ TACTIC sets these on each workload it launches.
 | `RADAR_MQTT_USE_TLS` | `false` | MQTT TLS toggle |
 | `RADAR_MQTT_USE_AUTH` | `false` | MQTT authentication toggle |
 | `RADAR_SUBSCRIPTION_TOPICS` | Set by TACTIC | Concrete topics from the monitor's selected readings (wildcards are rejected) |
-| `RADAR_MONITORING_CONFIG` | Default static baseline | JSON strategy configuration containing `strategy`, model parameters, and training/calibration settings |
-| `RADAR_PIPELINE_CONFIG` | Unset | Version-1 canonical bound execution JSON, emitted by activation. If monitoring JSON is also supplied, it must match the graph-derived strategy settings. Limited to 96 KiB serialized. |
+| `RADAR_MONITORING_CONFIG` | Set by TACTIC | Strategy settings derived from the pipeline; when supplied, they must match the graph |
+| `RADAR_PIPELINE_CONFIG` | Required | Version-1 canonical bound execution JSON, emitted by activation. Every monitor runs a pipeline; RADAR does not start without one. Limited to 96 KiB serialized. |
 | `RADAR_FATAL_PERSIST_RETRY_SECONDS` | `5` | Retry interval while a quarantined managed graph waits to persist its failed-run admission fence. Must be greater than zero and at most 30 seconds. No further graph calls or checkpoint exports occur. |
 | `RADAR_RATE_LIMIT_PER_MINUTE` | `0` | Aggregate observation limit across the monitor's topics; `0` disables throttling. Positive limits discard excess inputs and permanently flag the monitor's coverage as degraded. Managed workloads use `TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE`, also defaulting to `0`. |
 | `RADAR_MAX_QUEUE_SIZE` | `256` | Maximum admitted messages waiting for the serial processor, bounded before the network thread schedules asyncio work. |
@@ -182,12 +182,9 @@ TACTIC sets these on each workload it launches.
 | `RADAR_OBSERVATION_FUTURE_TOLERANCE_SECONDS` | `5` | Maximum permitted observation time ahead of the worker clock. |
 | `RADAR_ALIGNMENT_MAX_SKEW_SECONDS` | `5` | Maximum time spread between observations in one aligned vector. |
 
-TACTIC-managed workloads receive `RADAR_MONITORING_CONFIG` as their single
-monitoring configuration. Standalone RADAR still accepts the legacy
-`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`, `RADAR_MODEL_PARAMS`,
-`RADAR_STATIC_BASELINE_CONFIG`, and `RADAR_ADAPTIVE_STREAM_CONFIG` variables when
-the canonical variable is absent. Do not mix the formats; conflicting settings
-prevent startup.
+The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
+`RADAR_MODEL_PARAMS`, `RADAR_STATIC_BASELINE_CONFIG` and
+`RADAR_ADAPTIVE_STREAM_CONFIG`) are no longer read.
 
 ## Internal services, retention, and logging
 

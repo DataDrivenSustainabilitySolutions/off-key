@@ -12,7 +12,7 @@ from urllib.parse import quote
 import aiohttp
 from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.schemas.radar import RadarStartConfig
+from off_key_core.schemas.radar import FormMonitorConfig
 
 from off_key_api_gateway.settings import get_service_endpoints_settings
 
@@ -190,8 +190,8 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
-    async def start_radar_service(self, config: RadarStartConfig) -> dict[str, Any]:
-        """Forward the canonical launch configuration to TACTIC."""
+    async def start_radar_service(self, config: FormMonitorConfig) -> dict[str, Any]:
+        """Forward a setup-form configuration to TACTIC."""
         return await self.request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",

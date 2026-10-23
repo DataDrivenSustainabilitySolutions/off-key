@@ -4,7 +4,7 @@ Configuration for MQTT RADAR service
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 
 from dotenv import load_dotenv
 from off_key_core.config.resource_budget import (
@@ -13,15 +13,10 @@ from off_key_core.config.resource_budget import (
 )
 from off_key_core.config.validation import SECRETS_DIR, Environment
 from off_key_core.models.pipelines import derive_monitoring_config
-from off_key_core.schemas.pipelines import (
-    MONITORING_STRATEGIES,
-    PipelineExecutionConfig,
-)
+from off_key_core.schemas.pipelines import PipelineExecutionConfig
 from off_key_core.schemas.radar import (
-    LegacyMonitoringConfig,
     MonitoringConfig,
     PerformanceConfig,
-    StaticBaselineConfig,
 )
 from off_key_core.utils.mqtt_topics import (
     normalize_sensor_key_strategy,
@@ -29,15 +24,6 @@ from off_key_core.utils.mqtt_topics import (
 )
 from pydantic import ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def _normalize_strategy(value: str, field_name: str) -> str:
-    """Normalize and validate monitoring strategy values."""
-    normalized = value.strip().lower()
-    if normalized not in MONITORING_STRATEGIES:
-        allowed = ", ".join(sorted(MONITORING_STRATEGIES))
-        raise ValueError(f"{field_name} must be one of: {allowed}")
-    return normalized
 
 
 def load_configuration(custom_config_file: str | None = None):
@@ -62,19 +48,19 @@ class AnomalyDetectionConfig(PerformanceConfig):
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
-    pipeline: PipelineExecutionConfig | None = None
+    # Derived from the pipeline, which every monitor runs.
+    monitoring: MonitoringConfig
+    pipeline: PipelineExecutionConfig
     subscription_topics: list[str] = Field(default_factory=list)
     memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
     checkpoint_interval: int = 10000
 
     @model_validator(mode="after")
     def validate_pipeline_resources(self):
-        if self.pipeline is not None:
-            from ..pipelines.plan import ExecutionPlan
-            from ..pipelines.resources import estimate_resources
+        from ..pipelines.plan import ExecutionPlan
+        from ..pipelines.resources import estimate_resources
 
-            estimate_resources(ExecutionPlan(self.pipeline), self.memory_limit_mb)
+        estimate_resources(ExecutionPlan(self.pipeline), self.memory_limit_mb)
         return self
 
     @model_validator(mode="before")
@@ -197,14 +183,9 @@ class RadarSettings(BaseSettings):
     RADAR_DB_BATCH_SIZE: int = 50
     RADAR_DB_BATCH_TIMEOUT: float = 2.0
 
-    # Canonical launch configuration; legacy environment fields are read only here.
+    # The bound pipeline; TACTIC also passes the strategy settings it derives.
     RADAR_MONITORING_CONFIG: MonitoringConfig | None = None
-    RADAR_PIPELINE_CONFIG: PipelineExecutionConfig | None = None
-    RADAR_MONITORING_STRATEGY: str = "static_baseline"
-    RADAR_MODEL_TYPE: str | None = None
-    RADAR_MODEL_PARAMS: dict[str, Any] | None = None
-    RADAR_STATIC_BASELINE_CONFIG: dict[str, Any] = Field(default_factory=dict)
-    RADAR_ADAPTIVE_STREAM_CONFIG: dict[str, Any] = Field(default_factory=dict)
+    RADAR_PIPELINE_CONFIG: PipelineExecutionConfig
 
     # Performance
     RADAR_MAX_QUEUE_SIZE: int = Field(default=256, gt=0, le=10000)
@@ -239,11 +220,6 @@ class RadarSettings(BaseSettings):
         """Validate sensor key strategy from environment."""
         return normalize_sensor_key_strategy(value, "RADAR_SENSOR_KEY_STRATEGY")
 
-    @field_validator("RADAR_MONITORING_STRATEGY")
-    @classmethod
-    def validate_monitoring_strategy(cls, value: str) -> str:
-        return _normalize_strategy(value, "RADAR_MONITORING_STRATEGY")
-
     @model_validator(mode="after")
     def validate_mqtt_security_posture(self) -> Self:
         if self.ENVIRONMENT == "production":
@@ -277,43 +253,17 @@ class RadarSettings(BaseSettings):
             ]
         )
 
-        legacy_names = {
-            "RADAR_MONITORING_STRATEGY",
-            "RADAR_MODEL_TYPE",
-            "RADAR_MODEL_PARAMS",
-            "RADAR_STATIC_BASELINE_CONFIG",
-            "RADAR_ADAPTIVE_STREAM_CONFIG",
-        }
-        monitoring = self.RADAR_MONITORING_CONFIG
-        if monitoring is not None and self.model_fields_set & legacy_names:
-            raise ValueError(
-                "Do not mix RADAR_MONITORING_CONFIG with legacy strategy fields"
-            )
         pipeline = self.RADAR_PIPELINE_CONFIG
-        if pipeline is not None:
-            derived = derive_monitoring_config(pipeline.definition)
-            if monitoring is not None and monitoring != derived:
-                raise ValueError("Runtime monitoring conflicts with pipeline")
-            if self.model_fields_set & legacy_names:
-                raise ValueError("Do not mix a pipeline with legacy strategy fields")
-            monitoring = derived
-            expected_topics = sorted(item.accepted_topic for item in pipeline.bindings)
-            if (
-                "RADAR_SUBSCRIPTION_TOPICS" in self.model_fields_set
-                and sorted(topics) != expected_topics
-            ):
-                raise ValueError(
-                    "Runtime subscriptions conflict with pipeline bindings"
-                )
-            topics = expected_topics
-        if monitoring is None:
-            monitoring = LegacyMonitoringConfig(
-                strategy=self.RADAR_MONITORING_STRATEGY,
-                model_type=self.RADAR_MODEL_TYPE,
-                model_params=self.RADAR_MODEL_PARAMS,
-                static_baseline_config=self.RADAR_STATIC_BASELINE_CONFIG or None,
-                adaptive_stream_config=self.RADAR_ADAPTIVE_STREAM_CONFIG or None,
-            ).to_monitoring()
+        monitoring = derive_monitoring_config(pipeline.definition)
+        if self.RADAR_MONITORING_CONFIG not in (None, monitoring):
+            raise ValueError("Runtime monitoring conflicts with pipeline")
+        expected_topics = sorted(item.accepted_topic for item in pipeline.bindings)
+        if (
+            "RADAR_SUBSCRIPTION_TOPICS" in self.model_fields_set
+            and sorted(topics) != expected_topics
+        ):
+            raise ValueError("Runtime subscriptions conflict with pipeline bindings")
+        topics = expected_topics
 
         return MQTTRadarConfig(
             broker_host=self.RADAR_MQTT_BROKER_HOST,

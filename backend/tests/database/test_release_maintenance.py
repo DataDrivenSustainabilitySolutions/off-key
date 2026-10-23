@@ -26,7 +26,6 @@ from off_key_core.db.models import (
     PipelineRun,
     Telemetry,
 )
-from off_key_core.schemas.radar import RadarStartConfig
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.services.accounts.members import MemberService
 from off_key_tactic_middleware.services.catalogue.system_ingress import (
@@ -36,10 +35,12 @@ from off_key_tactic_middleware.services.orchestration import radar
 from off_key_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from off_key_tactic_middleware.services.pipelines import release
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
+from tests.support.form_pipeline import form_launch, stored_revision
 from tests.support.schema_baselines import (
     EXPECTED_MIGRATIONS,
     migrations_from,
@@ -47,6 +48,19 @@ from tests.support.schema_baselines import (
     restore_retired_schema,
     rewind_ledger,
 )
+
+
+class _Preflight:
+    """A release's replacement monitors pass preflight on the pinned image."""
+
+    def __init__(self, workloads):
+        pass
+
+    async def resolve_image(self):
+        return f"registry/radar@sha256:{'c' * 64}"
+
+    async def run(self, *args):
+        return {"succeeded": True}
 
 
 def test_migration_history_is_the_expected_sequence():
@@ -291,13 +305,14 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     disposable_database, monkeypatch
 ):
     set_environment(monkeypatch, DATABASE_ENVIRONMENT)
+    monkeypatch.setattr(release, "PipelinePreflight", _Preflight)
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     engine = create_async_engine(
         disposable_database.url.set(drivername="postgresql+asyncpg")
     )
     revision = "a" * 40
-    config = RadarStartConfig(
+    config = form_launch(
         container_name="first",
         mqtt_topics=["telemetry/charger-1/sine"],
         model_type="pyod_iforest",
@@ -371,6 +386,8 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     )
     try:
         async with AsyncSession(engine, expire_on_commit=False) as session:
+            session.add_all(stored_revision(config))
+            await session.flush()
             session.add_all(
                 [
                     MonitoringService(
@@ -475,14 +492,15 @@ async def test_fresh_release_reservation_precedes_schema_bootstrap(disposable_da
 
 @pytest.mark.asyncio
 async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
-    disposable_database,
+    disposable_database, monkeypatch
 ):
+    monkeypatch.setattr(release, "PipelinePreflight", _Preflight)
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     engine = create_async_engine(
         disposable_database.url.set(drivername="postgresql+asyncpg")
     )
-    config = RadarStartConfig(
+    config = form_launch(
         container_name="pending",
         mqtt_topics=["telemetry/charger-1/sine"],
     )
@@ -494,6 +512,8 @@ async def test_release_retains_pending_monitor_claim_until_confirmed_removal(
     )
     try:
         async with AsyncSession(engine, expire_on_commit=False) as session:
+            session.add_all(stored_revision(config))
+            await session.flush()
             session.add(
                 MonitoringService(
                     id="pending-id",

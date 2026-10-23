@@ -14,6 +14,8 @@ from off_key_mqtt_radar.models import MQTTMessage
 from off_key_tactic_middleware.config.config import RadarDefaultsConfig
 from pydantic import ValidationError
 
+from tests.support.form_pipeline import form_radar_config, set_pipeline_environment
+
 
 def test_coverage_counters_are_thread_safe_and_checkpoint_round_trips():
     tracker = CoverageTracker()
@@ -39,7 +41,15 @@ def test_coverage_counters_are_thread_safe_and_checkpoint_round_trips():
     assert restored.snapshot().dropped_by_reason == {"queue_full": 1100}
 
 
-@pytest.mark.parametrize("model", [MQTTRadarConfig, RadarDefaultsConfig])
+def _runtime_config(**fields):
+    return form_radar_config(
+        None, ["telemetry/charger-sim-1/sine"], MQTTRadarConfig, **fields
+    )
+
+
+@pytest.mark.parametrize(
+    "model", [_runtime_config, RadarDefaultsConfig], ids=["runtime", "defaults"]
+)
 def test_rate_limits_are_opt_in_and_reject_negative_limits(model):
     assert model().rate_limit_per_minute == 0
     assert model(rate_limit_per_minute=12000).rate_limit_per_minute == 12000
@@ -49,6 +59,7 @@ def test_rate_limits_are_opt_in_and_reject_negative_limits(model):
 
 def test_environment_rate_limit_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("RADAR_RATE_LIMIT_PER_MINUTE", raising=False)
+    set_pipeline_environment(monkeypatch)
     assert RadarSettings().RADAR_RATE_LIMIT_PER_MINUTE == 0
 
 

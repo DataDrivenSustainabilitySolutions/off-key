@@ -18,7 +18,10 @@ from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamState,
 )
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from off_key_mqtt_radar.execution_errors import ObservationRejected
 from pydantic import ValidationError
+
+from tests.support.form_pipeline import form_radar_config
 
 FAST_PARAMS: dict[str, dict[str, Any]] = {
     "aberrant_asd_isolation_forest": {"n_estimators": 2, "max_samples": 2, "seed": 1},
@@ -85,6 +88,7 @@ def _runtime_config(
     training: int | None = None,
     calibration: int = 1,
     preprocessing_steps: list[dict[str, Any]] | None = None,
+    features: list[str] | None = None,
 ) -> AnomalyDetectionConfig:
     params = _params(model_type)
     validated_params = validate_adaptive_model_params(model_type, params)
@@ -104,15 +108,44 @@ def _runtime_config(
         calibration_window_size=calibration,
         preprocessing_steps=preprocessing_steps or [],
     )
-    return AnomalyDetectionConfig(
-        monitoring=adaptive,
-        subscription_topics=["telemetry/c1/x"],
+    return _config(adaptive, features or _features(_feature_count(model_type)))
+
+
+def _features(count: int) -> list[str]:
+    return [f"x{feature}" for feature in range(count)]
+
+
+def _config(
+    adaptive: AdaptiveStreamConfig, features: list[str]
+) -> AnomalyDetectionConfig:
+    return form_radar_config(
+        adaptive,
+        [f"telemetry/c1/{feature}" for feature in features],
         checkpoint_interval=1_000_000,
     )
 
 
 def _point(index: int, count: int) -> dict[str, float]:
-    return {f"x{feature}": float(index + feature / 10) for feature in range(count)}
+    # Positive readings suit every model, including geometric averages.
+    return {f"x{feature}": float(index + 1 + feature / 10) for feature in range(count)}
+
+
+def _record(detector, scores: list[float]) -> list[float]:
+    """Script the graph's scores and check every score precedes its learning."""
+    scripted, learned = iter(scores), []
+    learn = detector.pipeline.learn_one
+
+    def score_one(point: dict[str, float]) -> float:
+        assert point["input_1"] not in learned
+        return next(scripted)
+
+    def learn_one(point: dict[str, float]) -> None:
+        learned.append(point["input_1"])
+        learn(point)
+
+    detector.pipeline.score_one = score_one
+    detector.pipeline.learn_one = learn_one
+    return learned
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
@@ -165,34 +198,20 @@ def test_all_released_transforms_feed_real_detector(
         preprocessing_steps=[step],
     )
     detector = AdaptiveStreamDetectionService(config)
-    results = [detector.process_data_point(_point(index, 2)) for index in range(4)]
+    # PCA initialises on its own points before the model learns any.
+    results = [detector.process_data_point(_point(index, 2)) for index in range(6)]
     assert results[-1].context["adaptive_stream"]["phase"] == "operational"
     assert math.isfinite(results[-1].anomaly_score)
-
-
-class _RecordingPipeline:
-    def __init__(self, scores: list[float]):
-        self.scores = iter(scores)
-        self.learned: list[float] = []
-
-    def score_one(self, point: dict[str, float]) -> float:
-        assert point["x"] not in self.learned
-        return next(self.scores)
-
-    def learn_one(self, point: dict[str, float]) -> None:
-        self.learned.append(point["x"])
 
 
 def test_score_then_learn_quantile_max_and_strict_comparison(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _runtime_config(
-        "aberrant_online_isolation_forest", training=2, calibration=3
+        "aberrant_moving_average", training=2, calibration=3, features=["x"]
     )
     detector = AdaptiveStreamDetectionService(config)
-    recorder = _RecordingPipeline([1.0, 3.0, 2.0, 3.0])
-    detector.pipeline = recorder
-    detector.feature_keys = ["x"]
+    learned = _record(detector, [1.0, 3.0, 2.0, 3.0])
 
     results = [detector.process_data_point({"x": float(index)}) for index in range(6)]
 
@@ -200,7 +219,7 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
     assert detector.state is AdaptiveStreamState.OPERATIONAL
     assert results[-1].anomaly_score == 3.0
     assert results[-1].is_anomaly is False
-    assert recorder.learned == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+    assert learned == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
 
 
 @pytest.mark.parametrize(
@@ -253,14 +272,13 @@ def test_config_rejects_invalid_preprocessing_and_knn_warmup() -> None:
 def test_runtime_validates_parameter_dependent_warmup_before_learning():
     with pytest.raises(ValueError, match="warm-up"):
         AdaptiveStreamDetectionService(
-            _runtime_config("aberrant_random_cut_forest", training=2).model_copy(
-                update={
-                    "monitoring": AdaptiveStreamConfig(
-                        model_type="aberrant_random_cut_forest",
-                        model_params={"n_trees": 2, "sample_size": 20},
-                        training_window_size=2,
-                    ),
-                }
+            _config(
+                AdaptiveStreamConfig(
+                    model_type="aberrant_random_cut_forest",
+                    model_params={"n_trees": 2, "sample_size": 20},
+                    training_window_size=2,
+                ),
+                _features(2),
             )
         )
 
@@ -282,39 +300,40 @@ def test_runtime_executes_constructor_validation_at_startup():
         model_type="aberrant_rolling_matrix_profile",
         model_params={"subsequence_length": 8, "window_size": 8},
     )
-    config = _runtime_config("aberrant_rolling_matrix_profile").model_copy(
-        update={"monitoring": adaptive}
-    )
     with pytest.raises(ConfigurationError, match="window_size"):
-        AdaptiveStreamDetectionService(config)
+        AdaptiveStreamDetectionService(_config(adaptive, _features(1)))
 
 
 def test_half_space_trees_bounds_new_extremes_before_scoring(monkeypatch):
     detector = AdaptiveStreamDetectionService(
-        _runtime_config("aberrant_half_space_trees")
+        _runtime_config("aberrant_half_space_trees", features=["x"])
     )
     detector.process_data_point({"x": 0.0})
     detector.process_data_point({"x": 1.0})
-    assert detector.pipeline.first.transform_one({"x": 100.0}) == {"x": 1.0}
-    assert detector.pipeline.first.transform_one({"x": -100.0}) == {"x": 0.0}
-    assert math.isfinite(detector.process_data_point({"x": 100.0}).anomaly_score)
+    for value, scaled in ((100.0, 1.0), (-100.0, 0.0)):
+        result = detector.process_data_point({"x": value})
+        assert math.isfinite(result.anomaly_score)
+        assert result.processed_features == {"input_1": scaled}
 
 
 def test_half_space_trees_rejects_unscaled_out_of_domain_data():
     detector = AdaptiveStreamDetectionService(
-        _runtime_config("aberrant_half_space_trees", preprocessing_steps=[])
+        _runtime_config(
+            "aberrant_half_space_trees", preprocessing_steps=[], features=["x"]
+        )
     )
-    with pytest.raises(ValueError, match="features in"):
+    with pytest.raises(ObservationRejected, match=r"must be in \[0, 1\]"):
         detector.process_data_point({"x": 2.0})
     assert detector.processed_count == 0
 
 
 def test_severity_uses_excess_over_signed_threshold(monkeypatch):
     detector = AdaptiveStreamDetectionService(
-        _runtime_config("aberrant_online_isolation_forest", training=2, calibration=2)
+        _runtime_config(
+            "aberrant_moving_average", training=2, calibration=2, features=["x"]
+        )
     )
-    detector.pipeline = _RecordingPipeline([-4.0, -2.0, -1.9, 0.0])
-    detector.feature_keys = ["x"]
+    _record(detector, [-4.0, -2.0, -1.9, 0.0])
     results = [detector.process_data_point({"x": float(i)}) for i in range(6)]
     assert detector.threshold == -2.0
     assert results[-2].is_anomaly is True

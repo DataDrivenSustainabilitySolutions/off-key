@@ -15,6 +15,8 @@ from off_key_tactic_middleware.config.config import (
 )
 from off_key_tactic_middleware.services.orchestration import radar_environment
 
+from tests.support.form_pipeline import form_launch
+
 
 @pytest.mark.parametrize("boundary", ["gateway", "tactic"])
 @pytest.mark.parametrize(
@@ -112,11 +114,10 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         "mqtt_topics",
         "monitoring",
         "performance_config",
-        "pipeline",
-        "runtime_image",
     }
     assert payload["launch_version"] == 1
-    tactic_config = radar.RadarConfig.model_validate(payload)
+    # TACTIC binds the form's readings into the equivalent pipeline.
+    launch = form_launch(**payload)
 
     monkeypatch.setattr(
         radar_environment, "get_tactic_settings", lambda: TacticSettings(_env_file=None)
@@ -136,7 +137,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         ),
     )
     environment = radar_environment.build_radar_environment(
-        service_id="test-service", config=tactic_config, validate_params=False
+        service_id="test-service", config=launch, validate_params=False
     )
     for name in RadarSettings.model_fields:
         monkeypatch.delenv(name, raising=False)
@@ -144,7 +145,11 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         monkeypatch.setenv(name, value)
     runtime = RadarSettings(_env_file=None).config
 
-    assert runtime.monitoring == config.monitoring
+    assert runtime.monitoring == launch.monitoring
+    assert runtime.monitoring.strategy == config.monitoring.strategy
+    assert runtime.monitoring.model_params == (
+        launch.monitoring.model_params | config.monitoring.model_params
+    )
     assert runtime.subscription_topics == config.mqtt_topics
     assert runtime.sensor_key_strategy == config.performance_config.sensor_key_strategy
     assert (

@@ -10,6 +10,8 @@ from off_key_mqtt_radar.config.config import clear_radar_settings_cache
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 from off_key_mqtt_radar.service import RadarService
 
+from tests.support.form_pipeline import set_pipeline_environment
+
 
 @pytest.mark.asyncio
 async def test_custom_file_applies_on_startup_and_next_restart(tmp_path, monkeypatch):
@@ -17,6 +19,7 @@ async def test_custom_file_applies_on_startup_and_next_restart(tmp_path, monkeyp
     config_file.write_text("RADAR_MQTT_BROKER_HOST=first-broker\n")
     monkeypatch.setenv("RADAR_CONFIG_FILE", str(config_file))
     monkeypatch.setenv("RADAR_MQTT_BROKER_HOST", "environment-broker")
+    set_pipeline_environment(monkeypatch)
     monkeypatch.setattr(bootstrap, "load_env", lambda: None)
     monkeypatch.setattr(bootstrap, "load_yaml_config", lambda _: None)
     monkeypatch.setattr(bootstrap, "log_startup_logging_configuration", lambda _: None)

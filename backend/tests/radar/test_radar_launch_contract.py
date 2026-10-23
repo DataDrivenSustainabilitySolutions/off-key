@@ -26,6 +26,7 @@ from off_key_tactic_middleware.services.orchestration.radar_environment import (
 )
 from pydantic import SecretStr
 
+from tests.support.form_pipeline import form_launch
 from tests.support.pipelines import minimal_static_execution
 
 MODULE = "off_key_tactic_middleware.services.orchestration.radar_environment"
@@ -49,14 +50,14 @@ NOT_READ_BY_RADAR = {
 # RadarDefaultsConfig fields whose RADAR name is not RADAR_<FIELD>.
 RADAR_NAMES = {"mqtt_qos": "RADAR_SUBSCRIPTION_QOS"}
 GOLDEN_FINGERPRINTS = {
-    "static": "8cbbc852af961f6758434329ab48baa7a9f64293ba7a4092a312a69fdd690c15",
-    "adaptive": "85a99b62a0f414ee1e9aa2be78fcd25d780636b4fad2ca1be46c12c30a7826be",
+    "static": "cd363666f4a75b2605b4a63ae716b2a9014d5ec23b353683c67c67e5fbfc1cda",
+    "adaptive": "d9e5404b8477f37844edb42a5bc8c5ed4f6bb39045868cde57c5b367f46200cb",
     "pipeline": "37c1d6eb6eafa0b78256f464c20f737baaa6f821aa7f72458dec004805c818f8",
 }
 
 
 def _static_config():
-    return RadarStartConfig(
+    return form_launch(
         container_name="radar-static",
         mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
         strategy="static_baseline",
@@ -77,7 +78,7 @@ def _static_config():
 
 
 def _adaptive_config():
-    return RadarStartConfig(
+    return form_launch(
         container_name="radar-adaptive",
         mqtt_topics=["telemetry/charger-1/L1"],
         strategy="adaptive_stream",

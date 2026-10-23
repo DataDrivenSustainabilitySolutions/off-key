@@ -486,10 +486,8 @@ class DatabaseWriter:
             "signature": self._checkpoint_signature,
             "pending_signature": self._pending_checkpoint_signature,
         }
-        if (
-            self.managed_checkpoints
-            and self.config.pipeline is not None
-            and not await self._can_publish_pipeline_status(session, service_id)
+        if self.managed_checkpoints and not await self._can_publish_pipeline_status(
+            session, service_id
         ):
             return
         result = cast(

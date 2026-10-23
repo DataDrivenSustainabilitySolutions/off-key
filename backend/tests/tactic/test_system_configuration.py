@@ -126,6 +126,14 @@ def test_system_document_conformance_cases(case):
             SystemDocument.model_validate(conformance_document(case))
 
 
+def test_a_group_without_a_colour_gets_the_editor_default():
+    data = conformance_document(
+        {"group": {"id": "line", "label": "Line", "member_ids": []}}
+    )
+    group = SystemDocument.model_validate(data).groups[0]
+    assert group.color == CONFORMANCE["default_group_color"]
+
+
 @pytest.mark.parametrize(
     "host", ["localhost", "192.168.1.20", "2001:db8::1", "broker.example.com"]
 )

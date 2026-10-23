@@ -148,8 +148,12 @@ class SystemStream(NamedEntity):
         return value
 
 
+# The editor shows this colour for a group without one, so it is also saved.
+DEFAULT_GROUP_COLOR = "#397f74"
+
+
 class SystemGroup(NamedEntity):
-    color: str = Field(default="#7d9b8b", pattern=r"^#[0-9a-fA-F]{6}$")
+    color: str = Field(default=DEFAULT_GROUP_COLOR, pattern=r"^#[0-9a-fA-F]{6}$")
     member_ids: list[EntityId] = Field(default_factory=list, max_length=8192)
 
 

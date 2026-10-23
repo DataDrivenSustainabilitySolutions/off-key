@@ -1,5 +1,6 @@
 {
   "description": "Connection and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
+  "default_group_color": "#397f74",
   "base": {
     "format": "aberration-system",
     "schema_version": 1,

@@ -15,7 +15,7 @@ from test_platform_pins import ComposeLoader
 
 REPOSITORY = ROOT.parent
 WORKFLOWS = REPOSITORY / ".github/workflows"
-# Built and published for local stacks, never deployed by a release.
+# Built for local stacks and validated in CI, never published or deployed.
 BUILD_ONLY = {"off-key-mqtt-simulator": "services/mqtt/simulator"}
 IMAGE_DEFAULT = re.compile(r"^\$\{([A-Z_]+_IMAGE):-([\w.-]+):[\w.-]+\}$")
 
@@ -68,6 +68,18 @@ class ServiceRegistryTests(unittest.TestCase):
     def test_image_workflow_builds_every_release_image_from_its_root(self):
         expected = dict(BUILDS.values()) | BUILD_ONLY
         self.assertEqual(matrix_builds(), expected)
+
+    def test_publishing_skips_the_build_only_images(self):
+        strategy = workflow("docker-images.yml")["jobs"]["build-images"]["strategy"]
+        excluded = [entry["service"] for entry in strategy["matrix"]["exclude"]]
+        self.assertEqual(
+            excluded, ["${{ inputs.publish && 'mqtt-simulator' || 'none' }}"]
+        )
+        services = {
+            entry["image_name"]: entry["service"]
+            for entry in strategy["matrix"]["include"]
+        }
+        self.assertEqual([services[image] for image in BUILD_ONLY], ["mqtt-simulator"])
 
     def test_compose_builds_match_the_image_workflow(self):
         matrix = matrix_builds()

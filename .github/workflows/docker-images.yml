@@ -21,6 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The simulator only serves local stacks, which build it from source, so
+        # it is validated but never published.
+        exclude:
+          - service: ${{ inputs.publish && 'mqtt-simulator' || 'none' }}
         include:
           - service: frontend
             image_name: off-key-frontend

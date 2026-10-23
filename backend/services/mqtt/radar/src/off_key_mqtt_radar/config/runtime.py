@@ -1,94 +1,50 @@
 from functools import lru_cache
 
-from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
 from off_key_core.config.validation import SECRETS_DIR, Environment
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class RadarDatabaseSettings(BaseSettings):
-    """Runtime database settings for RADAR service internals."""
+    """Runtime database settings for RADAR service internals.
+
+    TACTIC passes RADAR_DATABASE_URL to managed workers; otherwise the shared
+    POSTGRES_* settings apply, with the same rules as every other service.
+    """
 
     model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
     RADAR_DATABASE_URL: str | None = None
-    POSTGRES_USER: str | None = None
-    POSTGRES_PASSWORD: SecretStr | None = None
-    POSTGRES_HOST: str | None = None
-    POSTGRES_PORT: str | None = None
-    POSTGRES_DB: str | None = None
-
-    @staticmethod
-    def _validate_direct_database_url(url: str) -> None:
-        scheme, sep, _ = url.partition("://")
-        if not sep:
-            raise ValueError(
-                "RADAR_DATABASE_URL must be a valid URL with an explicit scheme"
-            )
-        if scheme.lower() != "postgresql+asyncpg":
-            raise ValueError(
-                "RADAR_DATABASE_URL must use the postgresql+asyncpg:// scheme"
-            )
-
-    @staticmethod
-    def _parse_port(value: str | None, env_name: str) -> int:
-        if value is None:
-            raise ValueError(f"{env_name} must be set")
-        normalized = value.strip()
-        try:
-            port = int(normalized)
-        except ValueError as exc:
-            raise ValueError(
-                f"{env_name} must be an integer between 1 and 65535"
-            ) from exc
-        if not (1 <= port <= 65535):
-            raise ValueError(f"{env_name} must be an integer between 1 and 65535")
-        return port
 
     @model_validator(mode="after")
     def validate_database_source(self) -> "RadarDatabaseSettings":
         direct_url = (self.RADAR_DATABASE_URL or "").strip()
         if direct_url:
-            self._validate_direct_database_url(direct_url)
+            scheme, sep, _ = direct_url.partition("://")
+            if not sep:
+                raise ValueError(
+                    "RADAR_DATABASE_URL must be a valid URL with an explicit scheme"
+                )
+            if scheme.lower() != "postgresql+asyncpg":
+                raise ValueError(
+                    "RADAR_DATABASE_URL must use the postgresql+asyncpg:// scheme"
+                )
             return self
-
-        user = (self.POSTGRES_USER or "").strip()
-        password = (
-            self.POSTGRES_PASSWORD.get_secret_value() if self.POSTGRES_PASSWORD else ""
-        )
-        host = (self.POSTGRES_HOST or "").strip()
-        port = (self.POSTGRES_PORT or "").strip()
-        database = (self.POSTGRES_DB or "").strip()
-
-        if not (user and password and host and port and database):
+        try:
+            DatabaseSettings()
+        except ValidationError as exc:
             raise ValueError(
                 "Set RADAR_DATABASE_URL or all POSTGRES_* variables "
                 "(USER, PASSWORD, HOST, PORT, DB)"
-            )
-        self._parse_port(port, "POSTGRES_PORT")
+            ) from exc
         return self
 
     @property
     def async_database_url(self) -> str:
         direct_url = (self.RADAR_DATABASE_URL or "").strip()
-        if direct_url:
-            return direct_url
-        password = (
-            self.POSTGRES_PASSWORD.get_secret_value() if self.POSTGRES_PASSWORD else ""
-        )
-        postgres_port = self._parse_port(self.POSTGRES_PORT, "POSTGRES_PORT")
-        postgres_user = (self.POSTGRES_USER or "").strip()
-        postgres_host = (self.POSTGRES_HOST or "").strip()
-        postgres_db = (self.POSTGRES_DB or "").strip()
-        return build_postgres_database_url(
-            user=postgres_user,
-            password=password,
-            host=postgres_host,
-            port=postgres_port,
-            database=postgres_db,
-            async_driver=True,
-        )
+        return direct_url or DatabaseSettings().async_database_url
 
 
 class RadarCheckpointSettings(BaseSettings):

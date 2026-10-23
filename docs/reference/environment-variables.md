@@ -97,6 +97,10 @@ Do not paste generated output into issues, logs, commits, screenshots, or docume
 
 ## PostgreSQL and TimescaleDB
 
+Every backend service reads these with the same rules and no code defaults; the
+defaults below come from `.env.example`. Managed RADAR workers receive the
+resulting URL as `RADAR_DATABASE_URL` from TACTIC.
+
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
 | `POSTGRES_USER` | `postgres` | Database user |

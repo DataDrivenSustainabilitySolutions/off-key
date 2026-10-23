@@ -39,6 +39,7 @@ from off_key_tactic_middleware.services.orchestration.radar import (
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from tests.support.env import DATABASE_ENVIRONMENT, set_environment
 from tests.support.schema_baselines import (
     EXPECTED_MIGRATIONS,
     migrations_from,
@@ -289,6 +290,7 @@ async def test_ingress_ownership_does_not_block_account_management_or_migrations
 async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     disposable_database, monkeypatch
 ):
+    set_environment(monkeypatch, DATABASE_ENVIRONMENT)
     with disposable_database.begin() as connection:
         apply_migrations(connection)
     engine = create_async_engine(

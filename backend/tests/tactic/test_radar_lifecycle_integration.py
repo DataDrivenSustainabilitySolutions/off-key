@@ -46,6 +46,7 @@ from off_key_tactic_middleware.services.orchestration.reconciliation import (
 from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.support.env import DATABASE_ENVIRONMENT, set_environment
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
@@ -345,8 +346,9 @@ async def test_admission_rejects_stale_generation_and_collection_stop(
 
 @pytest.mark.asyncio
 async def test_pending_configuration_failure_is_visible_without_releasing_claim(
-    lifecycle_database,
+    lifecycle_database, monkeypatch
 ):
+    set_environment(monkeypatch, DATABASE_ENVIRONMENT)
     sessions = lifecycle_database
     config = RadarStartConfig(
         container_name="failed", mqtt_topics=["telemetry/entity/value"]

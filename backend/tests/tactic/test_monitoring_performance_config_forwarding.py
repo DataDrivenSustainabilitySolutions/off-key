@@ -31,6 +31,8 @@ from off_key_tactic_middleware.services.orchestration.radar_status import (
 from pydantic import ValidationError
 from starlette.requests import Request
 
+from tests.support.env import DATABASE_ENVIRONMENT, set_environment
+
 
 def _build_request() -> Request:
     return Request(
@@ -285,6 +287,7 @@ async def test_gateway_delete_preserves_tactic_error_status():
 
 
 def _validator(monkeypatch, validated_params=None):
+    set_environment(monkeypatch, DATABASE_ENVIRONMENT)
     validator = MagicMock(
         return_value=validated_params or {"n_estimators": 100, "contamination": 0.1}
     )

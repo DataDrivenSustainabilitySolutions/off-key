@@ -130,6 +130,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
             POSTGRES_USER="test",
             POSTGRES_PASSWORD="test",
             POSTGRES_HOST="localhost",
+            POSTGRES_PORT=5432,
             POSTGRES_DB="radar",
             RADAR_CHECKPOINT_SECRET="monitoring-contract-test-key",
         ),

@@ -11,7 +11,7 @@ from enum import StrEnum
 from functools import cached_property, lru_cache
 from typing import Annotated, Any
 
-from off_key_core.config.database import build_postgres_database_url
+from off_key_core.config.database import DatabaseSettings
 from off_key_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
 from off_key_core.config.resource_budget import (
     DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
@@ -436,29 +436,18 @@ class TacticSettings(BaseSettings):
         )
 
 
-class RadarContainerRuntimeSettings(BaseSettings):
-    """Environment settings used to build RADAR container runtime env vars."""
+class RadarContainerRuntimeSettings(DatabaseSettings):
+    """Environment settings used to build RADAR container runtime env vars.
 
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    The database fields and their rules are the shared core ones.
+    """
 
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: SecretStr = SecretStr("postgres")
-    POSTGRES_HOST: str = "timescaledb"
-    POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535)
-    POSTGRES_DB: str = "postgres"
     ENVIRONMENT: Environment = "development"
     RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr(DEVELOPMENT_CHECKPOINT_SECRET)
 
     @property
     def radar_database_url(self) -> str:
-        return build_postgres_database_url(
-            user=self.POSTGRES_USER,
-            password=self.POSTGRES_PASSWORD.get_secret_value(),
-            host=self.POSTGRES_HOST,
-            port=self.POSTGRES_PORT,
-            database=self.POSTGRES_DB,
-            async_driver=True,
-        )
+        return self.async_database_url
 
 
 @lru_cache(maxsize=1)

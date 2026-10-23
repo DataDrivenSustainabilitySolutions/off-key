@@ -56,6 +56,12 @@ from tests.support.schema_baselines import (
 pytestmark = pytest.mark.radar_integration
 
 
+@pytest.fixture(autouse=True)
+def database_environment(monkeypatch):
+    # Every RADAR launch carries the database settings from the environment.
+    set_environment(monkeypatch, DATABASE_ENVIRONMENT)
+
+
 @pytest_asyncio.fixture
 async def lifecycle_database(disposable_database):
     with disposable_database.begin() as connection:
@@ -346,9 +352,8 @@ async def test_admission_rejects_stale_generation_and_collection_stop(
 
 @pytest.mark.asyncio
 async def test_pending_configuration_failure_is_visible_without_releasing_claim(
-    lifecycle_database, monkeypatch
+    lifecycle_database,
 ):
-    set_environment(monkeypatch, DATABASE_ENVIRONMENT)
     sessions = lifecycle_database
     config = form_launch(
         container_name="failed", mqtt_topics=["telemetry/entity/value"]

@@ -21,6 +21,8 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 from sqlalchemy import create_engine, insert, text
 from sqlalchemy.exc import OperationalError
 
+from tests.support.form_pipeline import form_pipeline
+
 pytestmark = [
     pytest.mark.radar_integration,
     pytest.mark.skipif(
@@ -265,7 +267,7 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
         "RADAR_MQTT_BROKER_HOST": broker.name,
         "RADAR_SUBSCRIPTION_TOPICS": ",".join(topics),
         "RADAR_SUBSCRIPTION_QOS": "1",
-        "RADAR_MONITORING_CONFIG": monitoring.model_dump_json(),
+        "RADAR_PIPELINE_CONFIG": form_pipeline(monitoring, topics).model_dump_json(),
         "RADAR_CHECKPOINT_INTERVAL": "5",
         "RADAR_HEALTH_CHECK_INTERVAL": "0.5",
         "RADAR_SENSOR_FRESHNESS_SECONDS": "3",

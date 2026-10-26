@@ -18,10 +18,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Two disposable Swarms run in parallel. The rehearsal lane keeps the original
+  # order (browser journeys, then backup restore and binary rollback over the state
+  # they leave); the pipelines lane runs the adaptive monitor and visual pipelines.
   deployment-smoke:
-    name: deployment-smoke
+    name: deployment-smoke (${{ matrix.lane }})
     runs-on: ubuntu-24.04
     timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: rehearsal
+            # Every other deployment test, so a new one cannot fall between lanes.
+            deployment-tests: --ignore=backend/tests/contracts/test_adaptive_lane_e2e.py
+          - lane: pipelines
+            deployment-tests: backend/tests/contracts/test_adaptive_lane_e2e.py
     env:
       ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
 
@@ -60,6 +72,9 @@ jobs:
           npm ci --prefix frontend
           uv sync --project backend --all-packages --all-groups --frozen
           uv sync --project infra --frozen
+          # Pull the browser image while the Swarm is prepared; docker run pulls it again if this fails.
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          nohup docker pull --quiet "mcr.microsoft.com/playwright:v${playwright_version}-noble" > /dev/null 2>&1 &
 
       - name: Require successful image publication for this main commit
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -76,6 +91,7 @@ jobs:
           uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
 
       - name: Run existing browser journeys against the production frontend
+        if: matrix.lane == 'rehearsal'
         timeout-minutes: 12
         run: |
           set -euo pipefail
@@ -89,7 +105,23 @@ jobs:
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
 
+      - name: Prepare the operator account for the pipelines lane
+        if: matrix.lane == 'pipelines'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # The browser journeys create this account in the rehearsal lane, with authoring disabled.
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npx playwright test --project=auth-setup
+
       - name: Check out the immutable pipeline-compatible rollback reference
+        if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: d63f444dbaaf8dec0392dd723394452f2e32fe69
@@ -98,10 +130,12 @@ jobs:
           persist-credentials: false
 
       - name: Build the reviewed compatible binary rollback reference
+        if: matrix.lane == 'rehearsal'
         timeout-minutes: 25
         run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
 
-      - name: Verify adaptive monitoring, backup restoration and compatible binary rollback
+      # Rehearsal lane: backup restoration and compatible binary rollback; pipelines lane: adaptive monitoring.
+      - name: Verify this lane's deployment tests
         timeout-minutes: 25
         env:
           RUN_ADAPTIVE_E2E: "1"
@@ -125,10 +159,11 @@ jobs:
           export E2E_MQTT_USERNAME=offkey-radar
           E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
-          uv run --frozen --project backend python -m pytest -m deployment -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
-          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment rehearsal"
+          uv run --frozen --project backend python -m pytest -m deployment ${{ matrix.deployment-tests }} -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment ${{ matrix.lane }}"
 
       - name: Verify visual pipelines against the production frontend and worker
+        if: matrix.lane == 'pipelines'
         timeout-minutes: 15
         run: |
           set -euo pipefail
@@ -144,7 +179,7 @@ jobs:
             npm run test:e2e:pipelines
 
       - name: Save visual language review evidence
-        if: always()
+        if: always() && matrix.lane == 'pipelines'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pipeline-visual-language
@@ -161,7 +196,7 @@ jobs:
           retention-days: 14
 
       - name: Save the exact production images that passed the rehearsal
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.lane == 'rehearsal' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: production-release
@@ -171,7 +206,7 @@ jobs:
           retention-days: 90
 
       - name: Save compatible binary rollback evidence
-        if: always()
+        if: always() && matrix.lane == 'rehearsal'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compatible-binary-rollback
@@ -202,7 +237,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: deployment-smoke-artifacts
+          name: deployment-smoke-artifacts-${{ matrix.lane }}
           if-no-files-found: ignore
           path: |
             deployment-smoke-diagnostics
@@ -213,3 +248,19 @@ jobs:
         if: always()
         timeout-minutes: 3
         run: uv run --frozen --project infra python infra/tests/swarm_smoke.py cleanup --directory "$OFFKEY_REHEARSAL_DIR"
+
+  # The required status check: it passes only when both lanes pass.
+  deployment-smoke-result:
+    name: deployment-smoke
+    needs: deployment-smoke
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every lane to succeed
+        env:
+          RESULT: ${{ needs.deployment-smoke.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "A deployment smoke lane did not succeed: $RESULT"
+            exit 1
+          fi

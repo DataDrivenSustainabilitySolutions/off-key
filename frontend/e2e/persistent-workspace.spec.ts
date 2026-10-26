@@ -17,7 +17,9 @@ async function createFixture(page: Page, count = 40) {
     expect(response.ok(), await response.text()).toBe(true);
     return await response.json() as SystemSnapshot;
   };
-  const run = randomUUID().slice(0, 8);
+  // Search matches IDs too, so keep digits out of them: a hex ID containing "30"
+  // would make every extra broker match the "Root navigation broker 30" search.
+  const run = randomUUID().slice(0, 8).replace(/\d/g, digit => "ghijklmnop"[Number(digit)]!);
   const broker = "nav-broker-" + run;
   const north = "nav-north-" + run, south = "nav-south-" + run;
   const snapshot = await read();

@@ -98,10 +98,8 @@ class PlatformPinTests(unittest.TestCase):
         self.assertLessEqual(set(ALLOWED_DRIFT), seen, "stale ALLOWED_DRIFT entry")
 
     def test_collection_matrix_covers_production_and_local_emqx(self):
-        workflow = yaml.safe_load(
-            (REPOSITORY / ".github/workflows/collection-integration.yml").read_text()
-        )
-        (job,) = workflow["jobs"].values()
+        workflow = yaml.safe_load((REPOSITORY / ".github/workflows/ci.yml").read_text())
+        job = workflow["jobs"]["collection"]
         matrix = {str(tag) for tag in job["strategy"]["matrix"]["emqx"]}
         production = release_images()["emqx"][1]
         local = ALLOWED_DRIFT[("docker-compose.yml", "emqx")].rsplit(":", 1)[1]

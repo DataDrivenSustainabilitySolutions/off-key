@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 
 test("preserves edits made after a real atomic draft save was submitted", async ({ page }) => {
-  await loginPipelineWorkspace(page);
+  await openPipelineWorkspace(page);
   const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };

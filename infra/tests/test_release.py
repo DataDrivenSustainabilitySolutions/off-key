@@ -23,7 +23,7 @@ release = load_script("pin_release")
 
 
 class ReleaseTests(unittest.TestCase):
-    def test_every_release_gate_completion_rechecks_production_deployment(self):
+    def test_ci_completion_is_the_only_automatic_release_trigger(self):
         workflows = ROOT.parent / ".github/workflows"
         deployment = yaml.load(
             (workflows / "deploy-production.yml").read_text(), Loader=yaml.BaseLoader
@@ -31,55 +31,53 @@ class ReleaseTests(unittest.TestCase):
         trigger = deployment["on"]["workflow_run"]
         self.assertIn("completed", trigger["types"])
         self.assertIn("main", trigger["branches"])
-        for filename in release.REQUIRED_WORKFLOWS:
-            with self.subTest(workflow=filename):
-                gate = yaml.load(
-                    (workflows / filename).read_text(), Loader=yaml.BaseLoader
-                )
-                self.assertIn(gate["name"], trigger["workflows"])
+        gate = yaml.load(
+            (workflows / release.RELEASE_WORKFLOW).read_text(), Loader=yaml.BaseLoader
+        )
+        self.assertEqual(trigger["workflows"], [gate["name"]])
 
-    def test_required_workflows_run_on_every_main_push(self):
-        for filename in release.REQUIRED_WORKFLOWS:
-            with self.subTest(workflow=filename):
-                workflow = yaml.load(
-                    (ROOT.parent / ".github/workflows" / filename).read_text(),
-                    Loader=yaml.BaseLoader,
-                )
-                push = workflow["on"]["push"]
-                self.assertIn("main", push["branches"])
-                self.assertNotIn("paths", push)
-                self.assertNotIn("paths-ignore", push)
+    def test_release_workflow_runs_on_every_main_push(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows" / release.RELEASE_WORKFLOW).read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        push = workflow["on"]["push"]
+        self.assertIn("main", push["branches"])
+        self.assertNotIn("paths", push)
+        self.assertNotIn("paths-ignore", push)
 
-    def test_latest_release_requires_all_workflows_and_uses_main_commit_order(self):
+    def test_latest_release_requires_ci_and_uses_main_commit_order(self):
         newest, eligible, older = (letter * 40 for letter in "abc")
-        responses = [[{"sha": sha} for sha in (newest, eligible, older)]]
-        for workflow in release.REQUIRED_WORKFLOWS:
-            runs = [
-                {
-                    "id": number,
-                    "run_attempt": 1,
-                    "head_sha": sha,
-                    "head_branch": "main",
-                    "event": "push",
-                    "status": "completed",
-                    "conclusion": "success",
-                }
-                for number, sha in enumerate((newest, eligible, older), start=1)
-            ]
-            if workflow == "deployment-smoke.yml":
-                # A later failed run invalidates the older success on the newest commit.
-                runs.append(runs[0] | {"id": 4, "conclusion": "failure"})
-            responses.append({"workflow_runs": runs})
+        runs = [
+            {
+                "id": number,
+                "run_attempt": 1,
+                "head_sha": sha,
+                "head_branch": "main",
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+            }
+            for number, sha in enumerate((newest, eligible, older), start=1)
+        ]
+        # A later failed run invalidates the older success on the newest commit.
+        runs.append(runs[0] | {"id": 4, "conclusion": "failure"})
+        responses = [
+            [{"sha": sha} for sha in (newest, eligible, older)],
+            {"workflow_runs": runs},
+        ]
         with (
             patch.object(release, "github", side_effect=responses) as github,
             redirect_stderr(StringIO()),
         ):
             self.assertEqual(release.select_revision("latest"), eligible)
-        self.assertEqual(github.call_count, 1 + len(release.REQUIRED_WORKFLOWS))
-        for call in github.call_args_list[1:]:
-            self.assertIn("branch=main&event=push", call.args[0])
+        self.assertEqual(github.call_count, 2)
+        self.assertIn(
+            f"actions/workflows/{release.RELEASE_WORKFLOW}/runs?branch=main&event=push",
+            github.call_args_list[1].args[0],
+        )
 
-    def test_explicit_rollback_requires_successful_main_push_workflows(self):
+    def test_explicit_rollback_requires_a_successful_main_push_run(self):
         revision = "a" * 40
         successful_run = {
             "id": 1,
@@ -96,13 +94,8 @@ class ReleaseTests(unittest.TestCase):
             return_value={"status": "ahead", "workflow_runs": [successful_run]},
         ) as github:
             self.assertEqual(release.select_revision(revision), revision)
-        self.assertEqual(github.call_count, 1 + len(release.REQUIRED_WORKFLOWS))
-        self.assertTrue(
-            all(
-                f"head_sha={revision}" in call.args[0]
-                for call in github.call_args_list[1:]
-            )
-        )
+        self.assertEqual(github.call_count, 2)
+        self.assertIn(f"head_sha={revision}", github.call_args_list[1].args[0])
         for changes in (
             {"status": "in_progress", "conclusion": None},
             {"conclusion": "failure"},
@@ -117,10 +110,7 @@ class ReleaseTests(unittest.TestCase):
                     "github",
                     side_effect=[
                         {"status": "ahead"},
-                        {"workflow_runs": [successful_run]},
                         {"workflow_runs": [successful_run | changes]},
-                        *[{"workflow_runs": [successful_run]}]
-                        * (len(release.REQUIRED_WORKFLOWS) - 2),
                     ],
                 ),
                 self.assertRaisesRegex(ValueError, "No eligible release"),
@@ -136,10 +126,7 @@ class ReleaseTests(unittest.TestCase):
             patch.object(
                 release,
                 "github",
-                side_effect=[
-                    [{"sha": "a" * 40}],
-                    *[{"workflow_runs": []}] * len(release.REQUIRED_WORKFLOWS),
-                ],
+                side_effect=[[{"sha": "a" * 40}], {"workflow_runs": []}],
             ),
             self.assertRaisesRegex(ValueError, "No eligible release"),
         ):

@@ -1,24 +1,29 @@
 name: CI
 
+# Every check that gates a merge or a release runs in this one workflow. Branch
+# rules require only `ci-gate`, and Deploy Production requires only this
+# workflow's success on a main push, so adding, renaming or re-versioning a job
+# never changes a required check.
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
   merge_group:
-    types:
-      - checks_requested
+    types: [checks_requested]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # A newer push supersedes an older run of the same kind; a manual run never
+  # cancels the main push run that releases.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  pre-commit:
-    name: pre-commit (${{ matrix.python }})
+  backend:
+    name: backend (${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -29,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up the backend toolchain
         uses: ./.github/actions/setup-backend
@@ -54,10 +61,13 @@ jobs:
   frontend:
     name: frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -96,3 +106,470 @@ jobs:
           playwright_version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host --volume "${PWD}:/work" --workdir /work --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e:mocked
+
+  infrastructure:
+    name: infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-backend
+        with:
+          python-version: ""
+          sync: "false"
+          cache: "false"
+      - name: Validate Ansible and render the production stack with synthetic inputs
+        env:
+          OFFKEY_GOST_SMOKE: "1"
+        run: make -C infra check-deploy
+
+  collection:
+    name: collection (${{ matrix.emqx }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        emqx: ["5.8.7", "6.3.2"]
+    env:
+      EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
+      OFFKEY_COLLECTION_INTEGRATION: "1"
+      COMPOSE_FILE: backend/tests/collection_integration/compose.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
+
+      - name: Use the production TimescaleDB image
+        run: |
+          image="$(python3 .github/scripts/release_image.py postgres)"
+          echo "POSTGRES_TEST_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Start isolated brokers and database
+        run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Test schema, retention, membership and release transactions
+        env:
+          TEST_SCHEMA_DATABASE_URL: postgresql+asyncpg://collection_test:collection-test-password@127.0.0.1:25432/collection_test
+        run: |
+          uv run --project backend python -m pytest -m "postgres and not radar_integration" -q --tb=short \
+            --timeout=300 --timeout-method=thread --junitxml="$RUNNER_TEMP/database-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/database-results.xml" "collection database"
+
+      - name: Test routing, collection and recovery under load
+        run: timeout 300 uv run --project backend python -m pytest backend/tests/collection_integration -q --tb=short
+
+      - name: Show fixture diagnostics on failure
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail 150
+
+      - name: Remove fixture containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  radar:
+    name: radar
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TEST_RADAR_DOCKER: "1"
+      UV_PYTHON: "3.14"
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
+
+      - name: Select the production database and current RADAR image
+        run: |
+          image="$(python3 .github/scripts/release_image.py postgres)"
+          echo "TEST_RADAR_DATABASE_IMAGE=$image" >> "$GITHUB_ENV"
+          echo "TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Build the current production RADAR Dockerfile
+        run: |
+          docker pull "$TEST_RADAR_DATABASE_IMAGE"
+          docker pull eclipse-mosquitto:2.0
+          docker build --file backend/Dockerfile --tag "$TEST_RADAR_SWARM_IMAGE" \
+            --build-arg SERVICE_NAME=off-key-mqtt-radar \
+            --build-arg SERVICE_ROOT=services/mqtt/radar \
+            --build-arg GIT_COMMIT="$GITHUB_SHA" backend
+
+      - name: Start an isolated Swarm and disposable schema fixture
+        run: |
+          set -euo pipefail
+          docker swarm init > /dev/null
+          touch "$RUNNER_TEMP/radar-swarm-created"
+          database="radar-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --name "$database" --label off-key.ci=radar-production \
+            --publish 127.0.0.1::5432 --tmpfs /var/lib/postgresql/data:rw,size=768m \
+            --env POSTGRES_USER=radar_ci --env POSTGRES_DB=radar_ci \
+            --env POSTGRES_PASSWORD=disposable-radar-ci-password "$TEST_RADAR_DATABASE_IMAGE"
+          port="$(docker port "$database" 5432/tcp | awk -F: '{print $NF}')"
+          url="postgresql+asyncpg://radar_ci:disposable-radar-ci-password@127.0.0.1:${port}/radar_ci"
+          echo "TEST_SCHEMA_DATABASE_URL=$url" >> "$GITHUB_ENV"
+          echo "TEST_PIPELINE_DATABASE_CONTAINER=$database" >> "$GITHUB_ENV"
+          export TEST_SCHEMA_DATABASE_URL="$url"
+          uv run --frozen --project backend python - <<'PY'
+          import os, time
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+          from sqlalchemy.exc import OperationalError
+          engine = create_engine(make_url(os.environ["TEST_SCHEMA_DATABASE_URL"]).set(drivername="postgresql+psycopg2"), connect_args={"connect_timeout": 3})
+          try:
+              for attempt in range(60):
+                  try:
+                      with engine.connect() as connection:
+                          assert connection.scalar(text("SELECT 1")) == 1
+                      break
+                  except OperationalError:
+                      if attempt == 59:
+                          raise
+                      time.sleep(1)
+          finally:
+              engine.dispose()
+          PY
+
+      - name: Test real MQTT, durable recovery, lifecycle and Swarm replacement
+        timeout-minutes: 25
+        run: |
+          uv run --frozen --project backend python -u -m pytest -vv --tb=short -ra \
+            --timeout=300 --timeout-method=thread -o faulthandler_timeout=60 \
+            --durations=10 \
+            --junitxml="$RUNNER_TEMP/radar-results.xml" \
+            -m radar_integration
+
+      - name: Require executed integration coverage without skips
+        run: python3 .github/scripts/require_executed_tests.py "$RUNNER_TEMP/radar-results.xml" "RADAR integration"
+
+      - name: Save RADAR integration test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: radar-integration-results
+          path: ${{ runner.temp }}/radar-results.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Collect owned fixture diagnostics
+        if: failure()
+        # A hung log read must not hold the runner until the job timeout.
+        timeout-minutes: 5
+        run: |
+          docker service ls
+          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+            for service in $(docker service ls --quiet --filter "label=$label"); do
+              timeout 30 docker service ps --no-trunc "$service" || true
+              timeout 30 docker service logs --tail 100 "$service" || true
+            done
+            for container in $(docker container ls --all --quiet --filter "label=$label"); do
+              timeout 30 docker logs --tail 100 "$container" || true
+            done
+          done
+
+      - name: Remove owned CI services, containers and networks
+        if: always()
+        timeout-minutes: 2
+        run: |
+          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+            docker service ls --quiet --filter "label=$label" | xargs -r docker service rm || true
+            docker container ls --all --quiet --filter "label=$label" | xargs -r docker container rm --force || true
+          done
+          if [ -f "$RUNNER_TEMP/radar-swarm-created" ]; then
+            docker swarm leave --force || true
+          fi
+          docker network ls --quiet --filter label=off-key.integration-owner | xargs -r docker network rm || true
+
+  # Pull requests, the merge queue and manual runs build every image without pushing.
+  images:
+    if: github.event_name != 'push'
+    uses: ./.github/workflows/docker-images.yml
+    with:
+      publish: false
+      cache-scope-prefix: docker-validate
+
+  # A main push publishes the images that deployment smoke then tests and that a
+  # release deploys by digest.
+  publish:
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    uses: ./.github/workflows/docker-images.yml
+    with:
+      publish: true
+      cache-scope-prefix: docker-publish
+      cache-fallback-scope-prefix: docker-validate
+
+  # Two disposable Swarms run in parallel. The rehearsal lane keeps the original
+  # order (browser journeys, then backup restore and binary rollback over the state
+  # they leave); the pipelines lane runs the adaptive monitor and visual pipelines.
+  deployment-smoke:
+    name: deployment-smoke (${{ matrix.lane }})
+    needs: publish
+    # A main push tests the images its publish job pushed; other events build them locally.
+    if: ${{ !cancelled() && (needs.publish.result == 'success' || (needs.publish.result == 'skipped' && github.event_name != 'push')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: rehearsal
+            # Every other deployment test, so a new one cannot fall between lanes.
+            deployment-tests: --ignore=backend/tests/contracts/test_adaptive_lane_e2e.py
+          - lane: pipelines
+            deployment-tests: backend/tests/contracts/test_adaptive_lane_e2e.py
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
+        with:
+          sync: "false"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Read published application images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install existing E2E and infrastructure tools
+        run: |
+          echo "OFFKEY_REHEARSAL_DIR=$RUNNER_TEMP/offkey-rehearsal" >> "$GITHUB_ENV"
+          npm ci --prefix frontend
+          uv sync --project backend --all-packages --all-groups --frozen
+          uv sync --project infra --frozen
+          # Pull the browser image while the Swarm is prepared; docker run pulls it again if this fails.
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          nohup docker pull --quiet "mcr.microsoft.com/playwright:v${playwright_version}-noble" > /dev/null 2>&1 &
+
+      - name: Prepare disposable production Swarm
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          docker swarm init > /dev/null
+          uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
+
+      - name: Run existing browser journeys against the production frontend
+        if: matrix.lane == 'rehearsal'
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          # Exercise the operator-disabled compatibility path before the visual lane.
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
+
+      - name: Sign the operator in once for the pipelines lane
+        if: matrix.lane == 'pipelines'
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # auth-setup accepts the operator invitation and saves the remembered session
+          # that the deployment tests and every visual journey below reuse.
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npx playwright test --project=auth-setup
+
+      - name: Check out the immutable pipeline-compatible rollback reference
+        if: matrix.lane == 'rehearsal'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d63f444dbaaf8dec0392dd723394452f2e32fe69
+          path: .tmp/compatible-release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Build the reviewed compatible binary rollback reference
+        if: matrix.lane == 'rehearsal'
+        timeout-minutes: 25
+        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
+
+      # Rehearsal lane: backup restoration and compatible binary rollback; pipelines lane: adaptive monitoring.
+      - name: Verify this lane's deployment tests
+        timeout-minutes: 25
+        env:
+          RUN_ADAPTIVE_E2E: "1"
+          OFFKEY_DEPLOYMENT_REHEARSAL: "1"
+          E2E_GATEWAY_URL: http://localhost:8000
+          E2E_MQTT_HOST: localhost
+          E2E_MQTT_PORT: "8883"
+          SUPERUSER_MAIL: admin@example.com
+          E2E_AUTH_PASSWORD: PlaywrightPass123!
+        run: |
+          set -euo pipefail
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          # Remembered sessions keep access tokens in memory; mint one from the cookie.
+          E2E_SESSION_COOKIE="$(node -e "const state=require('./frontend/test-results/.auth/user.json'); const cookie=state.cookies.find(({name})=>name==='off_key_remembered_session')?.value; if (!cookie) { console.error('No remembered session cookie in the auth state'); process.exit(1); } process.stdout.write(cookie)")"
+          echo "::add-mask::$E2E_SESSION_COOKIE"
+          E2E_AUTH_TOKEN="$(curl --fail --silent --show-error -X POST -H 'X-Off-Key-Session: 1' -H "Cookie: off_key_remembered_session=$E2E_SESSION_COOKIE" http://localhost:8000/v1/auth/refresh | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"], end="")')"
+          echo "::add-mask::$E2E_AUTH_TOKEN"
+          export E2E_AUTH_TOKEN
+          export E2E_MQTT_CA_FILE="$OFFKEY_REHEARSAL_DIR/ca.crt"
+          export E2E_MQTT_USERNAME=offkey-radar
+          E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
+          export E2E_MQTT_PASSWORD
+          uv run --frozen --project backend python -m pytest -m deployment ${{ matrix.deployment-tests }} -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment ${{ matrix.lane }}"
+
+      - name: Verify visual pipelines against the production frontend and worker
+        if: matrix.lane == 'pipelines'
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          trap 'docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null' EXIT
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
+            npm run test:e2e:pipelines
+
+      - name: Save visual language review evidence
+        if: always() && matrix.lane == 'pipelines'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pipeline-visual-language
+          path: |
+            frontend/test-results/**/visual-language-*.png
+            frontend/test-results/**/creation-*.png
+            frontend/test-results/**/*-live-pipeline.png
+            frontend/test-results/**/monitoring-history-*.png
+            frontend/test-results/**/maximum-graph-dark.png
+            frontend/test-results/**/maximum-graph-mobile.png
+            frontend/test-results/**/maximum-graph-overview.png
+            frontend/test-results/**/maximum-graph-metrics.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save the exact production images that passed the rehearsal
+        if: matrix.lane == 'rehearsal' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: production-release
+          path: ${{ env.OFFKEY_REHEARSAL_DIR }}/production-release.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 90
+
+      - name: Save compatible binary rollback evidence
+        if: always() && matrix.lane == 'rehearsal'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compatible-binary-rollback
+          path: |
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Collect rehearsal diagnostics
+        if: failure()
+        # A hung log read must not hold the runner until the job timeout.
+        timeout-minutes: 5
+        run: |
+          mkdir -p deployment-smoke-diagnostics
+          timeout 30 docker stack ps --no-trunc offkey-smoke > deployment-smoke-diagnostics/tasks.txt 2>&1 || true
+          for service in $(timeout 30 docker service ls --format '{{.Name}}' --filter label=com.docker.stack.namespace=offkey-smoke); do
+            timeout 30 docker service logs --tail 100 "$service" > "deployment-smoke-diagnostics/$service.log" 2>&1 || true
+          done
+          # Release jobs are plain `docker run` containers; a daemon restart or OOM kill
+          # only shows up in the host logs, so print them where the job log keeps them.
+          echo "::group::Docker daemon and kernel messages"
+          sudo journalctl -u docker --since "-40 min" --no-pager 2>&1 | grep -viE 'level=(debug|info)' | tail -n 80 || true
+          sudo dmesg -T 2>&1 | grep -iE 'oom|killed process|out of memory|segfault' | tail -n 40 || true
+          timeout 30 docker service ls 2>&1 || true
+          echo "::endgroup::"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deployment-smoke-artifacts-${{ matrix.lane }}
+          if-no-files-found: ignore
+          path: |
+            deployment-smoke-diagnostics
+            frontend/playwright-report
+            frontend/test-results
+
+      - name: Remove the disposable stack
+        if: always()
+        timeout-minutes: 3
+        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py cleanup --directory "$OFFKEY_REHEARSAL_DIR"
+
+  # The one required status check. It needs every other job, so it passes only
+  # when all of them pass; its name never changes.
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          # A push publishes the images; every other event only builds them.
+          NOT_RUN: ${{ github.event_name == 'push' && 'images' || 'publish' }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs, not_run = json.loads(os.environ["NEEDS"]), os.environ["NOT_RUN"]
+          expected = {job: "skipped" if job == not_run else "success" for job in needs}
+          wrong = {job: need["result"] for job, need in needs.items() if need["result"] != expected[job]}
+          for job, result in sorted(wrong.items()):
+              print(f"::error::{job} {result}, expected {expected[job]}")
+          sys.exit(1 if wrong else 0)
+          PY

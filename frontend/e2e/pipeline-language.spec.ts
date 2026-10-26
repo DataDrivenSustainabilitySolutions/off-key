@@ -5,7 +5,7 @@ import type {
   PipelineDefinition,
   PipelineView,
 } from "../src/types/pipelines.generated";
-import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { dropPipelineComponent } from "./helpers/pipelineGrid";
 import { expectClearPipelineRouting } from "./helpers/pipelineRouting";
 import {
@@ -19,7 +19,7 @@ import { accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
-test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
+test.beforeEach(async ({ page }) => openPipelineWorkspace(page));
 
 test("drags from the compact component menu without covering the drop area", async ({ page }) => {
   test.setTimeout(30_000);

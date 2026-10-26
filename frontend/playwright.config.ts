@@ -66,10 +66,11 @@ export default defineConfig({
     {
       name: "pipeline-workspace",
       testMatch: PIPELINE_SPECS,
-      // Every journey signs in afresh; a previous invocation's output is disposable.
+      // Runs in its own invocation after auth-setup, with authoring enabled,
+      // and reuses the session auth-setup saved rather than signing in again.
       use: {
         ...chromiumUse,
-        storageState: { cookies: [], origins: [] },
+        storageState: authStateFile,
         actionTimeout: 30_000,
       },
     },

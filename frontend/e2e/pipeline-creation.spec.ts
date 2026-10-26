@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
-import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test("selects only AC1 and AC3 and preserves named template mappings on desktop and mobile", async ({ page }, testInfo) => {
-  await loginPipelineWorkspace(page);
+  await openPipelineWorkspace(page);
   const token = (await accessToken(page))!;
   const headers = { Authorization: `Bearer ${token}` };
   const deviceId = randomUUID();
@@ -66,7 +66,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
 });
 
 test("keeps an unnamed graph dirty and undoable across template browsing", async ({ page }) => {
-  await loginPipelineWorkspace(page);
+  await openPipelineWorkspace(page);
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.goto("/?create=monitoring");
   const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
@@ -100,7 +100,7 @@ test("keeps an unnamed graph dirty and undoable across template browsing", async
 
 for (const acknowledgement of ["after returning", "while in Sources"] as const) {
   test(`keeps one real template save acknowledged ${acknowledgement} and preserves later edits`, async ({ page }) => {
-    await loginPipelineWorkspace(page);
+    await openPipelineWorkspace(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
     const token = (await accessToken(page))!;
     const headers = { Authorization: `Bearer ${token}` };
@@ -171,7 +171,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
 }
 
 test("loads the saved template, saves an independent copy, and fits desktop and mobile layouts", async ({ page }, testInfo) => {
-  await loginPipelineWorkspace(page);
+  await openPipelineWorkspace(page);
   const headers = { Authorization: `Bearer ${(await accessToken(page))!}` };
   const endpoint = "/api/v1/monitors/pipelines";
   const ids: string[] = [];

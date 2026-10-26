@@ -101,7 +101,7 @@ class ServiceRegistryTests(unittest.TestCase):
                     )
 
     def test_rollback_revision_is_the_same_everywhere(self):
-        steps = workflow("deployment-smoke.yml")["jobs"]["deployment-smoke"]["steps"]
+        steps = workflow("ci.yml")["jobs"]["deployment-smoke"]["steps"]
         (checkout,) = [
             step
             for step in steps

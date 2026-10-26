@@ -2,13 +2,13 @@ import { savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { fitPipelineOverview } from "./helpers/pipelineNavigation";
 import { expectClearPipelineRouting, pipelineRoutingSnapshot } from "./helpers/pipelineRouting";
 import { accessToken } from "./helpers/auth";
 
 test("reroutes around moved components during native dragging and after reload", async ({ page }, testInfo) => {
-  await loginPipelineWorkspace(page);
+  await openPipelineWorkspace(page);
   await page.setViewportSize({ width: 1600, height: 1100 });
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };

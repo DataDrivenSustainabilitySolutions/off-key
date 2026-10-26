@@ -41,16 +41,14 @@ attributes are typed.
 
 ### RADAR production integration
 
-The [RADAR production integration workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/radar-production-integration.yml)
+The `radar` job of the [CI workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/ci.yml)
 runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It builds the
 current production `backend/Dockerfile`, uses Python 3.14 and frozen dependencies,
 and selects the TimescaleDB image pinned by the production release manifest.
 Its isolated Ubuntu runner initializes Swarm, runs real MQTT/database/task
 replacement regressions and cleans labelled fixtures within a 45 minute job.
-Production release selection requires a successful main-push run for the same
-commit, alongside the other release workflows.
-
-Main also requires this check before merging, bound to GitHub Actions. The dedicated
+Production release selection requires the commit's CI main-push run to succeed,
+which includes this job, and `ci-gate` requires it before merging. The dedicated
 job requires a nonempty JUnit report with zero skipped cases. Missing integration
 prerequisites therefore fail that job; the general backend suite still supports
 optional integration skips for local development.
@@ -60,7 +58,7 @@ Lanes select their tests by marker, never by file list:
 | Marker | Lane | Applied by |
 | --- | --- | --- |
 | `postgres` | MQTT collection integration (`-m "postgres and not radar_integration"`) | Automatically, for every test using `disposable_database` or `member_database` |
-| `radar_integration` | RADAR production integration | Module `pytestmark` |
+| `radar_integration` | RADAR production integration (`radar` job) | Module `pytestmark` |
 | `collection_stack` | MQTT collection integration, broker step | `collection_integration/environment.py` |
 | `deployment` | Deployment smoke rehearsal | Module `pytestmark` |
 
@@ -112,9 +110,15 @@ because they need different TACTIC settings:
 | Command | Covers | Requires |
 | --- | --- | --- |
 | `npm --prefix frontend run test:e2e` | Default lanes | `TACTIC_PIPELINE_AUTHORING_ENABLED=false` |
-| `npm --prefix frontend run test:e2e:pipelines` | Visual-pipeline lane | `TACTIC_PIPELINE_AUTHORING_ENABLED=true` |
+| `npm --prefix frontend run test:e2e:pipelines` | Visual-pipeline lane | `TACTIC_PIPELINE_AUTHORING_ENABLED=true` and the session `auth-setup` saved |
 
-The deployment smoke workflow runs both.
+The deployment smoke lanes run both. A run signs in once: the `auth-setup` project
+accepts the operator invitation, signs in and saves the remembered session to
+`frontend/test-results/.auth/user.json`, and every authenticated journey starts
+from that saved state. The gateway's login limit of 10 per account a minute
+therefore stays the production value. The pipeline lane reuses the file from an
+earlier `npx playwright test --project=auth-setup` invocation, made while authoring
+was still disabled.
 
 CI browser journeys retain one retry for diagnostic evidence. Any test that passes
 only on retry is classified as flaky and fails CI.

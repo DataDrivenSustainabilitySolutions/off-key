@@ -108,19 +108,20 @@ existing allow-all rule.
 In **Settings → Rules → Rulesets**, or the existing branch protection rule, require
 the existing review policy and code-owner review for infrastructure/workflows/SQL.
 The new CODEOWNERS file names the existing owner. Preserve the current owner and
-administrator policy while adding the pull-request checks listed in
-[Contributing and CI](../development/contributing-ci.md#current-automated-checks)
-after they have appeared. Bind `RADAR production integration` to GitHub Actions.
+administrator policy. Require exactly one status check, `ci-gate`, bound to GitHub
+Actions; it passes only when every job in CI passed (see
+[Contributing and CI](../development/contributing-ci.md#current-automated-checks)).
+Do not list individual CI jobs: their names carry matrix values and change with
+version bumps, while `ci-gate` never does.
 
-Docker Publish runs after a main push, so it is a release gate rather than a PR
-merge check. Even an administrator merge cannot bypass the deployment workflow's
-same-commit success checks. Do not require Deploy Production as a pre-merge check.
+On a main push the same CI run also publishes the images, so the release gate covers
+more than the pull-request check. Even an administrator merge cannot bypass the
+deployment workflow's same-commit CI success check. Do not require Deploy Production
+as a pre-merge check.
 
 ## 7. Merge, then do the first controlled release
 
-After the PR is green and reviewed, merge it. Wait for every release-gate workflow in
-[Contributing and CI](../development/contributing-ci.md#current-automated-checks)
-to succeed on main. Under **Actions → Deploy Production → Run workflow**, select
+After the PR is green and reviewed, merge it. Wait for CI to succeed on main. Under **Actions → Deploy Production → Run workflow**, select
 **main**, paste its complete 40-character commit SHA, and check **bootstrap**.
 
 Choose a quiet maintenance window. The robot stops old writers, validates a private

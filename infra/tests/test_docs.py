@@ -72,7 +72,7 @@ class DocsTests(unittest.TestCase):
                     Loader=yaml.BaseLoader,
                 )
                 self.assertEqual(rows[filename][1], workflow["name"])
-                expected = "yes" if filename in release.REQUIRED_WORKFLOWS else "no"
+                expected = "yes" if filename == release.RELEASE_WORKFLOW else "no"
                 self.assertEqual(rows[filename][4], expected)
 
 

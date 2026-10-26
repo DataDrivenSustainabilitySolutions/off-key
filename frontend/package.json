@@ -15,7 +15,7 @@
     "test:e2e": "playwright test --project=mocked-ui --project=chromium --project=system-workspace",
     "test:e2e:headed": "playwright test --project=mocked-ui --project=chromium --project=system-workspace --headed",
     "test:e2e:mocked": "playwright test --project=mocked-ui",
-    "test:e2e:pipelines": "playwright test --project=pipeline-workspace --no-deps"
+    "test:e2e:pipelines": "playwright test --project=pipeline-workspace"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.3.1",

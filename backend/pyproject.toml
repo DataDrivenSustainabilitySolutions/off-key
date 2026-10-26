@@ -10,7 +10,7 @@ maintainers = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
-keywords = ["anomaly detection", "predictive maintenance", "monitoring"]
+keywords = ["anomaly detection", "streaming anomaly detection", "time series", "mqtt", "monitoring"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",

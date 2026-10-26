@@ -1,6 +1,6 @@
 # aberration documentation
 
-Documentation for the aberration predictive-maintenance platform.
+Documentation for the aberration anomaly-detection platform.
 
 Use the guides below for setup, operation, and development. The **Archive** retains material from the former GitHub wiki for reference.
 

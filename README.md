@@ -8,7 +8,7 @@
 <h1 align="center">Aberration</h1>
 
 <p align="center">
-  Predictive maintenance for connected systems: collect MQTT telemetry,<br>
+  Anomaly detection for connected systems: collect MQTT telemetry,<br>
   run anomaly-monitoring pipelines on it and review the evidence.
 </p>
 

@@ -1,6 +1,6 @@
 [project]
 site_name = "aberration"
-site_description = "Documentation for the aberration predictive-maintenance platform."
+site_description = "Documentation for the aberration anomaly-detection platform."
 site_url = "https://datadrivensustainabilitysolutions.github.io/off-key/"
 repo_url = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
 repo_name = "DataDrivenSustainabilitySolutions/off-key"

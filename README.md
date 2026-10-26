@@ -9,7 +9,7 @@
 
 <p align="center">
   Anomaly detection for connected systems: collect MQTT telemetry,<br>
-  run anomaly-monitoring pipelines on it and review the evidence.
+  run streaming detection pipelines on it and review the evidence.
 </p>
 
 <p align="center">

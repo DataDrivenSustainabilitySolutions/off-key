@@ -24,6 +24,10 @@ uv run --project backend python -m pytest -q
 For a faster local loop, add `-m "not slow"` to skip the boundary-size
 runtime tests; CI always runs them.
 
+For branch coverage, add `--cov` to the pytest command. The root `.coveragerc`
+measures every backend package; the database, collection and Swarm lanes skip
+unless their environment is set.
+
 Backend tests live under `backend/tests/`, one folder per area: `core`,
 `database` (schema, migrations, DB sync), `gateway`, `tactic`, `radar`,
 `proxy`, `pipelines`, `simulator` (local broker fixtures), `demo` and `contracts` (cross-service, deployment
@@ -98,6 +102,19 @@ npm --prefix frontend run build
 ```
 
 Expected result: no lint errors, passing tests, and a successful production build.
+The build type-checks the application, Node tooling, unit tests and Playwright
+tests before producing the Vite bundle. `npm --prefix frontend run test:coverage`
+writes an HTML coverage report to `frontend/coverage/`.
+
+Run the browser journeys against a running Compose stack, in two invocations
+because they need different TACTIC settings:
+
+| Command | Covers | Requires |
+| --- | --- | --- |
+| `npm --prefix frontend run test:e2e` | Default lanes | `TACTIC_PIPELINE_AUTHORING_ENABLED=false` |
+| `npm --prefix frontend run test:e2e:pipelines` | Visual-pipeline lane | `TACTIC_PIPELINE_AUTHORING_ENABLED=true` |
+
+The deployment smoke workflow runs both.
 
 CI browser journeys retain one retry for diagnostic evidence. Any test that passes
 only on retry is classified as flaky and fails CI.

@@ -1,14 +1,15 @@
 """A failed release names its failed tasks publicly, and never their output."""
 
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from support import ansible, load_script
+from support import ROOT, ansible, load_script
 
 failed = load_script("failed_tasks")
-SECRET = "private-value-that-must-stay-in-the-log"
+TASK_RESULT = "result-text-that-stays-in-the-private-log"
 PLAYBOOK = f"""
 - hosts: localhost
   connection: local
@@ -22,7 +23,7 @@ PLAYBOOK = f"""
     - name: Check every node
       assert:
         that: item != 'second'
-        fail_msg: "{SECRET}"
+        fail_msg: "{TASK_RESULT}"
       loop: [first, second]
     - name: Never reached
       debug:
@@ -37,13 +38,16 @@ class FailedTaskTests(unittest.TestCase):
             playbook.write_text(PLAYBOOK)
             result = ansible("playbook", "-i", "localhost,", playbook, check=False)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn(SECRET, result.stdout)
+            self.assertIn(TASK_RESULT, result.stdout)
             log = Path(directory) / "release.log"
-            log.write_text(result.stdout + result.stderr)
-            self.assertEqual(
-                failed.failed_tasks(log.read_text().splitlines()),
-                ["Check every node"],
-            )
+            log.write_text(result.stdout)
+            printed = subprocess.run(
+                [sys.executable, ROOT / "scripts/failed_tasks.py", log],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        self.assertEqual(printed, "Failed Ansible task: Check every node\n")
 
     def test_unreachable_hosts_and_handlers_are_named(self):
         lines = [

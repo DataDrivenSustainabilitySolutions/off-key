@@ -68,3 +68,4 @@ CLAUDE.md
 # Local deployment and smoke-test output
 /dev/local/state/
 /deployment-smoke-diagnostics/
+*.pkl

@@ -219,6 +219,8 @@ jobs:
 
       - name: Collect rehearsal diagnostics
         if: failure()
+        # A hung log read must not hold the runner until the job timeout.
+        timeout-minutes: 5
         run: |
           mkdir -p deployment-smoke-diagnostics
           docker stack ps --no-trunc offkey-smoke > deployment-smoke-diagnostics/tasks.txt 2>&1 || true

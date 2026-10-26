@@ -30,9 +30,12 @@ export type CollectionStatus = { revision: number; collection: RuntimeState; ing
 export type StorageStatus = {
   database_size_bytes: number;
   retention_policies: {
-    table: "telemetry" | "monitoring_evidence";
+    table: "telemetry" | "monitoring_evidence" | "anomalies";
     retention_days: number | null;
     scheduled: boolean;
   }[];
+  storage_cap_bytes: number | null;
+  storage_cap_scheduled: boolean;
+  capped_size_bytes: number;
   checked_at: string;
 };

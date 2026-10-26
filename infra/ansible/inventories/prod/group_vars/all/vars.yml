@@ -206,6 +206,7 @@ postgres_port: "5432"
 # ── DB Sync ──────────────────────────────────────────────────────────────────
 
 telemetry_retention_days: "14"
+telemetry_storage_cap_gb: ""
 sync_api_host:            "0.0.0.0"
 sync_api_port:            "8009"
 

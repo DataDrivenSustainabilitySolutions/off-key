@@ -15,7 +15,11 @@ const status: StorageStatus = {
   retention_policies: [
     { table: "telemetry", retention_days: 30, scheduled: true },
     { table: "monitoring_evidence", retention_days: 7, scheduled: true },
+    { table: "anomalies", retention_days: 30, scheduled: true },
   ],
+  storage_cap_bytes: null,
+  storage_cap_scheduled: false,
+  capped_size_bytes: 1200000000,
   checked_at: "2026-09-27T12:00:00Z",
 };
 beforeEach(() => {
@@ -35,7 +39,9 @@ describe("system status, storage and retention", () => {
     );
     expect(screen.getByRole("heading", { name: "System status", level: 1 })).toBeTruthy();
     expect(await screen.findByText(/^1[.,]5 GB$/)).toBeTruthy();
-    expect(screen.getByText("30 days")).toBeTruthy();
+    expect(screen.getAllByText("30 days")).toHaveLength(2);
+    expect(screen.getByText("Anomaly retention")).toBeTruthy();
+    expect(screen.getByText("No cap")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
     expect(api.get).toHaveBeenCalledWith("/v1/system/storage");
     expect(screen.getByRole("heading", { name: "Collection diagnostics" })).toBeTruthy();
@@ -57,6 +63,19 @@ describe("system status, storage and retention", () => {
     const evidence = screen.getByText("Monitoring evidence retention").parentElement!;
     expect(within(evidence).getByText("Not configured")).toBeTruthy();
     expect(screen.queryByText("14 days")).toBeNull();
+  });
+
+  it("shows the storage cap and warns as usage approaches it", async () => {
+    getStorage.mockResolvedValue({
+      ...status,
+      storage_cap_bytes: 1300000000,
+      storage_cap_scheduled: true,
+    });
+    render(<MemoryRouter><SystemStatus /></MemoryRouter>);
+    const cap = (await screen.findByText("Storage cap")).parentElement!;
+    expect(within(cap).getByText(/^1[.,]3 GB$/)).toBeTruthy();
+    expect(within(cap).getByText(/^1[.,]2 GB used by telemetry and evidence$/)).toBeTruthy();
+    expect(cap.querySelector(".bg-amber-500")).toBeTruthy();
   });
 
   it("reports failures and refreshes measurements on request", async () => {

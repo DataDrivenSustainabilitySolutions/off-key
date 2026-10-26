@@ -276,6 +276,7 @@ services:
       SYNC_API_HOST: "${SYNC_API_HOST}"
       SYNC_API_PORT: "${SYNC_API_PORT}"
       TELEMETRY_RETENTION_DAYS: "${TELEMETRY_RETENTION_DAYS}"
+      TELEMETRY_STORAGE_CAP_GB: "${TELEMETRY_STORAGE_CAP_GB:-}"
     depends_on:
       timescaledb:
         condition: service_healthy

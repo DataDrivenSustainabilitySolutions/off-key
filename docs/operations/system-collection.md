@@ -125,11 +125,18 @@ private `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY` and
 CA as TACTIC secrets. System status reports ingress/collector revisions and diagnostics.
 
 Storage diagnostics are under **Menu → System status** at `/system/status`. `TELEMETRY_RETENTION_DAYS` (1–365,
-default 14) controls managed TimescaleDB retention for telemetry and monitoring
-evidence. DB sync reconciles those policies on startup without changing other
-jobs. Shortening retention makes old chunks eligible for scheduled cleanup; it
-does not affect accounts, catalogues or anomalies. Increasing retention cannot
+default 14) controls managed TimescaleDB retention for telemetry, monitoring
+evidence and anomalies. DB sync reconciles those policies on startup without
+changing other jobs. Shortening retention makes old data eligible for scheduled
+cleanup; it does not affect accounts or catalogues. Increasing retention cannot
 recover data already removed.
+
+`TELEMETRY_STORAGE_CAP_GB` (optional) adds a storage ceiling for telemetry and
+monitoring evidence. While their size exceeds the cap, a job running every 15
+minutes drops the oldest completed daily chunk, logging a warning for each drop,
+so history can be shorter than the retention window. Data from the current day
+is never dropped. Telemetry and evidence use daily chunks for new data;
+existing chunks keep their original seven-day span until they expire.
 
 ## MQTT client policy
 

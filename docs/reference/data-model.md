@@ -10,7 +10,8 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 - Primary database: PostgreSQL with TimescaleDB.
 - Time-series hypertables: `telemetry`, `anomalies`, and `monitoring_evidence`.
-- `TELEMETRY_RETENTION_DAYS` controls the retention window applied to telemetry and monitoring evidence.
+- `TELEMETRY_RETENTION_DAYS` controls the retention window applied to telemetry, monitoring evidence and anomalies.
+- `TELEMETRY_STORAGE_CAP_GB` optionally caps telemetry and monitoring evidence storage; the oldest completed daily chunks are dropped first.
 
 ## Core entities
 

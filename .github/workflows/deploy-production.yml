@@ -96,9 +96,9 @@ jobs:
       - name: Create private deployment configuration
         if: steps.release.outputs.ready == 'true'
         env:
-          OFFKEY_PROD_VAULT: ${{ secrets.OFFKEY_PROD_VAULT }}
+          OFFKEY_VAULT: ${{ secrets.OFFKEY_PROD_VAULT }}
           OFFKEY_VAULT_PASSWORD: ${{ secrets.OFFKEY_VAULT_PASSWORD }}
-          OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
+          OFFKEY_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
           OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
           OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
         run: python3 infra/scripts/prepare_ci_secrets.py

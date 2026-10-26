@@ -17,10 +17,12 @@
           assert:
             that: inventory_hostname in groups['ambibox_nfs']
             fail_msg: The production vendor identity NFS export must be on the manager.
+          when: ambibox_ingress_enabled | default(true) | bool
 
         - name: Prepare the existing shared vendor identity
           include_role:
             name: nfs_server
+          when: ambibox_ingress_enabled | default(true) | bool
 
         - name: Seed the exact RADAR image on backend nodes
           include_role:

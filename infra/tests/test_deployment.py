@@ -50,7 +50,9 @@ def read_configuration(directory):
         "landing_html": (stack / "landing.html").read_text()
         if (stack / "landing.html").exists()
         else None,
-        "export": (stack / "ambibox.exports").read_text().strip(),
+        "export": (stack / "ambibox.exports").read_text().strip()
+        if (stack / "ambibox.exports").exists()
+        else None,
         "persistence_file": (stack / "docker-compose.persistence.yml").exists(),
         "mailpit_files": [
             path.name for path in stack.iterdir() if "mailpit" in path.name
@@ -133,6 +135,14 @@ class DeploymentTests(unittest.TestCase):
 
     def test_vendor_identity_settings_reach_compose_and_swarm(self):
         for name, result in self.results.items():
+            if result["inputs"].get("ambibox_ingress_enabled") is False:
+                # Without Ambibox ingress the vendor overlay is left out entirely.
+                for service in ("tailscale-ambibox", "mqtt-tailscale-bridge"):
+                    self.assertNotIn(service, result["config"]["services"])
+                self.assertNotIn(
+                    "tailscale-ambibox-state", result["config"].get("volumes", {})
+                )
+                continue
             for model in ("config", "swarm_config"):
                 with self.subTest(case=name, model=model):
                     environment = result[model]["services"]["tailscale-ambibox"][
@@ -334,6 +344,8 @@ class DeploymentTests(unittest.TestCase):
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():
+            if result["inputs"].get("ambibox_ingress_enabled") is False:
+                continue
             with self.subTest(case=name):
                 volume = result["config"]["volumes"]["tailscale-ambibox-state"]
                 path, *entries = result["export"].split()
@@ -738,6 +750,12 @@ class DeploymentTests(unittest.TestCase):
             for key in services[service]["environment"]:
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
+
+    def test_production_has_no_public_demo_settings(self):
+        services = self.results["prod"]["swarm_config"]["services"]
+        for service in ("api", "tactic"):
+            demo = [key for key in services[service]["environment"] if "DEMO" in key]
+            self.assertEqual(demo, [], service)
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]

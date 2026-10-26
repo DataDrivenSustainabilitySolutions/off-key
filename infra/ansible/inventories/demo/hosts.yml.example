@@ -1,0 +1,18 @@
+---
+# One server runs the whole public demo: it is the Swarm manager and the only
+# backend and frontend node. Use its management-tailnet address once
+# provisioning has connected it, and keep it out of the production inventory.
+all:
+  children:
+    swarm_manager:
+      hosts:
+        demo:
+          ansible_host: 100.100.20.1
+          ansible_user: deploy
+          ansible_port: 22
+    swarm_backend:
+      hosts:
+        demo:
+    swarm_frontend:
+      hosts:
+        demo:

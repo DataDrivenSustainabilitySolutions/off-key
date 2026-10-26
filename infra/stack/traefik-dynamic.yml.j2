@@ -19,6 +19,7 @@
 
 http:
   routers:
+{% if landing_enabled | default(true) | bool %}
     landing:
       rule: "Host(`{{ ingress_base_domain }}`)"
       entryPoints: [web]
@@ -34,6 +35,7 @@ http:
       middlewares: [dashboard-redirect]
       service: noop@internal
 
+{% endif %}
     frontend:
       rule: "Host(`{{ frontend_hostname }}`)"
       entryPoints: [web]
@@ -47,6 +49,7 @@ http:
       middlewares: [api-strip]
       service: api
 
+{% if ingress_admin_enabled | default(true) | bool %}
     # oauth2-proxy's public endpoints on the dedicated auth host — NO auth middleware, since the
     # GitHub callback/sign-in must complete without a session (else an infinite auth loop).
     oauth2:
@@ -67,12 +70,15 @@ http:
       entryPoints: [web]
       middlewares: [oauth-errors, oauth-auth]
       service: api@internal
+{% endif %}
 
   services:
+{% if landing_enabled | default(true) | bool %}
     landing:
       loadBalancer:
         servers:
           - url: "http://landing:80"
+{% endif %}
     frontend:
       loadBalancer:
         servers:
@@ -81,6 +87,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://api:8000"
+{% if ingress_admin_enabled | default(true) | bool %}
     emqx:
       loadBalancer:
         servers:
@@ -89,6 +96,7 @@ http:
       loadBalancer:
         servers:
           - url: "http://oauth2-proxy:4180"
+{% endif %}
 
   middlewares:
     dashboard-redirect:

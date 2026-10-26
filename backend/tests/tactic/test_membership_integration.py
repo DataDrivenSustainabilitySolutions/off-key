@@ -542,3 +542,45 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
         with pytest.raises(HTTPException) as denied:
             await current_member(credential, session)
         assert denied.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_demo_viewer_follows_the_administrator_and_stays_ordinary(
+    member_database,
+):
+    _, sessions = member_database
+    viewer = ("Viewer@Example.com", "public demo viewer password")
+
+    async def ensure(password=viewer[1]):
+        async with sessions() as session:
+            return await MemberService(session).ensure_demo_viewer(viewer[0], password)
+
+    async def sign_in(password=viewer[1]):
+        async with sessions() as session:
+            return await UserService(session, UserRepository(session)).authenticate(
+                email="viewer@example.com", password=password
+            )
+
+    # Before the first administrator exists, setup by invitation stays untouched.
+    assert await ensure() == {"status": "waiting"}
+    await bootstrap(sessions)
+    assert await ensure() == {"status": "created"}
+    assert (await sign_in())["role"] == RoleEnum.user
+    assert await ensure() == {"status": "configured"}
+    assert await ensure("rotated demo viewer password") == {"status": "updated"}
+    with pytest.raises(AuthenticationError):
+        await sign_in()
+    assert (await sign_in("rotated demo viewer password"))["session_version"] == 1
+
+    async with sessions() as session:
+        user = await session.scalar(
+            select(User).where(User.email == "viewer@example.com")
+        )
+        user.is_active = False
+        await session.commit()
+    assert await ensure() == {"status": "disabled"}
+    async with sessions() as session:
+        with pytest.raises(ConflictError, match="ordinary member"):
+            await MemberService(session).ensure_demo_viewer(
+                "admin@example.com", viewer[1]
+            )

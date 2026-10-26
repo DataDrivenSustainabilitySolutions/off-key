@@ -88,6 +88,49 @@ class MemberService:
         )
         return {"status": "created", **invitation}
 
+    async def ensure_demo_viewer(self, email: str, password: str) -> dict[str, str]:
+        """Keep the public demo's ordinary viewer member able to sign in."""
+        email = normalize_email(email)
+        await self._lock_membership()
+        # Created only after the administrator, so first setup stays unchanged.
+        if not await self._admin_count():
+            return {"status": "waiting"}
+        user = await self.session.scalar(
+            select(User).where(User.email == email).with_for_update()
+        )
+        if user is not None and user.role != RoleEnum.user:
+            raise ConflictError("The demo viewer must be an ordinary member")
+        if user is not None and not user.is_active:
+            # An administrator closed the demo; a deployment does not reopen it.
+            return {"status": "disabled"}
+        if (
+            user is not None
+            and user.is_verified
+            and bcrypt.checkpw(password.encode(), user.hashed_password.encode())
+        ):
+            return {"status": "configured"}
+        if user is None:
+            user = User(
+                email=email,
+                role=RoleEnum.user,
+                is_active=True,
+                session_version=0,
+            )
+            self.session.add(user)
+            status = "created"
+        else:
+            user.session_version += 1
+            status = "updated"
+        user.hashed_password = bcrypt.hashpw(
+            password.encode(), bcrypt.gensalt()
+        ).decode()
+        user.is_verified = True
+        user.verification_token = None
+        user.invitation_expires_at = None
+        await self.session.commit()
+        log_security_event("demo_viewer_" + status, "operator", {"member_id": user.id})
+        return {"status": status}
+
     async def invite(
         self, invitation: MemberInvitation, actor: User | None = None
     ) -> dict[str, str]:

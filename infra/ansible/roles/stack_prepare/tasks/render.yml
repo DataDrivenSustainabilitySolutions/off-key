@@ -8,6 +8,19 @@
     fail_msg: Set internal_api_secret to a new random secret of at least 32 characters in the environment vault.
   no_log: true
 
+- name: Require the public demo's viewer account
+  assert:
+    that:
+      - demo_viewer_email | default('') is match('^[^@\\s]+@[^@\\s]+$')
+      - demo_viewer_email | default('') != superuser_mail
+      - demo_viewer_password | default('') | length >= 16
+      - "'CHANGE_ME' not in demo_viewer_password | default('')"
+    fail_msg: >-
+      Set demo_viewer_email (not the administrator's address) and a random
+      demo_viewer_password of at least 16 characters in the demo vault.
+  when: demo_mode | default(false) | bool
+  no_log: true
+
 - name: Validate the Resend API key without exposing it
   set_fact:
     resend_api_key_valid: >-
@@ -183,7 +196,25 @@
   loop:
     - docker-compose.swarm.yml
     - docker-compose.traefik.yml
-    - docker-compose.oauth2.yml
+
+- name: Copy optional stack overlays this installation uses
+  copy:
+    src: "{{ stack_source_dir }}/{{ item.file }}"
+    dest: "{{ stack_dir }}/{{ item.file }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop: "{{ stack_optional_overlays | selectattr('enabled') | list }}"
+  loop_control:
+    label: "{{ item.file }}"
+
+- name: Remove optional stack overlays this installation leaves out
+  file:
+    path: "{{ stack_dir }}/{{ item.file }}"
+    state: absent
+  loop: "{{ stack_optional_overlays | rejectattr('enabled') | list }}"
+  loop_control:
+    label: "{{ item.file }}"
 
 - name: Remove obsolete Mailpit deployment files
   file:
@@ -207,14 +238,6 @@
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
 
-- name: Copy production landing page overlay
-  copy:
-    src: "{{ stack_source_dir }}/docker-compose.landing.yml"
-    dest: "{{ stack_dir }}/docker-compose.landing.yml"
-    mode: "0640"
-    owner: "{{ stack_file_owner }}"
-    group: "{{ stack_file_group }}"
-
 - name: Render the public landing page
   template:
     src: "{{ stack_source_dir }}/landing.html.j2"
@@ -222,6 +245,13 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
+  when: landing_enabled | default(true) | bool
+
+- name: Remove the landing page when this installation has none
+  file:
+    path: "{{ stack_dir }}/landing.html"
+    state: absent
+  when: not (landing_enabled | default(true) | bool)
 
 - name: Render production Cloudflare Tunnel connector overlay
   template:

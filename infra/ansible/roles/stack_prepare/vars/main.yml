@@ -38,6 +38,12 @@ stack_email_environment: &email
   VALIDATE_CERTS: "{{ validate_certs }}"
   ANOMALY_ALERT_RECIPIENTS: "{{ anomaly_alert_recipients }}"
 
+# Public read-only demo installations only; absent everywhere else.
+stack_demo_environment: &demo
+  DEMO_MODE: "{{ 'true' if demo_mode | default(false) | bool else none }}"
+  DEMO_VIEWER_EMAIL: "{{ demo_viewer_email if demo_mode | default(false) | bool else none }}"
+  DEMO_VIEWER_PASSWORD: "{{ demo_viewer_password if demo_mode | default(false) | bool else none }}"
+
 service_environment:
   postgres:
     POSTGRES_USER: "{{ postgres_user }}"
@@ -47,7 +53,7 @@ service_environment:
     TS_EXTRA_ARGS: "{{ tailscale_ambibox_extra_args }}"
     TS_HOSTNAME: "{{ tailscale_ambibox_hostname }}"
   api:
-    <<: [*common, *auth, *email]
+    <<: [*common, *auth, *email, *demo]
     ENVIRONMENT: "{{ app_environment }}"
     APP_NAME: aberration
     FRONTEND_BASE_URL: "{{ frontend_base_url }}"
@@ -112,6 +118,9 @@ service_environment:
     TACTIC_RADAR_DEFAULT_LOG_LEVEL: "{{ tactic_radar_default_log_level }}"
     TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: "{{ tactic_radar_default_rate_limit_per_minute }}"
     SQLALCHEMY_LOG_LEVEL: "{{ sqlalchemy_log_level }}"
+    # Read by bootstrap_demo_viewer during deployment.
+    DEMO_VIEWER_EMAIL: "{{ demo_viewer_email if demo_mode | default(false) | bool else none }}"
+    DEMO_VIEWER_PASSWORD: "{{ demo_viewer_password if demo_mode | default(false) | bool else none }}"
   db-sync:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
@@ -194,3 +203,17 @@ stack_interpolation_environment:
   LANDING_IMAGE: "{{ release.images.landing }}"
 
 stack_nfs_spec: "{{ (ambibox_nfs_addr | default('')) ~ '|' ~ stack_dir ~ '/tailscale-ambibox-data|rw,nfsvers=4,hard,timeo=150,retrans=3' }}"
+
+# Overlays an inventory can leave out; group_vars/all.yml selects the same set.
+stack_optional_overlays:
+  - file: docker-compose.oauth2.yml
+    enabled: "{{ ingress_admin_enabled | default(true) | bool }}"
+  - file: docker-compose.landing.yml
+    enabled: "{{ landing_enabled | default(true) | bool }}"
+  - file: docker-compose.ambibox.yml
+    enabled: "{{ ambibox_ingress_enabled | bool }}"
+
+# Services of left-out overlays receive no environment block.
+stack_omitted_services: >-
+  {{ ([] if ambibox_ingress_enabled | bool else ['tailscale-ambibox'])
+     + ([] if ingress_admin_enabled | default(true) | bool else ['oauth2-proxy']) }}

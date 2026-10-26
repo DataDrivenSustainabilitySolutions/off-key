@@ -1,0 +1,24 @@
+---
+# Guests browse as this ordinary member. It is created once the administrator
+# has accepted the invitation, so rerun the deployment after that first sign-in.
+- name: Locate the TACTIC task for the demo viewer
+  include_role:
+    name: swarm_task
+  vars:
+    svc: tactic
+
+- name: Create or refresh the demo viewer member
+  command:
+    argv: [docker, exec, "{{ svc_container }}", /app/bin/python, -m, off_key_tactic_middleware.bootstrap_demo_viewer]
+  delegate_to: "{{ svc_node }}"
+  register: demo_viewer_setup
+  changed_when: (demo_viewer_setup.stdout_lines | last | from_json).status in ['created', 'updated']
+
+- name: Report the demo viewer
+  debug:
+    msg: >-
+      {{ {'created': 'Demo viewer created; signed-out visitors now browse the demo read-only.',
+          'updated': 'Demo viewer password refreshed.',
+          'configured': 'Demo viewer is ready.',
+          'disabled': 'The demo viewer is disabled in Members, so the public demo stays closed.',
+          'waiting': 'Accept the administrator invitation, then run Deploy Demo again to open the demo to visitors.'}[(demo_viewer_setup.stdout_lines | last | from_json).status] }}

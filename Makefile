@@ -1,4 +1,4 @@
-.PHONY: check-infra deploy-prod local-init local-up local-status local-logs local-stop local-bootstrap-admin
+.PHONY: check-infra deploy-prod deploy-demo local-init local-up local-status local-logs local-stop local-bootstrap-admin
 REVISION ?= $(shell git rev-parse HEAD)
 BOOTSTRAP ?= false
 check-infra:
@@ -6,6 +6,10 @@ check-infra:
 # Dispatches the Deploy Production workflow; infra/Makefile deploy-prod runs Ansible directly.
 deploy-prod:
 	gh workflow run deploy-production.yml --ref main -f revision=$(REVISION) -f bootstrap=$(BOOTSTRAP)
+# Dispatches Deploy Demo; PROVISION=true sets up a new demo server first.
+PROVISION ?= false
+deploy-demo:
+	gh workflow run deploy-demo.yml --ref main -f revision=$(REVISION) -f provision=$(PROVISION)
 
 LOCAL_ARGS ?=
 local-init:

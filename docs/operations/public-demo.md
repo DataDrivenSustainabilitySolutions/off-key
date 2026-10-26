@@ -36,27 +36,82 @@ Use a separate installation with its own database, vault and broker
 allowlist. One installation serves one organization, so a demo inside a
 production installation would show that organization's data.
 
-## Set up an installation
+## What runs where
 
-1. Deploy the installation with its own hostname, database and secrets, as
-   in [Production releases](production.md). Its vault must not contain
-   private broker credentials, SOCKS routes or tailnet access.
-2. Invite the first administrator, then invite the viewer as a **member**
-   from **Account → Members** with an address you control, and choose its
-   password from the invitation. Store the password only in the vault.
-3. Set `DEMO_MODE=true`, `DEMO_VIEWER_EMAIL` and `DEMO_VIEWER_PASSWORD` for
-   the API gateway and restart it. `GET /api/v1/demo` now answers
-   `{"enabled": true}`.
-4. Allow only the demo brokers, for example
-   `SYSTEM_LIVE_ALLOWED_HOSTS=["tie.digitraffic.fi","meri.digitraffic.fi"]`.
-   Keep `TACTIC_RADAR_MAX_ACTIVE_MONITORS` and `TELEMETRY_RETENTION_DAYS`
-   small, for example `4` and `7`.
-5. Set `demo_base_url` in the production inventory, for example
-   `https://demo.aberration.app`. The landing page then shows **Demo** next
-   to **Dashboard** and a link under the headline.
+The demo runs on its own small server, deployed by the **Deploy Demo**
+GitHub workflow with the same Ansible playbooks and release images as
+production. The `inventories/demo` inventory switches off what a public demo
+must not have: Ambibox vendor ingress, the oauth2-gated EMQX and Traefik
+dashboards, and the landing page. Collection may only reach the Digitraffic
+brokers. A test keeps every other setting equal to production.
 
-Changing the viewer's password or access revokes its session; the gateway
-signs in again on the next guest request.
+The demo has its own Cloudflare Tunnel. It must not share the production
+tunnel: Cloudflare spreads a tunnel's traffic over all of its connectors, so
+a demo connector on the production tunnel would receive production requests.
+
+## Set up the demo (one time)
+
+Everything except the server, the tunnel and the GitHub settings runs from
+GitHub.
+
+1. **Server.** Create an Ubuntu 24.04 server with 4 vCPUs and 8 GB of memory,
+   with a `deploy` user that has passwordless sudo and the deployment SSH
+   public key from [GitHub setup](github-setup.md) in `authorized_keys`.
+2. **Cloudflare Tunnel.** In Cloudflare **Zero Trust → Networks → Tunnels**,
+   choose **Create a tunnel → Cloudflared**, name it `aberration-demo` and
+   copy the `eyJ…` token from the install command. Under **Public Hostname**,
+   add subdomain `demo`, domain `aberration.app`, type **HTTP**, URL
+   `traefik:80`. If `demo.aberration.app` is already a public hostname of the
+   production tunnel, delete it there first.
+3. **Vault.** Copy `infra/ansible/inventories/demo/group_vars/all/vault.yml.example`
+   to `vault.yml`, fill in new secrets (only the management-tailnet key,
+   Resend key and registry placeholders may repeat production's), the
+   `aberration-demo` tunnel token, and a random `demo_viewer_password`. Then run
+   `ansible-vault encrypt` on it.
+4. **Inventory.** Copy `inventories/demo/hosts.yml.example` to a private
+   `hosts.yml`. For the first run use the server's public address; after
+   provisioning you can switch to its management-tailnet address.
+5. **GitHub environment.** In **Settings → Environments**, create `demo`,
+   limited to `main`. Add the variable `DEMO_AUTO_DEPLOY_ENABLED` = `false`
+   and these secrets:
+
+   | Secret | What to paste |
+   | --- | --- |
+   | `OFFKEY_DEMO_VAULT` | The encrypted demo `vault.yml`. |
+   | `OFFKEY_VAULT_PASSWORD` | Its vault password. |
+   | `OFFKEY_DEMO_INVENTORY` | The demo `hosts.yml`. |
+   | `OFFKEY_DEPLOY_SSH_KEY` | The deployment private key. |
+   | `OFFKEY_DEPLOY_KNOWN_HOSTS` | The demo server's verified host key, for every address in the inventory. |
+   | `TS_OAUTH_CLIENT_ID`, `TS_AUDIENCE` | A Tailscale federated identity like production's, trusting the `demo` environment and `deploy-demo.yml` on `main`. |
+
+   Allow `tag:offkey-ci` to reach the demo server on TCP 22 in the
+   management tailnet policy.
+6. **Provision.** Under **Actions → Deploy Demo → Run workflow**, paste the
+   commit SHA production runs and check **provision**. The workflow installs
+   Docker, Tailscale and Swarm, deploys the stack and emails the administrator
+   invitation to `superuser_mail`.
+7. **Open it to visitors.** Accept the invitation, then run **Deploy Demo**
+   again with the same SHA and **provision** unchecked. That run creates the
+   viewer member, and the log says *Demo viewer created*. Signed-out visitors
+   of `demo.aberration.app` now browse read-only.
+8. **Sources and monitors.** Signed in as administrator, import the
+   Digitraffic catalogue (below), apply a recording policy and start the
+   monitors you want to show.
+9. **Follow production.** Set `DEMO_AUTO_DEPLOY_ENABLED` to `true`. Each
+   successful **Deploy Production** run with runtime changes then deploys the
+   same commit to the demo. Set `demo_base_url: "https://demo.aberration.app"`
+   in the production inventory so the landing page shows **Demo** next to
+   **Dashboard**.
+
+To change a demo setting later, update the `OFFKEY_DEMO_VAULT` or
+`OFFKEY_DEMO_INVENTORY` secret, or `inventories/demo` in a pull request, and
+run **Deploy Demo**. `make deploy-demo REVISION=<sha>` dispatches it from a
+terminal.
+
+Changing the viewer's password in the vault refreshes it on the next deploy
+and revokes its session; the gateway signs in again on the next guest
+request. Disabling the viewer under **Account → Members** closes the demo to
+visitors (they see "unavailable"), and deployments leave it disabled.
 
 ## Open data sources
 

@@ -87,7 +87,7 @@ class CDTests(unittest.TestCase):
             config = root / "infra/ansible/inventories/prod/group_vars/all"
             config.mkdir(parents=True)
             values = dict.fromkeys(secrets.FILES, "synthetic-value") | {
-                "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
+                "OFFKEY_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
                 "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
                 "GITHUB_ACTOR": "fixture-owner",
                 "GH_TOKEN": "fixture-short-lived-token",

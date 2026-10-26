@@ -1,0 +1,54 @@
+# The public demo's own vault: never reuse production secrets except the
+# management-tailnet key, the Resend key and the GHCR placeholders below.
+# Rename to vault.yml and encrypt:
+#   ansible-vault encrypt inventories/demo/group_vars/all/vault.yml
+
+# Dedicated API-to-TACTIC credential: openssl rand -hex 32
+internal_api_secret: "CHANGE_ME_generate_with_openssl_rand_hex_32"
+
+jwt_secret: "CHANGE_ME"
+# Keep a separate value while pre-membership application images are deployed.
+postgres_password: "CHANGE_ME"
+emqx_dashboard_password: "CHANGE_ME"
+# Generate a dedicated CA and a server certificate whose SAN is DNS:emqx-main.
+# Paste PEM files as YAML literal blocks (|), keeping their final newline.
+# Keep the encrypted CA private key offline; only the public CA certificate goes here.
+emqx_ca_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_CA_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_cert: |
+  -----BEGIN CERTIFICATE-----
+  TEST_ONLY_REPLACE_WITH_SERVER_CERTIFICATE
+  -----END CERTIFICATE-----
+emqx_server_key: "TEST_ONLY_REPLACE_WITH_SERVER_PRIVATE_KEY_PEM"
+mqtt_proxy_password: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD"
+mqtt_radar_password: "TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD"
+radar_checkpoint_secret: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET"
+
+# Reusable auth key for the prod management tailnet. The prod inventory maps this to
+# tailscale_os_authkey so new managers/workers can join during provision-prod.
+ingress_ts_authkey: "tskey-auth-CHANGE_ME"
+
+# Token for the demo's OWN Cloudflare Tunnel, whose only public hostname is
+# demo.aberration.app -> http://traefik:80. Never the production tunnel: a second
+# connector on the production tunnel would receive production traffic.
+# Copy only the eyJ... token from the installation command, not the full command.
+cloudflare_tunnel_token: ""
+
+ghcr_username: "your-github-username"
+ghcr_token: "ghp_CHANGE_ME"
+
+# Replace this placeholder with a Resend sending API key in the encrypted vault.
+email_password: "re_xxxxxxxxx"
+superuser_mail: "admin@example.com"
+# Demo anomalies are emailed here too; use an address you can filter.
+anomaly_alert_recipients: "admin@example.com"
+
+# Signed-out visitors browse as this ordinary member. Use an address that is
+# not the administrator's; no mail is sent to it. openssl rand -hex 24
+demo_viewer_email: "viewer@demo.aberration.app"
+demo_viewer_password: "CHANGE_ME_openssl_rand_hex_24"
+
+access_token_expire_minutes: "30"
+algorithm: HS256

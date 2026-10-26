@@ -38,6 +38,8 @@ ambibox_ingress_enabled: false
 ingress_enabled:         false
 ingress_admin_enabled:   false
 landing_enabled:         false
+# The demo holds no data worth protecting, so its first release bootstraps itself.
+release_bootstrap_new_stack: true
 release_public_urls:     ["https://demo.aberration.app"]
 # The only brokers collection and the administrator's live previews may reach:
 # Fintraffic Digitraffic open data (dev/demo/digitraffic_catalogue.py).

@@ -16,6 +16,7 @@ DEMO_ONLY = {
     "stack_name",
     "stack_dir",
     "demo_mode",
+    "release_bootstrap_new_stack",
     "ambibox_ingress_enabled",
     "ingress_enabled",
     "ingress_admin_enabled",

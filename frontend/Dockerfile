@@ -28,7 +28,7 @@ ENV VITE_LOCAL_ADMIN_EMAIL=${VITE_LOCAL_ADMIN_EMAIL}
 COPY --chown=node:node . .
 RUN npm run build
 
-FROM nginx:1.31.7-alpine AS production
+FROM nginx:1.31.8-alpine AS production
 
 LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
       org.opencontainers.image.description="Production image for the Off-Key frontend" \

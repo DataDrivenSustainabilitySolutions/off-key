@@ -12,8 +12,15 @@
   block:
     - name: Require explicit bootstrap on a new cluster
       assert:
-        that: release_bootstrap | default(false) | bool
+        that: (release_bootstrap | default(false) | bool) or (release_bootstrap_new_stack | default(false) | bool)
         fail_msg: A new cluster requires a controlled BOOTSTRAP=true deployment.
+
+    # A stack without data, such as the public demo, has nothing to protect,
+    # so its first release bootstraps by itself.
+    - name: Bootstrap a new stack that allows it
+      set_fact:
+        release_bootstrap: true
+      when: release_bootstrap_new_stack | default(false) | bool
 
     - name: Save the database-only model before starting application writers
       copy:

@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -118,6 +119,23 @@ class CDTests(unittest.TestCase):
                 )
             finally:
                 os.chdir(original)
+
+    def test_materialized_configuration_never_dirties_the_release_checkout(self):
+        # A release refuses uncommitted infrastructure changes, so every file
+        # the workflow writes into the checkout must be ignored by git.
+        written = [
+            f"infra/ansible/inventories/{environment}/{name}"
+            for environment in ("prod", "demo")
+            for name in ("hosts.yml", "group_vars/all/vault.yml")
+        ]
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", *written],
+            cwd=ROOT.parent,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.stdout.split(), written)
 
     def test_missing_or_plaintext_vault_writes_no_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

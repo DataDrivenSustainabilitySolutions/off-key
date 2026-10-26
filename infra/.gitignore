@@ -7,7 +7,7 @@ ansible/collections/
 # Private deployment configuration and recovery state
 ansible/**/group_vars/**/vault*
 !ansible/**/group_vars/**/vault*.example
-ansible/inventories/prod/hosts.yml
+ansible/inventories/*/hosts.yml
 .vault_pass
 *.vault_pass
 stack/state/

@@ -15,7 +15,7 @@ Use this page when setting up a contributor environment, choosing a run mode, or
 
 | Tool                             | Supported version or role             |
 | -------------------------------- | ------------------------------------- |
-| Python                           | 3.12                                  |
+| Python                           | 3.12 or 3.14 (CI tests both; containers run 3.14) |
 | [uv](https://docs.astral.sh/uv/) | Backend dependency and command runner |
 | Node.js                          | 24                                    |
 | npm                              | Frontend dependencies and scripts     |

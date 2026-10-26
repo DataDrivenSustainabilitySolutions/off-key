@@ -1,65 +1,54 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-white.svg">
-  <img src="assets/brand/logo-black.svg" width="64" height="64" alt="Aberration mark">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-white.svg">
+    <img src="assets/brand/logo-black.svg" width="64" height="64" alt="Aberration mark">
+  </picture>
+</p>
 
-# Aberration
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wordmark-white.svg">
+    <img src="assets/brand/wordmark.svg" width="239" height="50" alt="Aberration">
+  </picture>
+</h1>
 
-Predictive maintenance for connected systems: collect MQTT telemetry, run
-anomaly-monitoring pipelines on it and review the evidence. Vector sources and
-export instructions are in [Brand assets](assets/brand/README.md).
+<p align="center">
+  Domain-agnostic anomaly detection for connected systems: collect MQTT telemetry,<br>
+  run streaming detection pipelines on it and review the evidence.
+</p>
 
-## Local configuration
+<p align="center">
+  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/"><strong>Documentation</strong></a> ·
+  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/getting-started/">Getting started</a> ·
+  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/development/contributing-ci/">Contributing</a>
+</p>
 
-Create the local environment file before starting the stack:
+## Quick start
+
+Requires Docker with the Compose plugin.
 
 ```bash
-cp .env.example .env
-docker swarm init --advertise-addr 127.0.0.1  # once per Docker engine; RADAR runs as Swarm services
+cp .env.example .env                          # development-only defaults
+docker swarm init --advertise-addr 127.0.0.1  # once per Docker engine
 docker compose up -d --build
 ```
 
-The example contains development-only credentials and service-discovery defaults.
-Use independent secrets and production broker, database, email, and origin settings
-for any deployed environment. Local `.env` files are intentionally not tracked.
-See [Deployment modes](docs/operations/deployment-modes.md) for the EMQX
-cluster override and production.
-
-## Development validation
-
-The container runtime uses Python 3.14; CI tests the backend on Python 3.12 and
-3.14. Use `uv` for the backend workspace and Node.js 24 with `npm` for the frontend.
-
-```bash
-uv sync --project backend --all-packages --all-groups --frozen
-uv run --project backend ruff check .
-uv run --project backend python -m pytest -q
-
-cd frontend
-npm ci
-npm run lint
-npm test
-npm run build
-```
-
-For branch coverage, add `--cov` to the backend pytest command (the root
-`.coveragerc` measures every backend package; database, collection and Swarm lanes
-skip unless their environment is set) and run `npm run test:coverage` in `frontend/`,
-which writes an HTML report to `frontend/coverage/`.
-
-The frontend build type-checks application, Node tooling, unit tests, and Playwright
-tests before producing the Vite bundle. Run the browser journeys against a running
-Compose stack, in two separate invocations because they need different TACTIC
-settings: `npm run test:e2e` covers the default lanes and needs
-`TACTIC_PIPELINE_AUTHORING_ENABLED=false`, and `npm run test:e2e:pipelines` covers the
-visual-pipeline lane and needs it `true`. CI's deployment smoke workflow runs both.
+The app is then at <http://localhost:5173>. Create the first user and verify the
+stack with [Getting started](https://datadrivensustainabilitysolutions.github.io/off-key/getting-started/).
+Never deploy with the example credentials; see
+[Deployment modes](https://datadrivensustainabilitysolutions.github.io/off-key/operations/deployment-modes/).
 
 ## Documentation
 
-The documentation site is built from [`docs/`](docs/index.md):
+| | |
+| --- | --- |
+| **Use** | [Web app](https://datadrivensustainabilitysolutions.github.io/off-key/user-guide/web-app/) · [Monitoring](https://datadrivensustainabilitysolutions.github.io/off-key/user-guide/monitoring/) |
+| **Develop** | [Setup](https://datadrivensustainabilitysolutions.github.io/off-key/development/setup/) · [Architecture](https://datadrivensustainabilitysolutions.github.io/off-key/development/architecture/) · [Testing](https://datadrivensustainabilitysolutions.github.io/off-key/development/testing-debugging/) · [Contributing and CI](https://datadrivensustainabilitysolutions.github.io/off-key/development/contributing-ci/) |
+| **Operate** | [Deployment modes](https://datadrivensustainabilitysolutions.github.io/off-key/operations/deployment-modes/) · [Production releases](https://datadrivensustainabilitysolutions.github.io/off-key/operations/production/) · [Recovery](https://datadrivensustainabilitysolutions.github.io/off-key/operations/recovery/) |
+| **Reference** | [Environment variables](https://datadrivensustainabilitysolutions.github.io/off-key/reference/environment-variables/) · [Backend API](https://datadrivensustainabilitysolutions.github.io/off-key/reference/backend-api/) · [Brand assets](https://datadrivensustainabilitysolutions.github.io/off-key/reference/brand/) |
 
-- [Getting started](docs/getting-started.md) and [local deployment](docs/development/local-deployment.md)
-- [Monitoring](docs/user-guide/monitoring.md) and the [web app](docs/user-guide/web-app.md)
-- [Architecture](docs/development/architecture.md) and [monitoring pipelines](docs/development/monitoring-pipelines.md)
-- [Collection](docs/operations/system-collection.md), [production releases](docs/operations/production.md) and [recovery](docs/operations/recovery.md)
-- [Contributing and CI](docs/development/contributing-ci.md)
+The site is built from [`docs/`](docs/index.md); preview it locally with `zensical serve`.
+
+## License
+
+See [LICENSE](LICENSE).

@@ -1,6 +1,6 @@
 # aberration documentation
 
-Documentation for the aberration predictive-maintenance platform.
+Documentation for the aberration anomaly-detection platform.
 
 Use the guides below for setup, operation, and development. The **Archive** retains material from the former GitHub wiki for reference.
 
@@ -16,7 +16,7 @@ Use this page as the entry point to choose the right runbook for your role.
 
 ## User guide
 
-- [Web app](user-guide/web-app.md): account, charger, favorites, services, and anomaly workflows.
+- [Web app](user-guide/web-app.md): account, entity, favorites, services, and anomaly workflows.
 - [Monitoring](user-guide/monitoring.md): monitoring strategies and workload lifecycle.
 
 ## Developer guide

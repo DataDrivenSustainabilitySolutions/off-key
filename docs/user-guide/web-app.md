@@ -4,7 +4,7 @@ This page explains end-user workflows in the React frontend.
 
 ## When to use this page
 
-Use this page for account, charger, favourites, monitoring-service, and anomaly workflows in the UI.
+Use this page for account, entity, favourites, monitoring-service, and anomaly workflows in the UI.
 
 ## Audience
 
@@ -141,8 +141,8 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
 ## Reporting workflow
 
 1. Open **Reporting** at `/anomalies`.
-2. Review events grouped by charger.
-3. Follow an event to the corresponding charger details.
+2. Review events grouped by entity.
+3. Follow an event to the corresponding entity details.
 4. Remove individual anomaly records when they are no longer required.
 
 ## Expected errors and operator actions

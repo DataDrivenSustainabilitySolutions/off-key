@@ -1,6 +1,6 @@
 # User guide — monitoring
 
-This page covers how to run anomaly-monitoring workflows for chargers.
+This page covers how to run anomaly-monitoring workflows for monitored entities.
 
 ## When to use this page
 

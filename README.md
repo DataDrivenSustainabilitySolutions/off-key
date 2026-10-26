@@ -5,11 +5,16 @@
   </picture>
 </p>
 
-<h1 align="center">Aberration</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wordmark-white.svg">
+    <img src="assets/brand/wordmark.svg" width="239" height="50" alt="Aberration">
+  </picture>
+</h1>
 
 <p align="center">
-  Predictive maintenance for connected systems: collect MQTT telemetry,<br>
-  run anomaly-monitoring pipelines on it and review the evidence.
+  Domain-agnostic anomaly detection for connected systems: collect MQTT telemetry,<br>
+  run streaming detection pipelines on it and review the evidence.
 </p>
 
 <p align="center">

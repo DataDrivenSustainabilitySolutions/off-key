@@ -34,14 +34,21 @@ export const loginWithEmail = async (
     await page.getByLabel(/remember this device/i).check();
   }
 
-  const loginResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/auth/login",
-  );
-  await page.getByRole("button", { name: /log in/i }).click();
-
-  const loginResponse = await loginResponsePromise;
+  // The gateway allows 10 logins per account a minute. Journeys that sign in
+  // afresh can exceed that, so wait for the next window instead of failing.
+  const retryUntil = Date.now() + 75_000;
+  let loginResponse;
+  for (;;) {
+    const loginResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/auth/login",
+    );
+    await page.getByRole("button", { name: /log in/i }).click();
+    loginResponse = await loginResponsePromise;
+    if (loginResponse.status() !== 429 || Date.now() > retryUntil) break;
+    await page.waitForTimeout(5_000);
+  }
   const loginBody = await loginResponse.text();
   expect(
     loginResponse.ok(),

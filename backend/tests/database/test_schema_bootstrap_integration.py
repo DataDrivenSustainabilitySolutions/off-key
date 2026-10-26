@@ -193,7 +193,9 @@ async def test_retention_changes_existing_jobs_and_reports_persisted_state(
                 "retention_days": None,
                 "scheduled": False,
             },
+            {"table": "anomalies", "retention_days": 7.0, "scheduled": True},
         ]
+        assert status.storage_cap_bytes is None
 
         await bootstrap(90)
         async with AsyncSession(engine) as session:
@@ -234,6 +236,128 @@ async def test_retention_changes_existing_jobs_and_reports_persisted_state(
             await connection.execute(text("DROP TABLE IF EXISTS retention_unmanaged"))
             await connection.execute(
                 delete(Telemetry).where(Telemetry.charger_id == "retention-test")
+            )
+        get_telemetry_settings.cache_clear()
+        await engine.dispose()
+
+
+async def _job_id(connection, proc_name):
+    return await connection.scalar(
+        text(
+            "SELECT job_id FROM timescaledb_information.jobs "
+            "WHERE proc_schema = 'public' AND proc_name = :proc"
+        ),
+        {"proc": proc_name},
+    )
+
+
+@pytest.mark.asyncio
+async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatch):
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+
+    async def bootstrap(**env):
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        get_telemetry_settings.cache_clear()
+        async with engine.begin() as connection:
+            await connection.run_sync(bootstrap_schema)
+
+    async def run(proc_name):
+        async with engine.connect() as connection:
+            await connection.execution_options(isolation_level="AUTOCOMMIT")
+            job_id = await _job_id(connection, proc_name)
+            await connection.execute(text("CALL run_job(:id)"), {"id": job_id})
+
+    now = datetime.now(UTC)
+    try:
+        await bootstrap(TELEMETRY_RETENTION_DAYS="14", TELEMETRY_STORAGE_CAP_GB="")
+        async with engine.begin() as connection:
+            assert await _job_id(connection, "off_key_storage_cap") is None
+            intervals = await connection.execute(
+                text(
+                    "SELECT hypertable_name, time_interval "
+                    "FROM timescaledb_information.dimensions "
+                    "WHERE hypertable_name IN ('telemetry', 'monitoring_evidence')"
+                )
+            )
+            assert {row[1] for row in intervals} == {timedelta(days=1)}
+            for age in (30, 0):
+                await connection.execute(
+                    insert(Anomaly).values(
+                        charger_id="retention-anomaly",
+                        timestamp=now - timedelta(days=age),
+                        telemetry_type="cpu",
+                        anomaly_type="test",
+                        anomaly_value=age,
+                    )
+                )
+            await connection.execute(
+                insert(Telemetry),
+                [
+                    {
+                        "charger_id": "retention-cap",
+                        "timestamp": now - timedelta(days=age),
+                        "type": "temperature",
+                        "value": age,
+                        "data_source": "test",
+                    }
+                    for age in (3, 2, 0)
+                ],
+            )
+
+        await run("off_key_anomaly_retention")
+        async with engine.connect() as connection:
+            remaining = await connection.scalars(
+                select(Anomaly.anomaly_value).where(
+                    Anomaly.charger_id == "retention-anomaly"
+                )
+            )
+            assert list(remaining) == [0]
+            identities = await connection.scalar(
+                select(func.count())
+                .select_from(AnomalyIdentity)
+                .where(AnomalyIdentity.charger_id == "retention-anomaly")
+            )
+            assert identities == 1
+
+        # A tiny cap drops completed chunks oldest first but keeps today's data.
+        await bootstrap(TELEMETRY_STORAGE_CAP_GB="0.1")
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "SELECT alter_job(job_id, config => jsonb_set("
+                    "config, '{max_bytes}', '1')) "
+                    "FROM timescaledb_information.jobs "
+                    "WHERE proc_name = 'off_key_storage_cap'"
+                )
+            )
+        await run("off_key_storage_cap")
+        async with engine.connect() as connection:
+            values = await connection.scalars(
+                select(Telemetry.value).where(Telemetry.charger_id == "retention-cap")
+            )
+            assert list(values) == [0]
+        async with AsyncSession(engine) as session:
+            status = await read_storage_status(session)
+        assert status.storage_cap_bytes == 1
+        assert status.storage_cap_scheduled
+
+        # Bootstrap restores the configured cap, then unsetting it removes the job.
+        await bootstrap(TELEMETRY_STORAGE_CAP_GB="0.1")
+        async with AsyncSession(engine) as session:
+            assert (await read_storage_status(session)).storage_cap_bytes == 100_000_000
+        await bootstrap(TELEMETRY_STORAGE_CAP_GB="")
+        async with engine.connect() as connection:
+            assert await _job_id(connection, "off_key_storage_cap") is None
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(
+                delete(Anomaly).where(Anomaly.charger_id == "retention-anomaly")
+            )
+            await connection.execute(
+                delete(Telemetry).where(Telemetry.charger_id == "retention-cap")
             )
         get_telemetry_settings.cache_clear()
         await engine.dispose()

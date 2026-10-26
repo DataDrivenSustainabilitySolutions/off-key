@@ -14,6 +14,20 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import type { StorageStatus } from "@/types/collection";
 import { CollectionHealth } from "./system-status/CollectionHealth";
 
+const retentionLabels = {
+  telemetry: "Telemetry retention",
+  monitoring_evidence: "Monitoring evidence retention",
+  anomalies: "Anomaly retention",
+} as const;
+
+function formatBytes(bytes: number) {
+  const gigabytes = bytes >= 1_000_000_000;
+  const value = (bytes / (gigabytes ? 1_000_000_000 : 1_000_000)).toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  });
+  return `${value} ${gigabytes ? "GB" : "MB"}`;
+}
+
 export default function SystemStatus() {
   const [status, setStatus] = useState<StorageStatus | null>(null);
   const [error, setError] = useState("");
@@ -35,11 +49,6 @@ export default function SystemStatus() {
     };
   }, [request]);
 
-  const gigabytes = status && status.database_size_bytes >= 1_000_000_000;
-  const size = status && (
-    status.database_size_bytes / (gigabytes ? 1_000_000_000 : 1_000_000)
-  ).toLocaleString(undefined, { maximumFractionDigits: 1 });
-
   return (
     <>
       <PageShell>
@@ -47,7 +56,7 @@ export default function SystemStatus() {
         <CollectionHealth />
         <SectionPanel
           title="Storage and retention"
-          help="Retention is managed by the operator. Cleanup runs periodically. Database size includes tables and indexes, excluding backups and logs."
+          help="Retention is managed by the operator. Cleanup runs periodically. Database size includes tables and indexes, excluding backups and logs. The storage cap, when set, removes the oldest telemetry and evidence first, even inside the retention window."
           actions={
             <Button
               variant="outline"
@@ -66,19 +75,30 @@ export default function SystemStatus() {
             <p role="alert" className="text-sm text-destructive">Storage information unavailable: {error}</p>
           ) : status ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <MetricCard label="Database size" value={formatBytes(status.database_size_bytes)} />
                 <MetricCard
-                  label="Database size"
-                  value={`${size} ${gigabytes ? "GB" : "MB"}`}
+                  label="Storage cap"
+                  value={status.storage_cap_bytes === null ? "No cap" : formatBytes(status.storage_cap_bytes)}
+                  helper={
+                    status.storage_cap_bytes === null
+                      ? "Retention days only"
+                      : status.storage_cap_scheduled
+                        ? `${formatBytes(status.capped_size_bytes)} used by telemetry and evidence`
+                        : "Cleanup paused"
+                  }
+                  tone={
+                    status.storage_cap_bytes !== null &&
+                    (!status.storage_cap_scheduled ||
+                      status.capped_size_bytes >= status.storage_cap_bytes * 0.9)
+                      ? "warning"
+                      : "default"
+                  }
                 />
                 {status.retention_policies.map((policy) => (
                   <MetricCard
                     key={policy.table}
-                    label={
-                      policy.table === "telemetry"
-                        ? "Telemetry retention"
-                        : "Monitoring evidence retention"
-                    }
+                    label={retentionLabels[policy.table]}
                     value={
                       policy.retention_days === null
                         ? "Not configured"

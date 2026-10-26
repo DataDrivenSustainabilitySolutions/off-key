@@ -15,14 +15,14 @@ services:
       - '127.0.0.1:28883:1883'
       - '127.0.0.1:28083:18083'
   forwarder:
-    image: gogost/gost:3.3.0
+    image: gogost/gost:3.3.1
     command: ['-api', 'offkey:test-gost-password@:18080']
     ports:
       - '127.0.0.1:28080:18080'
       - '127.0.0.1:20000:20000'
       - '127.0.0.1:20001:20001'
   socks:
-    image: gogost/gost:3.3.0
+    image: gogost/gost:3.3.1
     command: ['-L', 'socks5://:1055']
   charger-a:
     image: eclipse-mosquitto:2

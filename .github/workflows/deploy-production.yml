@@ -104,7 +104,7 @@ jobs:
         run: python3 infra/scripts/prepare_ci_secrets.py
       - name: Connect the ephemeral runner to the management tailnet
         if: steps.release.outputs.ready == 'true'
-        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
@@ -112,7 +112,7 @@ jobs:
           use-cache: 'false'
       - name: Set up the locked Ansible tooling
         if: steps.release.outputs.ready == 'true'
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.13.5"
           enable-cache: false

@@ -21,8 +21,8 @@ COMPOSE_FILES = (
 ALLOWED_DRIFT = {
     # Local stacks track EMQX 6.x; production stays on 5.8.7, the last
     # Apache-2.0 release. The collection matrix covers both.
-    ("docker-compose.yml", "emqx"): "emqx/emqx:6.3.1",
-    ("docker-compose.cluster.yml", "emqx"): "emqx/emqx:6.3.1",
+    ("docker-compose.yml", "emqx"): "emqx/emqx:6.3.2",
+    ("docker-compose.cluster.yml", "emqx"): "emqx/emqx:6.3.2",
     # The production Docker Hub image is amd64-only; local runs use the
     # multi-arch GHCR build (see swarm_smoke.py).
     ("dev/local/compose.yml", "socket_proxy"): (

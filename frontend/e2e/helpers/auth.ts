@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 export const PASSWORD = "PlaywrightPass123!";
+const LOGIN_RATE_WINDOW_MS = 61_000;
 
 type LoginOptions = {
   rememberMe?: boolean;
@@ -25,23 +26,32 @@ export const loginWithEmail = async (
   email: string,
   options: LoginOptions = {},
 ): Promise<void> => {
-  await fillAndVerifyFields([
-    [page.locator("#email"), email],
-    [page.locator("#password"), PASSWORD],
-  ]);
+  const submit = async () => {
+    await fillAndVerifyFields([
+      [page.locator("#email"), email],
+      [page.locator("#password"), PASSWORD],
+    ]);
 
-  if (options.rememberMe) {
-    await page.getByLabel(/remember this device/i).check();
+    if (options.rememberMe) {
+      await page.getByLabel(/remember this device/i).check();
+    }
+
+    const loginResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/auth/login",
+    );
+    await page.getByRole("button", { name: /log in/i }).click();
+    return loginResponsePromise;
+  };
+
+  let loginResponse = await submit();
+  // Journeys that each sign in can exceed the per-account limit of ten logins a
+  // minute, so wait out the window once instead of failing the journey.
+  if (loginResponse.status() === 429) {
+    await page.waitForTimeout(LOGIN_RATE_WINDOW_MS);
+    loginResponse = await submit();
   }
-
-  const loginResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/auth/login",
-  );
-  await page.getByRole("button", { name: /log in/i }).click();
-
-  const loginResponse = await loginResponsePromise;
   const loginBody = await loginResponse.text();
   expect(
     loginResponse.ok(),

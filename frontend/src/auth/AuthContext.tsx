@@ -2,6 +2,7 @@ import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from "react";
 import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
 import { getTokenPayload, getUserIdFromToken } from "./token";
+import { fetchDemoEnabled, setDemoGuest } from "./demo";
 import { getCurrentMember, type Member } from "@/lib/member-api";
 
 interface AuthContextType {
@@ -12,6 +13,11 @@ interface AuthContextType {
   retryAuthentication: () => void;
   member: Member | null;
   isAdmin: boolean;
+  /** A signed-out visitor browsing the public read-only demo. */
+  isGuest: boolean;
+  /** Whether a signed-out visit has asked if this installation is a public demo. */
+  guestChecked: boolean;
+  checkGuest: () => void;
   login: (token: string, rememberMe?: boolean) => void;
   logout: () => void;
 }
@@ -23,6 +29,14 @@ const getStoredToken = () => tokenManager.getToken();
 const noServerToken = () => null;
 const isRememberedSession = () => tokenManager.isRemembered();
 const notRemembered = () => false;
+
+type GuestState = {
+  attempt: number;
+  member: Member | null;
+  error: string | null;
+};
+
+const GUEST_FAILED = "The public demo is unavailable right now. Please try again later.";
 
 type ProfileState = {
   token: string;
@@ -50,6 +64,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Remembered access tokens are kept in memory; a new tab restores one from the cookie.
   const remembered = useSyncExternalStore(subscribeToSession, isRememberedSession, notRemembered);
   const restoring = !token && remembered;
+  const signedOut = !token && !remembered;
+  // Signed-out visitors of a demo installation browse as its viewer member.
+  const [guest, setGuest] = useState<GuestState | null>(null);
+  // Only protected pages ask, so sign-in pages make no extra request.
+  const [guestWanted, checkGuest] = useReducer(() => true, false);
+
+  useEffect(() => {
+    if (!signedOut || !guestWanted) return;
+    let cancelled = false;
+    const resolveGuest = async () => {
+      if (!await fetchDemoEnabled()) {
+        if (!cancelled) setGuest({ attempt, member: null, error: null });
+        return;
+      }
+      setDemoGuest(true);
+      try {
+        const member = await getCurrentMember();
+        if (!cancelled) setGuest({ attempt, member, error: null });
+      } catch {
+        if (!cancelled) setGuest({ attempt, member: null, error: GUEST_FAILED });
+      }
+    };
+    void resolveGuest();
+    return () => {
+      cancelled = true;
+      setDemoGuest(false);
+    };
+  }, [signedOut, guestWanted, attempt]);
 
   useEffect(() => {
     if (!restoring) return;
@@ -150,12 +192,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const member = !expired ? resolved?.member ?? reusableMember(profile, token) : null;
   const restoreError = restoring && restoreFailure === attempt
     ? RENEW_FAILED : null;
-  const authError = member ? null : resolved?.error ?? restoreError;
+  const guestState = signedOut && guestWanted && guest?.attempt === attempt ? guest : null;
+  const guestMember = guestState?.member ?? null;
+  const isGuest = !!guestMember;
+  const authError = member || isGuest ? null : resolved?.error ?? restoreError ?? guestState?.error ?? null;
   const isLoading = (restoring && !restoreError)
+    || (signedOut && guestWanted && guestState === null)
     || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
-  const isAuthenticated = !!token && !expired;
+  const isAuthenticated = (!!token && !expired) || isGuest;
   const isAdmin = member?.role === "admin";
-  const userId = token ? getUserIdFromToken(token) : null;
+  const userId = token ? getUserIdFromToken(token) : guestMember?.id ?? null;
 
   useEffect(() => {
     // A remembered login restores its in-memory token after reload. Compare
@@ -170,7 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, userId, member, isAdmin, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, userId, member: member ?? guestMember, isAdmin, isGuest, guestChecked: guestState !== null, checkGuest, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

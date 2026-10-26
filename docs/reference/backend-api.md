@@ -23,6 +23,7 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members | Send the login bearer token | Profile for self; administrators manage membership |
 | Health and readiness | No token | Public operational probes in local deployments |
+| Public demo | No token, only where `DEMO_MODE` is on | Listed reads as the demo viewer; everything else 403 |
 
 !!! important
     Always send `Authorization: Bearer <token>` for non-authentication user workflows, and supply the private service credential only for trusted gateway-to-TACTIC calls.
@@ -55,6 +56,17 @@ Content-Type: application/json
   "token_type": "bearer"
 }
 ```
+
+### Public demo
+
+| Method | Path | Purpose | Key inputs |
+| --- | --- | --- | --- |
+| `GET` | `/demo` | Whether signed-out visitors browse the read-only demo | None |
+
+With `DEMO_MODE` on, a call without a bearer token reaches only the read
+routes listed in `off_key_api_gateway.api.demo.GUEST_ROUTES`, signed in as the
+configured viewer member; other calls answer 403. See
+[Public demo](../operations/public-demo.md).
 
 ### Membership
 

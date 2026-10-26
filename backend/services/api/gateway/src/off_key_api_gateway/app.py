@@ -22,10 +22,13 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from off_key_api_gateway.settings import (
     AppSettings,
+    DemoSettings,
     get_app_settings,
+    get_demo_settings,
     get_service_endpoints_settings,
 )
 
+from .api.demo import DemoGuestMiddleware
 from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
 from .api.v1.routes import router as v1_router
@@ -39,6 +42,7 @@ VALIDATION_SPECS = [
     ("service_auth", get_service_auth_settings),
     ("email", get_email_settings),
     ("services", get_service_endpoints_settings),
+    ("demo", get_demo_settings),
 ]
 
 
@@ -59,7 +63,9 @@ async def health_check():
     return {"status": "healthy", "service": "api-gateway"}
 
 
-def build_app(app_settings: AppSettings) -> FastAPI:
+def build_app(
+    app_settings: AppSettings, demo_settings: DemoSettings | None = None
+) -> FastAPI:
     """Build the gateway from already validated settings."""
     app = FastAPI(
         title=app_settings.APP_NAME,
@@ -76,7 +82,11 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     # Added innermost first: requests pass CORS, the correlation ID, GZip,
-    # SlowAPI and request logging in that order.
+    # SlowAPI, request logging and the demo guest check in that order.
+    app.state.demo_enabled = False
+    if demo_settings is not None and demo_settings.DEMO_MODE:
+        app.state.demo_enabled = True
+        app.add_middleware(DemoGuestMiddleware, settings=demo_settings)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
@@ -103,4 +113,4 @@ def create_app() -> FastAPI:
         VALIDATION_SPECS,
         context="API gateway configuration",
     )
-    return build_app(get_app_settings())
+    return build_app(get_app_settings(), get_demo_settings())

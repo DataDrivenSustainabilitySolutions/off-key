@@ -77,6 +77,9 @@ services:
       TACTIC_SERVICE_PORT: "${TACTIC_SERVICE_PORT}"
       ENABLE_REQUEST_LOGGING: "${ENABLE_REQUEST_LOGGING}"
       ENABLE_PERFORMANCE_LOGGING: "${ENABLE_PERFORMANCE_LOGGING}"
+      DEMO_MODE: "${DEMO_MODE:-false}"
+      DEMO_VIEWER_EMAIL: "${DEMO_VIEWER_EMAIL:-}"
+      DEMO_VIEWER_PASSWORD: "${DEMO_VIEWER_PASSWORD:-}"
     depends_on:
       timescaledb:
         condition: service_healthy

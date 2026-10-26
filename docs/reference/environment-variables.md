@@ -160,6 +160,9 @@ unknown errors remain eligible for retry.
 | `RADAR_CHECKPOINT_SECRET` | Development value in `.env.example`; a Swarm secret in production | Signs runtime checkpoints; see [RADAR recovery](../operations/radar-recovery.md) |
 | `TACTIC_SERVICE_HOST` | `middleware_tactic` (Compose sets `tactic-middleware`) | Where the API gateway reaches TACTIC; read only by the gateway |
 | `TACTIC_SERVICE_PORT` | `8000` | TACTIC port the API gateway calls; read only by the gateway |
+| `DEMO_MODE` | `false` | Public read-only demo: signed-out visitors reach only listed reads; see [Public demo](../operations/public-demo.md) |
+| `DEMO_VIEWER_EMAIL`, `DEMO_VIEWER_PASSWORD` | Empty | The ordinary member account guests browse as; required with `DEMO_MODE`. Administrators are refused |
+| `DEMO_GUEST_REQUESTS_PER_MINUTE` | `240` | Requests per minute and visitor address for signed-out demo guests |
 
 ## RADAR workloads
 

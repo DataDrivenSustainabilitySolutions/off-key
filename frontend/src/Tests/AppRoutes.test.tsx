@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { createAppRoutes } from "../app/routes";
 
-const auth = vi.hoisted(() => ({ isAuthenticated: false, isLoading: false }));
+const auth = vi.hoisted(() => ({ isAuthenticated: false, isLoading: false, guestChecked: true }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../pages/Login", () => ({ default: () => <h1>Log in</h1> }));
 vi.mock("../pages/MonitoringWorkspace", () => ({ default: () => <h1>Monitoring workspace</h1> }));

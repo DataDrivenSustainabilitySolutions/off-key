@@ -21,4 +21,4 @@
           'updated': 'Demo viewer password refreshed.',
           'configured': 'Demo viewer is ready.',
           'disabled': 'The demo viewer is disabled in Members, so the public demo stays closed.',
-          'waiting': 'Accept the administrator invitation, then run Deploy Demo again to open the demo to visitors.'}[(demo_viewer_setup.stdout_lines | last | from_json).status] }}
+          'waiting': 'Accept the administrator invitation, then run Deploy Production with demo_only again to open the demo to visitors.'}[(demo_viewer_setup.stdout_lines | last | from_json).status] }}

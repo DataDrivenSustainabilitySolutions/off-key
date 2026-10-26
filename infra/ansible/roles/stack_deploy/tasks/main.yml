@@ -13,27 +13,8 @@
 - name: Prepare schema and retire active monitor workers
   include_tasks: maintenance.yml
 
-- name: Find TACTIC-managed RADAR services before the production MQTT cutover
-  command:
-    argv:
-      - docker
-      - service
-      - ls
-      - --quiet
-      - --filter
-      - label=managed_by=tactic
-      - --filter
-      - label=service_type=radar
-  register: tactic_radar_services
-  changed_when: false
-
-- name: Inspect existing TACTIC-managed RADAR services
-  command:
-    argv: [docker, service, inspect, "{{ item }}"]
-  loop: "{{ tactic_radar_services.stdout_lines | default([]) }}"
-  register: tactic_radar_specs
-  changed_when: false
-  no_log: true
+- name: Find this stack's TACTIC-managed services before the production MQTT cutover
+  include_tasks: stack_workers.yml
 
 - name: Require secure TACTIC-managed RADAR services from the intended release
   assert:
@@ -56,7 +37,7 @@
       An existing TACTIC-managed RADAR service uses an older/mutable image or old MQTT credentials.
       Stop the affected monitors before deploying, then recreate them with the intended release.
   vars:
-    container_spec: "{{ (item.stdout | from_json)[0].Spec.TaskTemplate.ContainerSpec }}"
+    container_spec: "{{ item.Spec.TaskTemplate.ContainerSpec }}"
     radar_env: "{{ container_spec.Env | default([]) }}"
     secret_targets: "{{ container_spec.Secrets | default([]) | map(attribute='File.Name') | list }}"
     secret_names:
@@ -66,7 +47,7 @@
         {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'RADAR_MQTT_API_KEY') | map(attribute='SecretName') | list }}
       RADAR_CHECKPOINT_SECRET: >-
         {{ container_spec.Secrets | default([]) | selectattr('File.Name', 'equalto', 'RADAR_CHECKPOINT_SECRET') | map(attribute='SecretName') | list }}
-  loop: "{{ tactic_radar_specs.results | default([]) }}"
+  loop: "{{ stack_tactic_workers | selectattr('Spec.Labels.service_type', 'defined') | selectattr('Spec.Labels.service_type', 'equalto', 'radar') | list }}"
   no_log: true
 
 - name: Deploy and restore the production service model

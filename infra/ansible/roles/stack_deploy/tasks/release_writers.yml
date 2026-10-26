@@ -5,20 +5,20 @@
 # (cloudflared, Traefik, landing, frontend, oauth2-proxy), the stateless gateway
 # and the brokers keep running, so a release that stops part-way never takes
 # the public site offline.
-- name: List the existing application services and runtime workers
+- name: List the existing application services
   command:
-    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "{{ item }}"]
-  loop:
-    - "label=com.docker.stack.namespace={{ stack_name }}"
-    - label=managed_by=tactic
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}"]
   register: release_writer_services
   changed_when: false
+
+- name: Find this stack's runtime workers
+  include_tasks: stack_workers.yml
 
 - name: Select writers to quiesce
   set_fact:
     release_writers: >-
-      {{ ((release_writer_services.results[0].stdout_lines | difference(non_writers))
-          + release_writer_services.results[1].stdout_lines) | unique | list }}
+      {{ ((release_writer_services.stdout_lines | difference(non_writers))
+          + (stack_tactic_workers | map(attribute='Spec.Name') | list)) | unique | list }}
   vars:
     non_writers: >-
       {{ stack_compose_model.services | dict2items

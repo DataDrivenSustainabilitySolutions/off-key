@@ -1,5 +1,7 @@
 # The public demo's own vault: never reuse production secrets except the
-# management-tailnet key, the Resend key and the GHCR placeholders below.
+# Resend key and the GHCR placeholders below. Encrypt it with the production
+# vault password; Deploy Production reads it from OFFKEY_DEMO_VAULT. The demo
+# has no tunnel or tailnet credentials: production's Traefik serves it.
 # Rename to vault.yml and encrypt:
 #   ansible-vault encrypt inventories/demo/group_vars/all/vault.yml
 
@@ -25,16 +27,6 @@ emqx_server_key: "TEST_ONLY_REPLACE_WITH_SERVER_PRIVATE_KEY_PEM"
 mqtt_proxy_password: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_PASSWORD"
 mqtt_radar_password: "TEST_ONLY_REPLACE_WITH_DIFFERENT_RANDOM_32_BYTE_PASSWORD"
 radar_checkpoint_secret: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_SECRET"
-
-# Reusable auth key for the prod management tailnet. The prod inventory maps this to
-# tailscale_os_authkey so new managers/workers can join during provision-prod.
-ingress_ts_authkey: "tskey-auth-CHANGE_ME"
-
-# Token for the demo's OWN Cloudflare Tunnel, whose only public hostname is
-# demo.aberration.app -> http://traefik:80. Never the production tunnel: a second
-# connector on the production tunnel would receive production traffic.
-# Copy only the eyJ... token from the installation command, not the full command.
-cloudflare_tunnel_token: ""
 
 ghcr_username: "your-github-username"
 ghcr_token: "ghp_CHANGE_ME"

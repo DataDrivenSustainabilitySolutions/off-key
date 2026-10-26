@@ -188,6 +188,8 @@ stack_interpolation_environment:
   TRAEFIK_DYNAMIC_HASH: "{{ (lookup('template', stack_source_dir ~ '/traefik-dynamic.yml.j2') | hash('sha1'))[:12] }}"
   LANDING_PAGE_HASH: "{{ (lookup('template', stack_source_dir ~ '/landing.html.j2') | hash('sha1'))[:12] }}"
   EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
+  CONFIG_NAME_PREFIX: "{{ stack_config_prefix }}"
+  DEMO_NETWORK: "{{ demo_network }}"
   TAILSCALE_AMBIBOX_NFS_ADDR: "{{ ambibox_nfs_addr | default('') }}"
   TAILSCALE_AMBIBOX_NFS_EXPORT: "{{ stack_dir ~ '/tailscale-ambibox-data' }}"
   TAILSCALE_AMBIBOX_NFS_OPTS: rw,nfsvers=4,hard,timeo=150,retrans=3
@@ -206,14 +208,23 @@ stack_nfs_spec: "{{ (ambibox_nfs_addr | default('')) ~ '|' ~ stack_dir ~ '/tails
 
 # Overlays an inventory can leave out; group_vars/all.yml selects the same set.
 stack_optional_overlays:
+  - file: docker-compose.traefik.yml
+    enabled: "{{ ingress_enabled | default(true) | bool }}"
   - file: docker-compose.oauth2.yml
     enabled: "{{ ingress_admin_enabled | default(true) | bool }}"
   - file: docker-compose.landing.yml
     enabled: "{{ landing_enabled | default(true) | bool }}"
   - file: docker-compose.ambibox.yml
     enabled: "{{ ambibox_ingress_enabled | bool }}"
+  - file: docker-compose.demo-routing.yml
+    enabled: "{{ demo_hostname | default('') | length > 0 }}"
+  - file: docker-compose.demo-ingress.yml
+    enabled: "{{ demo_mode | default(false) | bool }}"
 
 # Services of left-out overlays receive no environment block.
 stack_omitted_services: >-
   {{ ([] if ambibox_ingress_enabled | bool else ['tailscale-ambibox'])
      + ([] if ingress_admin_enabled | default(true) | bool else ['oauth2-proxy']) }}
+
+# Global Swarm config names; a second stack on the cluster gets its own.
+stack_config_prefix: "{{ '' if stack_name == 'off-key' else stack_name ~ '_' }}"

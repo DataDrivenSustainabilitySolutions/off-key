@@ -751,6 +751,34 @@ class DeploymentTests(unittest.TestCase):
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
+    def test_traefik_reaches_production_and_the_demo_by_stack_qualified_names(self):
+        result = self.results["prod"]
+        urls = {
+            name: service["loadBalancer"]["servers"][0]["url"]
+            for name, service in result["routes"]["services"].items()
+        }
+        self.assertEqual(urls["demo-frontend"], "http://off-key-demo_frontend:5173")
+        self.assertEqual(urls["demo-api"], "http://off-key-demo_api:8000")
+        for name, url in urls.items():
+            if not name.startswith("demo-"):
+                self.assertTrue(url.startswith("http://off-key_"), url)
+        routers = result["routes"]["routers"]
+        self.assertEqual(
+            routers["demo-frontend"]["rule"], "Host(`demo.aberration.app`)"
+        )
+        self.assertEqual(routers["demo-api"]["middlewares"], ["api-strip"])
+        swarm = result["swarm_config"]
+        self.assertEqual(swarm["networks"]["demo-network"]["name"], "aberration-demo")
+        # Only Traefik of production joins the network the demo shares.
+        joined = [
+            name
+            for name, service in swarm["services"].items()
+            if "demo-network" in service.get("networks", {})
+        ]
+        self.assertEqual(joined, ["traefik"])
+        configs = [config["name"] for config in swarm["configs"].values()]
+        self.assertTrue(any(name.startswith("emqx_security_cfg_") for name in configs))
+
     def test_production_has_no_public_demo_settings(self):
         services = self.results["prod"]["swarm_config"]["services"]
         for service in ("api", "tactic"):

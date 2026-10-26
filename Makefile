@@ -6,10 +6,9 @@ check-infra:
 # Dispatches the Deploy Production workflow; infra/Makefile deploy-prod runs Ansible directly.
 deploy-prod:
 	gh workflow run deploy-production.yml --ref main -f revision=$(REVISION) -f bootstrap=$(BOOTSTRAP)
-# Dispatches Deploy Demo; PROVISION=true sets up a new demo server first.
-PROVISION ?= false
+# Dispatches Deploy Production for the public demo stack only.
 deploy-demo:
-	gh workflow run deploy-demo.yml --ref main -f revision=$(REVISION) -f provision=$(PROVISION)
+	gh workflow run deploy-production.yml --ref main -f revision=$(REVISION) -f demo_only=true
 
 LOCAL_ARGS ?=
 local-init:

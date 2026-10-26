@@ -1,7 +1,10 @@
-# Public read-only demo (demo.aberration.app) on its own single-node Swarm.
-# Same release and services as production, without Ambibox ingress, the
-# oauth2-gated admin dashboards and the landing page. Signed-out visitors browse
-# read-only as the viewer member; see docs/operations/public-demo.md.
+# Public read-only demo (demo.aberration.app): a second, small stack on the
+# production Swarm, deployed by Deploy Production after production itself. Same
+# release and application services as production, without Ambibox ingress,
+# Traefik, the Cloudflare connector, the oauth2-gated admin dashboards and the
+# landing page: production's Traefik routes the demo hostname over the shared
+# demo network. Signed-out visitors browse read-only as the viewer member; see
+# docs/operations/public-demo.md.
 # Keep everything else equal to inventories/prod: infra/tests/test_demo.py
 # names the only settings allowed to differ.
 
@@ -17,8 +20,8 @@ db_sync_image: "{{ release.images.db_sync }}"
 # ── Environment identity ──────────────────────────────────────────────────────
 
 offkey_env:  demo
-stack_name:  off-key
-stack_dir:   /opt/stacks/off-key
+stack_name:  off-key-demo
+stack_dir:   /opt/stacks/off-key-demo
 
 # The existing ingress auth key belongs to the prod management tailnet. Reuse
 # that vaulted value for OS-level nodes instead of duplicating the secret.
@@ -32,6 +35,7 @@ docker_mtu: 1280
 
 demo_mode:               true
 ambibox_ingress_enabled: false
+ingress_enabled:         false
 ingress_admin_enabled:   false
 landing_enabled:         false
 release_public_urls:     ["https://demo.aberration.app"]
@@ -194,16 +198,16 @@ tactic_docker_max_concurrent_calls: "5"
 # Fully-qualified Swarm network name (stack name prefix). The rendered
 # docker-compose.environment.yml value overrides the inline default in
 # docker-compose.swarm.yml, so they must match.
-tactic_docker_default_network:      "off-key_emqx-network"
-tactic_docker_additional_networks:  "off-key_app-network"
+tactic_docker_default_network:      "off-key-demo_emqx-network"
+tactic_docker_additional_networks:  "off-key-demo_app-network"
 tactic_docker_default_restart_policy: on-failure
 tactic_docker_default_restart_max_attempts: "3"
 tactic_docker_default_memory_limit: 512m
 tactic_docker_default_cpu_limit:    "0.5"
 tactic_docker_default_memory_reservation: 512m
 tactic_docker_default_cpu_reservation: "0.5"
-# One small server: each worker reserves half a CPU and 512 MB.
-tactic_radar_max_active_monitors: "4"
+# Shares production's nodes: each worker reserves half a CPU and 512 MB.
+tactic_radar_max_active_monitors: "2"
 tactic_radar_default_mqtt_broker_host:      emqx-main
 tactic_radar_default_mqtt_broker_port:      "8883"
 tactic_radar_default_mqtt_use_tls:          "true"

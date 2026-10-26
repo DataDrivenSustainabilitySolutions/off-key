@@ -46,6 +46,27 @@
 - name: Render deployment files
   include_tasks: render.yml
 
+- name: Look for the network production's Traefik shares with the public demo
+  command:
+    argv: [docker, network, inspect, --format, "{% raw %}{{.Driver}} {{.Attachable}}{% endraw %}", "{{ demo_network }}"]
+  register: demo_network_inspect
+  changed_when: false
+  failed_when: false
+  when: (demo_hostname | default('') | length > 0) or (demo_mode | default(false) | bool)
+
+- name: Create the shared demo network
+  command:
+    argv: [docker, network, create, --driver, overlay, --attachable, --opt, com.docker.network.driver.mtu=1280, "{{ demo_network }}"]
+  when:
+    - (demo_hostname | default('') | length > 0) or (demo_mode | default(false) | bool)
+    - demo_network_inspect.rc != 0
+
+- name: Require the shared demo network to be an attachable overlay
+  assert:
+    that: demo_network_inspect.rc != 0 or demo_network_inspect.stdout | trim == 'overlay true'
+    fail_msg: "{{ demo_network }} exists but is not an attachable overlay network; remove it and retry."
+  when: (demo_hostname | default('') | length > 0) or (demo_mode | default(false) | bool)
+
 - name: Record the intended release separately from the last verified deployment
   copy:
     dest: "{{ stack_dir }}/release-pending.json"

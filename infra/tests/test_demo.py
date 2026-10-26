@@ -1,4 +1,4 @@
-"""The public demo inventory renders production's stack minus vendor and admin ingress."""
+"""The public demo is a second, small stack that production's Traefik serves."""
 
 import json
 import tempfile
@@ -13,8 +13,11 @@ INVENTORIES = ROOT / "ansible/inventories"
 # Settings the demo may set differently from production; everything else is shared.
 DEMO_ONLY = {
     "offkey_env",
+    "stack_name",
+    "stack_dir",
     "demo_mode",
     "ambibox_ingress_enabled",
+    "ingress_enabled",
     "ingress_admin_enabled",
     "landing_enabled",
     "release_public_urls",
@@ -23,10 +26,22 @@ DEMO_ONLY = {
     "frontend_hostname",
     "frontend_base_url",
     "cors_allowed_origins",
+    "tactic_docker_default_network",
+    "tactic_docker_additional_networks",
     "tactic_radar_max_active_monitors",
     "telemetry_retention_days",
+    # Production routes the demo; the demo routes nothing.
+    "demo_hostname",
+    "demo_stack_name",
 }
-LEFT_OUT = {"tailscale-ambibox", "mqtt-tailscale-bridge", "oauth2-proxy", "landing"}
+LEFT_OUT = {
+    "tailscale-ambibox",
+    "mqtt-tailscale-bridge",
+    "oauth2-proxy",
+    "landing",
+    "traefik",
+    "cloudflared",
+}
 
 
 def settings(environment):
@@ -45,7 +60,8 @@ class DemoInventoryTests(unittest.TestCase):
         if result.returncode:
             raise AssertionError(f"Rendering the demo failed:\n{result.stdout}")
         cls.result = test_deployment.read_configuration(directory)
-        cls.services = cls.result["swarm_config"]["services"]
+        cls.swarm = cls.result["swarm_config"]
+        cls.services = cls.swarm["services"]
 
     def test_only_named_settings_differ_from_production(self):
         prod, demo = settings("prod"), settings("demo")
@@ -55,27 +71,46 @@ class DemoInventoryTests(unittest.TestCase):
             if prod.get(key, object()) != demo.get(key, object())
         }
         self.assertEqual(differing, DEMO_ONLY)
+        self.assertNotIn("demo_hostname", demo)
 
-    def test_vendor_admin_and_landing_services_are_left_out(self):
+    def test_only_application_services_run_in_their_own_stack(self):
         self.assertEqual(LEFT_OUT & self.services.keys(), set())
-        for service in ("traefik", "cloudflared", "frontend", "api", "tactic"):
+        for service in ("frontend", "api", "tactic", "postgres", "emqx-main"):
             self.assertIn(service, self.services)
         self.assertNotIn(
             "tailscale-ambibox-state", self.result["config"].get("volumes", {})
         )
         self.assertIsNone(self.result["landing_html"])
         self.assertIsNone(self.result["export"])
-        secrets = self.result["deployment_secret_names"]
-        self.assertEqual([name for name in secrets if "ambibox" in name], [])
+        names = self.result["deployment_secret_names"]
+        self.assertNotIn("cloudflared_tunnel_token", names)
+        self.assertEqual([key for key in names if "ambibox" in key], [])
+        for name in names.values():
+            self.assertTrue(name.startswith("off-key-demo_"), name)
+        # Swarm config names are cluster-wide; production keeps the unprefixed ones.
+        configs = [config["name"] for config in self.swarm["configs"].values()]
+        self.assertEqual(len(configs), 1)
+        self.assertTrue(configs[0].startswith("off-key-demo_emqx_security_cfg_"))
 
-    def test_only_the_demo_hostname_is_routed(self):
-        routers = self.result["routes"]["routers"]
-        self.assertEqual(set(routers), {"frontend", "api"})
-        self.assertEqual(routers["frontend"]["rule"], "Host(`demo.aberration.app`)")
-        self.assertTrue(
-            routers["api"]["rule"].startswith("Host(`demo.aberration.app`)")
+    def test_only_frontend_and_api_join_the_shared_demo_network(self):
+        self.assertEqual(
+            self.swarm["networks"]["demo-network"],
+            {"external": True, "name": "aberration-demo"},
         )
-        self.assertEqual(set(self.result["routes"]["services"]), {"frontend", "api"})
+        joined = {
+            name
+            for name, service in self.services.items()
+            if "demo-network" in service.get("networks", {})
+        }
+        self.assertEqual(joined, {"frontend", "api"})
+        tactic = self.services["tactic"]["environment"]
+        self.assertEqual(
+            tactic["TACTIC_DOCKER_DEFAULT_NETWORK"], "off-key-demo_emqx-network"
+        )
+        self.assertEqual(
+            tactic["TACTIC_RADAR_SECRET_SERVICE"], "off-key-demo_mqtt-radar"
+        )
+        self.assertEqual(tactic["TACTIC_RADAR_MAX_ACTIVE_MONITORS"], "2")
 
     def test_guests_and_the_viewer_bootstrap_receive_the_viewer_account(self):
         api = self.services["api"]["environment"]

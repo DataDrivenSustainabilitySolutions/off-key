@@ -87,6 +87,7 @@ def _orchestrator(monkeypatch, session, fake_docker=None):
     monkeypatch.setattr(
         radar_module, "get_async_docker", lambda: fake_docker or FakeAsyncDocker()
     )
+    monkeypatch.setattr(radar_module, "controller_id", lambda: "this-deployment")
     return RadarOrchestrationService(session=session)
 
 
@@ -225,6 +226,9 @@ async def test_teardown_managed_radar_workloads_removes_workloads_and_clears_db(
     assert summary["workloads_targeted"] == 2
     assert summary["docker_workloads_removed"] == 2
     assert summary["db_rows_deleted"] == 1
+    # Another stack's workers on the same cluster, such as the demo's, stay.
+    labels = fake_docker.client.services.list.call_args.kwargs["filters"]["label"]
+    assert "radar_controller_id=this-deployment" in labels
     statements = [call.args[0] for call in session.execute.await_args_list]
     assert "WHERE services.container_id IN" in str(statements[0])
     assert "UPDATE monitoring_pipeline_runs" in str(statements[1])

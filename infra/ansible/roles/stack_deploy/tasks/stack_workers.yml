@@ -1,0 +1,41 @@
+---
+# TACTIC-managed services that belong to this stack. Each stack's TACTIC attaches
+# its workers to that stack's own broker network, so the workers of a second stack
+# on the cluster, such as the public demo, are never counted as this stack's.
+- name: List TACTIC-managed services on the cluster
+  command:
+    argv: [docker, service, ls, --quiet, --filter, label=managed_by=tactic]
+  register: tactic_cluster_services
+  changed_when: false
+
+- name: Read this stack's broker network
+  command:
+    argv: [docker, network, inspect, --format, "{% raw %}{{.Id}}{% endraw %}", "{{ stack_name }}_emqx-network"]
+  register: stack_broker_network
+  changed_when: false
+  failed_when: false
+
+- name: Inspect the TACTIC-managed services
+  command:
+    argv: "{{ ['docker', 'service', 'inspect'] + tactic_cluster_services.stdout_lines }}"
+  register: tactic_cluster_specs
+  changed_when: false
+  no_log: true
+  when: tactic_cluster_services.stdout_lines | length > 0
+
+- name: Keep the services on this stack's broker network
+  set_fact:
+    stack_tactic_workers: >-
+      {%- set kept = namespace(specs=[]) -%}
+      {%- for spec in (tactic_cluster_specs.stdout | default('[]', true) | from_json) -%}
+      {%- set targets = spec.Spec.TaskTemplate.Networks | default([]) | map(attribute='Target') | list -%}
+      {%- if targets | intersect(own_networks) | length > 0 -%}
+      {%- set kept.specs = kept.specs + [spec] -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ kept.specs }}
+  vars:
+    own_networks: >-
+      {{ [stack_name ~ '_emqx-network']
+         + ([stack_broker_network.stdout | trim] if stack_broker_network.rc == 0 else []) }}
+  no_log: true

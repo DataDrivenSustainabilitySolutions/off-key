@@ -15,18 +15,25 @@ persistence_any_enabled: >-
      or (persist_emqx_log  | default(false) | bool) }}
 
 # One overlay selection for deployment and offline validation. Ambibox ingress,
-# the oauth2-gated admin dashboards and the landing page are optional per
-# inventory (the public demo leaves all three out); defaults keep production.
+# the internet ingress (Traefik and the Cloudflare connector), the oauth2-gated
+# admin dashboards and the landing page are optional per inventory; defaults
+# keep production. The public demo is a second stack without any of them that
+# production's Traefik reaches over the shared demo network.
 stack_compose_files: >-
   {{ [stack_dir ~ '/docker-compose.swarm.yml']
      + ([stack_dir ~ '/docker-compose.ambibox.yml'] if ambibox_ingress_enabled | default(true) | bool else [])
-     + [stack_dir ~ '/docker-compose.traefik.yml']
+     + ([stack_dir ~ '/docker-compose.traefik.yml'] if ingress_enabled | default(true) | bool else [])
      + ([stack_dir ~ '/docker-compose.oauth2.yml'] if ingress_admin_enabled | default(true) | bool else [])
      + [stack_dir ~ '/docker-compose.environment.yml']
-     + [stack_dir ~ '/docker-compose.cloudflared.yml']
+     + ([stack_dir ~ '/docker-compose.cloudflared.yml'] if ingress_enabled | default(true) | bool else [])
      + ([stack_dir ~ '/docker-compose.landing.yml'] if landing_enabled | default(true) | bool else [])
      + [stack_dir ~ '/docker-compose.mqtt-security.yml']
+     + ([stack_dir ~ '/docker-compose.demo-routing.yml'] if demo_hostname | default('') else [])
+     + ([stack_dir ~ '/docker-compose.demo-ingress.yml'] if demo_mode | default(false) | bool else [])
      + ([stack_dir ~ '/docker-compose.persistence.yml'] if persistence_any_enabled | bool else []) }}
+
+# The Swarm network production's Traefik shares with the demo's frontend and API.
+demo_network: aberration-demo
 
 # NOTE: there is deliberately no static "stateful node" variable here. Volumes are node-local,
 # but which node runs a given service is discovered at run time from `docker service ps`

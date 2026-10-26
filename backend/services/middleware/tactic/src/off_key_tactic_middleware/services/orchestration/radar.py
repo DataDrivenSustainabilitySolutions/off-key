@@ -39,6 +39,7 @@ from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
 )
 from .radar_workloads import RadarWorkloadManager, get_async_docker
+from .workload_identity import controller_id
 
 
 class RadarOrchestrationService:
@@ -413,12 +414,15 @@ class RadarOrchestrationService:
 
     async def teardown_managed_radar_workloads(self) -> dict[str, int]:
         """
-        Remove all TACTIC-managed RADAR Docker workloads and clear service records.
+        Remove this deployment's TACTIC-managed RADAR workloads and clear their
+        service records. Workloads of another stack on the cluster stay.
 
         Returns:
             Dict[str, int]: Cleanup summary counters.
         """
-        managed_workload_ids = await self.workloads.list_managed_ids()
+        managed_workload_ids = await self.workloads.list_managed_ids(
+            controller_id=controller_id()
+        )
         target_ids = set(managed_workload_ids)
 
         removed_workloads = 0

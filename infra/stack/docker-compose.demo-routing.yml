@@ -1,0 +1,17 @@
+# Public demo routing overlay (production only).
+#
+# Merged when the inventory names a demo_hostname. Production's Traefik joins
+# the shared demo network to reach the demo stack's frontend and API by their
+# stack-qualified service names (see traefik-dynamic.yml.j2); nothing else of
+# production is on that network. Ansible creates the network before deploying.
+# References the base's overlay networks, so it is NOT valid on its own.
+
+services:
+  traefik:
+    networks:
+      - demo-network
+
+networks:
+  demo-network:
+    external: true
+    name: "${DEMO_NETWORK}"

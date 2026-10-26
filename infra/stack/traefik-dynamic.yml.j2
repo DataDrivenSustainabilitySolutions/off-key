@@ -7,9 +7,11 @@
 # stack_prepare ansible role. Hostnames come from each inventory. Changing routes = edit this
 # file + redeploy. See docs/operations/production.md (Credentials, ingress and certificates).
 #
-# Load balancing is Docker's built-in mesh: each service `url` is the service name, which
-# resolves to the Swarm VIP over the shared overlay. Traefik must share a network with each
-# target (public-network: frontend/oauth2-proxy, app-network: api, emqx-network: emqx-main).
+# Load balancing is Docker's built-in mesh: each service `url` is the stack-qualified
+# service name, which resolves to the Swarm VIP over the shared overlay. Traefik must share
+# a network with each target (public-network: frontend/oauth2-proxy, app-network: api,
+# emqx-network: emqx-main). Qualified names matter because the public demo, a second stack,
+# has services with the same short names on the demo network that Traefik also joins.
 #
 # AUTH: emqx./traefik. sit behind oauth2-proxy via a forwardAuth middleware (oauth2-proxy
 # is never in the data path — only the /oauth2/auth sub-request). oauth2-proxy's public endpoints
@@ -50,6 +52,22 @@ http:
       service: api
 
 {% if ingress_admin_enabled | default(true) | bool %}
+{% if demo_hostname | default('') %}
+    # The public read-only demo, a separate stack reached over the demo network.
+    demo-frontend:
+      rule: "Host(`{{ demo_hostname }}`)"
+      entryPoints: [web]
+      priority: 1
+      service: demo-frontend
+
+    demo-api:
+      rule: "Host(`{{ demo_hostname }}`) && PathPrefix(`/api`)"
+      entryPoints: [web]
+      priority: 10
+      middlewares: [api-strip]
+      service: demo-api
+
+{% endif %}
     # oauth2-proxy's public endpoints on the dedicated auth host — NO auth middleware, since the
     # GitHub callback/sign-in must complete without a session (else an infinite auth loop).
     oauth2:
@@ -77,25 +95,35 @@ http:
     landing:
       loadBalancer:
         servers:
-          - url: "http://landing:80"
+          - url: "http://{{ stack_name }}_landing:80"
 {% endif %}
     frontend:
       loadBalancer:
         servers:
-          - url: "http://frontend:5173"
+          - url: "http://{{ stack_name }}_frontend:5173"
     api:
       loadBalancer:
         servers:
-          - url: "http://api:8000"
+          - url: "http://{{ stack_name }}_api:8000"
+{% if demo_hostname | default('') %}
+    demo-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://{{ demo_stack_name }}_frontend:5173"
+    demo-api:
+      loadBalancer:
+        servers:
+          - url: "http://{{ demo_stack_name }}_api:8000"
+{% endif %}
 {% if ingress_admin_enabled | default(true) | bool %}
     emqx:
       loadBalancer:
         servers:
-          - url: "http://emqx-main:18083"
+          - url: "http://{{ stack_name }}_emqx-main:18083"
     oauth2-proxy:
       loadBalancer:
         servers:
-          - url: "http://oauth2-proxy:4180"
+          - url: "http://{{ stack_name }}_oauth2-proxy:4180"
 {% endif %}
 
   middlewares:
@@ -124,7 +152,7 @@ http:
     # sub-request — the request body never passes through oauth2-proxy.
     oauth-auth:
       forwardAuth:
-        address: "http://oauth2-proxy:4180/oauth2/auth"
+        address: "http://{{ stack_name }}_oauth2-proxy:4180/oauth2/auth"
         trustForwardHeader: true
         authResponseHeaders:
           - X-Auth-Request-User

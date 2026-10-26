@@ -1730,7 +1730,7 @@ wheels = [
 
 [[package]]
 name = "nonconform"
-version = "1.0.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1739,9 +1739,9 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/04/71b157c32bd16945906d33baf1d16786439afedb1a3199855994c8ee03d0/nonconform-1.0.0.tar.gz", hash = "sha256:23a6e66136dc9b23b175865d400540c5e8f3d82e997cb8e2d9675ceb3e40659d", size = 56026, upload-time = "2026-05-14T18:35:25.188Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/36/c80bef0bf5a9ef967e125be23c330e47df9a37d4d0f13719fbc9eed7cef5/nonconform-2.0.0.tar.gz", hash = "sha256:258212539e370edfe41eefb332fa36fedbde0bc07dc94d00806e0cf206a9c724", size = 94407, upload-time = "2026-10-22T10:43:53.448Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/45/306114ee1f2284b8dacb9704fc6b938e3cc125bee8d31e73788aa87bf5df/nonconform-1.0.0-py3-none-any.whl", hash = "sha256:475dfcc36986e53d6b3410972a1d175000b1d46a74e4ce470ac5de1eb47a7216", size = 61628, upload-time = "2026-05-14T18:35:23.613Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/0b/d98a3a2081e28275a08f6c286cc7793e30ab49b6290ed7fe74eeae4d7219/nonconform-2.0.0-py3-none-any.whl", hash = "sha256:f079ea29fc009c9525e0f5d4f3f4c48dd1743b43abae01f74a08c49e47e1b158", size = 112605, upload-time = "2026-10-22T10:43:52.161Z" },
 ]
 
 [package.optional-dependencies]
@@ -2030,7 +2030,7 @@ dependencies = [
 requires-dist = [
     { name = "aberrant", extras = ["faiss"], specifier = "==1.3.0" },
     { name = "janus", specifier = ">=2,<3" },
-    { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<2" },
+    { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<3" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "off-key-core", editable = "libs/core" },
     { name = "paho-mqtt", specifier = ">=2.1,<3" },

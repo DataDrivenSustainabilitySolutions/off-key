@@ -41,10 +41,6 @@ services:
     ports:
       - "127.0.0.1:${LOCAL_TACTIC_PORT:-8003}:8000"
 
-  mqtt-simulator:
-    environment:
-      SIMULATOR_WORKSHOP_ENABLED: "${SIMULATOR_WORKSHOP_ENABLED:-true}"
-
   timescaledb:
     ports:
       - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5433}:5432"
@@ -99,9 +95,10 @@ services:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-simulator
-        SERVICE_ROOT: services/mqtt/simulator
-    image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
+        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_ROOT: services/mqtt/proxy
+    # The proxy image supplies Python and Paho for the fixture publisher.
+    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
     command: ["/app/bin/python", "/opt/broker_fixture.py", "--publish"]
     volumes:
       - ./dev/local/broker_fixture.py:/opt/broker_fixture.py:ro

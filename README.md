@@ -22,8 +22,8 @@ docker compose up -d --build
 The example contains development-only credentials and service-discovery defaults.
 Use independent secrets and production broker, database, email, and origin settings
 for any deployed environment. Local `.env` files are intentionally not tracked.
-See [Deployment modes](docs/operations/deployment-modes.md) for the simulator
-profile, the EMQX cluster override and production.
+See [Deployment modes](docs/operations/deployment-modes.md) for the EMQX
+cluster override and production.
 
 ## Development validation
 

@@ -143,7 +143,6 @@ record, so a change to one client is visible against the rest.
 | TACTIC ingress publisher | 30 s | configured CA file | Paho, 1–30 s backoff, no cutoff | connected | one envelope per forwarded payload |
 | Collection worker | 15 s | configured CA file | collection loop, about every 2 s, no cutoff | connected and catalogue applied | envelopes up to six times the payload limit; payloads up to 64 KiB |
 | RADAR worker | 60 s | configured CA file | one owner, 5 s doubling to 5 min, no cutoff | every required subscription acknowledged | `RADAR_MAX_PAYLOAD_BYTES`, 64 KiB by default |
-| Simulator | 60 s | system CA store | none (blocking connect at start) | not reported | not applicable |
 
 A refused connection (wrong credentials or permissions) is retried on the same
 schedule as an outage, so the broker sees the same credentials again.

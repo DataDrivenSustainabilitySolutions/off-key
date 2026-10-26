@@ -57,16 +57,6 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-mqtt-proxy
               SERVICE_ROOT=services/mqtt/proxy
-          - service: mqtt-simulator
-            image_name: off-key-mqtt-simulator
-            # Only local stacks use it and they build it from source, so it is
-            # built on every run but never published.
-            build_only: true
-            context: ./backend
-            file: ./backend/Dockerfile
-            build_args: |
-              SERVICE_NAME=off-key-mqtt-simulator
-              SERVICE_ROOT=services/mqtt/simulator
           - service: db-sync
             image_name: off-key-db-sync
             context: ./backend

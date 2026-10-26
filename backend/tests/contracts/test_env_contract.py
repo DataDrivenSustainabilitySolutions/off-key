@@ -19,7 +19,6 @@ SERVICES = {
     "mqtt-proxy": "services/mqtt/proxy",
     "mqtt-radar": "services/mqtt/radar",
     "db-sync": "services/db/sync",
-    "mqtt-simulator": "services/mqtt/simulator",
 }
 COMPOSE_FILES = ("docker-compose.yml", "dev/local/compose.yml")
 # Everything that reads or sets a documented variable.

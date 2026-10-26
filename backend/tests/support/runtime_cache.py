@@ -20,7 +20,6 @@ from off_key_db_sync.config.config import get_sync_settings
 from off_key_mqtt_proxy.config.config import get_mqtt_settings
 from off_key_mqtt_radar.config.config import get_radar_settings
 from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_simulator.config import get_simulator_settings
 from off_key_tactic_middleware.config.collection import get_ambibox_settings
 from off_key_tactic_middleware.config.config import clear_tactic_settings_caches
 from off_key_tactic_middleware.config.system_live import get_system_live_settings
@@ -41,7 +40,6 @@ SETTINGS_GETTERS = (
     get_radar_settings,
     get_mqtt_settings,
     get_sync_settings,
-    get_simulator_settings,
 )
 
 

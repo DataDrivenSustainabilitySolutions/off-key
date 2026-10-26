@@ -81,11 +81,6 @@ def test_init_preserves_private_configuration_and_matches_emqx(launcher):
     assert values["SYSTEM_LIVE_ENABLED"] == "true"
     assert json.loads(values["SYSTEM_LIVE_ALLOWED_HOSTS"]) == launcher.LOCAL_LIVE_HOSTS
     assert values["SYSTEM_LIVE_CREDENTIALS"] == "{}"
-    assert values["SIMULATOR_WORKSHOP_ENABLED"] == "true"
-    catalog = json.loads((ROOT / "dev/local/simulator-system.json").read_text())
-    assert set(values["SIMULATOR_CHARGER_IDS"].split(",")) == {
-        device["id"].removeprefix("entity:") for device in catalog["devices"]
-    }
     assert launcher.default_project(launcher.ROOT) != launcher.default_project(
         launcher.ROOT.parent
     )
@@ -289,13 +284,13 @@ def test_public_image_mode_preserves_context_and_private_config(
     command = launcher.compose_command()
     if failure:
         with pytest.raises(subprocess.CalledProcessError):
-            launcher.start_stack(command, simulator=True, public_images=True)
+            launcher.start_stack(command, public_images=True)
     else:
-        launcher.start_stack(command, simulator=True, public_images=True)
+        launcher.start_stack(command, public_images=True)
         assert len(phases) == 2
         assert phases[0][1] == phases[1][1]
         assert phases[0][0][-2:] == ["build", "mqtt-radar"]
-        assert "mqtt-sim" in phases[1][0]
+        assert "--profile" not in phases[1][0]
     assert inspections[0][0][3] == "desktop-linux"
     assert inspections[0][1]["DOCKER_CONFIG"] == str(saved)
     assert not phases[0][1].exists()
@@ -311,9 +306,7 @@ def test_regular_start_preserves_docker_configuration(launcher, monkeypatch):
     monkeypatch.setattr(
         launcher, "execute", lambda command, environment: phases.append(environment)
     )
-    launcher.start_stack(
-        launcher.compose_command(), simulator=False, public_images=False
-    )
+    launcher.start_stack(launcher.compose_command(), public_images=False)
     assert len(phases) == 2
     assert all(phase["DOCKER_CONFIG"] == "/original/docker-config" for phase in phases)
     assert all(phase["DOCKER_CONTEXT"] == "desktop-linux" for phase in phases)
@@ -329,12 +322,10 @@ def test_broker_fixture_is_explicit_and_preserves_existing_allowlist(
     )
     launcher.start_stack(
         launcher.compose_command(),
-        simulator=False,
         public_images=False,
         broker_fixture=True,
     )
     assert phases[1][phases[1].index("--profile") + 1] == "broker-fixture"
-    assert "mqtt-sim" not in phases[1]
     assert launcher.ENV_FILE.read_bytes() == original
 
 

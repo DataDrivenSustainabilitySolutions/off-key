@@ -17,7 +17,6 @@ source =
     backend/services/middleware/tactic/src
     backend/services/mqtt/proxy/src
     backend/services/mqtt/radar/src
-    backend/services/mqtt/simulator/src
 
 [report]
 skip_empty = true

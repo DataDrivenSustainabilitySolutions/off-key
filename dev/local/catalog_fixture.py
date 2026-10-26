@@ -190,9 +190,7 @@ if __name__ == "__main__":
         from run import ENV_FILE, ROOT, read_environment
 
         values = read_environment(ENV_FILE)
-        generate(
-            document.get("document", document), ROOT, values["MQTT_SIMULATOR_IMAGE"]
-        )
+        generate(document.get("document", document), ROOT, values["MQTT_PROXY_IMAGE"])
         print("Generated private catalogue simulation files in dev/local/state/.")
     else:
         publish(document)

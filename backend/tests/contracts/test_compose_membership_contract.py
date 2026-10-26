@@ -24,10 +24,6 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         "TACTIC_RADAR_DEFAULT_MQTT_USERNAME": "fixture-managed-radar",
         "TACTIC_SERVICE_HOST": "fixture-tactic",
         "SYNC_API_PORT": "9009",
-        "SIMULATOR_BROKER_HOST": "fixture-broker",
-        "SIMULATOR_INTERVAL_SECONDS": "2.5",
-        "SIMULATOR_USERNAME": "fixture-simulator",
-        "SIMULATOR_API_KEY": "fixture-simulator-password",
     }
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -75,12 +71,6 @@ def test_compose_scopes_secrets_and_preserves_service_settings(tmp_path):
         "db-sync": ("SYNC_API_PORT",),
         "mqtt-proxy": ("MQTT_USERNAME", "MQTT_APIKEY", "MQTT_CA_FILE"),
         "tactic-middleware": ("TACTIC_RADAR_DEFAULT_MQTT_USERNAME",),
-        "mqtt-simulator": (
-            "SIMULATOR_BROKER_HOST",
-            "SIMULATOR_INTERVAL_SECONDS",
-            "SIMULATOR_USERNAME",
-            "SIMULATOR_API_KEY",
-        ),
     }
     for service, keys in expected.items():
         for key in keys:

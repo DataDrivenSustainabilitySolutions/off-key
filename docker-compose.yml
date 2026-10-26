@@ -228,45 +228,6 @@ services:
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8010/ready', timeout=2)"
 
-  mqtt-simulator:
-    build:
-      context: ./backend/
-      args:
-        SERVICE_NAME: off-key-mqtt-simulator
-        SERVICE_ROOT: services/mqtt/simulator
-    image: "${MQTT_SIMULATOR_IMAGE:-off-key-mqtt-simulator:latest}"
-    environment:
-      - "SIMULATOR_ENABLED=${SIMULATOR_ENABLED:-true}"
-      - "SIMULATOR_WORKSHOP_ENABLED=${SIMULATOR_WORKSHOP_ENABLED:-false}"
-      - "SIMULATOR_BROKER_HOST=${SIMULATOR_BROKER_HOST:-source-broker}"
-      - "SIMULATOR_BROKER_PORT=${SIMULATOR_BROKER_PORT:-1883}"
-      - "SIMULATOR_USE_TLS=${SIMULATOR_USE_TLS:-false}"
-      - "SIMULATOR_USE_AUTH=${SIMULATOR_USE_AUTH:-false}"
-      - "SIMULATOR_USERNAME=${SIMULATOR_USERNAME:-}"
-      - "SIMULATOR_API_KEY=${SIMULATOR_API_KEY:-}"
-      - "SIMULATOR_CLIENT_ID_PREFIX=${SIMULATOR_CLIENT_ID_PREFIX:-offkey-simulator}"
-      - "SIMULATOR_INTERVAL_SECONDS=${SIMULATOR_INTERVAL_SECONDS:-1.0}"
-      - "SIMULATOR_QOS=${SIMULATOR_QOS:-0}"
-      - "SIMULATOR_CHARGER_IDS=${SIMULATOR_CHARGER_IDS:-charger-sim-1,charger-sim-2}"
-      - "SIMULATOR_FEATURES=${SIMULATOR_FEATURES:-sine,cosine,random}"
-      - "SIMULATOR_TOPIC_TEMPLATE=${SIMULATOR_TOPIC_TEMPLATE:-telemetry/{charger_id}/{feature}}"
-      - "SIMULATOR_VALUE_MIN=${SIMULATOR_VALUE_MIN:-0.0}"
-      - "SIMULATOR_VALUE_MAX=${SIMULATOR_VALUE_MAX:-100.0}"
-      - "SIMULATOR_BLIP_PROBABILITY=${SIMULATOR_BLIP_PROBABILITY:-0.0025}"
-      - "SIMULATOR_BLIP_MULTIPLIER_MIN=${SIMULATOR_BLIP_MULTIPLIER_MIN:-1.8}"
-      - "SIMULATOR_BLIP_MULTIPLIER_MAX=${SIMULATOR_BLIP_MULTIPLIER_MAX:-2.6}"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_simulator" ]
-    depends_on:
-      source-broker:
-        condition: service_started
-      mqtt-proxy:
-        condition: service_healthy
-    networks:
-      - app-network
-    restart: unless-stopped
-    profiles:
-      - mqtt-sim
-
   db-sync:
     build:
       context: ./backend/

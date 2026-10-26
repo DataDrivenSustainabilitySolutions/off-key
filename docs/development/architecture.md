@@ -103,7 +103,7 @@ conditions form two chains:
 - `timescaledb` → `db-sync` (`/ready/schema`) → `tactic-middleware` (`/ready`) →
   `api-gateway` (`/health`) → `frontend`.
 - `timescaledb`, `db-sync` and `emqx-main` → `mqtt-proxy` (`/ready` once the
-  collection revision is applied) → the optional `mqtt-simulator`.
+  collection revision is applied).
 
 Production Swarm has no start order; the release gates on
 `infra/scripts/check_application.py` instead.

@@ -11,7 +11,7 @@
       "postgres": "timescale/timescaledb:latest-pg15@sha256:6343bdc87ca132c6b53acb26113a6bad1821d188fa39975a745f32ddd9757634",
       "socket_proxy": "tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459",
       "tailscale": "tailscale/tailscale:latest@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065",
-      "gost": "gogost/gost:3.3.0@sha256:f7a958c451928fbe1b99046d25bd0c9bf42019d4c60a82200f50dc8e617b7580",
+      "gost": "gogost/gost:3.3.1@sha256:c3f849542469bc6027cd38d9a7ef86e8efbcc1176551a3ace8df85ef90a9c5b9",
       "emqx": "emqx/emqx:5.8.7@sha256:556aea6d62134524ecd1fcca53380b460b52995344dce571d484f042d9b15e7d",
       "traefik": "traefik:v3.5.4@sha256:4df0a50fcf71b454c0d7ad17675776dc8d37359deae3291895bdaa008c1b9972",
       "oauth2": "quay.io/oauth2-proxy/oauth2-proxy:v7.7.1@sha256:f6a4aa83a27e316114bf79664302b1ffb2cc8ce697fb479273af4feb3fb16fe3",

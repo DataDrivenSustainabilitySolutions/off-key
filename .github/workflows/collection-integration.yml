@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        emqx: ["5.8.7", "6.3.1"]
+        emqx: ["5.8.7", "6.3.2"]
     env:
       EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
       OFFKEY_COLLECTION_INTEGRATION: "1"

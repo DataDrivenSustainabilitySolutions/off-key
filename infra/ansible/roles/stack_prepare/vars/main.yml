@@ -125,6 +125,7 @@ service_environment:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
     TELEMETRY_RETENTION_DAYS: "{{ telemetry_retention_days }}"
+    TELEMETRY_STORAGE_CAP_GB: "{{ telemetry_storage_cap_gb }}"
     SYNC_API_HOST: "{{ sync_api_host }}"
     SYNC_API_PORT: "{{ sync_api_port }}"
     SQLALCHEMY_LOG_LEVEL: "{{ sqlalchemy_log_level }}"

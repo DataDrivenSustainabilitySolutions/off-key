@@ -195,7 +195,8 @@ The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
 | --- | --- | --- |
 | `SYNC_API_HOST` | `0.0.0.0` | DB Sync bind address |
 | `SYNC_API_PORT` | `8009` | DB Sync internal API port |
-| `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry and monitoring evidence; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
+| `TELEMETRY_RETENTION_DAYS` | `14` | Retention for telemetry, monitoring evidence and anomalies; integer `1–365`. DB Sync reconciles existing policies at startup; restart/redeploy it after changing this value. |
+| `TELEMETRY_STORAGE_CAP_GB` | empty | Optional storage ceiling for telemetry and monitoring evidence, `0.1–100000` GB (decimal). Every 15 minutes, while over the cap, the oldest completed daily chunk is dropped, even if it is inside the retention window. Empty disables the cap. Restart/redeploy DB Sync after changing it. |
 | `LOG_LEVEL` | `INFO` | Standard log-level token |
 | `LOG_FORMAT` | `simple` | `simple` writes text lines that end with any `extra=` context as `key=value` pairs; `json` writes one object per line with that context under `extra` |
 | `LOG_REDACT_PII` | `true` | Keep enabled where logs may contain user data |

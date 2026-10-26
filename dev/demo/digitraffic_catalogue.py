@@ -72,7 +72,7 @@ def fetch(host: str, path: str):
 
 
 def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
-    (lat1, lon1), (lat2, lon2) = map(lambda p: tuple(map(math.radians, p)), (a, b))
+    (lat1, lon1), (lat2, lon2) = (tuple(map(math.radians, p)) for p in (a, b))
     h = (
         math.sin((lat2 - lat1) / 2) ** 2
         + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2

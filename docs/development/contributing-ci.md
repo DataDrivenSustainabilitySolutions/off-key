@@ -21,7 +21,7 @@ fails when a workflow file is missing here or a release gate is not marked.
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
 | `ci.yml` | CI | Pull requests, `main`, merge queue | `pre-commit (3.12)`, `pre-commit (3.14)` (pre-commit, backend tests, generated contracts; the 3.12 leg also runs the `ty` type check), `frontend` (lint, tests, build) | yes |
-| `collection-integration.yml` | MQTT Collection Integration | Pull requests, `main`, merge queue | `collection (5.8.7)`, `collection (6.3.1)`: `postgres` lane and real EMQX brokers | yes |
+| `collection-integration.yml` | MQTT Collection Integration | Pull requests, `main`, merge queue | `collection (5.8.7)`, `collection (6.3.2)`: `postgres` lane and real EMQX brokers | yes |
 | `radar-production-integration.yml` | RADAR production integration | Pull requests, `main`, merge queue, manual | `RADAR production integration`: `radar_integration` lane on Swarm with the production image | yes |
 | `deployment-smoke.yml` | Deployment Smoke | Pull requests, `main`, merge queue, manual | `deployment-smoke`: rehearses the production Swarm, browser journeys, backup restore and binary rollback | yes |
 | `infra-validation.yml` | Infrastructure Validation | Pull requests, `main`, merge queue | `infrastructure`: Ansible syntax, rendered stack and `infra/tests` | yes |

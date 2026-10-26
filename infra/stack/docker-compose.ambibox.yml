@@ -40,7 +40,7 @@ services:
   mqtt-tailscale-bridge:
     # TACTIC reconciles catalog routes through this private API. The existing
     # singleton tailnet identity still resolves/dials every vendor hostname.
-    image: "${GOST_IMAGE:-gogost/gost:3.3.0}"
+    image: "${GOST_IMAGE:-gogost/gost:3.3.1}"
     command: ["-api", ":18080"]
     networks:
       - emqx-network

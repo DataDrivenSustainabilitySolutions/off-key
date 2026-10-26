@@ -58,7 +58,7 @@ docker swarm init --advertise-addr 127.0.0.1  # once; RADAR runs as Swarm servic
 docker compose up -d --build
 ```
 
-The MQTT simulator is profile-gated and does not start in the baseline stack. RADAR workloads start only when TACTIC launches a monitoring service.
+RADAR workloads start only when TACTIC launches a monitoring service.
 
 ## 3. Verify the stack
 

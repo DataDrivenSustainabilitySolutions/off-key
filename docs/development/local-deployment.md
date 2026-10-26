@@ -38,7 +38,7 @@ TACTIC runs every RADAR workload as a Swarm service, as in production, so
 leave --force` undoes it once no other Swarm workload needs it.
 
 If Docker Desktop's credential helper hangs while fetching public dependency
-images, use `make local-up LOCAL_ARGS="--simulator --public-images"`. This mode
+images, use `make local-up LOCAL_ARGS=--public-images`. This mode
 uses a temporary anonymous Docker configuration against the same verified local
 daemon, preserving the installed CLI plugins. Saved Docker credentials stay
 unchanged. Use normal mode when your images require registry authentication.
@@ -68,22 +68,20 @@ production builds keep email login and do not enable this local alias.
 
 ## Exercise MQTT locally
 
-```sh
-make local-up LOCAL_ARGS=--simulator
-```
+Two sources deliver real MQTT messages through the normal broker and
+collector path:
 
-The simulator publishes actual MQTT messages to the local source broker. These
-are explicitly synthetic readings, delivered through the normal broker and
-collector path. In **Sources**, import `dev/local/simulator-system.json` and
-select the fixture's entities and readings to exercise collection and charts.
-The simulator's upstream topics match this catalogue.
+- **Live open data.** `dev/demo/digitraffic_catalogue.py` builds a catalogue
+  of Fintraffic road weather, traffic and ferry feeds; see
+  [Public demo](../operations/public-demo.md#open-data-sources). Allow
+  `tie.digitraffic.fi` and `meri.digitraffic.fi` in
+  `SYSTEM_LIVE_ALLOWED_HOSTS`, import the file in **Sources** and choose
+  **Connect** or a recording policy.
+- **Local synthetic brokers.** The [broker fixture](#mixed-topology-broker-fixture)
+  below runs six local brokers with 39 entities.
 
-For a domain-neutral example, import `dev/local/workshop-system.json` into the
-monitoring workspace at `/` and choose **Connect** while signed in as an administrator.
-The local simulator also publishes the workshop fixture's environment, vibration,
-and equipment status topics. Numbers and booleans produce charts; text and
-identifiers show their latest values. Existing workshop configurations using the
-environment and vibration topics work without importing again.
+Numbers and booleans produce charts; text and identifiers show their latest
+values.
 
 The generic live preview subscribes directly to each saved connection's exact
 topics. Its readings remain in bounded process and browser memory; it does not

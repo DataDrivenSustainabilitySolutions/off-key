@@ -8,6 +8,19 @@
     fail_msg: Set internal_api_secret to a new random secret of at least 32 characters in the environment vault.
   no_log: true
 
+- name: Require the public demo's viewer account
+  assert:
+    that:
+      - demo_viewer_email | default('') is match('^[^@\\s]+@[^@\\s]+$')
+      - demo_viewer_email | default('') != superuser_mail
+      - demo_viewer_password | default('') | length >= 16
+      - "'CHANGE_ME' not in demo_viewer_password | default('')"
+    fail_msg: >-
+      Set demo_viewer_email (not the administrator's address) and a random
+      demo_viewer_password of at least 16 characters in the demo vault.
+  when: demo_mode | default(false) | bool
+  no_log: true
+
 - name: Validate the Resend API key without exposing it
   set_fact:
     resend_api_key_valid: >-
@@ -61,6 +74,7 @@
     fail_msg: >-
       Set cloudflare_tunnel_token in the production vault to the eyJ... token
       for the existing production Cloudflare Tunnel, not the installation command.
+  when: ingress_enabled | default(true) | bool
 
 - name: Initialise deployment secrets
   set_fact:
@@ -93,7 +107,6 @@
 - name: Define production deployment secret material
   set_fact:
     deployment_secret_material:
-      cloudflared_tunnel_token: "{{ cloudflare_tunnel_token | trim }}"
       emqx_ca_cert: "{{ emqx_ca_cert }}"
       emqx_server_cert: "{{ emqx_server_cert }}"
       emqx_server_key: "{{ emqx_server_key }}"
@@ -105,6 +118,13 @@
           {'user_id': mqtt_local_proxy_username, 'password': mqtt_proxy_password, 'is_superuser': false},
           {'user_id': radar_mqtt_username, 'password': mqtt_radar_password, 'is_superuser': false}
         ] | to_json }}
+  no_log: true
+
+- name: Define the Cloudflare Tunnel connector secret
+  set_fact:
+    deployment_secret_material: >-
+      {{ deployment_secret_material | combine({'cloudflared_tunnel_token': cloudflare_tunnel_token | trim}) }}
+  when: ingress_enabled | default(true) | bool
   no_log: true
 
 - name: Require collection controller access
@@ -182,8 +202,25 @@
     group: "{{ stack_file_group }}"
   loop:
     - docker-compose.swarm.yml
-    - docker-compose.traefik.yml
-    - docker-compose.oauth2.yml
+
+- name: Copy optional stack overlays this installation uses
+  copy:
+    src: "{{ stack_source_dir }}/{{ item.file }}"
+    dest: "{{ stack_dir }}/{{ item.file }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop: "{{ stack_optional_overlays | selectattr('enabled') | list }}"
+  loop_control:
+    label: "{{ item.file }}"
+
+- name: Remove optional stack overlays this installation leaves out
+  file:
+    path: "{{ stack_dir }}/{{ item.file }}"
+    state: absent
+  loop: "{{ stack_optional_overlays | rejectattr('enabled') | list }}"
+  loop_control:
+    label: "{{ item.file }}"
 
 - name: Remove obsolete Mailpit deployment files
   file:
@@ -207,14 +244,6 @@
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
 
-- name: Copy production landing page overlay
-  copy:
-    src: "{{ stack_source_dir }}/docker-compose.landing.yml"
-    dest: "{{ stack_dir }}/docker-compose.landing.yml"
-    mode: "0640"
-    owner: "{{ stack_file_owner }}"
-    group: "{{ stack_file_group }}"
-
 - name: Render the public landing page
   template:
     src: "{{ stack_source_dir }}/landing.html.j2"
@@ -222,6 +251,13 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
+  when: landing_enabled | default(true) | bool
+
+- name: Remove the landing page when this installation has none
+  file:
+    path: "{{ stack_dir }}/landing.html"
+    state: absent
+  when: not (landing_enabled | default(true) | bool)
 
 - name: Render production Cloudflare Tunnel connector overlay
   template:
@@ -230,6 +266,13 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
+  when: ingress_enabled | default(true) | bool
+
+- name: Remove the Cloudflare Tunnel connector when production's Traefik serves this stack
+  file:
+    path: "{{ stack_dir }}/docker-compose.cloudflared.yml"
+    state: absent
+  when: not (ingress_enabled | default(true) | bool)
 
 - name: Render MQTT security and collection controller overlay
   template:

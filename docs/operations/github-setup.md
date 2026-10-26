@@ -34,6 +34,7 @@ Under that environment's **Secrets**, create these exact names:
 | `OFFKEY_DEPLOY_KNOWN_HOSTS` | Verified SSH host keys for every inventory address and port. |
 | `TS_OAUTH_CLIENT_ID` | The management Tailscale federated identity client ID from step 5. |
 | `TS_AUDIENCE` | Its audience from step 5. |
+| `OFFKEY_DEMO_VAULT` | Optional: the encrypted vault of the public demo stack, used while the variable `DEMO_ENABLED` is `true`. See [Public demo](public-demo.md). |
 
 The inventory names must match **docker node ls**. Use management-tailnet addresses
 for the manager and workers, their existing SSH ports and their deployment users.

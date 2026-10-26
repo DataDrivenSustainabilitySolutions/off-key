@@ -140,7 +140,6 @@ include = [
     "services/db/sync/src",
     "services/middleware/tactic/src",
     "services/mqtt/proxy/src",
-    "services/mqtt/simulator/src",
 ]
 exclude = [
     "libs/core/src/off_key_core/db/catalogue_upgrade.py",

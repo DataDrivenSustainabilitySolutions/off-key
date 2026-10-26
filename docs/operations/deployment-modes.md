@@ -18,7 +18,7 @@ Characteristics:
 
 - One EMQX node: `emqx-main`.
 - A local `source-broker` for deterministic development.
-- `mqtt-simulator` is profile-gated. `mqtt-radar` is build-only; TACTIC launches its workloads.
+- `mqtt-radar` is build-only; TACTIC launches its workloads.
 
 Before creating a TACTIC-managed monitoring service for the first time, build its local image:
 
@@ -26,21 +26,7 @@ Before creating a TACTIC-managed monitoring service for the first time, build it
 docker compose build mqtt-radar
 ```
 
-## 2. Optional local profiles
-
-=== "MQTT simulator"
-
-    ```bash
-    docker compose --profile mqtt-sim up -d --build --force-recreate mqtt-simulator
-    ```
-
-    To start the full stack with the simulator:
-
-    ```bash
-    docker compose --profile mqtt-sim up -d --build
-    ```
-
-## 3. Two-node EMQX cluster
+## 2. Two-node EMQX cluster
 
 ```bash
 docker compose \
@@ -52,7 +38,7 @@ docker compose \
 
 This adds `emqx-worker` and cluster seed wiring for broker-cluster testing.
 
-## 4. Production Swarm
+## 3. Production Swarm
 
 Production uses the single authoritative model under `infra/`, released through
 GitHub Actions after all main checks pass. See [GitHub setup](github-setup.md),
@@ -86,7 +72,7 @@ docker network rm off-key_app-network off-key_emqx-network || true
 | Goal | Recommended mode |
 | --- | --- |
 | Day-to-day development | Local default |
-| Detection logic with synthetic data | Local plus `mqtt-sim` |
+| Detection logic with real data | Local plus a [Digitraffic catalogue](public-demo.md#open-data-sources) |
 | Multi-node broker behaviour | Local plus cluster override |
 | Production and external broker ingress | Integrated production Swarm |
 

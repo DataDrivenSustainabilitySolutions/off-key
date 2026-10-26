@@ -86,8 +86,11 @@ class CDTests(unittest.TestCase):
             original = Path.cwd()
             config = root / "infra/ansible/inventories/prod/group_vars/all"
             config.mkdir(parents=True)
+            demo = root / "infra/ansible/inventories/demo/group_vars/all"
+            demo.mkdir(parents=True)
             values = dict.fromkeys(secrets.FILES, "synthetic-value") | {
                 "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
+                "OFFKEY_DEMO_VAULT": "$ANSIBLE_VAULT;1.1;AES256\ndemo",
                 "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
                 "GITHUB_ACTOR": "fixture-owner",
                 "GH_TOKEN": "fixture-short-lived-token",
@@ -100,6 +103,12 @@ class CDTests(unittest.TestCase):
                     self.assertEqual(path.stat().st_mode & 0o777, 0o600)
                 self.assertEqual((root / "private").stat().st_mode & 0o777, 0o700)
                 self.assertTrue((config / "vault.yml").is_symlink())
+                self.assertIn("demo", (demo / "vault.yml").read_text())
+                # The demo runs on the production nodes.
+                self.assertEqual(
+                    (demo.parents[1] / "hosts.yml").resolve(),
+                    (root / "private/hosts.yml").resolve(),
+                )
                 self.assertEqual(
                     json.loads((root / "private/registry.json").read_text()),
                     {

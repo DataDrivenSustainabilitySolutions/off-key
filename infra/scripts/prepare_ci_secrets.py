@@ -44,6 +44,17 @@ def main():
     config.symlink_to(directory / "vault.yml")
     inventory = Path("infra/ansible/inventories/prod/hosts.yml")
     inventory.symlink_to(directory / "hosts.yml")
+    # The public demo is a second stack on the same nodes with its own vault.
+    demo = os.environ.get("OFFKEY_DEMO_VAULT", "")
+    if demo.strip():
+        if not demo.startswith("$ANSIBLE_VAULT;"):
+            sys.exit("OFFKEY_DEMO_VAULT must contain the encrypted Ansible vault.")
+        destination = directory / "demo-vault.yml"
+        destination.touch(mode=0o600, exist_ok=False)
+        destination.write_text(demo.rstrip("\n") + "\n")
+        inventories = Path("infra/ansible/inventories/demo")
+        (inventories / "group_vars/all/vault.yml").symlink_to(destination)
+        (inventories / "hosts.yml").symlink_to(directory / "hosts.yml")
 
 
 if __name__ == "__main__":

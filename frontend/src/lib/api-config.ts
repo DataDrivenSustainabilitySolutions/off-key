@@ -14,6 +14,9 @@ export const API_CONFIG = {
 
   // API Endpoints
   ENDPOINTS: {
+    // Public read-only demo status
+    DEMO: '/v1/demo',
+
     // Authentication
     AUTH: {
       LOGIN: '/v1/auth/login',

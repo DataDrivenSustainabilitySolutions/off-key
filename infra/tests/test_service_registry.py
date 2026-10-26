@@ -16,7 +16,7 @@ from test_platform_pins import ComposeLoader
 REPOSITORY = ROOT.parent
 WORKFLOWS = REPOSITORY / ".github/workflows"
 # Built for local stacks and validated in CI, never published or deployed.
-BUILD_ONLY = {"off-key-mqtt-simulator": "services/mqtt/simulator"}
+BUILD_ONLY: dict[str, str] = {}
 IMAGE_DEFAULT = re.compile(r"^\$\{([A-Z_]+_IMAGE):-([\w.-]+):[\w.-]+\}$")
 
 

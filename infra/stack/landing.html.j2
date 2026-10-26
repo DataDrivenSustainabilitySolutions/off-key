@@ -154,6 +154,9 @@
         <span>aberration</span>
       </a>
       <nav aria-label="Main navigation">
+{% if demo_base_url | default('') %}
+        <a class="header-link" href="{{ demo_base_url | e }}/">Demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+{% endif %}
         <a class="header-link" href="{{ frontend_base_url | e }}/">Dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
       </nav>
     </div>
@@ -165,6 +168,9 @@
         <p class="description">Every system has a rhythm. Aberration follows the relationships in your sensor data and brings the moments of change into view.</p>
         <div class="hero-actions">
           <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+{% if demo_base_url | default('') %}
+          <a class="text-link" href="{{ demo_base_url | e }}/">Explore the live demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+{% endif %}
           <a class="text-link" href="#approach">How it works<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></a>
         </div>
       </div>

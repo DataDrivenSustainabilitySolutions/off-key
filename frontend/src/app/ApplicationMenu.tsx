@@ -19,7 +19,7 @@ const memberInitials = (email = "") => {
 
 /** Preferences, account actions and operational status shared by every page. */
 export function ApplicationMenu({ trigger }: Props) {
-  const { isAuthenticated, member, logout } = useAuth();
+  const { isAuthenticated, isGuest, member, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const catalogue = useOptionalCatalogue();
@@ -27,7 +27,7 @@ export function ApplicationMenu({ trigger }: Props) {
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const openingSettings = useRef(false);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || isGuest) {
     return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Log in</Link></Button>;
   }
 

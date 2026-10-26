@@ -66,7 +66,7 @@ services:
 
 configs:
   emqx_security_cfg:
-    name: emqx_security_cfg_${EMQX_SECURITY_CFG_HASH}
+    name: ${CONFIG_NAME_PREFIX}emqx_security_cfg_${EMQX_SECURITY_CFG_HASH}
     file: ./emqx-security.hocon
 
 # Shared declarations; each service above mounts only the credentials it needs.

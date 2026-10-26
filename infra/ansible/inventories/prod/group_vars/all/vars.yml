@@ -52,6 +52,13 @@ frontend_hostname:                    "dashboard.aberration.app"
 ingress_base_domain:                  "aberration.app"
 frontend_base_url:                    "https://dashboard.aberration.app"
 cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
+# The public read-only demo, a second stack on this cluster (inventories/demo).
+# Traefik routes demo_hostname to it over the shared demo network; the landing
+# page shows its Demo links only while demo_base_url is set. See
+# docs/operations/public-demo.md.
+demo_hostname:                        "demo.aberration.app"
+demo_stack_name:                      "off-key-demo"
+demo_base_url:                        ""
 
 # ── oauth2-proxy (ingress auth) ───────────────────────────────────────────────
 # GitHub OAuth gate in front of emqx./traefik. Secrets (client id/secret, cookie secret)

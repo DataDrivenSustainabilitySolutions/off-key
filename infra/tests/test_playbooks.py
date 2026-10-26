@@ -358,25 +358,39 @@ else:
             )
             self.assertNotIn("Assertion failed", result.stdout)
 
-    def test_release_maintenance_stops_only_database_writers(self):
+    def test_release_maintenance_stops_only_this_stacks_database_writers(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             docker = directory / "docker"
             docker.write_text(
                 f"#!{sys.executable}\n"
                 + r"""
-import sys
+import json, sys
 args = sys.argv[1:]
-assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
-listings = {
-    "label=com.docker.stack.namespace=off-key": [
+workers = {
+    "radar-worker": "network-id-off-key",
+    "radar-preflight": "off-key_emqx-network",
+    # The public demo's worker runs on the same cluster and is not ours.
+    "radar-demo": "network-id-off-key-demo",
+}
+if args[:3] == ["network", "inspect", "--format"]:
+    assert args[-1] == "off-key_emqx-network", args
+    print("network-id-off-key")
+elif args[:2] == ["service", "inspect"]:
+    print(json.dumps([
+        {"ID": name + "-id", "Spec": {"Name": name, "TaskTemplate": {"Networks": [{"Target": workers[name]}]}}}
+        for name in args[2:]
+    ]))
+elif args[:5] == ["service", "ls", "--quiet", "--filter", "label=managed_by=tactic"]:
+    print("\n".join(workers))
+else:
+    assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
+    assert args[5] == "label=com.docker.stack.namespace=off-key", args
+    print("\n".join([
         "off-key_postgres", "off-key_emqx-main", "off-key_cloudflared",
         "off-key_traefik", "off-key_landing", "off-key_frontend", "off-key_api",
         "off-key_tactic", "off-key_db-sync", "off-key_mqtt-proxy", "off-key_retired",
-    ],
-    "label=managed_by=tactic": ["radar-worker"],
-}
-print("\n".join(listings[args[5]]))
+    ]))
 """
             )
             docker.chmod(0o755)
@@ -445,6 +459,7 @@ print("\n".join(listings[args[5]]))
                     "off-key_mqtt-proxy",
                     "off-key_retired",
                     "off-key_tactic",
+                    "radar-preflight",
                     "radar-worker",
                 ],
             )

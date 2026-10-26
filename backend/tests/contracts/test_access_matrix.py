@@ -114,6 +114,7 @@ GATEWAY_ACCESS = {
         "POST /v1/auth/register",
         "POST /v1/auth/reset-password",
         "GET /v1/auth/verify-email",
+        "GET /v1/demo",
     },
     "member": {
         "GET /v1/chargers/active",
@@ -242,6 +243,10 @@ def test_gateway_routes_match_the_access_table():
 @pytest.mark.parametrize("route", sorted(GATEWAY_ACCESS["public"]))
 def test_public_gateway_routes_are_documentation_health_or_sign_in(route):
     path = route.split()[1]
-    assert path in {"/docs", "/docs/oauth2-redirect", "/redoc", "/health"} or (
-        path.startswith("/v1/auth/")
-    )
+    assert path in {
+        "/docs",
+        "/docs/oauth2-redirect",
+        "/redoc",
+        "/health",
+        "/v1/demo",
+    } or (path.startswith("/v1/auth/"))

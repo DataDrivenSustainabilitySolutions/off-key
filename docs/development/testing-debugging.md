@@ -26,7 +26,7 @@ runtime tests; CI always runs them.
 
 Backend tests live under `backend/tests/`, one folder per area: `core`,
 `database` (schema, migrations, DB sync), `gateway`, `tactic`, `radar`,
-`proxy`, `pipelines`, `simulator` and `contracts` (cross-service, deployment
+`proxy`, `pipelines`, `simulator` (local broker fixtures), `demo` and `contracts` (cross-service, deployment
 and documentation contracts). Shared fakes and fixtures live in
 `backend/tests/support/`; test modules never import each other.
 
@@ -181,7 +181,7 @@ docker compose logs --tail 200 tactic-middleware
 
 ### Telemetry is not arriving
 
-1. Verify that the source publisher or simulator is active.
+1. Verify that the source publisher is active.
 2. Check the Sources catalog, selected sensors, matching applied revisions and per-broker connection status.
 3. Check proxy health and readiness.
 4. Inspect proxy logs for parsing, authentication, or database-write errors.

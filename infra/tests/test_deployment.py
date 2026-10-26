@@ -50,7 +50,9 @@ def read_configuration(directory):
         "landing_html": (stack / "landing.html").read_text()
         if (stack / "landing.html").exists()
         else None,
-        "export": (stack / "ambibox.exports").read_text().strip(),
+        "export": (stack / "ambibox.exports").read_text().strip()
+        if (stack / "ambibox.exports").exists()
+        else None,
         "persistence_file": (stack / "docker-compose.persistence.yml").exists(),
         "mailpit_files": [
             path.name for path in stack.iterdir() if "mailpit" in path.name
@@ -133,6 +135,14 @@ class DeploymentTests(unittest.TestCase):
 
     def test_vendor_identity_settings_reach_compose_and_swarm(self):
         for name, result in self.results.items():
+            if result["inputs"].get("ambibox_ingress_enabled") is False:
+                # Without Ambibox ingress the vendor overlay is left out entirely.
+                for service in ("tailscale-ambibox", "mqtt-tailscale-bridge"):
+                    self.assertNotIn(service, result["config"]["services"])
+                self.assertNotIn(
+                    "tailscale-ambibox-state", result["config"].get("volumes", {})
+                )
+                continue
             for model in ("config", "swarm_config"):
                 with self.subTest(case=name, model=model):
                     environment = result[model]["services"]["tailscale-ambibox"][
@@ -334,6 +344,8 @@ class DeploymentTests(unittest.TestCase):
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():
+            if result["inputs"].get("ambibox_ingress_enabled") is False:
+                continue
             with self.subTest(case=name):
                 volume = result["config"]["volumes"]["tailscale-ambibox-state"]
                 path, *entries = result["export"].split()
@@ -543,6 +555,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(json.loads(api_env["CORS_ALLOWED_ORIGINS"]), [dashboard])
         self.assertIn(f'href="{dashboard}/"', result["landing_html"])
         self.assertNotIn("{{", result["landing_html"])
+        # Demo links appear only once an installation is configured.
+        self.assertNotIn(">Demo<", result["landing_html"])
 
         landing = config["services"]["landing"]
         self.assertEqual(set(landing["networks"]), {"public-network"})
@@ -736,6 +750,40 @@ class DeploymentTests(unittest.TestCase):
             for key in services[service]["environment"]:
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
+
+    def test_traefik_reaches_production_and_the_demo_by_stack_qualified_names(self):
+        result = self.results["prod"]
+        urls = {
+            name: service["loadBalancer"]["servers"][0]["url"]
+            for name, service in result["routes"]["services"].items()
+        }
+        self.assertEqual(urls["demo-frontend"], "http://off-key-demo_frontend:5173")
+        self.assertEqual(urls["demo-api"], "http://off-key-demo_api:8000")
+        for name, url in urls.items():
+            if not name.startswith("demo-"):
+                self.assertTrue(url.startswith("http://off-key_"), url)
+        routers = result["routes"]["routers"]
+        self.assertEqual(
+            routers["demo-frontend"]["rule"], "Host(`demo.aberration.app`)"
+        )
+        self.assertEqual(routers["demo-api"]["middlewares"], ["api-strip"])
+        swarm = result["swarm_config"]
+        self.assertEqual(swarm["networks"]["demo-network"]["name"], "aberration-demo")
+        # Only Traefik of production joins the network the demo shares.
+        joined = [
+            name
+            for name, service in swarm["services"].items()
+            if "demo-network" in service.get("networks", {})
+        ]
+        self.assertEqual(joined, ["traefik"])
+        configs = [config["name"] for config in swarm["configs"].values()]
+        self.assertTrue(any(name.startswith("emqx_security_cfg_") for name in configs))
+
+    def test_production_has_no_public_demo_settings(self):
+        services = self.results["prod"]["swarm_config"]["services"]
+        for service in ("api", "tactic"):
+            demo = [key for key in services[service]["environment"] if "DEMO" in key]
+            self.assertEqual(demo, [], service)
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]

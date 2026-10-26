@@ -58,6 +58,10 @@
     - name: Initialize administrator access after application verification
       include_tasks: bootstrap_admin.yml
 
+    - name: Keep the public demo's viewer member ready for guests
+      include_tasks: bootstrap_demo_viewer.yml
+      when: demo_mode | default(false) | bool
+
     - name: End application maintenance after successful verification
       include_tasks: monitor_job.yml
       vars:

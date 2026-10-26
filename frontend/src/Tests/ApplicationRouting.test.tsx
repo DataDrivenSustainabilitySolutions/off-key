@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { captureRouter, auth } = vi.hoisted(() => ({
   captureRouter: vi.fn<(routes: RouteObject[]) => unknown>(),
-  auth: { isAuthenticated: true, isLoading: false },
+  auth: { isAuthenticated: true, isLoading: false, guestChecked: true },
 }));
 vi.mock("react-router-dom", async (original) => ({
   ...(await original<typeof import("react-router-dom")>()),

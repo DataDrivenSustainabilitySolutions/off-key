@@ -1,0 +1,19 @@
+# Public demo ingress overlay (demo stack only).
+#
+# The demo has no Traefik or Cloudflare connector of its own: production's
+# Traefik reaches its frontend and API over the shared demo network, which
+# Ansible creates before deploying. Only these two services join it.
+# References the base's overlay networks, so it is NOT valid on its own.
+
+services:
+  frontend:
+    networks:
+      - demo-network
+  api:
+    networks:
+      - demo-network
+
+networks:
+  demo-network:
+    external: true
+    name: "${DEMO_NETWORK}"

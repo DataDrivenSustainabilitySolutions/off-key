@@ -19,6 +19,9 @@ def spec(name):
                             or (state['deployed'] and os.environ.get('CONFIGURED_MOUNT'))) else []}}}}
     if name in state.get('mounts', {}):
         result['Spec']['TaskTemplate']['ContainerSpec']['Mounts'] = state['mounts'][name]
+    if name.startswith('radar-'):
+        # TACTIC attaches its workers to its own stack's broker network.
+        result['Spec']['TaskTemplate']['Networks'] = [{'Target': 'off-key_emqx-network'}]
     return result
 
 if a[:2] == ['compose', '--env-file']:
@@ -60,7 +63,7 @@ elif a[:3] == ['inspect', '--type', 'task']:
         print(sequence.pop(0) if len(sequence) > 1 else sequence[0])
     else:
         print('running' if state['replicas'][name] else 'shutdown')
-elif a[:2] == ['volume', 'inspect']:
+elif a[:2] in (['volume', 'inspect'], ['network', 'inspect']):
     sys.exit(1)
 elif a[0] == 'ps':
     task_filter = next((v for v in a if v.startswith('label=com.docker.swarm.task.id=')), None)

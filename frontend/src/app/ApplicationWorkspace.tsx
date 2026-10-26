@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AppHeader } from "./AppHeader";
 import { CatalogueToggle } from "../features/workspace/CatalogueToggle";
@@ -25,6 +25,7 @@ const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
 
 function WorkspaceFrame() {
   const { preferences, setPreferences, sectionHref, dialog, stored } = useCatalogue();
+  const { isGuest } = useAuth();
   const { pathname } = useLocation();
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -57,6 +58,7 @@ function WorkspaceFrame() {
         hidden={mobile && mobileOpen} onClick={() => mobile ? setMobileOpen(true)
           : setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))} />
       <div ref={main} className="ex-main app-catalogue-main">
+        {isGuest && <p className="ex-banner" role="status">You are viewing the public demo with live open data. It is read-only.<Link to="/login">Log in</Link></p>}
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
       </div>

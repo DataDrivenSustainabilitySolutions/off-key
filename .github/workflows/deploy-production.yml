@@ -21,6 +21,10 @@ on:
         description: Controlled first deployment; stop old writers and capture existing monitors
         default: false
         type: boolean
+      demo_only:
+        description: Deploy only the public demo stack (for example after accepting its admin invitation)
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -101,6 +105,7 @@ jobs:
           OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
           OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
           OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
+          OFFKEY_DEMO_VAULT: ${{ vars.DEMO_ENABLED == 'true' && secrets.OFFKEY_DEMO_VAULT || '' }}
         run: python3 infra/scripts/prepare_ci_secrets.py
       - name: Connect the ephemeral runner to the management tailnet
         if: steps.release.outputs.ready == 'true'
@@ -120,6 +125,7 @@ jobs:
         if: steps.release.outputs.ready == 'true'
         env:
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
+          DEMO_ONLY: ${{ inputs.demo_only || false }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
           ANSIBLE_SSH_ARGS: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
         run: |
@@ -128,13 +134,38 @@ jobs:
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
           uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { echo "Production preflight failed; check private SSH/configuration and the setup guide."; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
+          if [ "$DEMO_ONLY" = true ]; then
+            echo 'Deploying only the public demo; production is unchanged.'
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
             uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; exit 1; }
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
+          fi
+      - name: Deploy and verify the public demo stack after production
+        if: steps.release.outputs.ready == 'true' && vars.DEMO_ENABLED == 'true'
+        env:
+          DEMO_ONLY: ${{ inputs.demo_only || false }}
+          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
+          ANSIBLE_SSH_ARGS: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+        run: |
+          set -euo pipefail
+          umask 077
+          cd infra/ansible
+          export ANSIBLE_CONFIG="$PWD/ansible.cfg"
+          demo() {
+            uv run --frozen ansible-playbook -i inventories/demo/hosts.yml "$@" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json"
+          }
+          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { echo "Demo preflight failed; check OFFKEY_DEMO_VAULT."; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]; then
+            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; exit 1; }
+            # Only the viewer outcome; the full log stays private.
+            grep -oE '(Demo viewer|The demo viewer|Accept the administrator invitation)[^"]*' "$OFFKEY_DEPLOY_DIRECTORY/demo.log" || true
+          else
+            echo 'No runtime changes since the last verified demo release; the demo is unchanged.'
           fi
       - name: Remove all temporary production material
         if: always()
         run: |
           rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
+          rm -f infra/ansible/inventories/demo/hosts.yml infra/ansible/inventories/demo/group_vars/all/vault.yml
           rm -rf "$OFFKEY_DEPLOY_DIRECTORY"

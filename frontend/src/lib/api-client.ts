@@ -8,6 +8,7 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
+import { isDemoGuest } from '@/auth/demo';
 import { refreshSession, tokenManager } from '@/auth/session';
 import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
@@ -78,6 +79,10 @@ const createApiClient = (): AxiosInstance => {
       // Handle 401 Unauthorized
       if (error.response?.status === 401) {
         const options = error.config as (InternalAxiosRequestConfig & ApiRequestOptions & { sessionRetried?: boolean }) | undefined;
+        // Demo guests have no session to renew or end; stay on the page.
+        if (isDemoGuest() && !options?.headers.Authorization) {
+          return Promise.reject(new ApiRequestError('The public demo is unavailable right now.', 401));
+        }
         if (options && !options.sessionRetried && tokenManager.isRemembered()) {
           options.sessionRetried = true;
           // A concurrent request may already have replaced this rejected token.

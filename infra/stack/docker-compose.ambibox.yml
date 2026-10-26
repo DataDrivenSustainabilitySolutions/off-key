@@ -1,0 +1,66 @@
+# Ambibox vendor ingress overlay.
+#
+# Merged right after docker-compose.swarm.yml when ambibox_ingress_enabled is on
+# (production). The singleton vendor tailnet identity and the SOCKS bridge that
+# EMQX uses to reach vendor brokers; installations without Ambibox, such as the
+# public demo, leave both out. References the base's overlay networks, so it is
+# NOT valid on its own.
+
+services:
+
+  tailscale-ambibox:
+    image: "${TAILSCALE_IMAGE:-tailscale/tailscale:latest}"
+    cap_add:
+      - net_admin
+      - sys_module
+    volumes:
+      - tailscale-ambibox-state:/var/lib/tailscale
+
+    environment:
+      # No TS_AUTHKEY: the vendor identity is restored from the NFS export or a private
+      # seed (docs/operations/recovery.md).
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      # SOCKS5 proxy on port 1055 — used by emqx-main to reach vendor MQTT over tailnet
+      - TS_SOCKS5_SERVER=0.0.0.0:1055
+    networks:
+      - emqx-network
+      - app-network
+    deploy:
+      replicas: 1
+      update_config:
+        # Request shutdown before replacement. A stuck or unreachable old instance
+        # still needs verified shutdown or isolation before this identity is reused.
+        order: stop-first
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+  mqtt-tailscale-bridge:
+    # TACTIC reconciles catalog routes through this private API. The existing
+    # singleton tailnet identity still resolves/dials every vendor hostname.
+    image: "${GOST_IMAGE:-gogost/gost:3.3.1}"
+    command: ["-api", ":18080"]
+    networks:
+      - emqx-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+volumes:
+  tailscale-ambibox-state:
+    # Shared NFS export (host selected by the ambibox_nfs inventory group) holding the vendor tailnet identity
+    # (tailscaled.state). Mounting it from any backend lets the ambibox singleton fail
+    # over without re-seeding. Ansible seeds/backs it up to the gitignored stack/state/
+    # on the control host. The explicit name changes only when the NFS mount spec
+    # changes: Docker never updates driver_opts on an existing named volume.
+    name: "${STACK_NAME}_tailscale-ambibox-state_${TAILSCALE_AMBIBOX_NFS_VOLUME_ID}"
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${TAILSCALE_AMBIBOX_NFS_ADDR},${TAILSCALE_AMBIBOX_NFS_OPTS}"
+      device: ":${TAILSCALE_AMBIBOX_NFS_EXPORT}"

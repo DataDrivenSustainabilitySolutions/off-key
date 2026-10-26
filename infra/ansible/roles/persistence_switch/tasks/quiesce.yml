@@ -1,18 +1,20 @@
 ---
-- name: List current stack services and runtime RADAR workers
+- name: List current stack services
   command:
-    argv: [docker, service, ls, --quiet, --filter, "{{ item }}"]
-  loop:
-    - "label=com.docker.stack.namespace={{ stack_name }}"
-    - label=managed_by=tactic
+    argv: [docker, service, ls, --quiet, --filter, "label=com.docker.stack.namespace={{ stack_name }}"]
   register: persistence_services
   changed_when: false
+
+- name: Find this stack's runtime RADAR workers
+  include_role:
+    name: stack_deploy
+    tasks_from: stack_workers
 
 - name: Inspect services before stopping writers
   command:
     argv: "{{ ['docker', 'service', 'inspect'] + service_ids }}"
   vars:
-    service_ids: "{{ persistence_services.results | map(attribute='stdout_lines') | flatten | unique | list }}"
+    service_ids: "{{ (persistence_services.stdout_lines + (stack_tactic_workers | map(attribute='Spec.Name') | list)) | unique | list }}"
   register: persistence_service_specs
   changed_when: false
   no_log: true

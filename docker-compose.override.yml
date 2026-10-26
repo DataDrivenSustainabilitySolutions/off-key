@@ -42,9 +42,6 @@ services:
   mqtt-proxy:
     container_name: mqtt_proxy
 
-  mqtt-simulator:
-    container_name: mqtt_simulator
-
   db-sync:
     container_name: db_sync
     develop:

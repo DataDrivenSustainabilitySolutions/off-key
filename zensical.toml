@@ -30,6 +30,7 @@ nav = [
     { "Production releases" = "operations/production.md" },
     { "Recovery" = "operations/recovery.md" },
     { "Collection operations" = "operations/system-collection.md" },
+    { "Public demo" = "operations/public-demo.md" },
     { "RADAR capacity" = "operations/radar-capacity.md" },
     { "RADAR recovery" = "operations/radar-recovery.md" },
     { "Single organization" = "single-organization.md" },

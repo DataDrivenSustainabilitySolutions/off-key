@@ -1,7 +1,7 @@
 # Generated from explicit service environment maps. Escape dollars for Compose;
 # its resolved config preserves that escaping for Swarm's interpolation pass.
 services:
-{% for service, environment in service_environment.items() %}
+{% for service, environment in service_environment.items() if service not in stack_omitted_services %}
   {{ service }}:
     environment:
 {% for key, value in environment.items() if value is not none %}

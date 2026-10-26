@@ -109,8 +109,6 @@ def initialize(args: argparse.Namespace) -> None:
         AMBIBOX_ALLOWED_HOSTS='["source-broker"]',
         AMBIBOX_ALLOWED_HOST_SUFFIXES="[]",
         AMBIBOX_EMQX_API_KEY=f"{project}-controller",
-        SIMULATOR_CHARGER_IDS="charger-sim-1,charger-sim-2",
-        SIMULATOR_WORKSHOP_ENABLED="true",
         SYSTEM_LIVE_ENABLED="true",
         SYSTEM_LIVE_ALLOWED_HOSTS=json.dumps(LOCAL_LIVE_HOSTS, separators=(",", ":")),
         SYSTEM_LIVE_CREDENTIALS="{}",
@@ -135,7 +133,6 @@ def initialize(args: argparse.Namespace) -> None:
         ("DB_SYNC_IMAGE", "db-sync"),
         ("MQTT_RADAR_IMAGE", "mqtt-radar"),
         ("MQTT_PROXY_IMAGE", "mqtt-proxy"),
-        ("MQTT_SIMULATOR_IMAGE", "mqtt-simulator"),
     ):
         values[key] = f"{project}-{service}:dev"
 
@@ -328,7 +325,6 @@ def ensure_swarm(environment: dict[str, str]) -> None:
 def start_stack(
     command: list[str],
     *,
-    simulator: bool,
     public_images: bool,
     broker_fixture: bool = False,
 ) -> None:
@@ -341,9 +337,7 @@ def start_stack(
     with scope as scoped:
         ensure_swarm(scoped)
         execute([*command, "build", "mqtt-radar"], scoped)
-        profile = ["--profile", "mqtt-sim"] if simulator else []
-        if broker_fixture:
-            profile.extend(["--profile", "broker-fixture"])
+        profile = ["--profile", "broker-fixture"] if broker_fixture else []
         execute([*command, *profile, "up", "--build", "--detach", "--wait"], scoped)
     if broker_fixture:
         print("Import dev/local/broker-system.json, then choose Connect.")
@@ -410,7 +404,6 @@ def main() -> None:
     init.add_argument("--api-port", type=port, default=PORTS["LOCAL_API_PORT"])
     init.add_argument("--admin-email", default="admin@example.com")
     up = commands.add_parser("up", help="Build this checkout and start the stack")
-    up.add_argument("--simulator", action="store_true", help="Publish local MQTT data")
     up.add_argument(
         "--broker-fixture",
         action="store_true",
@@ -441,7 +434,6 @@ def main() -> None:
     if args.command == "up":
         start_stack(
             command,
-            simulator=args.simulator,
             public_images=args.public_images,
             broker_fixture=args.broker_fixture,
         )

@@ -142,7 +142,7 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
             $$ LANGUAGE plpgsql;
             INSERT INTO anomalies
                 (charger_id, timestamp, telemetry_type, anomaly_type, anomaly_value)
-            VALUES ('historical', '2026-10-01T00:00:00Z', '__multivariate__',
+            VALUES ('historical', now() - interval '1 day', '__multivariate__',
                 'ml_conformal_static_multivariate', 0.001);
             UPDATE anomaly_identity SET anomaly_id = 'preserved-public-id';
         """)

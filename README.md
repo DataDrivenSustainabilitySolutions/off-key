@@ -8,7 +8,7 @@
 <h1 align="center">Aberration</h1>
 
 <p align="center">
-  Anomaly detection for connected systems: collect MQTT telemetry,<br>
+  Domain-agnostic anomaly detection for connected systems: collect MQTT telemetry,<br>
   run streaming detection pipelines on it and review the evidence.
 </p>
 

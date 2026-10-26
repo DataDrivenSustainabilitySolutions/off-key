@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 const isCI = Boolean(env.CI);
 const chromiumChannel =
   env.PLAYWRIGHT_CHROMIUM_CHANNEL === "chrome" ? "chrome" : undefined;
+// Outside outputDir: every invocation empties test-results, and the pipeline lane
+// reuses the session that an earlier invocation saved.
 const authStateFile = env.PLAYWRIGHT_AUTH_STATE_FILE ?? fileURLToPath(
-  new URL("./test-results/.auth/user.json", import.meta.url)
+  new URL("./playwright/.auth/user.json", import.meta.url)
 );
 const chromiumUse = {
   ...devices["Desktop Chrome"],

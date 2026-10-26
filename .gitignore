@@ -39,6 +39,7 @@ node_modules/
 /frontend/.npm-cache/
 /frontend/playwright-report/
 /frontend/test-results/
+/frontend/playwright/.auth/
 *.tsbuildinfo
 npm-debug.log*
 

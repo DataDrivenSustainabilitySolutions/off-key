@@ -114,7 +114,7 @@ because they need different TACTIC settings:
 
 The deployment smoke lanes run both. A run signs in once: the `auth-setup` project
 accepts the operator invitation, signs in and saves the remembered session to
-`frontend/test-results/.auth/user.json`, and every authenticated journey starts
+`frontend/playwright/.auth/user.json`, and every authenticated journey starts
 from that saved state. The gateway's login limit of 10 per account a minute
 therefore stays the production value. The pipeline lane reuses the file from an
 earlier `npx playwright test --project=auth-setup` invocation, made while authoring

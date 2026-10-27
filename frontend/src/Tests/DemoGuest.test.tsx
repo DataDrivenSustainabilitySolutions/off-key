@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
@@ -54,12 +54,24 @@ describe("public demo guests", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   });
 
-  it("reports an unavailable demo instead of redirecting", async () => {
+  it("reports an unavailable demo and still lets members log in", async () => {
     fetchMock.mockResolvedValueOnce(demo(true));
     getCurrentMember.mockRejectedValueOnce(new Error("503"));
     visit();
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByText(/public demo is unavailable/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "Log in" }));
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  });
+
+  it("offers signing out when a member's account cannot be loaded", async () => {
+    tokenManager.setToken(`header.${btoa(JSON.stringify({ user_id: 5, exp: Math.floor(Date.now() / 1000) + 3600 }))}.signature`);
+    getCurrentMember.mockRejectedValueOnce(Object.assign(new Error("offline"), { status: 503 }));
+    visit();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Log in" })).toBeNull();
   });
 
   it("does not ask while a member is signed in", async () => {

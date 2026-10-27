@@ -236,8 +236,9 @@ describe("dedicated Sources configuration", () => {
   it("members inspect acknowledged policies without recording write controls", async () => {
     saved.can_edit = false;
     mount("/sources?broker=broker");
-    await screen.findByText("An administrator can change recording settings.");
+    await screen.findByRole("region", { name: "Recording configuration" });
     expect(screen.queryByLabelText("Recording policy")).toBeNull();
+    expect(screen.queryByText(/administrator can/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Add broker" })).toBeNull();
   });
 

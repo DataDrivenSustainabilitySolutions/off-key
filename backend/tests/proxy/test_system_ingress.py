@@ -19,6 +19,7 @@ from off_key_mqtt_proxy.telemetry import DatabaseWriter
 from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services.catalogue import system_ingress
+from off_key_tactic_middleware.services.catalogue.arrival_cadence import ArrivalCadence
 
 
 def definition():
@@ -190,3 +191,36 @@ async def test_activity_requires_a_fresh_successfully_forwarded_message(
         )
     await ingress._stop_workers()
     assert ingress.readings == {}
+
+
+@pytest.mark.asyncio
+async def test_activity_reports_each_readings_typical_arrival_interval(monkeypatch):
+    monkeypatch.setattr(
+        system_ingress, "get_system_live_settings", lambda: SystemLiveSettings()
+    )
+    ingress = system_ingress.SystemIngress()
+    ingress._connect = MagicMock()
+    ingress.output = SimpleNamespace(
+        is_connected=lambda: True, publish=MagicMock(return_value=SimpleNamespace(rc=0))
+    )
+    await ingress._configure(definition())
+    start = int(datetime.now(UTC).timestamp()) * 1_000_000_000
+    payload = b'{"temperature":45,"humidity":50}'
+    # A source reporting every three minutes, with one outage in between.
+    for minutes in (0, 3, 6, 30, 33, 36):
+        monkeypatch.setattr(
+            system_ingress.time, "time_ns", lambda m=minutes: start + m * 60 * 10**9
+        )
+        ingress._receive("test", "broker", "machine/readings", payload, False)
+    assert ingress.readings["temperature"]["typical_interval_seconds"] == 180
+    assert ingress.readings["humidity"]["typical_interval_seconds"] == 180
+
+
+def test_arrival_cadence_needs_two_arrivals_and_ignores_repeats():
+    cadence = ArrivalCadence()
+    cadence.add(10.0)
+    assert cadence.typical_seconds is None
+    cadence.add(10.0)
+    assert cadence.typical_seconds is None
+    cadence.add(70.0)
+    assert cadence.typical_seconds == 60

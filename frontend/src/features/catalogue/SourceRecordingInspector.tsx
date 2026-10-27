@@ -58,7 +58,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       </div>}
       {draft.canUndo && <Button variant="ghost" onClick={draft.stageUndo}>Undo last recording change</Button>}
       {draft.problem && <p role="alert" className="ex-preview-error">{draft.problem}<Button variant="ghost" onClick={draft.rebase}>Review against current configuration</Button></p>}
-    </> : <p className="ex-muted">An administrator can change recording settings.</p>}
-    <p className="ex-muted">Recording continues after you leave this page. Turning it Off preserves stored history.</p>
+      <p className="ex-muted">Recording continues after you leave this page. Turning it Off preserves stored history.</p>
+    </> : null}
   </section>;
 }

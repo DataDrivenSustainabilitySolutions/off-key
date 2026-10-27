@@ -31,6 +31,7 @@ from sqlalchemy import select, text, update
 
 from ...config.config import get_tactic_settings
 from ...config.system_live import get_system_live_settings
+from .arrival_cadence import ArrivalCadence
 from .broker_access import resolve_broker
 from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker
@@ -45,6 +46,7 @@ class SystemIngress:
         self.states = {}
         self.bindings = {}
         self.readings = {}
+        self.cadences = {}
         self._received_at_us = {}
         self.generation = None
         self.output = None
@@ -96,6 +98,7 @@ class SystemIngress:
             self.bindings = {}
             self.states = {}
             self.readings = {}
+            self.cadences = {}
         await asyncio.gather(
             *(asyncio.to_thread(item.stop) for item in workers), return_exceptions=True
         )
@@ -199,10 +202,15 @@ class SystemIngress:
                 if result.rc == MQTT_ERR_SUCCESS:
                     self.last_publish = datetime.now(UTC).isoformat()
                     if not retained:
+                        cadence = self.cadences.setdefault(
+                            stream.definition.id, ArrivalCadence()
+                        )
+                        cadence.add(received_at_us / 1_000_000)
                         self.readings[stream.definition.id] = {
                             "fresh_received_at": datetime.fromtimestamp(
                                 received_at_us / 1_000_000, UTC
-                            ).isoformat()
+                            ).isoformat(),
+                            "typical_interval_seconds": cadence.typical_seconds,
                         }
                 else:
                     self.dropped += 1

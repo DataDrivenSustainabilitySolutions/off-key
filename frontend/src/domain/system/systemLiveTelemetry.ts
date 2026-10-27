@@ -564,7 +564,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
       connections,
       message:
         batch.mode !== "live"
-          ? "No live connection is active. An administrator can connect this system."
+          ? "No live connection is active."
           : this.scopeIds?.length === 0 && !connections.length
             ? "Select a reading to view live data."
           : connected
@@ -602,6 +602,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
         retainedCount: record.retained_count,
         decodeErrors: record.decode_errors,
         isAggregate: false,
+        typicalInterval: record.typical_interval_seconds,
       };
     const connection = this.connections.get(id);
     if (connection)

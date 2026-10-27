@@ -559,12 +559,12 @@ describe("hierarchical explorer workspace", () => {
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
-  it("lets read-only users inspect signals while disabling structural mutation", async () => {
+  it("lets read-only users inspect signals without structural controls", async () => {
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
-    expect((within(preview).getByRole("button", { name: "Rename reading" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((within(preview).getByRole("button", { name: "Edit structure" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
+    expect(within(preview).queryByRole("button", { name: "Edit structure" })).toBeNull();
     expect(within(preview).queryByText("Personal groups")).toBeNull();
     expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false);
     expect(apiUtils.put).not.toHaveBeenCalled();

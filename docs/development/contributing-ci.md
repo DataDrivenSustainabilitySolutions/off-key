@@ -16,20 +16,20 @@ Use this page before opening a pull request and when matching local checks to CI
 ## Current automated checks
 
 This table is the single inventory of GitHub workflows. `infra/tests/test_docs.py`
-fails when a workflow file is missing here or a release gate is not marked.
+fails when a workflow file is missing here or the release gate is not marked.
+
+Every check that gates a merge or a release is a job in `ci.yml`. Its `ci-gate` job
+needs all other jobs and succeeds only when each of them succeeded, so it is the one
+check the branch rule requires. Job names may carry matrix values such as a Python
+or EMQX version; a version bump renames such a job without touching the rule, and
+`infra/tests/test_ci_workflow.py` fails if a new job is left out of `ci-gate`.
 
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | CI | Pull requests, `main`, merge queue | `pre-commit (3.12)`, `pre-commit (3.14)` (pre-commit, backend tests, generated contracts; the 3.12 leg also runs the `ty` type check), `frontend` (lint, tests, build) | yes |
-| `collection-integration.yml` | MQTT Collection Integration | Pull requests, `main`, merge queue | `collection (5.8.7)`, `collection (6.3.2)`: `postgres` lane and real EMQX brokers | yes |
-| `radar-production-integration.yml` | RADAR production integration | Pull requests, `main`, merge queue, manual | `RADAR production integration`: `radar_integration` lane on Swarm with the production image | yes |
-| `deployment-smoke.yml` | Deployment Smoke | Pull requests, `main`, merge queue, manual | `deployment-smoke` (requires both lanes): `deployment-smoke (rehearsal)` runs the browser journeys, then backup restore and binary rollback on a production Swarm; `deployment-smoke (pipelines)` runs the adaptive monitor and visual pipelines on a second Swarm in parallel | yes |
-| `infra-validation.yml` | Infrastructure Validation | Pull requests, `main`, merge queue | `infrastructure`: Ansible syntax, rendered stack and `infra/tests` | yes |
-| `docker-publish.yml` | Docker Publish | `main` and `v*` tags | `publish`: pushes and attests service images in GHCR | yes |
-| `docker-validate.yml` | Docker Validate | Pull requests, merge queue | `docker-validate / docker-validate`: builds the image matrix | no |
-| `docker-images.yml` | Docker Images | Called by Docker Validate and Docker Publish | Reusable image matrix | no |
+| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `backend (3.12)`, `backend (3.14)` (pre-commit, backend tests, generated contracts; the 3.12 leg also runs the `ty` type check); `frontend` (lint, tests, build, route-mocked journeys); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with the production image); `images` on pull requests (builds the image matrix) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (browser journeys, then backup restore and binary rollback on a production Swarm) and `deployment-smoke (pipelines)` (adaptive monitor and visual pipelines on a second Swarm). On `main` both smoke lanes start after `publish` and test the images it pushed | yes |
+| `docker-images.yml` | Docker Images | Called by CI | Reusable image matrix | no |
 | `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**`, `zensical.toml` or `requirements-docs.txt`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
-| `deploy-production.yml` | Deploy Production | Completion of every release gate on `main`, manual | Deploys the newest commit whose release gates all succeeded ([Production releases](../operations/production.md)), then the public demo stack while `DEMO_ENABLED` is on ([Public demo](../operations/public-demo.md)) | no |
+| `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded ([Production releases](../operations/production.md)), then the public demo stack while `DEMO_ENABLED` is on ([Public demo](../operations/public-demo.md)) | no |
 | `pr-triage.yml` | PR triage | Pull requests opened, reopened or marked ready | Assigns a human author and requests the maintainer's review; never fails | no |
 | CodeQL default setup | CodeQL | Repository settings | `CodeQL` | no |
 

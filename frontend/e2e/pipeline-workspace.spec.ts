@@ -8,7 +8,7 @@ import {
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
-import { archivePipelines, loginPipelineWorkspace } from "./helpers/pipelines";
+import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import {
   expectReadablePipeline,
   fitPipelineOverview,
@@ -111,7 +111,7 @@ async function buildBranchedGraph(
 
 test.describe("visual pipeline real infrastructure", () => {
   test.setTimeout(600_000);
-  test.beforeEach(async ({ page }) => loginPipelineWorkspace(page));
+  test.beforeEach(async ({ page }) => openPipelineWorkspace(page));
   for (const strategy of ["adaptive_stream", "static_baseline"] as const)
     test(`builds, runs and inspects a branched ${strategy} pipeline`, async ({
       page,

@@ -1,23 +1,14 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../../src/types/pipelines.generated";
-import { loginWithEmail, accessToken } from "./auth";
+import { accessToken } from "./auth";
 
-/** Each independent production invocation starts from real authentication. */
-export async function loginPipelineWorkspace(page: Page) {
+/**
+ * Opens the workspace with the operator's remembered session that auth-setup
+ * saved, so a run signs in once however many journeys it holds.
+ */
+export async function openPipelineWorkspace(page: Page) {
   await page.goto("/");
-  await page.evaluate(() => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("token_storage_type");
-    localStorage.removeItem("session_member");
-    sessionStorage.removeItem("auth_token");
-  });
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await loginWithEmail(
-    page,
-    process.env.SUPERUSER_MAIL ?? "admin@example.com",
-    { rememberMe: true },
-  );
+  await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
   const token = await accessToken(page);
   expect(token).toBeTruthy();
   await expect

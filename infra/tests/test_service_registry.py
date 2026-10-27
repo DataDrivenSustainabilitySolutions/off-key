@@ -15,8 +15,6 @@ from test_platform_pins import ComposeLoader
 
 REPOSITORY = ROOT.parent
 WORKFLOWS = REPOSITORY / ".github/workflows"
-# Built for local stacks and validated in CI, never published or deployed.
-BUILD_ONLY: dict[str, str] = {}
 IMAGE_DEFAULT = re.compile(r"^\$\{([A-Z_]+_IMAGE):-([\w.-]+):[\w.-]+\}$")
 
 
@@ -66,20 +64,11 @@ class ServiceRegistryTests(unittest.TestCase):
                 self.assertTrue(repository.endswith("/" + image_name), repository)
 
     def test_image_workflow_builds_every_release_image_from_its_root(self):
-        expected = dict(BUILDS.values()) | BUILD_ONLY
-        self.assertEqual(matrix_builds(), expected)
+        self.assertEqual(matrix_builds(), dict(BUILDS.values()))
 
-    def test_publishing_skips_the_build_only_images(self):
+    def test_every_built_image_is_published_through_one_switch(self):
         job = workflow("docker-images.yml")["jobs"]["build-images"]
-        build_only = {
-            entry["image_name"]
-            for entry in job["strategy"]["matrix"]["include"]
-            if entry.get("build_only")
-        }
-        self.assertEqual(build_only, set(BUILD_ONLY))
-        self.assertEqual(
-            job["env"]["PUBLISH"], "${{ inputs.publish && !matrix.build_only }}"
-        )
+        self.assertEqual(job["env"]["PUBLISH"], "${{ inputs.publish }}")
         publishing = [
             step
             for step in job["steps"]
@@ -101,7 +90,7 @@ class ServiceRegistryTests(unittest.TestCase):
                     )
 
     def test_rollback_revision_is_the_same_everywhere(self):
-        steps = workflow("deployment-smoke.yml")["jobs"]["deployment-smoke"]["steps"]
+        steps = workflow("ci.yml")["jobs"]["deployment-smoke"]["steps"]
         (checkout,) = [
             step
             for step in steps

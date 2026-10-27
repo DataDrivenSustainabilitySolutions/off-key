@@ -1,5 +1,6 @@
 name: Docker Images
 
+# Called by CI: pull requests build every image, a main push publishes them.
 on:
   workflow_call:
     inputs:
@@ -19,7 +20,7 @@ jobs:
     name: build-${{ matrix.service }}
     runs-on: ubuntu-latest
     env:
-      PUBLISH: ${{ inputs.publish && !matrix.build_only }}
+      PUBLISH: ${{ inputs.publish }}
     strategy:
       fail-fast: false
       matrix:
@@ -97,11 +98,8 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=short,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=tag
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=raw,value=latest
+            type=sha,format=short,prefix=sha-
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -136,17 +134,3 @@ jobs:
           subject-name: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
-
-  docker-validate:
-    name: docker-validate
-    runs-on: ubuntu-latest
-    needs: build-images
-    if: ${{ !inputs.publish && always() }}
-
-    steps:
-      - name: Check matrix result
-        run: |
-          if [ "${{ needs.build-images.result }}" != "success" ]; then
-            echo "At least one container build failed."
-            exit 1
-          fi

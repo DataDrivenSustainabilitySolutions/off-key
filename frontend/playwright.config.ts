@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 const isCI = Boolean(env.CI);
 const chromiumChannel =
   env.PLAYWRIGHT_CHROMIUM_CHANNEL === "chrome" ? "chrome" : undefined;
+// Outside outputDir: every invocation empties test-results, and the pipeline lane
+// reuses the session that an earlier invocation saved.
 const authStateFile = env.PLAYWRIGHT_AUTH_STATE_FILE ?? fileURLToPath(
-  new URL("./test-results/.auth/user.json", import.meta.url)
+  new URL("./playwright/.auth/user.json", import.meta.url)
 );
 const chromiumUse = {
   ...devices["Desktop Chrome"],
@@ -66,10 +68,11 @@ export default defineConfig({
     {
       name: "pipeline-workspace",
       testMatch: PIPELINE_SPECS,
-      // Every journey signs in afresh; a previous invocation's output is disposable.
+      // Runs in its own invocation after auth-setup, with authoring enabled,
+      // and reuses the session auth-setup saved rather than signing in again.
       use: {
         ...chromiumUse,
-        storageState: { cookies: [], origins: [] },
+        storageState: authStateFile,
         actionTimeout: 30_000,
       },
     },

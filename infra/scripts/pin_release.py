@@ -22,14 +22,9 @@ APPLICATION_IMAGES = {
     "db_sync",
 }
 REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
-REQUIRED_WORKFLOWS = (
-    "ci.yml",
-    "deployment-smoke.yml",
-    "docker-publish.yml",
-    "collection-integration.yml",
-    "radar-production-integration.yml",
-    "infra-validation.yml",
-)
+# CI runs every release gate, publishes the images and rehearses them, so its
+# success on a main push is what makes a commit releasable.
+RELEASE_WORKFLOW = "ci.yml"
 
 
 def github(path):
@@ -69,19 +64,17 @@ def select_revision(requested):
         comparison = github(f"compare/{requested}...main")
         if comparison["status"] not in {"ahead", "identical"}:
             raise ValueError("The target revision must belong to main history")
-    successful = []
-    for workflow in REQUIRED_WORKFLOWS:
-        # Do not accept an older success if a newer run failed or is still running.
-        latest_runs = main_runs(workflow, None if requested == "latest" else requested)
-        successful.append(
-            {
-                sha
-                for sha, run in latest_runs.items()
-                if run["status"] == "completed" and run["conclusion"] == "success"
-            }
-        )
+    # Do not accept an older success if a newer attempt failed or is still running.
+    latest_runs = main_runs(
+        RELEASE_WORKFLOW, None if requested == "latest" else requested
+    )
+    successful = {
+        sha
+        for sha, run in latest_runs.items()
+        if run["status"] == "completed" and run["conclusion"] == "success"
+    }
     for revision in candidates:
-        if all(revision in revisions for revisions in successful):
+        if revision in successful:
             if requested == "latest" and revision != candidates[0]:
                 print(
                     f"Main {candidates[0]} is not eligible; selecting {revision}.",
@@ -90,7 +83,7 @@ def select_revision(requested):
             return revision
     scope = "the latest 100 main commits/runs" if requested == "latest" else requested
     raise ValueError(
-        f"No eligible release in {scope}: Every required release workflow must succeed for the same commit."
+        f"No eligible release in {scope}: CI must succeed on a main push of the commit."
     )
 
 
@@ -141,7 +134,7 @@ def require_image_revision(reference, revision):
 
 
 def tested_release(revision):
-    run = main_runs("deployment-smoke.yml", revision).get(revision)
+    run = main_runs(RELEASE_WORKFLOW, revision).get(revision)
     if not run or run["status"] != "completed" or run["conclusion"] != "success":
         raise ValueError("No successful production rehearsal for this main revision")
     with tempfile.TemporaryDirectory(prefix="offkey-tested-release-") as directory:

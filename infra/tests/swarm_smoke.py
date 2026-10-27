@@ -119,7 +119,7 @@ def images(release, revision):
         os.getenv("GITHUB_EVENT_NAME") == "push"
         and os.getenv("GITHUB_REF") == "refs/heads/main"
     ):
-        # The workflow has checked Docker Publish's latest attempt for this SHA.
+        # This run's publish job pushed these images before the lane started.
         # Allow brief registry propagation, then verify each digest's revision.
         for name in sorted(APPLICATION_IMAGES):
             release["images"][name] = wait(

@@ -6,9 +6,9 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 
 ## Release sequence
 
-1. The latest main push attempt of every workflow marked as a release gate in
-   [Contributing and CI](../development/contributing-ci.md#current-automated-checks)
-   must succeed for the same SHA.
+1. The latest attempt of the CI run for the main push of that SHA must succeed
+   ([Contributing and CI](../development/contributing-ci.md#current-automated-checks)).
+   CI holds every release gate, so this one run covers them all.
 2. One GitHub production job connects through an ephemeral management-tailnet runner
    and verified SSH. Superseded automatic candidates stop before deployment.
 3. Runtime files are compared against the manager's last verified release. Documentation
@@ -38,18 +38,19 @@ Use `BOOTSTRAP=true` only for the first integrated cutover. The automatic switch
 starts disabled. Production secrets/configuration changes require a manual dispatch.
 
 The workflow captures Ansible output in private temporary files and deletes it with
-its configuration at job exit. Database backups, vendor identity, recovery records
-and private inventories are not published as Actions artifacts. Investigate live
-failures through trusted SSH and the server-side records, not public log uploads.
+its configuration at job exit. A failed step prints only the names of the Ansible
+tasks that failed (`infra/scripts/failed_tasks.py`), never their output. Database
+backups, vendor identity, recovery records and private inventories are not published
+as Actions artifacts. Investigate live failures through trusted SSH and the
+server-side records, not public log uploads.
 
 ## Checks before production
 
-Deployment Smoke runs the existing browser and adaptive-monitor journeys against a
+The `deployment-smoke` CI lanes run the existing browser and adaptive-monitor journeys against a
 disposable Swarm using the production frontend, TLS/authenticated MQTT and deployment
-tasks. PRs build production images; main tests the published image digests before
-making them eligible for deployment. Main first requires the latest Docker Publish
-attempt for that SHA to succeed; publisher failures are reported directly before
-the disposable Swarm starts. Synthetic accounts, saved catalog definitions,
+tasks. PRs build production images; on main both smoke lanes start only after the
+same run's `publish` job pushed the images, and they test those digests before making
+them eligible for deployment. Synthetic accounts, saved catalog definitions,
 telemetry and a running monitor must survive actual database backup/restore and
 repeated deployment, with exactly one restarted monitor and resumed collection.
 

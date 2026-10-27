@@ -65,7 +65,8 @@ class CDTests(unittest.TestCase):
             "status": "completed",
             "conclusion": "success",
         }
-        responses = [{"status": "identical"}] + [
+        responses = [
+            {"status": "identical"},
             {
                 "workflow_runs": [
                     run,
@@ -73,7 +74,6 @@ class CDTests(unittest.TestCase):
                     | {"run_attempt": 2, "status": "in_progress", "conclusion": None},
                 ]
             },
-            *[{"workflow_runs": [run]}] * (len(release.REQUIRED_WORKFLOWS) - 1),
         ]
         with (
             patch.object(release, "github", side_effect=responses),

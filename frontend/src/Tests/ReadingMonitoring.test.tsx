@@ -111,8 +111,12 @@ describe("selected-reading monitoring subscription", () => {
     expect(signal?.aborted).toBe(true);
     expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
     expect(hook.result.current.telemetry).toEqual(points);
-    // Three history requests per selection; the service list is one shared request.
-    expect(apiUtils.get).toHaveBeenCalledTimes(7);
+    const requests = (shared: boolean) => vi.mocked(apiUtils.get).mock.calls
+      .filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace") === shared);
+    // Three history requests per selection, issued as the selection opens.
+    expect(requests(false)).toHaveLength(6);
+    // The shared service list starts on the next timer tick and is not repeated for the new selection.
+    await waitFor(() => expect(requests(true)).toHaveLength(1));
   });
 
   it("filters the shared service list to the reading's accepted topic", async () => {

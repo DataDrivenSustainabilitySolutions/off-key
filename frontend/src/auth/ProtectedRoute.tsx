@@ -1,11 +1,11 @@
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { JSX, useEffect } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Button } from "@/components/ui/button";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated, isLoading, authError, retryAuthentication, logout, guestChecked, checkGuest } = useAuth();
+  const { isAuthenticated, isLoading, authError, retryAuthentication, logout, hasSession, guestChecked, checkGuest } = useAuth();
   const askGuest = !isAuthenticated && !isLoading && !authError && !guestChecked;
   // A signed-out visit may be a guest of the public read-only demo.
   useEffect(() => { if (askGuest) checkGuest(); }, [askGuest, checkGuest]);
@@ -17,7 +17,10 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
           <p>{authError}</p>
           <div className="flex gap-3">
             <Button onClick={retryAuthentication}>Retry</Button>
-            <Button variant="outline" onClick={logout}>Sign out</Button>
+            {/* A signed-out visitor of an unavailable demo has nothing to sign out of. */}
+            {hasSession
+              ? <Button variant="outline" onClick={logout}>Sign out</Button>
+              : <Button variant="outline" asChild><Link to="/login">Log in</Link></Button>}
           </div>
         </div>
       </AuthBackdrop>

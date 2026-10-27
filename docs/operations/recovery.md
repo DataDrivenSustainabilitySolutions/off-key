@@ -4,7 +4,7 @@ A failed release keeps the previous verified `release.json`. The attempted relea
 is in `release-pending.json`; `release-maintenance.json` and the database's
 `deployment_maintenance` singleton identify incomplete work. Catalog and monitor
 mutations stay blocked until the operation completes. Do not clear these records
-just to make a newer release run.
+just to make a newer release run; complete them as described below.
 
 ## Retry the interrupted release
 
@@ -24,6 +24,24 @@ with a checksum alongside it. A retry never overwrites that original backup.
 Backups are mode 0600 in a 0700 directory and are validated before applying SQL.
 Keep independently encrypted off-server backups through your private backup process;
 the deployment job deliberately does not transfer production dumps to GitHub.
+
+## Complete a release whose own verification is defective
+
+A retry runs the attempted SHA's own code, so a defect in its verification fails
+every retry while the guard refuses a fixed SHA. When every check before the failed
+step passed (convergence, readiness, restarted monitors and public routes), complete
+that release's operation through trusted SSH instead:
+
+1. Set `AUTO_DEPLOY_ENABLED=false`.
+2. On the node running the stack's TACTIC task, run
+   `docker exec <container> /app/bin/python -m off_key_tactic_middleware.deployment status <SHA>`.
+   It must report that SHA in phase `restarted`.
+3. Run the same command with `finish`. It verifies every restarted monitor again,
+   then opens catalog and monitor changes.
+4. On the manager, rename `<stack_dir>/release-maintenance.json` to
+   `release-maintenance.<SHA>.json`. `release.json` keeps the last fully verified
+   release, so the fixed release compares its runtime changes from there.
+5. Merge the fix and deploy its SHA, then reenable automatic deployment.
 
 ## Roll back a completed release
 

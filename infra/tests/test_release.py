@@ -400,6 +400,31 @@ class ReleaseTests(unittest.TestCase):
                     (ROOT / "ansible/roles/stack_deploy/tasks" / name).read_text()
                 )
 
+    def test_application_setup_runs_after_the_release_completes(self):
+        # Catalogue writes are fenced while a release is open, and a step that
+        # always fails inside the release would leave it unrecoverable by retry.
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/verify.yml").read_text()
+        )
+        release_steps, *setup = tasks
+        self.assertEqual(
+            [step["name"] for step in release_steps["block"][-3:]],
+            [
+                "End application maintenance after successful verification",
+                "Record the successfully verified release",
+                "Remove the completed release operation record",
+            ],
+        )
+        self.assertNotIn("bootstrap", json.dumps(release_steps))
+        self.assertEqual(
+            [step["include_tasks"] for step in setup],
+            [
+                "bootstrap_admin.yml",
+                "bootstrap_demo_viewer.yml",
+                "bootstrap_demo_catalogue.yml",
+            ],
+        )
+
     def test_pin_validates_revision_against_the_digest_not_the_tag(self):
         revision = "a" * 40
         digest = "sha256:" + "b" * 64

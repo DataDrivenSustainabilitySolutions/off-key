@@ -555,8 +555,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(json.loads(api_env["CORS_ALLOWED_ORIGINS"]), [dashboard])
         self.assertIn(f'href="{dashboard}/"', result["landing_html"])
         self.assertNotIn("{{", result["landing_html"])
-        # Demo links appear only once an installation is configured.
-        self.assertNotIn(">Demo<", result["landing_html"])
+        # Production links the public demo from the landing page.
+        self.assertIn('href="https://demo.aberration.app/"', result["landing_html"])
 
         landing = config["services"]["landing"]
         self.assertEqual(set(landing["networks"]), {"public-network"})

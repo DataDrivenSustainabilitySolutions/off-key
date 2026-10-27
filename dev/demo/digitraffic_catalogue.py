@@ -11,11 +11,11 @@ Three low-volume, always-on MQTT feeds from Finland's national traffic agency
 
 The REST API supplies today's station and vessel IDs, so the catalogue names
 concrete topics. ``--verify`` subscribes for a short while and keeps only
-readings that actually arrived. Write the result to a file and import it under
-Sources; recording stays Off until an administrator applies a policy.
+readings that actually arrived. The result is committed as the demo's
+catalogue, which a new demo loads and records on its first deployment.
 
     uv run --project backend python dev/demo/digitraffic_catalogue.py \
-        --verify --output digitraffic-system.json
+        --verify --output infra/ansible/inventories/demo/catalogue.json
 """
 
 import argparse

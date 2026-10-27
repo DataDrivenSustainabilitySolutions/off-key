@@ -1,0 +1,24 @@
+---
+# The demo shows a fixed set of open data sources. The first deployment loads
+# the committed catalogue and starts recording it; later ones keep whatever
+# the administrator has made of it.
+- name: Locate the TACTIC task for the demo catalogue
+  include_role:
+    name: swarm_task
+  vars:
+    svc: tactic
+
+- name: Load the committed demo catalogue into a new demo
+  command:
+    argv: [docker, exec, -i, "{{ svc_container }}", /app/bin/python, -m, off_key_tactic_middleware.bootstrap_demo_catalogue]
+    stdin: "{{ lookup('file', demo_catalogue_file) }}"
+  delegate_to: "{{ svc_node }}"
+  register: demo_catalogue_setup
+  changed_when: (demo_catalogue_setup.stdout_lines | last | from_json).status == 'loaded'
+
+- name: Report the demo catalogue
+  debug:
+    msg: >-
+      {{ 'Demo catalogue loaded; recording started.'
+         if (demo_catalogue_setup.stdout_lines | last | from_json).status == 'loaded'
+         else 'Demo catalogue kept as the administrator left it.' }}

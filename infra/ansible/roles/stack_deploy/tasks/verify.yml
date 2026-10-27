@@ -62,6 +62,10 @@
       include_tasks: bootstrap_demo_viewer.yml
       when: demo_mode | default(false) | bool
 
+    - name: Give a new public demo its open data sources
+      include_tasks: bootstrap_demo_catalogue.yml
+      when: demo_mode | default(false) | bool
+
     - name: End application maintenance after successful verification
       include_tasks: monitor_job.yml
       vars:

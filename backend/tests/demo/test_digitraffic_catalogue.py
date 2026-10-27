@@ -90,3 +90,11 @@ def test_only_numeric_digitraffic_payloads_count_as_received():
     assert builder._numeric(b'{"sog": 0, "cog": 12}')
     assert not builder._numeric(b'{"updated": 1}')
     assert not builder._numeric(b"not json")
+
+
+def test_committed_catalogue_is_a_valid_document_of_digitraffic_topics():
+    path = ROOT / "infra/ansible/inventories/demo/catalogue.json"
+    committed = SystemDocument.model_validate_json(path.read_text(encoding="utf-8"))
+    hosts = {connection.host for connection in committed.connections}
+    assert hosts <= {builder.ROAD, builder.MARINE}
+    assert committed.streams

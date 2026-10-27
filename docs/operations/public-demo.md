@@ -79,9 +79,9 @@ not reachable from the internet; guests only reach the allowlisted reads.
    again with **demo_only**. That run creates the viewer member, and the log
    says *Demo viewer created*. Signed-out visitors of `demo.aberration.app`
    now browse read-only.
-6. **Sources and monitors.** Signed in as administrator, import the
-   Digitraffic catalogue (below), apply a recording policy and start the
-   monitors you want to show.
+6. **Monitors.** The first deployment loads the committed Digitraffic
+   catalogue (below) and records every reading once a minute. Signed in as
+   administrator, start the monitors you want to show.
 7. **Landing page.** Set `demo_base_url: "https://demo.aberration.app"` in
    the production inventory so the landing page shows **Demo** next to
    **Dashboard**.
@@ -108,18 +108,22 @@ visitors (they see "unavailable"), and deployments leave it disabled.
 | Traffic measurement station nearest the city | `tms-v2/<station>/<sensor>` | 5-minute traffic flow and average speed per direction | About once a minute |
 | One passenger ferry (AIS) | `vessels-v2/<mmsi>/location` | Speed and course over ground | While under way |
 
+The demo's catalogue is committed as
+`infra/ansible/inventories/demo/catalogue.json`. A deployment loads it only
+into a demo without a catalogue, so the administrator's later edits stay.
 Station and vessel IDs change over time, so the script looks them up through
-the Digitraffic REST API. Run it from a machine with internet access:
+the Digitraffic REST API. To refresh the committed file, run it from a
+machine with internet access:
 
 ```bash
 uv run --project backend python dev/demo/digitraffic_catalogue.py \
-  --city helsinki --verify --output digitraffic-system.json
+  --city helsinki --verify --output infra/ansible/inventories/demo/catalogue.json
 ```
 
 `--verify` listens for 150 seconds and leaves out readings that sent
 nothing; pass a longer time, such as `--verify 300`, for quiet sensors. Use
-`--vessel-topic locations` if the ferry stays silent. Import the file under
-**Sources → catalogue settings**, then choose a recording policy and
-**Apply**: imported policies never start collection by themselves. A sample
-interval of 60 seconds matches the source rate. Name Fintraffic as the
-source wherever the demo is presented; the broker labels already do.
+`--vessel-topic locations` if the ferry stays silent. A running demo keeps
+its catalogue; import the refreshed file under **Sources → catalogue
+settings**, then choose a recording policy and **Apply**: imported policies
+never start collection by themselves. Name Fintraffic as the source wherever
+the demo is presented; the broker labels already do.

@@ -33,6 +33,7 @@ from off_key_core.utils.mqtt_topics import (
 )
 from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
+from off_key_tactic_middleware import bootstrap_demo_catalogue
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.domain import ConflictError
 from off_key_tactic_middleware.services.catalogue import system as system_module
@@ -574,3 +575,20 @@ async def test_moving_an_admitted_reading_requires_review_and_keeps_overrides(
         moved, [CollectionRuleEdit(scope=humidity, operation="inherit")]
     )
     assert readmitted.runtime.bindings["humidity"]["policy"]["mode"] == "original"
+
+
+@pytest.mark.asyncio
+async def test_demo_catalogue_loads_once_and_records_every_reading(session):
+    loaded = await bootstrap_demo_catalogue.seed(session, document())
+    assert loaded == {"status": "loaded", "readings": 1}
+    snapshot = await SystemService(session).read()
+    assert snapshot.updated_by == bootstrap_demo_catalogue.ACTOR
+    assert snapshot.runtime.bindings["temperature-1"]["policy"] == {
+        "mode": "sample",
+        "interval_seconds": 60,
+    }
+    # Later deployments keep the administrator's catalogue.
+    edited = document()
+    edited.label = "Edited by the administrator"
+    assert await bootstrap_demo_catalogue.seed(session, edited) == {"status": "kept"}
+    assert (await SystemService(session).read()).revision == snapshot.revision

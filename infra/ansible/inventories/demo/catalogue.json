@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "format": "aberration-system",
+  "label": "Open data demo: Helsinki",
+  "default_policy": {
+    "mode": "off",
+    "interval_seconds": 60
+  },
+  "connections": [
+    {
+      "id": "broker:tie.digitraffic.fi",
+      "label": "Digitraffic road (Fintraffic Digitraffic, CC BY 4.0)",
+      "protocol": "mqtt",
+      "transport": "websocket",
+      "host": "tie.digitraffic.fi",
+      "port": 443,
+      "tls": true,
+      "websocket_path": "/mqtt",
+      "credential_ref": null
+    },
+    {
+      "id": "broker:meri.digitraffic.fi",
+      "label": "Digitraffic marine (Fintraffic Digitraffic, CC BY 4.0)",
+      "protocol": "mqtt",
+      "transport": "websocket",
+      "host": "meri.digitraffic.fi",
+      "port": 443,
+      "tls": true,
+      "websocket_path": "/mqtt",
+      "credential_ref": null
+    }
+  ],
+  "devices": [
+    {
+      "id": "entity:digitraffic:weather-station:1002",
+      "label": "Road weather kt51_Hki_Lapinlahti",
+      "connection_id": "broker:tie.digitraffic.fi",
+      "parent_id": null,
+      "kind": "weather-station"
+    },
+    {
+      "id": "entity:digitraffic:vessel:276829000",
+      "label": "Ferry Megastar",
+      "connection_id": "broker:meri.digitraffic.fi",
+      "parent_id": null,
+      "kind": "vessel"
+    }
+  ],
+  "streams": [
+    {
+      "id": "reading:digitraffic:weather-station:1002:1",
+      "label": "Air temperature",
+      "connection_id": "broker:tie.digitraffic.fi",
+      "device_id": "entity:digitraffic:weather-station:1002",
+      "topic": "weather-v2/1002/1",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Temperature",
+      "policy": null
+    },
+    {
+      "id": "reading:digitraffic:weather-station:1002:3",
+      "label": "Road surface temperature",
+      "connection_id": "broker:tie.digitraffic.fi",
+      "device_id": "entity:digitraffic:weather-station:1002",
+      "topic": "weather-v2/1002/3",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "°C",
+      "category": "Temperature",
+      "policy": null
+    },
+    {
+      "id": "reading:digitraffic:weather-station:1002:21",
+      "label": "Relative humidity",
+      "connection_id": "broker:tie.digitraffic.fi",
+      "device_id": "entity:digitraffic:weather-station:1002",
+      "topic": "weather-v2/1002/21",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "%",
+      "category": "Humidity",
+      "policy": null
+    },
+    {
+      "id": "reading:digitraffic:weather-station:1002:16",
+      "label": "Average wind speed",
+      "connection_id": "broker:tie.digitraffic.fi",
+      "device_id": "entity:digitraffic:weather-station:1002",
+      "topic": "weather-v2/1002/16",
+      "payload_pointer": "/value",
+      "value_type": "number",
+      "unit": "m/s",
+      "category": "Wind",
+      "policy": null
+    },
+    {
+      "id": "reading:digitraffic:vessel:276829000:sog",
+      "label": "Speed over ground",
+      "connection_id": "broker:meri.digitraffic.fi",
+      "device_id": "entity:digitraffic:vessel:276829000",
+      "topic": "vessels-v2/276829000/location",
+      "payload_pointer": "/sog",
+      "value_type": "number",
+      "unit": "kn",
+      "category": "Speed",
+      "policy": null
+    },
+    {
+      "id": "reading:digitraffic:vessel:276829000:cog",
+      "label": "Course over ground",
+      "connection_id": "broker:meri.digitraffic.fi",
+      "device_id": "entity:digitraffic:vessel:276829000",
+      "topic": "vessels-v2/276829000/location",
+      "payload_pointer": "/cog",
+      "value_type": "number",
+      "unit": "°",
+      "category": "Course",
+      "policy": null
+    }
+  ],
+  "groups": []
+}

@@ -58,7 +58,7 @@ cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
 # docs/operations/public-demo.md.
 demo_hostname:                        "demo.aberration.app"
 demo_stack_name:                      "off-key-demo"
-demo_base_url:                        ""
+demo_base_url:                        "https://demo.aberration.app"
 
 # ── oauth2-proxy (ingress auth) ───────────────────────────────────────────────
 # GitHub OAuth gate in front of emqx./traefik. Secrets (client id/secret, cookie secret)

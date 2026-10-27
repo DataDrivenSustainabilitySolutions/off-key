@@ -32,9 +32,10 @@ DEMO_ONLY = {
     "tactic_docker_additional_networks",
     "tactic_radar_max_active_monitors",
     "telemetry_retention_days",
-    # Production routes the demo; the demo routes nothing.
+    # Production routes and links the demo; the demo routes nothing.
     "demo_hostname",
     "demo_stack_name",
+    "demo_base_url",
 }
 LEFT_OUT = {
     "tailscale-ambibox",

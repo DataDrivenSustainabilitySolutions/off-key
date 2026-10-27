@@ -15,6 +15,8 @@ interface AuthContextType {
   isAdmin: boolean;
   /** A signed-out visitor browsing the public read-only demo. */
   isGuest: boolean;
+  /** Whether this browser holds a member session, even one still being restored. */
+  hasSession: boolean;
   /** Whether a signed-out visit has asked if this installation is a public demo. */
   guestChecked: boolean;
   checkGuest: () => void;
@@ -216,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, userId, member: member ?? guestMember, isAdmin, isGuest, guestChecked: guestState !== null, checkGuest, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, userId, member: member ?? guestMember, isAdmin, isGuest, hasSession: !signedOut, guestChecked: guestState !== null, checkGuest, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

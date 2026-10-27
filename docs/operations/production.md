@@ -32,6 +32,10 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    restarted worker heartbeats and public HTTP routes must pass verification.
    Waiting for charger data is valid. Only then is maintenance completed and
    `release.json` replaced. An interrupted release cannot be replaced by another SHA.
+9. Application setup follows the completed release: the first administrator
+   invitation and, on the demo, its viewer member and committed catalogue. It writes
+   like any client, so a failure fails the run without holding the release open; a
+   retry or the next deployment repeats it.
 
 Dispatch a tested release manually with `make deploy-prod REVISION=<full SHA>`.
 Use `BOOTSTRAP=true` only for the first integrated cutover. The automatic switch

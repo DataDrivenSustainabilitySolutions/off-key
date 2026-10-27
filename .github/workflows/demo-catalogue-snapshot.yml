@@ -1,0 +1,21 @@
+name: Demo catalogue snapshot (temporary)
+
+on:
+  push:
+    branches: [claude/project-thread-5ge00y]
+    paths: [.github/workflows/demo-catalogue-snapshot.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-backend
+      - run: uv run --frozen --project backend python dev/demo/digitraffic_catalogue.py --city helsinki --verify 240 --output catalogue.json
+      - run: base64 -w0 < catalogue.json; echo

@@ -24,6 +24,7 @@ DEMO_ONLY = {
     "release_public_urls",
     "system_live_enabled",
     "system_live_allowed_hosts",
+    "demo_catalogue_file",
     "frontend_hostname",
     "frontend_base_url",
     "cors_allowed_origins",

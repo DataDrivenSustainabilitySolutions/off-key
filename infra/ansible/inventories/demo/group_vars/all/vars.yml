@@ -45,6 +45,8 @@ release_public_urls:     ["https://demo.aberration.app"]
 # Fintraffic Digitraffic open data (dev/demo/digitraffic_catalogue.py).
 system_live_enabled:       true
 system_live_allowed_hosts: ["tie.digitraffic.fi", "meri.digitraffic.fi"]
+# Loaded into a new demo and recorded; regenerate it with the same script.
+demo_catalogue_file:       "{{ playbook_dir }}/inventories/demo/catalogue.json"
 
 # ── Application environment flags ────────────────────────────────────────────
 

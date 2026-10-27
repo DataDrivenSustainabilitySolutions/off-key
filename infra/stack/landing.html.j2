@@ -11,7 +11,8 @@
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%20role%3D%22img%22%3E%0A%20%20%3Ctitle%3EAberration%3C%2Ftitle%3E%0A%20%20%3Cstyle%3E%3Aroot%7Bcolor%3A%23000%7D%40media%28prefers-color-scheme%3Adark%29%7B%3Aroot%7Bcolor%3A%23fff%7D%7D%3C%2Fstyle%3E%0A%20%20%3Cpath%20id%3D%22mark%22%20fill%3D%22currentColor%22%20d%3D%22M10%2010H38V20H20V54H10ZM44%2010H54V54H26V44H44Z%22%2F%3E%0A%3C%2Fsvg%3E%0A">
   <style>
-    /* Mirror the application tokens in frontend/src/App.css. Keep this page self-contained. */
+    /* Mirror the application tokens in frontend/src/App.css. Keep this page self-contained:
+       the landing CSP allows inline styles and data: images only, so no scripts or web fonts. */
     :root {
       color-scheme: light;
       --background: 0 0% 100%;
@@ -23,9 +24,10 @@
       --accent: 210 21% 95%;
       --border: 210 15% 92%;
       --radius: .5rem;
+      --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
       background: hsl(var(--background));
       color: hsl(var(--foreground));
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
       -webkit-font-smoothing: antialiased;
     }
     @media (prefers-color-scheme: dark) {
@@ -46,49 +48,18 @@
     a { color: inherit; text-decoration: none; }
     a:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 5px; }
     ::selection { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
-    .container { width: min(100% - 96px, 1200px); margin-inline: auto; }
-    .skip-link { position: absolute; top: 12px; left: 24px; z-index: 2; padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); transform: translateY(-160%); }
+    .skip-link { position: absolute; top: 12px; left: 24px; z-index: 5; padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--background)); transform: translateY(-160%); }
     .skip-link:focus { transform: translateY(0); }
-    .site-header { border-bottom: 1px solid hsl(var(--border)); }
-    .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 76px; }
-    .wordmark { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
-    .brand-mark { display: block; width: 36px; height: 36px; flex-shrink: 0; color: #000; }
+    .brand-mark { display: block; width: 28px; height: 28px; flex-shrink: 0; color: #000; }
     @media (prefers-color-scheme: dark) { .brand-mark { color: #fff; } }
-    .header-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; }
-    .header-link:hover { background: hsl(var(--accent)); }
-    .arrow { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-    .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 80px; align-items: center; padding-block: 96px 88px; }
-    h1 { margin: 0; font-size: clamp(56px, 5.8vw, 80px); line-height: 1.06; letter-spacing: -.055em; font-weight: 550; }
-    h1 span { display: block; color: hsl(var(--primary)); }
-    .description { max-width: 430px; margin: 26px 0 30px; color: hsl(var(--muted-foreground)); font-size: 17px; line-height: 1.75; }
-    .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 44px; padding: 10px 18px; border-radius: 6px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 13px; font-weight: 500; }
-    .button:hover { background: hsl(var(--primary) / .9); }
-    .text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: hsl(var(--muted-foreground)); }
-    .text-link:hover { color: hsl(var(--foreground)); }
-    .pattern-figure { min-width: 0; margin: 0; }
-    .pattern-art { display: block; width: 100%; height: auto; }
-    .pattern-field { fill: hsl(var(--primary) / .035); }
-    .pattern-contours { fill: none; stroke: hsl(var(--muted-foreground) / .28); stroke-width: 1; }
-    .pattern-art path { vector-effect: non-scaling-stroke; }
-    .pattern-change { fill: none; stroke: hsl(var(--primary)); stroke-width: 1.8; stroke-linecap: round; }
-    .pattern-halo { fill: hsl(var(--primary) / .1); }
-    .pattern-point { fill: hsl(var(--primary)); }
-    .approach { padding-block: 56px 60px; border-block: 1px solid hsl(var(--border)); background: hsl(var(--muted)); scroll-margin-top: 24px; }
-    .section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 32px; margin-bottom: 38px; }
-    h2 { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 550; letter-spacing: -.035em; }
-    .section-heading > p { margin: 0; max-width: 360px; color: hsl(var(--muted-foreground)); font-size: 14px; }
-    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px; margin: 0; padding: 0; list-style: none; }
-    .step-label { display: flex; align-items: center; gap: 10px; color: hsl(var(--primary)); font-size: 12px; font-weight: 500; }
-    .step-number { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border: 1px solid hsl(var(--primary) / .25); border-radius: 6px; font-size: 10px; font-variant-numeric: tabular-nums; }
-    h3 { margin: 18px 0 10px; font-size: 17px; font-weight: 550; letter-spacing: -.02em; }
-    .steps p { max-width: 330px; margin: 0; color: hsl(var(--muted-foreground)); font-size: 14px; line-height: 1.8; }
-    .closing { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding-block: 52px; }
-    .closing h2 { font-size: 23px; }
-    .closing p { margin: 8px 0 0; color: hsl(var(--muted-foreground)); }
+    .wordmark { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+    .arrow { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s ease; }
+    a:hover > .arrow { transform: translateX(2px); }
+    .mono { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+    /* Footer and legal panels */
     .site-footer { border-top: 1px solid hsl(var(--border)); }
-    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; padding-block: 16px; color: hsl(var(--muted-foreground)); font-size: 12px; }
-    .footer-brand { margin: 0; color: hsl(var(--foreground)); font-weight: 500; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; padding-block: 16px; color: hsl(var(--muted-foreground)); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
+    .footer-brand { margin: 0; color: hsl(var(--foreground)); }
     .footer-links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
     .footer-links a { display: inline-flex; align-items: center; min-height: 44px; }
     .footer-links a:hover, .legal-close:hover { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 4px; }
@@ -102,46 +73,114 @@
     .legal-details dt { font-weight: 500; }
     .legal-details dd { min-width: 0; margin: 0; color: hsl(var(--muted-foreground)); }
     .legal-panel:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 4px; }
-    @media (max-width: 1050px) {
-      .container { width: calc(100% - 56px); }
-      .hero { gap: 40px; padding-block: 72px; }
-      h1 { font-size: 62px; }
-      .description { font-size: 16px; }
-      .steps { gap: 28px; }
-      .section-heading { align-items: flex-start; }
-    }
     @media (max-width: 760px) {
-      .container { width: calc(100% - 40px); }
-      .header-inner { min-height: 64px; gap: 12px; }
-      .header-link { min-height: 44px; padding-inline: 8px; }
-      .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 52px; }
-      h1 { font-size: clamp(52px, 10vw, 72px); }
-      .description { max-width: 480px; margin-block: 22px 26px; }
-      .pattern-figure { width: 100%; max-width: 560px; }
-      .approach { padding-block: 40px; }
-      .section-heading { flex-direction: column; gap: 12px; margin-bottom: 32px; }
-      .section-heading > p { max-width: 480px; }
-      h2 { font-size: 25px; }
-      .steps { grid-template-columns: 1fr; gap: 24px; }
-      .steps li + li { padding-top: 24px; border-top: 1px solid hsl(var(--border)); }
-      h3 { margin-top: 12px; }
-      .steps p { max-width: 480px; }
-      .closing { align-items: flex-start; flex-direction: column; gap: 24px; padding-block: 40px; }
       .footer-inner { align-items: flex-start; flex-direction: column; gap: 4px; padding-block: 20px; }
       .legal-details { grid-template-columns: 1fr; gap: 4px; }
       .legal-details dd + dt { margin-top: 16px; }
     }
+    .container { width: min(100% - 96px, 1280px); margin-inline: auto; }
+    .site-header { border-bottom: 1px solid hsl(var(--border)); }
+    .header-inner { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; min-height: 64px; }
+    .header-meta { color: hsl(var(--muted-foreground)); }
+    .header-nav { display: flex; justify-content: flex-end; gap: 20px; }
+    .header-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 13px; font-weight: 500; }
+    .header-link:hover { color: hsl(var(--primary)); }
+    .hero { padding-block: 88px 0; }
+    .kicker { display: flex; justify-content: space-between; gap: 24px; margin: 0 0 40px; padding-bottom: 14px; border-bottom: 1px solid hsl(var(--foreground)); color: hsl(var(--foreground)); }
+    .kicker span:last-child { color: hsl(var(--muted-foreground)); }
+    h1 { margin: 0; font-size: clamp(64px, 11.2vw, 168px); line-height: .9; letter-spacing: -.065em; font-weight: 450; }
+    h1 em { font-style: normal; color: hsl(var(--primary)); }
+    .hero-sub { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 48px; align-items: end; margin-top: 48px; }
+    .description { max-width: 480px; margin: 0; color: hsl(var(--muted-foreground)); font-size: 18px; line-height: 1.65; }
+    .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; }
+    .button { display: inline-flex; align-items: center; gap: 28px; min-height: 48px; padding: 12px 20px; border: 1px solid hsl(var(--foreground)); border-radius: 0; background: hsl(var(--foreground)); color: hsl(var(--background)); font-size: 13px; font-weight: 500; transition: background .2s ease, border-color .2s ease; }
+    .button:hover { border-color: hsl(var(--primary)); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+    .button-ghost { background: transparent; color: hsl(var(--foreground)); }
+    .text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+    .text-link:hover { color: hsl(var(--foreground)); }
+    .figure { margin: 88px 0 0; padding-top: 20px; border-top: 1px solid hsl(var(--border)); }
+    .figure-head { display: flex; justify-content: space-between; gap: 24px; color: hsl(var(--muted-foreground)); }
+    .figure-head b { color: hsl(var(--primary)); font-weight: 500; }
+    .trace-art { display: block; width: 100%; height: auto; margin-top: 16px; overflow: visible; }
+    .trace-art text { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; fill: hsl(var(--muted-foreground)); }
+    .band { fill: hsl(var(--foreground) / .05); }
+    .axis { stroke: hsl(var(--border)); stroke-width: 1; }
+    .ticks line { stroke: hsl(var(--muted-foreground) / .6); stroke-width: 1; }
+    .trace { fill: none; stroke: hsl(var(--foreground)); stroke-width: 1.4; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+    .trace-after { stroke: hsl(var(--primary)); stroke-width: 2; }
+    .reveal { animation: reveal 2.4s cubic-bezier(.4, 0, .2, 1) both; }
+    @keyframes reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    .out { fill: hsl(var(--primary)); }
+    .cp { stroke: hsl(var(--primary)); stroke-width: 1; stroke-dasharray: 3 5; }
+    .trace-art .cp-label { fill: hsl(var(--primary)); }
+    .cursor { fill: hsl(var(--primary)); animation: blink 1.2s steps(2, start) infinite; }
+    @keyframes blink { to { visibility: hidden; } }
+    .caption { display: grid; grid-template-columns: 120px minmax(0, 560px); gap: 24px; margin-top: 20px; color: hsl(var(--muted-foreground)); font-size: 13px; line-height: 1.7; }
+    .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 96px 0 0; padding-block: 24px; border-block: 1px solid hsl(var(--border)); }
+    .facts dt { color: hsl(var(--muted-foreground)); }
+    .facts dd { margin: 8px 0 0; font-size: 17px; font-weight: 500; letter-spacing: -.02em; }
+    .approach { padding-block: 120px 104px; scroll-margin-top: 24px; }
+    .section-heading { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 24px; margin-bottom: 56px; }
+    .section-heading .mono { padding-top: 14px; color: hsl(var(--primary)); }
+    h2 { margin: 0; max-width: 820px; font-size: clamp(32px, 4vw, 54px); line-height: 1.02; font-weight: 450; letter-spacing: -.055em; }
+    h2 span { color: hsl(var(--muted-foreground)); }
+    .rows { margin: 0; padding: 0; list-style: none; border-top: 1px solid hsl(var(--foreground)); }
+    .row { display: grid; grid-template-columns: 120px 160px minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: baseline; padding-block: 32px; border-bottom: 1px solid hsl(var(--border)); transition: background .2s ease; }
+    .row:hover { background: linear-gradient(90deg, hsl(var(--primary) / .06), transparent 70%); }
+    .row-index { color: hsl(var(--primary)); }
+    .row-label { color: hsl(var(--muted-foreground)); }
+    h3 { margin: 0; font-size: 24px; font-weight: 450; letter-spacing: -.035em; }
+    .row p { max-width: 460px; margin: 0; color: hsl(var(--muted-foreground)); font-size: 15px; line-height: 1.75; }
+    .closing { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 24px; align-items: end; padding-block: 0 120px; }
+    .closing .mono { color: hsl(var(--primary)); padding-bottom: 12px; }
+    .closing p { margin: 16px 0 0; color: hsl(var(--muted-foreground)); font-size: 16px; }
+    @media (max-width: 1050px) {
+      .container { width: calc(100% - 56px); }
+      .header-meta { display: none; }
+      .header-inner { grid-template-columns: 1fr auto; }
+      .hero-sub { grid-template-columns: 1fr; gap: 32px; }
+      .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .row { grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1.4fr); }
+      .row-label { display: none; }
+      .section-heading, .caption { grid-template-columns: 80px minmax(0, 1fr); }
+      .closing { grid-template-columns: 80px minmax(0, 1fr); }
+      .closing .button { grid-column: 2; justify-self: start; }
+    }
+    @media (max-width: 760px) {
+      .container { width: calc(100% - 32px); }
+      .header-inner { min-height: 60px; gap: 8px; }
+      .header-nav { gap: 12px; }
+      .hero { padding-top: 48px; }
+      .kicker { margin-bottom: 28px; }
+      .kicker span:last-child { display: none; }
+      h1 { font-size: clamp(52px, 17vw, 88px); }
+      .description { font-size: 16px; }
+      .figure { margin-top: 56px; }
+      .figure-head span:last-child { display: none; }
+      .trace-art { width: 180%; max-width: none; margin-left: -80%; }
+      .figure { overflow: hidden; }
+      .caption, .section-heading { grid-template-columns: 1fr; gap: 8px; }
+      .facts { margin-top: 56px; }
+      .approach { padding-block: 80px 64px; }
+      .row { grid-template-columns: 48px minmax(0, 1fr); gap: 8px 16px; padding-block: 24px; }
+      .row p { grid-column: 2; }
+      .closing { grid-template-columns: 1fr; padding-bottom: 80px; }
+      .closing .button { grid-column: 1; }
+    }
     @media (max-width: 380px) {
-      .wordmark { gap: 7px; font-size: 15px; }
-      .header-link { gap: 5px; font-size: 12px; }
-      .hero-actions { gap: 8px 18px; }
+      .wordmark { gap: 7px; font-size: 14px; }
+      .header-link { gap: 4px; font-size: 12px; }
+      .facts { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
     }
     @media (forced-colors: active) {
       .brand-mark { color: LinkText; }
-      .button, .step-number { border: 1px solid ButtonText; }
-      .pattern-contours { stroke: CanvasText; }
-      .pattern-change { stroke: LinkText; }
-      .pattern-point { fill: LinkText; }
+      .button { border: 1px solid ButtonText; }
+      .trace { stroke: CanvasText; }
+      .trace-after, .cp { stroke: LinkText; }
+      .out, .cursor { fill: LinkText; }
     }
   </style>
 </head>
@@ -153,7 +192,8 @@
         <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg>
         <span>aberration</span>
       </a>
-      <nav aria-label="Main navigation">
+      <span class="header-meta mono" aria-hidden="true">Evidence of change</span>
+      <nav class="header-nav" aria-label="Main navigation">
 {% if demo_base_url | default('') %}
         <a class="header-link" href="{{ demo_base_url | e }}/">Demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
 {% endif %}
@@ -163,69 +203,107 @@
   </header>
   <main id="main">
     <section class="container hero" aria-labelledby="headline">
-      <div>
-        <h1 id="headline">Evidence <span>of change.</span></h1>
+      <p class="kicker mono"><span>Continuous anomaly detection</span><span>For connected systems</span></p>
+      <h1 id="headline">Evidence<br>of <em>change.</em></h1>
+      <div class="hero-sub">
         <p class="description">Every system has a rhythm. Aberration follows the relationships in your sensor data and brings the moments of change into view.</p>
         <div class="hero-actions">
           <a class="button" href="{{ frontend_base_url | e }}/">Open dashboard<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
 {% if demo_base_url | default('') %}
-          <a class="text-link" href="{{ demo_base_url | e }}/">Explore the live demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+          <a class="button button-ghost" href="{{ demo_base_url | e }}/">Live demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
 {% endif %}
           <a class="text-link" href="#approach">How it works<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg></a>
         </div>
       </div>
-      <figure class="pattern-figure">
-        <svg class="pattern-art" viewBox="0 0 560 470" role="img" aria-labelledby="pattern-title" aria-describedby="pattern-description">
-          <title id="pattern-title">A new shape emerging from a familiar pattern</title>
-          <desc id="pattern-description">Fine nested contours form a flowing, organic shape. A teal line departs from their shared rhythm and opens into a new direction.</desc>
-          <defs>
-            <path id="contour" d="M85 322C33 255 58 147 165 115C252 90 293 161 380 128C474 92 534 149 506 237C479 327 369 355 278 386C193 416 124 378 85 322Z"/>
-          </defs>
-          <use class="pattern-field" href="#contour"/>
-          <g class="pattern-contours">
-            <use href="#contour"/>
-            <use href="#contour" transform="translate(280 250) scale(.91) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.82) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.73) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.64) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.55) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.46) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.37) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.28) translate(-280 -250)"/>
-            <use href="#contour" transform="translate(280 250) scale(.19) translate(-280 -250)"/>
+      <figure class="figure">
+        <div class="figure-head mono" aria-hidden="true"><span>Fig. 01 — <b>stream / vibration</b></span><span>calibrated band · 95%</span></div>
+        <svg class="trace-art" viewBox="0 0 1200 312" role="img" aria-labelledby="trace-title" aria-describedby="trace-description">
+          <title id="trace-title">A sensor stream leaving its calibrated band</title>
+          <desc id="trace-description">A single sensor trace runs inside a shaded reference band. At the marked change point it drifts out of the band and turns teal; the points outside the band are highlighted.</desc>
+          <g class="reveal">
+          <path class="band" d="M0 134.7L5 136.8L10 138.5L15 139.8L20 140.7L25 141.3L30 141.4L35 141.3L40 140.9L45 140.3L50 139.5L55 138.8L60 138.0L65 137.4L70 136.9L75 136.6L80 136.6L85 136.9L90 137.4L95 138.3L100 139.4L105 140.7L110 142.2L115 143.7L120 145.3L125 146.8L130 148.2L135 149.3L140 150.1L145 150.6L150 150.7L155 150.3L160 149.6L165 148.3L170 146.6L175 144.6L180 142.2L185 139.6L190 136.8L195 133.8L200 130.9L205 128.1L210 125.4L215 122.9L220 120.7L225 118.9L230 117.4L235 116.3L240 115.7L245 115.3L250 115.4L255 115.7L260 116.2L265 116.8L270 117.6L275 118.3L280 118.9L285 119.4L290 119.7L295 119.8L300 119.6L305 119.1L310 118.3L315 117.2L320 115.9L325 114.4L330 112.8L335 111.2L340 109.6L345 108.1L350 106.8L355 105.8L360 105.2L365 104.9L370 105.0L375 105.6L380 106.7L385 108.1L390 110.0L395 112.2L400 114.8L405 117.5L410 120.4L415 123.3L420 126.2L425 128.9L430 131.5L435 133.8L440 135.7L445 137.3L450 138.5L455 139.4L460 139.8L465 139.9L470 139.7L475 139.3L480 138.7L485 138.1L490 137.4L495 136.7L500 136.2L505 135.9L510 135.8L515 135.9L520 136.4L525 137.2L530 138.2L535 139.5L540 141.0L545 142.6L550 144.3L555 145.9L560 147.5L565 148.9L570 150.1L575 150.9L580 151.4L585 151.5L590 151.1L595 150.3L600 149.0L605 147.3L610 145.2L615 142.8L620 140.2L625 137.4L630 134.5L635 131.6L640 128.8L645 126.2L650 123.8L655 121.7L660 120.0L665 118.7L670 117.7L675 117.1L680 116.8L685 116.9L690 117.2L695 117.7L700 118.4L705 119.0L710 119.7L715 120.2L720 120.6L725 120.7L730 120.6L735 120.2L740 119.5L745 118.5L750 117.2L755 115.7L760 114.1L765 112.4L770 110.6L775 109.0L780 107.4L785 106.1L790 105.1L795 104.4L800 104.1L805 104.3L810 104.9L815 106.0L820 107.5L825 109.4L830 111.7L835 114.2L840 116.9L845 119.8L850 122.6L855 125.4L860 128.1L865 130.6L870 132.8L875 134.6L880 136.1L885 137.2L890 137.9L895 138.3L900 138.4L905 138.2L910 137.7L915 137.2L920 136.5L925 135.9L930 135.4L935 135.0L940 134.8L945 134.9L950 135.2L955 135.9L960 136.8L965 138.1L970 139.5L975 141.2L980 142.9L985 144.7L990 146.5L995 148.1L1000 149.6L1005 150.8L1010 151.7L1015 152.1L1020 152.2L1025 151.7L1030 150.9L1035 149.6L1040 147.8L1045 145.7L1050 143.3L1055 140.7L1060 137.9L1065 135.1L1070 132.3L1075 129.6L1080 127.0L1085 124.8L1090 122.8L1095 121.2L1100 120.0L1105 119.1L1110 118.6L1115 118.4L1120 118.5L1125 118.8L1130 119.3L1135 119.9L1140 120.5L1145 121.1L1150 121.5L1155 121.7L1160 121.7L1165 121.4L1170 120.8L1175 119.9L1180 118.7L1185 117.3L1190 115.6L1195 113.9L1200 112.0L1200 156.0L1195 157.9L1190 159.6L1185 161.3L1180 162.7L1175 163.9L1170 164.8L1165 165.4L1160 165.7L1155 165.7L1150 165.5L1145 165.1L1140 164.5L1135 163.9L1130 163.3L1125 162.8L1120 162.5L1115 162.4L1110 162.6L1105 163.1L1100 164.0L1095 165.2L1090 166.8L1085 168.8L1080 171.0L1075 173.6L1070 176.3L1065 179.1L1060 181.9L1055 184.7L1050 187.3L1045 189.7L1040 191.8L1035 193.6L1030 194.9L1025 195.7L1020 196.2L1015 196.1L1010 195.7L1005 194.8L1000 193.6L995 192.1L990 190.5L985 188.7L980 186.9L975 185.2L970 183.5L965 182.1L960 180.8L955 179.9L950 179.2L945 178.9L940 178.8L935 179.0L930 179.4L925 179.9L920 180.5L915 181.2L910 181.7L905 182.2L900 182.4L895 182.3L890 181.9L885 181.2L880 180.1L875 178.6L870 176.8L865 174.6L860 172.1L855 169.4L850 166.6L845 163.8L840 160.9L835 158.2L830 155.7L825 153.4L820 151.5L815 150.0L810 148.9L805 148.3L800 148.1L795 148.4L790 149.1L785 150.1L780 151.4L775 153.0L770 154.6L765 156.4L760 158.1L755 159.7L750 161.2L745 162.5L740 163.5L735 164.2L730 164.6L725 164.7L720 164.6L715 164.2L710 163.7L705 163.0L700 162.4L695 161.7L690 161.2L685 160.9L680 160.8L675 161.1L670 161.7L665 162.7L660 164.0L655 165.7L650 167.8L645 170.2L640 172.8L635 175.6L630 178.5L625 181.4L620 184.2L615 186.8L610 189.2L605 191.3L600 193.0L595 194.3L590 195.1L585 195.5L580 195.4L575 194.9L570 194.1L565 192.9L560 191.5L555 189.9L550 188.3L545 186.6L540 185.0L535 183.5L530 182.2L525 181.2L520 180.4L515 179.9L510 179.8L505 179.9L500 180.2L495 180.7L490 181.4L485 182.1L480 182.7L475 183.3L470 183.7L465 183.9L460 183.8L455 183.4L450 182.5L445 181.3L440 179.7L435 177.8L430 175.5L425 172.9L420 170.2L415 167.3L410 164.4L405 161.5L400 158.8L395 156.2L390 154.0L385 152.1L380 150.7L375 149.6L370 149.0L365 148.9L360 149.2L355 149.8L350 150.8L345 152.1L340 153.6L335 155.2L330 156.8L325 158.4L320 159.9L315 161.2L310 162.3L305 163.1L300 163.6L295 163.8L290 163.7L285 163.4L280 162.9L275 162.3L270 161.6L265 160.8L260 160.2L255 159.7L250 159.4L245 159.3L240 159.7L235 160.3L230 161.4L225 162.9L220 164.7L215 166.9L210 169.4L205 172.1L200 174.9L195 177.8L190 180.8L185 183.6L180 186.2L175 188.6L170 190.6L165 192.3L160 193.6L155 194.3L150 194.7L145 194.6L140 194.1L135 193.3L130 192.2L125 190.8L120 189.3L115 187.7L110 186.2L105 184.7L100 183.4L95 182.3L90 181.4L85 180.9L80 180.6L75 180.6L70 180.9L65 181.4L60 182.0L55 182.8L50 183.5L45 184.3L40 184.9L35 185.3L30 185.4L25 185.3L20 184.7L15 183.8L10 182.5L5 180.8L0 178.7Z"/>
+          <path class="trace" d="M0 157.1L5 163.3L10 159.5L15 164.8L20 163.3L25 162.6L30 169.8L35 167.0L40 164.6L45 165.7L50 167.2L55 163.5L60 163.4L65 157.7L70 156.7L75 156.0L80 152.6L85 150.6L90 149.6L95 154.5L100 157.9L105 159.8L110 163.0L115 160.4L120 164.4L125 168.2L130 172.5L135 169.5L140 169.8L145 164.4L150 166.8L155 161.7L160 161.3L165 169.0L170 160.3L175 165.2L180 164.7L185 160.7L190 159.9L195 158.3L200 157.8L205 151.7L210 146.1L215 142.1L220 137.9L225 138.3L230 135.4L235 140.1L240 132.0L245 130.7L250 130.7L255 127.0L260 139.5L265 131.1L270 134.7L275 136.0L280 144.6L285 136.3L290 142.9L295 139.8L300 140.1L305 138.0L310 140.9L315 135.6L320 135.8L325 136.6L330 141.4L335 128.0L340 134.4L345 134.8L350 129.5L355 129.2L360 126.2L365 132.2L370 130.4L375 128.6L380 128.3L385 129.3L390 131.0L395 130.6L400 142.2L405 135.5L410 127.8L415 137.6L420 143.8L425 150.0L430 152.3L435 154.7L440 158.3L445 163.0L450 160.8L455 160.2L460 168.0L465 166.9L470 160.8L475 169.0L480 167.3L485 161.3L490 155.9L495 158.0L500 154.9L505 152.5L510 150.6L515 152.6L520 159.6L525 158.2L530 154.7L535 161.0L540 163.0L545 167.5L550 171.9L555 170.2L560 170.1L565 171.1L570 168.2L575 173.3L580 178.4L585 176.6L590 173.8L595 171.7L600 168.0L605 165.0L610 163.6L615 160.1L620 158.3L625 151.9L630 154.0L635 152.5L640 146.2L645 137.9L650 140.6L655 145.0L660 140.1L665 138.0L670 136.4L675 139.7L680 136.0L685 140.9L690 139.2L695 142.9L700 142.1L705 141.1L710 136.5L715 137.2L720 139.2L725 143.3L730 143.7L735 140.3L740 142.0L745 144.2L750 140.5L755 136.9L760 134.3L765 136.3L770 135.5L775 129.1L780 129.8L785 126.6L790 123.7L795 129.1L800 130.3L805 125.9L810 127.0"/>
+          <path class="trace trace-after" d="M815 127.3L820 121.8L825 120.4L830 122.5L835 114.5L840 118.9L845 123.3L850 125.3L855 119.6L860 124.1L865 122.1L870 127.7L875 131.1L880 131.4L885 127.2L890 125.6L895 131.2L900 125.3L905 128.3L910 129.2L915 125.2L920 135.6L925 128.7L930 135.3L935 117.0L940 106.3L945 117.9L950 122.3L955 120.1L960 121.3L965 112.7L970 116.8L975 118.0L980 124.8L985 136.3L990 138.8L995 143.4L1000 140.5L1005 141.5L1010 146.0L1015 146.1L1020 155.7L1025 146.3L1030 158.3L1035 144.4L1040 148.8L1045 136.8L1050 144.4L1055 135.4L1060 129.9L1065 126.7L1070 112.8L1075 100.2L1080 84.4L1085 97.4L1090 88.5L1095 83.2L1100 83.7L1105 98.3L1110 77.6L1115 82.1L1120 79.8L1125 86.3L1130 72.1L1135 76.5L1140 89.1L1145 101.7L1150 108.8L1155 92.5L1160 91.3L1165 88.6L1170 75.6L1175 66.9L1180 79.1L1185 78.8L1190 73.0L1195 79.2L1200 60.6"/>
+          <circle class="out" cx="860" cy="124.1" r="2.6"/>
+          <circle class="out" cx="870" cy="127.7" r="2.6"/>
+          <circle class="out" cx="880" cy="131.4" r="2.6"/>
+          <circle class="out" cx="890" cy="125.6" r="2.6"/>
+          <circle class="out" cx="900" cy="125.3" r="2.6"/>
+          <circle class="out" cx="910" cy="129.2" r="2.6"/>
+          <circle class="out" cx="920" cy="135.6" r="2.6"/>
+          <circle class="out" cx="930" cy="135.3" r="2.6"/>
+          <circle class="out" cx="940" cy="106.3" r="2.6"/>
+          <circle class="out" cx="950" cy="122.3" r="2.6"/>
+          <circle class="out" cx="960" cy="121.3" r="2.6"/>
+          <circle class="out" cx="970" cy="116.8" r="2.6"/>
+          <circle class="out" cx="980" cy="124.8" r="2.6"/>
+          <circle class="out" cx="990" cy="138.8" r="2.6"/>
+          <circle class="out" cx="1000" cy="140.5" r="2.6"/>
+          <circle class="out" cx="1010" cy="146.0" r="2.6"/>
+          <circle class="out" cx="1060" cy="129.9" r="2.6"/>
+          <circle class="out" cx="1070" cy="112.8" r="2.6"/>
+          <circle class="out" cx="1080" cy="84.4" r="2.6"/>
+          <circle class="out" cx="1090" cy="88.5" r="2.6"/>
+          <circle class="out" cx="1100" cy="83.7" r="2.6"/>
+          <circle class="out" cx="1110" cy="77.6" r="2.6"/>
+          <circle class="out" cx="1120" cy="79.8" r="2.6"/>
+          <circle class="out" cx="1130" cy="72.1" r="2.6"/>
+          <circle class="out" cx="1140" cy="89.1" r="2.6"/>
+          <circle class="out" cx="1150" cy="108.8" r="2.6"/>
+          <circle class="out" cx="1160" cy="91.3" r="2.6"/>
+          <circle class="out" cx="1170" cy="75.6" r="2.6"/>
+          <circle class="out" cx="1180" cy="79.1" r="2.6"/>
+          <circle class="out" cx="1190" cy="73.0" r="2.6"/>
+          <circle class="out" cx="1200" cy="60.6" r="2.6"/>
           </g>
-          <path class="pattern-change" d="M173 296C129 245 147 192 216 178C284 165 302 217 348 187C391 157 416 93 461 113C510 136 460 218 407 257C364 287 320 302 276 324C232 346 193 327 173 296Z"/>
-          <circle class="pattern-halo" cx="461" cy="113" r="12"/>
-          <circle class="pattern-point" cx="461" cy="113" r="3.5"/>
+          <line class="cp" x1="812" x2="812" y1="0" y2="276"/>
+          <text class="cp-label" x="822" y="12">τ  CHANGE POINT</text>
+          <text x="822" y="28">evidence ≥ 1/α</text>
+          <line class="axis" x1="0" x2="1200" y1="276" y2="276"/>
+          <g class="ticks"><line x1="0" x2="0" y1="276" y2="286"/><line x1="50" x2="50" y1="276" y2="281"/><line x1="100" x2="100" y1="276" y2="281"/><line x1="150" x2="150" y1="276" y2="281"/><line x1="200" x2="200" y1="276" y2="286"/><line x1="250" x2="250" y1="276" y2="281"/><line x1="300" x2="300" y1="276" y2="281"/><line x1="350" x2="350" y1="276" y2="281"/><line x1="400" x2="400" y1="276" y2="286"/><line x1="450" x2="450" y1="276" y2="281"/><line x1="500" x2="500" y1="276" y2="281"/><line x1="550" x2="550" y1="276" y2="281"/><line x1="600" x2="600" y1="276" y2="286"/><line x1="650" x2="650" y1="276" y2="281"/><line x1="700" x2="700" y1="276" y2="281"/><line x1="750" x2="750" y1="276" y2="281"/><line x1="800" x2="800" y1="276" y2="286"/><line x1="850" x2="850" y1="276" y2="281"/><line x1="900" x2="900" y1="276" y2="281"/><line x1="950" x2="950" y1="276" y2="281"/><line x1="1000" x2="1000" y1="276" y2="286"/><line x1="1050" x2="1050" y1="276" y2="281"/><line x1="1100" x2="1100" y1="276" y2="281"/><line x1="1150" x2="1150" y1="276" y2="281"/><line x1="1200" x2="1200" y1="276" y2="286"/></g>
+          <text x="0" y="304" text-anchor="start">t − 60 s</text>
+          <text x="400" y="304" text-anchor="middle">t − 40 s</text>
+          <text x="800" y="304" text-anchor="middle">t − 20 s</text>
+          <text x="1200" y="304" text-anchor="end">t</text>
+          <rect class="cursor" x="1194" y="262" width="6" height="12"/>
         </svg>
+        <figcaption class="caption"><span class="mono">Fig. 01</span><span>A stream leaves the band its baseline was calibrated to. Evidence accumulates with every observation until the change is flagged.</span></figcaption>
       </figure>
+      <dl class="facts" aria-label="At a glance">
+        <div><dt class="mono">Input</dt><dd>MQTT telemetry</dd></div>
+        <div><dt class="mono">Processing</dt><dd>Streaming pipelines</dd></div>
+        <div><dt class="mono">Calibration</dt><dd>Conformal scores</dd></div>
+        <div><dt class="mono">Output</dt><dd>Reviewable evidence</dd></div>
+      </dl>
     </section>
-    <section class="approach" id="approach" aria-labelledby="approach-heading">
-      <div class="container">
-        <div class="section-heading">
-          <h2 id="approach-heading">See the change in context.</h2>
-          <p>From connected sensor streams to evidence you can explore, in one continuous workflow.</p>
-        </div>
-        <ol class="steps">
-          <li>
-            <div class="step-label"><span class="step-number" aria-hidden="true">01</span>Observe</div>
-            <h3>Read the relationships.</h3>
-            <p>Bring your sensor streams together. See how measurements behave in relation to one another, beyond individual readings.</p>
-          </li>
-          <li>
-            <div class="step-label"><span class="step-number" aria-hidden="true">02</span>Calibrate</div>
-            <h3>Establish the reference.</h3>
-            <p>Learn from baseline data and calibrate anomaly scores with conformal methods. Give new observations a meaningful reference.</p>
-          </li>
-          <li>
-            <div class="step-label"><span class="step-number" aria-hidden="true">03</span>Detect</div>
-            <h3>Follow the evidence.</h3>
-            <p>Accumulate evidence as observations arrive. Explore detected changes alongside the telemetry that explains them.</p>
-          </li>
-        </ol>
+    <section class="container approach" id="approach" aria-labelledby="approach-heading">
+      <div class="section-heading">
+        <span class="mono">How it works</span>
+        <h2 id="approach-heading">See the change in context. <span>From connected sensor streams to evidence you can explore.</span></h2>
       </div>
+      <ol class="rows">
+        <li class="row">
+          <span class="row-index mono">01</span>
+          <span class="row-label mono">Observe</span>
+          <h3>Read the relationships.</h3>
+          <p>Bring your sensor streams together. See how measurements behave in relation to one another, beyond individual readings.</p>
+        </li>
+        <li class="row">
+          <span class="row-index mono">02</span>
+          <span class="row-label mono">Calibrate</span>
+          <h3>Establish the reference.</h3>
+          <p>Learn from baseline data and calibrate anomaly scores with conformal methods. Give new observations a meaningful reference.</p>
+        </li>
+        <li class="row">
+          <span class="row-index mono">03</span>
+          <span class="row-label mono">Detect</span>
+          <h3>Follow the evidence.</h3>
+          <p>Accumulate evidence as observations arrive. Explore detected changes alongside the telemetry that explains them.</p>
+        </li>
+      </ol>
     </section>
     <section class="container closing" aria-labelledby="closing-heading">
+      <span class="mono">Start</span>
       <div>
         <h2 id="closing-heading">Your systems, in perspective.</h2>
         <p>Explore your streams and follow the evidence.</p>

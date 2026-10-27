@@ -39,6 +39,8 @@ export type LiveStream = {
   retained_count: number;
   decode_errors: number;
   fresh_received_at: string | null;
+  /** Median gap between this stream's recent fresh arrivals; null before the second. */
+  typical_interval_seconds?: number | null;
   rate_hz: number;
   sequence: number;
 };
@@ -94,4 +96,5 @@ export type LiveNodeSnapshot = NodeTelemetry & {
   retainedCount: number;
   decodeErrors: number;
   isAggregate: boolean;
+  typicalInterval?: number | null;
 };

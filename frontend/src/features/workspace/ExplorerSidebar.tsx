@@ -103,7 +103,7 @@ export function ExplorerSidebar(props: Props) {
       </div>
       {current && current.kind !== "root" && !query && <button className="ex-icon-button" aria-label="Inspect current item" onClick={props.onInspect}><Info size={16} /></button>}
       {props.onOnlineOnlyChange && <button type="button" className="ex-icon-button ex-online-filter" aria-label="Online topics only"
-        title="Online topics only · receiving data in the last 30 seconds" aria-pressed={onlineOnly} onClick={() => props.onOnlineOnlyChange?.(!onlineOnly)}>
+        title="Online topics only · receiving data" aria-pressed={onlineOnly} onClick={() => props.onOnlineOnlyChange?.(!onlineOnly)}>
         <ListFilter size={16} aria-hidden="true" />
       </button>}
       <button type="button" className="ex-icon-button ex-root-button" aria-label="Back to catalogue" title="Back to catalogue" onClick={returnToRoot}>

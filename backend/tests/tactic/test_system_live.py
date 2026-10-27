@@ -335,6 +335,19 @@ async def test_retained_snapshot_does_not_create_fresh_rate_or_fresh_last_seen()
 
 
 @pytest.mark.asyncio
+async def test_live_streams_report_their_typical_arrival_interval():
+    service, now = manager()
+    await service.acquire(snapshot(), 1, 1)
+    worker = service.workers[0]
+    worker.message("room/values", b'{"temperature":20}', False)
+    assert service.snapshot(0)["streams"][0]["typical_interval_seconds"] is None
+    for _ in range(3):
+        now[0] += 120
+        worker.message("room/values", b'{"temperature":21}', False)
+    assert service.snapshot(0)["streams"][0]["typical_interval_seconds"] == 120
+
+
+@pytest.mark.asyncio
 async def test_malformed_fresh_arrivals_drive_activity_without_overwriting_values():
     service, now = manager()
     await service.acquire(snapshot(), 1, 1)

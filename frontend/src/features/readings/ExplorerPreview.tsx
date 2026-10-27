@@ -131,7 +131,7 @@ export default function ExplorerPreview({
   const problem = recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
-  const edit = node.entityKind && node.objectId && <button type="button" disabled={!canEdit || saving}
+  const edit = canEdit && node.entityKind && node.objectId && <button type="button" disabled={saving}
     onClick={() => onEdit(node.entityKind!, node.objectId!)}><Pencil size={14} /> Edit structure</button>;
   const details = <>
     {stream && <dl><dt>Value type</dt><dd>{stream.value_type}</dd>
@@ -162,9 +162,9 @@ export default function ExplorerPreview({
           <span className="ex-preview-icon">{icon}</span>
           <div><span className="ex-preview-kind">{kind} preview</span>
             <h2 className="ex-preview-title">
-              {node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
+              {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
-                editable={editable} disabledReason={saving ? "Saving changes…" : "An editor can rename this object."}
+                editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
             </h2>
           </div>

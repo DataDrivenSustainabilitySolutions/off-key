@@ -62,7 +62,7 @@ export type SystemRuntime = {
     revision?: number;
     status?: string;
     sources?: Record<string, { state: string; message?: string | null }>;
-    readings?: Record<string, { fresh_received_at: string }>;
+    readings?: Record<string, { fresh_received_at: string; typical_interval_seconds?: number | null }>;
   };
   bindings?: Record<string, SystemReadingBinding>;
   collection_rules?: CollectionRule[];

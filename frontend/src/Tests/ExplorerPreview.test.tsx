@@ -403,6 +403,15 @@ describe("explorer selected-object preview", () => {
     expect(props.onClose).toHaveBeenCalledOnce();
   });
 
+  it("shows read-only members a plain name without editing hints", () => {
+    const { props } = fixture();
+    render(<ExplorerPreview {...props} canEdit={false} />);
+    expect(screen.getByRole("heading", { name: "Air temperature" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Rename/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit structure" })).toBeNull();
+    expect(screen.queryByText(/editor can/i)).toBeNull();
+  });
+
   it("keeps virtual path nodes read-only and exposes only their relative path", () => {
     const branch = Array.from(index.nodes.values()).find((item) => item.kind === "topic" && item.topic === "site")!;
     const { props } = fixture(branch);

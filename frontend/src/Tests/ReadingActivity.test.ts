@@ -5,7 +5,7 @@ import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveStatus, LiveNodeSnapshot } from "@/types/system-live";
 import type { SystemRuntime } from "@/types/system";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
-import { readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
+import { activityWindow, readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
 import { mqttConnection } from "./support/fixtures/system";
 
 const now = Date.parse("2026-10-13T12:00:00Z");
@@ -42,6 +42,22 @@ describe("topic activity", () => {
     source.runtime!.ingress!.readings!.temperature!.fresh_received_at = time(age);
     expect(readingActivity(node, source, undefined, now).receiving).toBe(age >= 0 && age < 30_000);
   });
+
+  it("keeps a slow source receiving between its usual arrivals", () => {
+    const source = recording();
+    const reading = source.runtime!.ingress!.readings!.temperature!;
+    reading.typical_interval_seconds = 180;
+    reading.fresh_received_at = time(5 * 60_000);
+    expect(readingActivity(node, source, undefined, now)).toEqual({ receiving: true, label: "Receiving data (last 9 minutes)" });
+    reading.fresh_received_at = time(9 * 60_000);
+    expect(readingActivity(node, source, undefined, now).receiving).toBe(false);
+    expect(readingActivity(node, preview({ lastSeen: now - 5 * 60_000, typicalInterval: 180 }), liveStatus, now).receiving).toBe(true);
+  });
+
+  it.each([[null, 30_000], [1, 30_000], [60, 180_000], [86_400, 1_800_000]])(
+    "bounds the activity window for a typical interval of %s seconds", (typical, window) => {
+      expect(activityWindow(typical)).toBe(window);
+    });
 
   it("waits for a fresh receipt even when retained stored data and a connected broker exist", () => {
     const source = recording();

@@ -13,6 +13,7 @@ from off_key_core.schemas.system import SystemSnapshot
 from off_key_core.utils.payload_decode import PayloadDecoder
 
 from ...config.system_live import SystemLiveSettings
+from .arrival_cadence import ArrivalCadence
 from .broker_access import ResolvedBroker, resolve_broker
 from .system_live_mqtt import LiveMqttWorker
 
@@ -72,6 +73,7 @@ class SystemLiveService:
         self.bindings: dict[str, dict[str, list]] = {}
         self.samples: OrderedDict[tuple[str, int], dict] = OrderedDict()
         self.rates: dict[str, _Rate] = {}
+        self.cadences: dict[str, ArrivalCadence] = {}
         self.identity: tuple[int, str] | None = None
         self.revision = 0
         self.sequence = 0
@@ -253,6 +255,7 @@ class SystemLiveService:
         self.streams.clear()
         self.bindings.clear()
         self.rates.clear()
+        self.cadences.clear()
         self.samples.clear()
         self.sequence += 1
         self.minimum_cursor = self.sequence
@@ -313,6 +316,9 @@ class SystemLiveService:
             self.rates = {
                 key: value for key, value in self.rates.items() if key in active
             }
+            self.cadences = {
+                key: value for key, value in self.cadences.items() if key in active
+            }
         for key, worker, topics in topic_updates:
             await self._update_scope_worker(snapshot, key, worker, topics)
 
@@ -365,6 +371,7 @@ class SystemLiveService:
             "value": None,
             "received_at": None,
             "fresh_received_at": None,
+            "typical_interval_seconds": None,
             "is_retained": False,
             "received_count": 0,
             "fresh_count": 0,
@@ -374,6 +381,7 @@ class SystemLiveService:
             "sequence": self.sequence,
         }
         self.rates[stream.id] = _Rate()
+        self.cadences[stream.id] = ArrivalCadence()
 
     def _initialize(self, snapshot: SystemSnapshot, scope=None) -> None:
         with self.guard:
@@ -518,6 +526,9 @@ class SystemLiveService:
         if not retained:
             state["fresh_received_at"] = received_at
             self.rates[stream.id].add(now)
+            cadence = self.cadences[stream.id]
+            cadence.add(now)
+            state["typical_interval_seconds"] = cadence.typical_seconds
         try:
             if decoder is None:
                 raise ValueError("Invalid payload")

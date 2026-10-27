@@ -63,15 +63,16 @@
     update_cache: true
     lock_timeout: 120
 
-- name: Install Docker packages
+- name: Install the pinned Docker Engine release
   apt:
     name:
-      - docker-ce
-      - docker-ce-cli
+      - "docker-ce=5:{{ docker_engine_version }}-*"
+      - "docker-ce-cli=5:{{ docker_engine_version }}-*"
       - containerd.io
       - docker-buildx-plugin
       - docker-compose-plugin
     state: present
+    allow_downgrade: true
     update_cache: true
     lock_timeout: 120
   notify: restart docker

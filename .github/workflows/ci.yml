@@ -193,6 +193,9 @@ jobs:
       - name: Set up the backend toolchain
         uses: ./.github/actions/setup-backend
 
+      - name: Set up the production Docker Engine
+        uses: ./.github/actions/setup-docker-engine
+
       - name: Select the production database and current RADAR image
         run: |
           image="$(python3 .github/scripts/release_image.py postgres)"
@@ -358,6 +361,9 @@ jobs:
         uses: ./.github/actions/setup-backend
         with:
           sync: "false"
+
+      - name: Set up the production Docker Engine
+        uses: ./.github/actions/setup-docker-engine
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1

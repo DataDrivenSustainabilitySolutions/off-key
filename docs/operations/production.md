@@ -74,6 +74,14 @@ The vendor identity must exist on the manager's NFS export or be restored from a
 private seed before deployment. CI never registers a replacement vendor device.
 NFS permits the discovered backend management-tailnet /32 addresses only.
 
+Provisioning installs the Docker Engine release pinned as `docker_engine_version` in
+`infra/ansible/roles/docker_install/defaults/main.yml`, and CI's Swarm jobs replace
+the runner's engine with the same release. Docker 28's Swarm manager crashes when a
+removed service's tasks are reaped at the same moment, which TACTIC's worker
+removals trigger; the swarmkit in current Docker 29 releases fixes it. Automatic
+deployments never change the engine, and provisioning restarts Docker on each node,
+so run it in a maintenance window after raising the pin.
+
 Persistence changes keep the existing explicit confirmation/backup/restore guard.
 Automatic CD never supplies confirmation. Do not combine the initial integration
 cutover with a persistence flip. Recover state first using [Recovery](recovery.md).

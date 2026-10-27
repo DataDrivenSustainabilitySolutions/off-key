@@ -1,0 +1,6 @@
+---
+# The Docker Engine release every Swarm node runs, and the one CI rehearses on
+# (.github/actions/setup-docker-engine). Docker 28's Swarm manager crashes when a
+# removed service's tasks are reaped at the same moment, which TACTIC's worker
+# removals trigger. The swarmkit in current Docker 29 releases fixes it.
+docker_engine_version: "29.9.2"

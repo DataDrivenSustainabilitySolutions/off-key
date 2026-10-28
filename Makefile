@@ -1,4 +1,4 @@
-.PHONY: check-infra deploy-prod deploy-demo local-init local-up local-status local-logs local-stop local-bootstrap-admin
+.PHONY: check-infra deploy-prod deploy-demo local-init local-up local-status local-logs local-stop local-bootstrap-admin local-demo
 REVISION ?= $(shell git rev-parse HEAD)
 BOOTSTRAP ?= false
 check-infra:
@@ -23,3 +23,5 @@ local-stop:
 	python3 dev/local/run.py stop
 local-bootstrap-admin:
 	python3 dev/local/run.py bootstrap-admin $(LOCAL_ARGS)
+local-demo:
+	python3 dev/local/run.py demo

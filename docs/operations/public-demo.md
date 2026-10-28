@@ -127,3 +127,9 @@ its catalogue; import the refreshed file under **Sources → catalogue
 settings**, then choose a recording policy and **Apply**: imported policies
 never start collection by themselves. Name Fintraffic as the source wherever
 the demo is presented; the broker labels already do.
+
+## Run the demo locally
+
+The same demo runs on a local deployment with `make local-init
+LOCAL_ARGS=--demo` and `make local-demo`; see
+[Local deployment](../development/local-deployment.md#public-demo-locally).

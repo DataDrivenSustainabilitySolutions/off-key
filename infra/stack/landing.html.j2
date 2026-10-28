@@ -9,6 +9,8 @@
   <meta name="description" content="Aberration turns streaming sensor data into evidence of change. Continuous anomaly detection for connected systems.">
   <title>Aberration — Evidence of change.</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
+  <link rel="alternate" type="text/markdown" href="/index.md" title="Aberration as Markdown">
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="llms.txt">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%20role%3D%22img%22%3E%0A%20%20%3Ctitle%3EAberration%3C%2Ftitle%3E%0A%20%20%3Cstyle%3E%3Aroot%7Bcolor%3A%23000%7D%40media%28prefers-color-scheme%3Adark%29%7B%3Aroot%7Bcolor%3A%23fff%7D%7D%3C%2Fstyle%3E%0A%20%20%3Cpath%20id%3D%22mark%22%20fill%3D%22currentColor%22%20d%3D%22M10%2010H38V20H20V54H10ZM44%2010H54V54H26V44H44Z%22%2F%3E%0A%3C%2Fsvg%3E%0A">
   <style>
     /* Mirror the application tokens in frontend/src/App.css. Keep this page self-contained:
@@ -78,6 +80,41 @@
       .legal-details { grid-template-columns: 1fr; gap: 4px; }
       .legal-details dd + dt { margin-top: 16px; }
     }
+    /* Humans / agents view. Fragment-driven like the legal panels: #agents is the
+       machine-readable view, any other state is the page for people. */
+    .mode { display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border: 1px solid hsl(var(--border)); font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    .mode a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 0 14px; color: hsl(var(--muted-foreground)); }
+    .mode a:hover { color: hsl(var(--foreground)); }
+    .mode a:focus-visible { outline-offset: 1px; }
+    .mode .mode-humans, body:has(#agents:target) .mode .mode-agents { background: hsl(var(--foreground)); color: hsl(var(--background)); }
+    .mode .mode-humans:hover, body:has(#agents:target) .mode .mode-agents:hover { color: hsl(var(--background)); }
+    body:has(#agents:target) .mode .mode-humans { background: none; color: hsl(var(--muted-foreground)); }
+    .mode-glyph { font-weight: 600; }
+    /* The view replaces the page, so its fragment always lands at the very top. */
+    .agent-view { display: none; padding-block: 48px 72px; scroll-margin-top: 100vh; }
+    .agent-view:focus { outline: none; }
+    .agent-view:target { display: block; }
+    main:has(> .agent-view:target) > :not(.agent-view) { display: none; }
+    .agent-view h1 { font-size: clamp(44px, 6.4vw, 96px); }
+    .agent-view h1 em { font-family: var(--mono); font-size: .62em; letter-spacing: -.04em; }
+    .agent-lead { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px 56px; align-items: end; }
+    .terminal { margin: 40px 0 0; border: 1px solid hsl(var(--foreground)); background: hsl(var(--muted)); }
+    .terminal-head { display: flex; justify-content: space-between; gap: 24px; padding: 10px 16px; border-bottom: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+    .terminal-head b { color: hsl(var(--primary)); font-weight: 500; }
+    .terminal pre { margin: 0; padding: 20px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .terminal .commands { white-space: pre; overflow-wrap: normal; }
+    .terminal pre + pre { border-top: 1px dashed hsl(var(--border)); }
+    .terminal .select { user-select: all; -webkit-user-select: all; }
+    .terminal .c { color: hsl(var(--muted-foreground)); }
+    .terminal .p { color: hsl(var(--primary)); user-select: none; -webkit-user-select: none; }
+    .endpoints { margin: 32px 0 0; padding: 0; list-style: none; border-block: 1px solid hsl(var(--foreground)) hsl(var(--border)); }
+    .endpoint { display: grid; grid-template-columns: 120px minmax(0, 360px) minmax(0, 1fr) auto; gap: 8px 24px; align-items: center; padding-block: 14px; }
+    .endpoint + .endpoint { border-top: 1px solid hsl(var(--border)); }
+    .endpoint .mono { color: hsl(var(--primary)); }
+    .endpoint code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+    .endpoint p { margin: 0; color: hsl(var(--muted-foreground)); font-size: 13px; }
+    .endpoint a { display: inline-flex; align-items: center; min-height: 44px; }
+    .endpoint a:hover { color: hsl(var(--primary)); }
     .container { width: min(100% - 96px, 1280px); margin-inline: auto; }
     .site-header { border-bottom: 1px solid hsl(var(--border)); }
     .header-inner { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; min-height: 64px; }
@@ -153,6 +190,9 @@
     @media (max-width: 1050px) {
       .container { width: calc(100% - 56px); }
       .header-meta { display: none; }
+      .agent-lead { grid-template-columns: 1fr; }
+      .endpoint { grid-template-columns: 80px minmax(0, 1fr) auto; }
+      .endpoint p { grid-column: 2 / -1; grid-row: 2; }
       .header-inner { grid-template-columns: 1fr auto; }
       .hero-top { grid-template-columns: 1fr; }
       .hero-sub { padding-bottom: 0; }
@@ -163,6 +203,13 @@
       .container { width: calc(100% - 32px); }
       .header-inner { min-height: 60px; gap: 8px; }
       .header-nav { gap: 12px; }
+      .header-inner .mode { grid-column: 1 / -1; grid-row: 2; margin-bottom: 12px; }
+      .endpoint { grid-template-columns: 1fr auto; gap: 4px 16px; }
+      .endpoint .mono { grid-column: 1; grid-row: 1; }
+      .endpoint a { grid-column: 2; grid-row: 1; min-height: 32px; }
+      .endpoint code, .endpoint p { grid-column: 1 / -1; grid-row: auto; }
+      .terminal-head span:last-child { display: none; }
+      .agent-view { padding-top: 32px; }
       .hero { padding-top: 32px; }
       .kicker { margin-bottom: 24px; }
       .kicker span:last-child { display: none; }
@@ -206,7 +253,10 @@
         <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg>
         <span>aberration</span>
       </a>
-      <span class="header-meta mono" aria-hidden="true">Evidence of change</span>
+      <nav class="mode" aria-label="Audience">
+        <a class="mode-humans" href="#main" title="The page for people"><span class="mode-glyph" aria-hidden="true">◐</span>Humans</a>
+        <a class="mode-agents" href="#agents" title="Machine-readable entry points"><span class="mode-glyph" aria-hidden="true">&gt;_</span>Agents</a>
+      </nav>
       <nav class="header-nav" aria-label="Main navigation">
 {% if demo_base_url | default('') %}
         <a class="header-link" href="{{ demo_base_url | e }}/">Demo<svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
@@ -216,6 +266,38 @@
     </div>
   </header>
   <main id="main">
+    <section class="container agent-view" id="agents" aria-labelledby="agents-headline" tabindex="-1">
+      <p class="kicker mono"><span>Machine-readable surface</span><span>llms.txt · Markdown · OpenAPI</span></p>
+      <div class="agent-lead">
+        <h1 id="agents-headline">Evidence<br>of <em>change.md</em></h1>
+        <div class="hero-sub">
+          <p class="description">Agents do not need this page. Point yours at <a href="/llms.txt"><code>/llms.txt</code></a>: it indexes plain-Markdown versions of this site and the documentation, and links the OpenAPI contract of the API.</p>
+        </div>
+      </div>
+      <div class="terminal">
+        <div class="terminal-head mono" aria-hidden="true"><span>Hand off — <b>paste into your agent</b></span><span>select · copy</span></div>
+        <pre class="select">Read https://{{ ingress_base_domain | e }}/llms.txt. Then, through the API it links, {% if demo_base_url | default('') %}explore the public demo at {{ demo_base_url | e }}: list its monitors{% else %}list my monitors{% endif %} and summarise the most recent anomalies with the telemetry around them.</pre>
+        <pre class="commands"><span class="c"># this page, as Markdown</span>
+<span class="p">$ </span><span class="select">curl -H 'Accept: text/markdown' https://{{ ingress_base_domain | e }}/</span>
+{% if demo_base_url | default('') %}
+<span class="c"># read-only demo API, no token</span>
+<span class="p">$ </span><span class="select">curl {{ demo_base_url | e }}/api/v1/monitors</span>
+{% endif %}
+<span class="c"># the API contract</span>
+<span class="p">$ </span><span class="select">curl {{ frontend_base_url | e }}/api/openapi.json</span></pre>
+      </div>
+      <ol class="endpoints" aria-label="Entry points">
+        <li class="endpoint"><span class="mono">Index</span><code>/llms.txt</code><p>Summary and links, per the llms.txt convention.</p><a href="/llms.txt" aria-label="Open llms.txt"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
+        <li class="endpoint"><span class="mono">Page</span><code>/index.md</code><p>This page as Markdown; also served for <code>Accept: text/markdown</code>.</p><a href="/index.md" aria-label="Open the Markdown page"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
+        <li class="endpoint"><span class="mono">API</span><code>/api/openapi.json</code><p>OpenAPI contract. Bearer token from <code>/api/v1/auth/login</code>.</p><a href="{{ frontend_base_url | e }}/api/openapi.json" aria-label="Open the OpenAPI schema"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
+{% if demo_base_url | default('') %}
+        <li class="endpoint"><span class="mono">Sandbox</span><code>{{ demo_base_url | e }}/api</code><p>Read-only demo. Listed reads answer without a token.</p><a href="{{ demo_base_url | e }}/api/openapi.json" aria-label="Open the demo OpenAPI schema"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
+{% endif %}
+{% if docs_base_url | default('') %}
+        <li class="endpoint"><span class="mono">Docs</span><code>/llms-full.txt</code><p>The full documentation in one Markdown file.</p><a href="{{ docs_base_url | e }}/llms-full.txt" aria-label="Open the full documentation"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
+{% endif %}
+      </ol>
+    </section>
     <section class="container hero" aria-labelledby="headline">
       <p class="kicker mono"><span>Continuous anomaly detection</span><span>For connected systems</span></p>
       <div class="hero-top">

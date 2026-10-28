@@ -66,6 +66,30 @@ authenticated API and the account's saved password; restarting or rebuilding
 preserves that account. Ordinary
 production builds keep email login and do not enable this local alias.
 
+## Public demo locally
+
+The public demo at demo.aberration.app also runs locally, with the same guest
+browsing, read-only viewer account, and Digitraffic catalogue:
+
+```sh
+make local-init LOCAL_ARGS=--demo
+make local-up
+make local-bootstrap-admin
+make local-demo
+```
+
+`--demo` works on a new or an existing configuration. On an existing one it sets
+only `DEMO_MODE`, the viewer account, a random viewer password, and adds the
+Digitraffic brokers to `SYSTEM_LIVE_ALLOWED_HOSTS`; everything else is kept.
+
+`local-demo` loads the committed catalogue from
+`infra/ansible/inventories/demo/catalogue.json` into an empty installation and
+starts sampling every reading each minute. An existing catalogue is kept. It then
+creates the viewer account, which needs the administrator to exist: accept the
+admin invitation in Mailpit first, then run `make local-demo` again. Both steps
+are safe to repeat. Open <http://127.0.0.1:5174> in a private window to browse as
+a visitor.
+
 ## Exercise MQTT locally
 
 Two sources deliver real MQTT messages through the normal broker and

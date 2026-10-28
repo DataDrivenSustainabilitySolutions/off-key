@@ -227,6 +227,34 @@ class CDTests(unittest.TestCase):
             )
             self.assertNotIn(password, result.stdout + result.stderr)
 
+    def test_releases_reuse_ssh_connections_and_report_their_slowest_tasks(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        steps = [
+            step
+            for step in workflow["jobs"]["deploy"]["steps"]
+            if "deploy.yml" in step.get("run", "")
+        ]
+        self.assertEqual(len(steps), 2)
+        for step in steps:
+            with self.subTest(step=step["name"]):
+                # The variable replaces ansible.cfg's ssh_args entirely.
+                arguments = step["env"]["ANSIBLE_SSH_ARGS"].split()
+                for option in (
+                    "ControlMaster=auto",
+                    "ControlPersist=60s",
+                    "StrictHostKeyChecking=yes",
+                    "IdentitiesOnly=yes",
+                ):
+                    self.assertIn(option, arguments)
+                self.assertEqual(
+                    step["env"]["ANSIBLE_CALLBACKS_ENABLED"],
+                    "ansible.posix.profile_tasks",
+                )
+                self.assertEqual(step["run"].count("scripts/task_timings.py"), 2)
+
     def test_documentation_commit_cannot_hide_unreleased_runtime_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

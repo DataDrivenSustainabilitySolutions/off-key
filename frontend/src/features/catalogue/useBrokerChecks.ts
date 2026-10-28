@@ -7,7 +7,14 @@ export type BrokerCheck = { pending: boolean; result?: SystemConnectionCheck; er
 /** Checks run a few at a time; each holds a server worker for up to its timeout. */
 const PARALLEL_CHECKS = 4;
 
-/** Results stay in this page only: nothing is stored and no broker is subscribed. */
+/** The coarse colour of a check, matching the dot-and-label tones of broker states. */
+export function checkTone(check?: BrokerCheck): "positive" | "warning" | "danger" | "neutral" {
+  const status = check?.pending ? undefined : check?.result?.status;
+  if (!status || status === "blocked") return "neutral";
+  return status === "reachable" ? "positive" : status === "timeout" ? "warning" : "danger";
+}
+
+/** Results live only while Sources is open: nothing is stored and no broker is subscribed. */
 export function useBrokerChecks() {
   const [checks, setChecks] = useState<Record<string, BrokerCheck>>({});
   const check = useCallback(async (id: string) => {
@@ -26,5 +33,5 @@ export function useBrokerChecks() {
     await Promise.all(Array.from({ length: Math.min(PARALLEL_CHECKS, queue.length) }, next));
   }, [check]);
   const running = Object.values(checks).some(item => item.pending);
-  return { checks, check, checkAll, running };
+  return { checks, checkAll, running };
 }

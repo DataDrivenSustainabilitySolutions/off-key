@@ -1,12 +1,25 @@
 .source-overview { display: grid; gap: 12px; margin-top: 28px; }
 .ex-main-content .source-broker { display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 7px 20px; margin-top: 8px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 10px; }
 .source-broker strong { font-weight: 500; }
+/* The shown state's colour (live, or an idle broker's latest check) as a left edge
+   that fades into the card; a broker being connected or checked shimmers instead. */
+.ex-main-content .source-broker { --stripe: transparent; position: relative; overflow: hidden;
+  background: linear-gradient(90deg, var(--stripe) 0 3px, color-mix(in srgb, var(--stripe) 8%, transparent) 3px, transparent 160px); }
+.ex-main-content .source-broker--positive { --stripe: var(--ex-accent); }
+.ex-main-content .source-broker--warning { --stripe: hsl(var(--warning)); }
+.ex-main-content .source-broker--danger { --stripe: hsl(var(--destructive)); }
+.ex-main-content .source-broker--busy::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: linear-gradient(180deg, transparent, hsl(var(--muted-foreground) / .7), transparent) 0 0 / 100% 200%;
+  animation: source-broker-shimmer 1.4s linear infinite; }
+@keyframes source-broker-shimmer { from { background-position: 0 100%; } to { background-position: 0 -100%; } }
+@media (prefers-reduced-motion: reduce) { .ex-main-content .source-broker--busy::before { animation: none; background: hsl(var(--muted-foreground) / .5); } }
 .source-broker span { font-size: 12px; color: hsl(var(--muted-foreground)); }
 .source-broker .mn-state { color: hsl(var(--foreground)); }
 .source-broker span:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-.source-check { padding: 18px 0 0; font-size: 13px; }
-.source-check > div { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
-.source-check p { margin: 8px 0 0; font-size: 12px; }
+.source-check-mark { display: inline-block; margin-left: 8px; vertical-align: -2px; color: hsl(var(--muted-foreground)); }
+.source-check-mark--positive { color: var(--ex-accent); }
+.source-check-mark--warning { color: hsl(var(--warning)); }
+.source-check-mark--danger { color: hsl(var(--destructive)); }
 .source-recording { padding: 22px 0; margin: 20px 0; border-top: 1px solid hsl(var(--border)); border-bottom: 1px solid hsl(var(--border)); font-size: 13px; }
 .source-recording .ex-preview-section-heading { margin-bottom: 16px; }
 .source-recording .ex-preview-section-heading > span { color: hsl(var(--muted-foreground)); font-size: 12px; }

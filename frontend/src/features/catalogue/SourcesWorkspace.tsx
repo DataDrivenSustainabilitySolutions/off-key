@@ -8,8 +8,8 @@ import { SystemLiveControls } from "./SystemLiveControls";
 import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds } from "@/domain/system/collectionRules";
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
-import { BrokerCheckPanel, BrokerCheckState } from "./BrokerCheck";
-import { useBrokerChecks } from "./useBrokerChecks";
+import { BrokerCheckMark } from "./BrokerCheck";
+import { checkTone, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { SourceScope } from "../workspace/SourceScope";
@@ -73,8 +73,6 @@ export function SourcesWorkspace() {
       </button> : [];
     }) : <p className="ex-muted">No readings registered for this entity.</p>}
   </section>;
-  const brokerCheck = system.canEdit && selected?.kind === "connection" && selected.connectionId
-    ? <BrokerCheckPanel check={brokerChecks.checks[selected.connectionId]} onCheck={() => void brokerChecks.check(selected.connectionId!)} /> : null;
   const configuration = scope ? <>
     {scope.kind === "topic" && <p className="ex-muted">Topic recording policies apply to all matching readings on this broker.</p>}
     <SourceRecordingInspector key={JSON.stringify(scope)} scope={scope} ids={ids} document={document}
@@ -95,7 +93,7 @@ export function SourcesWorkspace() {
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={<>{brokerCheck}{configuration}</>} />
+          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
@@ -104,9 +102,9 @@ export function SourcesWorkspace() {
           const enabled = readings.filter(stream => system.snapshot?.runtime.bindings?.[stream.id]?.policy.mode !== "off" && !!system.snapshot?.runtime.bindings?.[stream.id]).length;
           const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
-          return <button key={broker.id} className="source-broker" onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}</strong>
-            <span>{readings.length} readings · {enabled} enabled</span>{!state && brokerChecks.checks[broker.id] ? <BrokerCheckState check={brokerChecks.checks[broker.id]!} />
-              : <span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span>}</button>;
+          const busy = state === "connecting" || state === "reconnecting" || !!brokerChecks.checks[broker.id]?.pending;
+          return <button key={broker.id} className={`source-broker source-broker--${state ? brokerTone(state) : checkTone(brokerChecks.checks[broker.id])}${busy ? " source-broker--busy" : ""}`} onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}{brokerChecks.checks[broker.id] && <BrokerCheckMark check={brokerChecks.checks[broker.id]!} />}</strong>
+            <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
         })}
       </section>}
     </main>

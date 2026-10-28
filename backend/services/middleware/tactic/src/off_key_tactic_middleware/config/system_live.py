@@ -65,6 +65,9 @@ class SystemLiveSettings(BaseSettings):
     SYSTEM_LIVE_MAX_SAMPLES: int = Field(default=8192, ge=64, le=65536)
     SYSTEM_LIVE_LEASE_SECONDS: int = Field(default=45, ge=15, le=120)
     SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS: int = Field(default=15, ge=5, le=120)
+    # On-demand reachability checks: one CONNECT each, never a subscription.
+    SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS: float = Field(default=8, ge=1, le=30)
+    SYSTEM_CONNECTION_CHECK_CONCURRENCY: int = Field(default=4, ge=1, le=16)
 
     def collection_output_endpoint(self, radar_defaults) -> CollectionOutputEndpoint:
         """The broker mqtt-proxy subscribes on, reached with the managed RADAR

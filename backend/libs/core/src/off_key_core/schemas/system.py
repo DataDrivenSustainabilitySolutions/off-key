@@ -2,6 +2,7 @@
 
 import ipaddress
 import re
+from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import uuid4
 
@@ -90,6 +91,28 @@ class SystemConnection(NamedEntity):
                 "WebSocket paths must start with / and belong to a WebSocket connection"
             )
         return self
+
+
+class SystemConnectionCheckScope(SystemModel):
+    connection_id: EntityId
+
+
+class SystemConnectionCheck(SystemModel):
+    """Outcome of one on-demand CONNECT to a saved broker; nothing is subscribed."""
+
+    connection_id: EntityId
+    status: Literal[
+        "reachable",
+        "auth_rejected",
+        "refused",
+        "tls_error",
+        "unreachable",
+        "timeout",
+        "blocked",
+    ]
+    message: str | None = None
+    latency_ms: int | None = None
+    checked_at: datetime
 
 
 class SystemDevice(NamedEntity):

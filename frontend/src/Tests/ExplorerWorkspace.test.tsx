@@ -68,7 +68,7 @@ async function enterReadings() {
 async function selectTemperature() {
   await enterReadings();
   fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
-  return screen.findByRole("region", { name: "Reading preview" }, { timeout: 5000 });
+  return screen.findByRole("region", { name: "Reading preview" });
 }
 function fileFor(document: SystemDocument) {
   const file = new File([], "system.json", { type: "application/json" });
@@ -226,7 +226,7 @@ describe("service-centred monitoring workspace", () => {
     };
     withServices([monitor]);
     mount("/?service=service-one");
-    const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    const details = await screen.findByRole("region", { name: "Monitoring service details" });
     expect(within(details).getByText("Inputs stale")).toBeTruthy();
     expect(within(details).getByText("Stale inputs: Air temperature")).toBeTruthy();
     expect(within(details).getByText("Last inference")).toBeTruthy();
@@ -243,7 +243,7 @@ describe("service-centred monitoring workspace", () => {
     };
     withServices([monitor]);
     mount("/?service=service-one");
-    const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    const details = await screen.findByRole("region", { name: "Monitoring service details" });
     expect(within(details).getByText("Coverage gap")).toBeTruthy();
     expect(within(details).getByText("Delivery is best effort. Missing observations cannot be replayed.")).toBeTruthy();
     expect(within(details).getByText("rate limit: 100")).toBeTruthy();
@@ -282,8 +282,7 @@ describe("service-centred monitoring workspace", () => {
     withServices([service()]);
     const router = makeRouter("/?service=service-one");
     render(<RouterProvider router={router} />);
-    // The first lazy import also transforms its module graph on a cold test run.
-    await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5_000 });
+    await screen.findByRole("region", { name: "Monitoring service details" });
     const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(workspaces.getByRole("link", { name: "Sources" }));
@@ -308,7 +307,7 @@ describe("service-centred monitoring workspace", () => {
     vi.mocked(apiUtils.post).mockResolvedValue({ revision: saved.revision, runtime: { ...saved.runtime, collection: { revision: 1, status: "applied" } } });
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     mount("/?create=monitoring&reading=temperature");
-    const start = await screen.findByRole("button", { name: "Start adaptive monitoring" }, { timeout: 5_000 });
+    const start = await screen.findByRole("button", { name: "Start adaptive monitoring" });
     expect((start as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Waiting for collection to apply…")).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
@@ -332,7 +331,7 @@ describe("service-centred monitoring workspace", () => {
   it("shows monitors by default without starting telemetry or enabling collection, and keeps service selection in the URL", async () => {
     withServices([service()]); mount();
     fireEvent.click(await screen.findByRole("link", { name: "Room climate" }));
-    expect(await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Monitoring service details" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("?service=service-one");
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors?container_name=monitor-service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
@@ -375,7 +374,7 @@ describe("service-centred monitoring workspace", () => {
     await waitFor(() => expect(loadExplorerPreferences(1).favourites).toEqual([{ kind: "service", id: "service-one" }]));
     fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
-    const details = await screen.findByRole("region", { name: "Monitoring service details" }, { timeout: 5000 });
+    const details = await screen.findByRole("region", { name: "Monitoring service details" });
     // The service names its page; the rename control inside keeps its own label.
     expect(within(details).getByRole("heading", { level: 1, name: "Room climate" })).toBeTruthy();
     fireEvent.click(within(details).getByRole("button", { name: "Rename service" }));
@@ -392,7 +391,7 @@ describe("service-centred monitoring workspace", () => {
 
   it("opens input setup from a stable reading ID but keeps collection off until explicitly applied", async () => {
     withServices([]); mount("/?create=monitoring&reading=temperature");
-    const setup = await screen.findByRole("region", { name: "Create monitoring service" }, { timeout: 5000 });
+    const setup = await screen.findByRole("region", { name: "Create monitoring service" });
     expect(within(setup).getByRole("button", { name: "Choose monitoring inputs" }).textContent).toContain("Room station");
     expect(within(setup).getByText("Enable collection for the readings this service will monitor.")).toBeTruthy();
     expect(within(setup).queryByRole("button", { name: "Start monitoring" })).toBeNull();

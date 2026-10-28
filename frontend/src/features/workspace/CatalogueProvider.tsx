@@ -13,8 +13,12 @@ import type { ListPosition } from "./ExplorerList";
 import { CatalogueContext, type CatalogueContextValue, type CatalogueDialog } from "./catalogue-context";
 import { catalogueSelection, hasCatalogueSelection, isWorkspacePath, selectedSourceHref, withCatalogueSource } from "./catalogue-navigation";
 import { monitoringNavigationKey } from "@/domain/monitoring/monitoringView";
+import type { SystemRuntime, SystemStream } from "@/types/system";
 
 const empty = createEmptySystem();
+/** Readings that are not recorded reach the page only through the live preview. */
+const liveOnly = (stream: SystemStream | undefined, runtime?: SystemRuntime) => !!stream
+  && (stream.value_type !== "number" || (runtime?.bindings?.[stream.id]?.policy.mode ?? "off") === "off");
 
 export function CatalogueProvider({ children }: { children: ReactNode }) {
   const { userId, isAuthenticated } = useAuth();
@@ -30,10 +34,14 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   const streamIds = useMemo(() => selected ? [...new Set(scopeReadingIds(index, selected))]
     : selectionRequested ? [] : undefined, [index, selected, selectionRequested]);
   const streamsById = useMemo(() => new Map(document.streams.map(stream => [stream.id, stream])), [document.streams]);
-  const liveStreamIds = useMemo(() => (streamIds ?? []).filter(id => {
-    const stream = streamsById.get(id);
-    return stream?.value_type !== "number" || (system.snapshot?.runtime.bindings?.[id]?.policy.mode ?? "off") === "off";
-  }), [streamIds, streamsById, system.snapshot?.runtime.bindings]);
+  const liveStreamIds = useMemo(() => (streamIds ?? []).filter(id => liveOnly(streamsById.get(id), system.snapshot?.runtime)),
+    [streamIds, streamsById, system.snapshot?.runtime]);
+  // The live preview covers every broker of the selection, so choosing one topic
+  // keeps its sibling topics streaming and shown as receiving.
+  const previewStreamIds = useMemo(() => {
+    const brokers = new Set((streamIds ?? []).flatMap(id => streamsById.get(id)?.connection_id ?? []));
+    return document.streams.filter(stream => brokers.has(stream.connection_id) && liveOnly(stream, system.snapshot?.runtime)).map(stream => stream.id);
+  }, [streamIds, streamsById, document.streams, system.snapshot?.runtime]);
   const [telemetry] = useState(() => new SystemLiveTelemetry());
   const history = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(userId)), [userId]);
   const [rawPreferences, setPreferences] = useState(() => loadExplorerPreferences(userId ?? null));
@@ -71,7 +79,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     telemetry.configure(document, system.revision ?? 0, isAuthenticated ? String(userId ?? "signed-in") : "", system.canEdit);
   }, [telemetry, document, system.revision, isAuthenticated, userId, system.canEdit]);
-  useEffect(() => { telemetry.setScope(liveStreamIds); }, [telemetry, liveStreamIds]);
+  useEffect(() => { telemetry.setScope(previewStreamIds); }, [telemetry, previewStreamIds]);
   useEffect(() => { telemetry.setPriority(selected?.objectId ?? null); }, [telemetry, selected?.objectId]);
   useEffect(() => {
     const visibility = () => window.document.hidden ? telemetry.pause() : telemetry.resume();
@@ -117,7 +125,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
 
   return <CatalogueContext.Provider value={{
     system, document, index, selected, selectionRequested, selectionMissing, streamIds,
-    liveStreamIds, telemetry, history, preferences, setPreferences, stored, scopeKey,
+    liveStreamIds, previewStreamIds, telemetry, history, preferences, setPreferences, stored, scopeKey,
     query, setQuery, positions, browse,
     back: () => query ? setQuery("") : browse(browseHistory.current.pop() ?? index.nodes.get(scopeKey)?.parentKey ?? index.rootKey, false),
     selectSource, sectionHref,

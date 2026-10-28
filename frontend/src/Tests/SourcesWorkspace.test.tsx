@@ -266,6 +266,34 @@ describe("dedicated Sources configuration", () => {
     expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
   });
 
+  it("lets a broker that could not reconnect be checked and retried", async () => {
+    const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { broker: { state: "error", message }, used: { state: "reconnecting" } } };
+    const now = new Date().toISOString();
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
+      const id = (body as { connection_id: string }).connection_id;
+      if (endpoint === "/v1/system/connections/reconnect") {
+        saved = { ...saved, runtime: { ...saved.runtime, ingress: { ...saved.runtime.ingress!, sources: { ...saved.runtime.ingress!.sources, [id]: { state: "connecting" } } } } };
+        return { connection_id: id };
+      }
+      return { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
+    });
+    const router = mount();
+    const overview = await screen.findByRole("region", { name: "Broker overview" });
+    expect(within(overview).getByText("Unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
+    expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
+    // A broker still retrying reports its own state and is not checked.
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }]);
+
+    await act(() => router.navigate("/sources?broker=broker"));
+    expect((await screen.findAllByText(message)).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
+    await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "broker" }, undefined));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
+  });
+
   it("offers connection checks to catalogue editors only", async () => {
     saved.can_edit = false;
     mount("/sources?broker=broker");

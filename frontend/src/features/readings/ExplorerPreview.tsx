@@ -123,14 +123,18 @@ export default function ExplorerPreview({
   const recordProblem = sources.find(source => ["error", "blocked"].includes(source.state));
   const recordConnected = sources.length === sourceIds.size && sources.length > 0 && sources.every(source => source.state === "connected");
   const persistentConnection = runtime?.ingress?.sources?.[node.connectionId ?? ""];
-  const brokerLabel = persistentConnection?.state === "connected" ? "Connected" : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
+  const brokerLabel = persistentConnection?.state === "connected" ? "Connected"
+    : persistentConnection?.state === "error" || persistentConnection?.state === "blocked" ? "Unavailable"
+      : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
   const label = connectionStatusOnly ? brokerLabel : recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
     : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
   const tone = active ? "positive" : label === "Unavailable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
-  const problem = recording ? recordProblem?.message : status.phase === "error" ? status.message
+  const brokerProblem = connectionStatusOnly && persistentConnection && persistentConnection.state !== "connected"
+    ? persistentConnection.message : undefined;
+  const problem = brokerProblem ? brokerProblem : recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
   const edit = canEdit && node.entityKind && node.objectId && <button type="button" disabled={saving}

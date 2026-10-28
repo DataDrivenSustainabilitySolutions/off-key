@@ -116,6 +116,17 @@ export function PipelineCreate(props: PipelineSetupProps) {
     commit({ ...draft.document, definition: { ...draft.document.definition, input_slots: inputSlots } });
     setDraft((previous) => ({ ...previous, bindings }));
   };
+  // The reading this setup was opened from is preselected as soon as it can be
+  // monitored, also when its recording was turned on after the setup opened.
+  const picked = useRef(false);
+  const contextReady = !!draft.startingId && !!target && !!initialReading && !Object.keys(bindings).length
+    && target.inputs.some((input) => input.stream.id === initialReading && input.binding.policy.mode !== "off" && !owned(input.stream.id));
+  useEffect(() => {
+    if (!contextReady || picked.current || !canAuthor || locked) return;
+    picked.current = true;
+    const next = selectReadings(target!, slots, draft.bindings ?? {}, [initialReading!]);
+    changeInputs(next.slots, next.bindings);
+  });
   const load = (document: GraphDocument, name: string, description: string, bindings?: Record<string, string>) => {
     commit(document);
     session.detachTemplate();
@@ -177,7 +188,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
             value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
             {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
           </label>
-          <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy} receivingOnly={false}
+          <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy}
+            // A service starts on live sources; a template may be mapped to any entity.
+            receivingOnly={!initialDesign}
             onChange={(targetId) => {
               const next = targets.find((item) => item.id === targetId);
               const matched = draft.startingId ? targetInputs(next, slots, initialReading) : undefined;
@@ -189,8 +202,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
             <small>{draft.document.definition.strategy === "adaptive_stream" ? "Learns from live readings" : "Learns a baseline, then monitors"}</small></div>
         </div>
         {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
+          recordingHref={(ids) => sourceHref(ids.includes(initialReading ?? "") ? [initialReading!] : ids, catalogueDocument, `${location.pathname}${location.search}`)}
           onChange={(selected) => {
             if (!target) return;
+            picked.current = true;
             const next = selectReadings(target, slots, draft.bindings ?? {}, selected);
             changeInputs(next.slots, next.bindings);
           }} />

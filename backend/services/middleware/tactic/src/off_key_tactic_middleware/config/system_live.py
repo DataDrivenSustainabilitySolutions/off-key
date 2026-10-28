@@ -52,6 +52,11 @@ class SystemLiveSettings(BaseSettings):
     SYSTEM_COLLECTION_MQTT_USERNAME: str = ""
     SYSTEM_COLLECTION_MQTT_API_KEY: SecretStr = SecretStr("")
     SYSTEM_COLLECTION_MQTT_CA_FILE: str | None = None
+    # A recorded broker unreachable this long is reported unavailable and its
+    # client stopped; quiet retries then back off from the first to the max delay.
+    SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS: int = Field(default=60, ge=5, le=600)
+    SYSTEM_COLLECTION_RETRY_SECONDS: int = Field(default=300, ge=10, le=3600)
+    SYSTEM_COLLECTION_RETRY_MAX_SECONDS: int = Field(default=3600, ge=10, le=86400)
     SYSTEM_LIVE_DATA_SOURCE: Literal["broker", "simulated"] = "broker"
     SYSTEM_LIVE_ALLOWED_HOSTS: list[str] = Field(default_factory=list)
     SYSTEM_LIVE_CREDENTIALS: Annotated[dict[str, LiveCredential], NoDecode] = Field(

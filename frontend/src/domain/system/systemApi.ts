@@ -20,4 +20,7 @@ export const systemApi = {
     apiUtils.post<SystemCollectionPreview>(`${SYSTEM_ENDPOINT}/collection/preview`, change, options),
   checkConnection: (connectionId: string, options?: ApiRequestOptions) =>
     apiUtils.post<SystemConnectionCheck>(`${SYSTEM_ENDPOINT}/connections/check`, { connection_id: connectionId }, options),
+  /** Retry a recorded broker now instead of waiting for its automatic retry. */
+  reconnectConnection: (connectionId: string, options?: ApiRequestOptions) =>
+    apiUtils.post<{ connection_id: string }>(`${SYSTEM_ENDPOINT}/connections/reconnect`, { connection_id: connectionId }, options),
 };

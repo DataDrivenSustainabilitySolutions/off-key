@@ -446,3 +446,71 @@ def test_local_start_requires_a_swarm_manager(
     module.ensure_swarm({})
     init = ["docker", "swarm", "init", "--advertise-addr", "127.0.0.1"]
     assert (init in calls) is initialized
+
+
+def test_demo_option_opens_guest_browsing_and_allows_the_demo_brokers(launcher):
+    launcher.ENV_FILE.unlink()
+    launcher.API_KEYS.unlink()
+    launcher.initialize(
+        argparse.Namespace(
+            project=None,
+            frontend_port=5174,
+            api_port=8002,
+            admin_email="admin@example.com",
+            demo=True,
+        )
+    )
+    values = launcher.read_environment(launcher.ENV_FILE)
+    assert values["DEMO_MODE"] == "true"
+    assert values["DEMO_VIEWER_EMAIL"] == launcher.DEMO_VIEWER_EMAIL
+    assert len(values["DEMO_VIEWER_PASSWORD"]) >= 32
+    assert json.loads(values["SYSTEM_LIVE_ALLOWED_HOSTS"]) == [
+        *launcher.LOCAL_LIVE_HOSTS,
+        *launcher.DEMO_HOSTS,
+    ]
+
+
+def test_demo_option_enables_an_existing_configuration_once(launcher):
+    before = launcher.read_environment(launcher.ENV_FILE)
+    assert before["DEMO_MODE"] == "false"
+    enable = argparse.Namespace(project=None, demo=True)
+    launcher.initialize(enable)
+    enabled = launcher.read_environment(launcher.ENV_FILE)
+    changed = {key for key in before if before[key] != enabled.get(key)}
+    assert changed == {
+        "DEMO_MODE",
+        "DEMO_VIEWER_EMAIL",
+        "DEMO_VIEWER_PASSWORD",
+        "SYSTEM_LIVE_ALLOWED_HOSTS",
+    }
+    assert stat.S_IMODE(launcher.ENV_FILE.stat().st_mode) == 0o600
+    launcher.initialize(enable)
+    assert launcher.read_environment(launcher.ENV_FILE) == enabled
+
+
+def test_demo_command_loads_the_catalogue_and_passes_the_password_by_name(
+    launcher, monkeypatch
+):
+    with pytest.raises(ValueError, match="init --demo"):
+        launcher.open_demo(launcher.compose_command())
+    launcher.initialize(argparse.Namespace(project=None, demo=True))
+    password = launcher.read_environment(launcher.ENV_FILE)["DEMO_VIEWER_PASSWORD"]
+    catalogue = launcher.ROOT / launcher.DEMO_CATALOGUE
+    catalogue.parent.mkdir(parents=True)
+    shutil.copyfile(ROOT / launcher.DEMO_CATALOGUE, catalogue)
+    monkeypatch.setattr(launcher, "ensure_local_docker", lambda environment: "")
+    calls = []
+
+    def run(command, **options):
+        calls.append((command, options))
+        status = "loaded" if "bootstrap_demo_catalogue" in command[-1] else "waiting"
+        return subprocess.CompletedProcess(command, 0, json.dumps({"status": status}))
+
+    monkeypatch.setattr(launcher.subprocess, "run", run)
+    launcher.open_demo(launcher.compose_command())
+    (load, load_options), (viewer, viewer_options) = calls
+    assert load_options["input"] == catalogue.read_text(encoding="utf-8")
+    assert load[-1] == "off_key_tactic_middleware.bootstrap_demo_catalogue"
+    assert viewer[-1] == "off_key_tactic_middleware.bootstrap_demo_viewer"
+    assert all(password not in part for part in viewer)
+    assert viewer_options["env"]["DEMO_VIEWER_PASSWORD"] == password

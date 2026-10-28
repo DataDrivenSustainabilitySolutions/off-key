@@ -224,3 +224,130 @@ def test_arrival_cadence_needs_two_arrivals_and_ignores_repeats():
     assert cadence.typical_seconds is None
     cadence.add(70.0)
     assert cadence.typical_seconds == 60
+
+
+class FakeWorker:
+    def __init__(self, connection, topics, credential, on_message, on_state, **_):
+        self.connection = connection
+        self.on_state = on_state
+        self.started = False
+        self.stopped = False
+        FakeWorker.created.append(self)
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+def recording_ingress(monkeypatch, **settings):
+    FakeWorker.created = []
+    monkeypatch.setattr(
+        system_ingress,
+        "get_system_live_settings",
+        lambda: SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["127.0.0.1"], **settings),
+    )
+    monkeypatch.setattr(system_ingress, "LiveMqttWorker", FakeWorker)
+    now = [0.0]
+    ingress = system_ingress.SystemIngress(clock=lambda: now[0])
+    ingress.output = SimpleNamespace(is_connected=lambda: True)
+    return ingress, now
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_broker_stops_reconnecting_after_its_deadline(
+    monkeypatch,
+):
+    ingress, now = recording_ingress(
+        monkeypatch,
+        SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS=60,
+        SYSTEM_COLLECTION_RETRY_SECONDS=300,
+    )
+    await ingress._configure(definition())
+    first = FakeWorker.created[0]
+    first.on_state("reconnecting", "Broker unavailable.")
+    now[0] = 59
+    first.on_state("reconnecting", "Still unavailable.")  # Retries never extend it.
+    await ingress._supervise()
+    assert ingress.states["broker"]["state"] == "reconnecting"
+
+    now[0] = 60
+    await ingress._supervise()
+    assert first.stopped
+    assert ingress.workers == []
+    assert ingress.states["broker"]["state"] == "error"
+    assert "60 seconds" in ingress.states["broker"]["message"]
+    # A late callback of the stopped client cannot revive "reconnecting".
+    first.on_state("reconnecting", "Late.")
+    assert ingress.states["broker"]["state"] == "error"
+
+    # The quiet retry keeps reporting the failure until it connects.
+    now[0] = 359
+    await ingress._supervise()
+    assert len(FakeWorker.created) == 1
+    now[0] = 360
+    await ingress._supervise()
+    retry = FakeWorker.created[1]
+    assert retry.started
+    retry.on_state("reconnecting", "Broker unavailable.")
+    assert ingress.states["broker"]["state"] == "error"
+
+    # Each failed retry doubles the wait.
+    now[0] = 420
+    await ingress._supervise()
+    assert retry.stopped
+    assert ingress.retries["broker"] == 420 + 600
+
+    now[0] = 1020
+    await ingress._supervise()
+    FakeWorker.created[2].on_state("connected", None)
+    assert ingress.states["broker"] == {"state": "connected", "message": None}
+    assert ingress.deadlines == {} and ingress.failures == {}
+
+
+@pytest.mark.asyncio
+async def test_a_connected_broker_tolerates_short_outages(monkeypatch):
+    ingress, now = recording_ingress(
+        monkeypatch, SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS=60
+    )
+    await ingress._configure(definition())
+    worker = FakeWorker.created[0]
+    worker.on_state("connected", None)
+    now[0] = 600
+    await ingress._supervise()
+    worker.on_state("reconnecting", "Broker disconnected.")
+    now[0] = 650
+    worker.on_state("connected", None)
+    now[0] = 700
+    await ingress._supervise()
+    assert not worker.stopped
+    assert ingress.states["broker"]["state"] == "connected"
+
+
+@pytest.mark.asyncio
+async def test_reconnect_replaces_the_client_and_resets_backoff(monkeypatch):
+    ingress, now = recording_ingress(
+        monkeypatch, SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS=60
+    )
+    assert not await ingress.reconnect("broker")
+    await ingress._configure(definition())
+    first = FakeWorker.created[0]
+    now[0] = 60
+    await ingress._supervise()
+    assert ingress.states["broker"]["state"] == "error"
+
+    assert await ingress.reconnect("broker")
+    assert ingress.states["broker"]["state"] == "connecting"
+    assert ingress.retries == {} and ingress.failures == {}
+    second = FakeWorker.created[1]
+    assert second.started and ingress.workers == [second]
+    assert ingress.deadlines["broker"] == 120
+
+    # Reconnecting while a client still retries replaces that client too.
+    second.on_state("reconnecting", "Broker unavailable.")
+    assert await ingress.reconnect("broker")
+    assert second.stopped and first.started is not False
+    second.on_state("connected", None)
+    assert ingress.states["broker"]["state"] == "connecting"
+    assert not await ingress.reconnect("other")

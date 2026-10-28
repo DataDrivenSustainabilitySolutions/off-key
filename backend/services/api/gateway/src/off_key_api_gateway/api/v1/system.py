@@ -70,6 +70,16 @@ async def check_connection(
     )
 
 
+@router.post("/connections/reconnect")
+async def reconnect_connection(
+    scope: SystemConnectionCheckScope,
+    authorization: str | None = Header(default=None),
+):
+    return await system_request(
+        "POST", authorization, "/connections/reconnect", scope.model_dump(mode="json")
+    )
+
+
 @router.get("/revisions")
 async def list_revisions(authorization: str | None = Header(default=None)):
     return await system_request("GET", authorization, "/revisions")

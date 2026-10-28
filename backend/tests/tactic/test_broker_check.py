@@ -197,3 +197,42 @@ async def test_gateway_forwards_the_check_with_the_member_token(monkeypatch):
         json_data={"connection_id": "broker"},
         headers={"Authorization": "Bearer token"},
     )
+
+
+def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
+    app, _ = _api(monkeypatch)
+    ingress = MagicMock(reconnect=AsyncMock(side_effect=lambda key: key == "broker"))
+    app.state.system_ingress = ingress
+    with TestClient(app) as client:
+        denied = client.post(
+            "/system/connections/reconnect", json={"connection_id": "broker"}
+        )
+    assert denied.status_code == 403
+    ingress.reconnect.assert_not_awaited()
+
+    app, _ = _api(monkeypatch, role=RoleEnum.admin)
+    app.state.system_ingress = ingress
+    with TestClient(app) as client:
+        idle = client.post(
+            "/system/connections/reconnect", json={"connection_id": "idle"}
+        )
+        retried = client.post(
+            "/system/connections/reconnect", json={"connection_id": "broker"}
+        )
+    assert idle.status_code == 409
+    assert retried.status_code == 200
+    assert retried.json() == {"connection_id": "broker"}
+
+
+async def test_gateway_forwards_a_reconnect_with_the_member_token(monkeypatch):
+    request = AsyncMock(return_value={})
+    monkeypatch.setattr(gateway.tactic, "request", request)
+    await gateway.reconnect_connection(
+        SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
+    )
+    request.assert_awaited_with(
+        "POST",
+        "/api/v1/system/connections/reconnect",
+        json_data={"connection_id": "broker"},
+        headers={"Authorization": "Bearer token"},
+    )

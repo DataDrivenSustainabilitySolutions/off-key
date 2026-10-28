@@ -113,6 +113,7 @@ Authorization: Bearer <token>
 | `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | Administrator |
 | `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
 | `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | Administrator |
+| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | Administrator |
 | `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
 | `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |

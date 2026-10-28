@@ -38,12 +38,24 @@ from .system_live_mqtt import LiveMqttWorker
 
 
 class SystemIngress:
-    def __init__(self, *, access_resolver=None):
+    def __init__(self, *, access_resolver=None, clock=time.monotonic):
         self.settings = get_system_live_settings()
         self.access_resolver = access_resolver
+        self.clock = clock
         self.guard = RLock()
         self.workers = []
         self.states = {}
+        # Per broker: what to (re)connect, its current worker and the attempt
+        # whose callbacks may still change public state.
+        self.sources = {}
+        self.source_workers = {}
+        self.attempts = {}
+        # One deadline per outage; a broker past it is stopped and retried
+        # quietly (``quiet``) after a backoff that grows with each failure.
+        self.deadlines = {}
+        self.retries = {}
+        self.failures = {}
+        self.quiet = set()
         self.bindings = {}
         self.readings = {}
         self.cadences = {}
@@ -97,6 +109,13 @@ class SystemIngress:
             self.generation = None
             self.bindings = {}
             self.states = {}
+            self.sources = {}
+            self.source_workers = {}
+            self.attempts = {}
+            self.deadlines = {}
+            self.retries = {}
+            self.failures = {}
+            self.quiet = set()
             self.readings = {}
             self.cadences = {}
         await asyncio.gather(
@@ -122,10 +141,17 @@ class SystemIngress:
                     continue
                 self._connect(connection, topics, definition.generation)
 
-    def _connect(self, connection, topics, generation):
+    def _connect(self, connection, topics, generation, *, quiet=False):
+        """Start one broker client; a quiet retry keeps the reported failure
+        until the broker is connected again."""
         access = self.access_resolver(connection) if self.access_resolver else None
-        state = {"state": "connecting", "message": None}
-        self.states[connection.id] = state
+        self.sources[connection.id] = (connection, topics)
+        if quiet and connection.id in self.states:
+            self.quiet.add(connection.id)
+            state = self.states[connection.id]
+        else:
+            state = {"state": "connecting", "message": None}
+            self.states[connection.id] = state
         resolved = resolve_broker(self.settings, connection, access)
         if resolved == "host_not_allowed":
             state.update(
@@ -140,6 +166,7 @@ class SystemIngress:
             )
             return
         connection = resolved.connection
+        attempt = object()
         try:
             worker = LiveMqttWorker(
                 connection,
@@ -149,21 +176,112 @@ class SystemIngress:
                     generation, connection.id, topic, payload, retained
                 ),
                 lambda phase, message: self._state(
-                    generation, connection.id, phase, message
+                    generation, connection.id, phase, message, attempt
                 ),
                 proxy=resolved.proxy,
             )
             self.workers.append(worker)
+            self.source_workers[connection.id] = worker
+            self.attempts[connection.id] = attempt
+            self.deadlines[connection.id] = (
+                self.clock() + self.settings.SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS
+            )
             worker.start()
         except Exception:
+            self.quiet.discard(connection.id)
+            self.deadlines.pop(connection.id, None)
             state.update(
                 state="error", message="Broker connection could not be initialized."
             )
 
-    def _state(self, generation, connection_id, phase, message):
+    def _state(self, generation, connection_id, phase, message, attempt=None):
         with self.guard:
-            if generation == self.generation:
-                self.states[connection_id].update(state=phase, message=message)
+            # Late callbacks of a stopped or replaced client must not revive it.
+            if (
+                generation != self.generation
+                or self.attempts.get(connection_id) is not attempt
+            ):
+                return
+            if phase == "connected":
+                self.deadlines.pop(connection_id, None)
+                self.failures.pop(connection_id, None)
+                self.quiet.discard(connection_id)
+            elif phase in {"connecting", "reconnecting"}:
+                # Individual retries and acknowledgements never extend an outage.
+                self.deadlines.setdefault(
+                    connection_id,
+                    self.clock()
+                    + self.settings.SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS,
+                )
+                if connection_id in self.quiet:
+                    return
+            else:
+                self.deadlines.pop(connection_id, None)
+                self.quiet.discard(connection_id)
+            self.states[connection_id].update(state=phase, message=message)
+
+    def _detach(self, connection_id):
+        """Forget a broker's client and timers; the caller stops the client."""
+        worker = self.source_workers.pop(connection_id, None)
+        self.attempts.pop(connection_id, None)
+        self.deadlines.pop(connection_id, None)
+        self.quiet.discard(connection_id)
+        if worker is not None:
+            self.workers.remove(worker)
+        return worker
+
+    async def _supervise(self):
+        """Give up on brokers past their outage deadline; start due retries."""
+        now = self.clock()
+        timeout = self.settings.SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS
+        retired = []
+        with self.guard:
+            for connection_id, deadline in list(self.deadlines.items()):
+                if now < deadline:
+                    continue
+                worker = self._detach(connection_id)
+                if worker is not None:
+                    retired.append(worker)
+                failures = self.failures.get(connection_id, 0) + 1
+                self.failures[connection_id] = failures
+                self.retries[connection_id] = now + min(
+                    self.settings.SYSTEM_COLLECTION_RETRY_SECONDS
+                    * 2 ** min(failures - 1, 16),
+                    self.settings.SYSTEM_COLLECTION_RETRY_MAX_SECONDS,
+                )
+                self.states[connection_id].update(
+                    state="error",
+                    message=(
+                        f"Could not reach the broker within {timeout} seconds, "
+                        "so recording from it is paused. It is retried "
+                        "automatically; reconnect to try again now."
+                    ),
+                )
+            for connection_id, due in list(self.retries.items()):
+                if now >= due and connection_id in self.sources:
+                    del self.retries[connection_id]
+                    connection, topics = self.sources[connection_id]
+                    self._connect(connection, topics, self.generation, quiet=True)
+        await asyncio.gather(
+            *(asyncio.to_thread(item.stop) for item in retired), return_exceptions=True
+        )
+
+    async def reconnect(self, connection_id) -> bool:
+        """Replace a recorded broker's client now, resetting its backoff.
+
+        Returns False when this process is not recording from that broker.
+        """
+        with self.guard:
+            source = self.sources.get(connection_id)
+            if source is None or self.generation is None:
+                return False
+            worker = self._detach(connection_id)
+            self.retries.pop(connection_id, None)
+            self.failures.pop(connection_id, None)
+            self._connect(*source, self.generation)
+        if worker is not None:
+            await asyncio.to_thread(worker.stop)
+        return True
 
     def _receive(self, generation, connection_id, topic, payload, retained):
         with self.guard:
@@ -257,6 +375,7 @@ class SystemIngress:
                 )
                 if row is not None:
                     await self._step(row)
+                    await self._supervise()
                     with self.guard:
                         sources = {
                             key: dict(value) for key, value in self.states.items()

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/docs.yml"
+      - "dev/docs/**"
       - "docs/**"
       - "requirements-docs.txt"
       - "zensical.toml"
@@ -12,6 +13,7 @@ on:
       - main
     paths:
       - ".github/workflows/docs.yml"
+      - "dev/docs/**"
       - "docs/**"
       - "requirements-docs.txt"
       - "zensical.toml"
@@ -46,6 +48,9 @@ jobs:
 
       - name: Build site
         run: zensical build --clean --strict
+
+      - name: Publish Markdown and llms.txt for language models
+        run: python dev/docs/llms.py site
 
       - name: Upload Pages artifact
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}

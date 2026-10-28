@@ -186,7 +186,7 @@ stack_interpolation_environment:
   MQTT_RADAR_IMAGE: "{{ mqtt_radar_image }}"
   DB_SYNC_IMAGE: "{{ db_sync_image }}"
   TRAEFIK_DYNAMIC_HASH: "{{ (lookup('template', stack_source_dir ~ '/traefik-dynamic.yml.j2') | hash('sha1'))[:12] }}"
-  LANDING_PAGE_HASH: "{{ (lookup('template', stack_source_dir ~ '/landing.html.j2') | hash('sha1'))[:12] }}"
+  LANDING_PAGE_HASH: "{{ ((lookup('template', stack_source_dir ~ '/landing.html.j2') ~ lookup('template', stack_source_dir ~ '/landing.md.j2') ~ lookup('template', stack_source_dir ~ '/landing-llms.txt.j2') ~ lookup('file', stack_source_dir ~ '/landing-nginx.conf')) | hash('sha1'))[:12] }}"
   EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
   CONFIG_NAME_PREFIX: "{{ stack_config_prefix }}"
   DEMO_NETWORK: "{{ demo_network }}"

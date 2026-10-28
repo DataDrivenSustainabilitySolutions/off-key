@@ -49,6 +49,12 @@ def read_configuration(directory):
         "landing_html": (stack / "landing.html").read_text()
         if (stack / "landing.html").exists()
         else None,
+        "landing_llms": (stack / "landing-llms.txt").read_text()
+        if (stack / "landing-llms.txt").exists()
+        else None,
+        "landing_markdown": (stack / "landing.md").read_text()
+        if (stack / "landing.md").exists()
+        else None,
         "export": (stack / "broker-route.exports").read_text().strip()
         if (stack / "broker-route.exports").exists()
         else None,
@@ -617,16 +623,43 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse(landing.get("environment"))
         self.assertFalse(landing.get("secrets"))
         self.assertEqual(
-            landing["configs"][0]["target"], "/usr/share/nginx/html/index.html"
+            {item["source"]: item["target"] for item in landing["configs"]},
+            {
+                "landing_page": "/usr/share/nginx/html/index.html",
+                "landing_markdown": "/usr/share/nginx/html/index.md",
+                "landing_llms": "/usr/share/nginx/html/llms.txt",
+                "landing_nginx": "/etc/nginx/conf.d/default.conf",
+            },
         )
-        self.assertRegex(
-            config["configs"]["landing_page"]["name"], r"^landing_page_[0-9a-f]{12}$"
-        )
+        for name in ("page", "markdown", "llms", "nginx"):
+            self.assertRegex(
+                config["configs"][f"landing_{name}"]["name"],
+                rf"^landing_{name}_[0-9a-f]{{12}}$",
+            )
         headers = routes["middlewares"]["landing-headers"]["headers"]
         self.assertEqual(
             headers["customRequestHeaders"], {"Cookie": "", "Authorization": ""}
         )
         self.assertIn("default-src 'none'", headers["contentSecurityPolicy"])
+
+    def test_landing_page_publishes_llms_txt_and_markdown(self):
+        result = self.results["prod"]
+        llms, markdown = result["landing_llms"], result["landing_markdown"]
+        # llmstxt.org: an H1 name, then a blockquote summary.
+        self.assertTrue(llms.startswith("# Aberration\n\n> "))
+        for text in (llms, markdown):
+            self.assertNotIn("{{", text)
+            self.assertIn("https://dashboard.aberration.app/api/openapi.json", text)
+            self.assertIn("https://demo.aberration.app/api/v1/monitors", text)
+        self.assertIn("(https://aberration.app/index.md)", llms)
+        self.assertIn(
+            "https://datadrivensustainabilitysolutions.github.io/off-key/llms.txt",
+            llms,
+        )
+        html = result["landing_html"]
+        self.assertIn('id="agents"', html)
+        self.assertIn('href="/llms.txt"', html)
+        self.assertIn('type="text/markdown" href="/index.md"', html)
 
     def test_old_account_links_redirect_to_the_dashboard(self):
         routes = self.results["prod"]["routes"]

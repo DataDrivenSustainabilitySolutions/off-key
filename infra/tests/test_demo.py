@@ -37,6 +37,8 @@ DEMO_ONLY = {
     "demo_base_url",
     # Production's one-time move of its broker route node; the demo has none.
     "stack_replaced_services",
+    # Only the landing page links the docs, and the demo has none.
+    "docs_base_url",
 }
 # The demo reaches its open data brokers directly and configures no broker route.
 DEMO_ONLY_PREFIXES = ("broker_route_",)

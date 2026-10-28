@@ -624,16 +624,28 @@ class ReleaseTests(unittest.TestCase):
                 {"revision": 9, "selected_sensors": 2},
             )
         self.assertEqual(output.getvalue(), "")
-        for phase in ("connecting", "waiting", "reconnecting"):
-            snapshot.ingress["sources"]["broker"]["state"] = phase
+        # A broker that is still connecting, unreachable or refusing us is the
+        # broker's state, not the release's: it is reported and never holds a release.
+        for phase in ("connecting", "waiting", "reconnecting", "error"):
+            snapshot.ingress["sources"]["broker"] |= {
+                "state": phase,
+                "message": "The broker rejected the connection credentials.",
+            }
             with redirect_stdout(StringIO()) as output:
                 application.check_collection(snapshot, now)
             self.assertEqual(output.getvalue().count("WARNING:"), 1)
-        for phase in ("blocked", "error", "disconnected", None):
+            self.assertIn(f"Lab (source-broker:1883) is {phase}", output.getvalue())
+        snapshot.ingress["sources"]["broker"]["state"] = "blocked"
+        with self.assertRaisesRegex(ValueError, "operator configuration"):
+            application.check_collection(snapshot, now)
+        for phase in ("disconnected", None):
             snapshot.ingress["sources"]["broker"]["state"] = phase
             with self.assertRaisesRegex(ValueError, "no applied ingress route"):
                 application.check_collection(snapshot, now)
-        snapshot.ingress["sources"]["broker"]["state"] = "connected"
+        del snapshot.ingress["sources"]["broker"]
+        with self.assertRaisesRegex(ValueError, "no applied ingress route"):
+            application.check_collection(snapshot, now)
+        snapshot.ingress["sources"]["broker"] = {"state": "connected", "message": None}
         with self.assertRaisesRegex(ValueError, "disabled"):
             application.check_collection(snapshot, now, ingress_enabled=False)
         for worker in ("collection", "ingress"):

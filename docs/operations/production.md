@@ -12,7 +12,7 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 2. One GitHub production job connects through an ephemeral management-tailnet runner
    and verified SSH. Superseded automatic candidates stop before deployment.
 3. Runtime files are compared against the manager's last verified release. Documentation
-   changes do not deploy; intervening undeployed runtime changes remain visible.
+   and test changes do not deploy; intervening undeployed runtime changes remain visible.
 4. Deployment uses the exact immutable image digests saved by that SHA's successful
    production rehearsal. OCI revision labels must match the SHA; a missing or expired
    rehearsal artifact blocks deployment. The control checkout must be clean and match
@@ -30,8 +30,11 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    never loaded by a new UUID.
 8. The stack, image/replica plan, schema/API readiness, collector/catalog routing,
    restarted worker heartbeats and public HTTP routes must pass verification.
-   Waiting for charger data is valid. Only then is maintenance completed and
-   `release.json` replaced. An interrupted release cannot be replaced by another SHA.
+   Waiting for charger data is valid. A selected broker that is unreachable or refuses
+   the connection is reported, not failed: the release cannot fix a broker. Missing
+   operator access for a selected broker still fails. Only then is maintenance
+   completed and `release.json` replaced. An interrupted release cannot be replaced
+   by another SHA.
 9. Application setup follows the completed release: the first administrator
    invitation and, on the demo, its viewer member and committed catalogue. It writes
    like any client, so a failure fails the run without holding the release open; a

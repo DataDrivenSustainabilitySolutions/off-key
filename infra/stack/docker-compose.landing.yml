@@ -6,6 +6,12 @@ services:
     configs:
       - source: landing_page
         target: /usr/share/nginx/html/index.html
+      - source: landing_markdown
+        target: /usr/share/nginx/html/index.md
+      - source: landing_llms
+        target: /usr/share/nginx/html/llms.txt
+      - source: landing_nginx
+        target: /etc/nginx/conf.d/default.conf
     networks:
       - public-network
     healthcheck:
@@ -20,7 +26,17 @@ services:
       restart_policy:
         condition: any
 
+# One hash over all four files: any edit rotates every config together.
 configs:
   landing_page:
     name: landing_page_${LANDING_PAGE_HASH}
     file: ./landing.html
+  landing_markdown:
+    name: landing_markdown_${LANDING_PAGE_HASH}
+    file: ./landing.md
+  landing_llms:
+    name: landing_llms_${LANDING_PAGE_HASH}
+    file: ./landing-llms.txt
+  landing_nginx:
+    name: landing_nginx_${LANDING_PAGE_HASH}
+    file: ./landing-nginx.conf

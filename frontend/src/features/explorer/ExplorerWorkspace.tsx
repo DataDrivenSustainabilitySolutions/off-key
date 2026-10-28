@@ -25,7 +25,7 @@ export function ExplorerWorkspace() {
   const { userId, isAuthenticated } = useAuth();
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    preferences, toggleFavourite, openEditor, selectSource, sectionHref } = useCatalogue();
+    preferences, toggleFavourite, openEditor, sectionHref } = useCatalogue();
   const requestedService = params.get("service");
   const requestedReading = params.get("reading") ?? undefined;
   const initialTarget = params.get("target")
@@ -98,7 +98,7 @@ export function ExplorerWorkspace() {
     return <>
       {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
         index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
-        error={system.error} onRename={rename} onEdit={openEditor} onClose={() => selected.entityKind === "stream" ? selectSource(null) : closeView()}
+        error={system.error} onRename={rename} onEdit={openEditor}
         runtime={system.snapshot?.runtime} collapseDefinition favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
         collectionControls={<p className="ex-muted">Collection: {(streamIds ?? []).filter(id => system.snapshot?.runtime.bindings?.[id]?.policy.mode !== "off").length}
@@ -117,6 +117,7 @@ export function ExplorerWorkspace() {
         {selected && !creating && !requestedService && <>
           {!preview && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
             <button className="ex-collection-action" onClick={() => changeView({ inspect: "source" })}><Info size={15} aria-hidden="true" />Inspect source</button></>}
+          {preview && selected.entityKind !== "stream" && <button className="ex-collection-action" onClick={closeView}><Info size={15} aria-hidden="true" />Hide source details</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
         {system.canEdit && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>

@@ -298,7 +298,9 @@ describe("dedicated Sources configuration", () => {
     saved.can_edit = false;
     mount("/sources?broker=broker");
     await screen.findByRole("region", { name: "Recording configuration" });
-    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    expect(screen.queryByRole("button", { name: "Close preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show all sources" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
     await screen.findByRole("region", { name: "Broker overview" });
     expect(screen.queryByRole("button", { name: "Check connections" })).toBeNull();
     expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/connections/check", expect.anything());

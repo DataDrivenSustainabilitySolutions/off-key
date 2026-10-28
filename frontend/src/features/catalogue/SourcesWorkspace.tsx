@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plug, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, Plug, Plus, RotateCw } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -12,7 +12,6 @@ import { BrokerCheckMark } from "./BrokerCheck";
 import { useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
-import { SourceScope } from "../workspace/SourceScope";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { systemApi } from "@/domain/system/systemApi";
 import "./sources.css";
@@ -97,7 +96,10 @@ export function SourcesWorkspace() {
   </> : readingLinks;
   return <>
     <main className="ex-main-content" aria-label="Sources workspace">
-      <div className="ex-workspace-heading"><h1>Sources</h1><div className="ex-workspace-actions">
+      {/* A selected source's preview carries the page title; the heading row keeps only the way back. */}
+      <div className="ex-workspace-heading">{selected || selectionMissing
+        ? <button type="button" className="source-back" onClick={() => selectSource(null)}><ArrowLeft size={14} aria-hidden="true" />Sources</button>
+        : <h1>Sources</h1>}<div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
         {canReconnect && <Button variant="outline" disabled={reconnect.pending} title="Retry the recording connection to this broker now"
           onClick={() => void retryBroker(selected!.connectionId!)}><RotateCw size={16} />{reconnect.pending ? "Reconnecting…" : "Reconnect"}</Button>}
@@ -107,13 +109,12 @@ export function SourcesWorkspace() {
           <Plug size={16} />{brokerChecks.running ? "Checking…" : "Check connections"}</Button>}
         {system.canEdit && <Button variant="outline" disabled={rules.dirty} onClick={() => openEditor("connection")}><Plus size={16} />Add broker</Button>}
       </div></div>
-      <SourceScope />
       {reconnectError && <p role="alert" className="ex-banner ex-error">{reconnectError}</p>}
       {system.error && <p role="alert" className="ex-banner ex-error">{system.error}<button onClick={() => void system.refreshRuntime()}>Retry</button></p>}
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
+          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}

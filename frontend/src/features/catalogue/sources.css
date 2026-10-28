@@ -1,3 +1,5 @@
+.ex-main-content .source-back { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: hsl(var(--muted-foreground)); font-size: 13px; }
+.ex-main-content .source-back:hover { color: hsl(var(--foreground)); }
 .source-overview { display: grid; gap: 12px; margin-top: 28px; }
 .ex-main-content .source-broker { display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 7px 20px; margin-top: 8px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 10px; }
 .source-broker strong { font-weight: 500; }

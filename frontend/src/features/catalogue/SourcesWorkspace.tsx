@@ -79,7 +79,10 @@ export function SourcesWorkspace() {
   </> : readingLinks;
   return <>
     <main className="ex-main-content" aria-label="Sources workspace">
-      <div className="ex-workspace-heading"><h1>Sources</h1><div className="ex-workspace-actions">
+      {/* A selected source's preview carries the page title; the heading row keeps only the way back. */}
+      <div className="ex-workspace-heading">{selected || selectionMissing
+        ? <button type="button" className="source-back" onClick={() => selectSource(null)}><ArrowLeft size={14} aria-hidden="true" />Sources</button>
+        : <h1>Sources</h1>}<div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
         {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
@@ -87,13 +90,11 @@ export function SourcesWorkspace() {
           <Plug size={16} />{brokerChecks.running ? "Checking…" : "Check connections"}</Button>}
         {system.canEdit && <Button variant="outline" disabled={rules.dirty} onClick={() => openEditor("connection")}><Plus size={16} />Add broker</Button>}
       </div></div>
-      {(selected || selectionMissing) && <button type="button" className="source-back" onClick={() => selectSource(null)}>
-        <ArrowLeft size={14} aria-hidden="true" />Sources</button>}
       {system.error && <p role="alert" className="ex-banner ex-error">{system.error}<button onClick={() => void system.refreshRuntime()}>Retry</button></p>}
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
+          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}

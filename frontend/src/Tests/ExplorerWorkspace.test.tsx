@@ -253,7 +253,8 @@ describe("service-centred monitoring workspace", () => {
     const list = within(sidebar).getByRole("list", { name: "Catalogue items" });
     fireEvent.scroll(list.parentElement!, { target: { scrollTop: 72 } });
     const selection = new URLSearchParams(router.state.location.search).get("source");
-    for (const [section, heading] of [["Sources", "Sources"], ["Reporting", "Reporting"], ["Monitoring", "Monitoring"]]) {
+    // With a source selected, its preview carries the Sources page heading.
+    for (const [section, heading] of [["Sources", "Room station"], ["Reporting", "Reporting"], ["Monitoring", "Monitoring"]]) {
       fireEvent.click(screen.getByRole("link", { name: section }));
       await screen.findByRole("heading", { name: heading, level: 1 });
       expect(screen.getByRole("navigation", { name: "System explorer" })).toBe(sidebar);
@@ -276,7 +277,7 @@ describe("service-centred monitoring workspace", () => {
     const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(workspaces.getByRole("link", { name: "Sources" }));
-    await screen.findByRole("heading", { name: "Sources" });
+    await screen.findByRole("main", { name: "Sources workspace" });
     const sourcesNavigation = within(screen.getByRole("group", { name: "Workspaces" }));
     expect(sourcesNavigation.getByRole("link", { name: "Sources" }).getAttribute("aria-current")).toBe("page");
     const back = sourcesNavigation.getByRole("link", { name: "Monitoring" });

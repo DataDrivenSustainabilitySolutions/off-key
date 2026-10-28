@@ -23,6 +23,8 @@ type Props = {
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
+  /** The preview stands in for the page heading. */
+  pageTitle?: boolean;
   favourite?: boolean;
   onFavourite?: (id: string) => void;
   /** Keep the definition one click away where the page is about something else, such as monitoring. */
@@ -64,7 +66,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, pageTitle = false, favourite, onFavourite,
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -103,6 +105,7 @@ export default function ExplorerPreview({
     : node.kind === "device" ? "Entity" : node.kind === "topic" ? "Topic path" : "System";
   const icon = node.kind === "connection" ? <Box size={22} /> : node.kind === "device" ? <Cpu size={22} />
     : stream ? <Radio size={22} /> : <Folder size={22} />;
+  const Title = pageTitle ? "h1" : "h2";
   const editable = canEdit && !saving && !!node.entityKind && !!node.objectId;
   const recorded = stream ? runtime?.latest_readings?.[stream.id] : undefined;
   const useRecorded = recorded && (!snapshot?.receivedAt || Date.parse(recorded.received_at) > snapshot.receivedAt);
@@ -160,12 +163,12 @@ export default function ExplorerPreview({
         <div className="ex-preview-identity">
           <span className="ex-preview-icon">{icon}</span>
           <div><span className="ex-preview-kind">{kind} preview</span>
-            <h2 className="ex-preview-title">
+            <Title className={`ex-preview-title${pageTitle ? " ex-preview-title--page" : ""}`}>
               {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
-            </h2>
+            </Title>
           </div>
         </div>
         <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>

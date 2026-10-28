@@ -148,6 +148,7 @@
 .ex-preview-icon { padding: 12px; background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: 10px; color: var(--ex-accent); display: flex; }
 .ex-preview-kind { font-size: 10px; color: var(--ex-muted); }
 .ex-preview-title { font-size: 20px; font-weight: 500; letter-spacing: -.3px; margin: 3px 0 0; overflow-wrap: anywhere; }
+.ex-preview-title--page { font-size: 27px; font-weight: 550; letter-spacing: -.035em; line-height: 1.35; }
 .ex-preview-trail { font-size: 10px; color: var(--ex-muted); overflow-wrap: anywhere; margin: 22px 0 18px; line-height: 1.9; }
 .ex-preview-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 10px; color: var(--ex-muted); }
 .ex-preview-status strong { font-weight: 500; }
@@ -235,6 +236,7 @@
   .ex-workspace-empty h2 { font-size: 20px; }
   .ex-workspace-empty p { font-size: 13px; }
   .ex-preview-title { font-size: 18px; }
+  .ex-preview-title--page { font-size: 24px; }
   .ex-preview-icon { padding: 9px; }
   .ex-preview-status > span { margin-left: 0; }
   .ex-preview-history { padding: 12px; }

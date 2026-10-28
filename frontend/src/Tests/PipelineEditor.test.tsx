@@ -141,7 +141,7 @@ const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
     binding: { entity_id: "room", telemetry_key: "current", accepted_topic: "telemetry/room/current", policy: { mode: "original", interval_seconds: 10 } } },
 ] };
 const telemetry = new SystemLiveTelemetry();
-vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [] }) }));
+vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [], previewStreamIds: [] }) }));
 beforeEach(() => {
   vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(pipelinesApi.get).mockResolvedValue(pipeline());
@@ -201,6 +201,24 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Select all available" }));
     expect(screen.getByText("2 readings selected")).toBeTruthy();
+  });
+
+  it("lists only sources that are receiving data under Readings from", async () => {
+    render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Choose monitoring inputs" }));
+    expect(await screen.findByText("No inputs receiving data.")).toBeTruthy();
+  });
+
+  it("explains unrecorded readings and preselects the opening reading once it is recorded", () => {
+    const unrecorded = { ...phases, inputs: phases.inputs.map((input) => ({ ...input, binding: { ...input.binding, policy: { ...input.binding.policy, mode: "off" as const } } })) };
+    const view = render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[unrecorded]} initialReading="AC2" /></MemoryRouter>);
+    expect(screen.getByText(/None of these readings is recorded yet/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Turn on recording in Sources" }).getAttribute("href")).toContain("reading=AC2");
+    expect(phases.inputs.every((input) => (screen.getByRole("checkbox", { name: `Monitor ${input.stream.label}` }) as HTMLInputElement).disabled)).toBe(true);
+    view.rerender(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} initialReading="AC2" /></MemoryRouter>);
+    expect(screen.queryByText(/recorded yet/)).toBeNull();
+    expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(false);
   });
 
   it("removes and restores a named template input directly on the setup page", async () => {

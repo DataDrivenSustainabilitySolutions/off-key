@@ -18,6 +18,8 @@ export type CatalogueContextValue = {
   selectionMissing: boolean;
   streamIds?: string[];
   liveStreamIds: string[];
+  /** Live-only readings on the selection's brokers; the preview subscribes to all of them. */
+  previewStreamIds: string[];
   telemetry: SystemLiveTelemetry;
   history: ReadingHistoryCache;
   preferences: ExplorerPreferences;

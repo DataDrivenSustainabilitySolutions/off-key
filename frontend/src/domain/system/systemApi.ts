@@ -1,6 +1,6 @@
 import { apiUtils, type ApiRequestOptions } from "@/lib/api-client";
 import type { RuleChange } from "@/types/system";
-import type { SystemCollectionPreview, SystemDocument, SystemSnapshot } from "@/types/system";
+import type { SystemCollectionPreview, SystemConnectionCheck, SystemDocument, SystemSnapshot } from "@/types/system";
 
 const SYSTEM_ENDPOINT = "/v1/system";
 
@@ -18,4 +18,9 @@ export const systemApi = {
     apiUtils.post<CollectionStatus>(`${SYSTEM_ENDPOINT}/collection/status`, { stream_ids: streamIds }, options),
   previewCollection: (change: RuleChange, options?: ApiRequestOptions) =>
     apiUtils.post<SystemCollectionPreview>(`${SYSTEM_ENDPOINT}/collection/preview`, change, options),
+  checkConnection: (connectionId: string, options?: ApiRequestOptions) =>
+    apiUtils.post<SystemConnectionCheck>(`${SYSTEM_ENDPOINT}/connections/check`, { connection_id: connectionId }, options),
+  /** Retry a recorded broker now instead of waiting for its automatic retry. */
+  reconnectConnection: (connectionId: string, options?: ApiRequestOptions) =>
+    apiUtils.post<{ connection_id: string }>(`${SYSTEM_ENDPOINT}/connections/reconnect`, { connection_id: connectionId }, options),
 };

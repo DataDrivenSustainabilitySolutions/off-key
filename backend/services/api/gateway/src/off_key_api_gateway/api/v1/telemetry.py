@@ -60,3 +60,25 @@ async def get_telemetry(
         after_event_timestamp=after_event_timestamp,
         paginated=paginated,
     )
+
+
+@router.get("/{charger_id}/range")
+async def get_telemetry_range(
+    charger_id: str,
+    telemetry_type: str = Query(..., alias="type"),
+    start: datetime | None = Query(None, description="Omit for all stored history"),
+    end: datetime | None = Query(None, description="Defaults to now"),
+    buckets: int = Query(600, ge=10, le=2000, description="Time buckets to return"),
+):
+    """Return each bucket's lowest and highest value, so spikes survive."""
+    if start is not None and end is not None and as_utc(start) >= as_utc(end):
+        raise HTTPException(
+            status_code=422, detail="Telemetry range start must precede its end"
+        )
+    return await tactic.get_telemetry_range(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        start=as_utc(start) if start is not None else None,
+        end=as_utc(end) if end is not None else None,
+        buckets=buckets,
+    )

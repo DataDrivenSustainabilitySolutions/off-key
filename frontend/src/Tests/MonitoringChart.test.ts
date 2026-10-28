@@ -492,7 +492,7 @@ describe("telemetry ECharts option", () => {
   });
 
   it("does not shade an overflow observation with an unavailable threshold and reports that in inspection", () => {
-    const timestamp = "2026-01-01T00:00:00Z";
+    const timestamp = "2026-01-01T12:00:00Z"; // Away from midnight, which would draw a day-break rule.
     const row = evidence("static-a", timestamp, null);
     row.tracker_results = [{
       ...trackerResult("primary", "power", "restarted_martingale", 1, Number.NaN),

@@ -218,6 +218,7 @@ tested main commit. Images are recorded in the verified server release; local
 | `SYSTEM_LIVE_ALLOWED_HOSTS` | Operator configuration | Allowed generic upstream brokers |
 | `SYSTEM_LIVE_DATA_SOURCE` | `broker` | `simulated` replaces upstream brokers with generated preview data |
 | `SYSTEM_LIVE_CONNECT_TIMEOUT_SECONDS` | `15` | Upstream broker connection deadline for previews |
+| `SYSTEM_CONNECTION_CHECK_TIMEOUT_SECONDS`, `SYSTEM_CONNECTION_CHECK_CONCURRENCY` | `8`, `4` | Deadline and parallelism of an administrator's on-demand broker connection check |
 | `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
 | `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |

@@ -51,7 +51,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
 
     await page.setViewportSize({ width: 390, height: 844 });
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
+    await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
@@ -117,9 +117,14 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(preview.locator(".ex-preview-value strong")).toHaveText("27");
     await expect(preview.locator('.ex-preview-chart[role="img"]')).toBeVisible();
     await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Full range", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Reset zoom", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Reset zoom", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Reset zoom", exact: true })).toBeDisabled();
+    const allHistory = page.getByRole("group", { name: "Chart time range", exact: true }).getByRole("button", { name: "All", exact: true });
+    await allHistory.click();
+    await expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    const stored = await api.get(`/api/v1/telemetry/${binding.entity_id}/range?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });
+    expect((await stored.json() as Array<{ value: number }>).some(point => point.value === 27)).toBe(true);
     const types = await api.get(`/api/v1/telemetry/${binding.entity_id}/type`, { headers });
     expect(await types.json()).toEqual([binding.telemetry_key]);
 
@@ -129,7 +134,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByLabel("Warm-up samples", { exact: true }).fill("2");
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
     await page.getByRole("link", { name: "Configure in Sources", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
+    await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
@@ -155,9 +160,11 @@ test("records only an opted-in reading and restores its history in the mobile wo
     for (const section of ["Sources", "Reporting", "Monitoring"]) {
       await workspaces.getByRole("link", { name: section, exact: true }).click();
       // The open service names its own page; the workspace becomes its breadcrumb.
+      // A selected source likewise titles Sources.
       await expect(section === "Monitoring"
         ? page.getByRole("heading", { level: 1, name: "Saved workspace monitor", exact: true })
-        : page.getByRole("heading", { name: section, exact: true })).toBeVisible();
+        : section === "Sources" ? page.getByRole("main", { name: "Sources workspace", exact: true })
+          : page.getByRole("heading", { name: section, exact: true })).toBeVisible();
       expect(await catalogue!.evaluate(element => element.isConnected)).toBe(true);
       expect(new URL(page.url()).searchParams.get("source")).toBe(source);
     }

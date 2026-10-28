@@ -21,6 +21,7 @@ import {
   type SelectedDetectorIds,
 } from "./telemetry-detectors";
 import { getChartDomain } from "./telemetry-thresholds";
+import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
 import {
   groupTelemetryEvents,
   buildTelemetryEventMarkPoints,
@@ -281,24 +282,6 @@ export const formatTelemetryTooltip = (
   return lines.join("\n");
 };
 
-const axisLabelFormatterCache = new Map<string, (value: number) => string>();
-const axisLabelFormatter = (
-  timeZone: string,
-  locale?: string,
-  timeOnly = false,
-): ((value: number) => string) => {
-  const key = `${timeZone}\u0000${locale === undefined ? "\u0000" : locale}\u0000${timeOnly}`;
-  const cached = axisLabelFormatterCache.get(key);
-  if (cached) return cached;
-  const date = new Intl.DateTimeFormat(locale, { timeZone, month: "short", day: "2-digit" });
-  const time = new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit",
-    ...(timeOnly ? { hourCycle: "h23" as const } : {}) });
-  const formatter = (value: number) => timeOnly ? time.format(Number(value))
-    : `${date.format(Number(value))}\n${time.format(Number(value))}`;
-  axisLabelFormatterCache.set(key, formatter);
-  return formatter;
-};
-
 export const buildTelemetryChartOption = ({
   model, valueType = "number", ...options
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => buildMonitoringChartOption({
@@ -357,10 +340,13 @@ export const buildMonitoringChartOption = ({
         { left: 68, right: 40, top: 288, height: 120 },
         { left: 68, right: 40, top: 450, height: 120 },
       ];
+  const visibleSpan = viewport.mode === "absolute" ? viewport.endMs - viewport.startMs
+    : domain ? domain[1] - domain[0] : Infinity;
   const axisLabel = {
     color: colors.mutedForeground,
     fontSize: 11,
-    formatter: axisLabelFormatter(timeZone, locale, compact),
+    formatter: timeAxisLabelFormatter(timeZone, locale, visibleSpan, !compact),
+    rich: { day: { color: colors.foreground, fontSize: 11, fontWeight: 600 } },
     hideOverlap: true,
     alignMinLabel: "left" as const,
     alignMaxLabel: "right" as const,
@@ -377,7 +363,7 @@ export const buildMonitoringChartOption = ({
     axisTick: { show: false },
     splitLine: { show: false },
     axisPointer: { show: true, snap: false,
-      ...(compact ? { label: { formatter: (params: { value: number | string | Date }) => axisLabelFormatter(timeZone, locale, true)(Number(params.value)) } } : {}),
+      ...(compact ? { label: { formatter: (params: { value: number | string | Date }) => formatChartTime(Number(params.value), timeZone, "axis", locale) } } : {}),
     },
     name:
       !compact && index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
@@ -391,6 +377,12 @@ export const buildMonitoringChartOption = ({
       : domain
         ? { startValue: domain[0], endValue: domain[1] }
         : { start: 0, end: 100 };
+
+  // Faint dashed rules at each local midnight, beside the dated tick labels.
+  const dayBreaks = (domain ? localMidnights(domain[0], domain[1], timeZone) : []).map(time => ({ xAxis: time,
+    lineStyle: { color: colors.mutedForeground, type: "dashed" as const, width: 1, opacity: 0.35 } }));
+  const dayBreakLine = { silent: true, animation: false, symbol: ["none", "none"], label: { show: false }, z: 1,
+    data: dayBreaks };
 
   const telemetrySeries: LineSeriesOption[] = model.readings.map((reading, index) => {
     const valueType = reading.valueType ?? "number";
@@ -422,9 +414,9 @@ export const buildMonitoringChartOption = ({
           unit: reading.unit, telemetryValueExtent,
         }),
       },
-      ...(reading.alarmTimes?.length ? { markLine: { silent: true, animation: false,
-        symbol: ["none", "none"], label: { show: false }, lineStyle: { color: colors.alarmBoundary ?? "#dc2626", width: 1, opacity: 0.55 },
-        data: reading.alarmTimes.map(time => ({ xAxis: time })),
+      ...(reading.alarmTimes?.length || dayBreaks.length ? { markLine: { ...dayBreakLine,
+        lineStyle: { color: colors.alarmBoundary ?? "#dc2626", width: 1, opacity: 0.55 },
+        data: [...(reading.alarmTimes ?? []).map(time => ({ xAxis: time })), ...dayBreaks],
       } } : {}),
     };
   });
@@ -451,6 +443,7 @@ export const buildMonitoringChartOption = ({
         }]
       : []);
 
+  const ruledPanes = new Set<number>();
   const secondarySeries: LineSeriesOption[] = model.secondarySeries.flatMap((series) => {
     const paneIndex = panes.indexOf(series.pane);
     const line = buildDetectionSeriesOption(
@@ -461,6 +454,10 @@ export const buildMonitoringChartOption = ({
       (time) => formatChartTime(time, timeZone, "tooltip", locale),
       formatNumber,
     );
+    if (dayBreaks.length && !ruledPanes.has(paneIndex)) {
+      ruledPanes.add(paneIndex);
+      line.markLine = dayBreakLine;
+    }
     if (!monitoring) return [line];
     line.markPoint = { ...line.markPoint, data: [...(line.markPoint?.data ?? []),
       ...series.data.flatMap(point => point.observation?.alarmFired && point.value[1] !== null ? [{

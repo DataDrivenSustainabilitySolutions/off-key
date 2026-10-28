@@ -364,6 +364,26 @@ class Tactic:
             params=params,
         )
 
+    async def get_telemetry_range(
+        self,
+        charger_id: str,
+        telemetry_type: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        buckets: int = 600,
+    ) -> list[dict[str, Any]]:
+        """Get a downsampled telemetry range from TACTIC data service."""
+        params: dict[str, Any] = {"type": telemetry_type, "buckets": buckets}
+        if start is not None:
+            params["start"] = start.isoformat()
+        if end is not None:
+            params["end"] = end.isoformat()
+        return await self.request(
+            method="GET",
+            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}/range",
+            params=params,
+        )
+
     async def authenticate_user(self, email: str, password: str) -> dict[str, Any]:
         """Validate user credentials via TACTIC data service."""
         return await self.request(

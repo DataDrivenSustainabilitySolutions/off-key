@@ -1,4 +1,12 @@
+import { configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+
+// A lazily loaded view appears no sooner than React's 300 ms Suspense fallback
+// throttle, its first import also transforms its module graph, and CI runs
+// several jsdom workers on one shared runner, so the 1 s default fails there
+// although the view renders. A wait still ends as soon as its element appears,
+// and stays under Vitest's 5 s test timeout so a failure reports the DOM.
+configure({ asyncUtilTimeout: 4_000 });
 
 const createTestStorage = (): Storage => {
   const entries = new Map<string, string>();

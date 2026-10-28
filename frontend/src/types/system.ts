@@ -52,6 +52,14 @@ export type SystemDocument = {
   groups: SystemGroup[];
 };
 
+/** One on-demand CONNECT to a saved broker; nothing is subscribed or stored. */
+export type SystemConnectionCheck = {
+  connection_id: string;
+  status: "reachable" | "auth_rejected" | "refused" | "tls_error" | "unreachable" | "timeout" | "blocked";
+  message: string | null;
+  latency_ms: number | null;
+  checked_at: string;
+};
 export type SystemEntityKind = "connection" | "device" | "stream" | "group";
 export type SystemRuntime = {
   mode: "configured_only" | "collection";

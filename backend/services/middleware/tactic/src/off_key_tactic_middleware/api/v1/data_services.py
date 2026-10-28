@@ -28,6 +28,7 @@ from ...schemas import (
     MonitoringEvidenceResponse,
     TelemetryDataPoint,
     TelemetryPaginatedResponse,
+    TelemetryRangePoint,
     UserLoginRequest,
 )
 from ...services.accounts.users import UserService
@@ -107,6 +108,27 @@ async def get_telemetry_data(
         after_created=after_created,
         after_event_timestamp=after_event_timestamp,
         paginated=paginated,
+    )
+
+
+@router.get(
+    "/telemetry/{charger_id}/range",
+    response_model=list[TelemetryRangePoint],
+)
+async def get_telemetry_range(
+    charger_id: str,
+    telemetry_type: str = Query(..., alias="type"),
+    start: datetime | None = Query(None),
+    end: datetime | None = Query(None),
+    buckets: int = Query(600, ge=10, le=2000),
+    service: TelemetryQueryService = Depends(get_telemetry_query_service),
+) -> list[dict[str, Any]]:
+    return await service.get_telemetry_range(
+        charger_id=charger_id,
+        telemetry_type=telemetry_type,
+        start=start,
+        end=end,
+        buckets=buckets,
     )
 
 

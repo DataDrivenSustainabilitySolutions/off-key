@@ -6,6 +6,11 @@ import os
 from datetime import UTC, datetime
 from urllib.request import urlopen
 
+# States of an applied ingress route. Whether the broker accepts, refuses or answers
+# the connection is up to the broker, so a release reports these instead of failing:
+# it cannot fix them, and holding the release open would block every later release.
+BROKER_OUTCOMES = {"connected", "connecting", "waiting", "reconnecting", "error"}
+
 
 def check_collection(snapshot, now, ingress_enabled=True):
     selected = list(snapshot.catalog.streams(selected_only=True))
@@ -36,12 +41,18 @@ def check_collection(snapshot, now, ingress_enabled=True):
         broker = f"{source.label} ({source.host}:{source.port})"
         state = snapshot.ingress.get("sources", {}).get(source_id, {})
         phase = state.get("state")
-        if phase not in {"connected", "connecting", "waiting", "reconnecting"}:
+        if phase == "blocked":
+            raise ValueError(
+                f"Selected broker {broker} has no broker access or credential "
+                "in the operator configuration"
+            )
+        if phase not in BROKER_OUTCOMES:
             raise ValueError(f"Selected broker {broker} has no applied ingress route")
         if phase != "connected":
             print(
-                f"WARNING: Selected broker {broker} is not connected. "
-                "Its ingress route is applied; connection retries continue automatically.",
+                f"WARNING: Selected broker {broker} is {phase}"
+                f" ({state.get('message') or 'no detail reported'}). "
+                "Its ingress route is applied; Sources shows how the broker answers.",
                 flush=True,
             )
     return {"revision": snapshot.revision, "selected_sensors": len(selected)}

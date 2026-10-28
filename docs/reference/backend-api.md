@@ -90,6 +90,7 @@ Roles are `admin` and `user` (member). Account and token lifecycle details are i
 | `GET` | `/chargers/active/id` | List active charger identifiers | Query: `skip`, `limit` |
 | `GET` | `/telemetry/{charger_id}/type` | List telemetry types | Query: `limit` |
 | `GET` | `/telemetry/{charger_id}/data` | Fetch telemetry points | Query: `type`, `limit`, cursor fields, `paginated` |
+| `GET` | `/telemetry/{charger_id}/range` | Fetch a downsampled range: each time bucket's lowest and highest value | Query: `type`, `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
 
 Telemetry cursors:
 
@@ -112,6 +113,8 @@ Authorization: Bearer <token>
 | `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
 | `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | Administrator |
 | `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | Administrator |
+| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | Administrator |
 | `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
 | `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
@@ -232,6 +235,7 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/chargers/active/ids` | Active charger IDs |
 | `GET` | `/data/telemetry/{charger_id}/types` | Telemetry type list |
 | `GET` | `/data/telemetry/{charger_id}` | Telemetry points |
+| `GET` | `/data/telemetry/{charger_id}/range` | Downsampled telemetry range |
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |

@@ -24,7 +24,9 @@ from .repositories import (
 from .services.accounts.members import MemberService
 from .services.accounts.remembered_sessions import RememberedSessionService
 from .services.accounts.users import UserService
+from .services.catalogue.broker_check import BrokerCheck
 from .services.catalogue.system import SystemService
+from .services.catalogue.system_ingress import SystemIngress
 from .services.catalogue.system_live import SystemLiveService
 from .services.data import (
     AnomalyService,
@@ -106,6 +108,22 @@ def get_live_service(request: Request) -> SystemLiveService:
     service = getattr(request.app.state, "system_live", None)
     if service is None:
         raise HTTPException(503, "Live observation is unavailable.")
+    return service
+
+
+def get_broker_check(request: Request) -> BrokerCheck:
+    """The process-wide, bounded broker reachability checker."""
+    service = getattr(request.app.state, "broker_check", None)
+    if service is None:
+        raise HTTPException(503, "Connection checks are unavailable.")
+    return service
+
+
+def get_system_ingress(request: Request) -> SystemIngress:
+    """The process-wide recording ingress; it owns every recorded broker client."""
+    service = getattr(request.app.state, "system_ingress", None)
+    if service is None:
+        raise HTTPException(503, "Recording is unavailable.")
     return service
 
 

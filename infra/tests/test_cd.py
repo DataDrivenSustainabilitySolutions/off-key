@@ -227,7 +227,67 @@ class CDTests(unittest.TestCase):
             )
             self.assertNotIn(password, result.stdout + result.stderr)
 
-    def test_documentation_commit_cannot_hide_unreleased_runtime_changes(self):
+    def test_releases_reuse_ssh_connections_and_report_their_slowest_tasks(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        steps = [
+            step
+            for step in workflow["jobs"]["deploy"]["steps"]
+            if "deploy.yml" in step.get("run", "")
+        ]
+        self.assertEqual(len(steps), 2)
+        for step in steps:
+            with self.subTest(step=step["name"]):
+                # The variable replaces ansible.cfg's ssh_args entirely.
+                arguments = step["env"]["ANSIBLE_SSH_ARGS"].split()
+                for option in (
+                    "ControlMaster=auto",
+                    "ControlPersist=60s",
+                    "StrictHostKeyChecking=yes",
+                    "IdentitiesOnly=yes",
+                ):
+                    self.assertIn(option, arguments)
+                self.assertEqual(
+                    step["env"]["ANSIBLE_CALLBACKS_ENABLED"],
+                    "ansible.posix.profile_tasks",
+                )
+                self.assertEqual(
+                    step["run"].count('"$OFFKEY_RELEASE_TOOLS/task_timings.py"'), 2
+                )
+
+    def test_releases_report_with_this_workflows_tools_for_any_revision(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        steps = workflow["jobs"]["deploy"]["steps"]
+        names = [step.get("name", "") for step in steps]
+        kept = names.index(
+            "Keep this workflow's reporting tools apart from the release checkout"
+        )
+        release = names.index(
+            "Check out the exact tested application and infrastructure commit"
+        )
+        # The release checkout replaces main's files; a retry of an SHA from before
+        # a reporting tool existed must not fail a release that already succeeded.
+        self.assertLess(kept, release)
+        for tool in ("failed_tasks.py", "task_timings.py"):
+            self.assertIn(f"infra/scripts/{tool}", steps[kept]["run"])
+        for step in steps[release:]:
+            run = step.get("run", "")
+            with self.subTest(step=step.get("name")):
+                self.assertNotIn("../scripts/", run)
+                for tool in ("failed_tasks.py", "task_timings.py"):
+                    if tool in run:
+                        self.assertEqual(
+                            run.count(tool), run.count(f"$OFFKEY_RELEASE_TOOLS/{tool}")
+                        )
+
+    def test_documentation_and_test_commits_cannot_hide_unreleased_runtime_changes(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             playbook = root / "infra/ansible/deployment-needed.yml"
@@ -259,6 +319,15 @@ class CDTests(unittest.TestCase):
             (root / "docs/guide.md").write_text("Documentation change\n")
             run("git", "add", ".", cwd=root)
             run(*commit, "documentation change", cwd=root)
+            for test in (
+                "backend/tests/test_runtime.py",
+                "frontend/src/Tests/Runtime.test.tsx",
+                "frontend/e2e/runtime.spec.ts",
+            ):
+                (root / test).parent.mkdir(parents=True, exist_ok=True)
+                (root / test).write_text("A test reaches no running service\n")
+            run("git", "add", ".", cwd=root)
+            run(*commit, "test change", cwd=root)
             target = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
             stack = root / "stack"
             stack.mkdir()

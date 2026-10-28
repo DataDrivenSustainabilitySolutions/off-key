@@ -1,5 +1,5 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star, X } from "lucide-react";
+import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star } from "lucide-react";
 import { InlineName } from "@/components/InlineName";
 import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveStatus } from "@/types/system-live";
@@ -20,10 +20,11 @@ type Props = {
   error: string;
   onRename: (kind: SystemEntityKind, id: string, label: string) => Promise<void>;
   onEdit: (kind: SystemEntityKind, id: string) => void;
-  onClose: () => void;
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
+  /** The preview stands in for the page heading. */
+  pageTitle?: boolean;
   favourite?: boolean;
   onFavourite?: (id: string) => void;
   /** Keep the definition one click away where the page is about something else, such as monitoring. */
@@ -65,7 +66,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, pageTitle = false, favourite, onFavourite,
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -104,6 +105,7 @@ export default function ExplorerPreview({
     : node.kind === "device" ? "Entity" : node.kind === "topic" ? "Topic path" : "System";
   const icon = node.kind === "connection" ? <Box size={22} /> : node.kind === "device" ? <Cpu size={22} />
     : stream ? <Radio size={22} /> : <Folder size={22} />;
+  const Title = pageTitle ? "h1" : "h2";
   const editable = canEdit && !saving && !!node.entityKind && !!node.objectId;
   const recorded = stream ? runtime?.latest_readings?.[stream.id] : undefined;
   const useRecorded = recorded && (!snapshot?.receivedAt || Date.parse(recorded.received_at) > snapshot.receivedAt);
@@ -121,14 +123,18 @@ export default function ExplorerPreview({
   const recordProblem = sources.find(source => ["error", "blocked"].includes(source.state));
   const recordConnected = sources.length === sourceIds.size && sources.length > 0 && sources.every(source => source.state === "connected");
   const persistentConnection = runtime?.ingress?.sources?.[node.connectionId ?? ""];
-  const brokerLabel = persistentConnection?.state === "connected" ? "Connected" : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
+  const brokerLabel = persistentConnection?.state === "connected" ? "Connected"
+    : persistentConnection?.state === "error" || persistentConnection?.state === "blocked" ? "Unavailable"
+      : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
   const label = connectionStatusOnly ? brokerLabel : recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
     : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
   const tone = active ? "positive" : label === "Unavailable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
-  const problem = recording ? recordProblem?.message : status.phase === "error" ? status.message
+  const brokerProblem = connectionStatusOnly && persistentConnection && persistentConnection.state !== "connected"
+    ? persistentConnection.message : undefined;
+  const problem = brokerProblem ? brokerProblem : recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;
   const edit = canEdit && node.entityKind && node.objectId && <button type="button" disabled={saving}
@@ -161,16 +167,15 @@ export default function ExplorerPreview({
         <div className="ex-preview-identity">
           <span className="ex-preview-icon">{icon}</span>
           <div><span className="ex-preview-kind">{kind} preview</span>
-            <h2 className="ex-preview-title">
+            <Title className={`ex-preview-title${pageTitle ? " ex-preview-title--page" : ""}`}>
               {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
                 editable={editable} disabledReason={saving ? "Saving changes…" : undefined}
                 saveError={error} ariaLabel={`Rename ${kind.toLowerCase()}`} /> : title}
-            </h2>
+            </Title>
           </div>
         </div>
-        <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}
-          <button type="button" className="ex-preview-close" aria-label="Close preview" onClick={onClose}><X size={18} /></button></div>
+        <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
       <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
         {navigationTrail(index, node.key).map((ancestor, position) => <span key={ancestor.key}>

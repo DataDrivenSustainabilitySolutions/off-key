@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from off_key_tactic_middleware.domain import ValidationError
 from off_key_tactic_middleware.repositories.data import TelemetryRepository
 from off_key_tactic_middleware.services.data.telemetry import TelemetryQueryService
 
@@ -96,3 +97,82 @@ async def test_paginated_telemetry_returns_composite_ingestion_cursor():
         "created": last_created.isoformat(),
         "timestamp": last_timestamp.isoformat(),
     }
+
+
+@pytest.mark.asyncio
+async def test_range_query_keeps_each_buckets_extremes_in_time_order():
+    session = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = []
+    session.execute.return_value = result
+
+    await TelemetryRepository(session).list_range(
+        charger_id="charger-1",
+        telemetry_type="voltage",
+        start=datetime(2026, 7, 27, tzinfo=UTC),
+        end=datetime(2026, 7, 28, tzinfo=UTC),
+        buckets=600,
+    )
+
+    query = str(session.execute.await_args.args[0])
+    assert "date_bin" in query
+    assert "row_number() OVER (PARTITION BY" in query
+    assert "low = " in query and "high = " in query
+    assert query.rstrip().endswith("ORDER BY anon_1.timestamp ASC")
+
+
+@pytest.mark.asyncio
+async def test_range_without_start_begins_at_the_first_stored_value():
+    first = datetime(2026, 7, 20, tzinfo=UTC)
+    end = datetime(2026, 7, 27, tzinfo=UTC)
+    point = datetime(2026, 7, 21, tzinfo=UTC)
+    repository = AsyncMock()
+    repository.first_timestamp.return_value = first
+    repository.list_range.return_value = [(point, 3.5)]
+
+    result = await TelemetryQueryService(repository).get_telemetry_range(
+        charger_id="charger-1",
+        telemetry_type="voltage",
+        start=None,
+        end=end,
+        buckets=600,
+    )
+
+    repository.list_range.assert_awaited_once_with(
+        charger_id="charger-1",
+        telemetry_type="voltage",
+        start=first,
+        end=end,
+        buckets=600,
+    )
+    assert result == [{"timestamp": point.isoformat(), "value": 3.5}]
+
+
+@pytest.mark.asyncio
+async def test_range_of_an_unrecorded_series_is_empty():
+    repository = AsyncMock()
+    repository.first_timestamp.return_value = None
+
+    result = await TelemetryQueryService(repository).get_telemetry_range(
+        charger_id="charger-1",
+        telemetry_type="voltage",
+        start=None,
+        end=None,
+        buckets=600,
+    )
+
+    assert result == []
+    repository.list_range.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_inverted_range_is_rejected():
+    repository = AsyncMock()
+    with pytest.raises(ValidationError):
+        await TelemetryQueryService(repository).get_telemetry_range(
+            charger_id="charger-1",
+            telemetry_type="voltage",
+            start=datetime(2026, 7, 28, tzinfo=UTC),
+            end=datetime(2026, 7, 27, tzinfo=UTC),
+            buckets=600,
+        )

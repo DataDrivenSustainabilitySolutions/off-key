@@ -242,6 +242,70 @@ describe("dedicated Sources configuration", () => {
     expect(screen.queryByRole("button", { name: "Add broker" })).toBeNull();
   });
 
+  it("checks only idle brokers and marks each name with the result", async () => {
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "old", label: "Old broker" },
+      { ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { used: { state: "connected" } } };
+    const now = new Date().toISOString();
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
+      expect(endpoint).toBe("/v1/system/connections/check");
+      const id = (body as { connection_id: string }).connection_id;
+      return id === "broker" ? { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now }
+        : { connection_id: id, status: "unreachable", message: "Nothing accepts connections on this host and port.", latency_ms: null, checked_at: now };
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Check connections" }));
+    const overview = await screen.findByRole("region", { name: "Broker overview" });
+    expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
+    expect(await within(overview).findByRole("img", { name: /^Unreachable · Nothing accepts connections on this host and port\. · Checked at/ })).toBeTruthy();
+    expect(within(overview).getByText("Connected")).toBeTruthy();
+    expect(within(overview).getAllByText("Not subscribed")).toHaveLength(2);
+    // The edge follows the live state only: green when connected, nothing for idle brokers.
+    expect(within(overview).getByText("Used broker").closest("button")?.className).toContain("source-broker--positive");
+    expect(within(overview).getByText("Workshop broker").closest("button")?.className).toContain("source-broker--neutral");
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
+  });
+
+  it("lets a broker that could not reconnect be checked and retried", async () => {
+    const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { broker: { state: "error", message }, used: { state: "reconnecting" } } };
+    const now = new Date().toISOString();
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
+      const id = (body as { connection_id: string }).connection_id;
+      if (endpoint === "/v1/system/connections/reconnect") {
+        saved = { ...saved, runtime: { ...saved.runtime, ingress: { ...saved.runtime.ingress!, sources: { ...saved.runtime.ingress!.sources, [id]: { state: "connecting" } } } } };
+        return { connection_id: id };
+      }
+      return { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
+    });
+    const router = mount();
+    const overview = await screen.findByRole("region", { name: "Broker overview" });
+    expect(within(overview).getByText("Unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
+    expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
+    // A broker still retrying reports its own state and is not checked.
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }]);
+
+    await act(() => router.navigate("/sources?broker=broker"));
+    expect((await screen.findAllByText(message)).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
+    await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "broker" }, undefined));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
+  });
+
+  it("offers connection checks to catalogue editors only", async () => {
+    saved.can_edit = false;
+    mount("/sources?broker=broker");
+    await screen.findByRole("region", { name: "Recording configuration" });
+    expect(screen.queryByRole("button", { name: "Close preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show all sources" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sources" }));
+    await screen.findByRole("region", { name: "Broker overview" });
+    expect(screen.queryByRole("button", { name: "Check connections" })).toBeNull();
+    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/connections/check", expect.anything());
+  });
+
   it("keeps entities in the shared hierarchy while topic recording rules cover the entire broker", () => {
     const document = fixture().document;
     document.devices.push({ id: "other", label: "Other station", kind: "sensor" });

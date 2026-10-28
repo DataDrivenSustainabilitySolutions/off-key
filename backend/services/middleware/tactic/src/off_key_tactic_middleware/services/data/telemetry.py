@@ -1,10 +1,11 @@
 """Use cases for telemetry data queries."""
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from off_key_core.config.logs import logger
 
+from ...domain import ValidationError
 from ...repositories import TelemetryRepository
 
 
@@ -71,3 +72,40 @@ class TelemetryQueryService:
                 ),
             },
         }
+
+    async def get_telemetry_range(
+        self,
+        *,
+        charger_id: str,
+        telemetry_type: str,
+        start: datetime | None,
+        end: datetime | None,
+        buckets: int,
+    ) -> list[dict[str, Any]]:
+        """Return a downsampled view of stored history; no start means all of it."""
+        end = end or datetime.now(UTC)
+        if start is not None and start >= end:
+            raise ValidationError("Telemetry range start must precede its end")
+        if start is None:
+            start = await self._repository.first_timestamp(
+                charger_id=charger_id, telemetry_type=telemetry_type
+            )
+            # A stored series that begins after the requested end has nothing to show.
+            if start is None or start > end:
+                return []
+            if start == end:
+                start = end - timedelta(seconds=1)
+        records = await self._repository.list_range(
+            charger_id=charger_id,
+            telemetry_type=telemetry_type,
+            start=start,
+            end=end,
+            buckets=buckets,
+        )
+        logger.info(
+            f"Retrieved {len(records)} range points for {charger_id}/{telemetry_type}"
+        )
+        return [
+            {"timestamp": timestamp.isoformat(), "value": value}
+            for timestamp, value in records
+        ]

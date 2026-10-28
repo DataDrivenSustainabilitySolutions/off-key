@@ -40,6 +40,11 @@ LOCAL_LIVE_HOSTS = [
     *(broker.host for broker in _load_broker_fixture().BROKERS),
 ]
 
+# The public demo's open data brokers and its committed catalogue of them.
+DEMO_HOSTS = ["tie.digitraffic.fi", "meri.digitraffic.fi"]
+DEMO_CATALOGUE = Path("infra/ansible/inventories/demo/catalogue.json")
+DEMO_VIEWER_EMAIL = "demo-viewer@example.com"
+
 PORTS = {
     "LOCAL_FRONTEND_PORT": 5174,
     "LOCAL_API_PORT": 8002,
@@ -78,9 +83,44 @@ def private_write(path: Path, content: str) -> None:
         stream.write(content)
 
 
+def demo_settings(values: dict[str, str]) -> dict[str, str]:
+    """Guest browsing as a viewer member, with the demo brokers allowed."""
+    hosts = json.loads(values.get("SYSTEM_LIVE_ALLOWED_HOSTS") or "[]")
+    return {
+        "DEMO_MODE": "true",
+        "DEMO_VIEWER_EMAIL": values.get("DEMO_VIEWER_EMAIL") or DEMO_VIEWER_EMAIL,
+        "DEMO_VIEWER_PASSWORD": values.get("DEMO_VIEWER_PASSWORD")
+        or secrets.token_urlsafe(24),
+        "SYSTEM_LIVE_ALLOWED_HOSTS": json.dumps(
+            [*hosts, *(host for host in DEMO_HOSTS if host not in hosts)],
+            separators=(",", ":"),
+        ),
+    }
+
+
+def enable_demo() -> None:
+    """Turn the demo on in an existing configuration, keeping every other value."""
+    lines = ENV_FILE.read_text().splitlines()
+    pending = demo_settings(read_environment(ENV_FILE))
+    for number, line in enumerate(lines):
+        key = line.partition("=")[0].strip()
+        if not line.lstrip().startswith("#") and key in pending:
+            lines[number] = f"{key}={pending.pop(key)}"
+    lines += [f"{key}={value}" for key, value in pending.items()]
+    replacement = ENV_FILE.with_name(".env.demo")
+    replacement.unlink(missing_ok=True)
+    private_write(replacement, "\n".join(lines) + "\n")
+    os.replace(replacement, ENV_FILE)
+    print("Enabled the public demo. Run `up` to apply it, then `demo`.")
+
+
 def initialize(args: argparse.Namespace) -> None:
+    demo = getattr(args, "demo", False)
     if ENV_FILE.exists():
-        print("Existing local configuration preserved.")
+        if demo:
+            enable_demo()
+        else:
+            print("Existing local configuration preserved.")
         return
     if API_KEYS.exists():
         raise ValueError(
@@ -135,6 +175,8 @@ def initialize(args: argparse.Namespace) -> None:
         ("MQTT_PROXY_IMAGE", "mqtt-proxy"),
     ):
         values[key] = f"{project}-{service}:dev"
+    if demo:
+        values.update(demo_settings(values))
 
     API_KEYS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     private_write(
@@ -346,6 +388,71 @@ def start_stack(
         )
 
 
+def console(
+    command: list[str],
+    module: str,
+    environment: dict[str, str],
+    *,
+    variables: tuple[str, ...] = (),
+    stdin: str | None = None,
+) -> dict:
+    """Run one TACTIC operator command and return its final JSON status line."""
+    ensure_local_docker(environment)
+    passed = [option for name in variables for option in ("-e", name)]
+    result = subprocess.run(
+        [*command, "exec", "-T", *passed, "tactic-middleware"]
+        + ["/app/bin/python", "-m", f"off_key_tactic_middleware.{module}"],
+        cwd=ROOT,
+        env=environment,
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def open_demo(command: list[str]) -> None:
+    """Load the demo catalogue once and create the viewer, as a demo deploy does."""
+    values = read_environment(ENV_FILE)
+    if values.get("DEMO_MODE", "false").lower() != "true":
+        raise ValueError("Enable the demo with `init --demo`, then run `up` first.")
+    environment = deployment_environment()
+    catalogue = console(
+        command,
+        "bootstrap_demo_catalogue",
+        environment,
+        stdin=(ROOT / DEMO_CATALOGUE).read_text(encoding="utf-8"),
+    )
+    print(
+        "Demo catalogue loaded; recording started."
+        if catalogue["status"] == "loaded"
+        else "Demo catalogue kept as the administrator left it."
+    )
+    # Passed by name only, so the password never appears in a process list.
+    environment.update(
+        DEMO_VIEWER_EMAIL=values["DEMO_VIEWER_EMAIL"],
+        DEMO_VIEWER_PASSWORD=values["DEMO_VIEWER_PASSWORD"],
+    )
+    viewer = console(
+        command,
+        "bootstrap_demo_viewer",
+        environment,
+        variables=("DEMO_VIEWER_EMAIL", "DEMO_VIEWER_PASSWORD"),
+    )
+    mailpit = values.get("LOCAL_MAILPIT_PORT", PORTS["LOCAL_MAILPIT_PORT"])
+    print(
+        {
+            "created": "Demo viewer created; signed-out visitors now browse read-only.",
+            "updated": "Demo viewer password refreshed.",
+            "configured": "Demo viewer is ready.",
+            "disabled": "The demo viewer is disabled in Members; the demo stays closed.",
+            "waiting": "Run `bootstrap-admin`, accept the invitation in Mailpit "
+            f"(http://127.0.0.1:{mailpit}), then run `demo` again.",
+        }[viewer["status"]]
+    )
+
+
 def port(value: str) -> int:
     number = int(value)
     if not 1024 <= number <= 65535:
@@ -403,6 +510,11 @@ def main() -> None:
     )
     init.add_argument("--api-port", type=port, default=PORTS["LOCAL_API_PORT"])
     init.add_argument("--admin-email", default="admin@example.com")
+    init.add_argument(
+        "--demo",
+        action="store_true",
+        help="Let signed-out visitors browse read-only, like the public demo",
+    )
     up = commands.add_parser("up", help="Build this checkout and start the stack")
     up.add_argument(
         "--broker-fixture",
@@ -421,6 +533,9 @@ def main() -> None:
     commands.add_parser("stop", help="Stop services and preserve database/broker data")
     commands.add_parser(
         "tailnet-login", help="Register the separate local tailnet device"
+    )
+    commands.add_parser(
+        "demo", help="Load the demo catalogue and create its viewer member"
     )
     admin = commands.add_parser(
         "bootstrap-admin", help="Send invitation to local Mailpit"
@@ -450,6 +565,8 @@ def main() -> None:
         execute(command + ["stop"])
     elif args.command == "tailnet-login":
         tailnet_login(command)
+    elif args.command == "demo":
+        open_demo(command)
     else:
         execute(
             command

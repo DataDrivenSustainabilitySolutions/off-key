@@ -3,7 +3,11 @@
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Response
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
-from off_key_core.schemas.system import SystemChange
+from off_key_core.schemas.system import (
+    SystemChange,
+    SystemConnectionCheck,
+    SystemConnectionCheckScope,
+)
 from off_key_core.schemas.system_collection import (
     SystemCollectionChange,
     SystemCollectionScope,
@@ -53,6 +57,16 @@ async def save_system(
 ):
     return await system_request(
         "PUT", authorization, body=change.model_dump(mode="json")
+    )
+
+
+@router.post("/connections/check", response_model=SystemConnectionCheck)
+async def check_connection(
+    scope: SystemConnectionCheckScope,
+    authorization: str | None = Header(default=None),
+):
+    return await system_request(
+        "POST", authorization, "/connections/check", scope.model_dump(mode="json")
     )
 
 

@@ -242,6 +242,47 @@ describe("dedicated Sources configuration", () => {
     expect(screen.queryByRole("button", { name: "Add broker" })).toBeNull();
   });
 
+  it("checks only idle brokers and shows each result in place of their idle state", async () => {
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "old", label: "Old broker" },
+      { ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { used: { state: "connected" } } };
+    const now = new Date().toISOString();
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
+      expect(endpoint).toBe("/v1/system/connections/check");
+      const id = (body as { connection_id: string }).connection_id;
+      return id === "broker" ? { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now }
+        : { connection_id: id, status: "unreachable", message: "Nothing accepts connections on this host and port.", latency_ms: null, checked_at: now };
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Check connections" }));
+    expect(await screen.findByText("Reachable · checked just now")).toBeTruthy();
+    expect((await screen.findByText("Unreachable · checked just now")).getAttribute("title")).toBe("Nothing accepts connections on this host and port.");
+    expect(screen.getByText("Connected")).toBeTruthy();
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
+  });
+
+  it("re-tests one broker from its detail and explains a rejected login", async () => {
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/system/connections/check"
+      ? { connection_id: "broker", status: "auth_rejected", message: "The broker answered but rejected the saved credentials.", latency_ms: null, checked_at: new Date().toISOString() }
+      : { revision: 3, collection_revision: 4, selected_readings: 2, sampled_rows_per_day_ceiling: 0, original_rate_readings: 2, affected_monitors: [], changed_readings: 0, starting_readings: 0, stopping_readings: 0, rate_changed_readings: 0 });
+    mount("/sources?broker=broker");
+    const panel = await screen.findByRole("region", { name: "Connection check" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Check connection" }));
+    expect(await within(panel).findByText("Login rejected · checked just now")).toBeTruthy();
+    expect(within(panel).getByText("The broker answered but rejected the saved credentials.")).toBeTruthy();
+  });
+
+  it("offers connection checks to catalogue editors only", async () => {
+    saved.can_edit = false;
+    mount("/sources?broker=broker");
+    await screen.findByRole("region", { name: "Recording configuration" });
+    expect(screen.queryByRole("region", { name: "Connection check" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    await screen.findByRole("region", { name: "Broker overview" });
+    expect(screen.queryByRole("button", { name: "Check connections" })).toBeNull();
+    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/connections/check", expect.anything());
+  });
+
   it("keeps entities in the shared hierarchy while topic recording rules cover the entire broker", () => {
     const document = fixture().document;
     document.devices.push({ id: "other", label: "Other station", kind: "sensor" });

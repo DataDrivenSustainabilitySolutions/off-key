@@ -13,6 +13,33 @@ from socks import SOCKS5
 from ...config.system_live import LiveCredential, LiveSocksProxy
 
 
+def configure_client(
+    client,
+    connection: SystemConnection,
+    credential: LiveCredential | None,
+    proxy: LiveSocksProxy | None,
+) -> None:
+    """Apply a saved connection's proxy route, credential, TLS and WebSocket path."""
+    if proxy is not None:
+        client.proxy_set(
+            proxy_type=SOCKS5,
+            proxy_addr=proxy.host,
+            proxy_port=proxy.port,
+            proxy_rdns=True,
+            proxy_username=proxy.username or None,
+            proxy_password=proxy.password.get_secret_value() or None,
+        )
+    if credential is not None:
+        client.username_pw_set(
+            credential.username, credential.password.get_secret_value()
+        )
+    if connection.tls:
+        # Default trust store, server hostname checks, no insecure TLS option.
+        client.tls_set()
+    if connection.transport == "websocket":
+        client.ws_set_options(path=connection.websocket_path or "/mqtt")
+
+
 class LiveMqttWorker:
     def __init__(
         self,
@@ -49,24 +76,7 @@ class LiveMqttWorker:
         self.client.on_subscribe = self._subscribed
         self.client.on_disconnect = self._disconnected
         self.client.on_message = self._message
-        if proxy is not None:
-            self.client.proxy_set(
-                proxy_type=SOCKS5,
-                proxy_addr=proxy.host,
-                proxy_port=proxy.port,
-                proxy_rdns=True,
-                proxy_username=proxy.username or None,
-                proxy_password=proxy.password.get_secret_value() or None,
-            )
-        if credential is not None:
-            self.client.username_pw_set(
-                credential.username, credential.password.get_secret_value()
-            )
-        if connection.tls:
-            # Default trust store, server hostname checks, no insecure TLS option.
-            self.client.tls_set()
-        if connection.transport == "websocket":
-            self.client.ws_set_options(path=connection.websocket_path or "/mqtt")
+        configure_client(self.client, connection, credential, proxy)
 
     def start(self) -> None:
         self.client.connect_async(

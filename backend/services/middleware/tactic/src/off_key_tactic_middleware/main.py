@@ -30,6 +30,7 @@ from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_sett
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
 from .services.catalogue.ambibox_live_access import AmbiboxLiveAccess
+from .services.catalogue.broker_check import BrokerCheck
 from .services.catalogue.system import SystemService
 from .services.catalogue.system_ingress import SystemIngress
 from .services.catalogue.system_live import SystemLiveService
@@ -159,6 +160,7 @@ async def lifespan(app: FastAPI):
     app.state.pipeline_activation_supervisor = None
     app.state.system_ingress = None
     app.state.system_live = None
+    app.state.broker_check = None
 
     try:
         await _connect_docker(app)
@@ -177,6 +179,10 @@ async def lifespan(app: FastAPI):
         await app.state.pipeline_activation_supervisor.start()
         operator_access = AmbiboxLiveAccess(get_ambibox_settings())
         app.state.system_live = SystemLiveService(
+            get_system_live_settings(),
+            access_resolver=operator_access,
+        )
+        app.state.broker_check = BrokerCheck(
             get_system_live_settings(),
             access_resolver=operator_access,
         )

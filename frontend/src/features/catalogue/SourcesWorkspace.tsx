@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plus } from "lucide-react";
+import { Plug, Plus } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -8,6 +8,8 @@ import { SystemLiveControls } from "./SystemLiveControls";
 import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds } from "@/domain/system/collectionRules";
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
+import { BrokerCheckPanel, BrokerCheckState } from "./BrokerCheck";
+import { useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { SourceScope } from "../workspace/SourceScope";
@@ -31,6 +33,9 @@ export function SourcesWorkspace() {
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
   const rules = useRecordingRules(system.snapshot, selected?.connectionId, system.applyRules);
+  const brokerChecks = useBrokerChecks();
+  // A broker in use already reports its live state; only idle ones need a check.
+  const idleBrokers = document.connections.filter(broker => !system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state).map(broker => broker.id);
   useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (!rules.dirty) return false;
@@ -68,6 +73,8 @@ export function SourcesWorkspace() {
       </button> : [];
     }) : <p className="ex-muted">No readings registered for this entity.</p>}
   </section>;
+  const brokerCheck = system.canEdit && selected?.kind === "connection" && selected.connectionId
+    ? <BrokerCheckPanel check={brokerChecks.checks[selected.connectionId]} onCheck={() => void brokerChecks.check(selected.connectionId!)} /> : null;
   const configuration = scope ? <>
     {scope.kind === "topic" && <p className="ex-muted">Topic recording policies apply to all matching readings on this broker.</p>}
     <SourceRecordingInspector key={JSON.stringify(scope)} scope={scope} ids={ids} document={document}
@@ -78,6 +85,9 @@ export function SourcesWorkspace() {
       <div className="ex-workspace-heading"><h1>Sources</h1><div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
         {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
+        {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
+          title="Connect once to each broker that is not in use, then disconnect" onClick={() => void brokerChecks.checkAll(idleBrokers)}>
+          <Plug size={16} />{brokerChecks.running ? "Checking…" : "Check connections"}</Button>}
         {system.canEdit && <Button variant="outline" disabled={rules.dirty} onClick={() => openEditor("connection")}><Plus size={16} />Add broker</Button>}
       </div></div>
       <SourceScope />
@@ -85,7 +95,7 @@ export function SourcesWorkspace() {
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
+          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={<>{brokerCheck}{configuration}</>} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
@@ -95,7 +105,8 @@ export function SourcesWorkspace() {
           const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
           return <button key={broker.id} className="source-broker" onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}</strong>
-            <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
+            <span>{readings.length} readings · {enabled} enabled</span>{!state && brokerChecks.checks[broker.id] ? <BrokerCheckState check={brokerChecks.checks[broker.id]!} />
+              : <span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span>}</button>;
         })}
       </section>}
     </main>

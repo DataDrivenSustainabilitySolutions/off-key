@@ -36,6 +36,10 @@
           - .env.example
           - .github/workflows/deploy-production.yml
           - .github/workflows/docker-images.yml
+          # Tests never reach a running service, so a test-only change restarts nothing.
+          - ":(exclude)backend/tests"
+          - ":(exclude)frontend/src/Tests"
+          - ":(exclude)frontend/e2e"
       args:
         chdir: "{{ playbook_dir }}/../.."
       delegate_to: localhost

@@ -4,8 +4,15 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemDocument, SystemSnapshot
+from off_key_core.schemas.system_collection import (
+    SystemCollectionDefinition,
+    build_bindings,
+)
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
+from off_key_tactic_middleware.domain import ValidationError as DomainValidationError
+from off_key_tactic_middleware.services.catalogue import system_collection
 from off_key_tactic_middleware.services.catalogue.broker_access import (
     BrokerRouteAccess,
 )
@@ -153,3 +160,36 @@ def test_route_names_are_unique():
 async def test_simulated_origin_is_explicit_in_telemetry():
     service = SystemLiveService(SystemLiveSettings(SYSTEM_LIVE_DATA_SOURCE="simulated"))
     assert service.snapshot(0)["data_source"] == "simulated"
+
+
+def test_routes_load_from_the_mounted_secret_file(tmp_path):
+    (tmp_path / "SYSTEM_BROKER_ROUTES").write_text(
+        json.dumps([route(hosts=[], host_suffixes=[".mesh.example"])])
+    )
+    settings = SystemLiveSettings(_secrets_dir=tmp_path)
+    access = BrokerRouteAccess(settings)(
+        snapshot(host="charger.mesh.example").document.connections[0]
+    )
+    assert access.proxy.host == "broker-route"
+    assert access.credential.username == "operator"
+
+
+def collection_definition(host):
+    document = snapshot(host=host).document.model_copy(deep=True)
+    document.streams[0].policy = CollectionPolicy(mode="original")
+    return SystemCollectionDefinition(
+        document=document, bindings=build_bindings(document), generation="test"
+    )
+
+
+def test_saving_a_recorded_reading_accepts_only_routed_or_allowed_brokers(
+    monkeypatch,
+):
+    settings = SystemLiveSettings(
+        SYSTEM_BROKER_ROUTES=json.dumps([route(hosts=["route-broker"])])
+    )
+    monkeypatch.setattr(system_collection, "get_system_live_settings", lambda: settings)
+    validate = system_collection.SystemCollectionService._validate_access
+    validate(collection_definition("route-broker"))
+    with pytest.raises(DomainValidationError, match="allowlist"):
+        validate(collection_definition("unrouted-broker"))

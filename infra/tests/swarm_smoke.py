@@ -391,6 +391,7 @@ def prepare(directory):
             "socks5://:1055",
             timeout=180,
         )
+    applied_since = str(int(time.time()) - 1)
     deploy(directory, "apply", release_bootstrap=True)
     services = run(
         "docker", "service", "ls", "--format", "{{.Name}}"
@@ -398,6 +399,8 @@ def prepare(directory):
     for name in replaced:
         if f"{STACK}_{name}" in services:
             raise AssertionError(f"The release kept the replaced service {name}")
+    if replaced:
+        assert_replaced_stopped_before_successor(applied_since, replaced)
     ready(directory)
     invitation = run(
         "docker",
@@ -515,6 +518,44 @@ def cleanup(directory):
                 "rehearsal secret removal",
                 timeout=90,
             )
+
+
+def assert_replaced_stopped_before_successor(since: str, replaced: list[str]) -> None:
+    # The successor reuses the replaced services' identity, so its first
+    # container may start only after every replaced container has died.
+    events = run(
+        "docker",
+        "events",
+        "--since",
+        since,
+        "--until",
+        str(int(time.time()) + 1),
+        "--filter",
+        "type=container",
+        "--filter",
+        "event=die",
+        "--filter",
+        "event=start",
+        "--format",
+        '{{.TimeNano}} {{.Action}} {{index .Actor.Attributes "com.docker.swarm.service.name"}}',
+    ).stdout.splitlines()
+    replaced_names = {f"{STACK}_{name}" for name in replaced}
+    deaths = [
+        int(stamp)
+        for stamp, action, service in (line.split(" ", 2) for line in events)
+        if action == "die" and service in replaced_names
+    ]
+    starts = [
+        int(stamp)
+        for stamp, action, service in (line.split(" ", 2) for line in events)
+        if action == "start" and service == f"{STACK}_broker-route"
+    ]
+    if not deaths or not starts:
+        raise AssertionError("The rehearsal did not observe the route replacement")
+    if max(deaths) >= min(starts):
+        raise AssertionError(
+            "The route started before the service it replaces had stopped"
+        )
 
 
 if __name__ == "__main__":

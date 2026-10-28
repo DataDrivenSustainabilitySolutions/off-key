@@ -165,6 +165,31 @@ class DeploymentTests(unittest.TestCase):
                         result["inputs"]["broker_route_tailscale_hostname"],
                     )
 
+    def test_production_route_identity_changes_only_on_purpose(self):
+        # These values decide which node identity production uses and how it
+        # joins the source network. A change re-registers or strands the live
+        # node, so update the digest only together with a planned migration.
+        values = yaml.safe_load(
+            (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()
+        )
+        identity = {
+            key: values.get(key)
+            for key in (
+                "broker_route_name",
+                "broker_route_host_suffixes",
+                "broker_route_hosts",
+                "broker_route_require_tls",
+                "broker_route_tailscale_extra_args",
+                "broker_route_tailscale_hostname",
+                "broker_route_state_dir",
+                "broker_route_seed_dir",
+            )
+        }
+        self.assertEqual(
+            hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest(),
+            "357272cb54061246f437fd3ffa11854eb334459b15b62787209400e523aa3a72",
+        )
+
     def test_production_route_covers_the_inventory_hosts_through_the_node(self):
         inventory = yaml.safe_load(
             (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()

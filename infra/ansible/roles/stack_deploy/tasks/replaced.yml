@@ -2,6 +2,9 @@
 # Services another service takes over must be gone before their successor
 # starts, such as a node identity that must never run twice. Unlike retire.yml,
 # this runs before the release is submitted and waits until no task is left.
+# Replaced services must be replicated: each is scaled to zero, and the manager
+# keeps reporting a task on an unreachable node as running, so the wait fails
+# closed instead of starting the successor beside it.
 - name: List production stack services before replacing any
   command:
     argv:
@@ -15,22 +18,61 @@
   register: replaced_stack_services
   changed_when: false
 
+- name: Find replaced services that still exist
+  set_fact:
+    stack_present_replaced_services: >-
+      {{ stack_replaced_services | default([])
+         | select('in', replaced_stack_services.stdout_lines | map('regex_replace', '^' ~ stack_name ~ '_', '') | list)
+         | list }}
+
+- name: Scale replaced services to zero
+  command:
+    argv: [docker, service, scale, --detach, "{{ stack_name }}_{{ item }}=0"]
+  loop: "{{ stack_present_replaced_services }}"
+
+- name: Wait until the manager reports no live task of a replaced service
+  command:
+    argv:
+      - docker
+      - service
+      - ps
+      - --format
+      - '{% raw %}{{.CurrentState}}{% endraw %}'
+      - "{{ stack_name }}_{{ item }}"
+  loop: "{{ stack_present_replaced_services }}"
+  register: replaced_tasks
+  until: >-
+    replaced_tasks.stdout_lines
+    | select('match', '^(New|Pending|Assigned|Accepted|Preparing|Ready|Starting|Running|Remove)')
+    | list | length == 0
+  retries: 60
+  delay: 2
+  changed_when: false
+
 - name: Remove services a successor in this release replaces
   command:
     argv: [docker, service, rm, "{{ stack_name }}_{{ item }}"]
-  loop: "{{ stack_replaced_services | default([]) }}"
-  when: (stack_name ~ '_' ~ item) in replaced_stack_services.stdout_lines
+  loop: "{{ stack_present_replaced_services }}"
 
-- name: Wait until no container of a replaced service still runs on any node
+- name: Confirm no container of a replaced service is left on any node
   command:
     argv:
       - docker
       - ps
+      - --all
       - --quiet
       - --filter
       - "label=com.docker.swarm.service.name={{ stack_name }}_{{ item.1 }}"
+      - --filter
+      - status=created
+      - --filter
+      - status=running
+      - --filter
+      - status=restarting
+      - --filter
+      - status=paused
   delegate_to: "{{ item.0 }}"
-  loop: "{{ groups['swarm_manager'] | union(groups.get('swarm_backend', [])) | product(stack_replaced_services | default([])) | list }}"
+  loop: "{{ groups['swarm_manager'] | union(groups.get('swarm_backend', [])) | union(groups.get('swarm_frontend', [])) | product(stack_replaced_services | default([])) | list }}"
   register: replaced_containers
   until: replaced_containers.stdout | trim | length == 0
   retries: 30

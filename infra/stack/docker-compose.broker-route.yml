@@ -39,8 +39,7 @@ services:
 
 volumes:
   broker-route-state:
-    # Shared NFS export (host selected by the broker_route_nfs inventory group)
-    # holding the node identity (tailscaled.state). Mounting it from any backend
+    # Shared NFS export on the Swarm manager holding the node identity (tailscaled.state). Mounting it from any backend
     # lets the singleton fail over without re-seeding. Ansible seeds and backs it
     # up to the gitignored stack/state/ on the control host. The explicit name
     # changes only when the NFS mount spec changes: Docker never updates

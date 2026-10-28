@@ -63,10 +63,11 @@
   register: broker_route_legacy_export
   when: broker_route_legacy_exports_file | default('') | length > 0
 
+# Always re-export: a run interrupted between writing the files and exporting
+# would otherwise leave the kernel's export table stale on the next run.
 - name: Re-export NFS shares
   command: exportfs -ra
-  when: broker_route_export is changed or broker_route_legacy_export is changed
-  changed_when: true
+  changed_when: broker_route_export is changed or broker_route_legacy_export is changed
 
 - name: Enable and start NFS server
   systemd:

@@ -148,7 +148,7 @@ A deployment configures its route in the inventory and vault:
 | Setting | Where | Purpose |
 | --- | --- | --- |
 | `broker_route_enabled` | inventory | Deploy the `broker-route` node and route (default off) |
-| `broker_route_name` | inventory | Lowercase route name shown in logs |
+| `broker_route_name` | inventory | Lowercase name that tells routes apart in the secret |
 | `broker_route_hosts`, `broker_route_host_suffixes` | inventory | Covered hosts; each suffix starts with a dot |
 | `broker_route_require_tls` | inventory | Force TLS for covered brokers |
 | `broker_route_tailscale_extra_args`, `broker_route_tailscale_hostname` | inventory | How the node joins the source network (login server, tags, name) |
@@ -160,6 +160,18 @@ identity (no auth key) that offers SOCKS5 on port 1055 to TACTIC. Switching to
 another source changes only these values, the identity seed and the Sources
 catalogue. A network reached another way needs only another node behind the same
 SOCKS5 contract; TACTIC does not change.
+
+Deployments never register a node, so a new source network needs its identity
+created once by an operator:
+
+1. On a trusted machine, run the pinned Tailscale image with an empty state
+   directory, the same `TS_EXTRA_ARGS` and `TS_HOSTNAME` as the inventory, and
+   the auth key or interactive login the source network's operator provides.
+2. Stop the container once the node shows as connected, and confirm the source
+   network lists it. Never start that state anywhere else while it is in use.
+3. Copy the resulting `tailscaled.state` into the inventory's
+   `broker_route_seed_dir` on the control host. The next deployment seeds the
+   empty NFS export from it; an existing identity there is never overwritten.
 
 ## MQTT client policy
 

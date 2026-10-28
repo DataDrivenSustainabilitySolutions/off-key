@@ -43,7 +43,8 @@ oauth2_client_secret: "CHANGE_ME"
 oauth2_cookie_secret: "CHANGE_ME_openssl_rand_hex_16"
 
 # Login for the brokers the broker route covers (see broker_route_* in vars.yml).
-# Leave both out only for a route whose brokers need no login.
+# Leave both out only for a route whose brokers need no login, and then set
+# broker_route_anonymous: true in vars.yml; otherwise deployment stops.
 broker_route_mqtt_username: "existing-broker-username"
 broker_route_mqtt_password: "existing-broker-password"
 

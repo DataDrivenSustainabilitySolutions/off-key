@@ -122,7 +122,10 @@ jobs:
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
           DEMO_ONLY: ${{ inputs.demo_only || false }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
-          ANSIBLE_SSH_ARGS: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
+          # every task opens a new SSH session through the tailnet.
+          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
         run: |
           set -euo pipefail
           umask 077
@@ -133,7 +136,8 @@ jobs:
           if [ "$DEMO_ONLY" = true ]; then
             echo 'Deploying only the public demo; production is unchanged.'
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
-            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
           fi
@@ -142,7 +146,10 @@ jobs:
         env:
           DEMO_ONLY: ${{ inputs.demo_only || false }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
-          ANSIBLE_SSH_ARGS: -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
+          # every task opens a new SSH session through the tailnet.
+          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
         run: |
           set -euo pipefail
           umask 077
@@ -153,7 +160,8 @@ jobs:
           }
           demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { echo "Demo preflight failed; check OFFKEY_DEMO_VAULT."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]; then
-            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
+            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
+            python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
             # Only the viewer outcome; the full log stays private.
             grep -oE '(Demo viewer|The demo viewer|Accept the administrator invitation)[^"]*' "$OFFKEY_DEPLOY_DIRECTORY/demo.log" || true
           else

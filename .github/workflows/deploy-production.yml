@@ -74,6 +74,13 @@ jobs:
           persist-credentials: false
       - name: Select the private temporary configuration directory
         run: echo "OFFKEY_DEPLOY_DIRECTORY=$RUNNER_TEMP/offkey-production" >> "$GITHUB_ENV"
+      - name: Keep this workflow's reporting tools apart from the release checkout
+        # The release checkout replaces these files, and a retry or rollback of an
+        # older SHA may predate them; the steps below call the ones this workflow knows.
+        run: |
+          mkdir "$RUNNER_TEMP/release-tools"
+          cp infra/scripts/failed_tasks.py infra/scripts/task_timings.py "$RUNNER_TEMP/release-tools/"
+          echo "OFFKEY_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
       - name: Recheck eligibility after waiting for the deployment slot
         id: release
         env:
@@ -132,12 +139,12 @@ jobs:
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
           # Logs stay private; a failure prints only the names of the tasks that failed.
-          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { echo "Production preflight failed; check private SSH/configuration and the setup guide."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
+          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { echo "Production preflight failed; check private SSH/configuration and the setup guide."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
           if [ "$DEMO_ONLY" = true ]; then
             echo 'Deploying only the public demo; production is unchanged.'
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
-            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
-            python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
           fi
@@ -158,10 +165,10 @@ jobs:
           demo() {
             uv run --frozen ansible-playbook -i inventories/demo/hosts.yml "$@" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json"
           }
-          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { echo "Demo preflight failed; check OFFKEY_DEMO_VAULT."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
+          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { echo "Demo preflight failed; check OFFKEY_DEMO_VAULT."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]; then
-            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; python3 ../scripts/failed_tasks.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
-            python3 ../scripts/task_timings.py "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
+            python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
             # Only the viewer outcome; the full log stays private.
             grep -oE '(Demo viewer|The demo viewer|Accept the administrator invitation)[^"]*' "$OFFKEY_DEPLOY_DIRECTORY/demo.log" || true
           else

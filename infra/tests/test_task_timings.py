@@ -1,6 +1,7 @@
 """A release reports where its time went publicly, and never task output."""
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -59,9 +60,14 @@ class TaskTimingTests(unittest.TestCase):
                 for script in ("task_timings", "failed_tasks")
             }
         report = printed["task_timings"].splitlines()
-        self.assertRegex(report[0], r"^Ansible ran 3 tasks in 0m0\ds; median ")
+        self.assertRegex(report[0], r"^Ansible ran 3 tasks in \d+m\d\ds; median ")
         self.assertEqual(report[1], "Slowest Ansible tasks:")
-        self.assertRegex(report[2], r"^ +1\.\ds  tactic \| wait for the slow step$")
+        # A busy runner stretches the sleep but never shortens it.
+        slowest = re.fullmatch(
+            r" +(?P<seconds>\d+\.\d)s  tactic \| wait for the slow step", report[2]
+        )
+        self.assertIsNotNone(slowest)
+        self.assertGreaterEqual(float(slowest["seconds"]), 1.2)
         self.assertEqual(len(report), 5)
         self.assertNotIn(TASK_RESULT, printed["task_timings"])
         # The timing stamps leave failed-task reporting unchanged.

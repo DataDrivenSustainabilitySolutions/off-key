@@ -36,6 +36,8 @@ DEMO_ONLY = {
     "demo_hostname",
     "demo_stack_name",
     "demo_base_url",
+    # Only the landing page links the docs, and the demo has none.
+    "docs_base_url",
 }
 LEFT_OUT = {
     "tailscale-ambibox",

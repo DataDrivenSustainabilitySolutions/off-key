@@ -1,0 +1,43 @@
+# Aberration
+
+> Aberration is a continuous anomaly-detection platform for connected systems. It ingests MQTT sensor telemetry, runs streaming detection pipelines, calibrates anomaly scores with conformal methods and accumulates evidence until a change is flagged. Results are reviewable in a web dashboard and through an HTTP API.
+
+One installation serves one organization. The dashboard and its API live at {{ frontend_base_url }}; the API is mounted under `/api`, so an OpenAPI path such as `/v1/anomalies` is called as `{{ frontend_base_url }}/api/v1/anomalies` with an `Authorization: Bearer <token>` header from `POST /api/v1/auth/login`. Accounts are invitation-only.
+{% if demo_base_url | default('') %}
+
+A public, read-only demo at {{ demo_base_url }} streams open traffic data from Helsinki. Its listed read endpoints answer without a token, which makes it the place to try the API: for example `GET {{ demo_base_url }}/api/v1/monitors` or `GET {{ demo_base_url }}/api/v1/anomalies`. Writes answer 403.
+{% endif %}
+
+## Product
+
+- [Landing page as Markdown](https://{{ ingress_base_domain }}/index.md): What Aberration does and how detection works, without markup.
+- [Dashboard]({{ frontend_base_url }}/): The signed-in web application.
+{% if demo_base_url | default('') %}
+- [Live demo]({{ demo_base_url }}/): Read-only installation, no sign-in.
+{% endif %}
+
+## API
+
+- [OpenAPI schema]({{ frontend_base_url }}/api/openapi.json): Machine-readable contract of the gateway API (OpenAPI 3).
+{% if demo_base_url | default('') %}
+- [Demo OpenAPI schema]({{ demo_base_url }}/api/openapi.json): The same contract on the public demo, where listed reads need no token.
+{% endif %}
+{% if docs_base_url | default('') %}
+- [Backend API guide]({{ docs_base_url }}/reference/backend-api.md): Endpoint groups, authentication rules and error contracts.
+- [Data model]({{ docs_base_url }}/reference/data-model.md): Core persistence model behind the API.
+
+## Docs
+
+- [Documentation index]({{ docs_base_url }}/llms.txt): llms.txt of the full documentation, with a Markdown link for every page.
+- [Getting started]({{ docs_base_url }}/getting-started.md): From a fresh clone to a running local stack.
+- [Monitoring]({{ docs_base_url }}/user-guide/monitoring.md): Running anomaly-monitoring workflows.
+- [Architecture]({{ docs_base_url }}/development/architecture.md): Services and how data moves between them.
+
+## Optional
+
+- [Complete documentation]({{ docs_base_url }}/llms-full.txt): Every documentation page in one Markdown file.
+{% else %}
+
+## Optional
+{% endif %}
+- [Source code](https://github.com/DataDrivenSustainabilitySolutions/off-key): Repository for the platform, its documentation and deployment.

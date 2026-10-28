@@ -1,0 +1,41 @@
+# Aberration — Evidence of change.
+
+Continuous anomaly detection for connected systems.
+
+Every system has a rhythm. Aberration follows the relationships in your sensor data and brings the moments of change into view.
+
+- Dashboard: {{ frontend_base_url }}/
+{% if demo_base_url | default('') %}
+- Live demo, read-only and without sign-in: {{ demo_base_url }}/
+{% endif %}
+- For agents: https://{{ ingress_base_domain }}/llms.txt
+
+## At a glance
+
+| Stage | What it is |
+| --- | --- |
+| Input | MQTT telemetry |
+| Processing | Streaming pipelines |
+| Calibration | Conformal scores |
+| Output | Reviewable evidence |
+
+A stream leaves the band its baseline was calibrated to. Evidence accumulates with every observation until the change is flagged: a change point τ is reported once the evidence reaches 1/α.
+
+## How it works
+
+See the change in context, from connected sensor streams to evidence you can explore.
+
+1. **Observe — read the relationships.** Bring your sensor streams together. See how measurements behave in relation to one another, beyond individual readings.
+2. **Calibrate — establish the reference.** Learn from baseline data and calibrate anomaly scores with conformal methods. Give new observations a meaningful reference.
+3. **Detect — follow the evidence.** Accumulate evidence as observations arrive. Explore detected changes alongside the telemetry that explains them.
+
+## Use it from code
+
+- OpenAPI schema: {{ frontend_base_url }}/api/openapi.json
+- API base: {{ frontend_base_url }}/api (send `Authorization: Bearer <token>` from `POST /api/v1/auth/login`)
+{% if demo_base_url | default('') %}
+- Try it without an account: `curl {{ demo_base_url }}/api/v1/monitors`
+{% endif %}
+{% if docs_base_url | default('') %}
+- Documentation for agents: {{ docs_base_url }}/llms.txt
+{% endif %}

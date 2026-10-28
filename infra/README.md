@@ -29,6 +29,16 @@ The monochrome mark and favicon come from [`../assets/brand/`](../assets/brand/)
 run `python assets/brand/export.py` from the repository root after editing the
 master SVG. The export preserves the page's surrounding design.
 
+The header's Humans / Agents switch shows an `#agents` view for people handing
+Aberration to their own agent. Behind it, the same nginx service serves
+[`landing-llms.txt.j2`](stack/landing-llms.txt.j2) at `/llms.txt` (the
+[llmstxt.org](https://llmstxt.org/) index) and
+[`landing.md.j2`](stack/landing.md.j2) at `/index.md`, which `/` also returns
+for `Accept: text/markdown` ([`landing-nginx.conf`](stack/landing-nginx.conf)).
+Keep the Markdown in step with the page copy. The documentation build publishes
+the matching `llms.txt`, `llms-full.txt` and per-page Markdown on GitHub Pages
+(`dev/docs/llms.py`).
+
 The footer opens self-contained Impressum, Privacy, and Contact sections using
 fragment links. Their bracketed fields are intentional templates; replace them
 with verified operator, privacy, and contact information before publication.

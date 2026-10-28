@@ -356,6 +356,11 @@ else:
                 "[all:vars]\nansible_connection=local\nansible_become=false\n"
                 f"stack_dir={stack}\nansible_python_interpreter={sys.executable}\n"
             )
+            # The workflow runs these copies apart from the release checkout.
+            tools = directory / "release-tools"
+            tools.mkdir()
+            for playbook in ("retain-release-log.yml", "validate-inventory.yml"):
+                shutil.copy(ROOT / "ansible" / playbook, tools)
             for release in range(4):
                 log = directory / f"release-{release}.log"
                 log.write_text(f"private release log {release}\n")
@@ -363,7 +368,7 @@ else:
                     "playbook",
                     "-i",
                     str(inventory),
-                    str(ROOT / "ansible/retain-release-log.yml"),
+                    str(tools / "retain-release-log.yml"),
                     "-e",
                     f"release_log={log}",
                     "-e",

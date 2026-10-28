@@ -82,7 +82,8 @@ jobs:
         run: |
           mkdir "$RUNNER_TEMP/release-tools" "$RUNNER_TEMP/release-outcome"
           cp infra/scripts/failed_tasks.py infra/scripts/check_application.py infra/scripts/task_timings.py \
-            infra/scripts/release_alert.py infra/ansible/retain-release-log.yml "$RUNNER_TEMP/release-tools/"
+            infra/scripts/release_alert.py infra/ansible/retain-release-log.yml infra/ansible/validate-inventory.yml \
+            "$RUNNER_TEMP/release-tools/"
           echo "OFFKEY_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
           echo "OFFKEY_RELEASE_OUTCOME=$RUNNER_TEMP/release-outcome" >> "$GITHUB_ENV"
       - name: Recheck eligibility after waiting for the deployment slot

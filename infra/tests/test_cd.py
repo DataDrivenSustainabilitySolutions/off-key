@@ -288,7 +288,10 @@ class CDTests(unittest.TestCase):
                         self.assertEqual(
                             run.count(tool), run.count(f"$OFFKEY_RELEASE_TOOLS/{tool}")
                         )
-        self.assertEqual(used | {"check_application.py"}, copied)
+        # The retention playbook imports the inventory validation from beside it.
+        self.assertEqual(
+            used | {"check_application.py", "validate-inventory.yml"}, copied
+        )
 
     def test_failed_releases_stay_visible_until_a_release_completes(self):
         workflow = yaml.load(

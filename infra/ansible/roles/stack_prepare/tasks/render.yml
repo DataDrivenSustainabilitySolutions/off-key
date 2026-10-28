@@ -246,8 +246,18 @@
 
 - name: Render the public landing page
   template:
-    src: "{{ stack_source_dir }}/landing.html.j2"
-    dest: "{{ stack_dir }}/landing.html"
+    src: "{{ stack_source_dir }}/{{ item }}.j2"
+    dest: "{{ stack_dir }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop: [landing.html, landing.md, landing-llms.txt]
+  when: landing_enabled | default(true) | bool
+
+- name: Copy the landing page web server configuration
+  copy:
+    src: "{{ stack_source_dir }}/landing-nginx.conf"
+    dest: "{{ stack_dir }}/landing-nginx.conf"
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
@@ -255,8 +265,9 @@
 
 - name: Remove the landing page when this installation has none
   file:
-    path: "{{ stack_dir }}/landing.html"
+    path: "{{ stack_dir }}/{{ item }}"
     state: absent
+  loop: [landing.html, landing.md, landing-llms.txt, landing-nginx.conf]
   when: not (landing_enabled | default(true) | bool)
 
 - name: Render production Cloudflare Tunnel connector overlay

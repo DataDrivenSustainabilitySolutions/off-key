@@ -329,6 +329,12 @@ def prepare(directory):
         model["services"][service]["ports"] = [
             {"target": port, "published": published, "mode": "host"}
         ]
+    # The compatible release predates broker routes and ignores their secret. An
+    # allowlist entry lets it dial the test broker directly; the current release
+    # still takes the route, whose proxy wins over a direct connection.
+    model["services"]["tactic"]["environment"].update(
+        SYSTEM_LIVE_ALLOWED_HOSTS='["source-broker"]'
+    )
     used_configs = {
         item["source"]
         for service in model["services"].values()

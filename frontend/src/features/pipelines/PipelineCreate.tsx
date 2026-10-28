@@ -189,6 +189,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
             {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
           </label>
           <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy}
+            // A service starts on live sources; a template may be mapped to any entity.
+            receivingOnly={!initialDesign}
             onChange={(targetId) => {
               const next = targets.find((item) => item.id === targetId);
               const matched = draft.startingId ? targetInputs(next, slots, initialReading) : undefined;

@@ -37,7 +37,6 @@ def launcher(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "ROOT", checkout)
     monkeypatch.setattr(module, "LOCAL", local)
     monkeypatch.setattr(module, "ENV_FILE", local / ".env")
-    monkeypatch.setattr(module, "API_KEYS", local / "state/emqx-api-keys")
     # Never change the developer's or CI's Docker engine from a contract test.
     monkeypatch.setattr(module, "ensure_swarm", lambda environment: None)
     module.initialize(
@@ -51,16 +50,10 @@ def launcher(tmp_path, monkeypatch):
     return module
 
 
-def test_init_preserves_private_configuration_and_matches_emqx(launcher):
+def test_init_preserves_private_configuration(launcher):
     values = launcher.read_environment(launcher.ENV_FILE)
     original = launcher.ENV_FILE.read_bytes()
-    keys = launcher.API_KEYS.read_bytes()
-    assert launcher.API_KEYS.read_text() == (
-        f"{values['AMBIBOX_EMQX_API_KEY']}:{values['AMBIBOX_EMQX_API_SECRET']}\n"
-    )
     assert stat.S_IMODE(launcher.ENV_FILE.stat().st_mode) == 0o600
-    assert stat.S_IMODE(launcher.API_KEYS.parent.stat().st_mode) == 0o700
-    assert stat.S_IMODE(launcher.API_KEYS.stat().st_mode) == 0o444
     secrets = [
         values[key]
         for key in (
@@ -68,14 +61,17 @@ def test_init_preserves_private_configuration_and_matches_emqx(launcher):
             "INTERNAL_API_SECRET",
             "POSTGRES_PASSWORD",
             "EMQX_DASHBOARD_PASSWORD",
-            "AMBIBOX_EMQX_API_SECRET",
-            "AMBIBOX_GOST_PASSWORD",
         )
     ]
     assert len(set(secrets)) == len(secrets)
     assert all(len(value) >= 32 for value in secrets)
-    assert values["AMBIBOX_ALLOWED_HOSTS"] == '["source-broker"]'
-    assert values["AMBIBOX_ALLOWED_HOST_SUFFIXES"] == "[]"
+    assert json.loads(values["SYSTEM_BROKER_ROUTES"]) == [
+        {
+            "name": "local",
+            "hosts": ["source-broker"],
+            "socks_proxy": {"host": "broker-route", "port": 1055},
+        }
+    ]
     assert values["POSTGRES_PORT"] == "5432"
     assert values["TACTIC_RADAR_WORKLOAD_LIFECYCLE"] == "persistent"
     assert values["SYSTEM_LIVE_ENABLED"] == "true"
@@ -86,7 +82,6 @@ def test_init_preserves_private_configuration_and_matches_emqx(launcher):
     )
     launcher.initialize(argparse.Namespace(project="unused", frontend_port=5999))
     assert launcher.ENV_FILE.read_bytes() == original
-    assert launcher.API_KEYS.read_bytes() == keys
 
 
 def test_commands_ignore_exported_credentials_and_unconfigured_optional_secrets(
@@ -378,10 +373,15 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
         services["tactic-middleware"]["environment"]["TACTIC_RADAR_WORKLOAD_LIFECYCLE"]
         == "persistent"
     )
-    assert (
-        services["tactic-middleware"]["environment"]["AMBIBOX_ALLOWED_HOST_SUFFIXES"]
-        == "[]"
-    )
+    assert json.loads(
+        services["tactic-middleware"]["environment"]["SYSTEM_BROKER_ROUTES"]
+    ) == [
+        {
+            "name": "local",
+            "hosts": ["source-broker"],
+            "socks_proxy": {"host": "broker-route", "port": 1055},
+        }
+    ]
     assert (
         services["frontend"]["depends_on"]["api-gateway"]["condition"]
         == "service_healthy"
@@ -450,7 +450,6 @@ def test_local_start_requires_a_swarm_manager(
 
 def test_demo_option_opens_guest_browsing_and_allows_the_demo_brokers(launcher):
     launcher.ENV_FILE.unlink()
-    launcher.API_KEYS.unlink()
     launcher.initialize(
         argparse.Namespace(
             project=None,

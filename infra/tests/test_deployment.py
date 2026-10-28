@@ -43,15 +43,14 @@ def read_configuration(directory):
     return {
         "config": config,
         "swarm_config": swarm_config,
-        "ambibox_api_bootstrap": manifest["ambibox_api_bootstrap"],
         "deployment_secret_material": manifest["deployment_secret_material"],
         "deployment_secret_names": manifest["deployment_secret_names"],
         "routes": yaml.safe_load((stack / "traefik-dynamic.yml").read_text())["http"],
         "landing_html": (stack / "landing.html").read_text()
         if (stack / "landing.html").exists()
         else None,
-        "export": (stack / "ambibox.exports").read_text().strip()
-        if (stack / "ambibox.exports").exists()
+        "export": (stack / "broker-route.exports").read_text().strip()
+        if (stack / "broker-route.exports").exists()
         else None,
         "persistence_file": (stack / "docker-compose.persistence.yml").exists(),
         "mailpit_files": [
@@ -86,10 +85,13 @@ class DeploymentTests(unittest.TestCase):
                     "postgres_password": "literal-$OFFKEY_REVIEW_SENTINEL-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-trailing\\",
                     "jwt_secret": "synthetic-jwt-$OFFKEY_REVIEW_SENTINEL-'\"\\#=\n-tail",
                     "oauth2_client_secret": "literal-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-tail",
-                    "tailscale_ambibox_authkey": "tskey-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-tail",
+                    "broker_route_login": {
+                        "username": "route-${OFFKEY_REVIEW_SENTINEL}",
+                        "password": "literal-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-tail",
+                    },
                 },
             ),
-            ("prod-moved", "prod", {"ambibox_nfs_addr": "100.100.10.99"}),
+            ("prod-moved", "prod", {"broker_route_nfs_addr": "100.100.10.99"}),
             ("prod-rotated", "prod", {"cloudflare_tunnel_token": TOKEN + "rotated"}),
             ("prod-ephemeral", "prod", all_off),
             ("prod-mixed", "prod", all_off | {"persist_emqx_log": True}),
@@ -98,7 +100,7 @@ class DeploymentTests(unittest.TestCase):
                 "prod-ingress-disabled",
                 "prod",
                 {
-                    "ambibox_ingress_enabled": False,
+                    "broker_route_enabled": False,
                     "system_collection_enabled": False,
                 },
             ),
@@ -131,31 +133,66 @@ class DeploymentTests(unittest.TestCase):
             services["oauth2-proxy"]["environment"]["OAUTH2_PROXY_CLIENT_SECRET"],
             inputs["oauth2_client_secret"],
         )
-        self.assertNotIn("TS_AUTHKEY", services["tailscale-ambibox"]["environment"])
+        self.assertNotIn("TS_AUTHKEY", services["broker-route"]["environment"])
+        routes = json.loads(
+            result["deployment_secret_material"]["system_broker_routes"]
+        )
+        self.assertEqual(routes[0]["credential"], inputs["broker_route_login"])
 
-    def test_vendor_identity_settings_reach_compose_and_swarm(self):
+    def test_route_node_settings_reach_compose_and_swarm(self):
         for name, result in self.results.items():
-            if result["inputs"].get("ambibox_ingress_enabled") is False:
-                # Without Ambibox ingress the vendor overlay is left out entirely.
-                for service in ("tailscale-ambibox", "mqtt-tailscale-bridge"):
-                    self.assertNotIn(service, result["config"]["services"])
+            if result["inputs"].get("broker_route_enabled") is False:
+                # Without a broker route its overlay is left out entirely.
+                self.assertNotIn("broker-route", result["config"]["services"])
                 self.assertNotIn(
-                    "tailscale-ambibox-state", result["config"].get("volumes", {})
+                    "broker-route-state", result["config"].get("volumes", {})
+                )
+                self.assertNotIn(
+                    "system_broker_routes", result["deployment_secret_material"]
                 )
                 continue
             for model in ("config", "swarm_config"):
                 with self.subTest(case=name, model=model):
-                    environment = result[model]["services"]["tailscale-ambibox"][
+                    environment = result[model]["services"]["broker-route"][
                         "environment"
                     ]
                     self.assertEqual(
                         environment["TS_EXTRA_ARGS"],
-                        result["inputs"]["tailscale_ambibox_extra_args"],
+                        result["inputs"]["broker_route_tailscale_extra_args"],
                     )
                     self.assertEqual(
                         environment["TS_HOSTNAME"],
-                        result["inputs"]["tailscale_ambibox_hostname"],
+                        result["inputs"]["broker_route_tailscale_hostname"],
                     )
+
+    def test_production_route_covers_the_inventory_hosts_through_the_node(self):
+        inventory = yaml.safe_load(
+            (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()
+        )
+        result = self.results["prod"]
+        routes = json.loads(
+            result["deployment_secret_material"]["system_broker_routes"]
+        )
+        self.assertEqual(
+            routes,
+            [
+                {
+                    "name": inventory["broker_route_name"],
+                    "hosts": [],
+                    "host_suffixes": inventory["broker_route_host_suffixes"],
+                    "socks_proxy": {"host": "broker-route", "port": 1055},
+                    "require_tls": False,
+                    "credential": result["inputs"]["broker_route_login"],
+                }
+            ],
+        )
+        # The route secret alone carries hosts and login; TACTIC reaches the
+        # SOCKS proxy over the network both services share.
+        services = result["config"]["services"]
+        self.assertTrue(
+            set(services["broker-route"]["networks"])
+            & set(services["tactic"]["networks"])
+        )
 
     def test_every_production_image_is_immutable_and_radar_matches_runtime(self):
         config = self.results["prod"]["config"]
@@ -344,14 +381,14 @@ class DeploymentTests(unittest.TestCase):
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():
-            if result["inputs"].get("ambibox_ingress_enabled") is False:
+            if result["inputs"].get("broker_route_enabled") is False:
                 continue
             with self.subTest(case=name):
-                volume = result["config"]["volumes"]["tailscale-ambibox-state"]
+                volume = result["config"]["volumes"]["broker-route-state"]
                 path, *entries = result["export"].split()
                 self.assertEqual(volume["driver_opts"]["device"], f":{path}")
                 self.assertIn(
-                    f"addr={result['inputs']['ambibox_nfs_addr']},",
+                    f"addr={result['inputs']['broker_route_nfs_addr']},",
                     volume["driver_opts"]["o"],
                 )
                 allowed = []
@@ -367,7 +404,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_nfs_volume_is_stable_until_endpoint_changes(self):
         def volume(case):
-            return self.results[case]["config"]["volumes"]["tailscale-ambibox-state"]
+            return self.results[case]["config"]["volumes"]["broker-route-state"]
 
         self.assertEqual(volume("prod"), volume("prod-repeat"))
         self.assertIn("changed=0", self.results["prod-repeat"]["log"])
@@ -492,7 +529,6 @@ class DeploymentTests(unittest.TestCase):
                 "emqx_server_cert": "emqx_server_cert.pem",
                 "emqx_server_key": "emqx_server_key.pem",
                 "emqx_auth_users": "emqx_auth_users.json",
-                "ambibox_api_bootstrap": "ambibox_api_bootstrap",
             },
             "mqtt-proxy": {
                 "emqx_ca_cert": "EMQX_CA_CERT",
@@ -506,14 +542,7 @@ class DeploymentTests(unittest.TestCase):
             "tactic": {
                 "emqx_ca_cert": "EMQX_CA_CERT",
                 "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
-                "ambibox_api_key": "AMBIBOX_EMQX_API_KEY",
-                "ambibox_api_secret": "AMBIBOX_EMQX_API_SECRET",
-                "ambibox_gost_password": "AMBIBOX_GOST_PASSWORD",
-                "ambibox_mqtt_username": "AMBIBOX_MQTT_USERNAME",
-                "ambibox_mqtt_password": "AMBIBOX_MQTT_PASSWORD",
-            },
-            "mqtt-tailscale-bridge": {
-                "ambibox_gost_config": "ambibox_gost_config.json"
+                "system_broker_routes": "SYSTEM_BROKER_ROUTES",
             },
         }
         result = self.results["prod"]
@@ -633,7 +662,6 @@ class DeploymentTests(unittest.TestCase):
                 "emqx_server_cert.pem",
                 "emqx_server_key.pem",
                 "emqx_auth_users.json",
-                "ambibox_api_bootstrap",
             },
         )
         rendered = json.dumps(config)
@@ -645,22 +673,18 @@ class DeploymentTests(unittest.TestCase):
         )
         controller = config["services"]["tactic"]
         self.assertIn("emqx-network", controller["networks"])
-        self.assertEqual(controller["environment"]["AMBIBOX_INGRESS_ENABLED"], "true")
         self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
-        self.assertIn(
-            "app-network", config["services"]["tailscale-ambibox"]["networks"]
-        )
+        self.assertIn("app-network", config["services"]["broker-route"]["networks"])
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
-        self.assertNotIn("TAILSCALE_AMBIBOX_UPSTREAM_HOST", proxy["environment"])
         self.assertEqual(
-            config["services"]["mqtt-tailscale-bridge"]["image"],
+            config["services"]["broker-route"]["image"],
             yaml.safe_load(
                 (
                     ROOT / "ansible/inventories/prod/group_vars/all/release.yml"
                 ).read_text()
-            )["release"]["images"]["gost"],
+            )["release"]["images"]["tailscale"],
         )
-        for value in self.results["prod"]["inputs"]["ambibox_access"].values():
+        for value in self.results["prod"]["inputs"]["broker_route_login"].values():
             self.assertNotIn(value, rendered)
 
     def test_collection_controller_is_provisioned_in_every_environment(self):
@@ -674,47 +698,21 @@ class DeploymentTests(unittest.TestCase):
                 )
                 controller = services["tactic"]
                 self.assertEqual(
-                    controller["environment"]["AMBIBOX_INGRESS_ENABLED"], "true"
-                )
-                self.assertEqual(
                     {secret["target"] for secret in controller["secrets"]},
                     {
-                        "AMBIBOX_EMQX_API_KEY",
-                        "AMBIBOX_EMQX_API_SECRET",
-                        "AMBIBOX_GOST_PASSWORD",
-                        "AMBIBOX_MQTT_USERNAME",
-                        "AMBIBOX_MQTT_PASSWORD",
                         "EMQX_CA_CERT",
+                        "SYSTEM_BROKER_ROUTES",
                         "SYSTEM_COLLECTION_MQTT_API_KEY",
                     },
                 )
-                broker = services["emqx-main"]
-                self.assertEqual(
-                    broker["environment"]["EMQX_API_KEY__BOOTSTRAP_FILE"],
-                    "/run/secrets/ambibox_api_bootstrap",
-                )
-                self.assertIn(
-                    "ambibox_api_bootstrap",
-                    {secret["target"] for secret in broker["secrets"]},
-                )
-                access = self.results[environment]["inputs"]["ambibox_access"]
-                self.assertEqual(
-                    self.results[environment]["ambibox_api_bootstrap"]
-                    .strip()
-                    .split(":"),
-                    [access["api_key"], access["api_secret"]],
-                )
-                forwarder = services["mqtt-tailscale-bridge"]
-                self.assertEqual(
-                    forwarder["command"],
-                    ["-C", "/run/secrets/ambibox_gost_config.json"],
-                )
-                self.assertEqual(
-                    forwarder["secrets"][0]["target"], "ambibox_gost_config.json"
+                # The collection controller needs no EMQX management API.
+                self.assertNotIn(
+                    "EMQX_API_KEY__BOOTSTRAP_FILE",
+                    services["emqx-main"].get("environment", {}),
                 )
                 rendered = json.dumps(config)
                 for value in self.results[environment]["inputs"][
-                    "ambibox_access"
+                    "broker_route_login"
                 ].values():
                     self.assertNotIn(value, rendered)
 
@@ -801,35 +799,6 @@ class DeploymentTests(unittest.TestCase):
                     services[service]["environment"]["SYSTEM_COLLECTION_ENABLED"],
                     expected,
                 )
-            self.assertEqual(
-                services["tactic"]["environment"]["AMBIBOX_INGRESS_ENABLED"], expected
-            )
-
-    @unittest.skipUnless(
-        os.environ.get("OFFKEY_GOST_SMOKE") == "1",
-        "Set OFFKEY_GOST_SMOKE=1 for the container check",
-    )
-    def test_bridge_accepts_the_mounted_config_filename(self):
-        forwarder = self.results["prod"]["config"]["services"]["mqtt-tailscale-bridge"]
-        target = PurePosixPath("/run/secrets") / forwarder["secrets"][0]["target"]
-        with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / "config.json"
-            config.write_text(json.dumps({"api": {"addr": ":18080"}}))
-            # GOST chooses its parser from the mounted filename, not the contents.
-            result = run(
-                "docker",
-                "run",
-                "--rm",
-                "--network",
-                "none",
-                "--mount",
-                f"type=bind,source={config},target={target},readonly",
-                forwarder["image"],
-                *forwarder["command"],
-                "-O",
-                "json",
-            )
-        self.assertEqual(json.loads(result.stdout)["api"]["addr"], ":18080")
 
     def test_invalid_nfs_addresses_fail_before_rendering(self):
         for addresses in ([], ["100.100.10.999"], ["100.100.10.2\n100.100.10.3"]):
@@ -840,8 +809,10 @@ class DeploymentTests(unittest.TestCase):
                 result, _ = render(
                     Path(directory),
                     "prod",
-                    ambibox_nfs_backend_ips=discovery(addresses),
+                    broker_route_nfs_backend_ips=discovery(addresses),
                 )
                 self.assertNotEqual(result.returncode, 0)
-                self.assertFalse((Path(directory) / "stack/ambibox.exports").exists())
+                self.assertFalse(
+                    (Path(directory) / "stack/broker-route.exports").exists()
+                )
                 self.assertIn("NFS", result.stdout)

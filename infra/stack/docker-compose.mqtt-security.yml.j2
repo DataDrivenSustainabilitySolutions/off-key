@@ -1,9 +1,5 @@
 services:
   emqx-main:
-{% if ambibox_ingress_enabled | bool %}
-    environment:
-      EMQX_API_KEY__BOOTSTRAP_FILE: /run/secrets/ambibox_api_bootstrap
-{% endif %}
     configs:
       - source: emqx_security_cfg
         target: /opt/emqx/etc/base.hocon
@@ -14,10 +10,6 @@ services:
         target: emqx_server_key.pem
       - source: emqx_auth_users
         target: emqx_auth_users.json
-{% if ambibox_ingress_enabled | bool %}
-      - source: ambibox_api_bootstrap
-        target: ambibox_api_bootstrap
-{% endif %}
 
   tactic:
     secrets:
@@ -25,25 +17,9 @@ services:
         target: EMQX_CA_CERT
       - source: mqtt_proxy_password
         target: SYSTEM_COLLECTION_MQTT_API_KEY
-{% if ambibox_ingress_enabled | bool %}
-      - source: ambibox_api_key
-        target: AMBIBOX_EMQX_API_KEY
-      - source: ambibox_api_secret
-        target: AMBIBOX_EMQX_API_SECRET
-      - source: ambibox_gost_password
-        target: AMBIBOX_GOST_PASSWORD
-      - source: ambibox_mqtt_username
-        target: AMBIBOX_MQTT_USERNAME
-      - source: ambibox_mqtt_password
-        target: AMBIBOX_MQTT_PASSWORD
-{% endif %}
-
-{% if ambibox_ingress_enabled | bool %}
-  mqtt-tailscale-bridge:
-    command: ["-C", "/run/secrets/ambibox_gost_config.json"]
-    secrets:
-      - source: ambibox_gost_config
-        target: ambibox_gost_config.json
+{% if 'system_broker_routes' in deployment_secret_names %}
+      - source: system_broker_routes
+        target: SYSTEM_BROKER_ROUTES
 {% endif %}
 
   mqtt-proxy:

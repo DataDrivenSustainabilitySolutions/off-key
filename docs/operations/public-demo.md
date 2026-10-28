@@ -41,8 +41,8 @@ production installation would show that organization's data.
 The demo is a second, small stack (`off-key-demo`) on the production Swarm,
 with its own database, broker, TACTIC, API and frontend, and at most two
 monitors. **Deploy Production** deploys it right after production, from the
-same commit and images. The `inventories/demo` inventory leaves out Ambibox
-vendor ingress, Traefik, the Cloudflare connector, the oauth2-gated EMQX and
+same commit and images. The `inventories/demo` inventory leaves out the broker
+route, Traefik, the Cloudflare connector, the oauth2-gated EMQX and
 Traefik dashboards and the landing page. Collection may only reach the
 Digitraffic brokers. A test keeps every other setting equal to production.
 

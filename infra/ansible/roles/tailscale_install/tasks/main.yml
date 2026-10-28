@@ -1,6 +1,6 @@
 ---
 # OS-level Tailscale for the management tailnet.
-# This is NOT the vendor tailnet used by the tailscale-ambibox Swarm service.
+# This is NOT the network the broker-route Swarm service joins.
 
 # cloud-init may have run install.sh which drops these files with a different Signed-By path,
 # causing an apt conflict with the Ansible-managed DEB822 source below.

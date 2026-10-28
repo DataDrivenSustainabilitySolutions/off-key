@@ -61,7 +61,7 @@
       - git
       - unzip
       - rsync        # operator convenience on hosts; no playbook depends on it
-      - nfs-common   # NFS client — lets backends mount the shared ambibox-state volume
+      - nfs-common   # NFS client — lets backends mount the shared broker-route-state volume
     state: present
     lock_timeout: 120
 

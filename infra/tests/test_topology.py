@@ -21,7 +21,7 @@ class TopologyTests(unittest.TestCase):
                 inventory.write_text(
                     "[swarm_manager]\n"
                     + "\n".join(managers)
-                    + "\n[ambibox_nfs]\nbackend\n[swarm_backend]\nbackend\n"
+                    + "\n[swarm_backend]\nbackend\n"
                     "[swarm_frontend]\nfrontend\n[swarm_worker:children]\n"
                     "swarm_backend\nswarm_frontend\n[all:vars]\n"
                     "ansible_connection=local\nansible_become=false\n"

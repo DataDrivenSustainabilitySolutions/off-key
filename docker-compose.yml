@@ -123,8 +123,6 @@ services:
     environment:
       <<: [*runtime-env, *logging-env, *database-env, *auth-env, *email-env]
       TACTIC_RADAR_DEFAULT_MQTT_USERNAME: "${TACTIC_RADAR_DEFAULT_MQTT_USERNAME:-}"
-      AMBIBOX_MQTT_USERNAME: "${AMBIBOX_MQTT_USERNAME:-}"
-      AMBIBOX_MQTT_PASSWORD: "${AMBIBOX_MQTT_PASSWORD:-}"
       SYSTEM_LIVE_ENABLED: "${SYSTEM_LIVE_ENABLED:-false}"
       SYSTEM_COLLECTION_ENABLED: "${SYSTEM_COLLECTION_ENABLED:-true}"
       SYSTEM_COLLECTION_MQTT_USERNAME: "${SYSTEM_COLLECTION_MQTT_USERNAME:-}"
@@ -135,16 +133,7 @@ services:
       SYSTEM_LIVE_CREDENTIALS: "${SYSTEM_LIVE_CREDENTIALS:-}"
       SYSTEM_LIVE_SOCKS_PROXIES: "${SYSTEM_LIVE_SOCKS_PROXIES:-}"
       SYSTEM_LIVE_DATA_SOURCE: "${SYSTEM_LIVE_DATA_SOURCE:-broker}"
-      AMBIBOX_INGRESS_ENABLED: "${AMBIBOX_INGRESS_ENABLED}"
-      AMBIBOX_ALLOWED_HOSTS: "${AMBIBOX_ALLOWED_HOSTS}"
-      AMBIBOX_ALLOWED_HOST_SUFFIXES: "${AMBIBOX_ALLOWED_HOST_SUFFIXES}"
-      AMBIBOX_EMQX_API_URL: "${AMBIBOX_EMQX_API_URL}"
-      AMBIBOX_EMQX_API_KEY: "${AMBIBOX_EMQX_API_KEY}"
-      AMBIBOX_EMQX_API_SECRET: "${AMBIBOX_EMQX_API_SECRET}"
-      AMBIBOX_GOST_API_URL: "${AMBIBOX_GOST_API_URL}"
-      AMBIBOX_GOST_USERNAME: "${AMBIBOX_GOST_USERNAME}"
-      AMBIBOX_GOST_PASSWORD: "${AMBIBOX_GOST_PASSWORD}"
-      AMBIBOX_SOCKS_SERVER: "${AMBIBOX_SOCKS_SERVER}"
+      SYSTEM_BROKER_ROUTES: "${SYSTEM_BROKER_ROUTES:-[]}"
       TACTIC_DOCKER_API_URL: "${TACTIC_DOCKER_API_URL}"
       TACTIC_DOCKER_API_PORT: "${TACTIC_DOCKER_API_PORT}"
       TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: "${TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST}"
@@ -338,9 +327,6 @@ services:
       # Only works on fresh boot (no data volume!)
       - "EMQX_DASHBOARD__DEFAULT_USERNAME=${EMQX_DASHBOARD_USERNAME:-admin}"
       - "EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:?EMQX_DASHBOARD_PASSWORD must be set}"
-      - "EMQX_API_KEY__BOOTSTRAP_FILE=/opt/emqx/etc/dev-api-keys"
-    volumes:
-      - ./dev/emqx/api-keys:/opt/emqx/etc/dev-api-keys:ro
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18083/status" ]
       interval: 5s
@@ -353,12 +339,10 @@ services:
     # volumes:
     #   - $PWD/emqx1_data:/opt/emqx/data
 
-  mqtt-tailscale-bridge:
-    # Development SOCKS endpoint stands in for the existing vendor tailnet proxy.
+  broker-route:
+    # Development SOCKS endpoint stands in for a deployment's broker route sidecar.
     image: gogost/gost:3.3.1
-    command:
-      - "-api=${AMBIBOX_GOST_USERNAME:-off-key}:${AMBIBOX_GOST_PASSWORD:?Set AMBIBOX_GOST_PASSWORD}@:18080"
-      - "-L=socks5://:1055"
+    command: ["-L=socks5://:1055"]
     networks:
       - emqx-network
       - app-network

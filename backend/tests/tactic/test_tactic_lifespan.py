@@ -118,8 +118,7 @@ def _record_lifecycle(monkeypatch):
     monkeypatch.setattr(tactic_main, "SystemIngress", lambda **kwargs: ingress)
     monkeypatch.setattr(tactic_main, "SystemLiveService", lambda *a, **k: live)
     monkeypatch.setattr(tactic_main, "BrokerCheck", lambda *a, **k: object())
-    monkeypatch.setattr(tactic_main, "AmbiboxLiveAccess", lambda settings: object())
-    monkeypatch.setattr(tactic_main, "get_ambibox_settings", lambda: None)
+    monkeypatch.setattr(tactic_main, "BrokerRouteAccess", lambda settings: object())
     monkeypatch.setattr(tactic_main, "get_system_live_settings", lambda: None)
     return calls
 

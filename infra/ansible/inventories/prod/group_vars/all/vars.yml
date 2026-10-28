@@ -93,27 +93,37 @@ validate_certs:  "True"
 email_from:      "no-reply@aberration.app"
 email_username:  "resend"
 
-# ── Vendor Tailscale (ambibox MQTT bridge) ────────────────────────────────────
-# ambibox uses pre-seeded tailscaled.state — no auth key needed.
+# ── Broker route (current source: Ambibox) ──────────────────────────────────
+# Production's brokers live on Ambibox's Headscale network. The broker-route
+# node joins it with a pre-seeded tailscaled.state (no auth key) and TACTIC
+# reaches every *.ts.net broker through its SOCKS proxy. Broker endpoints and
+# sensors are configured in the Sources catalog; switching the source only
+# changes the values in this section and the route login in the vault.
 
-tailscale_ambibox_extra_args: "--accept-dns --advertise-tags=tag:iao --login-server=https://vpn.ambibox.de"
-# Broker endpoints and sensors are configured in the Sources catalog.
+broker_route_enabled: true
+broker_route_name: ambibox
+broker_route_host_suffixes: [".ts.net"]
+broker_route_tailscale_extra_args: "--accept-dns --advertise-tags=tag:iao --login-server=https://vpn.ambibox.de"
+# ambibox_hostname_id is set per cluster/site in vault.yml; empty gives "DDSS-<env>".
+broker_route_tailscale_hostname: "DDSS-{{ offkey_env }}{{ ('-' ~ ambibox_hostname_id) if ambibox_hostname_id | default('') else '' }}"
 
-# Vendor tailnet hostname. ambibox_hostname_id is set per cluster/site in vault.yml.
-# Falls back to "DDSS-<env>" when ambibox_hostname_id is empty/unset.
-tailscale_ambibox_hostname: "DDSS-{{ offkey_env }}{{ ('-' ~ ambibox_hostname_id) if ambibox_hostname_id | default('') else '' }}"
-
-# ambibox state lives on ONE shared NFS export so the singleton can run on (and fail
-# over to) any backend without re-seeding. The NFS host is a single point of failure:
-# the `ambibox_nfs` inventory group currently selects the manager (see hosts.yml).
-# stack_prepare discovers its Tailscale IP; ansible_host may be a public SSH address.
-# nfs_server discovers each inventory backend's Tailscale IP and permits that /32
-# with explicit export options. No manual export-CIDR update is needed when adding
-# a backend; every backend must be reachable and connected to the management tailnet.
-
+# The node identity lives on ONE NFS export on the manager so the singleton can
+# run on (and fail over to) any backend without re-seeding. The manager is a
+# single point of failure for it. stack_prepare discovers the manager's Tailscale
+# IP; nfs_server permits each inventory backend's Tailscale /32. Every backend
+# must be reachable and connected to the management tailnet.
+broker_route_state_dir: "{{ stack_dir }}/tailscale-ambibox-data"
 # Private recovery material stays in the ignored production state directory.
-# A vendor identity must never be copied while another cluster still uses it.
-ambibox_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-ambibox-data"
+# A node identity must never be copied while another cluster still uses it.
+broker_route_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-ambibox-data"
+
+# One-time migration from the Ambibox-specific release; removed once done.
+# Until broker_route_mqtt_username/password are in the vault, the login is read
+# from the file the earlier release kept on the manager.
+broker_route_legacy_access_file: "{{ stack_dir }}/ambibox-access.json"
+broker_route_legacy_exports_file: ambibox.exports
+# Stopped before the release starts, so the node identity never runs twice.
+stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge]
 
 # ── Persistence ──────────────────────────────────────────────────────────────────────────
 # Which stateful paths are volume-backed. Flipping any of these is a data-visibility change,

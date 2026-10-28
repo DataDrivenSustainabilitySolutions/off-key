@@ -106,18 +106,14 @@ possible without a legacy runtime or a separate data archive. Recording and
 retention continue unchanged.
 
 The generic runtime is the sole operational model. Retired catalogue APIs,
-provider-specific imports and old accepted topics are not supported. Before
-starting generic ingress, the controller removes only its generated v1
-`offkey_ambibox_` EMQX/GOST resources. Operator-authored routes remain intact.
+provider-specific imports and old accepted topics are not supported.
 
 ## Operator access and retention
 
 `SYSTEM_COLLECTION_ENABLED` controls persistent ingress independently of
-`SYSTEM_LIVE_ENABLED`. Generic broker allowlists, credential references and optional
-SOCKS routes are private operator configuration. Existing Ambibox operator access
-can still supply its configured credentials, registered tailnet route and TLS
-requirement to allowed hosts; the application model is independent of that
-provider. Catalogue exports contain no credentials.
+`SYSTEM_LIVE_ENABLED`. Broker allowlists, credential references, SOCKS routes and
+broker routes are private operator configuration; the application model names no
+source. Catalogue exports contain no credentials.
 
 Internal publishing uses the configured EMQX TLS/authentication defaults and the
 private `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY` and
@@ -137,6 +133,33 @@ minutes drops the oldest completed daily chunk, logging a warning for each drop,
 so history can be shorter than the retention window. Data from the current day
 is never dropped. Telemetry and evidence use daily chunks for new data;
 existing chunks keep their original seven-day span until they expire.
+
+## Broker routes
+
+A broker route reaches the brokers of one source network. It names the hosts or
+host suffixes it covers, the SOCKS5 proxy into that network, an optional MQTT
+login and whether TLS is required. TACTIC reads all routes from the private
+`SYSTEM_BROKER_ROUTES` secret; the first route that covers a broker's host wins,
+and explicit `SYSTEM_LIVE_CREDENTIALS` / `SYSTEM_LIVE_SOCKS_PROXIES` entries take
+precedence. Brokers reachable directly need no route, only an allowlist entry.
+
+A deployment configures its route in the inventory and vault:
+
+| Setting | Where | Purpose |
+| --- | --- | --- |
+| `broker_route_enabled` | inventory | Deploy the `broker-route` node and route (default off) |
+| `broker_route_name` | inventory | Lowercase route name shown in logs |
+| `broker_route_hosts`, `broker_route_host_suffixes` | inventory | Covered hosts; each suffix starts with a dot |
+| `broker_route_require_tls` | inventory | Force TLS for covered brokers |
+| `broker_route_tailscale_extra_args`, `broker_route_tailscale_hostname` | inventory | How the node joins the source network (login server, tags, name) |
+| `broker_route_state_dir`, `broker_route_seed_dir` | inventory | Where the node identity lives on the manager's NFS export and its private seed |
+| `broker_route_mqtt_username`, `broker_route_mqtt_password` | vault | Login for covered brokers; `broker_route_anonymous: true` allows none |
+
+The `broker-route` node is a singleton Tailscale device with a pre-seeded
+identity (no auth key) that offers SOCKS5 on port 1055 to TACTIC. Switching to
+another source changes only these values, the identity seed and the Sources
+catalogue. A network reached another way needs only another node behind the same
+SOCKS5 contract; TACTIC does not change.
 
 ## MQTT client policy
 

@@ -47,7 +47,7 @@ tasks that failed (`infra/scripts/failed_tasks.py`), never their output. Each
 release also prints its task count, elapsed time and slowest task names with their
 durations (`infra/scripts/task_timings.py`), so slow steps are visible without the
 log. SSH connections to the nodes are reused across tasks. Database
-backups, vendor identity, recovery records and private inventories are not published
+backups, the broker route identity, recovery records and private inventories are not published
 as Actions artifacts. Investigate live failures through trusted SSH and the
 server-side records, not public log uploads.
 
@@ -77,8 +77,9 @@ BOOTSTRAP=true` with the ignored inventory and encrypted vault. Existing SSH use
 node names, ports, management Tailscale enrollment and node labels remain authoritative.
 The inventory must contain exactly one Swarm manager; every operator playbook checks
 this on the controller before contacting hosts.
-The vendor identity must exist on the manager's NFS export or be restored from a
-private seed before deployment. CI never registers a replacement vendor device.
+The broker route's node identity must exist on the manager's NFS export or be
+restored from a private seed before deployment. CI never registers a replacement
+route device.
 NFS permits the discovered backend management-tailnet /32 addresses only.
 
 Provisioning installs the Docker Engine release pinned as `docker_engine_version` in
@@ -125,7 +126,7 @@ credentials and TLS settings remain private and separate from catalogue exports.
 Do not reset an existing database during an upgrade; see
 [Collection](system-collection.md) for what the catalogue migrations preserve.
 
-Real observations and vendor registration/recovery notes remain private operator
+Real observations and source registration/recovery notes remain private operator
 material. They are not required for hosted CI.
 
 Previously published catalog identifiers remain in earlier public Offkey commits;

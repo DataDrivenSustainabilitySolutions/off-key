@@ -25,11 +25,10 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
 from .api.v1 import data_services, members, models, pipelines, radar, system
-from .config.collection import get_ambibox_settings
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
-from .services.catalogue.ambibox_live_access import AmbiboxLiveAccess
+from .services.catalogue.broker_access import BrokerRouteAccess
 from .services.catalogue.broker_check import BrokerCheck
 from .services.catalogue.system import SystemService
 from .services.catalogue.system_ingress import SystemIngress
@@ -177,7 +176,7 @@ async def lifespan(app: FastAPI):
             RadarWorkloadManager(app.state.docker_client)
         )
         await app.state.pipeline_activation_supervisor.start()
-        operator_access = AmbiboxLiveAccess(get_ambibox_settings())
+        operator_access = BrokerRouteAccess(get_system_live_settings())
         app.state.system_live = SystemLiveService(
             get_system_live_settings(),
             access_resolver=operator_access,

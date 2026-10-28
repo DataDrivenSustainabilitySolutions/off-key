@@ -1,4 +1,4 @@
-.PHONY: setup check-deploy provision-prod deploy-prod update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-ambibox-prod
+.PHONY: setup check-deploy provision-prod deploy-prod update-labels-prod invite-admin-prod backup-stack-prod restore-stack-prod backup-broker-route-prod
 UV := uv
 ANSIBLE := cd ansible && $(UV) run --frozen ansible-playbook
 VAULT ?= --ask-vault-pass
@@ -26,5 +26,5 @@ backup-stack-prod:
 	$(ANSIBLE) -i $(INVENTORY) backup-stack-state.yml $(VAULT)
 restore-stack-prod:
 	$(ANSIBLE) -i $(INVENTORY) restore-stack-state.yml $(VAULT) $(if $(TS),-e restore_from=$(TS),) -e restore_services=$(SERVICES)
-backup-ambibox-prod:
-	$(ANSIBLE) -i $(INVENTORY) backup-ambibox-state.yml $(VAULT)
+backup-broker-route-prod:
+	$(ANSIBLE) -i $(INVENTORY) backup-broker-route-state.yml $(VAULT)

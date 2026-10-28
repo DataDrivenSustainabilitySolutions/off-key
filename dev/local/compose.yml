@@ -60,7 +60,6 @@ services:
 
   emqx-main:
     volumes: !override
-      - ./dev/local/state/emqx-api-keys:/opt/emqx/etc/dev-api-keys:ro
       - local_emqx_data:/opt/emqx/data
     ports:
       - "127.0.0.1:${LOCAL_MQTT_PORT:-1885}:1883"

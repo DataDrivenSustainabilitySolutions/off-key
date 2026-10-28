@@ -33,7 +33,6 @@ from ...config.config import get_tactic_settings
 from ...config.system_live import get_system_live_settings
 from .arrival_cadence import ArrivalCadence
 from .broker_access import resolve_broker
-from .retired_ingress import retire_v1_ingress
 from .system_live_mqtt import LiveMqttWorker
 
 
@@ -352,7 +351,6 @@ class SystemIngress:
                 return
             await ownership.commit()
             try:
-                await retire_v1_ingress()
                 await self._poll_owned(ownership)
             finally:
                 await self._stop_workers()

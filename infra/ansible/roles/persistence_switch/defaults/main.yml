@@ -17,7 +17,7 @@ persistence_restore_on_switch: true
 # Required only in prod, and only when a flip is actually detected.
 persistence_switch_confirm: false
 
-# Control-host backup root. Mirrors ambibox_seed_dir: env-scoped so one environment can never
+# Control-host backup root. Mirrors broker_route_seed_dir: env-scoped so one environment can never
 # restore another's data, and under the gitignored stack/state/.
 # NOTE: a prod pg_dump is a different sensitivity class from a tailnet key — same directory,
 # same "never commit, manage out of band" rule.

@@ -60,7 +60,7 @@ Generate a dedicated Ed25519 key, for example with `ssh-keygen -t ed25519 -f
 ~/.ssh/offkey-deploy`. Store the private key in the environment secret. Add its
 public key to each existing deployment user's `authorized_keys`. These users need
 Docker access and the existing noninteractive sudo privileges used by Ansible.
-Keep your personal recovery key; remove neither working access nor vendor identity.
+Keep your personal recovery key; remove neither working access nor the broker route identity.
 
 Obtain each server's Ed25519 host fingerprint from its trusted console or an already
 verified SSH session. Use `infra/scripts/trust_ssh_host.py` to enroll that exact
@@ -98,8 +98,9 @@ merge this into your existing policy using your real destination addresses:
 ```
 
 This uses the existing OpenSSH service; it does not require Tailscale SSH rules.
-The runner leaves the tailnet after its job. Do not enroll it into the separate
-vendor tailnet or give it vendor identity, NFS, database or MQTT network access.
+The runner leaves the tailnet after its job. Do not enroll it into the network
+the broker route joins or give it the route identity, NFS, database or MQTT
+network access.
 Review broader existing tailnet grants too; a narrow new rule cannot undo an
 existing allow-all rule.
 

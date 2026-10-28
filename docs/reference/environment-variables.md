@@ -222,15 +222,7 @@ tested main commit. Images are recorded in the verified server release; local
 | `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY`, `SYSTEM_COLLECTION_MQTT_CA_FILE` | Empty locally; private TACTIC secrets in production | Internal EMQX publisher credentials and CA; see [Collection](../operations/system-collection.md) |
 | `SYSTEM_LIVE_CREDENTIALS` | Private JSON mapping | Credential reference to MQTT username/password |
 | `SYSTEM_LIVE_SOCKS_PROXIES` | Private JSON mapping | Exact broker host to SOCKS route |
-| `AMBIBOX_INGRESS_ENABLED` | `false` in service defaults; enabled in local/prod deployment | Allow reuse of operator-provisioned private broker access |
-| `AMBIBOX_ALLOWED_HOST_SUFFIXES` | `[".ts.net"]` | Broker host allowlist suffixes |
-| `AMBIBOX_ALLOWED_HOSTS` | `["source-broker"]` in local Compose | Explicit additional allowed hosts |
-| `AMBIBOX_EMQX_API_URL` | `http://emqx-main:18083/api/v5` | Private EMQX management endpoint |
-| `AMBIBOX_EMQX_API_KEY`, `AMBIBOX_EMQX_API_SECRET` | Operator secrets | Access used to retire generated v1 ingress resources |
-| `AMBIBOX_GOST_API_URL` | `http://mqtt-tailscale-bridge:18080` | Private GOST management endpoint |
-| `AMBIBOX_GOST_USERNAME`, `AMBIBOX_GOST_PASSWORD` | Operator credentials | Access used to retire generated v1 forwarder resources |
-| `AMBIBOX_MQTT_USERNAME`, `AMBIBOX_MQTT_PASSWORD` | Existing vendor credentials | Shared upstream broker access |
-| `AMBIBOX_SOCKS_SERVER` | `tailscale-ambibox:1055` in production | Existing vendor tailnet SOCKS endpoint |
+| `SYSTEM_BROKER_ROUTES` | `[]`; a private TACTIC secret in production | Operator broker routes: covered hosts or suffixes, SOCKS5 proxy, optional login and TLS requirement; see [Broker routes](../operations/system-collection.md#broker-routes) |
 
 See [Deployment modes](../operations/deployment-modes.md) and [Collection](../operations/system-collection.md) for deployment and catalog setup.
 
@@ -243,7 +235,7 @@ See [Deployment modes](../operations/deployment-modes.md) and [Collection](../op
 | SMTP delivery fails | `SMTP_*`, `EMAIL_*`, TLS and credential toggles | Match the provider transport and authentication requirements |
 | No source telemetry | Catalog selection, `MQTT_BROKER_*`, MQTT auth/TLS | Verify reachability, topic shape, and credentials |
 | Managed workload cannot start | `TACTIC_DOCKER_API_*`, `TACTIC_RADAR_DEFAULT_*` | Check TACTIC readiness, proxy access, broker, and image |
-| Vendor broker has no traffic | `AMBIBOX_INGRESS_ENABLED`, `AMBIBOX_SOCKS_SERVER` | Verify persisted vendor identity, tailnet reachability, and upstream host |
+| Routed broker has no traffic | `SYSTEM_BROKER_ROUTES` | Verify the route covers the host, the `broker-route` node identity and its network reachability |
 
 ## RADAR configuration files
 

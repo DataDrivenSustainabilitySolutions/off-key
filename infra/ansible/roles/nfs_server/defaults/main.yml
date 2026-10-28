@@ -1,0 +1,5 @@
+---
+broker_route_state_dir: "{{ stack_dir }}/broker-route-data"
+# Gitignored, environment-scoped seed of the node identity on the control host.
+# A node identity must never be copied while another cluster still uses it.
+broker_route_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/broker-route-data"

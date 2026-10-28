@@ -1,0 +1,53 @@
+# Broker route overlay.
+#
+# Merged right after docker-compose.swarm.yml when broker_route_enabled is on.
+# One singleton Tailscale node that joins the network a deployment's brokers
+# live on and offers a SOCKS5 proxy into it; TACTIC reaches the hosts that
+# SYSTEM_BROKER_ROUTES covers through that proxy. Installations whose brokers
+# are reachable directly, such as the public demo, leave it out. References the
+# base's overlay networks, so it is NOT valid on its own.
+
+services:
+
+  broker-route:
+    image: "${TAILSCALE_IMAGE:-tailscale/tailscale:latest}"
+    cap_add:
+      - net_admin
+      - sys_module
+    volumes:
+      - broker-route-state:/var/lib/tailscale
+
+    environment:
+      # No TS_AUTHKEY: the node identity is restored from the NFS export or a
+      # private seed (docs/operations/recovery.md).
+      - TS_USERSPACE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      # SOCKS5 proxy on port 1055, named by the route's socks_proxy.
+      - TS_SOCKS5_SERVER=0.0.0.0:1055
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      update_config:
+        # Request shutdown before replacement. A stuck or unreachable old instance
+        # still needs verified shutdown or isolation before this identity is reused.
+        order: stop-first
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
+volumes:
+  broker-route-state:
+    # Shared NFS export (host selected by the broker_route_nfs inventory group)
+    # holding the node identity (tailscaled.state). Mounting it from any backend
+    # lets the singleton fail over without re-seeding. Ansible seeds and backs it
+    # up to the gitignored stack/state/ on the control host. The explicit name
+    # changes only when the NFS mount spec changes: Docker never updates
+    # driver_opts on an existing named volume.
+    name: "${STACK_NAME}_broker-route-state_${BROKER_ROUTE_NFS_VOLUME_ID}"
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=${BROKER_ROUTE_NFS_ADDR},${BROKER_ROUTE_NFS_OPTS}"
+      device: ":${BROKER_ROUTE_NFS_EXPORT}"

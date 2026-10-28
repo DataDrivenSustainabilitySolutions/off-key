@@ -1,0 +1,58 @@
+---
+# Run deliberately, outside deployment. Backs up the broker route's node identity;
+# the route's MQTT login lives in the vault. No login to the route's network occurs.
+- import_playbook: validate-inventory.yml
+
+- name: Back up the broker route's node identity
+  hosts: swarm_manager[0]
+  gather_facts: false
+  tasks:
+    - name: Read the node identity from the NFS export
+      slurp:
+        src: "{{ broker_route_state_dir | default(stack_dir ~ '/broker-route-data') }}/tailscaled.state"
+      register: broker_route_identity_backup
+      no_log: true
+
+    - name: Validate the identity before creating a backup
+      assert:
+        that:
+          - identity is mapping
+          - identity | length > 0
+      vars:
+        identity: "{{ broker_route_identity_backup.content | b64decode | from_json }}"
+      no_log: true
+
+    - name: Select a new environment-scoped recovery directory
+      set_fact:
+        broker_route_backup_directory: >-
+          {{ playbook_dir }}/../stack/state/{{ offkey_env }}/broker-route/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}
+
+    - name: Create the private recovery directory
+      file:
+        path: "{{ broker_route_backup_directory }}"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+
+    - name: Save the private node identity
+      copy:
+        dest: "{{ broker_route_backup_directory }}/tailscaled.state"
+        content: "{{ broker_route_identity_backup.content | b64decode }}"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Mark the backup with its checksum
+      copy:
+        dest: "{{ broker_route_backup_directory }}/SHA256SUMS"
+        mode: '0600'
+        content: |
+          {{ broker_route_identity_backup.content | b64decode | hash('sha256') }}  tailscaled.state
+      delegate_to: localhost
+      become: false
+
+    - name: Report the backup location
+      debug:
+        msg: "Broker route identity backup: {{ broker_route_backup_directory }}. Active seeds were not overwritten."

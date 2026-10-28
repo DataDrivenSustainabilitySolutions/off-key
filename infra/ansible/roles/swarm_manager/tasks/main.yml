@@ -54,5 +54,5 @@
     owner: root
     group: docker
 
-# The nfs_server role manages the shared Ambibox export and seeds missing identity
+# The nfs_server role manages the broker route's shared export and seeds missing identity
 # state from the environment's ignored backup directory.

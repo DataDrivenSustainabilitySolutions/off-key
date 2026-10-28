@@ -25,12 +25,10 @@ from off_key_core.schemas.system_collection import (
 from off_key_core.utils.collection_rules import CollectionRuleResolver
 from sqlalchemy import select
 
-from ...config.collection import get_ambibox_settings
 from ...config.system_live import get_system_live_settings
 from ...domain import ConflictError, ValidationError
 from ..orchestration.collection_monitors import CollectionMonitorService
-from .ambibox_live_access import AmbiboxLiveAccess
-from .broker_access import resolve_broker
+from .broker_access import BrokerRouteAccess, resolve_broker
 from .collection_rule_edits import apply_rule_edits, policy_metadata
 
 
@@ -182,7 +180,7 @@ class SystemCollectionService:
         settings = get_system_live_settings()
         if not settings.SYSTEM_COLLECTION_ENABLED:
             raise ValidationError("Collection is disabled by the operator.")
-        access = AmbiboxLiveAccess(get_ambibox_settings())
+        access = BrokerRouteAccess(settings)
         selected = {item.source_id for item in definition.streams(selected_only=True)}
         for connection in definition.document.connections:
             if connection.id not in selected:

@@ -14,14 +14,14 @@ persistence_any_enabled: >-
      or (persist_emqx_data | default(false) | bool)
      or (persist_emqx_log  | default(false) | bool) }}
 
-# One overlay selection for deployment and offline validation. Ambibox ingress,
-# the internet ingress (Traefik and the Cloudflare connector), the oauth2-gated
+# One overlay selection for deployment and offline validation. The broker route
+# (off by default), the internet ingress (Traefik and the Cloudflare connector), the oauth2-gated
 # admin dashboards and the landing page are optional per inventory; defaults
 # keep production. The public demo is a second stack without any of them that
 # production's Traefik reaches over the shared demo network.
 stack_compose_files: >-
   {{ [stack_dir ~ '/docker-compose.swarm.yml']
-     + ([stack_dir ~ '/docker-compose.ambibox.yml'] if ambibox_ingress_enabled | default(true) | bool else [])
+     + ([stack_dir ~ '/docker-compose.broker-route.yml'] if broker_route_enabled | default(false) | bool else [])
      + ([stack_dir ~ '/docker-compose.traefik.yml'] if ingress_enabled | default(true) | bool else [])
      + ([stack_dir ~ '/docker-compose.oauth2.yml'] if ingress_admin_enabled | default(true) | bool else [])
      + [stack_dir ~ '/docker-compose.environment.yml']

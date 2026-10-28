@@ -1,6 +1,6 @@
 # Public read-only demo (demo.aberration.app): a second, small stack on the
 # production Swarm, deployed by Deploy Production after production itself. Same
-# release and application services as production, without Ambibox ingress,
+# release and application services as production, without a broker route,
 # Traefik, the Cloudflare connector, the oauth2-gated admin dashboards and the
 # landing page: production's Traefik routes the demo hostname over the shared
 # demo network. Signed-out visitors browse read-only as the viewer member; see
@@ -34,7 +34,7 @@ docker_mtu: 1280
 # ── Public demo ──────────────────────────────────────────────────────────────
 
 demo_mode:               true
-ambibox_ingress_enabled: false
+broker_route_enabled:    false
 ingress_enabled:         false
 ingress_admin_enabled:   false
 landing_enabled:         false
@@ -115,28 +115,6 @@ use_credentials: "True"
 validate_certs:  "True"
 email_from:      "no-reply@aberration.app"
 email_username:  "resend"
-
-# ── Vendor Tailscale (ambibox MQTT bridge) ────────────────────────────────────
-# ambibox uses pre-seeded tailscaled.state — no auth key needed.
-
-tailscale_ambibox_extra_args: "--accept-dns --advertise-tags=tag:iao --login-server=https://vpn.ambibox.de"
-# Broker endpoints and sensors are configured in the Sources catalog.
-
-# Vendor tailnet hostname. ambibox_hostname_id is set per cluster/site in vault.yml.
-# Falls back to "DDSS-<env>" when ambibox_hostname_id is empty/unset.
-tailscale_ambibox_hostname: "DDSS-{{ offkey_env }}{{ ('-' ~ ambibox_hostname_id) if ambibox_hostname_id | default('') else '' }}"
-
-# ambibox state lives on ONE shared NFS export so the singleton can run on (and fail
-# over to) any backend without re-seeding. The NFS host is a single point of failure:
-# the `ambibox_nfs` inventory group currently selects the manager (see hosts.yml).
-# stack_prepare discovers its Tailscale IP; ansible_host may be a public SSH address.
-# nfs_server discovers each inventory backend's Tailscale IP and permits that /32
-# with explicit export options. No manual export-CIDR update is needed when adding
-# a backend; every backend must be reachable and connected to the management tailnet.
-
-# Private recovery material stays in the ignored production state directory.
-# A vendor identity must never be copied while another cluster still uses it.
-ambibox_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-ambibox-data"
 
 # ── Persistence ──────────────────────────────────────────────────────────────────────────
 # Which stateful paths are volume-backed. Flipping any of these is a data-visibility change,

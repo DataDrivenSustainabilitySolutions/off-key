@@ -174,19 +174,23 @@ has a 32 MiB memory limit; the publisher has a 128 MiB limit. This fixture suppo
 plain TCP MQTT on port 1883, up to 128 brokers and 4096 readings. Broker hostnames
 must be distinct. Regenerate after changing topic bindings.
 
-### Production vendor access
+### Broker routes
 
-When Ambibox ingress is enabled, the generic preview can reuse its operator
-allowlist, private MQTT credentials and registered `tailscale-ambibox:1055`
-endpoint. The production renderer enables live observation with that ingress and
-connects the existing tailnet service to the application network. Explicit generic
-credential references and per-host proxy settings take precedence. Other brokers
-still require their own generic operator allowlist/configuration.
+`SYSTEM_BROKER_ROUTES` lists operator broker routes: the hosts or host suffixes a
+route covers, the SOCKS5 proxy that reaches them, an optional MQTT login and
+whether TLS is required. Covered hosts need no `SYSTEM_LIVE_ALLOWED_HOSTS` entry;
+explicit credential references and per-host proxy settings take precedence. The
+local stack routes `source-broker` through the `broker-route` development proxy:
 
-This reads the upstream topics temporarily through the same registered network;
-it does not create EMQX collection rules or change collection policies. Production
-delivery must be verified after deployment; local simulation verifies the MQTT
-client, decoding, leases and UI but cannot establish vendor network health.
+```dotenv
+SYSTEM_BROKER_ROUTES='[{"name":"local","hosts":["source-broker"],"socks_proxy":{"host":"broker-route","port":1055}}]'
+```
+
+A deployment configures its route in the inventory and vault; see
+[Collection](../operations/system-collection.md#broker-routes). Previews read the
+upstream topics temporarily through the same route; they do not create EMQX
+collection rules or change collection policies. Local simulation verifies the
+MQTT client, decoding, leases and UI but cannot establish a route's network health.
 
 ### Separate private tailnet device (optional)
 

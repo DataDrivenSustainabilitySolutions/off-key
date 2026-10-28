@@ -63,7 +63,7 @@ With private local inventory/vault and a verified management SSH connection:
 
 ```sh
 make -C infra backup-stack-prod
-make -C infra backup-ambibox-prod
+make -C infra backup-broker-route-prod
 make -C infra restore-stack-prod TS=<explicit-backup-timestamp> SERVICES=postgres,emqx
 ```
 
@@ -105,8 +105,16 @@ artifacts. If a failure occurred after replacement began, keep writers stopped a
 ensure the intended replacement tasks and mounts are running before retrying the
 recorded restore; the restore command validates them before importing data.
 
-Preserve the vendor NFS identity and private access material independently. Restore
-an identity only after fencing its former holder; do not run two vendor nodes from
-one copied identity. Missing identity fails deployment until explicitly restored.
-Keep vault password, SSH recovery access, known-host fingerprints and database/vendor
+Preserve the broker route's NFS node identity independently; its MQTT login lives
+in the vault. Restore an identity only after fencing its former holder; do not run
+two route nodes from one copied identity. Missing identity fails deployment until
+explicitly restored.
+
+The release that made the broker route source-agnostic renamed its node service
+from `tailscale-ambibox` to `broker-route` and stops the old service before the
+new one starts. Before rolling back past that release, run
+`docker service rm off-key_broker-route` on the manager and wait until its task
+has stopped; the older release does not know the new service and would otherwise
+run the same identity twice.
+Keep vault password, SSH recovery access, known-host fingerprints and database/route
 backups outside GitHub so recovery remains possible if GitHub is unavailable.

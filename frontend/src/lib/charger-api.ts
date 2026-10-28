@@ -37,6 +37,15 @@ const get = <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
     ? apiUtils.get<T>(endpoint, { signal })
     : apiUtils.get<T>(endpoint);
 
+/** Stored history downsampled to each bucket's extremes; no startMs means all of it. */
+export const getTelemetryRange = (
+  chargerId: string,
+  telemetryType: string,
+  range: { startMs?: number; endMs?: number; buckets?: number },
+  signal?: AbortSignal,
+): Promise<TelemetryDataPoint[]> =>
+  get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.TELEMETRY.RANGE(chargerId, telemetryType, range), signal);
+
 export const getTelemetryTypes = (
   chargerId: string,
   signal?: AbortSignal,

@@ -117,9 +117,14 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(preview.locator(".ex-preview-value strong")).toHaveText("27");
     await expect(preview.locator('.ex-preview-chart[role="img"]')).toBeVisible();
     await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Full range", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Full range", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Reset zoom", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Reset zoom", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Reset zoom", exact: true })).toBeDisabled();
+    const allHistory = page.getByRole("group", { name: "Chart time range", exact: true }).getByRole("button", { name: "All", exact: true });
+    await allHistory.click();
+    await expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    const stored = await api.get(`/api/v1/telemetry/${binding.entity_id}/range?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });
+    expect((await stored.json() as Array<{ value: number }>).some(point => point.value === 27)).toBe(true);
     const types = await api.get(`/api/v1/telemetry/${binding.entity_id}/type`, { headers });
     expect(await types.json()).toEqual([binding.telemetry_key]);
 

@@ -48,6 +48,17 @@ export const API_CONFIG = {
         }
         return `/v1/telemetry/${chargerId}/data?${params.toString()}`;
       },
+      RANGE: (
+        chargerId: string,
+        telemetryType: string,
+        { startMs, endMs, buckets }: { startMs?: number; endMs?: number; buckets?: number },
+      ) => {
+        const params = new URLSearchParams({ type: telemetryType });
+        if (startMs !== undefined) params.append('start', new Date(startMs).toISOString());
+        if (endMs !== undefined) params.append('end', new Date(endMs).toISOString());
+        if (buckets) params.append('buckets', buckets.toString());
+        return `/v1/telemetry/${encodeURIComponent(chargerId)}/range?${params.toString()}`;
+      },
     },
 
     // Anomalies

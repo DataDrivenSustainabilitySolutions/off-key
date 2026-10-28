@@ -1,6 +1,6 @@
 """SQLAlchemy repositories for TACTIC data-service use cases."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import (
@@ -103,6 +103,68 @@ class TelemetryRepository:
         return [
             (timestamp, value, created) for timestamp, value, created in result.all()
         ]
+
+    async def first_timestamp(
+        self, *, charger_id: str, telemetry_type: str
+    ) -> datetime | None:
+        return await self._session.scalar(
+            select(func.min(Telemetry.timestamp)).where(
+                Telemetry.charger_id == charger_id,
+                Telemetry.type == telemetry_type,
+                Telemetry.value.is_not(None),
+            )
+        )
+
+    async def list_range(
+        self,
+        *,
+        charger_id: str,
+        telemetry_type: str,
+        start: datetime,
+        end: datetime,
+        buckets: int,
+    ) -> list[tuple[datetime, float]]:
+        """Return each time bucket's lowest and highest value, in time order.
+
+        Buckets holding one or two rows return them all, so sparse ranges come
+        back raw; dense ranges shrink to at most two points per bucket while
+        spikes keep their real time and value.
+        """
+        width = max((end - start) / buckets, timedelta(microseconds=1))
+        bucket = func.date_bin(width, Telemetry.timestamp, start)
+        ranked = (
+            select(
+                Telemetry.timestamp,
+                Telemetry.value,
+                func.row_number()
+                .over(
+                    partition_by=bucket,
+                    order_by=(Telemetry.value.asc(), Telemetry.timestamp.asc()),
+                )
+                .label("low"),
+                func.row_number()
+                .over(
+                    partition_by=bucket,
+                    order_by=(Telemetry.value.desc(), Telemetry.timestamp.asc()),
+                )
+                .label("high"),
+            )
+            .where(
+                Telemetry.charger_id == charger_id,
+                Telemetry.type == telemetry_type,
+                Telemetry.value.is_not(None),
+                Telemetry.timestamp >= start,
+                Telemetry.timestamp <= end,
+            )
+            .subquery()
+        )
+        query = (
+            select(ranked.c.timestamp, ranked.c.value)
+            .where(or_(ranked.c.low == 1, ranked.c.high == 1))
+            .order_by(ranked.c.timestamp.asc())
+        )
+        result = await self._session.execute(query)
+        return [(timestamp, value) for timestamp, value in result.all()]
 
 
 class UserRepository:

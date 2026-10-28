@@ -101,3 +101,44 @@ async def test_inconsistent_cursors_are_rejected_before_tactic(remote, cursor, d
     assert response.status_code == 422
     assert response.json()["detail"] == detail
     remote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_range_forwards_bounds_in_utc(remote):
+    response = await get(
+        "site 1/range",
+        type="L1",
+        start="2026-01-01T02:00:00+02:00",
+        end="2026-01-02T00:00:00Z",
+        buckets=300,
+    )
+
+    assert response.status_code == 200
+    assert remote.await_args.kwargs == {
+        "method": "GET",
+        "endpoint": "/api/v1/data/telemetry/site%201/range",
+        "params": {
+            "type": "L1",
+            "buckets": 300,
+            "start": "2026-01-01T00:00:00+00:00",
+            "end": "2026-01-02T00:00:00+00:00",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_range_without_bounds_asks_for_all_stored_history(remote):
+    response = await get("c1/range", type="L1")
+
+    assert response.status_code == 200
+    assert remote.await_args.kwargs["params"] == {"type": "L1", "buckets": 600}
+
+
+@pytest.mark.asyncio
+async def test_inverted_range_is_rejected_before_tactic(remote):
+    response = await get(
+        "c1/range", type="L1", start="2026-01-02T00:00:00Z", end="2026-01-01T00:00:00Z"
+    )
+
+    assert response.status_code == 422
+    remote.assert_not_awaited()

@@ -37,6 +37,7 @@ TACTIC_ACCESS = {
         "GET /api/v1/data/monitoring-evidence/{charger_id}",
         "GET /api/v1/data/monitoring-evidence/{charger_id}/chart",
         "GET /api/v1/data/telemetry/{charger_id}",
+        "GET /api/v1/data/telemetry/{charger_id}/range",
         "GET /api/v1/data/telemetry/{charger_id}/types",
         "GET /api/v1/data/users/{user_id}/favorites",
         "POST /api/v1/data/users/{user_id}/favorites",
@@ -139,6 +140,7 @@ GATEWAY_ACCESS = {
         "GET /v1/system/revisions",
         "GET /v1/system/storage",
         "GET /v1/telemetry/{charger_id}/data",
+        "GET /v1/telemetry/{charger_id}/range",
         "GET /v1/telemetry/{charger_id}/type",
     },
     "operational": {

@@ -48,6 +48,13 @@ class TelemetryDataPoint(BaseModel):
     created: str
 
 
+class TelemetryRangePoint(BaseModel):
+    """One point of a downsampled telemetry range."""
+
+    timestamp: str
+    value: float
+
+
 class TelemetryCursorResponse(BaseModel):
     """Composite ingestion cursor for telemetry pagination."""
 
@@ -183,5 +190,6 @@ __all__ = [
     "TelemetryDataPoint",
     "TelemetryPaginatedResponse",
     "TelemetryPaginationResponse",
+    "TelemetryRangePoint",
     "UserLoginRequest",
 ]

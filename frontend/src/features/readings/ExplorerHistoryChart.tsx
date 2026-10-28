@@ -17,6 +17,7 @@ import { getChartDomain } from "@/features/charts/telemetry-thresholds";
 import type { LiveNodeSnapshot } from "@/types/system-live";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "@/types/system";
 import { useReadingMonitoring } from "./useReadingMonitoring";
+import { RANGE_PRESETS, rangePreset, useStoredRange, type RangePresetId } from "./useStoredRange";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
@@ -28,25 +29,29 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}` : undefined;
-  const [minutes, setMinutes] = useNavigationDraft(viewKey && `${viewKey}:minutes`, 15);
+  const [rangeId, setRangeId] = useNavigationDraft<RangePresetId>(viewKey && `${viewKey}:range`, "1h");
+  const range = rangePreset(rangeId);
   const now = useNow(5000);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
+  const stored = useStoredRange(monitoring.binding, range.spanMs, inspection);
 
   const history = useMemo(() => {
-    const collected = monitoring.telemetry;
-    const lastCollected = collected.length ? Date.parse(collected[collected.length - 1]!.timestamp) : -Infinity;
-    // Collected timestamps are the actual detector inputs. Use live arrivals only
-    // beyond the collected history, rather than plotting the same value twice.
-    return [...collected, ...(snapshot?.samples ?? [])
+    const lastStored = stored.length ? Date.parse(stored[stored.length - 1]!.timestamp) : -Infinity;
+    // Stored history is downsampled; collected timestamps are the actual detector
+    // inputs; live arrivals extend both. Each source only adds what lies beyond
+    // the one before it, rather than plotting the same value twice.
+    const collected = monitoring.telemetry.filter((point) => Date.parse(point.timestamp) > lastStored);
+    const lastCollected = collected.length ? Date.parse(collected[collected.length - 1]!.timestamp) : lastStored;
+    return [...stored, ...collected, ...(snapshot?.samples ?? [])
       .filter((sample) => sample.timestamp > lastCollected)
       .map((sample) => ({ timestamp: new Date(sample.timestamp).toISOString(), value: sample.value }))];
-  }, [monitoring.telemetry, snapshot?.samples]);
+  }, [stored, monitoring.telemetry, snapshot?.samples]);
   const normalizedHistory = useMemo(() => normalizeTelemetry(history), [history]);
   const latestTime = normalizedHistory[normalizedHistory.length - 1]?.[0] ?? now;
   // Quiet or stopped inputs still open at their latest real observations. The
   // timestamps remain unchanged; the window follows arrivals as they resume.
-  const cutoff = inspection?.windowStartMs ?? latestTime - minutes * 60_000;
+  const cutoff = inspection?.windowStartMs ?? (range.spanMs === undefined ? 0 : latestTime - range.spanMs);
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
   const service = useMemo(() => monitoring.binding ? buildSensorClaims(monitoring.binding.entityId, [telemetryType],
@@ -119,11 +124,12 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
       <div className="ex-history-tools" role="group" aria-label="Chart controls">
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={model.telemetry.data.length < 2} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
-        <button type="button" disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} /> Full range</button>
-        <select aria-label="Live chart time range" value={minutes} onChange={(event) => {
-          setMinutes(Number(event.target.value)); setInspection(undefined);
-        }}><option value={5}>5 minutes</option><option value={15}>15 minutes</option>
-          <option value={60}>1 hour</option><option value={120}>2 hours</option></select>
+        <button type="button" disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} /> Reset zoom</button>
+        <div className="ex-history-ranges" role="group" aria-label="Chart time range">
+          {RANGE_PRESETS.map((preset) => <button key={preset.id} type="button" title={preset.title}
+            aria-pressed={preset.id === range.id} onClick={() => { setRangeId(preset.id); setInspection(undefined); }}>
+            {preset.label}</button>)}
+        </div>
       </div>
     </div>
     {service && <p className="ex-history-monitoring" role="status">{panes.awaitingFirstScore

@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EChart } from "@/features/charts/EChart";
 import { ExplorerHistoryChart } from "@/features/readings/ExplorerHistoryChart";
 import ExplorerPreview from "@/features/readings/ExplorerPreview";
 import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
+import { useStoredRange } from "@/features/readings/useStoredRange";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import { buildNavigationIndex, type ExplorerNode } from "@/domain/system/navigationIndex";
 import { createEmptySystem } from "@/domain/system/systemDocument";
@@ -15,6 +16,10 @@ import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
+vi.mock("@/features/readings/useStoredRange", async (importOriginal) => {
+  const nothingStored: never[] = [];
+  return { ...await importOriginal<typeof import("@/features/readings/useStoredRange")>(), useStoredRange: vi.fn(() => nothingStored) };
+});
 vi.mock("@/features/charts/EChart", () => ({
   EChart: vi.fn(({ accessibleDescription, resolvedTheme }: { accessibleDescription: string; resolvedTheme: string }) =>
     <div role="img" aria-label={accessibleDescription} data-theme={resolvedTheme} />),
@@ -122,19 +127,20 @@ describe("workspace chart navigation and monitoring", () => {
       { startValue: NOW - 20_000, endValue: NOW - 10_000, rangeMode: ["value", "value"] },
       { startValue: NOW - 20_000, endValue: NOW - 10_000 },
     ]);
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Full range" }));
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
     expect(lastChartProps().option.dataZoom).toMatchObject([
       { startValue: NOW - 30_000, endValue: NOW + 1_000 },
       { startValue: NOW - 30_000, endValue: NOW + 1_000 },
     ]);
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
     act(() => receive(telemetry, NOW + 2_000, 24, 4));
     expect(lastChartProps().option.xAxis).toMatchObject([{ max: NOW + 2_000 }]);
   });
 
   it("supports keyboard navigation and resets inspection when the time window changes", () => {
     const { telemetry, props } = fixture();
+    receive(telemetry, NOW - 90 * 60_000, 19, 0);
     receive(telemetry, NOW - 10 * 60_000, 20, 1);
     receive(telemetry, NOW - 30_000, 21, 2);
     receive(telemetry, NOW, 22, 3);
@@ -145,12 +151,16 @@ describe("workspace chart navigation and monitoring", () => {
     fireEvent.keyDown(navigation, { key: "ArrowRight" });
     expect(lastChartProps().option.dataZoom).toEqual(expect.arrayContaining([expect.objectContaining({ startValue: NOW - 390_000, endValue: NOW - 90_000 })]));
     fireEvent.keyDown(navigation, { key: "Home" });
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Live chart time range" }), { target: { value: "5" } });
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
-    expect(lastChartProps().option.xAxis).toMatchObject([{ min: NOW - 30_000, max: NOW }]);
-    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 30_000, 21], [NOW, 22]] }]);
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(false);
+    const ranges = screen.getByRole("group", { name: "Chart time range" });
+    expect(within(ranges).getByRole("button", { name: "1h" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(ranges).getByRole("button", { name: "1d" }));
+    expect(within(ranges).getByRole("button", { name: "1d" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
+    expect(lastChartProps().option.xAxis).toMatchObject([{ min: NOW - 90 * 60_000, max: NOW }]);
+    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 90 * 60_000, 19], [NOW - 10 * 60_000, 20], [NOW - 30_000, 21], [NOW, 22]] }]);
   });
 
   it("keeps inspection through renaming and resets it when the reading's input changes", () => {
@@ -162,11 +172,11 @@ describe("workspace chart navigation and monitoring", () => {
     const renamed = { ...system, streams: system.streams.map((stream) => stream.id === "temperature"
       ? { ...stream, label: "New name" } : stream) };
     view.rerender(<ExplorerPreview {...props} document={renamed} />);
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(false);
     const changedInput = { ...renamed, streams: renamed.streams.map((stream) => stream.id === "temperature"
       ? { ...stream, topic: "site/other/temperature" } : stream) };
     view.rerender(<ExplorerPreview {...props} document={changedInput} />);
-    expect(screen.getByRole("button", { name: "Full range" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("isolates evidence and corroborated alarm events to the monitor that owns the reading", () => {
@@ -186,7 +196,24 @@ describe("workspace chart navigation and monitoring", () => {
     expect(series.some(item => item.id === "adaptive-score:selected")).toBe(true);
     expect(series.some(item => item.id === "adaptive-score:other")).toBe(false);
     expect(series[0]?.markPoint?.data).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Full range" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reset zoom" })).toBeTruthy();
+  });
+
+  it("draws stored history before collected values, and asks for the chosen span and inspected window", () => {
+    const day = 86_400_000;
+    const stored = [{ timestamp: new Date(NOW - 3 * day).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
+    vi.mocked(useStoredRange).mockReturnValue(stored);
+    vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
+      telemetry: [{ timestamp: new Date(NOW - 60_000).toISOString(), value: 99 }, { timestamp: new Date(NOW).toISOString(), value: 12 }] });
+    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
+    const binding = { entityId: "entity-id", telemetryType: "temperature" };
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, 3_600_000, undefined);
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, undefined);
+    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 3 * day, 10], [NOW - 60_000, 11], [NOW, 12]] }]);
+    act(() => lastChartProps().onViewportChange?.(NOW - 2 * day, NOW - day));
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, expect.objectContaining({ startMs: NOW - 2 * day, endMs: NOW - day }));
+    vi.mocked(useStoredRange).mockReset();
   });
 
   it("isolates simultaneous monitor alarms by their persisted service IDs", () => {

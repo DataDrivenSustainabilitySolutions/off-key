@@ -171,6 +171,9 @@
 .ex-history-tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .ex-history-tools button:disabled { opacity: .4; cursor: default; }
 .ex-history-tools button:not(:disabled):hover { color: var(--ex-accent); background: var(--ex-hover); }
+.ex-history-ranges { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--ex-line); border-radius: 7px; background: var(--ex-bg); }
+.ex-preview-section-heading .ex-history-ranges button { min-height: 26px; min-width: 34px; padding: 0 8px; border-radius: 5px; justify-content: center; font-variant-numeric: tabular-nums; }
+.ex-preview-section-heading .ex-history-ranges button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-active); font-weight: 550; }
 .ex-history-navigation { min-width: 0; border-radius: 6px; }
 .ex-history-navigation:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 2px; }
 .ex-history-monitoring { margin: 10px 0 0; font-size: 11px; color: var(--ex-muted); }
@@ -243,6 +246,7 @@
   .ex-history-tools { gap: 4px; }
   .ex-history-tools button { min-height: 44px; }
   .ex-history-tools button[aria-label] { min-width: 44px; justify-content: center; }
+  .ex-preview-section-heading .ex-history-ranges button { min-height: 44px; min-width: 44px; }
   .ex-dialog { padding: 20px; }
   .ex-search { min-height: 44px; margin-bottom: 16px; }
   .ex-search input,.ex-dialog input,.ex-dialog select,.ex-shell .sp-inline-name input { font-size: 16px !important; }

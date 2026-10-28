@@ -6,10 +6,36 @@ import os
 from datetime import UTC, datetime
 from urllib.request import urlopen
 
-# States of an applied ingress route. Whether the broker accepts, refuses or answers
-# the connection is up to the broker, so a release reports these instead of failing:
-# it cannot fix them, and holding the release open would block every later release.
+# States of an applied ingress route. Whether a source broker is reachable and accepts
+# us is up to that broker, so a release reports these instead of failing: it cannot
+# fix a broker, and holding the release open would block every later release.
 BROKER_OUTCOMES = {"connected", "connecting", "waiting", "reconnecting", "error"}
+ENDPOINTS = ("schema", "api", "tactic", "collector")
+WORKERS = ("collection", "ingress")
+# The only readiness output that may reach the public release log: fixed names that
+# say which check failed, never a broker, host or message.
+CHECKS = frozenset(
+    {f"{name} endpoint" for name in ENDPOINTS}
+    | {f"{name} {part}" for name in WORKERS for part in ("revision", "heartbeat")}
+    | {
+        "collection ingress disabled",
+        "broker access",
+        "broker route",
+        "collector task",
+        "probe timeout",
+        "probe error",
+    }
+)
+PUBLIC = "Failed readiness check: "
+
+
+class NotReady(ValueError):
+    """A failed readiness check: its public name, with private detail as message."""
+
+    def __init__(self, check, detail):
+        assert check in CHECKS
+        super().__init__(detail)
+        self.check = check
 
 
 def check_collection(snapshot, now, ingress_enabled=True):
@@ -26,14 +52,21 @@ def check_collection(snapshot, now, ingress_enabled=True):
             state.get("revision") != snapshot.revision
             or state.get("status") != "applied"
         ):
-            raise ValueError(
-                f"{name} has not applied catalog revision {snapshot.revision}"
+            raise NotReady(
+                f"{name} revision",
+                f"{name} has not applied catalog revision {snapshot.revision}",
             )
-        checked_at = datetime.fromisoformat(state.get("checked_at", ""))
-        if not 0 <= (now - checked_at).total_seconds() <= 30:
-            raise ValueError(f"{name} heartbeat is stale")
+        try:
+            checked_at = datetime.fromisoformat(state.get("checked_at", ""))
+        except ValueError:
+            checked_at = None
+        if checked_at is None or not 0 <= (now - checked_at).total_seconds() <= 30:
+            raise NotReady(f"{name} heartbeat", f"{name} heartbeat is stale")
     if selected and not ingress_enabled:
-        raise ValueError("Readings are selected but collection ingress is disabled")
+        raise NotReady(
+            "collection ingress disabled",
+            "Readings are selected but collection ingress is disabled",
+        )
     connections = snapshot.catalog.document.connections
     sources = {str(source.id): source for source in connections}
     for source_id in sorted({str(stream.source_id) for stream in selected}):
@@ -42,12 +75,15 @@ def check_collection(snapshot, now, ingress_enabled=True):
         state = snapshot.ingress.get("sources", {}).get(source_id, {})
         phase = state.get("state")
         if phase == "blocked":
-            raise ValueError(
+            raise NotReady(
+                "broker access",
                 f"Selected broker {broker} has no broker access or credential "
-                "in the operator configuration"
+                "in the operator configuration",
             )
         if phase not in BROKER_OUTCOMES:
-            raise ValueError(f"Selected broker {broker} has no applied ingress route")
+            raise NotReady(
+                "broker route", f"Selected broker {broker} has no applied ingress route"
+            )
         if phase != "connected":
             print(
                 f"WARNING: Selected broker {broker} is {phase}"
@@ -68,13 +104,27 @@ def probe_endpoints(environ):
     }
 
 
+def report(failure):
+    """The public line naming a failed check; its detail stays on stderr."""
+    if isinstance(failure, NotReady):
+        return PUBLIC + failure.check
+    if isinstance(failure, TimeoutError):
+        return PUBLIC + "probe timeout"
+    return PUBLIC + "probe error"
+
+
 async def main():
     from off_key_core.db.base import get_async_engine, get_async_session_local
     from off_key_core.db.collection_runtime import read_collection_runtime
 
     for name, url in probe_endpoints(os.environ).items():
-        with await asyncio.to_thread(urlopen, url, timeout=5) as response:
-            json.load(response)
+        try:
+            with await asyncio.to_thread(urlopen, url, timeout=5) as response:
+                json.load(response)
+        except Exception as error:
+            raise NotReady(
+                f"{name} endpoint", f"{name} is not ready: {error}"
+            ) from error
         print(f"{name}: ready", flush=True)
     try:
         async with get_async_session_local()() as session:
@@ -90,4 +140,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(asyncio.wait_for(main(), timeout=30))
+    try:
+        asyncio.run(asyncio.wait_for(main(), timeout=30))
+    except Exception as failure:
+        print(report(failure), flush=True)
+        raise

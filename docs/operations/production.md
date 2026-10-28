@@ -46,13 +46,23 @@ starts disabled. Production secrets/configuration changes require a manual dispa
 
 The workflow captures Ansible output in private temporary files and deletes it with
 its configuration at job exit. A failed step prints only the names of the Ansible
-tasks that failed (`infra/scripts/failed_tasks.py`), never their output. Each
-release also prints its task count, elapsed time and slowest task names with their
-durations (`infra/scripts/task_timings.py`), so slow steps are visible without the
-log. SSH connections to the nodes are reused across tasks. Database
-backups, vendor identity, recovery records and private inventories are not published
-as Actions artifacts. Investigate live failures through trusted SSH and the
-server-side records, not public log uploads.
+tasks that failed (`infra/scripts/failed_tasks.py`), never their output, and for a
+failed readiness probe the fixed name of the check that failed, such as
+`ingress heartbeat`. Each release also prints its task count, elapsed time and
+slowest task names with their durations (`infra/scripts/task_timings.py`), so slow
+steps are visible without the log. SSH connections to the nodes are reused across
+tasks. The workflow runs these reporting tools from its own checkout, so a retry
+or rollback of an older SHA reports the same way.
+
+Each release's full Ansible log is kept on its manager under
+`<stack_dir>/release-logs/`, readable by root only, newest 20 releases. A failed
+or refused release opens the issue **Production release needs attention** (or
+**Public demo release needs attention**) with those public lines and the retry
+step, and mentions whoever triggered it. Later failures comment on the same issue,
+and the next completed release of that target closes it. Database backups, vendor
+identity, recovery records and private inventories are not published as Actions
+artifacts. Investigate live failures through trusted SSH and the server-side
+records, not public log uploads.
 
 ## Checks before production
 

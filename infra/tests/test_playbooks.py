@@ -242,6 +242,151 @@ else:
                 )
                 self.assertIn("changed=0", result.stdout)
 
+    def test_failed_readiness_records_only_the_check_that_failed(self):
+        task_directory = ROOT / "ansible/roles/stack_deploy/tasks"
+        for resolved, expected in (
+            (True, "Failed readiness check: ingress heartbeat"),
+            (False, "Failed readiness check: collector task"),
+        ):
+            with (
+                self.subTest(resolved=resolved),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                directory = Path(directory)
+                playbook_directory = directory / "ansible"
+                playbook_directory.mkdir()
+                readiness = yaml.safe_load(
+                    (task_directory / "application_readiness.yml").read_text()
+                )
+                readiness[1]["loop"] = "{{ range(2) | list }}"
+                (playbook_directory / "application_readiness.yml").write_text(
+                    yaml.safe_dump(readiness)
+                )
+                shutil.copy(
+                    task_directory / "application_readiness_probe.yml",
+                    playbook_directory,
+                )
+                attempt = yaml.safe_load(
+                    (task_directory / "application_readiness_attempt.yml").read_text()
+                )
+                for task in attempt[0]["block"]:
+                    if "pause" in task:
+                        task["pause"]["seconds"] = 0
+                (playbook_directory / "application_readiness_attempt.yml").write_text(
+                    yaml.safe_dump(attempt)
+                )
+                (directory / "scripts").mkdir()
+                shutil.copy(
+                    ROOT / "scripts/check_application.py", directory / "scripts"
+                )
+                inventory = directory / "hosts.ini"
+                inventory.write_text(
+                    "[swarm_manager]\nlocalhost\n"
+                    "[all:vars]\nansible_connection=local\n"
+                    "ansible_become=false\nstack_name=off-key\n"
+                    f"ansible_python_interpreter={sys.executable}\n"
+                )
+                docker = directory / "docker"
+                docker.write_text(
+                    f"#!{sys.executable}\n"
+                    + r"""
+import json, os, sys
+args = sys.argv[1:]
+resolved = os.environ["RESOLVED"] == "true"
+if args[:2] == ["service", "ps"]:
+    if resolved:
+        print(json.dumps({"ID": "worker-task", "Node": "localhost", "CurrentState": "Running 1 minute ago"}))
+elif args[0] == "ps":
+    if resolved:
+        print("worker-active")
+elif args[0] == "exec":
+    sys.stdin.read()
+    print("schema: ready")
+    print("Failed readiness check: ingress heartbeat")
+    sys.exit("ingress heartbeat of Lab (source-broker:1883) is stale")
+else:
+    sys.exit("Unexpected Docker command: " + repr(args))
+"""
+                )
+                docker.chmod(0o755)
+                playbook = playbook_directory / "probe.yml"
+                playbook.write_text(
+                    yaml.safe_dump(
+                        [
+                            {
+                                "hosts": "swarm_manager",
+                                "gather_facts": False,
+                                "tasks": [
+                                    {"include_tasks": "application_readiness.yml"}
+                                ],
+                            }
+                        ]
+                    )
+                )
+                report = directory / "readiness"
+                result = ansible(
+                    "playbook",
+                    "-i",
+                    str(inventory),
+                    str(playbook),
+                    "-e",
+                    f"readiness_report_file={report}",
+                    env=os.environ
+                    | {
+                        "PATH": str(directory) + os.pathsep + os.environ["PATH"],
+                        "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+                        "RESOLVED": str(resolved).lower(),
+                    },
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    "TASK [Require application readiness after startup]", result.stdout
+                )
+                self.assertEqual(report.read_text(), expected)
+                self.assertEqual(report.stat().st_mode & 0o777, 0o600)
+
+    def test_release_logs_stay_private_on_the_manager_and_are_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            stack = directory / "stack"
+            inventory = directory / "hosts.ini"
+            inventory.write_text(
+                "[swarm_manager]\nmanager\n"
+                "[all:vars]\nansible_connection=local\nansible_become=false\n"
+                f"stack_dir={stack}\nansible_python_interpreter={sys.executable}\n"
+            )
+            for release in range(4):
+                log = directory / f"release-{release}.log"
+                log.write_text(f"private release log {release}\n")
+                ansible(
+                    "playbook",
+                    "-i",
+                    str(inventory),
+                    str(ROOT / "ansible/retain-release-log.yml"),
+                    "-e",
+                    f"release_log={log}",
+                    "-e",
+                    f"release_log_name=2026102{release}T120000Z-sha-production.log",
+                    "-e",
+                    "release_logs_kept=3",
+                    env=os.environ
+                    | {"ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg")},
+                )
+            logs = stack / "release-logs"
+            self.assertEqual(logs.stat().st_mode & 0o777, 0o700)
+            kept = sorted(path.name for path in logs.iterdir())
+            self.assertEqual(
+                kept,
+                [
+                    f"2026102{release}T120000Z-sha-production.log"
+                    for release in (1, 2, 3)
+                ],
+            )
+            for path in logs.iterdir():
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual((logs / kept[-1]).read_text(), "private release log 3\n")
+
     def test_task_resolution_clears_stale_outputs_and_strict_callers_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)

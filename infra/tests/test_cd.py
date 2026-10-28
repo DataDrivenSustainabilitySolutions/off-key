@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -273,17 +274,54 @@ class CDTests(unittest.TestCase):
         # The release checkout replaces main's files; a retry of an SHA from before
         # a reporting tool existed must not fail a release that already succeeded.
         self.assertLess(kept, release)
-        for tool in ("failed_tasks.py", "task_timings.py"):
-            self.assertIn(f"infra/scripts/{tool}", steps[kept]["run"])
+        copied = set(re.findall(r"infra/\S+/([\w-]+\.(?:py|yml))", steps[kept]["run"]))
+        # The probe defines the readiness check names the failed-task report allows.
+        self.assertIn("check_application.py", copied)
+        used = set()
         for step in steps[release:]:
             run = step.get("run", "")
             with self.subTest(step=step.get("name")):
                 self.assertNotIn("../scripts/", run)
-                for tool in ("failed_tasks.py", "task_timings.py"):
+                used |= set(re.findall(r"\$OFFKEY_RELEASE_TOOLS/([\w.-]+)", run))
+                for tool in copied:
                     if tool in run:
                         self.assertEqual(
                             run.count(tool), run.count(f"$OFFKEY_RELEASE_TOOLS/{tool}")
                         )
+        self.assertEqual(used | {"check_application.py"}, copied)
+
+    def test_failed_releases_stay_visible_until_a_release_completes(self):
+        workflow = yaml.load(
+            (ROOT.parent / ".github/workflows/deploy-production.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        job = workflow["jobs"]["deploy"]
+        self.assertEqual(job["permissions"]["issues"], "write")
+        releases = {
+            target: next(
+                step for step in job["steps"] if step.get("name", "").startswith(name)
+            )["run"]
+            for target, name in (
+                ("production", "Deploy only runtime changes"),
+                ("demo", "Deploy and verify the public demo"),
+            )
+        }
+        for target, script in releases.items():
+            with self.subTest(target=target):
+                self.assertIn(f'tee "$OFFKEY_RELEASE_OUTCOME/{target}.failed"', script)
+                self.assertIn(
+                    f'touch "$OFFKEY_RELEASE_OUTCOME/{target}.released"', script
+                )
+                self.assertIn('--readiness "$readiness"', script)
+                self.assertIn('-e "readiness_report_file=$readiness"', script)
+                # A release's private log is kept after success and after failure.
+                self.assertEqual(script.count('keep "$OFFKEY_DEPLOY_DIRECTORY/'), 2)
+        alert = job["steps"][-1]
+        self.assertEqual(
+            alert["if"], "always() && steps.release.outputs.ready == 'true'"
+        )
+        self.assertIn("release_alert.py", alert["run"])
+        self.assertEqual(alert["env"]["JOB_STATUS"], "${{ job.status }}")
 
     def test_documentation_and_test_commits_cannot_hide_unreleased_runtime_changes(
         self,

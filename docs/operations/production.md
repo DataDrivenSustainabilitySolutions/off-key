@@ -43,7 +43,10 @@ starts disabled. Production secrets/configuration changes require a manual dispa
 
 The workflow captures Ansible output in private temporary files and deletes it with
 its configuration at job exit. A failed step prints only the names of the Ansible
-tasks that failed (`infra/scripts/failed_tasks.py`), never their output. Database
+tasks that failed (`infra/scripts/failed_tasks.py`), never their output. Each
+release also prints its task count, elapsed time and slowest task names with their
+durations (`infra/scripts/task_timings.py`), so slow steps are visible without the
+log. SSH connections to the nodes are reused across tasks. Database
 backups, vendor identity, recovery records and private inventories are not published
 as Actions artifacts. Investigate live failures through trusted SSH and the
 server-side records, not public log uploads.

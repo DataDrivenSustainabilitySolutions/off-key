@@ -9,7 +9,7 @@ import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds 
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
 import { BrokerCheckMark } from "./BrokerCheck";
-import { checkTone, useBrokerChecks } from "./useBrokerChecks";
+import { useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { SourceScope } from "../workspace/SourceScope";
@@ -102,8 +102,7 @@ export function SourcesWorkspace() {
           const enabled = readings.filter(stream => system.snapshot?.runtime.bindings?.[stream.id]?.policy.mode !== "off" && !!system.snapshot?.runtime.bindings?.[stream.id]).length;
           const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
-          const busy = state === "connecting" || state === "reconnecting" || !!brokerChecks.checks[broker.id]?.pending;
-          return <button key={broker.id} className={`source-broker source-broker--${state ? brokerTone(state) : checkTone(brokerChecks.checks[broker.id])}${busy ? " source-broker--busy" : ""}`} onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}{brokerChecks.checks[broker.id] && <BrokerCheckMark check={brokerChecks.checks[broker.id]!} />}</strong>
+          return <button key={broker.id} className={`source-broker source-broker--${brokerTone(state)}`} onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}{brokerChecks.checks[broker.id] && <BrokerCheckMark check={brokerChecks.checks[broker.id]!} />}</strong>
             <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
         })}
       </section>}

@@ -260,6 +260,9 @@ describe("dedicated Sources configuration", () => {
     expect(await within(overview).findByRole("img", { name: /^Unreachable · Nothing accepts connections on this host and port\. · Checked at/ })).toBeTruthy();
     expect(within(overview).getByText("Connected")).toBeTruthy();
     expect(within(overview).getAllByText("Not subscribed")).toHaveLength(2);
+    // The edge follows the live state only: green when connected, nothing for idle brokers.
+    expect(within(overview).getByText("Used broker").closest("button")?.className).toContain("source-broker--positive");
+    expect(within(overview).getByText("Workshop broker").closest("button")?.className).toContain("source-broker--neutral");
     expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
   });
 

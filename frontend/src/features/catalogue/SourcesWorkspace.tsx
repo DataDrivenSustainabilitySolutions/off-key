@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plug, Plus } from "lucide-react";
+import { ArrowLeft, Plug, Plus } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -12,7 +12,6 @@ import { BrokerCheckMark } from "./BrokerCheck";
 import { useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
-import { SourceScope } from "../workspace/SourceScope";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./sources.css";
 
@@ -88,12 +87,13 @@ export function SourcesWorkspace() {
           <Plug size={16} />{brokerChecks.running ? "Checking…" : "Check connections"}</Button>}
         {system.canEdit && <Button variant="outline" disabled={rules.dirty} onClick={() => openEditor("connection")}><Plus size={16} />Add broker</Button>}
       </div></div>
-      <SourceScope />
+      {(selected || selectionMissing) && <button type="button" className="source-back" onClick={() => selectSource(null)}>
+        <ArrowLeft size={14} aria-hidden="true" />Sources</button>}
       {system.error && <p role="alert" className="ex-banner ex-error">{system.error}<button onClick={() => void system.refreshRuntime()}>Retry</button></p>}
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          onClose={() => selectSource(null)} runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
+          runtime={system.snapshot?.runtime} connectionStatusOnly collectionControls={configuration} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}

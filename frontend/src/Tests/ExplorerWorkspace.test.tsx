@@ -426,7 +426,7 @@ describe("hierarchical explorer workspace", () => {
   it("closes a linked entity without reopening it and reports missing stable IDs honestly", async () => {
     const view = mount("/?entity=station");
     await screen.findByRole("region", { name: "Entity preview" });
-    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide source details" }));
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     view.unmount();

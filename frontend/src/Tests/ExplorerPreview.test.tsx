@@ -49,8 +49,7 @@ function fixture(selected: ExplorerNode = node("temperature")) {
   telemetry.configure(system, 3, "test-user", true);
   const onRename = vi.fn().mockResolvedValue(undefined);
   const onEdit = vi.fn();
-  const onClose = vi.fn();
-  const props = { node: selected, index, document: system, telemetry, canEdit: true, saving: false, error: "", onRename, onEdit, onClose };
+  const props = { node: selected, index, document: system, telemetry, canEdit: true, saving: false, error: "", onRename, onEdit };
   return { telemetry, props };
 }
 const initialClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
@@ -399,8 +398,6 @@ describe("explorer selected-object preview", () => {
     expect(props.onRename).toHaveBeenCalledExactlyOnceWith("stream", "temperature", "Room temperature");
     fireEvent.click(screen.getByRole("button", { name: "Edit structure" }));
     expect(props.onEdit).toHaveBeenCalledExactlyOnceWith("stream", "temperature");
-    fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
-    expect(props.onClose).toHaveBeenCalledOnce();
   });
 
   it("shows read-only members a plain name without editing hints", () => {

@@ -1,5 +1,5 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star, X } from "lucide-react";
+import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star } from "lucide-react";
 import { InlineName } from "@/components/InlineName";
 import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveStatus } from "@/types/system-live";
@@ -20,7 +20,6 @@ type Props = {
   error: string;
   onRename: (kind: SystemEntityKind, id: string, label: string) => Promise<void>;
   onEdit: (kind: SystemEntityKind, id: string) => void;
-  onClose: () => void;
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
@@ -65,7 +64,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, onClose, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, favourite, onFavourite,
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -169,8 +168,7 @@ export default function ExplorerPreview({
             </h2>
           </div>
         </div>
-        <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}
-          <button type="button" className="ex-preview-close" aria-label="Close preview" onClick={onClose}><X size={18} /></button></div>
+        <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
       <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
         {navigationTrail(index, node.key).map((ancestor, position) => <span key={ancestor.key}>

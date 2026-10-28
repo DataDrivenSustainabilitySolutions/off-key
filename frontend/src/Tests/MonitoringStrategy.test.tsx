@@ -31,7 +31,7 @@ vi.mock("../lib/api-client", () => ({
     ) => mockPost(endpoint, payload, options),
   },
 }));
-const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
+const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => catalogue }));
 
 // One entity with three recorded readings, each accepted on its canonical topic.

@@ -206,6 +206,16 @@ describe("service-centred monitoring workspace", () => {
     expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/live/leases", expect.anything(), expect.anything());
   });
 
+  it("keeps sibling topics in the live preview when one topic is selected", async () => {
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/system/live/leases"
+      ? { lease_id: "lease", telemetry: { sequence: 0, connections: [], streams: [] } } : {});
+    mount("/?reading=temperature");
+    await loaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/live/leases",
+      expect.objectContaining({ stream_ids: ["humidity", "temperature"] }), expect.anything()));
+  });
+
   it("identifies stale inputs separately from a current runtime heartbeat", async () => {
     const monitor = service();
     monitor.operational_status.activity = {

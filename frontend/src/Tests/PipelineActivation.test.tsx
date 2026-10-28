@@ -15,7 +15,7 @@ import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
-const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
+const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({
   useCatalogue: () => catalogue,
 }));

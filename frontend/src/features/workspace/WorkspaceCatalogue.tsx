@@ -8,12 +8,12 @@ import { useCatalogue } from "./catalogue-context";
 const subscribeNothing = () => () => {};
 
 export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
-  const { document, index, system, telemetry, liveStreamIds, selected, scopeKey, query, setQuery, positions,
+  const { document, index, system, telemetry, previewStreamIds, selected, scopeKey, query, setQuery, positions,
     preferences, setPreferences, browse, back, selectSource, openSettings } = useCatalogue();
   const onlineOnly = preferences.onlineOnly ?? false;
   const now = useNow(1000, onlineOnly);
   const liveStatus = useSyncExternalStore(onlineOnly ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
-  const activity = useMemo(() => ({ telemetry, liveStreamIds, runtime: system.snapshot?.runtime }), [telemetry, liveStreamIds, system.snapshot?.runtime]);
+  const activity = useMemo(() => ({ telemetry, liveStreamIds: previewStreamIds, runtime: system.snapshot?.runtime }), [telemetry, previewStreamIds, system.snapshot?.runtime]);
   const visibleIndex = useMemo(() => onlineOnly ? onlineNavigationIndex(index, activity, liveStatus, now) : index,
     [onlineOnly, index, activity, liveStatus, now]);
   const deferredQuery = useDeferredValue(query);

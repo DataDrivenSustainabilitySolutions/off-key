@@ -10,7 +10,7 @@ import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 const subscribeNothing = () => () => {};
 
 export function MonitoringTargetPicker({ targets, value, disabled, onChange, receivingOnly = true }: { targets: MonitoringTarget[]; value?: string; disabled?: boolean; onChange: (id: string) => void; receivingOnly?: boolean }) {
-  const { system, telemetry, liveStreamIds } = useCatalogue();
+  const { system, telemetry, previewStreamIds } = useCatalogue();
   const [open, setOpen] = useState(false);
   const now = useNow(1000, open);
   const [query, setQuery] = useState("");
@@ -18,7 +18,7 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange, rec
   const [focus, setFocus] = useState(-1);
   const scroll = useRef<HTMLDivElement>(null);
   const liveStatus = useSyncExternalStore(open ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
-  const activity = useMemo(() => ({ telemetry, liveStreamIds, runtime: system.snapshot?.runtime }), [telemetry, liveStreamIds, system.snapshot?.runtime]);
+  const activity = useMemo(() => ({ telemetry, liveStreamIds: previewStreamIds, runtime: system.snapshot?.runtime }), [telemetry, previewStreamIds, system.snapshot?.runtime]);
   const searchRows = useMemo(() => targets.map(target => ({ target, search: `${target.label} ${target.inputs.map(input => input.stream.label).join(" ")}`.toLocaleLowerCase() })), [targets]);
   const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())
     && (!receivingOnly || row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.connection_id }, activity, liveStatus, now).receiving)))

@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plug, Plus } from "lucide-react";
+import { Plug, Plus, RotateCw } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -14,6 +14,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { SourceScope } from "../workspace/SourceScope";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { systemApi } from "@/domain/system/systemApi";
 import "./sources.css";
 
 const Preview = lazy(() => import("../readings/ExplorerPreview"));
@@ -34,8 +35,24 @@ export function SourcesWorkspace() {
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
   const rules = useRecordingRules(system.snapshot, selected?.connectionId, system.applyRules);
   const brokerChecks = useBrokerChecks();
-  // A broker in use already reports its live state; only idle ones need a check.
-  const idleBrokers = document.connections.filter(broker => !system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state).map(broker => broker.id);
+  const sources = system.snapshot?.runtime.ingress?.sources;
+  // A broker in use already reports its live state; only idle or failed ones need a check.
+  const idleBrokers = document.connections.filter(broker => [undefined, "error"].includes(sources?.[broker.id]?.state)).map(broker => broker.id);
+  // A recorded broker that is retrying or gave up can be retried now.
+  const selectedSource = selected?.kind === "connection" ? sources?.[selected.connectionId ?? ""] : undefined;
+  const canReconnect = system.canEdit && !!selectedSource && ["error", "reconnecting"].includes(selectedSource.state);
+  const [reconnect, setReconnect] = useState<{ id?: string; pending: boolean; error?: string }>({ pending: false });
+  const reconnectError = reconnect.id === selected?.connectionId ? reconnect.error : undefined;
+  const retryBroker = async (id: string) => {
+    setReconnect({ id, pending: true });
+    try {
+      await systemApi.reconnectConnection(id);
+      await system.refreshRuntime();
+      setReconnect({ id, pending: false });
+    } catch (error) {
+      setReconnect({ id, pending: false, error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." });
+    }
+  };
   useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (!rules.dirty) return false;
@@ -82,6 +99,8 @@ export function SourcesWorkspace() {
     <main className="ex-main-content" aria-label="Sources workspace">
       <div className="ex-workspace-heading"><h1>Sources</h1><div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
+        {canReconnect && <Button variant="outline" disabled={reconnect.pending} title="Retry the recording connection to this broker now"
+          onClick={() => void retryBroker(selected!.connectionId!)}><RotateCw size={16} />{reconnect.pending ? "Reconnecting…" : "Reconnect"}</Button>}
         {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
           title="Connect once to each broker that is not in use, then disconnect" onClick={() => void brokerChecks.checkAll(idleBrokers)}>
@@ -89,6 +108,7 @@ export function SourcesWorkspace() {
         {system.canEdit && <Button variant="outline" disabled={rules.dirty} onClick={() => openEditor("connection")}><Plus size={16} />Add broker</Button>}
       </div></div>
       <SourceScope />
+      {reconnectError && <p role="alert" className="ex-banner ex-error">{reconnectError}</p>}
       {system.error && <p role="alert" className="ex-banner ex-error">{system.error}<button onClick={() => void system.refreshRuntime()}>Retry</button></p>}
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}

@@ -15,9 +15,10 @@ from off_key_core.schemas.system_collection import (
 )
 from off_key_core.utils.enum import RoleEnum
 
-from ...provider import get_broker_check, get_system_service
+from ...provider import get_broker_check, get_system_ingress, get_system_service
 from ...services.catalogue.broker_check import BrokerCheck
 from ...services.catalogue.system import SystemService
+from ...services.catalogue.system_ingress import SystemIngress
 from ..collection_auth import current_member, require_admin
 from ..errors import DomainErrorRoute
 from .system_live import router as live_router
@@ -90,6 +91,18 @@ async def check_connection(
     if connection is None:
         raise HTTPException(404, "This broker is not in the saved system.")
     return await checker.check(connection)
+
+
+@router.post("/connections/reconnect")
+async def reconnect_connection(
+    scope: SystemConnectionCheckScope,
+    user: User = Depends(require_admin),
+    ingress: SystemIngress = Depends(get_system_ingress),
+):
+    """Retry a recorded broker now instead of waiting for its backoff."""
+    if not await ingress.reconnect(scope.connection_id):
+        raise HTTPException(409, "No readings are being recorded from this broker.")
+    return {"connection_id": scope.connection_id}
 
 
 @router.get("")

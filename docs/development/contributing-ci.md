@@ -30,6 +30,7 @@ or EMQX version; a version bump renames such a job without touching the rule, an
 | `docker-images.yml` | Docker Images | Called by CI | Reusable image matrix | no |
 | `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**`, `zensical.toml` or `requirements-docs.txt`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
 | `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded ([Production releases](../operations/production.md)), then the public demo stack while `DEMO_ENABLED` is on ([Public demo](../operations/public-demo.md)) | no |
+| `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
 | `pr-triage.yml` | PR triage | Pull requests opened, reopened or marked ready | Assigns a human author and requests the maintainer's review; never fails | no |
 | CodeQL default setup | CodeQL | Repository settings | `CodeQL` | no |
 

@@ -110,6 +110,25 @@ Persistence changes keep the existing explicit confirmation/backup/restore guard
 Automatic CD never supplies confirmation. Do not combine the initial integration
 cutover with a persistence flip. Recover state first using [Recovery](recovery.md).
 
+## Image retention
+
+Each main push publishes six application images and their attestations to GHCR,
+and each release pulls six new images onto the nodes. Neither place keeps them all.
+
+- **Nodes:** after a release is verified and recorded, `deploy.yml` removes the
+  application images on every node that neither the release nor any Swarm service
+  names, so the demo stack's and TACTIC's runtime RADAR images stay. It never runs a
+  broad `docker image prune`: digest-pulled images look dangling, and runtime RADAR
+  workers cannot pull a removed image again without registry credentials. Images that
+  Swarm's task history still holds stay until that history rotates. A cleanup error is
+  reported in the log and never fails a verified release.
+- **GHCR:** the weekly `GHCR Retention` workflow keeps the newest 20 releases of each
+  image, `latest`, every digest pinned in `release.yml` and the attestations of the
+  images it keeps. It only lists what it would delete until the repository variable
+  `GHCR_RETENTION_ENABLED` is `true`; a manual run with `delete` deletes once. Retries
+  and rollbacks to an older SHA need its images, so keep enough releases to cover the
+  oldest SHA you might roll back to.
+
 ## Credentials, ingress and certificates
 
 The encrypted production vault remains the configuration source. The production

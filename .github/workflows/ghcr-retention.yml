@@ -1,0 +1,48 @@
+name: GHCR Retention
+
+# Every main push publishes all application images; this deletes the superseded ones.
+# The weekly run only lists what it would delete until GHCR_RETENTION_ENABLED is true.
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: Delete the listed versions (otherwise only list them)
+        default: false
+        type: boolean
+      keep:
+        description: Newest releases kept per image
+        default: "20"
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: ghcr-retention
+  cancel-in-progress: false
+
+jobs:
+  retention:
+    if: github.repository == 'DataDrivenSustainabilitySolutions/off-key'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP: ${{ inputs.keep || '20' }}
+      DELETE: ${{ (github.event_name == 'workflow_dispatch' && inputs.delete) || (github.event_name == 'schedule' && vars.GHCR_RETENTION_ENABLED == 'true') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Delete superseded image versions, keeping recent and pinned releases
+        run: |
+          if [ "$DELETE" = true ]; then
+            python3 infra/scripts/ghcr_retention.py --keep "$KEEP" --delete
+          else
+            python3 infra/scripts/ghcr_retention.py --keep "$KEEP"
+          fi

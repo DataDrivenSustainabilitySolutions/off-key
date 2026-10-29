@@ -40,3 +40,39 @@
           command:
             argv: [docker, logout, ghcr.io]
           changed_when: false
+
+# Runs only after the release above was verified and recorded. Cleanup never fails a
+# verified release: an unreachable node or a Docker error is reported, not fatal.
+- name: Remove superseded application images from every node
+  hosts: swarm_manager:swarm_worker
+  gather_facts: false
+  vars:
+    application_images: >-
+      {{ release.images | dict2items
+         | selectattr('key', 'in', ['api', 'frontend', 'tactic', 'mqtt_proxy', 'mqtt_radar', 'db_sync'])
+         | map(attribute='value') | list }}
+  tasks:
+    - name: Read every image a Swarm service still names
+      command:
+        argv: [python3, '-', services]
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/prune_images.py') }}"
+      delegate_to: "{{ groups['swarm_manager'][0] }}"
+      run_once: true
+      changed_when: false
+      register: service_images
+      ignore_errors: true
+
+    - name: Remove application images that neither the release nor a service uses
+      command:
+        argv:
+          - python3
+          - '-'
+          - prune
+          - "{{ application_images | to_json }}"
+          - "{{ (release.images.values() | list + service_images.stdout | from_json) | unique | to_json }}"
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/prune_images.py') }}"
+      register: pruned_images
+      when: service_images is succeeded
+      changed_when: not pruned_images.stdout.startswith('Removed 0 ')
+      ignore_errors: true
+      ignore_unreachable: true

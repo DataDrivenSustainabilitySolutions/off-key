@@ -21,3 +21,39 @@
     - tailscale-dev-proxy
   when:
     - (stack_name ~ '_' ~ item) in production_stack_services.stdout_lines
+
+# An inventory names the secret keys and stack files of services an earlier
+# release ran and this one replaced. Their old services are gone before the
+# release applies, so no service still uses these secrets.
+- name: List deployment secrets before retiring replaced ones
+  command:
+    argv: [docker, secret, ls, --format, '{% raw %}{{.Name}}{% endraw %}']
+  register: retired_secret_candidates
+  changed_when: false
+  when: stack_retired_secret_keys | default([]) | length > 0
+
+- name: Remove secrets of services this release replaced
+  command:
+    argv: [docker, secret, rm, "{{ item }}"]
+  loop: >-
+    {{ retired_secret_candidates.stdout_lines | default([])
+       | select('match', '^' ~ (stack_name | regex_escape) ~ '_('
+                ~ (stack_retired_secret_keys | default([]) | map('regex_escape') | join('|'))
+                ~ ')_[0-9a-f]{12}$')
+       | list }}
+  register: retired_secret_removal
+  # Cleanup never fails a verified release; a secret still in use stays.
+  failed_when: false
+
+- name: Report retired secrets that could not be removed
+  debug:
+    msg: "Kept {{ item.item }}: {{ item.stderr | default('') }}"
+  loop: "{{ retired_secret_removal.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Remove stack files of services this release replaced
+  file:
+    path: "{{ stack_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ stack_retired_files | default([]) }}"

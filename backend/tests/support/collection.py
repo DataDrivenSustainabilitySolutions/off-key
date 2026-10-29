@@ -2,48 +2,38 @@
 
 from datetime import UTC, datetime
 
-from off_key_core.db.catalogue_upgrade import convert_definition
-from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog
-from off_key_core.db.catalogue_v1_models import (
-    AmbiboxCatalog,
-    CatalogCharger,
-    CatalogSource,
-    CollectionPolicy,
-    SensorDefinition,
+from off_key_core.schemas.system import SystemDocument
+from off_key_core.schemas.system_collection import (
+    SystemCollectionDefinition,
+    build_bindings,
 )
 from off_key_mqtt_proxy.client.models import MQTTMessage
 
 
-def catalog(mode="sample", kind="number"):
-    return AmbiboxCatalog(
-        sources=[
-            CatalogSource(
-                label="Broker",
-                host="charger.ts.net",
-                chargers=[
-                    CatalogCharger(
-                        label="Charger",
-                        policy=CollectionPolicy(mode=mode, interval_seconds=10),
-                        sensors=[
-                            SensorDefinition(
-                                key="temperature",
-                                label="Temperature",
-                                value_type=kind,
-                                upstream_topic="device/evCharger/0/temperature",
-                            )
-                        ],
-                    )
-                ],
-            )
-        ]
-    )
-
-
 def runtime_catalog(mode="sample", kind="number"):
-    legacy = catalog(mode, kind)
-    result = convert_definition(adapt_ambibox_catalog(legacy), legacy)
-    result.generation = "test"
-    return result
+    """One broker, device and reading, recorded with the given policy."""
+    document = SystemDocument.model_validate(
+        {
+            "connections": [
+                {"id": "broker", "label": "Broker", "host": "broker.example"}
+            ],
+            "devices": [{"id": "device", "label": "Device", "connection_id": "broker"}],
+            "streams": [
+                {
+                    "id": "temperature",
+                    "label": "Temperature",
+                    "connection_id": "broker",
+                    "device_id": "device",
+                    "topic": "device/sensor/0/temperature",
+                    "value_type": kind,
+                    "policy": {"mode": mode, "interval_seconds": 10},
+                }
+            ],
+        }
+    )
+    return SystemCollectionDefinition(
+        document=document, bindings=build_bindings(document), generation="test"
+    )
 
 
 def message(configuration, value, *, retained=False, upstream_retained=False):

@@ -55,11 +55,13 @@ A release older than this integration cannot run the integrated recovery machine
 
 ### Rolling back past the broker route release
 
-The release that made the broker route source-agnostic renamed its node service
-from `tailscale-ambibox` to `broker-route`, and stops the old service before the
-new one starts. An older release does not know `broker-route`, keeps it running
-and starts its own node from the same identity. After the first verified deploy
-of that release, remove the `ambibox_nfs` group from the private production
+The release that made the broker route source-agnostic replaced production's
+source-specific node service (listed in the production inventory as
+`stack_replaced_services`) with `broker-route`, and stops the old service before
+the new one starts. An older release does not know `broker-route`, keeps it
+running and starts its own node from the same identity. After the first verified
+deploy of that release, remove the identity export group that older releases
+require (named next to `stack_replaced_services`) from the private production
 `hosts.yml` (the `OFFKEY_PROD_INVENTORY` secret). Older releases then stop at
 their inventory check before they change the stack. To roll back past it anyway:
 
@@ -71,9 +73,9 @@ their inventory check before they change the stack. To roll back past it anyway:
 4. On the manager, run
    `rm /etc/exports.d/broker-route.exports && exportfs -ra`; the older release
    writes its own export file for the same directory.
-5. Add the manager back to the `ambibox_nfs` group and keep
-   `<stack_dir>/ambibox-access.json` on the manager, which the older release
-   reads for its login. Then dispatch the older SHA.
+5. Add the manager back to that group and keep the login file the older release
+   reads on the manager (`broker_route_legacy_access_file` in the production
+   inventory). Then dispatch the older SHA.
 
 There is **no automatic database downgrade**. If schema restoration is necessary,
 use a maintenance window, stop all writers and restore a verified backup before

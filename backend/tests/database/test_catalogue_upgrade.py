@@ -17,7 +17,8 @@ from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import insert, select
 
-from tests.support.collection import catalog, runtime_catalog
+from tests.support.collection import runtime_catalog
+from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_retired_schema,
@@ -28,7 +29,7 @@ from tests.support.schema_baselines import (
 def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_settings(
     disposable_database,
 ):
-    old = catalog("original")
+    old = legacy_catalog("original")
     entity = str(old.sources[0].chargers[0].id)
     topic = old.streams()[0].accepted_topic
     configuration = {

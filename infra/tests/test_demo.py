@@ -37,6 +37,8 @@ DEMO_ONLY = {
     "demo_base_url",
     # Production's one-time move of its broker route node; the demo has none.
     "stack_replaced_services",
+    "stack_retired_secret_keys",
+    "stack_retired_files",
     # Only the landing page links the docs, and the demo has none.
     "docs_base_url",
 }

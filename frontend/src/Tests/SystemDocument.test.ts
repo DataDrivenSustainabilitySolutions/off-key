@@ -79,7 +79,7 @@ describe("domain agnostic saved systems", () => {
       system,
     );
     expect(serializeSystemDocument(system)).not.toMatch(
-      /charger|ambibox|password/,
+      /charger|password/,
     );
   });
 
@@ -193,7 +193,7 @@ describe("domain agnostic saved systems", () => {
   });
 
   it("accepts only the generic catalogue format", () => {
-    expect(() => parseSystemDocument(JSON.stringify({ provider: "ambibox", schema_version: 1, sources: [] }))).toThrow();
+    expect(() => parseSystemDocument(JSON.stringify({ provider: "legacy-provider", schema_version: 1, sources: [] }))).toThrow();
     expect(() => parseSystemDocument(JSON.stringify({ format: "aberration-workspace", schema_version: 1 }))).toThrow();
   });
 

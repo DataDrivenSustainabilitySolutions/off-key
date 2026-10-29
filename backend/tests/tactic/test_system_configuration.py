@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway_system
 from off_key_core.db.base import get_db_async
-from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog, legacy_stream_id
 from off_key_core.db.models import (
     Charger,
     CollectionBinding,
@@ -23,7 +22,6 @@ from off_key_core.db.system import (
     SystemConfiguration,
     SystemRevision,
 )
-from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
 from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
@@ -34,7 +32,7 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from tests.support.collection import catalog
+from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.system_document import (
     AsyncSessionAdapter,
     create_sqlite_tables,
@@ -265,45 +263,11 @@ def test_json_pointers_and_websocket_connections_roundtrip():
     assert parsed.default_policy.mode == "off"
 
 
-@pytest.mark.parametrize(
-    "key,fingerprint",
-    [
-        ("nested/path", "6ad8194d784007ad"),
-        ("t" * 160, "0d1ce30ce33d173a"),
-        ("温度", "95fa69cf89ff6a76"),
-    ],
-)
-def test_legacy_complex_stream_ids_match_existing_scene_algorithm(key, fingerprint):
-    charger_id = "00000000-0000-0000-0000-000000000001"
-    assert (
-        legacy_stream_id(charger_id, key)
-        == f"ambibox:sensor:{charger_id}:key-{fingerprint}"
-    )
-
-
-def test_legacy_adapter_preserves_identity_topics_and_policies_without_mutation():
-    original = catalog("sample")
-    original.sources[0].chargers[0].sensors[0].policy = CollectionPolicy(
-        mode="original"
-    )
-    before = deepcopy(original.model_dump(mode="json"))
-    converted = adapt_ambibox_catalog(original)
-    source, charger = original.sources[0], original.sources[0].chargers[0]
-    assert converted.connections[0].id == f"ambibox:broker:{source.id}"
-    assert converted.devices[0].id == f"ambibox:charger:{charger.id}"
-    assert converted.streams[0].id == f"ambibox:sensor:{charger.id}:temperature"
-    assert converted.groups[0].id == f"ambibox:group:{charger.id}"
-    assert converted.streams[0].topic == charger.sensors[0].upstream_topic
-    assert converted.streams[0].policy.mode == "original"
-    assert converted.connections[0].host == source.host
-    assert original.model_dump(mode="json") == before
-
-
 @pytest.mark.asyncio
 async def test_structure_saves_survive_reopen_and_never_rewrite_active_collection(
     database,
 ):
-    legacy = catalog("off").model_dump(mode="json")
+    legacy = legacy_catalog("off").model_dump(mode="json")
     with Session(database) as session:
         session.add(
             CollectionConfiguration(

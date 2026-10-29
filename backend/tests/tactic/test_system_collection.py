@@ -47,7 +47,7 @@ from off_key_tactic_middleware.services.catalogue.system_collection import (
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from tests.support.collection import catalog
+from tests.support.legacy_catalogue import legacy_catalog
 from tests.support.system_document import (
     AsyncSessionAdapter,
     create_sqlite_tables,
@@ -102,7 +102,7 @@ async def test_archived_catalogue_never_drives_runtime(session):
         CollectionConfiguration(
             id=1,
             revision=7,
-            document=catalog().model_dump(mode="json"),
+            document=legacy_catalog().model_dump(mode="json"),
             updated_by="operator",
         )
     )

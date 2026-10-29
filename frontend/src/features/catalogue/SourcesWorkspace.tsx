@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ArrowLeft, Plug, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, Plug, Plus, RotateCw, Square } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -9,7 +9,7 @@ import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds 
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
 import { BrokerCheckMark } from "./BrokerCheck";
-import { useBrokerChecks } from "./useBrokerChecks";
+import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -24,11 +24,13 @@ const brokerTone = (state?: string) => state === "connected" ? "positive"
 const brokerLabel = (state?: string) => state === "connected" ? "Connected"
   : state === "error" || state === "blocked" ? "Unavailable"
     : state ? `${state[0]!.toUpperCase()}${state.slice(1)}` : "Not subscribed";
+/** A recorded broker that is retrying or gave up can be retried now. */
+const canRetry = (state?: string) => state === "error" || state === "reconnecting";
 
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    openEditor, selectSource, browse, setEditingLocked } = useCatalogue();
+    liveBrokers, setLiveBrokers, openEditor, selectSource, browse, setEditingLocked } = useCatalogue();
   const scope = useMemo(() => scopeForNode(selected), [selected]);
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
@@ -37,20 +39,52 @@ export function SourcesWorkspace() {
   const sources = system.snapshot?.runtime.ingress?.sources;
   // A broker in use already reports its live state; only idle or failed ones need a check.
   const idleBrokers = document.connections.filter(broker => [undefined, "error"].includes(sources?.[broker.id]?.state)).map(broker => broker.id);
-  // A recorded broker that is retrying or gave up can be retried now.
-  const selectedSource = selected?.kind === "connection" ? sources?.[selected.connectionId ?? ""] : undefined;
-  const canReconnect = system.canEdit && !!selectedSource && ["error", "reconnecting"].includes(selectedSource.state);
-  const [reconnect, setReconnect] = useState<{ id?: string; pending: boolean; error?: string }>({ pending: false });
-  const reconnectError = reconnect.id === selected?.connectionId ? reconnect.error : undefined;
+  const selectedBroker = selected?.kind === "connection" ? selected.connectionId : undefined;
+  const selectedState = selectedBroker ? sources?.[selectedBroker]?.state : undefined;
+  const [reconnects, setReconnects] = useState<Record<string, { pending: boolean; error?: string }>>({});
+  const reconnectError = selectedBroker ? reconnects[selectedBroker]?.error : undefined;
   const retryBroker = async (id: string) => {
-    setReconnect({ id, pending: true });
+    setReconnects(current => ({ ...current, [id]: { pending: true } }));
     try {
       await systemApi.reconnectConnection(id);
       await system.refreshRuntime();
-      setReconnect({ id, pending: false });
+      setReconnects(current => ({ ...current, [id]: { pending: false } }));
     } catch (error) {
-      setReconnect({ id, pending: false, error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." });
+      setReconnects(current => ({ ...current, [id]: { pending: false,
+        error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." } }));
     }
+  };
+  // A recorded broker that failed is retried; on the overview, an unrecorded one that passed
+  // its check can be connected live in place.
+  const live = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
+  const [liveRequested, setLiveRequested] = useState(false);
+  useEffect(() => {
+    if (!liveRequested) return;
+    // The provider widens the live scope to the new broker in this commit, after this effect.
+    const timer = setTimeout(() => { setLiveRequested(false); if (!telemetry.getStatus().active) void telemetry.start(); });
+    return () => clearTimeout(timer);
+  }, [liveRequested, telemetry]);
+  const connectLive = (id: string) => { setLiveBrokers(current => [...current, id]); setLiveRequested(true); };
+  const disconnectLive = (id: string) => {
+    const rest = liveBrokers.filter(item => item !== id);
+    setLiveBrokers(rest);
+    if (!rest.length) telemetry.stop();
+  };
+  const connectAction = (id: string, label: string) => {
+    if (!system.canEdit) return null;
+    const state = sources?.[id]?.state;
+    if (canRetry(state)) {
+      const pending = !!reconnects[id]?.pending;
+      return <Button variant="outline" size="sm" disabled={pending} title="Retry the recording connection to this broker now"
+        aria-label={selectedBroker ? undefined : `Reconnect ${label}`} onClick={() => void retryBroker(id)}>
+        <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect"}</Button>;
+    }
+    if (selectedBroker || state) return null;
+    if (liveBrokers.includes(id)) return <Button variant="outline" size="sm" title="Close the live connection to this broker"
+      aria-label={`Disconnect ${label}`} onClick={() => disconnectLive(id)}><Square size={12} />Disconnect</Button>;
+    if (brokerChecks.checks[id]?.result?.status !== "reachable") return null;
+    return <Button variant="outline" size="sm" title="Connect to this broker and stream its readings live"
+      aria-label={`Connect to ${label}`} onClick={() => connectLive(id)}><Plug size={14} />Connect</Button>;
   };
   useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
@@ -101,8 +135,7 @@ export function SourcesWorkspace() {
         ? <button type="button" className="source-back" onClick={() => selectSource(null)}><ArrowLeft size={14} aria-hidden="true" />Sources</button>
         : <h1>Sources</h1>}<div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
-        {canReconnect && <Button variant="outline" disabled={reconnect.pending} title="Retry the recording connection to this broker now"
-          onClick={() => void retryBroker(selected!.connectionId!)}><RotateCw size={16} />{reconnect.pending ? "Reconnecting…" : "Reconnect"}</Button>}
+        {selectedBroker && !rules.dirty && connectAction(selectedBroker, selected!.label)}
         {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
           title="Connect once to each broker that is not in use, then disconnect" onClick={() => void brokerChecks.checkAll(idleBrokers)}>
@@ -114,17 +147,38 @@ export function SourcesWorkspace() {
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration} />
+          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration}
+          connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
         {document.connections.map(broker => {
           const readings = document.streams.filter(stream => stream.connection_id === broker.id);
           const enabled = readings.filter(stream => system.snapshot?.runtime.bindings?.[stream.id]?.policy.mode !== "off" && !!system.snapshot?.runtime.bindings?.[stream.id]).length;
-          const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
+          const source = sources?.[broker.id];
+          const check = brokerChecks.checks[broker.id];
+          // An unrecorded broker whose check failed is as unavailable as a recorded one that failed.
+          const checkFailed = source ? undefined : checkProblem(check);
+          // A broker connected live from here reports the live connection instead.
+          const liveConnection = !source && liveBrokers.includes(broker.id) ? live.connections.find(item => item.connection_id === broker.id) : undefined;
+          const liveFailed = liveConnection && ["error", "blocked"].includes(liveConnection.state);
+          const tone = liveConnection ? liveConnection.state === "connected" ? "positive" : liveFailed ? "danger" : "warning"
+            : checkFailed ? "danger" : brokerTone(source?.state);
+          const reason = liveFailed ? liveConnection.message ?? undefined : liveConnection ? undefined : checkFailed
+            ?? (["error", "blocked"].includes(source?.state ?? "") ? source?.message ?? reconnects[broker.id]?.error : reconnects[broker.id]?.error);
+          const status = !source && liveBrokers.includes(broker.id)
+            ? liveConnection?.state === "connected" ? "Live" : liveFailed ? "Live view unavailable" : "Connecting…"
+            : checkFailed ? "Not subscribed · Unreachable" : brokerLabel(source?.state);
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
-          return <button key={broker.id} className={`source-broker source-broker--${brokerTone(state)}`} onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}{brokerChecks.checks[broker.id] && <BrokerCheckMark check={brokerChecks.checks[broker.id]!} />}</strong>
-            <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
+          return <div key={broker.id} className={`source-broker source-broker--${tone}`}>
+            <button type="button" className="source-broker-open" onClick={() => { selectSource(node); browse(node.key); }}>
+              <strong>{broker.label}{check && <BrokerCheckMark check={check} />}</strong></button>
+            <span>{readings.length} readings · {enabled} enabled</span>
+            {reason && <span className="source-broker-reason">{reason}</span>}
+            <div className="source-broker-status"><span className={`mn-state mn-state--${tone}`}>
+              {status}</span>
+              {connectAction(broker.id, broker.label)}</div>
+          </div>;
         })}
       </section>}
     </main>

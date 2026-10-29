@@ -20,6 +20,9 @@ export type CatalogueContextValue = {
   liveStreamIds: string[];
   /** Live-only readings on the selection's brokers; the preview subscribes to all of them. */
   previewStreamIds: string[];
+  /** Brokers connected live from the Sources overview; they stay in the live scope beside the selection. */
+  liveBrokers: string[];
+  setLiveBrokers: Dispatch<SetStateAction<string[]>>;
   telemetry: SystemLiveTelemetry;
   history: ReadingHistoryCache;
   preferences: ExplorerPreferences;

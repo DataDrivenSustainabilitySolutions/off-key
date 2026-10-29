@@ -12,7 +12,10 @@
 
     - name: Keep the current task resolution failure
       set_fact:
-        application_readiness: {rc: 1, stderr: "{{ svc_resolution_error }}"}
+        application_readiness:
+          rc: 1
+          stdout_lines: ['Failed readiness check: collector task']
+          stderr: "{{ svc_resolution_error }}"
       when: svc_container | length == 0
 
     # Ansible resolves delegate_to before a task's when condition. Only load the

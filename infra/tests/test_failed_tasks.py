@@ -5,10 +5,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from support import ROOT, ansible, load_script
 
-failed = load_script("failed_tasks")
+with patch.dict(sys.modules, {"check_application": load_script("check_application")}):
+    failed = load_script("failed_tasks")
 TASK_RESULT = "result-text-that-stays-in-the-private-log"
 PLAYBOOK = f"""
 - hosts: localhost
@@ -61,6 +63,47 @@ class FailedTaskTests(unittest.TestCase):
             failed.failed_tasks(lines),
             ["stack_deploy : Connect", "stack_deploy : Reload"],
         )
+
+    def test_only_a_fixed_readiness_check_name_is_printed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            log = directory / "release.log"
+            log.write_text(
+                "TASK [stack_deploy : Require application readiness after startup] ***\n"
+                "fatal: [manager]: FAILED! => changed=false\n"
+            )
+            report = directory / "readiness"
+            printed = {}
+            for name, content in {
+                "named": "Failed readiness check: ingress heartbeat\n",
+                "private": "Failed readiness check: Lab (source-broker:1883)\n",
+                "unprefixed": "ingress heartbeat\n",
+                "missing": None,
+            }.items():
+                report.unlink(missing_ok=True)
+                if content is not None:
+                    report.write_text(content)
+                printed[name] = subprocess.run(
+                    [
+                        sys.executable,
+                        ROOT / "scripts/failed_tasks.py",
+                        log,
+                        "--readiness",
+                        report,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                ).stdout
+        task = (
+            "Failed Ansible task: stack_deploy : "
+            "Require application readiness after startup\n"
+        )
+        self.assertEqual(
+            printed["named"], task + "Failed readiness check: ingress heartbeat\n"
+        )
+        for name in ("private", "unprefixed", "missing"):
+            self.assertEqual(printed[name], task, name)
 
 
 if __name__ == "__main__":

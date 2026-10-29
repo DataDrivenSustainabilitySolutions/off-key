@@ -63,6 +63,8 @@ jobs:
       actions: read
       packages: read
       id-token: write
+      # Only for the issue that keeps a failed release visible until one completes.
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       OFFKEY_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
@@ -78,9 +80,12 @@ jobs:
         # The release checkout replaces these files, and a retry or rollback of an
         # older SHA may predate them; the steps below call the ones this workflow knows.
         run: |
-          mkdir "$RUNNER_TEMP/release-tools"
-          cp infra/scripts/failed_tasks.py infra/scripts/task_timings.py "$RUNNER_TEMP/release-tools/"
+          mkdir "$RUNNER_TEMP/release-tools" "$RUNNER_TEMP/release-outcome"
+          cp infra/scripts/failed_tasks.py infra/scripts/check_application.py infra/scripts/task_timings.py \
+            infra/scripts/release_alert.py infra/ansible/retain-release-log.yml infra/ansible/validate-inventory.yml \
+            "$RUNNER_TEMP/release-tools/"
           echo "OFFKEY_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
+          echo "OFFKEY_RELEASE_OUTCOME=$RUNNER_TEMP/release-outcome" >> "$GITHUB_ENV"
       - name: Recheck eligibility after waiting for the deployment slot
         id: release
         env:
@@ -138,13 +143,23 @@ jobs:
           umask 077
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
-          # Logs stay private; a failure prints only the names of the tasks that failed.
-          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { echo "Production preflight failed; check private SSH/configuration and the setup guide."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
+          readiness="$OFFKEY_DEPLOY_DIRECTORY/production-readiness"
+          # Logs stay private; a failure prints only the names of the tasks and the
+          # readiness check that failed, which the release issue repeats.
+          failed() {
+            { echo "$1"; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$2" --readiness "$readiness"; } | tee "$OFFKEY_RELEASE_OUTCOME/production.failed"
+          }
+          keep() {
+            uv run --frozen ansible-playbook "$OFFKEY_RELEASE_TOOLS/retain-release-log.yml" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$OFFKEY_RELEASE_REVISION-production.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the manager.'
+          }
+          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { failed "Production preflight failed; check private SSH/configuration and the setup guide." "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
           if [ "$DEMO_ONLY" = true ]; then
             echo 'Deploying only the public demo; production is unchanged.'
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
-            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { echo "Production release failed; inspect private server records and retry the attempted SHA."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
             python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
+            keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
+            touch "$OFFKEY_RELEASE_OUTCOME/production.released"
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
           fi
@@ -162,13 +177,22 @@ jobs:
           umask 077
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
+          readiness="$OFFKEY_DEPLOY_DIRECTORY/demo-readiness"
           demo() {
             uv run --frozen ansible-playbook -i inventories/demo/hosts.yml "$@" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json"
           }
-          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { echo "Demo preflight failed; check OFFKEY_DEMO_VAULT."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
+          failed() {
+            { echo "$1"; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$2" --readiness "$readiness"; } | tee "$OFFKEY_RELEASE_OUTCOME/demo.failed"
+          }
+          keep() {
+            demo "$OFFKEY_RELEASE_TOOLS/retain-release-log.yml" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$OFFKEY_RELEASE_REVISION-demo.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the demo manager.'
+          }
+          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { failed "Demo preflight failed; check OFFKEY_DEMO_VAULT." "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]; then
-            demo deploy.yml > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { echo "Demo release failed; production is unaffected. Retry with demo_only."; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
+            demo deploy.yml -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { failed "Demo release failed; production is unaffected. Retry with demo_only." "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
             python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+            keep "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
+            touch "$OFFKEY_RELEASE_OUTCOME/demo.released"
             # Only the viewer outcome; the full log stays private.
             grep -oE '(Demo viewer|The demo viewer|Accept the administrator invitation)[^"]*' "$OFFKEY_DEPLOY_DIRECTORY/demo.log" || true
           else
@@ -180,3 +204,9 @@ jobs:
           rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
           rm -f infra/ansible/inventories/demo/hosts.yml infra/ansible/inventories/demo/group_vars/all/vault.yml
           rm -rf "$OFFKEY_DEPLOY_DIRECTORY"
+      - name: Keep a failed release visible in an issue until a release completes
+        if: always() && steps.release.outputs.ready == 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          JOB_STATUS: ${{ job.status }}
+        run: python3 "$OFFKEY_RELEASE_TOOLS/release_alert.py" "$OFFKEY_RELEASE_OUTCOME" --revision "$OFFKEY_RELEASE_REVISION" --job-status "$JOB_STATUS"

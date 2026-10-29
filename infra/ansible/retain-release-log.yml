@@ -1,0 +1,40 @@
+---
+# Keeps a release's private Ansible log on the manager after the ephemeral runner is
+# gone, so a failed release can be explained from the server records. The workflow
+# runs its own copy of this playbook and the inventory validation it imports, which
+# works for any release revision.
+- import_playbook: validate-inventory.yml
+
+- name: Keep the private release log on the manager
+  hosts: swarm_manager[0]
+  gather_facts: false
+  vars:
+    release_log_directory: "{{ stack_dir }}/release-logs"
+    release_logs_kept: 20
+  tasks:
+    - name: Create the private release log directory
+      file:
+        path: "{{ release_log_directory }}"
+        state: directory
+        mode: "0700"
+
+    - name: Store this release's log
+      copy:
+        src: "{{ release_log }}"
+        dest: "{{ release_log_directory }}/{{ release_log_name }}"
+        mode: "0600"
+
+    - name: Find the stored release logs
+      find:
+        paths: "{{ release_log_directory }}"
+        patterns: "*.log"
+      register: stored_release_logs
+
+    # Names start with the UTC release time, so they sort oldest first.
+    - name: Keep only the newest release logs
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ (stored_release_logs.files | sort(attribute='path', reverse=true))[release_logs_kept | int:] }}"
+      loop_control:
+        label: "{{ item.path | basename }}"

@@ -9,6 +9,8 @@ import argparse
 import re
 from pathlib import Path
 
+from check_application import CHECKS, PUBLIC
+
 TASK = re.compile(r"^(?:TASK|RUNNING HANDLER) \[(?P<name>.+)\] \**$")
 FAILURE = re.compile(r"^(?:fatal|failed): \[[^\]]+\]")
 
@@ -38,9 +40,21 @@ def failed_tasks(lines: list[str]) -> list[str]:
     return failed
 
 
+def failed_check(report: Path | None) -> str | None:
+    """The readiness check a release recorded, if it is one of the fixed names."""
+    if report is None or not report.is_file():
+        return None
+    line = report.read_text(errors="replace").strip()
+    check = line.removeprefix(PUBLIC)
+    return line if line != check and check in CHECKS else None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", type=Path)
+    parser.add_argument(
+        "--readiness", type=Path, help="the release's failed readiness check record"
+    )
     args = parser.parse_args()
     if not args.log.is_file():
         print("No Ansible log was written.")
@@ -50,6 +64,8 @@ def main():
         print(f"Failed Ansible task: {task}")
     if not tasks:
         print("No failed Ansible task was recorded; the command failed outside a task.")
+    if check := failed_check(args.readiness):
+        print(check)
 
 
 if __name__ == "__main__":

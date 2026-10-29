@@ -9,8 +9,10 @@ just to make a newer release run; complete them as described below.
 ## Retry the interrupted release
 
 1. Set `AUTO_DEPLOY_ENABLED=false` while investigating.
-2. Read the attempted SHA through verified SSH. Inspect `docker service ls`, failed
-   task state and service logs privately. Check `recovery-pending.json` too.
+2. Read the attempted SHA through verified SSH. The release issue names the failed
+   task and readiness check; the release's full log is the newest file in
+   `<stack_dir>/release-logs/`. Inspect `docker service ls`, failed task state and
+   service logs privately. Check `recovery-pending.json` too.
 3. Fix the external cause (connectivity, disk space, access or registry availability),
    rerun failed main checks if needed, and manually dispatch **the same tested SHA**.
    Use the original bootstrap setting. Completed migrations validate their checksums;

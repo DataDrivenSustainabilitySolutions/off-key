@@ -9,6 +9,22 @@
   loop_control:
     loop_var: application_readiness_attempt
 
+# The probe names a failed check from a fixed list on its last line; the workflow
+# prints only that name, while the probe's detail stays in the private log.
+- name: Record which readiness check failed for the release log
+  copy:
+    dest: "{{ readiness_report_file }}"
+    mode: "0600"
+    content: >-
+      {{ application_readiness.stdout_lines | default([])
+         | select('match', '^Failed readiness check: ') | list | last
+         | default('Failed readiness check: probe error') }}
+  delegate_to: localhost
+  become: false
+  when:
+    - application_readiness.rc != 0
+    - readiness_report_file | default('') | length > 0
+
 - name: Require application readiness after startup
   assert:
     that: application_readiness.rc == 0

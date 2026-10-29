@@ -665,6 +665,70 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             application.check_collection(snapshot, now)
 
+    def test_readiness_failures_name_a_public_check_and_keep_details_private(self):
+        now = datetime.now(UTC)
+        broker = SimpleNamespace(
+            id="broker", label="Lab", host="source-broker", port=1883
+        )
+        snapshot = SimpleNamespace(
+            revision=9,
+            catalog=SimpleNamespace(
+                document=SimpleNamespace(connections=[broker]),
+                streams=lambda **kwargs: [SimpleNamespace(source_id="broker")],
+            ),
+            collection={
+                "revision": 9,
+                "status": "applied",
+                "checked_at": now.isoformat(),
+            },
+            ingress={
+                "revision": 9,
+                "status": "applied",
+                "checked_at": now.isoformat(),
+                "sources": {"broker": {"state": "blocked"}},
+            },
+        )
+        stale = (now - timedelta(seconds=31)).isoformat()
+        cases = {
+            "broker access": ("ingress", {}),
+            "collection revision": ("collection", {"revision": 8}),
+            "ingress heartbeat": ("ingress", {"checked_at": stale}),
+            "collection heartbeat": ("collection", {"checked_at": ""}),
+        }
+        for check, (worker, changes) in cases.items():
+            broken = deepcopy(snapshot)
+            setattr(broken, worker, getattr(broken, worker) | changes)
+            with (
+                self.subTest(check=check),
+                self.assertRaises(application.NotReady) as failure,
+            ):
+                application.check_collection(broken, now)
+            line = application.report(failure.exception)
+            self.assertEqual(line, f"Failed readiness check: {check}")
+            self.assertNotIn("source-broker", line)
+            self.assertNotIn("Lab", line)
+        snapshot.ingress["sources"] = {}
+        with self.assertRaises(application.NotReady) as failure:
+            application.check_collection(snapshot, now)
+        self.assertEqual(failure.exception.check, "broker route")
+        self.assertIn("Lab (source-broker:1883)", str(failure.exception))
+        self.assertEqual(
+            application.report(TimeoutError()), "Failed readiness check: probe timeout"
+        )
+        self.assertEqual(
+            application.report(OSError("db-sync refused")),
+            "Failed readiness check: probe error",
+        )
+        self.assertEqual(
+            set(application.probe_endpoints({})), set(application.ENDPOINTS)
+        )
+        # Outside a deployed container the probe cannot import the application.
+        result = run(sys.executable, ROOT / "scripts/check_application.py", check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(
+            result.stdout.splitlines()[-1], "Failed readiness check: probe error"
+        )
+
     def test_runtime_worker_created_during_deploy_cannot_escape_final_verification(
         self,
     ):

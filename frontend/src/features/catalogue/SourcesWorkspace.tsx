@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ArrowLeft, Plug, Plus, RotateCw } from "lucide-react";
+import { ArrowLeft, Plug, Plus, RotateCw, Square } from "lucide-react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -30,7 +30,7 @@ const canRetry = (state?: string) => state === "error" || state === "reconnectin
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    openEditor, selectSource, browse, setEditingLocked } = useCatalogue();
+    liveBrokers, setLiveBrokers, openEditor, selectSource, browse, setEditingLocked } = useCatalogue();
   const scope = useMemo(() => scopeForNode(selected), [selected]);
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
   const ids = useMemo(() => scope && selected ? recordingScopeReadingIds(document, selected) : streamIds ?? [], [document, scope, selected, streamIds]);
@@ -54,8 +54,22 @@ export function SourcesWorkspace() {
         error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." } }));
     }
   };
-  // Each broker offers the one way to connect that fits it: a recorded broker that failed is
-  // retried, an unrecorded one is checked once, and a working one needs nothing.
+  // A recorded broker that failed is retried; on the overview, an unrecorded one that passed
+  // its check can be connected live in place.
+  const live = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
+  const [liveRequested, setLiveRequested] = useState(false);
+  useEffect(() => {
+    if (!liveRequested) return;
+    // The provider widens the live scope to the new broker in this commit, after this effect.
+    const timer = setTimeout(() => { setLiveRequested(false); if (!telemetry.getStatus().active) void telemetry.start(); });
+    return () => clearTimeout(timer);
+  }, [liveRequested, telemetry]);
+  const connectLive = (id: string) => { setLiveBrokers(current => [...current, id]); setLiveRequested(true); };
+  const disconnectLive = (id: string) => {
+    const rest = liveBrokers.filter(item => item !== id);
+    setLiveBrokers(rest);
+    if (!rest.length) telemetry.stop();
+  };
   const connectAction = (id: string, label: string) => {
     if (!system.canEdit) return null;
     const state = sources?.[id]?.state;
@@ -65,11 +79,12 @@ export function SourcesWorkspace() {
         aria-label={selectedBroker ? undefined : `Reconnect ${label}`} onClick={() => void retryBroker(id)}>
         <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect"}</Button>;
     }
-    if (state) return null;
-    const pending = !!brokerChecks.checks[id]?.pending;
-    return <Button variant="outline" size="sm" disabled={pending} title="Connect once to this broker, then disconnect"
-      aria-label={selectedBroker ? undefined : `Check connection to ${label}`} onClick={() => void brokerChecks.check(id)}>
-      <Plug size={14} />{pending ? "Checking…" : selectedBroker ? "Check connection" : "Check"}</Button>;
+    if (selectedBroker || state) return null;
+    if (liveBrokers.includes(id)) return <Button variant="outline" size="sm" title="Close the live connection to this broker"
+      aria-label={`Disconnect ${label}`} onClick={() => disconnectLive(id)}><Square size={12} />Disconnect</Button>;
+    if (brokerChecks.checks[id]?.result?.status !== "reachable") return null;
+    return <Button variant="outline" size="sm" title="Connect to this broker and stream its readings live"
+      aria-label={`Connect to ${label}`} onClick={() => connectLive(id)}><Plug size={14} />Connect</Button>;
   };
   useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
@@ -144,8 +159,16 @@ export function SourcesWorkspace() {
           const check = brokerChecks.checks[broker.id];
           // An unrecorded broker whose check failed is as unavailable as a recorded one that failed.
           const checkFailed = source ? undefined : checkProblem(check);
-          const tone = checkFailed ? "danger" : brokerTone(source?.state);
-          const reason = checkFailed ?? (["error", "blocked"].includes(source?.state ?? "") ? source?.message ?? reconnects[broker.id]?.error : reconnects[broker.id]?.error);
+          // A broker connected live from here reports the live connection instead.
+          const liveConnection = !source && liveBrokers.includes(broker.id) ? live.connections.find(item => item.connection_id === broker.id) : undefined;
+          const liveFailed = liveConnection && ["error", "blocked"].includes(liveConnection.state);
+          const tone = liveConnection ? liveConnection.state === "connected" ? "positive" : liveFailed ? "danger" : "warning"
+            : checkFailed ? "danger" : brokerTone(source?.state);
+          const reason = liveFailed ? liveConnection.message ?? undefined : liveConnection ? undefined : checkFailed
+            ?? (["error", "blocked"].includes(source?.state ?? "") ? source?.message ?? reconnects[broker.id]?.error : reconnects[broker.id]?.error);
+          const status = !source && liveBrokers.includes(broker.id)
+            ? liveConnection?.state === "connected" ? "Live" : liveFailed ? "Live view unavailable" : "Connecting…"
+            : checkFailed ? "Not subscribed · Unreachable" : brokerLabel(source?.state);
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
           return <div key={broker.id} className={`source-broker source-broker--${tone}`}>
             <button type="button" className="source-broker-open" onClick={() => { selectSource(node); browse(node.key); }}>
@@ -153,7 +176,7 @@ export function SourcesWorkspace() {
             <span>{readings.length} readings · {enabled} enabled</span>
             {reason && <span className="source-broker-reason">{reason}</span>}
             <div className="source-broker-status"><span className={`mn-state mn-state--${tone}`}>
-              {checkFailed ? "Not subscribed · Unreachable" : brokerLabel(source?.state)}</span>
+              {status}</span>
               {connectAction(broker.id, broker.label)}</div>
           </div>;
         })}

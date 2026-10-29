@@ -50,5 +50,5 @@ export function useBrokerChecks() {
     await Promise.all(Array.from({ length: Math.min(PARALLEL_CHECKS, queue.length) }, next));
   }, [check]);
   const running = Object.values(checks).some(item => item.pending);
-  return { checks, check, checkAll, running };
+  return { checks, checkAll, running };
 }

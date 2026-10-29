@@ -144,6 +144,12 @@ environment. Future runtime changes merged into main deploy automatically after 
 release checks pass. Documentation changes skip deployment; the comparison starts
 at the last verified release, so an earlier runtime change cannot be skipped.
 
+Old images are removed on their own as well: each verified release removes the
+superseded ones from the nodes, and the weekly **GHCR Retention** workflow lists the
+GHCR versions it would delete. Once a listing looks right, add the repository variable
+`GHCR_RETENTION_ENABLED` with value `true` so it deletes them
+([Image retention](production.md#image-retention)).
+
 After this cutover is verified and your independent recovery material is safe,
 archive the old private **off-key-infra** repository. Its history and private
 university/vendor notes stay private; they are not imported into public Git history.

@@ -5,7 +5,7 @@
 #   uv run ansible-playbook -i inventories/prod/hosts.yml backup-stack-state.yml --ask-vault-pass
 #
 # Backups land in stack/state/<env>/<service>/<UTC timestamp>/ on the control host, matching
-# the env-scoped layout used by ambibox_seed_dir. That directory is gitignored — a prod
+# the env-scoped layout used by broker_route_seed_dir. That directory is gitignored — a prod
 # pg_dump contains every row of production data and hashed credentials, so treat it with the
 # same care as the vault itself.
 #

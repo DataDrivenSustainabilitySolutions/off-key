@@ -1,9 +1,8 @@
 ---
-# Hosts the single shared NFS export that holds the tailscale-ambibox tailnet state
-# (tailscaled.state — the vendor node identity). Any backend node mounts this read-write,
-# so the singleton can move to another backend without re-seeding once its old
-# instance has stopped or been isolated.
-# Runs on the host in the `ambibox_nfs` inventory group (currently the manager).
+# Hosts the single shared NFS export that holds the broker route's node identity
+# (tailscaled.state). Any backend node mounts it read-write, so the singleton can
+# move to another backend without re-seeding once its old instance has stopped
+# or been isolated. Runs on the swarm manager.
 
 - name: Require at least one NFS client backend
   assert:
@@ -15,7 +14,7 @@
     argv: [tailscale, ip, '-4']
   delegate_to: "{{ item }}"
   loop: "{{ groups['swarm_backend'] }}"
-  register: ambibox_nfs_backend_ips
+  register: broker_route_nfs_backend_ips
   changed_when: false
 
 - name: Validate and select NFS clients before changing the export
@@ -27,15 +26,15 @@
     state: present
     lock_timeout: 120
 
-- name: Ensure ambibox state export directory exists
+- name: Ensure the broker route state export directory exists
   file:
-    path: "{{ stack_dir }}/tailscale-ambibox-data"
+    path: "{{ broker_route_state_dir }}"
     state: directory
     mode: "0750"
     owner: root
     group: root
 
-- name: Seed a missing vendor identity from the selected recovery files
+- name: Seed a missing node identity from the selected recovery files
   include_tasks: seed.yml
 
 - name: Ensure /etc/exports.d exists
@@ -46,19 +45,29 @@
     owner: root
     group: root
 
-- name: Configure NFS export for ambibox state
+- name: Configure NFS export for the broker route state
   # no_root_squash lets the root-owned tailscaled process write its state.
   # Access is restricted to exact backend Tailscale IPs.
   template:
-    src: ambibox.exports.j2
-    dest: /etc/exports.d/ambibox.exports
+    src: broker-route.exports.j2
+    dest: /etc/exports.d/broker-route.exports
     mode: "0644"
-  register: ambibox_export
+  register: broker_route_export
 
+# An inventory names the export file an earlier release wrote for the same
+# directory, so the directory is not exported twice.
+- name: Remove the export file an earlier release wrote
+  file:
+    path: "/etc/exports.d/{{ broker_route_legacy_exports_file }}"
+    state: absent
+  register: broker_route_legacy_export
+  when: broker_route_legacy_exports_file | default('') | length > 0
+
+# Always re-export: a run interrupted between writing the files and exporting
+# would otherwise leave the kernel's export table stale on the next run.
 - name: Re-export NFS shares
   command: exportfs -ra
-  when: ambibox_export is changed
-  changed_when: ambibox_export is changed
+  changed_when: broker_route_export is changed or broker_route_legacy_export is changed
 
 - name: Enable and start NFS server
   systemd:

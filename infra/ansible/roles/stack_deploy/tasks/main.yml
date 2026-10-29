@@ -50,6 +50,9 @@
   loop: "{{ stack_tactic_workers | selectattr('Spec.Labels.service_type', 'defined') | selectattr('Spec.Labels.service_type', 'equalto', 'radar') | list }}"
   no_log: true
 
+- name: Stop services this release replaces before their successors start
+  include_tasks: replaced.yml
+
 - name: Deploy and restore the production service model
   include_tasks: apply.yml
 

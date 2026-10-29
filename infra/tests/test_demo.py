@@ -17,7 +17,6 @@ DEMO_ONLY = {
     "stack_dir",
     "demo_mode",
     "release_bootstrap_new_stack",
-    "ambibox_ingress_enabled",
     "ingress_enabled",
     "ingress_admin_enabled",
     "landing_enabled",
@@ -36,12 +35,15 @@ DEMO_ONLY = {
     "demo_hostname",
     "demo_stack_name",
     "demo_base_url",
+    # Production's one-time move of its broker route node; the demo has none.
+    "stack_replaced_services",
     # Only the landing page links the docs, and the demo has none.
     "docs_base_url",
 }
+# The demo reaches its open data brokers directly and configures no broker route.
+DEMO_ONLY_PREFIXES = ("broker_route_",)
 LEFT_OUT = {
-    "tailscale-ambibox",
-    "mqtt-tailscale-bridge",
+    "broker-route",
     "oauth2-proxy",
     "landing",
     "traefik",
@@ -74,22 +76,26 @@ class DemoInventoryTests(unittest.TestCase):
             key
             for key in prod.keys() | demo.keys()
             if prod.get(key, object()) != demo.get(key, object())
+            and not key.startswith(DEMO_ONLY_PREFIXES)
         }
         self.assertEqual(differing, DEMO_ONLY)
+        self.assertFalse(demo["broker_route_enabled"])
+        self.assertEqual(
+            [key for key in demo if key.startswith(DEMO_ONLY_PREFIXES)],
+            ["broker_route_enabled"],
+        )
         self.assertNotIn("demo_hostname", demo)
 
     def test_only_application_services_run_in_their_own_stack(self):
         self.assertEqual(LEFT_OUT & self.services.keys(), set())
         for service in ("frontend", "api", "tactic", "postgres", "emqx-main"):
             self.assertIn(service, self.services)
-        self.assertNotIn(
-            "tailscale-ambibox-state", self.result["config"].get("volumes", {})
-        )
+        self.assertNotIn("broker-route-state", self.result["config"].get("volumes", {}))
         self.assertIsNone(self.result["landing_html"])
         self.assertIsNone(self.result["export"])
         names = self.result["deployment_secret_names"]
         self.assertNotIn("cloudflared_tunnel_token", names)
-        self.assertEqual([key for key in names if "ambibox" in key], [])
+        self.assertNotIn("system_broker_routes", names)
         for name in names.values():
             self.assertTrue(name.startswith("off-key-demo_"), name)
         # Swarm config names are cluster-wide; production keeps the unprefixed ones.
@@ -129,7 +135,6 @@ class DemoInventoryTests(unittest.TestCase):
                 environment["DEMO_VIEWER_PASSWORD"],
                 self.inputs["demo_viewer_password"],
             )
-        self.assertEqual(tactic["AMBIBOX_INGRESS_ENABLED"], "false")
         self.assertEqual(
             json.loads(tactic["SYSTEM_LIVE_ALLOWED_HOSTS"]),
             ["tie.digitraffic.fi", "meri.digitraffic.fi"],

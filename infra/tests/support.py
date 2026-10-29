@@ -74,17 +74,14 @@ def render(directory, environment, **overrides):
         "stack_file_owner": str(os.getuid()),
         "stack_file_group": str(os.getgid()),
         "ansible_python_interpreter": sys.executable,
-        "ambibox_nfs_addr": "100.100.10.1",
-        "ambibox_nfs_backend_ips": discovery(CLIENTS),
+        "broker_route_nfs_addr": "100.100.10.1",
+        "broker_route_nfs_backend_ips": discovery(CLIENTS),
         "cloudflare_tunnel_token": TOKEN,
-        "tailscale_ambibox_extra_args": "--accept-dns --advertise-tags=tag:fixture --login-server=https://vpn.example.invalid",
-        "tailscale_ambibox_hostname": "fixture-tailnet-host",
-        "ambibox_access": {
-            "mqtt_username": "fixture-vendor",
-            "mqtt_password": "fixture-vendor-password",
-            "api_key": "fixture-controller",
-            "api_secret": "a" * 64,
-            "gost_password": "g" * 64,
+        "broker_route_tailscale_extra_args": "--accept-dns --advertise-tags=tag:fixture --login-server=https://vpn.example.invalid",
+        "broker_route_tailscale_hostname": "fixture-tailnet-host",
+        "broker_route_login": {
+            "username": "fixture-route-user",
+            "password": "fixture-route-password",
         },
     } | overrides
     if environment in {"prod", "demo"}:

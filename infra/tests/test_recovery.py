@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import stat
 import subprocess
 import sys
@@ -19,97 +18,35 @@ trust = load_script("trust_ssh_host")
 
 
 class RecoveryTests(unittest.TestCase):
-    def test_mqtt_credential_transfer_is_private_and_always_cleans_up(self):
+    def test_route_login_comes_from_the_vault_or_once_from_the_legacy_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            transfers = root / "transfers"
-            transfers.mkdir(mode=0o700)
-            access = {
-                "mqtt_username": "fixture-vendor",
-                "mqtt_password": "fixture-transfer-password",
-            }
-            docker = root / "docker"
-            docker.write_text(
-                f"#!{sys.executable}\n"
-                + """
-import json, os, sys
-from pathlib import Path
-args = sys.argv[1:]
-if args[0] == "ps":
-    counter = Path(os.environ["DOCKER_COUNTER"])
-    count = int(counter.read_text()) + 1 if counter.exists() else 1
-    counter.write_text(str(count))
-    print(f"emqx-{count}")
-elif args[0] == "exec":
-    connectors = json.loads(os.environ["MQTT_CONNECTORS"])
-    if os.environ.get("FAIL_RECOVERY") == "1" and args[1] == "emqx-2":
-        connectors["ambibox"]["password"] = "******"
-    print(json.dumps(connectors))
-else:
-    sys.exit(2)
-"""
+            legacy = root / "legacy-access.json"
+            legacy.write_text(
+                json.dumps(
+                    {"mqtt_username": "legacy-user", "mqtt_password": "legacy-pass"}
+                )
             )
-            docker.chmod(0o755)
-            counter = root / "counter"
-            env = os.environ | {
-                "PATH": str(root) + os.pathsep + os.environ["PATH"],
-                "TMPDIR": str(transfers),
-                "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
-                "DOCKER_COUNTER": str(counter),
-                "MQTT_CONNECTORS": json.dumps(
-                    {
-                        "ambibox": {
-                            "username": access["mqtt_username"],
-                            "password": access["mqtt_password"],
-                        }
-                    }
-                ),
-            }
-            result = run(
-                sys.executable,
-                str(ROOT / "scripts/read-ambibox-mqtt-access.py"),
-                "off-key",
-                env=env,
-            )
-            self.assertNotIn(access["mqtt_password"], result.stdout + result.stderr)
-            transfer = Path(result.stdout.strip())
-            self.assertEqual(json.loads(transfer.read_text()), access)
-            self.assertEqual(stat.S_IMODE(transfer.stat().st_mode), 0o600)
-            transfer.unlink()
-
-            # Exercise the actual transfer and resolution tasks without the later
-            # root-owned production persistence step.
-            tasks = yaml.safe_load(
-                (
-                    ROOT / "ansible/roles/stack_prepare/tasks/ambibox-access.yml"
-                ).read_text()
-            )
-            recovery = next(task for task in tasks if "block" in task)
-            resolution = next(
-                task
-                for task in tasks
-                if "ambibox_initial_access" in task.get("set_fact", {})
-            )
-            recovered = root / "recovered.json"
-            playbook = root / "recover.yml"
+            resolved = root / "resolved.json"
+            playbook = root / "resolve.yml"
             playbook.write_text(
                 yaml.safe_dump(
                     [
                         {
-                            "hosts": "swarm_manager",
+                            "hosts": "localhost",
+                            "connection": "local",
                             "gather_facts": False,
-                            "vars": {
-                                "role_path": str(ROOT / "ansible/roles/stack_prepare"),
-                                "stack_name": "off-key",
-                                "ambibox_access_file": {"stat": {"exists": False}},
-                            },
                             "tasks": [
-                                recovery,
-                                resolution,
+                                {
+                                    "include_role": {
+                                        "name": "stack_prepare",
+                                        "tasks_from": "broker-route-access",
+                                    }
+                                },
                                 {
                                     "copy": {
-                                        "dest": str(recovered),
-                                        "content": "{{ ambibox_initial_access | to_json }}",
+                                        "dest": str(resolved),
+                                        "content": "{{ broker_route_login | to_json }}",
                                         "mode": "0600",
                                     },
                                     "no_log": True,
@@ -119,38 +56,63 @@ else:
                     ]
                 )
             )
-            inventory = root / "hosts.ini"
-            inventory.write_text(
-                "[swarm_manager]\nmanager ansible_connection=local\n"
-                "[swarm_backend]\nfirst ansible_connection=local\n"
-                "second ansible_connection=local\n[all:vars]\n"
-                "ansible_become=false\n"
-                f"ansible_python_interpreter={sys.executable}\n"
-            )
-            for fail in (False, True):
-                with self.subTest(fail=fail):
-                    counter.unlink()
+            base = {
+                "ansible_become": False,
+                "ansible_python_interpreter": sys.executable,
+                "stack_dir": str(root),
+                "broker_route_host_suffixes": [".mesh.example"],
+            }
+            cases = [
+                (
+                    {
+                        "broker_route_mqtt_username": "vault-user",
+                        "broker_route_mqtt_password": "vault-pass",
+                        "broker_route_legacy_access_file": str(legacy),
+                    },
+                    {"username": "vault-user", "password": "vault-pass"},
+                ),
+                (
+                    {"broker_route_legacy_access_file": str(legacy)},
+                    {"username": "legacy-user", "password": "legacy-pass"},
+                ),
+                ({}, None),
+                (
+                    {"broker_route_legacy_access_file": str(root / "missing.json")},
+                    None,
+                ),
+                ({"broker_route_anonymous": True}, {"username": "", "password": ""}),
+                (
+                    {
+                        "broker_route_mqtt_username": "vault-user",
+                        "broker_route_mqtt_password": "vault-pass",
+                        "broker_route_host_suffixes": ["mesh.example"],
+                    },
+                    None,
+                ),
+            ]
+            for overrides, expected in cases:
+                with self.subTest(overrides=overrides):
+                    resolved.unlink(missing_ok=True)
                     result = ansible(
                         "playbook",
                         "-i",
-                        str(inventory),
+                        "localhost,",
                         str(playbook),
-                        env=env | {"FAIL_RECOVERY": "1" if fail else "0"},
+                        "-e",
+                        json.dumps(base | overrides),
                         check=False,
                     )
-                    self.assertNotIn(
-                        access["mqtt_password"], result.stdout + result.stderr
-                    )
-                    self.assertEqual(list(transfers.glob("offkey-ambibox-*")), [])
-                    if fail:
+                    output = result.stdout + result.stderr
+                    for secret in ("vault-pass", "legacy-pass"):
+                        self.assertNotIn(secret, output)
+                    if expected is None:
                         self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(resolved.exists())
                     else:
-                        self.assertEqual(
-                            result.returncode, 0, result.stdout + result.stderr
-                        )
-                        self.assertEqual(json.loads(recovered.read_text()), access)
+                        self.assertEqual(result.returncode, 0, output)
+                        self.assertEqual(json.loads(resolved.read_text()), expected)
 
-    def test_complete_backup_can_seed_an_empty_host_without_overwriting_live_identity(
+    def test_identity_backup_can_seed_an_empty_host_without_overwriting_live_identity(
         self,
     ):
         with tempfile.TemporaryDirectory() as directory:
@@ -159,26 +121,17 @@ else:
                 root / name for name in ("live", "backup", "restored")
             )
             for stack in (live, restored):
-                (stack / "tailscale-ambibox-data").mkdir(parents=True)
+                (stack / "route-data").mkdir(parents=True)
             identity = '{"test-only-identity":"synthetic-not-a-real-key"}\n'
-            access = json.dumps(
-                {
-                    "mqtt_username": "fixture",
-                    "mqtt_password": "fixture-password",
-                    "api_key": "fixture",
-                    "api_secret": "a" * 64,
-                    "gost_password": "b" * 64,
-                }
-            )
-            (live / "tailscale-ambibox-data/tailscaled.state").write_text(identity)
-            (live / "ambibox-access.json").write_text(access)
+            (live / "route-data/tailscaled.state").write_text(identity)
             inventory = root / "hosts.ini"
             inventory.write_text(
-                "[ambibox_nfs]\nlocalhost ansible_connection=local\n[swarm_manager]\nlocalhost\n"
+                "[swarm_manager]\nlocalhost ansible_connection=local\n"
             )
             variables = {
                 "stack_dir": str(live),
-                "ambibox_backup_directory": str(backup),
+                "broker_route_state_dir": str(live / "route-data"),
+                "broker_route_backup_directory": str(backup),
                 "offkey_env": "prod",
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
@@ -187,7 +140,7 @@ else:
                 "playbook",
                 "-i",
                 str(inventory),
-                str(ROOT / "ansible/backup-ambibox-state.yml"),
+                str(ROOT / "ansible/backup-broker-route-state.yml"),
                 "-e",
                 json.dumps(variables),
             )
@@ -199,35 +152,26 @@ else:
             self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o700)
             variables |= {
                 "stack_dir": str(restored),
-                "ambibox_seed_dir": str(backup / "tailscale-ambibox-data"),
-                "stack_file_owner": str(os.getuid()),
-                "stack_file_group": str(os.getgid()),
+                "broker_route_state_dir": str(restored / "route-data"),
+                "broker_route_seed_dir": str(backup),
             }
             command = (
                 "playbook",
                 "-i",
                 "localhost,",
-                str(ROOT / "tests/recover-ambibox.yml"),
+                str(ROOT / "tests/recover-broker-route.yml"),
                 "-e",
                 json.dumps(variables),
             )
             ansible(*command)
             self.assertEqual(
-                (restored / "tailscale-ambibox-data/tailscaled.state").read_text(),
-                identity,
+                (restored / "route-data/tailscaled.state").read_text(), identity
             )
-            self.assertEqual((restored / "ambibox-access.json").read_text(), access)
-            (restored / "tailscale-ambibox-data/tailscaled.state").write_text(
-                "newer-live-identity"
-            )
-            (restored / "ambibox-access.json").write_text("newer-live-access")
+            (restored / "route-data/tailscaled.state").write_text("newer-live-identity")
             ansible(*command)
             self.assertEqual(
-                (restored / "tailscale-ambibox-data/tailscaled.state").read_text(),
+                (restored / "route-data/tailscaled.state").read_text(),
                 "newer-live-identity",
-            )
-            self.assertEqual(
-                (restored / "ambibox-access.json").read_text(), "newer-live-access"
             )
 
     def test_ssh_enrollment_requires_the_trusted_fingerprint_and_preserves_existing_hosts(

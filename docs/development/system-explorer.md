@@ -60,7 +60,7 @@ The inspector's Collection controls explicitly select Off, Sample (1–3,600 sec
 
 The catalogue migrations and what they preserve are described in [Collection](../operations/system-collection.md).
 
-There is one catalogue runtime and one accepted topic namespace. New readings receive deterministic internal entity and reading identities. JSON Pointer bindings support multiple fields on an arbitrary upstream MQTT topic. Importing or adding a reading leaves it Off; an existing selection is retained by stable reading ID. Active monitors must stop before an input or its collection cadence changes. Generated v1 EMQX/GOST routes are retired before generic subscriptions start; operator-authored routes are untouched.
+There is one catalogue runtime and one accepted topic namespace. New readings receive deterministic internal entity and reading identities. JSON Pointer bindings support multiple fields on an arbitrary upstream MQTT topic. Importing or adding a reading leaves it Off; an existing selection is retained by stable reading ID. Active monitors must stop before an input or its collection cadence changes.
 
 Production readiness checks the generic catalogue's matching ingress and collector revision, including idle catalogues with all inputs Off. The ingress controller uses an independent advisory lock so it cannot block account administration or schema migrations. Preview and persistent collection share operator access configuration: network reachability, allowlists, credentials and TLS requirements determine access to private sources.
 

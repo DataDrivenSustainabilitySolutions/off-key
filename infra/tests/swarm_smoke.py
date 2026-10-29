@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
 from rehearsal_releases import (
     build_local_images,
     compatible_release,
@@ -269,6 +270,9 @@ def prepare(directory):
         tactic_pipeline_authoring_enabled=False,
         tactic_docker_default_network=f"{STACK}_emqx-network",
         tactic_docker_additional_networks=f"{STACK}_app-network",
+        # The production route secret, covering only the test broker.
+        broker_route_hosts=["source-broker"],
+        broker_route_host_suffixes=[],
     )
     if result.returncode:
         raise AssertionError(result.stdout + result.stderr)
@@ -290,10 +294,11 @@ def prepare(directory):
     # commands, placement, volumes, TLS and secret wiring from the production model.
     for name in ("cloudflared", "traefik", "oauth2-proxy", "landing"):
         model["services"].pop(name, None)
-    model["services"]["tailscale-ambibox"] = {
+    # A plain SOCKS proxy stands in for the route's Tailscale node.
+    model["services"]["broker-route"] = {
         "image": release["images"]["gost"],
         "command": ["-L", "socks5://:1055"],
-        "networks": ["emqx-network"],
+        "networks": ["app-network", "emqx-network"],
         "deploy": {"replicas": 1},
     }
     model["services"]["source-broker"] = {
@@ -324,9 +329,11 @@ def prepare(directory):
         model["services"][service]["ports"] = [
             {"target": port, "published": published, "mode": "host"}
         ]
-    # The controller's production allowlist is private. Only the test broker is dialled.
+    # The compatible release predates broker routes and ignores their secret. An
+    # allowlist entry lets it dial the test broker directly; the current release
+    # still takes the route, whose proxy wins over a direct connection.
     model["services"]["tactic"]["environment"].update(
-        AMBIBOX_ALLOWED_HOSTS='["source-broker"]'
+        SYSTEM_LIVE_ALLOWED_HOSTS='["source-broker"]'
     )
     used_configs = {
         item["source"]
@@ -338,7 +345,7 @@ def prepare(directory):
         for name, value in model.get("configs", {}).items()
         if name in used_configs
     }
-    model["volumes"].pop("tailscale-ambibox-state", None)
+    model["volumes"].pop("broker-route-state", None)
     secret_values = json.loads((directory / "stack/validation.json").read_text())[
         "deployment_secret_material"
     ]
@@ -367,7 +374,39 @@ def prepare(directory):
     # Production seeds this private image on backend nodes before runtime monitors
     # start. The single rehearsal node already has the temporary registry login.
     run("docker", "pull", release["images"]["mqtt_radar"], timeout=300)
+    # Services an earlier layout ran that this release's successors replace,
+    # such as a node identity that must never run twice. They must be gone
+    # before the release starts its own.
+    replaced = yaml.safe_load(
+        (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()
+    ).get("stack_replaced_services", [])
+    for name in replaced:
+        run(
+            "docker",
+            "service",
+            "create",
+            "--quiet",
+            "--name",
+            f"{STACK}_{name}",
+            "--label",
+            f"com.docker.stack.namespace={STACK}",
+            "--constraint",
+            "node.labels.backend==true",
+            release["images"]["gost"],
+            "-L",
+            "socks5://:1055",
+            timeout=180,
+        )
+    applied_since = str(int(time.time()) - 1)
     deploy(directory, "apply", release_bootstrap=True)
+    services = run(
+        "docker", "service", "ls", "--format", "{{.Name}}"
+    ).stdout.splitlines()
+    for name in replaced:
+        if f"{STACK}_{name}" in services:
+            raise AssertionError(f"The release kept the replaced service {name}")
+    if replaced:
+        assert_replaced_stopped_before_successor(applied_since, replaced)
     ready(directory)
     invitation = run(
         "docker",
@@ -485,6 +524,44 @@ def cleanup(directory):
                 "rehearsal secret removal",
                 timeout=90,
             )
+
+
+def assert_replaced_stopped_before_successor(since: str, replaced: list[str]) -> None:
+    # The successor reuses the replaced services' identity, so its first
+    # container may start only after every replaced container has died.
+    events = run(
+        "docker",
+        "events",
+        "--since",
+        since,
+        "--until",
+        str(int(time.time()) + 1),
+        "--filter",
+        "type=container",
+        "--filter",
+        "event=die",
+        "--filter",
+        "event=start",
+        "--format",
+        '{{.TimeNano}} {{.Action}} {{index .Actor.Attributes "com.docker.swarm.service.name"}}',
+    ).stdout.splitlines()
+    replaced_names = {f"{STACK}_{name}" for name in replaced}
+    deaths = [
+        int(stamp)
+        for stamp, action, service in (line.split(" ", 2) for line in events)
+        if action == "die" and service in replaced_names
+    ]
+    starts = [
+        int(stamp)
+        for stamp, action, service in (line.split(" ", 2) for line in events)
+        if action == "start" and service == f"{STACK}_broker-route"
+    ]
+    if not deaths or not starts:
+        raise AssertionError("The rehearsal did not observe the route replacement")
+    if max(deaths) >= min(starts):
+        raise AssertionError(
+            "The route started before the service it replaces had stopped"
+        )
 
 
 if __name__ == "__main__":

@@ -20,12 +20,15 @@ from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services.catalogue import system_ingress
 from off_key_tactic_middleware.services.catalogue.arrival_cadence import ArrivalCadence
+from off_key_tactic_middleware.services.catalogue.broker_access import (
+    BrokerRouteAccess,
+)
 
 
-def definition():
+def definition(host="127.0.0.1"):
     document = SystemDocument.model_validate(
         {
-            "connections": [{"id": "broker", "label": "Broker", "host": "127.0.0.1"}],
+            "connections": [{"id": "broker", "label": "Broker", "host": host}],
             "streams": [
                 {
                     "id": name,
@@ -227,8 +230,12 @@ def test_arrival_cadence_needs_two_arrivals_and_ignores_repeats():
 
 
 class FakeWorker:
-    def __init__(self, connection, topics, credential, on_message, on_state, **_):
+    def __init__(
+        self, connection, topics, credential, on_message, on_state, proxy=None, **_
+    ):
         self.connection = connection
+        self.credential = credential
+        self.proxy = proxy
         self.on_state = on_state
         self.started = False
         self.stopped = False
@@ -351,3 +358,37 @@ async def test_reconnect_replaces_the_client_and_resets_backoff(monkeypatch):
     second.on_state("connected", None)
     assert ingress.states["broker"]["state"] == "connecting"
     assert not await ingress.reconnect("other")
+
+
+@pytest.mark.asyncio
+async def test_persistent_collection_reaches_covered_brokers_through_the_route(
+    monkeypatch,
+):
+    FakeWorker.created = []
+    settings = SystemLiveSettings(
+        SYSTEM_BROKER_ROUTES=json.dumps(
+            [
+                {
+                    "name": "partner",
+                    "host_suffixes": [".mesh.example"],
+                    "socks_proxy": {"host": "broker-route", "port": 1055},
+                    "credential": {"username": "operator", "password": "secret"},
+                }
+            ]
+        )
+    )
+    monkeypatch.setattr(system_ingress, "get_system_live_settings", lambda: settings)
+    monkeypatch.setattr(system_ingress, "LiveMqttWorker", FakeWorker)
+    ingress = system_ingress.SystemIngress(access_resolver=BrokerRouteAccess(settings))
+    ingress.output = SimpleNamespace(is_connected=lambda: True)
+
+    await ingress._configure(definition("charger.mesh.example"))
+    worker = FakeWorker.created[0]
+    assert worker.started
+    assert (worker.proxy.host, worker.proxy.port) == ("broker-route", 1055)
+    assert worker.credential.username == "operator"
+    assert ingress.states["broker"]["state"] == "connecting"
+
+    await ingress._configure(definition("other.example"))
+    assert len(FakeWorker.created) == 1
+    assert ingress.states["broker"]["state"] == "blocked"

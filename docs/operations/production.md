@@ -59,8 +59,8 @@ Each release's full Ansible log is kept on its manager under
 or refused release opens the issue **Production release needs attention** (or
 **Public demo release needs attention**) with those public lines and the retry
 step, and mentions whoever triggered it. Later failures comment on the same issue,
-and the next completed release of that target closes it. Database backups, vendor
-identity, recovery records and private inventories are not published as Actions
+and the next completed release of that target closes it. Database backups, the broker
+route identity, recovery records and private inventories are not published as Actions
 artifacts. Investigate live failures through trusted SSH and the server-side
 records, not public log uploads.
 
@@ -90,8 +90,12 @@ BOOTSTRAP=true` with the ignored inventory and encrypted vault. Existing SSH use
 node names, ports, management Tailscale enrollment and node labels remain authoritative.
 The inventory must contain exactly one Swarm manager; every operator playbook checks
 this on the controller before contacting hosts.
-The vendor identity must exist on the manager's NFS export or be restored from a
-private seed before deployment. CI never registers a replacement vendor device.
+The broker route's node identity must exist on the manager's NFS export or be
+restored from a private seed before deployment. CI never registers a replacement
+route device. Its MQTT login belongs in the vault as `broker_route_mqtt_username`
+and `broker_route_mqtt_password`. Until then, deployments read it once more from
+the file an earlier release kept on the manager (`broker_route_legacy_access_file`),
+which no backup covers: copy it into the vault before relying on the fallback.
 NFS permits the discovered backend management-tailnet /32 addresses only.
 
 Provisioning installs the Docker Engine release pinned as `docker_engine_version` in
@@ -138,7 +142,7 @@ credentials and TLS settings remain private and separate from catalogue exports.
 Do not reset an existing database during an upgrade; see
 [Collection](system-collection.md) for what the catalogue migrations preserve.
 
-Real observations and vendor registration/recovery notes remain private operator
+Real observations and source registration/recovery notes remain private operator
 material. They are not required for hosted CI.
 
 Previously published catalog identifiers remain in earlier public Offkey commits;

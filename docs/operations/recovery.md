@@ -53,6 +53,28 @@ migration ledger rejects unknown/newer or changed migrations and incompatible sc
 A code rollback is permitted only when that target can validate the current database.
 A release older than this integration cannot run the integrated recovery machinery.
 
+### Rolling back past the broker route release
+
+The release that made the broker route source-agnostic renamed its node service
+from `tailscale-ambibox` to `broker-route`, and stops the old service before the
+new one starts. An older release does not know `broker-route`, keeps it running
+and starts its own node from the same identity. After the first verified deploy
+of that release, remove the `ambibox_nfs` group from the private production
+`hosts.yml` (the `OFFKEY_PROD_INVENTORY` secret). Older releases then stop at
+their inventory check before they change the stack. To roll back past it anyway:
+
+1. Set `AUTO_DEPLOY_ENABLED=false`.
+2. On the manager, run `docker service rm off-key_broker-route`.
+3. On every backend node, repeat
+   `docker ps -q --filter label=com.docker.swarm.service.name=off-key_broker-route`
+   until it prints nothing.
+4. On the manager, run
+   `rm /etc/exports.d/broker-route.exports && exportfs -ra`; the older release
+   writes its own export file for the same directory.
+5. Add the manager back to the `ambibox_nfs` group and keep
+   `<stack_dir>/ambibox-access.json` on the manager, which the older release
+   reads for its login. Then dispatch the older SHA.
+
 There is **no automatic database downgrade**. If schema restoration is necessary,
 use a maintenance window, stop all writers and restore a verified backup before
 starting an older application. Restoring a database loses writes newer than the
@@ -65,7 +87,7 @@ With private local inventory/vault and a verified management SSH connection:
 
 ```sh
 make -C infra backup-stack-prod
-make -C infra backup-ambibox-prod
+make -C infra backup-broker-route-prod
 make -C infra restore-stack-prod TS=<explicit-backup-timestamp> SERVICES=postgres,emqx
 ```
 
@@ -107,8 +129,10 @@ artifacts. If a failure occurred after replacement began, keep writers stopped a
 ensure the intended replacement tasks and mounts are running before retrying the
 recorded restore; the restore command validates them before importing data.
 
-Preserve the vendor NFS identity and private access material independently. Restore
-an identity only after fencing its former holder; do not run two vendor nodes from
-one copied identity. Missing identity fails deployment until explicitly restored.
-Keep vault password, SSH recovery access, known-host fingerprints and database/vendor
+Preserve the broker route's NFS node identity independently; its MQTT login lives
+in the vault. Restore an identity only after fencing its former holder; do not run
+two route nodes from one copied identity. Missing identity fails deployment until
+explicitly restored.
+
+Keep vault password, SSH recovery access, known-host fingerprints and database/route
 backups outside GitHub so recovery remains possible if GitHub is unavailable.

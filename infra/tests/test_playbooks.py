@@ -691,7 +691,7 @@ else:
             inventory = Path(directory) / "hosts.ini"
             inventory.write_text(
                 "[swarm_manager]\nlocalhost ansible_connection=local\n"
-                "[ambibox_nfs]\nlocalhost\n[swarm_backend]\nbackend\n"
+                "[swarm_backend]\nbackend\n"
                 "[swarm_frontend]\nfrontend\n[swarm_worker:children]\n"
                 "swarm_backend\nswarm_frontend\n[all:vars]\noffkey_env=prod\n"
             )

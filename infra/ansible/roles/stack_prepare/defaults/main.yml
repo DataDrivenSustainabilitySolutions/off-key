@@ -2,4 +2,16 @@
 stack_source_dir: "{{ role_path }}/../../../stack"
 stack_file_owner: root
 stack_file_group: docker
-ambibox_ingress_enabled: true
+
+# Broker route: a singleton Tailscale node that joins the network a deployment's
+# brokers live on, plus the hosts TACTIC reaches through it. Off unless an
+# inventory configures one; see docs/operations/system-collection.md.
+broker_route_enabled: false
+broker_route_name: route
+broker_route_hosts: []
+broker_route_host_suffixes: []
+broker_route_require_tls: false
+# The route's MQTT login comes from the vault; true allows brokers without one.
+broker_route_anonymous: false
+broker_route_tailscale_extra_args: ""
+broker_route_state_dir: "{{ stack_dir }}/broker-route-data"

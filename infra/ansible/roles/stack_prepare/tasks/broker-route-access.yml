@@ -1,0 +1,49 @@
+---
+# The route's MQTT login comes from the vault. An inventory that kept it in a
+# private file on the manager before names that file in
+# broker_route_legacy_access_file; it is read only while the vault has none.
+- name: Read the route login an earlier release kept on the manager
+  slurp:
+    src: "{{ broker_route_legacy_access_file }}"
+  register: broker_route_legacy_access
+  when:
+    - broker_route_mqtt_password | default('') | length == 0
+    - broker_route_legacy_access_file | default('') | length > 0
+  no_log: true
+
+- name: Resolve the broker route login
+  set_fact:
+    broker_route_login: >-
+      {{ {'username': broker_route_mqtt_username | default(''),
+          'password': broker_route_mqtt_password | default('')}
+         if broker_route_legacy_access.content is not defined else
+         {'username': legacy.mqtt_username | default(''),
+          'password': legacy.mqtt_password | default('')} }}
+  vars:
+    legacy: "{{ broker_route_legacy_access.content | default('e30=') | b64decode | from_json }}"
+  no_log: true
+
+- name: Check whether the broker route login is complete
+  set_fact:
+    broker_route_login_complete: >-
+      {{ broker_route_login.username | length > 0 and broker_route_login.password | length > 0 }}
+  no_log: true
+
+# Only the boolean is asserted, so the message stays visible without the login.
+- name: Require the broker route login
+  assert:
+    that: broker_route_login_complete | bool
+    fail_msg: >-
+      Set broker_route_mqtt_username and broker_route_mqtt_password in the vault,
+      or set broker_route_anonymous: true for brokers that need no login.
+  when: not broker_route_anonymous | bool
+
+- name: Require a broker route that covers at least one host
+  assert:
+    that:
+      - broker_route_name is match('^[a-z0-9][a-z0-9-]*$')
+      - (broker_route_hosts | length) + (broker_route_host_suffixes | length) > 0
+      - broker_route_host_suffixes | reject('match', '^[.]') | list | length == 0
+    fail_msg: >-
+      A broker route needs a lowercase name and at least one entry in
+      broker_route_hosts or broker_route_host_suffixes (each suffix starts with a dot).

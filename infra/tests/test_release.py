@@ -400,6 +400,34 @@ class ReleaseTests(unittest.TestCase):
                     (ROOT / "ansible/roles/stack_deploy/tasks" / name).read_text()
                 )
 
+    def test_replaced_services_stop_right_before_the_release_applies(self):
+        # A successor such as a node identity must never start beside the
+        # service it replaces, so nothing may run between the two steps.
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/main.yml").read_text()
+        )
+        included = [step.get("include_tasks") for step in tasks]
+        position = included.index("replaced.yml")
+        self.assertEqual(included[position + 1], "apply.yml")
+        self.assertNotIn("apply.yml", included[:position])
+        replaced = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/replaced.yml").read_text()
+        )
+        self.assertEqual(
+            [step["name"] for step in replaced],
+            [
+                "List production stack services before replacing any",
+                "Find replaced services that still exist",
+                "Scale replaced services to zero",
+                "Wait until the manager reports no live task of a replaced service",
+                "Remove services a successor in this release replaces",
+                "Confirm no container of a replaced service is left on any node",
+            ],
+        )
+        Environment().parse(
+            (ROOT / "ansible/roles/stack_deploy/tasks/replaced.yml").read_text()
+        )
+
     def test_application_setup_runs_after_the_release_completes(self):
         # Catalogue writes are fenced while a release is open, and a step that
         # always fails inside the release would leave it unrecoverable by retry.

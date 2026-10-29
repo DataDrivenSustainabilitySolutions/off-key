@@ -4,26 +4,27 @@
 - name: Identify the production release before changing the stack
   include_tasks: release.yml
 
-- name: Discover the Ambibox NFS host's Tailscale address
+# The manager exports the broker route's node identity over NFS (nfs_server).
+- name: Discover the manager's management tailnet address for the route state
   command: tailscale ip -4
-  delegate_to: "{{ groups['ambibox_nfs'][0] }}"
-  register: ambibox_nfs_tailnet_ip
+  delegate_to: "{{ groups['swarm_manager'][0] }}"
+  register: broker_route_nfs_tailnet_ip
   changed_when: false
-  when: groups.get('ambibox_nfs', []) | length > 0
+  when: broker_route_enabled | bool
 
-- name: Require the Ambibox NFS host's Tailscale IPv4 address
+- name: Require the manager's management tailnet IPv4 address
   assert:
     that:
-      - ambibox_nfs_tailnet_ip.stdout | trim | length > 0
+      - broker_route_nfs_tailnet_ip.stdout | trim | length > 0
     fail_msg: >-
-      The Ambibox NFS host has no Tailscale IPv4 address. Connect that host to
-      the management tailnet before deploying the stack.
-  when: groups.get('ambibox_nfs', []) | length > 0
+      The manager has no Tailscale IPv4 address. Connect it to the management
+      tailnet before deploying the stack.
+  when: broker_route_enabled | bool
 
-- name: Use the Ambibox NFS host's Tailscale address for backend mounts
+- name: Use the manager's management tailnet address for backend mounts
   set_fact:
-    ambibox_nfs_addr: "{{ ambibox_nfs_tailnet_ip.stdout | trim }}"
-  when: groups.get('ambibox_nfs', []) | length > 0
+    broker_route_nfs_addr: "{{ broker_route_nfs_tailnet_ip.stdout | trim }}"
+  when: broker_route_enabled | bool
 
 - name: Validate production MQTT certificate chain and broker identity
   command:
@@ -39,9 +40,9 @@
   changed_when: false
   no_log: true
 
-- name: Reuse vendor access and provision collection controller credentials
-  include_tasks: ambibox-access.yml
-  when: ambibox_ingress_enabled | bool
+- name: Resolve the broker route and its login
+  include_tasks: broker-route-access.yml
+  when: broker_route_enabled | bool
 
 - name: Render deployment files
   include_tasks: render.yml

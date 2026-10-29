@@ -121,8 +121,6 @@ jobs:
           sync: "false"
           cache: "false"
       - name: Validate Ansible and render the production stack with synthetic inputs
-        env:
-          OFFKEY_GOST_SMOKE: "1"
         run: make -C infra check-deploy
 
   collection:

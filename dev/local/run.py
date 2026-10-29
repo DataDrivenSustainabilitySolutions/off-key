@@ -20,7 +20,6 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ROOT / "dev" / "local"
 ENV_FILE = LOCAL / ".env"
-API_KEYS = LOCAL / "state" / "emqx-api-keys"
 
 
 def _load_broker_fixture():
@@ -122,10 +121,6 @@ def initialize(args: argparse.Namespace) -> None:
         else:
             print("Existing local configuration preserved.")
         return
-    if API_KEYS.exists():
-        raise ValueError(
-            "Local API keys already exist. Restore the matching .env first."
-        )
 
     project = args.project or default_project(ROOT)
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project):
@@ -146,9 +141,6 @@ def initialize(args: argparse.Namespace) -> None:
         CORS_ALLOWED_ORIGINS=f'["{origin}"]',
         POSTGRES_PORT="5432",
         SUPERUSER_MAIL=args.admin_email,
-        AMBIBOX_ALLOWED_HOSTS='["source-broker"]',
-        AMBIBOX_ALLOWED_HOST_SUFFIXES="[]",
-        AMBIBOX_EMQX_API_KEY=f"{project}-controller",
         SYSTEM_LIVE_ENABLED="true",
         SYSTEM_LIVE_ALLOWED_HOSTS=json.dumps(LOCAL_LIVE_HOSTS, separators=(",", ":")),
         SYSTEM_LIVE_CREDENTIALS="{}",
@@ -162,8 +154,6 @@ def initialize(args: argparse.Namespace) -> None:
         "EMAIL_PASSWORD",
         "EMQX_DASHBOARD_PASSWORD",
         "EMQX_NODE_COOKIE",
-        "AMBIBOX_EMQX_API_SECRET",
-        "AMBIBOX_GOST_PASSWORD",
     ):
         values[key] = secrets.token_hex(32)
     for key, service in (
@@ -178,14 +168,6 @@ def initialize(args: argparse.Namespace) -> None:
     if demo:
         values.update(demo_settings(values))
 
-    API_KEYS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    private_write(
-        API_KEYS,
-        f"{values['AMBIBOX_EMQX_API_KEY']}:{values['AMBIBOX_EMQX_API_SECRET']}\n",
-    )
-    # EMQX runs under its own container UID. The 0700 host directory protects
-    # this readable, read-only file from other host users.
-    API_KEYS.chmod(0o444)
     private_write(
         ENV_FILE,
         "# Private local deployment configuration; do not commit.\n"
@@ -197,7 +179,7 @@ def initialize(args: argparse.Namespace) -> None:
 
 
 def compose_command(*, all_profiles: bool = False) -> list[str]:
-    if not ENV_FILE.is_file() or not API_KEYS.is_file():
+    if not ENV_FILE.is_file():
         raise ValueError("Run `python3 dev/local/run.py init` first.")
     values = read_environment(ENV_FILE)
     project = values.get("COMPOSE_PROJECT_NAME", "")

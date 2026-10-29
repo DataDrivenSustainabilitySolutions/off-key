@@ -42,18 +42,17 @@ oauth2_client_id: "CHANGE_ME"
 oauth2_client_secret: "CHANGE_ME"
 oauth2_cookie_secret: "CHANGE_ME_openssl_rand_hex_16"
 
-# MagicDNS hostname of the vendor MQTT broker on the vendor tailnet, reached via the
-# ambibox SOCKS5 bridge.
-# Broker hosts belong in the UI catalog. Optional on first controller setup:
-# ambibox_mqtt_username: "existing-vendor-username"
-# ambibox_mqtt_password: "existing-vendor-password"
-# Otherwise the deployment reads the existing EMQX AmbiBox connector once.
+# Login for the brokers the broker route covers (see broker_route_* in vars.yml).
+# Leave both out only for a route whose brokers need no login, and then set
+# broker_route_anonymous: true in vars.yml; otherwise deployment stops.
+broker_route_mqtt_username: "existing-broker-username"
+broker_route_mqtt_password: "existing-broker-password"
 
-# The ambibox vendor identity is restored from the NFS export or a private seed; see
-# docs/operations/recovery.md. No auth key is configured here.
+# The broker route's node identity is restored from the NFS export or a private
+# seed; see docs/operations/recovery.md. No auth key is configured here.
 
-# Hostname suffix for the prod ambibox node (a cluster/site id). Valid DNS label.
-# Empty → DDSS-prod.
+# Hostname suffix for the prod broker route node (a cluster/site id). Valid DNS
+# label. Empty → DDSS-prod.
 ambibox_hostname_id: ""
 
 ghcr_username: "your-github-username"

@@ -27,6 +27,24 @@ class ResolvedBroker:
 BrokerBlock = Literal["host_not_allowed", "credential_missing"]
 
 
+class BrokerRouteAccess:
+    """Access through the operator's broker routes (SYSTEM_BROKER_ROUTES)."""
+
+    def __init__(self, settings: SystemLiveSettings):
+        self.settings = settings
+
+    def __call__(self, connection: SystemConnection) -> BrokerAccess | None:
+        route = self.settings.route_for(connection.host)
+        # The SOCKS client tunnels plain MQTT over TCP only.
+        if route is None or (route.socks_proxy and connection.transport != "tcp"):
+            return None
+        return BrokerAccess(
+            credential=route.credential,
+            proxy=route.socks_proxy,
+            require_tls=route.require_tls,
+        )
+
+
 def resolve_broker(
     settings: SystemLiveSettings,
     connection: SystemConnection,

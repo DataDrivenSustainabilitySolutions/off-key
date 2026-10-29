@@ -22,6 +22,9 @@
             tasks_from: maintenance
         - include_role:
             name: stack_deploy
+            tasks_from: replaced
+        - include_role:
+            name: stack_deploy
             tasks_from: apply
         - include_role:
             name: stack_deploy

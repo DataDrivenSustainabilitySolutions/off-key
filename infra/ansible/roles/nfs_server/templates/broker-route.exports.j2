@@ -1,0 +1,1 @@
+{{ broker_route_state_dir }} {{ broker_route_nfs_export_clients | map('regex_replace', '$', '(rw,sync,no_subtree_check,no_root_squash)') | join(' ') }}

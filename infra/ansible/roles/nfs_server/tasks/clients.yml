@@ -2,7 +2,7 @@
 # Consumes tailscale discovery results; shared with offline configuration checks.
 - name: Require discovered NFS clients
   assert:
-    that: ambibox_nfs_backend_ips.results | length > 0
+    that: broker_route_nfs_backend_ips.results | length > 0
     fail_msg: "The NFS export needs at least one discovered backend address."
 
 - name: Require one valid IPv4 address for every NFS client
@@ -15,12 +15,12 @@
       Cannot determine a single Tailscale IPv4 address for {{ item.item }}.
       The NFS export has not been changed. Connect every inventory backend
       to the environment's management tailnet before deploying.
-  loop: "{{ ambibox_nfs_backend_ips.results }}"
+  loop: "{{ broker_route_nfs_backend_ips.results }}"
   loop_control:
     label: "{{ item.item }}"
 
 - name: Limit the NFS export to the discovered backend addresses
   set_fact:
-    ambibox_nfs_export_clients: >-
-      {{ ambibox_nfs_backend_ips.results | map(attribute='stdout') | map('trim')
+    broker_route_nfs_export_clients: >-
+      {{ broker_route_nfs_backend_ips.results | map(attribute='stdout') | map('trim')
          | unique | sort | map('regex_replace', '$', '/32') | list }}

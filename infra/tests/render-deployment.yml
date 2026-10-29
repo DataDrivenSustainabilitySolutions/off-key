@@ -16,7 +16,7 @@
       include_role:
         name: nfs_server
         tasks_from: clients
-      when: ambibox_ingress_enabled | default(true) | bool
+      when: broker_route_enabled | default(false) | bool
 
     - name: Run the same rendering tasks as stack preparation
       include_role:
@@ -25,10 +25,10 @@
 
     - name: Render the actual NFS export template
       template:
-        src: ../ansible/roles/nfs_server/templates/ambibox.exports.j2
-        dest: "{{ stack_dir }}/ambibox.exports"
+        src: ../ansible/roles/nfs_server/templates/broker-route.exports.j2
+        dest: "{{ stack_dir }}/broker-route.exports"
         mode: "0600"
-      when: ambibox_ingress_enabled | default(true) | bool
+      when: broker_route_enabled | default(false) | bool
 
     - name: Record the overlay selection consumed by stack deployment
       copy:
@@ -36,6 +36,5 @@
         mode: "0600"
         content: >-
           {{ {'compose_files': stack_compose_files,
-              'ambibox_api_bootstrap': deployment_secret_material.get('ambibox_api_bootstrap'),
               'deployment_secret_material': deployment_secret_material,
               'deployment_secret_names': deployment_secret_names} | to_json }}

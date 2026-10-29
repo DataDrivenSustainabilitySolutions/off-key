@@ -15,7 +15,7 @@
 #
 # NOTE: these are node-local volumes with the default local driver. Deliberately no
 # driver_opts — Docker never updates driver_opts on an existing volume, which is the trap
-# that tailscale-ambibox-state hit. Both services are constrained to
+# that the broker route's NFS state volume hit. Both services are constrained to
 # node.labels.backend == true; with more than one backend node they must be pinned to a
 # specific host or moved to shared storage, or a reschedule finds an empty volume.
 

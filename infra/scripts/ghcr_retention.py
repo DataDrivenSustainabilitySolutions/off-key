@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -37,6 +38,9 @@ RELEASE = (
     / "ansible/inventories/prod/group_vars/all/release.yml"
 )
 ORPHAN_GRACE = timedelta(days=1)
+# Each manifest read and deletion is one round trip; a backlog of hundreds per
+# package needs them concurrent to finish in the job's time limit.
+WORKERS = 8
 MANIFEST_TYPES = (
     "application/vnd.oci.image.manifest.v1+json, "
     "application/vnd.oci.image.index.v1+json, "
@@ -178,11 +182,21 @@ def main() -> int:
             gh("--paginate", "--slurp", f"{base}/{package}/versions?per_page=100")
         )
         versions = [version for page in pages for version in page]
+        untagged = [version["name"] for version in versions if not tags(version)]
+        with ThreadPoolExecutor(WORKERS) as pool:
+            subjects = dict(
+                zip(
+                    untagged,
+                    pool.map(
+                        lambda digest, p=package: registry.subject(p, digest), untagged
+                    ),
+                )
+            )
         kept, deleted = plan(
             versions,
             args.keep,
             pinned,
-            lambda version, package=package: registry.subject(package, version["name"]),
+            lambda version, s=subjects: s[version["name"]],
             now,
         )
         if not any(any(t.startswith("sha-") for t in tags(v)) for v in kept):
@@ -190,10 +204,19 @@ def main() -> int:
         print(
             f"{package}: keep {len(kept)}, {'delete' if args.delete else 'would delete'} {len(deleted)}"
         )
-        for version in sorted(deleted, key=created):
+        deleted.sort(key=created)
+        for version in deleted:
             print(f"  - {describe(version)}")
-            if args.delete:
-                gh("--method", "DELETE", f"{base}/{package}/versions/{version['id']}")
+        if args.delete:
+            with ThreadPoolExecutor(WORKERS) as pool:
+                list(
+                    pool.map(
+                        lambda v, p=package: gh(
+                            "--method", "DELETE", f"{base}/{p}/versions/{v['id']}"
+                        ),
+                        deleted,
+                    )
+                )
         summary.append(f"| `{package}` | {len(kept)} | {len(deleted)} |")
 
     if os.environ.get("GITHUB_STEP_SUMMARY"):

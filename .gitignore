@@ -47,10 +47,6 @@ npm-debug.log*
 /data/*.db
 /logs/
 *.log
-tailscale-ambibox/data/
-# Private local AmbiBox catalog used for development/import
-/infra/stack/state/prod/ambibox-development-catalog.json
-/infra/stack/state/prod/ambibox-development-system.json
 
 # Local tool state
 /.agent/execplans/

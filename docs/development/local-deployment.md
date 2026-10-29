@@ -333,7 +333,6 @@ migrations, then rebuild/recreate the API, TACTIC, collector and DB sync; also b
 the RADAR runtime image before starting monitors. Never use a database reset to
 upgrade a saved installation.
 
-The ignored private `infra/stack/state/prod/ambibox-development-system.json` is the
-converted generic Ambibox example for local import. It contains configuration
-only; MQTT passwords and private network access remain operator settings. Its
-original catalogue file remains a private archive.
+A source's catalogue for local import belongs under the ignored
+`infra/stack/state/`. It contains configuration only; MQTT passwords and private
+network access remain operator settings.

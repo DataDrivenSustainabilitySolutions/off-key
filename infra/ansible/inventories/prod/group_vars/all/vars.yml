@@ -126,6 +126,19 @@ broker_route_legacy_access_file: "{{ stack_dir }}/ambibox-access.json"
 broker_route_legacy_exports_file: ambibox.exports
 # Stopped before the release starts, so the node identity never runs twice.
 stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge]
+# Releases before broker routes required the manager in the private hosts.yml
+# group ambibox_nfs; see "Rolling back past the broker route release" in
+# docs/operations/recovery.md.
+# Secrets and files of the replaced services, removed once they are gone.
+stack_retired_secret_keys:
+  - ambibox_mqtt_username
+  - ambibox_mqtt_password
+  - ambibox_api_key
+  - ambibox_api_secret
+  - ambibox_api_bootstrap
+  - ambibox_gost_password
+  - ambibox_gost_config
+stack_retired_files: [docker-compose.ambibox.yml]
 
 # ── Persistence ──────────────────────────────────────────────────────────────────────────
 # Which stateful paths are volume-backed. Flipping any of these is a data-visibility change,

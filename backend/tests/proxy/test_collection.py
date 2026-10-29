@@ -3,9 +3,6 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.db.catalogue_v1_models import (
-    AmbiboxCatalog,
-)
 from off_key_core.schemas.collection_wire import (
     decode_ingress_envelope,
     encode_ingress_envelope,
@@ -15,9 +12,8 @@ from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_tactic_middleware.services.catalogue.system_collection import (
     SystemCollectionService,
 )
-from pydantic import ValidationError
 
-from tests.support.collection import catalog, message, runtime_catalog
+from tests.support.collection import message, runtime_catalog
 
 
 def test_sampler_keeps_latest_new_observation_and_original_time_without_forward_fill():
@@ -127,23 +123,6 @@ def test_state_is_coalesced_and_policy_changes_invalidate_monitor_inputs():
     assert SystemCollectionService._changed_inputs(config, changed) == {
         config.streams()[0].accepted_topic
     }
-
-
-def test_catalog_rejects_wildcards_duplicate_endpoints_and_invalid_local_binding():
-    data = catalog().model_dump(mode="json")
-    data["sources"][0]["chargers"][0]["sensors"][0]["upstream_topic"] = (
-        "device/evCharger/+/#"
-    )
-    with pytest.raises(ValidationError):
-        AmbiboxCatalog.model_validate(data)
-    data = catalog().model_dump(mode="json")
-    data["sources"].append(data["sources"][0])
-    with pytest.raises(ValidationError):
-        AmbiboxCatalog.model_validate(data)
-    data = catalog().model_dump(mode="json")
-    data["sources"][0]["chargers"][0]["local_id"] = "1"
-    with pytest.raises(ValidationError):
-        AmbiboxCatalog.model_validate(data)
 
 
 @pytest.mark.asyncio

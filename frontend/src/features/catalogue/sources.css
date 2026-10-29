@@ -1,7 +1,7 @@
 .ex-main-content .source-back { display: inline-flex; align-items: center; gap: 6px; padding: 0; color: hsl(var(--muted-foreground)); font-size: 13px; }
 .ex-main-content .source-back:hover { color: hsl(var(--foreground)); }
 .source-overview { display: grid; gap: 12px; margin-top: 28px; }
-.ex-main-content .source-broker { display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 7px 20px; margin-top: 8px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 10px; }
+.ex-main-content .source-broker { position: relative; display: grid; width: 100%; grid-template-columns: minmax(0,1fr) auto; text-align: left; gap: 7px 20px; margin-top: 8px; padding: 18px; border: 1px solid hsl(var(--border)); border-radius: 10px; }
 .source-broker strong { font-weight: 500; }
 /* Connected and unavailable brokers get a left edge in their state colour that
    fades into the card; every other state stays plain. */
@@ -11,7 +11,12 @@
 .ex-main-content .source-broker--danger { --stripe: hsl(var(--destructive)); }
 .source-broker span { font-size: 12px; color: hsl(var(--muted-foreground)); }
 .source-broker .mn-state { color: hsl(var(--foreground)); }
-.source-broker span:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+button.source-broker > span:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+/* The name opens the broker; its hit area covers the whole card, under the connect action. */
+.ex-main-content .source-broker-open { padding: 0; text-align: left; }
+.ex-main-content .source-broker-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.ex-main-content .source-broker .source-broker-reason { grid-column: 1; color: hsl(var(--destructive)); }
+.source-broker-status { position: relative; z-index: 1; grid-column: 2; grid-row: 1 / span 3; align-self: center; display: flex; align-items: center; gap: 14px; }
 .source-check-mark { display: inline-block; margin-left: 8px; vertical-align: -2px; color: hsl(var(--muted-foreground)); }
 .source-check-mark--positive { color: var(--ex-accent); }
 .source-check-mark--warning { color: hsl(var(--warning)); }
@@ -29,7 +34,9 @@
 .workspace-entity-readings { padding: 22px 0; margin-top: 20px; border-top: 1px solid hsl(var(--border)); }
 .workspace-entity-readings h3 { font-weight: 500; }
 @media (max-width: 760px) {
-  .source-broker span:last-child { grid-column: 1; grid-row: auto; }
+  button.source-broker > span:last-child { grid-column: 1; grid-row: auto; }
+  .ex-main-content div.source-broker { grid-template-columns: minmax(0,1fr); }
+  .source-broker-status { grid-column: 1; grid-row: auto; justify-content: space-between; }
   .source-recording select, .source-recording input { font-size: 16px; }
   .source-future { min-height: 44px; }
 }

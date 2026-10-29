@@ -259,10 +259,13 @@ describe("dedicated Sources configuration", () => {
     expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
     expect(await within(overview).findByRole("img", { name: /^Unreachable · Nothing accepts connections on this host and port\. · Checked at/ })).toBeTruthy();
     expect(within(overview).getByText("Connected")).toBeTruthy();
-    expect(within(overview).getAllByText("Not subscribed")).toHaveLength(2);
-    // The edge follows the live state only: green when connected, nothing for idle brokers.
-    expect(within(overview).getByText("Used broker").closest("button")?.className).toContain("source-broker--positive");
-    expect(within(overview).getByText("Workshop broker").closest("button")?.className).toContain("source-broker--neutral");
+    expect(within(overview).getByText("Not subscribed")).toBeTruthy();
+    // A broker nobody records from but that could not be reached reads as unavailable, with the reason.
+    expect(within(overview).getByText("Not subscribed · Unreachable")).toBeTruthy();
+    expect(within(overview).getByText("Nothing accepts connections on this host and port.")).toBeTruthy();
+    expect(within(overview).getByText("Used broker").closest(".source-broker")?.className).toContain("source-broker--positive");
+    expect(within(overview).getByText("Workshop broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
+    expect(within(overview).getByText("Old broker").closest(".source-broker")?.className).toContain("source-broker--danger");
     expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
   });
 
@@ -292,6 +295,36 @@ describe("dedicated Sources configuration", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
     await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "broker" }, undefined));
     await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
+  });
+
+  it("connects each broker from its own row and keeps the check on its page", async () => {
+    const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
+    saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" },
+      { ...saved.document.connections[0]!, id: "live", label: "Live broker" });
+    saved.runtime.ingress = { revision: 4, status: "applied", sources: { used: { state: "error", message }, live: { state: "connected" } } };
+    const now = new Date().toISOString();
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
+      const id = (body as { connection_id: string }).connection_id;
+      if (endpoint === "/v1/system/connections/reconnect") return { connection_id: id };
+      return { connection_id: id, status: "timeout", message: "The broker did not answer within 15 seconds.", latency_ms: null, checked_at: now };
+    });
+    const router = mount();
+    const overview = await screen.findByRole("region", { name: "Broker overview" });
+    expect(within(overview).getByText(message)).toBeTruthy();
+    expect(within(overview).queryByRole("button", { name: "Check connection to Live broker" })).toBeNull();
+    expect(within(overview).queryByRole("button", { name: "Reconnect Live broker" })).toBeNull();
+    fireEvent.click(within(overview).getByRole("button", { name: "Reconnect Used broker" }));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "used" }, undefined));
+    fireEvent.click(within(overview).getByRole("button", { name: "Check connection to Workshop broker" }));
+    expect(await within(overview).findByText("Not subscribed · Unreachable")).toBeTruthy();
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/connections/check", { connection_id: "broker" }, undefined);
+    // Checking a broker does not open it.
+    expect(router.state.location.search).toBe("");
+
+    await act(() => router.navigate("/sources?broker=broker"));
+    expect(await screen.findByText("Unreachable")).toBeTruthy();
+    expect(screen.getByText("The broker did not answer within 15 seconds.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check connection" })).toBeTruthy();
   });
 
   it("offers connection checks to catalogue editors only", async () => {

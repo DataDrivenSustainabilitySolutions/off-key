@@ -23,6 +23,8 @@ type Props = {
   collectionControls?: ReactNode;
   runtime?: SystemRuntime;
   connectionStatusOnly?: boolean;
+  /** Why the last check of an unrecorded broker could not connect; it stands in for the live view's own error. */
+  connectionCheck?: string;
   /** The preview stands in for the page heading. */
   pageTitle?: boolean;
   favourite?: boolean;
@@ -66,7 +68,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 }
 
 export default function ExplorerPreview({
-  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, pageTitle = false, favourite, onFavourite,
+  node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, connectionCheck, pageTitle = false, favourite, onFavourite,
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
@@ -125,15 +127,17 @@ export default function ExplorerPreview({
   const persistentConnection = runtime?.ingress?.sources?.[node.connectionId ?? ""];
   const brokerLabel = persistentConnection?.state === "connected" ? "Connected"
     : persistentConnection?.state === "error" || persistentConnection?.state === "blocked" ? "Unavailable"
-      : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1) : liveLabel;
+      : persistentConnection?.state ? persistentConnection.state[0]!.toUpperCase() + persistentConnection.state.slice(1)
+        : connectionCheck && connection?.state !== "connected" ? "Unreachable" : liveLabel;
   const label = connectionStatusOnly ? brokerLabel : recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
     : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
-  const tone = active ? "positive" : label === "Unavailable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
-  const brokerProblem = connectionStatusOnly && persistentConnection && persistentConnection.state !== "connected"
-    ? persistentConnection.message : undefined;
+  const tone = active ? "positive" : label === "Unavailable" || label === "Unreachable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
+  const brokerProblem = !connectionStatusOnly ? undefined : persistentConnection
+    ? persistentConnection.state !== "connected" ? persistentConnection.message : undefined
+    : label === "Unreachable" ? connectionCheck : undefined;
   const problem = brokerProblem ? brokerProblem : recording ? recordProblem?.message : status.phase === "error" ? status.message
     : connection && ["blocked", "error", "reconnecting"].includes(connection.state)
       ? connection.message : status.phase === "blocked" ? status.message : null;

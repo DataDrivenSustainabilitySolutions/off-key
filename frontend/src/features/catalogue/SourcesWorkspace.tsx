@@ -9,7 +9,7 @@ import { scopeForNode, safeServiceReturn, policyLabel, recordingScopeReadingIds 
 import { useRecordingRules } from "./useRecordingRules";
 import { SourceRecordingInspector } from "./SourceRecordingInspector";
 import { BrokerCheckMark } from "./BrokerCheck";
-import { useBrokerChecks } from "./useBrokerChecks";
+import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { catalogueSelection } from "../workspace/catalogue-navigation";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -24,6 +24,8 @@ const brokerTone = (state?: string) => state === "connected" ? "positive"
 const brokerLabel = (state?: string) => state === "connected" ? "Connected"
   : state === "error" || state === "blocked" ? "Unavailable"
     : state ? `${state[0]!.toUpperCase()}${state.slice(1)}` : "Not subscribed";
+/** A recorded broker that is retrying or gave up can be retried now. */
+const canRetry = (state?: string) => state === "error" || state === "reconnecting";
 
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
@@ -37,20 +39,37 @@ export function SourcesWorkspace() {
   const sources = system.snapshot?.runtime.ingress?.sources;
   // A broker in use already reports its live state; only idle or failed ones need a check.
   const idleBrokers = document.connections.filter(broker => [undefined, "error"].includes(sources?.[broker.id]?.state)).map(broker => broker.id);
-  // A recorded broker that is retrying or gave up can be retried now.
-  const selectedSource = selected?.kind === "connection" ? sources?.[selected.connectionId ?? ""] : undefined;
-  const canReconnect = system.canEdit && !!selectedSource && ["error", "reconnecting"].includes(selectedSource.state);
-  const [reconnect, setReconnect] = useState<{ id?: string; pending: boolean; error?: string }>({ pending: false });
-  const reconnectError = reconnect.id === selected?.connectionId ? reconnect.error : undefined;
+  const selectedBroker = selected?.kind === "connection" ? selected.connectionId : undefined;
+  const selectedState = selectedBroker ? sources?.[selectedBroker]?.state : undefined;
+  const [reconnects, setReconnects] = useState<Record<string, { pending: boolean; error?: string }>>({});
+  const reconnectError = selectedBroker ? reconnects[selectedBroker]?.error : undefined;
   const retryBroker = async (id: string) => {
-    setReconnect({ id, pending: true });
+    setReconnects(current => ({ ...current, [id]: { pending: true } }));
     try {
       await systemApi.reconnectConnection(id);
       await system.refreshRuntime();
-      setReconnect({ id, pending: false });
+      setReconnects(current => ({ ...current, [id]: { pending: false } }));
     } catch (error) {
-      setReconnect({ id, pending: false, error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." });
+      setReconnects(current => ({ ...current, [id]: { pending: false,
+        error: error instanceof Error && error.message ? error.message : "The broker could not be reconnected." } }));
     }
+  };
+  // Each broker offers the one way to connect that fits it: a recorded broker that failed is
+  // retried, an unrecorded one is checked once, and a working one needs nothing.
+  const connectAction = (id: string, label: string) => {
+    if (!system.canEdit) return null;
+    const state = sources?.[id]?.state;
+    if (canRetry(state)) {
+      const pending = !!reconnects[id]?.pending;
+      return <Button variant="outline" size="sm" disabled={pending} title="Retry the recording connection to this broker now"
+        aria-label={selectedBroker ? undefined : `Reconnect ${label}`} onClick={() => void retryBroker(id)}>
+        <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect"}</Button>;
+    }
+    if (state) return null;
+    const pending = !!brokerChecks.checks[id]?.pending;
+    return <Button variant="outline" size="sm" disabled={pending} title="Connect once to this broker, then disconnect"
+      aria-label={selectedBroker ? undefined : `Check connection to ${label}`} onClick={() => void brokerChecks.check(id)}>
+      <Plug size={14} />{pending ? "Checking…" : selectedBroker ? "Check connection" : "Check"}</Button>;
   };
   useUnsavedChanges(rules.dirty);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
@@ -101,8 +120,7 @@ export function SourcesWorkspace() {
         ? <button type="button" className="source-back" onClick={() => selectSource(null)}><ArrowLeft size={14} aria-hidden="true" />Sources</button>
         : <h1>Sources</h1>}<div className="ex-workspace-actions">
         {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
-        {canReconnect && <Button variant="outline" disabled={reconnect.pending} title="Retry the recording connection to this broker now"
-          onClick={() => void retryBroker(selected!.connectionId!)}><RotateCw size={16} />{reconnect.pending ? "Reconnecting…" : "Reconnect"}</Button>}
+        {selectedBroker && !rules.dirty && connectAction(selectedBroker, selected!.label)}
         {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
           title="Connect once to each broker that is not in use, then disconnect" onClick={() => void brokerChecks.checkAll(idleBrokers)}>
@@ -114,17 +132,30 @@ export function SourcesWorkspace() {
       {selectionMissing ? <p role="alert">Source not found.</p> : selected ? <Suspense fallback={<p role="status">Opening source…</p>}>
         <Preview node={{ ...selected, streamIds: ids }} index={index} document={document} telemetry={telemetry} historyCache={history}
           canEdit={system.canEdit && !rules.dirty} saving={system.saving} error={system.error} onRename={rename} onEdit={openEditor}
-          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration} />
+          runtime={system.snapshot?.runtime} connectionStatusOnly pageTitle collectionControls={configuration}
+          connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
       </Suspense> : <section aria-label="Broker overview" className="source-overview">
         <p className="ex-muted">Set up brokers and choose which registered readings to record.</p>
         {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
         {document.connections.map(broker => {
           const readings = document.streams.filter(stream => stream.connection_id === broker.id);
           const enabled = readings.filter(stream => system.snapshot?.runtime.bindings?.[stream.id]?.policy.mode !== "off" && !!system.snapshot?.runtime.bindings?.[stream.id]).length;
-          const state = system.snapshot?.runtime.ingress?.sources?.[broker.id]?.state;
+          const source = sources?.[broker.id];
+          const check = brokerChecks.checks[broker.id];
+          // An unrecorded broker whose check failed is as unavailable as a recorded one that failed.
+          const checkFailed = source ? undefined : checkProblem(check);
+          const tone = checkFailed ? "danger" : brokerTone(source?.state);
+          const reason = checkFailed ?? (["error", "blocked"].includes(source?.state ?? "") ? source?.message ?? reconnects[broker.id]?.error : reconnects[broker.id]?.error);
           const node = index.nodes.get(index.objectKeys.get(broker.id)![0]!)!;
-          return <button key={broker.id} className={`source-broker source-broker--${brokerTone(state)}`} onClick={() => { selectSource(node); browse(node.key); }}><strong>{broker.label}{brokerChecks.checks[broker.id] && <BrokerCheckMark check={brokerChecks.checks[broker.id]!} />}</strong>
-            <span>{readings.length} readings · {enabled} enabled</span><span className={`mn-state mn-state--${brokerTone(state)}`}>{brokerLabel(state)}</span></button>;
+          return <div key={broker.id} className={`source-broker source-broker--${tone}`}>
+            <button type="button" className="source-broker-open" onClick={() => { selectSource(node); browse(node.key); }}>
+              <strong>{broker.label}{check && <BrokerCheckMark check={check} />}</strong></button>
+            <span>{readings.length} readings · {enabled} enabled</span>
+            {reason && <span className="source-broker-reason">{reason}</span>}
+            <div className="source-broker-status"><span className={`mn-state mn-state--${tone}`}>
+              {checkFailed ? "Not subscribed · Unreachable" : brokerLabel(source?.state)}</span>
+              {connectAction(broker.id, broker.label)}</div>
+          </div>;
         })}
       </section>}
     </main>

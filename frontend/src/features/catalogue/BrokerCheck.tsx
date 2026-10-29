@@ -1,17 +1,6 @@
 import { Check, LoaderCircle, Minus, X } from "lucide-react";
 import { formatTimeOfDay } from "@/lib/format-time";
-import type { SystemConnectionCheck } from "@/types/system";
-import { checkTone, type BrokerCheck } from "./useBrokerChecks";
-
-const outcomes: Record<SystemConnectionCheck["status"], string> = {
-  reachable: "Reachable",
-  auth_rejected: "Login rejected",
-  tls_error: "TLS problem",
-  unreachable: "Unreachable",
-  refused: "Refused",
-  timeout: "No response",
-  blocked: "Not checkable",
-};
+import { checkTone, outcomes, type BrokerCheck } from "./useBrokerChecks";
 
 /** A small mark beside a broker name; the hover text carries the outcome and reason. */
 export function BrokerCheckMark({ check }: { check: BrokerCheck }) {

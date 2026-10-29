@@ -14,6 +14,23 @@ export function checkTone(check?: BrokerCheck): "positive" | "warning" | "danger
   return status === "reachable" ? "positive" : status === "timeout" ? "warning" : "danger";
 }
 
+export const outcomes: Record<SystemConnectionCheck["status"], string> = {
+  reachable: "Reachable",
+  auth_rejected: "Login rejected",
+  tls_error: "TLS problem",
+  unreachable: "Unreachable",
+  refused: "Refused",
+  timeout: "No response",
+  blocked: "Not checkable",
+};
+
+/** Why a finished check could not connect, or nothing when it could (or could not be judged). */
+export function checkProblem(check?: BrokerCheck) {
+  if (!check || check.pending || !["danger", "warning"].includes(checkTone(check)) && !check.error) return undefined;
+  const status = check.result?.status;
+  return check.result?.message ?? check.error ?? (status ? outcomes[status] : "Check failed");
+}
+
 /** Results live only while Sources is open: nothing is stored and no broker is subscribed. */
 export function useBrokerChecks() {
   const [checks, setChecks] = useState<Record<string, BrokerCheck>>({});
@@ -33,5 +50,5 @@ export function useBrokerChecks() {
     await Promise.all(Array.from({ length: Math.min(PARALLEL_CHECKS, queue.length) }, next));
   }, [check]);
   const running = Object.values(checks).some(item => item.pending);
-  return { checks, checkAll, running };
+  return { checks, check, checkAll, running };
 }

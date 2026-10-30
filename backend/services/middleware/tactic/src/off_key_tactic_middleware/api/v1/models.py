@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Query
+from off_key_core.schemas.pipelines import ComponentField
 from pydantic import BaseModel, Field
 
 from ...models.catalog import available_models
@@ -33,6 +34,7 @@ class ModelInfo(BaseModel):
     catalog_id: str | None = None
     algorithm_family: str | None = None
     available: bool = True
+    fields: list[ComponentField]
     default_capabilities: dict[str, Any] | None = None
     import_paths: list[str] = Field(..., description="Python import paths to try")
     parameter_schema: dict[str, Any] = Field(

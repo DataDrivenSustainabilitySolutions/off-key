@@ -12,6 +12,7 @@ from off_key_core.models import (
     adaptive_model_metadata,
     validate_adaptive_model_params,
 )
+from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 
 
@@ -29,6 +30,7 @@ def available_models() -> list[dict[str, Any]]:
             "memory_usage": definition.memory_usage,
             "import_paths": [definition.import_path],
             "parameter_schema": definition.parameters.model_json_schema(),
+            "fields": component_fields(definition.parameters.model_json_schema()),
             "default_parameters": definition.parameters().model_dump(),
             "version": "1.0.0",
             "requires_special_handling": False,
@@ -46,6 +48,7 @@ def available_models() -> list[dict[str, Any]]:
             "memory_usage": definition["default_capabilities"]["state"],
             "import_paths": [definition["import_path"]],
             "parameter_schema": definition["parameter_schema"],
+            "fields": component_fields(definition["parameter_schema"]),
             "default_parameters": definition["default_parameters"],
             "version": ABERRANT_VERSION,
             "requires_special_handling": False,

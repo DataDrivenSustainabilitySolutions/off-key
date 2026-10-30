@@ -55,3 +55,10 @@ The first rehearsal exposed Docker's 256-event history limit after the longer
 staged rollout. Rehearsal now streams route ownership events throughout the
 deployment rather than querying that history afterwards; its ordering assertion
 remains strict. Repeated nested controls also receive distinct label/help IDs.
+
+The real RADAR lane passed 210 tests with zero skips, and the real graph browser
+lane passed all 16 journeys, including nested KNN correction/publication, adjacency
+and null/default editing at desktop and mobile widths. Visual review also checks
+the rendered controls: shared editor colours use the app's HSL tokens and browser
+assertions require visible input borders. The final CI status and retained
+browser/cutover evidence are linked from off-key PR #384.

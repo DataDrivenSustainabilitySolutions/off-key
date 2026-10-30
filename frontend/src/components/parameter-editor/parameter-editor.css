@@ -2,14 +2,14 @@
 .parameter-editor .parameter-field, .parameter-editor .pl-field { display: grid; gap: .5rem; min-width: 0; }
 .parameter-editor legend { font-weight: 500; font-size: .875rem; padding-bottom: .4rem; }
 .parameter-editor input:not([type=checkbox]), .parameter-editor select {
-  min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: .4rem;
-  background: var(--background); padding: .5rem .65rem; min-height: 2.75rem;
+  min-width: 0; width: 100%; border: 1px solid hsl(var(--border)); border-radius: .4rem;
+  background: hsl(var(--background)); padding: .5rem .65rem; min-height: 2.75rem;
 }
-.parameter-editor button { min-height: 2.75rem; border: 1px solid var(--border); border-radius: .4rem; padding: .3rem .65rem; }
+.parameter-editor button { min-height: 2.75rem; border: 1px solid hsl(var(--border)); border-radius: .4rem; padding: .3rem .65rem; }
 .parameter-editor .parameter-check, .parameter-editor .pl-check { display: flex; align-items: center; gap: .5rem; min-height: 2.75rem; }
 .parameter-editor .parameter-list, .parameter-editor .pl-number-list { display: grid; gap: .5rem; }
 .parameter-editor .parameter-list > div { display: flex; gap: .5rem; }
-.parameter-editor .parameter-nested { min-width: 0; padding-left: .75rem; border-left: 2px solid var(--border); }
-.parameter-editor .parameter-help { font-size: .8rem; color: var(--muted-foreground); }
-.parameter-editor .parameter-error { font-size: .8rem; color: var(--destructive); }
-.parameter-editor [aria-invalid=true] { border-color: var(--destructive); }
+.parameter-editor .parameter-nested { min-width: 0; padding-left: .75rem; border-left: 2px solid hsl(var(--border)); }
+.parameter-editor .parameter-help { font-size: .8rem; color: hsl(var(--muted-foreground)); }
+.parameter-editor .parameter-error { font-size: .8rem; color: hsl(var(--destructive)); }
+.parameter-editor [aria-invalid=true] { border-color: hsl(var(--destructive)); }

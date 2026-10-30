@@ -49,6 +49,8 @@ test("setup controls retain typed values and display real API field errors on de
       const errors = await response.json() as { detail: { loc: (string | number)[] }[] };
       expect(errors.detail.some(issue => issue.loc.slice(-3).join(".") === "similarity_engine.params.warm_up")).toBe(true);
       await expect(warm).toHaveAttribute("aria-invalid", "true");
+      await expect(warm).toHaveCSS("border-top-width", "1px");
+      await warm.scrollIntoViewIfNeeded();
       await expectNoHorizontalScroll(page);
       await page.screenshot({ path: testInfo.outputPath(`parameter-form-errors-${width}.png`) });
     }

@@ -37,6 +37,9 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(k).toHaveAttribute("aria-invalid", "true");
       await expect(warm).toHaveAttribute("aria-invalid", "true");
       await expect(window).toHaveAttribute("aria-invalid", "true");
+      await expect(window).toHaveCSS("border-top-width", "1px");
+      await page.getByRole("button", { name: "Close validation", exact: true }).click();
+      await warm.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`parameter-graph-errors-${viewport.width}.png`) });
       await k.fill("2"); await warm.fill("3"); await window.fill("8");
       await validate.click();

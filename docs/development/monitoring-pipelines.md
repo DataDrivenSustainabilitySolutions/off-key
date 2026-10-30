@@ -364,9 +364,11 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`9c010bda9831648f1db8c395dc0633f1302df757`, which retains the previous platform
-code at `b5c6dd3c` and changes only the published ABERRANT 1.4.0 pin, frozen
-lock, generated catalog and reviewed 1.3.0 saved-launch normalization. The binary
+`ab080c999591da03b0a7d75574bb0db4051037b9`, which retains the previous platform
+code at `b5c6dd3c` with the published ABERRANT 1.4.0 pin, frozen lock, generated
+catalog and reviewed 1.3.0 saved-launch normalization. It retains the additive
+field discovery metadata so an already-open new browser can keep its controls
+while the backend rolls back. The binary
 rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0 is checked
 separately and incompatible checkpoints relearn. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can

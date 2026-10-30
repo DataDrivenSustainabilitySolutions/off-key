@@ -4,7 +4,7 @@ import { accessToken } from "./helpers/auth";
 import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
-test("setup controls retain typed values and display real API field errors on desktop and mobile", async ({ page, playwright }) => {
+test("setup controls retain typed values and display real API field errors on desktop and mobile", async ({ page, playwright }, testInfo) => {
   test.setTimeout(300_000);
   const device = randomUUID();
   const entity = fixtureEntityId(device);
@@ -50,6 +50,7 @@ test("setup controls retain typed values and display real API field errors on de
       expect(errors.detail.some(issue => issue.loc.slice(-3).join(".") === "similarity_engine.params.warm_up")).toBe(true);
       await expect(warm).toHaveAttribute("aria-invalid", "true");
       await expectNoHorizontalScroll(page);
+      await page.screenshot({ path: testInfo.outputPath(`parameter-form-errors-${width}.png`) });
     }
     await page.getByRole("spinbutton", { name: "Warm Up", exact: true }).fill("5");
     const accepted = page.waitForResponse(response => response.request().method() === "POST"

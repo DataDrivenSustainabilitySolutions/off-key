@@ -97,6 +97,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
   });
   const { selected, select, fitRequest, validation, commit, add } = graph;
   const metadata = useGraphMetadata(draft.document.definition, canAuthor, selected);
+  const compiledValidation = metadata ?? validation;
+  const runtimeIssues = apply.operation?.issues ?? [];
+  const displayedValidation = compiledValidation && runtimeIssues.length
+    ? { ...compiledValidation, valid: false, issues: [...compiledValidation.issues, ...runtimeIssues] }
+    : compiledValidation;
   const target = targets.find((item) => item.id === draft.targetId);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
@@ -180,7 +185,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     <>
       {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
       {error && <p className="pl-error" role="alert">{error}</p>}
-      <PipelineApplyStatus apply={apply} />
+      <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
       <div className="pl-setup-card">
         <div className="pl-setup-fields">
           <label className="pl-field"><span>Service name</span><input ref={nameInput} aria-label="Service name" maxLength={120} placeholder="e.g. Machine health"
@@ -222,7 +227,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
         {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
         {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
       </div>
-      <PipelineWorkbench catalog={catalog} document={draft.document} validation={metadata ?? validation} readOnly={!canAuthor || locked || checking}
+      <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
         inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel}
         selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
         onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}

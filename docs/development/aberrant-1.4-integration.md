@@ -22,7 +22,10 @@ Rollout order is backend metadata first, then the browser bundle. Rehearsal must
 exercise old-browser/new-backend overlap, nested KNN, adjacency, null/default,
 multiple errors and correction/publication, static/adaptive monitoring and mobile.
 Binary rollback uses previous platform code and browser controls with the reviewed
-1.4.0 numerical runtime at `9c010bda9831648f1db8c395dc0633f1302df757`.
+1.4.0 numerical runtime at `ab080c999591da03b0a7d75574bb0db4051037b9`.
+The reference retains additive field discovery metadata for already-open new
+browsers. Rehearsal compares that metadata at every cutover as well as checking
+the old browser bundle, images, graph scoring and historical records.
 The strict catalog, migration-ledger and numerical-version checks remain in place.
 The separate 1.3.0 upgrade check preserves saved launches and starts fresh
 learning when a checkpoint's runtime signature differs. Do not rewrite history or

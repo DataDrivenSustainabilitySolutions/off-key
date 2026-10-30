@@ -8,7 +8,9 @@ const phases: Record<string, string> = {
   succeeded: "Monitoring applied", cancelling: "Cancelling…", cancelled: "Setup cancelled", failed: "Monitoring could not start",
 };
 
-export function PipelineApplyStatus({ apply }: { apply: ReturnType<typeof usePipelineApply> }) {
+export function PipelineApplyStatus({ apply, onInspect }: {
+  apply: ReturnType<typeof usePipelineApply>; onInspect?: (nodeId: string) => void;
+}) {
   const { operation, request, error, busy, session } = apply;
   if (!request && !error) return null;
   const terminal = applyFinished(operation);
@@ -21,6 +23,11 @@ export function PipelineApplyStatus({ apply }: { apply: ReturnType<typeof usePip
         {!operation && request && !busy && <p>The response was interrupted. Retry the same request to safely recover its result.</p>}
       </div>
     </div>
+    {!!operation?.issues?.length && <ul>{operation.issues.map((issue, index) => <li key={index}>
+      {issue.node_id && onInspect
+        ? <button type="button" onClick={() => onInspect(issue.node_id!)}>{issue.message}</button>
+        : issue.message}
+    </li>)}</ul>}
     <div className="pl-actions">
       {!operation && request && !busy && <button type="button" onClick={() => void session.submit()}>Recover start request</button>}
       {operation && !terminal && <button type="button" disabled={busy || operation.phase === "cancelling"}

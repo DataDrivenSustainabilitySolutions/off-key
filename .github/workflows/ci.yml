@@ -426,7 +426,7 @@ jobs:
         if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 9c010bda9831648f1db8c395dc0633f1302df757
+          ref: ab080c999591da03b0a7d75574bb0db4051037b9
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false
@@ -479,6 +479,14 @@ jobs:
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
             npm run test:e2e:pipelines
+
+      - name: Save shared parameter editor evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parameter-editor-${{ matrix.lane }}
+          path: frontend/test-results/**/parameter-*.png
+          if-no-files-found: ignore
 
       - name: Save visual language review evidence
         if: always() && matrix.lane == 'pipelines'

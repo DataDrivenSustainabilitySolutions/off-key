@@ -7,7 +7,7 @@ import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNa
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
-  test(`edits nested, adjacency and nullable parameters through the real API at ${viewport.width}px`, async ({ page }) => {
+  test(`edits nested, adjacency and nullable parameters through the real API at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await openPipelineWorkspace(page);
     const headers = { Authorization: `Bearer ${await accessToken(page)}` };
@@ -37,20 +37,11 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(k).toHaveAttribute("aria-invalid", "true");
       await expect(warm).toHaveAttribute("aria-invalid", "true");
       await expect(window).toHaveAttribute("aria-invalid", "true");
+      await page.screenshot({ path: testInfo.outputPath(`parameter-graph-errors-${viewport.width}.png`) });
       await k.fill("2"); await warm.fill("3"); await window.fill("8");
       await validate.click();
       await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
-      const saved = await savePipelineTemplate(page);
-      const published = await page.request.post(`${endpoint}/revisions`, {
-        headers, data: { expected_version: saved.version },
-      });
-      expect(published.status(), await published.text()).toBe(201);
-
-      // Publication changed the design version through the API; refresh before
-      // continuing to save edits from the browser's optimistic version.
-      await page.reload();
-      await openPipelineSettings(page, "Component");
-      await page.getByRole("combobox", { name: "Selected component", exact: true }).selectOption(detector.id);
+      await savePipelineTemplate(page);
 
       await page.getByRole("combobox", { name: "Detector model", exact: true })
         .selectOption("detector:aberrant_gadget_svm");
@@ -74,6 +65,17 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(cache).toBeEnabled();
       await expect(cache).toHaveValue("10000");
       await expectNoHorizontalScroll(page);
+      await page.screenshot({ path: testInfo.outputPath(`parameter-graph-controls-${viewport.width}.png`) });
+
+      // Publish after browser editing: publication advances the design version,
+      // while a restored editing session deliberately retains its saved version.
+      await page.getByRole("combobox", { name: "Detector model", exact: true }).selectOption("detector:aberrant_knn");
+      await k.fill("2"); await warm.fill("3"); await window.fill("8");
+      const saved = await savePipelineTemplate(page);
+      const published = await page.request.post(`${endpoint}/revisions`, {
+        headers, data: { expected_version: saved.version },
+      });
+      expect(published.status(), await published.text()).toBe(201);
     } finally {
       await archivePipelines(page.request, headers, [endpoint]);
     }

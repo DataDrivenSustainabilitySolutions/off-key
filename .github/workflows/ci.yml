@@ -426,7 +426,7 @@ jobs:
         if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: d63f444dbaaf8dec0392dd723394452f2e32fe69
+          ref: 9c010bda9831648f1db8c395dc0633f1302df757
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false
@@ -514,6 +514,7 @@ jobs:
           name: compatible-binary-rollback
           path: |
             ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/browser-cutover-evidence.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
           if-no-files-found: ignore

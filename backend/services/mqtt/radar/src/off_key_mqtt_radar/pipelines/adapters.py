@@ -1,13 +1,13 @@
 """Compile feature nodes into public, standalone Aberrant components."""
 
-from aberrant.catalog import DetectorConfig, create_model
+from aberrant.catalog import DetectorConfig, ResolvedDetectorConfig
 from aberrant.compose import INPUT, GraphNode, GraphPipeline, MergeNode
 
 from .components import online_component
 from .plan import ExecutionPlan
 
 
-def detector_config(plan: ExecutionPlan) -> DetectorConfig:
+def resolved_detector_config(plan: ExecutionPlan) -> ResolvedDetectorConfig:
     from off_key_core.models.adaptive import (
         ADAPTIVE_MODELS_BY_TYPE,
         bind_detector_parameters,
@@ -24,8 +24,8 @@ def detector_config(plan: ExecutionPlan) -> DetectorConfig:
             "version": 1,
             "model": {"id": definition["catalog_id"], "params": params},
         }
-    ).normalized()
-    capabilities = config.capabilities()
+    ).resolve()
+    capabilities = config.capabilities
     if capabilities.higher_is_more_anomalous is not True:
         raise ValueError("Monitoring requires higher scores to mean more anomalous")
     if not capabilities.feature_count.accepts(len(plan.output_features)):
@@ -33,8 +33,12 @@ def detector_config(plan: ExecutionPlan) -> DetectorConfig:
     return config
 
 
+def detector_config(plan: ExecutionPlan) -> DetectorConfig:
+    return resolved_detector_config(plan).config
+
+
 def adaptive_graph(
-    plan: ExecutionPlan, observer=None, config: DetectorConfig | None = None
+    plan: ExecutionPlan, observer=None, config: ResolvedDetectorConfig | None = None
 ):
     nodes = []
     for node in plan.feature_nodes:
@@ -46,8 +50,8 @@ def adaptive_graph(
         transformer = online_component(plan, node, parents)
         nodes.append(GraphNode(node.id, transformer, input=inputs[0]))
     if config is None:
-        config = detector_config(plan)
-    capabilities = config.capabilities()
+        config = resolved_detector_config(plan)
+    capabilities = config.capabilities
     minimum = (
         capabilities.warmup.minimum or 0
         if capabilities.warmup.unit.value == "events"
@@ -55,7 +59,7 @@ def adaptive_graph(
     )
     if minimum > plan.execution.definition.settings.training_window_size:
         raise ValueError(f"Detector warm-up must contain at least {minimum} updates")
-    terminal = create_model(config.model.id, config.model.params)
+    terminal = config.build()
     output = plan.feature_output_id
     return GraphPipeline(
         nodes,

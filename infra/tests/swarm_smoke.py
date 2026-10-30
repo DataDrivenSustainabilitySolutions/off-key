@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -84,6 +85,27 @@ def ready(directory):
         ),
         "application readiness",
     )
+    verify_browser_cutover(directory)
+
+
+def verify_browser_cutover(directory):
+    """The real browser container starts after the target backend was ready."""
+    fence = json.loads((directory / "stack/browser-cutover.json").read_text())
+    assert fence["backend_ready"] is True
+    inspected = json.loads(run("docker", "inspect", container("frontend")).stdout)[0]
+    assert inspected["Config"]["Image"] == fence["target_frontend_image"]
+    started = inspected["State"]["StartedAt"]
+    if (
+        fence["previous_frontend_image"] != fence["target_frontend_image"]
+        or not fence["previous_frontend_replicas"]
+    ):
+        assert datetime.fromisoformat(started) >= datetime.fromisoformat(
+            fence["backend_ready_at"]
+        )
+    path = directory / "browser-cutover-evidence.json"
+    evidence = json.loads(path.read_text()) if path.exists() else []
+    evidence.append(fence | {"frontend_started_at": started})
+    path.write_text(json.dumps(evidence, indent=2) + "\n")
 
 
 def deploy(directory, phase, **overrides):

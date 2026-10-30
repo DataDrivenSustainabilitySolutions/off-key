@@ -10,7 +10,7 @@ export type MonitoringStrategy = 'static_baseline' | 'adaptive_stream';
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
-export interface ParameterSchema {
+interface ParameterSchema {
   type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
   description?: string;
   default?: JsonValue;
@@ -39,6 +39,7 @@ export interface ModelCapabilities {
 
 // Model definition from registry API
 export interface ModelDefinition {
+  fields?: import("../components/parameter-editor/types").FieldDescriptor[];
   parameters: {
     properties: Record<string, ParameterSchema>;
     required?: string[];
@@ -315,4 +316,3 @@ export type MonitoringEvidenceCursor = Pick<
 >;
 
 // Model parameters (cleaned for API submission)
-export type ModelParams = Record<string, JsonValue>;

@@ -1,3 +1,4 @@
+import { modelErrorFields } from "@/components/parameter-editor/validation";
 import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -79,13 +80,13 @@ export function StaticMonitoringSetup({
     [availableSelectedSensors, chargerId, sensorTopics],
   );
   const modelDefinition = staticModels[draft.modelType];
-  const modelProperties = modelDefinition?.parameters?.properties ?? {};
+  const modelFields = modelDefinition?.fields ?? [];
 
   const clearError = useCallback((field: string) => {
     setFieldErrors((current) => {
-      if (!current[field]) return current;
+      if (!Object.keys(current).some(key => key === field || key.startsWith(`${field}.`))) return current;
       const next = { ...current };
-      delete next[field];
+      for (const key of Object.keys(next)) if (key === field || key.startsWith(`${field}.`)) delete next[key];
       return next;
     });
   }, []);
@@ -123,6 +124,7 @@ export function StaticMonitoringSetup({
       toast.success("Static monitoring service started.");
       await onStarted(serviceId);
     } catch (error) {
+      setFieldErrors(current => ({ ...current, ...modelErrorFields(error) }));
       toast.error(`Failed to start monitoring: ${getErrorMessage(error)}`);
     } finally {
       setStarting(false);
@@ -272,7 +274,7 @@ export function StaticMonitoringSetup({
 
             <AdvancedSettings
               draft={draft}
-              modelProperties={modelProperties}
+              modelFields={modelFields}
               fieldErrors={fieldErrors}
               setDraft={setDraft}
               clearError={clearError}

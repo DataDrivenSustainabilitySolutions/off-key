@@ -132,6 +132,7 @@ class PipelineIssue(PipelineModel):
     code: str
     message: str
     node_id: str | None = None
+    parameter_path: list[str | int] | None = Field(default=None, max_length=32)
 
 
 class FeatureDescription(PipelineModel):
@@ -251,8 +252,12 @@ class ComponentField(PipelineModel):
     label: str
     type: FieldType
     default: Any = None
+    required: bool = False
+    has_default: bool = False
     minimum: float | None = None
     maximum: float | None = None
+    exclusive_minimum: float | None = None
+    exclusive_maximum: float | None = None
     options: list[str] | None = None
     nullable: bool = False
     description: str = ""
@@ -435,6 +440,7 @@ class PipelineActivationView(PipelineModel):
     run_id: str
     predecessor_service_id: str | None
     error: str | None
+    issues: list[PipelineIssue] = Field(default_factory=list, max_length=64)
     created_at: datetime
     updated_at: datetime
 

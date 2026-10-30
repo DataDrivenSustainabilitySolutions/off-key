@@ -22,6 +22,11 @@ it("shows actionable field errors from catalog validation", async () => {
     });
   };
   try {
+    await expect(client.post("/v1/system/collection/preview", {})).rejects.toMatchObject({
+      status: 422,
+      issues: [{ loc: ["body", "catalog", "sources", 0, "host"],
+        msg: "Use a broker hostname, without a URL or port" }],
+    });
     await expect(client.post("/v1/system/collection/preview", {})).rejects.toThrow(
       "catalog.sources.0.host: Use a broker hostname, without a URL or port",
     );

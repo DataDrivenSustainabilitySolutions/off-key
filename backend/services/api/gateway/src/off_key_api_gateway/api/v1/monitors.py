@@ -40,6 +40,7 @@ def _normalize_models_for_gateway(
             "complexity": model["complexity"],
             "memory_usage": model["memory_usage"],
             "parameters": model["parameter_schema"],
+            "fields": model["fields"],
             "default_parameters": model["default_parameters"],
             "version": model["version"],
             "requires_special_handling": model["requires_special_handling"],

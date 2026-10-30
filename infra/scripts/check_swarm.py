@@ -81,9 +81,39 @@ def main():
             and service["Spec"].get("Labels", {}).get("service_type") == "radar"
         )
     ]
+    backend_first = len(sys.argv) > 4 and sys.argv[4] == "--backend-first"
+    if backend_first:
+        frontend_name = f"{sys.argv[1]}_frontend"
+        frontend = next(
+            (item for item in stack_services if item["Spec"]["Name"] == frontend_name),
+            None,
+        )
+        expected.pop(frontend_name, None)
+        stack_services = [
+            item for item in stack_services if item["Spec"]["Name"] != frontend_name
+        ]
     check_services(
         stack_services, expected, {row["Name"]: row["Replicas"] for row in rows}
     )
+    if backend_first:
+        print(
+            json.dumps(
+                {
+                    "backend_ready": True,
+                    "previous_frontend_replicas": frontend["Spec"]["Mode"][
+                        "Replicated"
+                    ]["Replicas"]
+                    if frontend is not None
+                    else 0,
+                    "previous_frontend_image": frontend["Spec"]["TaskTemplate"][
+                        "ContainerSpec"
+                    ]["Image"]
+                    if frontend is not None
+                    else None,
+                }
+            )
+        )
+        return
     # TACTIC may create a persistent worker during the stack update. Check again
     # after convergence instead of relying only on the pre-deployment guard.
     radar_listing = subprocess.check_output(

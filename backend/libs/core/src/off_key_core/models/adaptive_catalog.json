@@ -1,5 +1,5 @@
 {
-  "aberrant_version": "1.3.0",
+  "aberrant_version": "1.4.0",
   "models": {
     "aberrant_asd_isolation_forest": {
       "algorithm_family": "isolation_forest",

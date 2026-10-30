@@ -20,7 +20,7 @@ const SYSTEM_SPECS = /system-workspace\.spec\.ts/;
 // Route-mocked journeys that need only the frontend.
 const MOCKED_SPECS = /(details-echarts|tandem-charts)\.spec\.ts/;
 // These journeys need TACTIC_PIPELINE_AUTHORING_ENABLED=true; the others need it false.
-const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/;
+const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing|parameters)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",

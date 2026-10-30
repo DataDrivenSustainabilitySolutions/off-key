@@ -14,8 +14,14 @@ import { getUserIdFromToken } from '@/auth/token';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 
+export interface ApiIssue {
+  loc: (string | number)[];
+  msg: string;
+  type?: string;
+}
+
 interface ApiError {
-  detail: string | { loc: (string | number)[]; msg: string }[];
+  detail: string | ApiIssue[];
   status: number;
 }
 
@@ -28,7 +34,7 @@ export interface ApiRequestOptions {
 }
 
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly issues: readonly ApiIssue[] = []) {
     super(message);
     this.name = 'ApiRequestError';
   }
@@ -115,7 +121,7 @@ const createApiClient = (): AxiosInstance => {
         const message = Array.isArray(detail)
           ? detail.map(issue => `${issue.loc.filter(part => part !== 'body').join('.')}: ${issue.msg}`).join('; ')
           : detail;
-        return Promise.reject(new ApiRequestError(message, error.response.status));
+        return Promise.reject(new ApiRequestError(message, error.response.status, Array.isArray(detail) ? detail : []));
       }
 
       // Network errors

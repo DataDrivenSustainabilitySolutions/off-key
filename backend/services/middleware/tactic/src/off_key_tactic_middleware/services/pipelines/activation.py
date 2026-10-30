@@ -73,7 +73,12 @@ FORM_DESCRIPTION = "Created by the monitoring setup form"
 
 def activation_view(row):
     return PipelineActivationView.model_validate(
-        {key: getattr(row, key) for key in PipelineActivationView.model_fields}
+        {
+            key: getattr(row, key)
+            for key in PipelineActivationView.model_fields
+            if key != "issues"
+        }
+        | {"issues": (row.preflight or {}).get("issues", [])}
     )
 
 
@@ -544,6 +549,11 @@ class PipelineActivations:
             :4000
         ]
         if reject:
+            if isinstance(error, PreflightRejected) and error.issues:
+                current.preflight = {
+                    "ok": False,
+                    "issues": [issue.model_dump(mode="json") for issue in error.issues],
+                }
             current.cancel_requested = True
             current.phase = "cancelling"
         await self.session.commit()

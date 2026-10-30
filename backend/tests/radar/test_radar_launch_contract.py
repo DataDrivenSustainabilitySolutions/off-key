@@ -51,7 +51,8 @@ NOT_READ_BY_RADAR = {
 RADAR_NAMES = {"mqtt_qos": "RADAR_SUBSCRIPTION_QOS"}
 GOLDEN_FINGERPRINTS = {
     "static": "cd363666f4a75b2605b4a63ae716b2a9014d5ec23b353683c67c67e5fbfc1cda",
-    "adaptive": "d9e5404b8477f37844edb42a5bc8c5ed4f6bb39045868cde57c5b367f46200cb",
+    # The explicit library version changes for the reviewed 1.3 -> 1.4 migration.
+    "adaptive": "846fb962090d740cda65db977e4a29031fb6fce823339b1df243d6a9c72772d6",
     "pipeline": "37c1d6eb6eafa0b78256f464c20f737baaa6f821aa7f72458dec004805c818f8",
 }
 

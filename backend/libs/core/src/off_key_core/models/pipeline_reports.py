@@ -24,6 +24,12 @@ def _bounded_issues(issues):
             update={
                 "message": bounded_utf8_text(issue.message, 1024),
                 "code": bounded_utf8_text(issue.code, 64),
+                "parameter_path": [
+                    bounded_utf8_text(part, 128) if isinstance(part, str) else part
+                    for part in issue.parameter_path[:32]
+                ]
+                if issue.parameter_path is not None
+                else None,
                 "node_id": bounded_utf8_text(issue.node_id, 100)
                 if issue.node_id
                 else None,

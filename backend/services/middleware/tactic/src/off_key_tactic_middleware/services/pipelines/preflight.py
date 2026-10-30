@@ -6,6 +6,7 @@ import json
 import docker.errors
 from docker.types import Resources, RestartPolicy, ServiceMode
 from off_key_core.models.pipelines import pipeline_catalog_id
+from off_key_core.schemas.pipelines import PipelineIssue
 
 from ...config.config import get_tactic_settings
 from ...facades.docker import SWARM_TASK_DONE
@@ -17,7 +18,9 @@ from ..orchestration.workload_identity import (
 
 
 class PreflightRejected(ValueError):
-    pass
+    def __init__(self, message: str, *, issues: list[PipelineIssue] | None = None):
+        super().__init__(message)
+        self.issues = issues or []
 
 
 class PipelinePreflight:
@@ -154,7 +157,11 @@ class PipelinePreflight:
                     report.get(
                         "errors", report.get("error", "Runtime preflight failed")
                     )
-                )[:4000]
+                )[:4000],
+                issues=[
+                    PipelineIssue.model_validate(issue)
+                    for issue in report.get("issues", [])[:64]
+                ],
             )
         if (
             report.get("fingerprint") != execution.fingerprint

@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 import type { PipelineCatalog, PipelineValidation } from "./contracts";
-import { ParameterFields } from "./ParameterFields";
+import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
+import { hasParameterControl } from "@/components/parameter-editor/types";
 import {
   connectNodes,
   connectionIssue,
@@ -169,6 +170,7 @@ export function PipelineInspector({
           {component && (
             <ParameterFields
               fields={component.fields}
+              issues={(validation?.issues ?? []).filter(issue => issue.node_id === node.id && issue.parameter_path != null).map(issue => ({ path: issue.parameter_path!, message: issue.message }))}
               values={node.params}
               features={features}
               featureLabels={featureLabels}
@@ -344,7 +346,7 @@ export function PipelineInspector({
             </>
           )}
           {validation?.issues
-            .filter((issue) => issue.node_id === node.id)
+            .filter((issue) => issue.node_id === node.id && !hasParameterControl(component?.fields ?? [], issue.parameter_path))
             .map((issue, index) => (
               <p key={index} className="pl-error" role="alert">
                 {issue.message}

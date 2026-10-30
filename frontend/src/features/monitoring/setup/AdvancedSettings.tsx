@@ -1,15 +1,17 @@
+import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
+import { formParameterIssues } from "@/components/parameter-editor/validation";
+import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type {
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
-  ParameterSchema,
 } from "@/types/monitoring";
 import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { useId, useState } from "react";
 
-import { MIN_BETTING_TOLERANCE, MIN_READING_FRESHNESS_SECONDS, createDefaultMartingaleTracker, humanize } from "./config";
+import { MIN_BETTING_TOLERANCE, MIN_READING_FRESHNESS_SECONDS, createDefaultMartingaleTracker } from "./config";
 import type {
   FieldErrors,
   SensorKeyStrategy,
@@ -29,21 +31,6 @@ const ALARM_STATISTIC_HELP =
   "Selects the sequential value compared with the threshold: the all-history e-process, harmonic restarted e-process, CUSUM, or Shiryaev–Roberts statistic.";
 const TRACKER_ID_HELP =
   "A unique, stable identifier stored with evidence and used to identify this series in charts and APIs.";
-
-const describeDetectorParameter = (schema: ParameterSchema): string => {
-  const details = [
-    schema.description ?? "A model-specific parameter used to fit the detector.",
-    `Expected type: ${schema.type}.`,
-  ];
-  if (schema.enum?.length) {
-    details.push(`Allowed values: ${schema.enum.join(", ")}.`);
-  } else if (schema.minimum !== undefined || schema.maximum !== undefined) {
-    details.push(
-      `Allowed range: ${schema.minimum ?? "unbounded"} to ${schema.maximum ?? "unbounded"}.`,
-    );
-  }
-  return details.join(" ");
-};
 
 const thresholdHelp = (statistic: MartingaleAlarmStatistic): string =>
   statistic === "martingale" || statistic === "restarted_martingale"
@@ -75,7 +62,7 @@ const normalizeAlarmStatistic = (value: string): MartingaleAlarmStatistic => {
 
 interface AdvancedSettingsProps {
   draft: StaticDraft;
-  modelProperties: Record<string, ParameterSchema>;
+  modelFields: FieldDescriptor[];
   fieldErrors: FieldErrors;
   setDraft: Dispatch<SetStateAction<StaticDraft>>;
   clearError: (field: string) => void;
@@ -83,7 +70,7 @@ interface AdvancedSettingsProps {
 
 export function AdvancedSettings({
   draft,
-  modelProperties,
+  modelFields,
   fieldErrors,
   setDraft,
   clearError,
@@ -153,94 +140,14 @@ export function AdvancedSettings({
               </HelpTooltip>
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {Object.entries(modelProperties).map(([key, schema]) => {
-                const field = `model.${key}`;
-                const value = draft.modelParams[key];
-                const controlId = `advanced-model-${key}`;
-                return (
-                  <div key={key}>
-                    <SettingLabel
-                      label={humanize(key)}
-                      help={describeDetectorParameter(schema)}
-                      htmlFor={controlId}
-                    />
-                    {schema.enum ? (
-                      <select
-                        id={controlId}
-                        className={cn(CONTROL_CLASS, "mt-2")}
-                        value={String(value ?? "")}
-                        onChange={(event) => {
-                          setDraft((current) => ({
-                            ...current,
-                            modelParams: {
-                              ...current.modelParams,
-                              [key]: event.target.value,
-                            },
-                          }));
-                          clearError(field);
-                        }}
-                      >
-                        {schema.enum.map((option) => (
-                          <option key={String(option)} value={String(option)}>
-                            {humanize(String(option))}
-                          </option>
-                        ))}
-                      </select>
-                    ) : schema.type === "boolean" ? (
-                      <label className="mt-3 flex items-center gap-2 text-sm">
-                        <input
-                          id={controlId}
-                          type="checkbox"
-                          className="size-4 accent-primary"
-                          checked={Boolean(value)}
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              modelParams: {
-                                ...current.modelParams,
-                                [key]: event.target.checked,
-                              },
-                            }));
-                            clearError(field);
-                          }}
-                        />
-                        Enabled
-                      </label>
-                    ) : (
-                      <input
-                        id={controlId}
-                        type={
-                          schema.type === "integer" || schema.type === "number"
-                            ? "number"
-                            : "text"
-                        }
-                        step={schema.type === "integer" ? 1 : "any"}
-                        min={schema.minimum}
-                        max={schema.maximum}
-                        className={cn(CONTROL_CLASS, "mt-2")}
-                        value={String(value ?? "")}
-                        aria-invalid={Boolean(fieldErrors[field])}
-                        onChange={(event) => {
-                          setDraft((current) => ({
-                            ...current,
-                            modelParams: {
-                              ...current.modelParams,
-                              [key]: event.target.value,
-                            },
-                          }));
-                          clearError(field);
-                        }}
-                      />
-                    )}
-                    <FieldError field={field} errors={fieldErrors} />
-                  </div>
-                );
-              })}
-              {!Object.keys(modelProperties).length && (
-                <p className="col-span-full text-sm text-muted-foreground">
-                  No configurable parameters.
-                </p>
-              )}
+              <ParameterFields fields={modelFields} values={draft.modelParams}
+                issues={formParameterIssues(fieldErrors)}
+                onChange={modelParams => {
+                  setDraft(current => ({ ...current, modelParams }));
+                  for (const key of new Set([...Object.keys(draft.modelParams), ...Object.keys(modelParams)])) {
+                    if (draft.modelParams[key] !== modelParams[key]) clearError(`model.${key}`);
+                  }
+                }} />
             </div>
           </div>
           <div>

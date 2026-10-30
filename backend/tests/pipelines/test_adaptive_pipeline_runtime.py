@@ -6,6 +6,7 @@ import pickle
 from datetime import UTC, datetime
 
 import pytest
+from aberrant.catalog import ComponentSpec
 from off_key_core.schemas.pipelines import PipelineRuntimeState
 from off_key_mqtt_radar import adaptive_detector as adaptive_module
 from off_key_mqtt_radar.adaptive_detector import (
@@ -24,6 +25,32 @@ from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from tests.support.adaptive_pipeline import adaptive_pipeline_config
 
 pytestmark = pytest.mark.radar_integration
+
+
+def test_startup_and_restore_resolve_parameters_once_and_do_not_persist_the_plan(
+    monkeypatch,
+):
+    original = ComponentSpec.resolved_parameters
+    calls = []
+
+    def counted(self, *args, **kwargs):
+        calls.append(self.id)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ComponentSpec, "resolved_parameters", counted)
+    config = adaptive_pipeline_config()
+    service = AdaptiveStreamDetectionService(config)
+    assert calls == [service.detector_config.model.id]
+    for index in range(1, 5):
+        service.process_data_point(_point(index))
+    checkpoint = pickle.loads(pickle.dumps(service.export_checkpoint()))
+    assert checkpoint["detector_config"] == service.detector_config.as_dict()
+    assert not any("resolved" in key for key in checkpoint)
+    calls.clear()
+    restored = AdaptiveStreamDetectionService.from_checkpoint_data(checkpoint, config)
+    assert calls == [restored.detector_config.model.id]
+    assert restored.detector_fingerprint == service.detector_fingerprint
+    assert restored.processed_count == service.processed_count
 
 
 def _point(index):
@@ -70,9 +97,9 @@ def test_fresh_start_builds_the_graph_and_normalizes_its_detector_once(monkeypat
 
         return wrapper
 
-    config = counted("config", adapters.detector_config)
-    monkeypatch.setattr(adapters, "detector_config", config)
-    monkeypatch.setattr(adaptive_module, "detector_config", config)
+    config = counted("config", adapters.resolved_detector_config)
+    monkeypatch.setattr(adapters, "resolved_detector_config", config)
+    monkeypatch.setattr(adaptive_module, "resolved_detector_config", config)
     monkeypatch.setattr(
         adaptive_module, "adaptive_graph", counted("graph", adapters.adaptive_graph)
     )
@@ -255,10 +282,16 @@ def test_execution_failure_stops_model_and_blocks_checkpoint():
     assert snapshot["nodes"]["model"]["state"] == "failed"
 
 
-def test_live_values_come_from_real_score_pass_with_original_metadata():
+def test_live_values_come_from_real_score_pass_with_original_metadata(monkeypatch):
+    # Windows Python 3.12's monotonic clock may repeat within a sampling tick.
+    clock = [0.0]
+    monkeypatch.setattr(
+        "off_key_mqtt_radar.pipelines.diagnostics.time.monotonic", lambda: clock[0]
+    )
     service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)
     for index in range(1, 8):
+        clock[0] += 1.0
         result = service.process_data_point(_point(index))
     timestamp = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
     service.attach_observation_metadata(timestamp, {"reading_a": timestamp.timestamp()})

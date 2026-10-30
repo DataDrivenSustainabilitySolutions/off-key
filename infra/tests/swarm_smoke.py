@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -419,8 +420,8 @@ def prepare(directory):
             "socks5://:1055",
             timeout=180,
         )
-    applied_since = str(int(time.time()) - 1)
-    deploy(directory, "apply", release_bootstrap=True)
+    with route_replacement_events(directory) as replacement_events:
+        deploy(directory, "apply", release_bootstrap=True)
     services = run(
         "docker", "service", "ls", "--format", "{{.Name}}"
     ).stdout.splitlines()
@@ -428,7 +429,7 @@ def prepare(directory):
         if f"{STACK}_{name}" in services:
             raise AssertionError(f"The release kept the replaced service {name}")
     if replaced:
-        assert_replaced_stopped_before_successor(applied_since, replaced)
+        assert_replaced_stopped_before_successor(replacement_events, replaced)
     ready(directory)
     invitation = run(
         "docker",
@@ -548,16 +549,16 @@ def cleanup(directory):
             )
 
 
-def assert_replaced_stopped_before_successor(since: str, replaced: list[str]) -> None:
-    # The successor reuses the replaced services' identity, so its first
-    # container may start only after every replaced container has died.
-    events = run(
+@contextmanager
+def route_replacement_events(directory):
+    # Stream before applying: Docker only retains the last 256 historical events,
+    # and a backend-first deployment can exceed that before the browser starts.
+    path = directory / "route-replacement-events.log"
+    arguments = [
         "docker",
         "events",
         "--since",
-        since,
-        "--until",
-        str(int(time.time()) + 1),
+        str(int(time.time()) - 1),
         "--filter",
         "type=container",
         "--filter",
@@ -566,7 +567,24 @@ def assert_replaced_stopped_before_successor(since: str, replaced: list[str]) ->
         "event=start",
         "--format",
         '{{.TimeNano}} {{.Action}} {{index .Actor.Attributes "com.docker.swarm.service.name"}}',
-    ).stdout.splitlines()
+    ]
+    with path.open("w") as output:
+        process = subprocess.Popen(arguments, stdout=output, stderr=subprocess.PIPE)
+        try:
+            yield path
+        finally:
+            exited = process.poll()
+            if exited is None:
+                process.terminate()
+            _, errors = process.communicate(timeout=15)
+            if exited not in (None, 0):
+                raise AssertionError(f"Route event capture failed: {errors.decode()}")
+
+
+def assert_replaced_stopped_before_successor(path: Path, replaced: list[str]) -> None:
+    # The successor reuses the replaced services' identity, so its first
+    # container may start only after every replaced container has died.
+    events = path.read_text().splitlines()
     replaced_names = {f"{STACK}_{name}" for name in replaced}
     deaths = [
         int(stamp)

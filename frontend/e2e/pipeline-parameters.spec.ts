@@ -46,6 +46,12 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       });
       expect(published.status(), await published.text()).toBe(201);
 
+      // Publication changed the design version through the API; refresh before
+      // continuing to save edits from the browser's optimistic version.
+      await page.reload();
+      await openPipelineSettings(page, "Component");
+      await page.getByRole("combobox", { name: "Selected component", exact: true }).selectOption(detector.id);
+
       await page.getByRole("combobox", { name: "Detector model", exact: true })
         .selectOption("detector:aberrant_gadget_svm");
       await page.getByRole("checkbox", { name: "Automatic graph", exact: true }).uncheck();

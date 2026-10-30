@@ -68,6 +68,7 @@ export default defineConfig({
     {
       name: "pipeline-workspace",
       testMatch: PIPELINE_SPECS,
+      testIgnore: /pipeline-parameters\.spec\.ts/,
       // Runs in its own invocation after auth-setup, with authoring enabled,
       // and reuses the session auth-setup saved rather than signing in again.
       use: {
@@ -75,6 +76,14 @@ export default defineConfig({
         storageState: authStateFile,
         actionTimeout: 30_000,
       },
+    },
+    {
+      name: "pipeline-parameters",
+      testMatch: /pipeline-parameters\.spec\.ts/,
+      use: { ...chromiumUse, storageState: authStateFile, actionTimeout: 30_000 },
+      // Run after the lifecycle journeys so this extra write burst respects the
+      // production member quota instead of competing with rapid creation tests.
+      dependencies: ["pipeline-workspace"],
     },
     {
       name: "system-workspace",

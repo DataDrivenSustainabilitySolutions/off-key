@@ -515,6 +515,7 @@ jobs:
           path: |
             ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/browser-cutover-evidence.json
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/route-replacement-events.log
             ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
           if-no-files-found: ignore

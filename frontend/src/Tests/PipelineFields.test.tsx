@@ -27,6 +27,15 @@ function Fields({
   );
 }
 describe("bounded pipeline parameter controls", () => {
+  it("gives repeated nested controls distinct label and help targets", () => {
+    render(<Fields fields={[{ name: "items", label: "Items", type: "object_list",
+      fields: [{ name: "count", label: "Count", type: "integer" }] }]}
+      initial={{ items: [{ count: 1 }, { count: 2 }] }} />);
+    const controls = screen.getAllByRole("spinbutton", { name: /^Count$/ });
+    expect(new Set(controls.map(control => control.id)).size).toBe(2);
+    controls.forEach(control => expect(document.getElementById(`${control.id}-description`)).toBeTruthy());
+  });
+
   it("keeps omitted defaults distinct from explicit null and supports resetting", () => {
     render(<Fields fields={[{ name: "seed", label: "Seed", type: "integer",
       required: false, has_default: true, default: null, nullable: true }]} />);

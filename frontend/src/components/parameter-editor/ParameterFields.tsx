@@ -28,9 +28,9 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
     switch (field.type) {
       case "object": case "object_list": case "component":
         control = <NestedControl {...props} path={fieldPath}
-          render={(nested, next, nextPath, change) => <ParameterFields fields={nested} values={next}
+          render={(nested, next, nextPath, change, index) => <ParameterFields fields={nested} values={next}
             onChange={change} path={nextPath} issues={issues} features={features}
-            featureLabels={featureLabels} readOnly={readOnly || value === null} prefix={id} />} />;
+            featureLabels={featureLabels} readOnly={readOnly || value === null} prefix={`${id}-${index}`} />} />;
         break;
       case "number_pair": case "number_list": case "features": case "rename": case "integer_adjacency":
         control = <CollectionControl {...props} disabled={field.type === "integer_adjacency" ? readOnly : props.disabled} features={features} featureLabels={featureLabels} />;

@@ -4,7 +4,7 @@ import { fieldDefaults, objectValue, type ControlProps, type FieldDescriptor, ty
 export function NestedControl({ field, value, disabled, onChange, path, render }: ControlProps & {
   path: ParameterPath;
   render: (fields: FieldDescriptor[], values: Parameters, path: ParameterPath,
-    onChange: (values: Parameters) => void) => ReactNode;
+    onChange: (values: Parameters) => void, index: number) => ReactNode;
 }) {
   const entries = field.type === "object_list" ? Array.isArray(value) ? value : [] : [value];
   const changeEntry = (index: number, next: Parameters) => onChange(
@@ -24,7 +24,7 @@ export function NestedControl({ field, value, disabled, onChange, path, render }
         })}>{Object.keys(field.variants).map(kind => <option key={kind}>{kind}</option>)}</select></label>}
       {render(fields.filter(item => item.name !== field.discriminator), params,
         field.type === "component" ? [...entryPath, "params"] : entryPath,
-        next => changeEntry(index, field.type === "component" ? { ...object, params: next } : next))}
+        next => changeEntry(index, field.type === "component" ? { ...object, params: next } : next), index)}
       {field.type === "object_list" && <button type="button" disabled={disabled}
         onClick={() => onChange(entries.filter((_entry, at) => at !== index).map(entry => entry ?? null))}>Remove item</button>}
     </div>;

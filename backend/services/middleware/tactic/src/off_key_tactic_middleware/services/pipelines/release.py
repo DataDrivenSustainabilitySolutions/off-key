@@ -25,7 +25,7 @@ def _reviewed_saved_launch(value: dict) -> dict:
     monitoring = value.get("monitoring", {})
     if monitoring.get("strategy") == "adaptive_stream":
         previous = monitoring.get("aberrant_version", ABERRANT_VERSION)
-        if previous not in {"1.1.0", "1.2.0", ABERRANT_VERSION}:
+        if previous not in {"1.1.0", "1.2.0", "1.3.0", ABERRANT_VERSION}:
             raise ValueError(
                 f"No reviewed release normalization for Aberrant {previous}"
             )

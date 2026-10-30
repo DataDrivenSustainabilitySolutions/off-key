@@ -297,6 +297,26 @@ describe("simple monitoring setup", () => {
     await screen.findByText("Resolve the highlighted processing issues before applying.");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
+  it("opens runtime preflight errors beside the affected parameter before correction", async () => {
+    const described = structuredClone(catalog);
+    described.components.find(item => item.id === "detector:test")!.fields = [
+      { name: "window", label: "Window", type: "integer", default: 8, has_default: true },
+    ];
+    vi.mocked(pipelinesApi.apply).mockResolvedValue({ id: "activation", phase: "failed",
+      service_id: "service", run_id: "run", predecessor_service_id: null, error: "Constructor rejected parameters",
+      issues: [{ code: "invalid_value", message: "Choose a positive window", node_id: "detector", parameter_path: ["window"] }],
+      created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+    mount({ catalog: described });
+    fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Choose a positive window" }));
+    const control = screen.getByRole("spinbutton", { name: "Window" }) as HTMLInputElement;
+    expect(control.getAttribute("aria-invalid")).toBe("true");
+    expect(control.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Return to setup" }));
+    expect(control.disabled).toBe(false);
+    fireEvent.change(control, { target: { value: "9" } });
+    expect(control.value).toBe("9");
+  });
   it("waits for collection before applying", async () => {
     mount({ collectionReady: false }); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
     expect(screen.getByText(/Enable collection in Sources/)).toBeTruthy(); expect(pipelinesApi.apply).not.toHaveBeenCalled();

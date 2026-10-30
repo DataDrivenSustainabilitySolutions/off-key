@@ -1,6 +1,6 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is test-only feature code with migration 014 and Aberrant 1.3.0.
+The reference is the previous platform code with reviewed Aberrant 1.4.0 numerics.
 It is not an eligible production release and proves no pre-feature compatibility.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "d63f444dbaaf8dec0392dd723394452f2e32fe69"
+COMPATIBLE_REVISION = "ab080c999591da03b0a7d75574bb0db4051037b9"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

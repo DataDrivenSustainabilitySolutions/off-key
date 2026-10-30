@@ -119,29 +119,36 @@ def add_recorded_entity(
 
 
 def remove_recorded_entity(client: httpx.Client, entity: RecordedEntity) -> None:
-    response = client.get("/v1/system")
-    response.raise_for_status()
-    current = response.json()
-    document = current["document"]
-    document["streams"] = [
-        stream
-        for stream in document["streams"]
-        if stream["id"] not in entity.stream_ids
-    ]
-    document["devices"] = [
-        device for device in document["devices"] if device["id"] != entity.device_id
-    ]
-    document["connections"] = [
-        connection
-        for connection in document["connections"]
-        if connection["id"] != entity.connection_id
-    ]
-    removed = client.put(
-        "/v1/system",
-        json={
-            "expected_revision": current["revision"],
-            "document": document,
-            "pause_affected_monitors": True,
-        },
-    )
-    removed.raise_for_status()
+    # A successful stop request releases its activation's input claims
+    # asynchronously. Retry conflicts on a fresh revision, as browser cleanup does.
+    deadline = time.monotonic() + 90
+    while True:
+        response = client.get("/v1/system")
+        response.raise_for_status()
+        current = response.json()
+        document = current["document"]
+        document["streams"] = [
+            stream
+            for stream in document["streams"]
+            if stream["id"] not in entity.stream_ids
+        ]
+        document["devices"] = [
+            device for device in document["devices"] if device["id"] != entity.device_id
+        ]
+        document["connections"] = [
+            connection
+            for connection in document["connections"]
+            if connection["id"] != entity.connection_id
+        ]
+        removed = client.put(
+            "/v1/system",
+            json={
+                "expected_revision": current["revision"],
+                "document": document,
+                "pause_affected_monitors": True,
+            },
+        )
+        if removed.status_code != 409 or time.monotonic() >= deadline:
+            removed.raise_for_status()
+            return
+        time.sleep(1)

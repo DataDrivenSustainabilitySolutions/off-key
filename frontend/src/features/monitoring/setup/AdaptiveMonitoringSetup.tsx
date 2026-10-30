@@ -18,7 +18,8 @@ import {
 import type { FieldErrors } from "./config";
 import { CONTROL_CLASS, HELP_CLASS, LABEL_CLASS } from "./formStyles";
 import { ConfigSection, FieldError } from "./FormParts";
-import { ModelParameterFields } from "./ModelParameterFields";
+import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
+import { formParameterIssues, modelErrorFields } from "@/components/parameter-editor/validation";
 import { startFormMonitor } from "./startMonitor";
 
 interface Props {
@@ -81,9 +82,9 @@ export function AdaptiveMonitoringSetup({
 
   const clearError = useCallback((field: string) => {
     setFieldErrors((current) => {
-      if (!current[field]) return current;
+      if (!Object.keys(current).some(key => key === field || key.startsWith(`${field}.`))) return current;
       const next = { ...current };
-      delete next[field];
+      for (const key of Object.keys(next)) if (key === field || key.startsWith(`${field}.`)) delete next[key];
       return next;
     });
   }, []);
@@ -113,6 +114,7 @@ export function AdaptiveMonitoringSetup({
       toast.success("Adaptive monitoring service started.");
       await onStarted(serviceId);
     } catch (error) {
+      setFieldErrors(current => ({ ...current, ...modelErrorFields(error) }));
       toast.error(`Failed to start adaptive monitoring: ${getErrorMessage(error)}`);
     } finally {
       setStarting(false);
@@ -167,13 +169,15 @@ export function AdaptiveMonitoringSetup({
               {modelDefinition?.default_capabilities?.state === "growing" && <p className={HELP_CLASS}>Memory use can grow on long runs.</p>}
               {modelDefinition?.algorithm_family === "time_series" && <p className={HELP_CLASS}>Windows count aligned observations, not seconds. Use consistently sampled telemetry.</p>}
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <ModelParameterFields
-                  properties={modelDefinition?.parameters?.properties ?? {}}
-                  values={{ ...getModelDefaults(draft.modelType, modelDefinition), ...draft.modelParams }}
-                  errors={fieldErrors}
-                  onChange={(modelParams, field) => {
+                <ParameterFields
+                  fields={modelDefinition?.fields ?? []}
+                  values={draft.modelParams}
+                  issues={formParameterIssues(fieldErrors)}
+                  onChange={(modelParams) => {
                     setDraft((current) => ({ ...current, modelParams }));
-                    clearError(field);
+                    for (const key of new Set([...Object.keys(draft.modelParams), ...Object.keys(modelParams)])) {
+                      if (draft.modelParams[key] !== modelParams[key]) clearError(`model.${key}`);
+                    }
                   }}
                 />
               </div>

@@ -1,10 +1,10 @@
+import { validateModelParameters } from "@/components/parameter-editor/validation";
 import type {
   MonitoringStartRequest,
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
   MartingaleTrackerConfig,
   ModelDefinition,
-  ModelParams,
   JsonValue,
   AdaptivePreprocessingStep,
   AdaptiveAnomalyDetectionRequest,
@@ -189,67 +189,6 @@ const parseNumber = ({
   return undefined;
 };
 
-const coerceModelParams = (
-  params: Record<string, ConfigValue>,
-  definition: ModelDefinition | undefined,
-  errors: FieldErrors,
-  prefix = "model",
-): ModelParams => {
-  const cleaned: ModelParams = {};
-  const properties = definition?.parameters?.properties ?? {};
-  const required = new Set(definition?.parameters?.required ?? []);
-  for (const key of new Set([...Object.keys(params), ...required])) {
-    const schema = properties[key];
-    const value = params[key];
-    const field = `${prefix}.${key}`;
-    const schemaType = schema?.type ?? schema?.anyOf?.find((item) => item.type !== "null")?.type;
-    if (schema?.["x-aberrant-component-kind"] && schema.properties?.params?.properties && typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const params = value.params;
-      cleaned[key] = {
-        id: value.id ?? "",
-        params: coerceModelParams(
-          typeof params === "object" && params !== null && !Array.isArray(params) ? params : {},
-          { parameters: { properties: schema.properties.params.properties, required: schema.properties.params.required } },
-          errors,
-          `${field}.params`,
-        ),
-      };
-    } else if (value === null) cleaned[key] = null;
-    else if (schemaType === "boolean") cleaned[key] = Boolean(value);
-    else if (value === "" || value === undefined) {
-      if (required.has(key)) errors[field] = `${humanize(key)} is required.`;
-    } else if (schemaType === "integer" || schemaType === "number") {
-      const parsed = parseNumber({
-        value,
-        label: humanize(key),
-        field,
-        errors,
-        integer: schemaType === "integer",
-        min: schema?.minimum,
-        max: schema?.maximum,
-      });
-      if (parsed !== undefined) cleaned[key] = parsed;
-    } else if (schemaType === "array" || schemaType === "object") {
-      if (typeof value !== "string") cleaned[key] = value;
-      else {
-        try {
-          const parsed = JSON.parse(value) as JsonValue;
-          if (
-            (schemaType === "array" && !Array.isArray(parsed)) ||
-            (schemaType === "object" &&
-              (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)))
-          ) {
-            errors[field] = `${humanize(key)} must be a JSON ${schemaType}.`;
-          } else cleaned[key] = parsed;
-        } catch {
-          errors[field] = `${humanize(key)} must contain valid JSON.`;
-        }
-      }
-    } else cleaned[key] = value;
-  }
-  return cleaned;
-};
-
 export const buildAdaptiveMonitoringRequest = ({
   chargerId,
   topics,
@@ -369,7 +308,7 @@ export const buildAdaptiveMonitoringRequest = ({
   if (capabilities?.requires_unit_interval && (draft.projection !== "none" || draft.scaler === "standard_scaler" || (draft.scaler === "min_max_scaler" && (Number(draft.minMaxLower) !== 0 || Number(draft.minMaxUpper) !== 1)))) {
     errors.modelType = "This model requires raw values in [0, 1] or min-max scaling to [0, 1], without a projection.";
   }
-  const modelParams = coerceModelParams(draft.modelParams, modelDefinition, errors);
+  const modelParams = validateModelParameters(draft.modelParams, modelDefinition?.fields ?? [], errors);
   if (Object.keys(errors).length || trainingWindow === undefined || calibrationWindow === undefined || quantile === undefined || sensorFreshness === undefined) {
     return { errors };
   }
@@ -657,11 +596,7 @@ export const buildStaticMonitoringRequest = ({
     errors,
     min: MIN_READING_FRESHNESS_SECONDS,
   });
-  const modelParams = coerceModelParams(
-    draft.modelParams,
-    modelDefinition,
-    errors,
-  );
+  const modelParams = validateModelParameters(draft.modelParams, modelDefinition?.fields ?? [], errors);
 
   if (
     Object.keys(errors).length ||

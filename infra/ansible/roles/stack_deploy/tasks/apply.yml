@@ -13,6 +13,14 @@
       when: persistence_flips | length > 0
       no_log: true
 
+    - name: Keep the existing browser bundle while updating backend contracts
+      template:
+        src: backend-first.json.j2
+        dest: "{{ stack_dir }}/backend-first.json"
+        mode: "0600"
+      when: "'frontend' in stack_compose_model.services"
+      no_log: true
+
     - name: Deploy the resolved Docker Swarm model
       command:
         argv:
@@ -20,7 +28,7 @@
           - stack
           - deploy
           - -c
-          - "{{ stack_dir }}/{{ 'persistence-cutover.json' if persistence_flips | length > 0 else 'deployment-model.json' }}"
+          - "{{ stack_dir }}/{{ 'persistence-cutover.json' if persistence_flips | length > 0 else ('backend-first.json' if 'frontend' in stack_compose_model.services else 'deployment-model.json') }}"
           - --with-registry-auth
           - "{{ stack_name }}"
       register: stack_deploy_result
@@ -39,7 +47,7 @@
         label: "{{ item.key }}"
       when:
         - persistence_flips | length > 0
-        - item.key not in ['postgres', 'emqx-main']
+        - item.key not in ['postgres', 'emqx-main', 'frontend']
       no_log: true
 
     - name: Resume runtime workers with their original replica counts
@@ -49,6 +57,38 @@
       loop_control:
         label: "{{ item.key }}"
       when: item.key not in (stack_compose_model.services.keys() | map('regex_replace', '^', stack_name ~ '_') | list)
+
+    - name: Serve backend contracts before activating the browser bundle
+      when: "'frontend' in stack_compose_model.services"
+      block:
+        - name: Wait for the intended backend images without accepting rollbacks
+          command:
+            argv: [python3, '-', "{{ stack_name }}", "{{ stack_dir }}/deployment-model.json", "{{ release.images.mqtt_radar }}", --backend-first]
+            stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/check_swarm.py') }}"
+          register: backend_convergence
+          changed_when: false
+          retries: 60
+          delay: 5
+          until: backend_convergence.rc == 0
+
+        - name: Require live APIs and catalog readiness before browser cutover
+          include_tasks: application_readiness.yml
+
+        - name: Record the backend readiness fence for deployment rehearsal
+          copy:
+            dest: "{{ stack_dir }}/browser-cutover.json"
+            mode: "0600"
+            content: >-
+              {{ (backend_convergence.stdout_lines | last | from_json)
+                 | combine({'backend_ready_at': now(utc=true, fmt='%Y-%m-%dT%H:%M:%S.%fZ'),
+                            'target_frontend_image': stack_compose_model.services.frontend.image})
+                 | to_nice_json }}
+
+        - name: Activate the browser bundle after backend readiness
+          command:
+            argv: [docker, stack, deploy, -c, "{{ stack_dir }}/deployment-model.json", --with-registry-auth, "{{ stack_name }}"]
+          changed_when: true
+
     - name: Clear the completed cutover plan
       file:
         path: "{{ stack_dir }}/recovery-pending.json"

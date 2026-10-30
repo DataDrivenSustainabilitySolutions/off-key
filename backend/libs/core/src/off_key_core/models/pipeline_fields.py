@@ -56,6 +56,8 @@ def _array_kind(schema: Schema, definitions: Schema) -> FieldType:
 
 
 def _field_kind(name: str, schema: Schema, definitions: Schema) -> FieldType:
+    if schema.get("x-aberrant-component-kind"):
+        return "component"
     if name in SPECIAL_TYPES:
         return SPECIAL_TYPES[name]
     if schema.get("enum") or "const" in schema:
@@ -99,7 +101,9 @@ def _variants(
     return discriminator.get("propertyName"), variants or None
 
 
-def _describe(name: str, original: Schema, definitions: Schema) -> ComponentField:
+def _describe(
+    name: str, original: Schema, definitions: Schema, *, required: bool
+) -> ComponentField:
     schema, nullable = _unwrap_nullable(original, definitions)
     kind = _field_kind(name, schema, definitions)
     nested = (
@@ -114,12 +118,24 @@ def _describe(name: str, original: Schema, definitions: Schema) -> ComponentFiel
         label=original.get("title", name.replace("_", " ").title()),
         type=kind,
         default=original.get("default", schema.get("default")),
+        required=required,
+        has_default="default" in original or "default" in schema,
         nullable=nullable,
-        minimum=schema.get("minimum", schema.get("exclusiveMinimum")),
-        maximum=schema.get("maximum", schema.get("exclusiveMaximum")),
+        minimum=original.get("minimum", schema.get("minimum")),
+        maximum=original.get("maximum", schema.get("maximum")),
+        exclusive_minimum=original.get(
+            "exclusiveMinimum", schema.get("exclusiveMinimum")
+        ),
+        exclusive_maximum=original.get(
+            "exclusiveMaximum", schema.get("exclusiveMaximum")
+        ),
         options=options,
         description=original.get("description", ""),
-        fields=component_fields(nested, definitions)
+        fields=component_fields(
+            schema.get("properties", {}).get("params", {}), definitions
+        )
+        if kind == "component"
+        else component_fields(nested, definitions)
         if kind in {"object", "object_list"}
         else [],
         discriminator=discriminator,
@@ -132,6 +148,34 @@ def component_fields(
 ) -> list[ComponentField]:
     definitions = schema.get("$defs", {}) if definitions is None else definitions
     return [
-        _describe(name, original, definitions)
+        _describe(
+            name, original, definitions, required=name in schema.get("required", [])
+        )
         for name, original in schema.get("properties", {}).items()
     ]
+
+
+def parameter_path(
+    loc: tuple[str | int, ...], fields: list[ComponentField]
+) -> list[str | int]:
+    """Remove Pydantic discriminator labels using metadata, never error text."""
+    result = []
+    field = None
+    for part in loc:
+        if (
+            field is not None
+            and field.variants is not None
+            and isinstance(part, str)
+            and part in field.variants
+        ):
+            fields = field.variants[part]
+            field = None
+            continue
+        result.append(part)
+        if isinstance(part, int):
+            continue
+        selected = next((item for item in fields if item.name == part), None)
+        if selected is not None:
+            field = selected
+            fields = selected.fields
+    return result

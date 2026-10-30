@@ -20,7 +20,7 @@ const SYSTEM_SPECS = /system-workspace\.spec\.ts/;
 // Route-mocked journeys that need only the frontend.
 const MOCKED_SPECS = /(details-echarts|tandem-charts)\.spec\.ts/;
 // These journeys need TACTIC_PIPELINE_AUTHORING_ENABLED=true; the others need it false.
-const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing)\.spec\.ts/;
+const PIPELINE_SPECS = /pipeline-(workspace|remediation|language|creation|routing|parameters)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -68,6 +68,7 @@ export default defineConfig({
     {
       name: "pipeline-workspace",
       testMatch: PIPELINE_SPECS,
+      testIgnore: /pipeline-parameters\.spec\.ts/,
       // Runs in its own invocation after auth-setup, with authoring enabled,
       // and reuses the session auth-setup saved rather than signing in again.
       use: {
@@ -75,6 +76,14 @@ export default defineConfig({
         storageState: authStateFile,
         actionTimeout: 30_000,
       },
+    },
+    {
+      name: "pipeline-parameters",
+      testMatch: /pipeline-parameters\.spec\.ts/,
+      use: { ...chromiumUse, storageState: authStateFile, actionTimeout: 30_000 },
+      // Run after the lifecycle journeys so this extra write burst respects the
+      // production member quota instead of competing with rapid creation tests.
+      dependencies: ["pipeline-workspace"],
     },
     {
       name: "system-workspace",

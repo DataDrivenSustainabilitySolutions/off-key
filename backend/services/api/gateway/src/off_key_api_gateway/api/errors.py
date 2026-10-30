@@ -9,12 +9,12 @@ from fastapi.routing import APIRoute
 from ..facades.tactic import TacticError
 
 
-def tactic_error_detail(error: TacticError) -> str:
+def tactic_error_detail(error: TacticError) -> str | list:
     """Extract a stable API detail from a downstream TACTIC failure."""
     if isinstance(error.body, dict):
         detail = error.body.get("detail")
         if detail:
-            return str(detail)
+            return detail if isinstance(detail, list) else str(detail)
     return str(error)
 
 

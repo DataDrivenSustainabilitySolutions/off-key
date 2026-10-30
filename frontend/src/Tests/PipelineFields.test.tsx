@@ -5,7 +5,7 @@ import type { JsonValue } from "@/types/monitoring";
 import {
   ParameterFields,
   type FieldDescriptor,
-} from "@/features/pipelines/ParameterFields";
+} from "@/components/parameter-editor/ParameterFields";
 function Fields({
   fields,
   initial = {},
@@ -27,6 +27,40 @@ function Fields({
   );
 }
 describe("bounded pipeline parameter controls", () => {
+  it("gives repeated nested controls distinct label and help targets", () => {
+    render(<Fields fields={[{ name: "items", label: "Items", type: "object_list",
+      fields: [{ name: "count", label: "Count", type: "integer" }] }]}
+      initial={{ items: [{ count: 1 }, { count: 2 }] }} />);
+    const controls = screen.getAllByRole("spinbutton", { name: /^Count$/ });
+    expect(new Set(controls.map(control => control.id)).size).toBe(2);
+    controls.forEach(control => expect(document.getElementById(`${control.id}-description`)).toBeTruthy());
+  });
+
+  it("keeps omitted defaults distinct from explicit null and supports resetting", () => {
+    render(<Fields fields={[{ name: "seed", label: "Seed", type: "integer",
+      required: false, has_default: true, default: null, nullable: true }]} />);
+    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({});
+    fireEvent.click(screen.getByRole("checkbox", { name: "Seed automatic" }));
+    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({ seed: 0 });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Seed automatic" }));
+    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({ seed: null });
+    fireEvent.click(screen.getByRole("button", { name: "Use default" }));
+    expect(JSON.parse(screen.getByTestId("params").textContent!)).toEqual({});
+  });
+
+  it("shows independent nested errors once beside the affected fields", () => {
+    render(<ParameterFields fields={[{ name: "engine", label: "Engine", type: "component",
+      fields: [{ name: "k", label: "Neighbors", type: "integer" },
+        { name: "window", label: "Window", type: "integer" }] }]}
+      values={{ engine: { id: "faiss", params: { k: 0, window: 0 } } }}
+      onChange={() => undefined}
+      issues={[{ path: ["engine", "params", "k"], message: "Choose a positive count" },
+        { path: ["engine", "params", "window"], message: "Choose a window" }]} />);
+    expect(screen.getAllByText("Choose a positive count")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    expect(screen.getByRole("spinbutton", { name: "Neighbors" }).getAttribute("aria-invalid")).toBe("true");
+  });
+
   it("selects and explicitly orders named features without raw JSON editing", () => {
     render(
       <Fields

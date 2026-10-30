@@ -56,14 +56,14 @@ def test_static_detector_schema_signature_is_unchanged():
     )
 
 
-def test_adaptive_detector_schema_signature_is_unchanged():
+def test_adaptive_detector_schema_signature_requires_relearning_for_1_4():
     # Includes the installed Aberrant version: an upgrade invalidates states.
     assert AdaptiveStreamDetectionService._build_schema_signature(_adaptive()) == (
-        "00233f99755ef2486f6e4e1e9bd7bd32fffb8323a9f814df6b261ec6cc694dd0"
+        "3aa4c185f5237d51f3a2c1b9730c09cff60918f79c5a3015142c966d6878eba9"
     )
 
 
-def test_runtime_checkpoint_configuration_fingerprint_is_unchanged():
+def test_checkpoint_fingerprints_preserve_static_and_upgrade_adaptive():
     fingerprints = {
         name: RuntimeCheckpointCodec(
             "svc", config(), b"secret"
@@ -77,6 +77,7 @@ def test_runtime_checkpoint_configuration_fingerprint_is_unchanged():
 
     assert fingerprints == {
         "static": "8a48accbec59655e0409bcd2955797ae1049ea94c166853a9a9dbbc33994e176",
-        "adaptive": "b8553ecd96fdbff10e02e68ce11665767f63853868913ffc07efc90bad77f83c",
+        # The explicit 1.3.0 -> 1.4.0 library version is the migration boundary.
+        "adaptive": "6b07afd3e35bf15357b53dcefc20f5d1013837ae96ea7e21a854e7909181c3dd",
         "pipeline": "d4f00448d44de0e86c95f0e553a0fa20f189e1ad6bf4878cd59ed3ce6c323c21",
     }

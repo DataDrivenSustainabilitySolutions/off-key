@@ -48,8 +48,12 @@ export type ComponentField = {
   label: string;
   type: "number" | "integer" | "boolean" | "string" | "enum" | "features" | "rename" | "number_pair" | "number_list" | "component" | "object" | "object_list" | "integer_adjacency";
   default?: unknown;
+  required?: boolean;
+  has_default?: boolean;
   minimum?: number | null;
   maximum?: number | null;
+  exclusive_minimum?: number | null;
+  exclusive_maximum?: number | null;
   options?: Array<string> | null;
   nullable?: boolean;
   description?: string;
@@ -99,6 +103,7 @@ export type PipelineActivationView = {
   run_id: string;
   predecessor_service_id: string | null;
   error: string | null;
+  issues?: Array<PipelineIssue>;
   created_at: string;
   updated_at: string;
 };
@@ -195,6 +200,7 @@ export type PipelineIssue = {
   code: string;
   message: string;
   node_id?: string | null;
+  parameter_path?: Array<string | number> | null;
 };
 
 export type PipelineLayout = {

@@ -6,8 +6,11 @@ from copy import deepcopy
 from importlib.resources import files
 from typing import Any
 
-from jsonschema import Draft202012Validator
-from jsonschema.exceptions import ValidationError
+from .parameter_validation import (
+    ParameterIssue,
+    parameter_error,
+    validate_parameter_schema,
+)
 
 ADAPTIVE_MODEL_FAMILY = "adaptive_aberrant"
 ADAPTIVE_MONITORING_STRATEGY = "adaptive_stream"
@@ -150,27 +153,52 @@ def validate_adaptive_model_params(
     provided = json.loads(json.dumps(params or {}, allow_nan=False))
     _migrate_legacy_params(model_type, provided)
     merged = {**deepcopy(definition["default_parameters"]), **provided}
-    try:
-        Draft202012Validator(definition["parameter_schema"]).validate(merged)
-    except ValidationError as exc:
-        path = ".".join(str(part) for part in exc.path)
-        raise ValueError(
-            f"Invalid parameters for '{model_type}': {path}: {exc.message}"
-        ) from exc
+    validate_parameter_schema(
+        f"Invalid parameters for '{model_type}'", definition["parameter_schema"], merged
+    )
     if model_type == "aberrant_knn":
         engine_params = merged["similarity_engine"]["params"]
         if not merged["k"] <= engine_params["warm_up"] <= engine_params["window_size"]:
-            raise ValueError("KNN requires k <= warm_up <= window_size")
+            raise parameter_error(
+                model_type,
+                [
+                    ParameterIssue(
+                        code="invalid_value",
+                        loc=("similarity_engine", "params", "warm_up"),
+                        message="KNN requires k <= warm_up <= window_size",
+                    )
+                ],
+            )
     if (
         model_type == "aberrant_local_outlier_factor"
         and merged["k"] > merged["window_size"]
     ):
-        raise ValueError("LocalOutlierFactor requires k <= window_size")
+        raise parameter_error(
+            model_type,
+            [
+                ParameterIssue(
+                    code="invalid_value",
+                    loc=("k",),
+                    message="LocalOutlierFactor requires k <= window_size",
+                )
+            ],
+        )
     if (
         model_type == "aberrant_half_space_trees"
         and merged["n_trees"] * (2 ** (merged["height"] + 1) - 1) > 2_000_000
     ):
-        raise ValueError("Half-Space Trees exceeds the 2,000,000-node resource budget")
+        raise parameter_error(
+            model_type,
+            [
+                ParameterIssue(
+                    code="invalid_value",
+                    loc=("height",),
+                    message=(
+                        "Half-Space Trees exceeds the 2,000,000-node resource budget"
+                    ),
+                )
+            ],
+        )
     return merged
 
 

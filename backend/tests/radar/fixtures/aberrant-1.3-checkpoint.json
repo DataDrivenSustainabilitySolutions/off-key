@@ -1,0 +1,141 @@
+{
+  "source_revision": "b5c6dd3c",
+  "runtime_versions": {
+    "aberrant": "1.3.0",
+    "numpy": "2.5.4",
+    "scipy": "1.16.2",
+    "scikit-learn": "1.8.0",
+    "nonconform": "2.0.0"
+  },
+  "launch": {
+    "container_name": "aberrant-upgrade-reference",
+    "display_name": null,
+    "mqtt_topics": [
+      "telemetry/entity/x"
+    ],
+    "monitoring": {
+      "strategy": "adaptive_stream",
+      "aberrant_version": "1.3.0",
+      "model_type": "aberrant_moving_average",
+      "model_params": {
+        "window_size": 8
+      },
+      "training_window_size": 2,
+      "calibration_window_size": 3,
+      "preprocessing_steps": [],
+      "threshold_config": {
+        "mode": "calibrated_quantile",
+        "quantile": 1.0
+      }
+    },
+    "performance_config": {
+      "sensor_key_strategy": "full_hierarchy",
+      "sensor_freshness_seconds": 30.0,
+      "observation_max_age_seconds": 30.0,
+      "observation_future_tolerance_seconds": 5.0,
+      "alignment_max_skew_seconds": 5.0
+    },
+    "mqtt_config": {},
+    "launch_version": 2,
+    "pipeline": {
+      "schema_version": 1,
+      "definition": {
+        "schema_version": 1,
+        "strategy": "adaptive_stream",
+        "input_slots": [
+          {
+            "id": "input_1",
+            "label": "x",
+            "unit": null
+          }
+        ],
+        "nodes": [
+          {
+            "id": "input",
+            "kind": "source",
+            "component": "source.aligned",
+            "contract_version": 1,
+            "params": {},
+            "label": null
+          },
+          {
+            "id": "detector",
+            "kind": "detector",
+            "component": "detector:aberrant_moving_average",
+            "contract_version": 1,
+            "params": {
+              "window_size": 8
+            },
+            "label": null
+          },
+          {
+            "id": "policy",
+            "kind": "policy",
+            "component": "policy.quantile",
+            "contract_version": 1,
+            "params": {
+              "mode": "calibrated_quantile",
+              "quantile": 1.0
+            },
+            "label": null
+          },
+          {
+            "id": "output",
+            "kind": "output",
+            "component": "output.evidence",
+            "contract_version": 1,
+            "params": {},
+            "label": null
+          }
+        ],
+        "edges": [
+          {
+            "source": "input",
+            "target": "detector",
+            "order": 0
+          },
+          {
+            "source": "detector",
+            "target": "policy",
+            "order": 0
+          },
+          {
+            "source": "policy",
+            "target": "output",
+            "order": 0
+          }
+        ],
+        "settings": {
+          "training_window_size": 2,
+          "calibration_window_size": 3,
+          "seed": 42,
+          "conformal_strategy": "split"
+        }
+      },
+      "bindings": [
+        {
+          "slot_id": "input_1",
+          "reading_id": "reading-1",
+          "entity_id": "entity",
+          "accepted_topic": "telemetry/entity/x",
+          "input_key": "x",
+          "unit": null
+        }
+      ],
+      "revision_id": "revision",
+      "run_id": "run",
+      "fingerprint": "5f9a42ff39ae603db71b08152d0828586fa7e9daff6a2ce853ebb98c2f37b900"
+    },
+    "runtime_image": null
+  },
+  "checkpoint": {
+    "service_id": "aberrant-upgrade-reference",
+    "format_version": 1,
+    "configuration_fingerprint": "b2e56ea9267d2bc8c9f717979388ce7aa9cb6ba27c10d414a1ccdd4725a293eb",
+    "runtime_fingerprint": "ff1399358119a63fee599adc5270fd374193beb85c094e9d99f0f40145e05805",
+    "processed_count": 6,
+    "saved_at": "2026-10-30T12:29:27.902453+00:00",
+    "payload": "gAWVPAUAAAAAAAB9lCiMCGRldGVjdG9ylH2UKIwIc3RyYXRlZ3mUjA9hZGFwdGl2ZV9zdHJlYW2UjA5hZGFwdGl2ZV9zdGF0ZZSMC29wZXJhdGlvbmFslIwMZmVhdHVyZV9rZXlzlF2UjAdpbnB1dF8xlGGMCHBpcGVsaW5llIwXYWJlcnJhbnQuY29tcG9zZS5fZ3JhcGiUjA1HcmFwaFBpcGVsaW5llJOUKYGUfZQojAVub2Rlc5QpjAVtb2RlbJSMKGFiZXJyYW50Lm1vZGVsLnN0YXQuX3VuaXZhcmlhdGVfYXZlcmFnZXOUjA1Nb3ZpbmdBdmVyYWdllJOUKYGUfZQojAt3aW5kb3dfc2l6ZZRLCIwGd2luZG93lIwLY29sbGVjdGlvbnOUjAVkZXF1ZZSTlClLCIaUUpQoRz/wAAAAAAAAR0AAAAAAAAAAR0AIAAAAAAAAR0AQAAAAAAAAR0AUAAAAAAAAR0AYAAAAAAAAZYwMZmVhdHVyZV9uYW1llGgJjAhhYnNfZGlmZpSIdWKMBm91dHB1dJSMBiRpbnB1dJSMFW1vZGVsX21pbmltdW1fdXBkYXRlc5RLAYwIb2JzZXJ2ZXKUTowUb2JzZXJ2ZXJfZXJyb3JfY291bnSUSwCMDW1vZGVsX3VwZGF0ZXOUSwaMCF91cGRhdGVzlH2UjAhfc2NoZW1hc5R9lGghaAmFlHOMCF9mYWlsdXJllE6MFWxhc3RfbGVhcm5pbmdfb3V0Y29tZZSMF2FiZXJyYW50LmNvbXBvc2UuX3R5cGVzlIwPTGVhcm5pbmdPdXRjb21llJOUKYGUXZQoiEsGKYwXYWJlcnJhbnQuYmFzZS5yZWFkaW5lc3OUjAlSZWFkaW5lc3OUk5QpgZRdlCiISwZLAU5lYmVidWKMD2RldGVjdG9yX2NvbmZpZ5R9lCiMB3ZlcnNpb26USwGMDHRyYW5zZm9ybWVyc5RdlGgRfZQojAJpZJSMDm1vdmluZ19hdmVyYWdllIwGcGFyYW1zlH2UKGgXSwiMA2tleZRoCWgfiHV1dYwUZGV0ZWN0b3JfZmluZ2VycHJpbnSUjEA0NWFlZDU3NzY3ZGE5MzVkODM0NTNiMWFlNTIxOGMwM2Y4NDcwODBlOTEwNDQyMWMxZDdiZjIxY2Q3NTYzMWFllIwOc2V2ZXJpdHlfc2NhbGWURz/gAAAAAAAAjBJjYWxpYnJhdGlvbl9zY29yZXOUXZQoRz/gAAAAAAAARz/gAAAAAAAARz/gAAAAAAAAZYwJdGhyZXNob2xklEc/4AAAAAAAAIwPcHJvY2Vzc2VkX2NvdW50lEsGjAx3YXJtdXBfY291bnSUSwKMEWNhbGlicmF0aW9uX2NvdW50lEsDjBFvcGVyYXRpb25hbF9jb3VudJRLAYwNYW5vbWFseV9jb3VudJRLAIwOdHJhaW5pbmdfZXJyb3KUTowQc2NoZW1hX3NpZ25hdHVyZZSMQDBjMDRhMjFjZTZlYTQ0YjExOGI0NTU3NTMzZmM1MDY0MTk4MjUwNWQxYjQ2ZDNhNjFjZmJiZGE2YzM1MDJlNmSUjBBhYmVycmFudF92ZXJzaW9ulIwFMS4zLjCUdYwJcHJvY2Vzc29ylH2UKIwWcmVjZWl2ZWRfbWVzc2FnZV9jb3VudJRLAIwNbWVzc2FnZV9jb3VudJRLAGhMSwCMC2Vycm9yX2NvdW50lEsAdYwIY292ZXJhZ2WUfZQoaDlLAYwEZGF0YZR9lHWMFm9ic2VydmF0aW9uX3dhdGVybWFya3OUfZR1Lg==",
+    "signature": "8b0c674bf4051d24ad2602c7ba12af4c847d3db23b03b3dee80b0293ca650aca"
+  }
+}

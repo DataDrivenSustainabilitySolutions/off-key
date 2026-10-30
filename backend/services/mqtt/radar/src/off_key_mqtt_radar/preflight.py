@@ -16,10 +16,12 @@ from importlib.metadata import version
 from pathlib import Path
 
 from aberrant import __version__ as aberrant_version
+from aberrant.base import ConfigurationError
 from off_key_core.config.resource_budget import DEFAULT_RADAR_MEMORY_MB
 from off_key_core.models.adaptive import ABERRANT_VERSION
 from off_key_core.models.pipelines import pipeline_catalog_id
-from off_key_core.schemas.pipelines import PipelineExecutionConfig
+from off_key_core.schemas.pipelines import PipelineExecutionConfig, PipelineIssue
+from off_key_core.utils.json_budget import bounded_utf8_text
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -58,7 +60,7 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
     capabilities = None
     if execution.definition.strategy == "adaptive_stream":
         graph, detector = adaptive_graph(plan)
-        capabilities = detector.capabilities().as_dict()
+        capabilities = detector.capabilities.as_dict()
         readiness = [
             dict(
                 node_id=item.node_id,
@@ -119,6 +121,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
     args = parser.parse_args()
+    execution = None
     try:
         raw = (
             args.config.read_text(encoding="utf-8")
@@ -128,7 +131,38 @@ def main() -> None:
         execution = PipelineExecutionConfig.model_validate_json(raw)
         report = preflight(execution)
     except Exception as error:
-        print(json.dumps({"ok": False, "errors": [f"{type(error).__name__}: {error}"]}))
+        issues = []
+        if isinstance(error, ConfigurationError) and execution is not None:
+            node_id = next(
+                node.id
+                for node in execution.definition.nodes
+                if node.kind == "detector"
+            )
+            for issue in error.issues[:64]:
+                path = (
+                    list(issue.loc[2:])
+                    if issue.loc[:2] == ("model", "params")
+                    else None
+                )
+                issues.append(
+                    PipelineIssue(
+                        code=issue.code,
+                        message=bounded_utf8_text(issue.message, 1024),
+                        node_id=node_id,
+                        parameter_path=path,
+                    ).model_dump(mode="json")
+                )
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "errors": [
+                        bounded_utf8_text(f"{type(error).__name__}: {error}", 4000)
+                    ],
+                    "issues": issues,
+                }
+            )
+        )
         sys.exit(1)
     print(json.dumps(report, allow_nan=False, ensure_ascii=False))
 

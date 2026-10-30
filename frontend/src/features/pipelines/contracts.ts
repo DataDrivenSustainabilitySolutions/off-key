@@ -1,13 +1,7 @@
 import type * as Wire from "@/types/pipelines.generated";
 import type { JsonValue } from "@/types/monitoring";
 
-/** A catalogue field with JSON values; null is kept exactly as the server sends it. */
-export type FieldDescriptor = Omit<Wire.ComponentField, "default" | "options" | "fields" | "variants"> & {
-  default?: JsonValue | null;
-  options?: JsonValue[] | null;
-  fields?: FieldDescriptor[];
-  variants?: Record<string, FieldDescriptor[]> | null;
-};
+import type { FieldDescriptor } from "@/components/parameter-editor/types";
 
 function fieldDescriptor(field: Wire.ComponentField): FieldDescriptor {
   const { default: value, fields, variants, ...rest } = field;

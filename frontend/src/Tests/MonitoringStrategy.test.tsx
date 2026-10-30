@@ -20,7 +20,8 @@ const mockGet = vi.fn<
   (endpoint: string, options?: ApiRequestOptions) => Promise<unknown>
 >(() => Promise.resolve([]));
 
-vi.mock("../lib/api-client", () => ({
+vi.mock("../lib/api-client", async importOriginal => ({
+  ...await importOriginal<typeof import("../lib/api-client")>(),
   apiUtils: {
     get: (endpoint: string, options?: ApiRequestOptions) =>
       mockGet(endpoint, options),
@@ -53,6 +54,10 @@ const vectorCapabilities: ModelCapabilities = {
 
 const modelCatalog = {
   pyod_iforest: {
+    fields: [
+      { name: "n_estimators", label: "N Estimators", type: "integer", has_default: true, default: 100 },
+      { name: "contamination", label: "Contamination", type: "number", has_default: true, default: 0.1 },
+    ],
     strategy: "static_baseline",
     parameters: {
       properties: {
@@ -67,6 +72,7 @@ const modelCatalog = {
     parameters: { properties: {} },
   },
   aberrant_x_stream: {
+    fields: [{ name: "max_feature_cache_size", label: "Max Feature Cache Size", type: "integer", nullable: true, has_default: true, default: 10000 }],
     strategy: "adaptive_stream",
     name: "Aberrant XStream",
     default_parameters: { max_feature_cache_size: 10_000 },
@@ -96,6 +102,10 @@ const modelCatalog = {
     parameters: { properties: {} },
   },
   aberrant_knn: {
+    fields: [{ name: "similarity_engine", label: "Similarity Engine", type: "component", required: true, fields: [
+      { name: "window_size", label: "Window Size", type: "integer", required: true, minimum: 1 },
+      { name: "warm_up", label: "Warm Up", type: "integer", required: true, minimum: 1 },
+    ] }],
     strategy: "adaptive_stream",
     name: "Aberrant KNN",
     default_parameters: {
@@ -350,7 +360,7 @@ describe("monitoring setup forms", () => {
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "aberrant_x_stream" },
     });
-    const noneControl = screen.getByLabelText("Max Feature Cache Size is None");
+    const noneControl = screen.getByLabelText("Max Feature Cache Size automatic");
     expect((noneControl as HTMLInputElement).checked).toBe(false);
     fireEvent.click(noneControl);
     expect((noneControl as HTMLInputElement).checked).toBe(true);

@@ -3,6 +3,8 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from pydantic import ValidationError
+
 from ..schemas.pipelines import (
     MAX_PIPELINE_EXECUTION_BYTES,
     PipelineComponent,
@@ -20,6 +22,7 @@ from .pipeline_features import (
     adaptive_input_errors,
     node_features,
 )
+from .pipeline_fields import parameter_path
 from .pipeline_parameters import normalized_parameters
 
 
@@ -44,8 +47,16 @@ class _Compilation:
         node_id: str | None = None,
         *,
         blocks_features: bool = True,
+        parameter_path: list[str | int] | None = None,
     ) -> None:
-        self.issues.append(PipelineIssue(code=code, message=message, node_id=node_id))
+        self.issues.append(
+            PipelineIssue(
+                code=code,
+                message=message,
+                node_id=node_id,
+                parameter_path=parameter_path,
+            )
+        )
         if node_id is not None and blocks_features:
             self.unresolved.add(node_id)
 
@@ -98,6 +109,14 @@ def _validate_components(compilation: _Compilation) -> None:
             continue
         try:
             node.params = normalized_parameters(node, compilation.definition)
+        except ValidationError as exc:
+            for issue in exc.errors(include_url=False, include_context=False):
+                compilation.error(
+                    "parameters",
+                    issue["msg"],
+                    node.id,
+                    parameter_path=parameter_path(issue["loc"], component.fields),
+                )
         except (ValueError, TypeError) as exc:
             compilation.error("parameters", str(exc), node.id)
 

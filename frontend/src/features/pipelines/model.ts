@@ -1,5 +1,5 @@
-import type { JsonValue } from "@/types/monitoring";
 import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
+import { fieldDefaults } from "@/components/parameter-editor/types";
 import type {
   PipelineDefinition,
   PipelineEdge,
@@ -22,11 +22,6 @@ export { PIPELINE_LIMITS };
 
 /** Transforms and merges may repeat; every other kind appears once per design. */
 export const isMultiInstanceKind = (kind: string) => kind === "transform" || kind === "merge";
-
-/** Catalogue defaults for the fields that declare one. */
-export const fieldDefaults = (fields: readonly { name: string; default?: JsonValue | null }[]) =>
-  Object.fromEntries(fields.filter((field) => field.default !== undefined)
-    .map((field) => [field.name, field.default as JsonValue])) as Record<string, JsonValue>;
 
 /** A node's inputs in merge order. */
 export const incomingEdges = (definition: PipelineDefinition, nodeId: string) =>

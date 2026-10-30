@@ -400,6 +400,11 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
     ) as client:
         refresh_authentication(client)
         member = get_json(client, "/v1/members/me")
+        discovery_fields = {
+            name: model["fields"]
+            for name, model in get_json(client, "/v1/monitors/models").items()
+        }
+        assert all(discovery_fields.values())
         entity = add_recorded_entity(
             client, label="Rehearsal entity", keys=("temperature",)
         )
@@ -475,6 +480,10 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 subprocess.run(command, cwd=root, check=True, timeout=1200)
                 refresh_authentication(client)
                 assert get_json(client, "/v1/members/me") == member
+                assert {
+                    name: model["fields"]
+                    for name, model in get_json(client, "/v1/monitors/models").items()
+                } == discovery_fields
                 current = client.get("/v1/system").json()
                 assert current["revision"] == snapshot["revision"]
                 assert current["document"] == snapshot["document"]
@@ -525,6 +534,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     "coherent_score_observed": True,
                     "one_owned_worker": True,
                     "authoring_enabled": False,
+                    "discovery_fields_preserved": True,
                 }
                 evidence_path.write_text(json.dumps(evidence, indent=2))
             assert list((directory / "backups/postgres").glob("*/*.dump"))

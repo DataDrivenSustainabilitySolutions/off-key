@@ -21,6 +21,7 @@ from off_key_core.models import (
     validate_adaptive_model_params,
 )
 from off_key_core.models.adaptive import bind_detector_parameters
+from off_key_core.models.parameter_validation import parameter_location
 from off_key_core.models.static import (
     get_static_model_definition,
     validate_static_model_params,
@@ -295,11 +296,12 @@ class AdaptiveStreamConfig(BaseModel):
             raise ValueError(
                 f"Adaptive configuration requires Aberrant {ABERRANT_VERSION}"
             )
-        object.__setattr__(
-            self,
-            "model_params",
-            validate_adaptive_model_params(self.model_type, self.model_params),
-        )
+        with parameter_location("model_params"):
+            object.__setattr__(
+                self,
+                "model_params",
+                validate_adaptive_model_params(self.model_type, self.model_params),
+            )
         scalers = {"standard_scaler", "min_max_scaler"}
         projections = {"incremental_pca", "random_projection"}
         types = [step.type for step in self.preprocessing_steps]
@@ -630,15 +632,16 @@ class StaticBaselineConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_parameters(self) -> "StaticBaselineConfig":
-        object.__setattr__(
-            self,
-            "model_params",
-            validate_static_model_params(
-                self.model_type,
-                self.model_params,
-                include_defaults=False,
-            ),
-        )
+        with parameter_location("model_params"):
+            object.__setattr__(
+                self,
+                "model_params",
+                validate_static_model_params(
+                    self.model_type,
+                    self.model_params,
+                    include_defaults=False,
+                ),
+            )
         return self
 
 

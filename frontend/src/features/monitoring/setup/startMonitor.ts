@@ -1,6 +1,6 @@
 import { pipelinesApi } from "@/features/pipelines/api";
 import { API_CONFIG } from "@/lib/api-config";
-import { apiUtils } from "@/lib/api-client";
+import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import type { MonitoringStartRequest } from "@/types/monitoring";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 
@@ -27,7 +27,12 @@ export async function startFormMonitor(
     const activation = await pipelinesApi.activation(accepted.activation_id);
     if (STARTED.includes(activation.phase)) return activation.service_id;
     if (STOPPED.includes(activation.phase)) {
-      throw new Error(activation.error ?? `Monitoring start was ${activation.phase}`);
+      if (!(activation.issues ?? []).length)
+        throw new Error(activation.error ?? `Monitoring start was ${activation.phase}`);
+      throw new ApiRequestError(activation.error ?? `Monitoring start was ${activation.phase}`, 422,
+        (activation.issues ?? []).filter(issue => issue.parameter_path != null).map(issue => ({
+          loc: ["model_params", ...issue.parameter_path!], msg: issue.message, type: issue.code,
+        })));
     }
     await delay(pollMilliseconds);
   }

@@ -17,7 +17,7 @@ import numpy as np
 import psutil
 from aberrant import __version__ as aberrant_version
 from aberrant.base import ModelProtocol
-from aberrant.catalog import DetectorConfig
+from aberrant.catalog import ResolvedDetectorConfig
 from aberrant.compose import GraphPipeline
 from off_key_core.models import ABERRANT_VERSION
 from off_key_core.schemas.radar import AdaptiveStreamConfig
@@ -25,7 +25,7 @@ from off_key_core.schemas.radar import AdaptiveStreamConfig
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
 from .models import AnomalyResult, inference_key
-from .pipelines.adapters import adaptive_graph, detector_config
+from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.execution import PipelineExecutionMixin
 
 
@@ -58,9 +58,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 "RADAR runtime does not match its generated Aberrant catalog"
             )
         self.logger = logging.getLogger(__name__)
-        self.detector_config = self._detector_config()
-        self.detector_fingerprint = self.detector_config.fingerprint()
-        self.model_capabilities = self.detector_config.capabilities().as_dict()
+        self._resolved_detector = resolved_detector_config(self.plan)
+        self.detector_config = self._resolved_detector.config
+        self.detector_fingerprint = self._resolved_detector.fingerprint
+        self.model_capabilities = self._resolved_detector.capabilities.as_dict()
         self.schema_signature = self._build_schema_signature(config)
         self.start_time = time.time()
         self.processing_times: deque[float] = deque(maxlen=1000)
@@ -78,7 +79,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.state = AdaptiveStreamState.WARMUP
         self.feature_keys: list[str] = self._initial_feature_keys()
         # Validate constructors at startup, before subscribing or learning data.
-        self.pipeline: ModelProtocol = self._build_pipeline(self.detector_config)
+        self.pipeline: ModelProtocol = self._build_pipeline(self._resolved_detector)
         self.calibration_scores: list[float] = []
         self.threshold: float | None = None
         self.severity_scale = 0.0
@@ -94,9 +95,6 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             raise ValueError("Adaptive graph checkpoint configuration is incompatible")
         self.state = AdaptiveStreamState(checkpoint["adaptive_state"])
         self.feature_keys = list(checkpoint["feature_keys"])
-        self.detector_config = self._detector_config()
-        self.detector_fingerprint = self.detector_config.fingerprint()
-        self.model_capabilities = self.detector_config.capabilities().as_dict()
         if checkpoint.get("detector_fingerprint") != self.detector_fingerprint:
             raise ValueError(
                 "Adaptive checkpoint detector configuration is incompatible"
@@ -171,13 +169,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode()).hexdigest()
 
-    def _detector_config(self) -> DetectorConfig:
-        return detector_config(self.plan)
-
     def _initial_feature_keys(self) -> list[str]:
         return sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
 
-    def _build_pipeline(self, config: DetectorConfig) -> ModelProtocol:
+    def _build_pipeline(self, config: ResolvedDetectorConfig) -> ModelProtocol:
         return adaptive_graph(self.plan, self._observe, config)[0]
 
     def process_data_point(
@@ -228,7 +223,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         return bound
 
     def _unit_interval_slots(self) -> frozenset[str]:
-        if not self.detector_config.capabilities().requires_unit_interval:
+        if not self._resolved_detector.capabilities.requires_unit_interval:
             return frozenset()
         return frozenset(
             slot

@@ -13,13 +13,14 @@ from off_key_core.models import (
     validate_adaptive_model_params,
 )
 from off_key_core.models.adaptive import CATALOG
+from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.catalog import generate_catalog
 from off_key_tactic_middleware.api.v1.models import ModelInfo
 
 
 def test_generated_catalog_matches_pinned_runtime():
-    assert ABERRANT_VERSION == __version__ == "1.3.0"
+    assert ABERRANT_VERSION == __version__ == "1.4.0"
     assert generate_catalog() == CATALOG
 
 
@@ -111,6 +112,7 @@ def test_catalog_capabilities_survive_tactic_and_gateway_responses():
         name=definition["name"],
         import_paths=[definition["import_path"]],
         parameter_schema=definition["parameter_schema"],
+        fields=component_fields(definition["parameter_schema"]),
         default_parameters=definition["default_parameters"],
         strategy="adaptive_stream",
         version=ABERRANT_VERSION,

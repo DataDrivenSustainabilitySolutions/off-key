@@ -18,6 +18,7 @@ nav = [
     { "Setup" = "development/setup.md" },
     { "Architecture" = "development/architecture.md" },
     { "Monitoring pipelines" = "development/monitoring-pipelines.md" },
+    { "ABERRANT 1.4 integration" = "development/aberrant-1.4-integration.md" },
     { "Testing and debugging" = "development/testing-debugging.md" },
     { "Contributing and CI" = "development/contributing-ci.md" },
     { "Local deployment" = "development/local-deployment.md" },

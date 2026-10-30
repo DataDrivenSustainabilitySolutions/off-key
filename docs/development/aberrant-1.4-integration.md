@@ -62,3 +62,10 @@ and null/default editing at desktop and mobile widths. Visual review also checks
 the rendered controls: shared editor colours use the app's HSL tokens and browser
 assertions require visible input borders. The final CI status and retained
 browser/cutover evidence are linked from off-key PR #384.
+
+The three real restore/rollback/return cutovers passed graph scoring, preserved
+history and binding checks, discovery-field parity and four backend/browser
+readiness fences. The first complete attempt then exposed an asynchronous
+fixture-cleanup conflict. Cleanup now retries only HTTP 409 on a fresh system
+revision for at most 90 seconds; other errors and an unresolved timeout still
+fail the gate. The full rehearsal is rerun with that ownership-aware cleanup.

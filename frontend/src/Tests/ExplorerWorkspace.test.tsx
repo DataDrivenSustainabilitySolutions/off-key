@@ -167,7 +167,7 @@ describe("service-centred monitoring workspace", () => {
       ingress: { ...current.runtime.ingress, readings: { temperature: { fresh_received_at: new Date().toISOString() } } } } });
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(choices.getByRole("button", { name: /Building broker \/ Room station/ })).toBeTruthy();
-    await act(async () => { await vi.advanceTimersByTimeAsync(25_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(115_000); });
     expect(choices.getByText("No inputs receiving data.")).toBeTruthy();
     expect(picker.textContent).toContain("Building broker / Room station");
     expect(apiUtils.put).not.toHaveBeenCalled();

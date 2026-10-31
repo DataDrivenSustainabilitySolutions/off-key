@@ -103,7 +103,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
     await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
-    await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 30 seconds)");
+    await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 2 minutes)");
     await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
 
     // Background collection continues after the page has been left.

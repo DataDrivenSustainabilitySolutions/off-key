@@ -209,8 +209,8 @@ async def test_activity_reports_each_readings_typical_arrival_interval(monkeypat
     await ingress._configure(definition())
     start = int(datetime.now(UTC).timestamp()) * 1_000_000_000
     payload = b'{"temperature":45,"humidity":50}'
-    # A source reporting every three minutes, with one outage in between.
-    for minutes in (0, 3, 6, 30, 33, 36):
+    # A source reporting every three minutes, with one rare outage in between.
+    for minutes in (*range(0, 31, 3), 54):
         monkeypatch.setattr(
             system_ingress.time, "time_ns", lambda m=minutes: start + m * 60 * 10**9
         )
@@ -227,6 +227,19 @@ def test_arrival_cadence_needs_two_arrivals_and_ignores_repeats():
     assert cadence.typical_seconds is None
     cadence.add(70.0)
     assert cadence.typical_seconds == 60
+
+
+def test_arrival_cadence_learns_the_pauses_of_a_bursty_source():
+    cadence = ArrivalCadence()
+    at = 0.0
+    # Eight quick reports on every change, then a five-minute pause.
+    for _ in range(5):
+        for _ in range(8):
+            at += 0.2
+            cadence.add(at)
+        at += 300
+    cadence.add(at)
+    assert cadence.typical_seconds >= 300
 
 
 class FakeWorker:

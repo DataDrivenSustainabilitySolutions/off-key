@@ -89,7 +89,7 @@ describe("dedicated Sources configuration", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "temperature" } });
     const row = await screen.findByRole("button", { name: "temperature, preview" });
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
-    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 30 seconds)");
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 2 minutes)");
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
 

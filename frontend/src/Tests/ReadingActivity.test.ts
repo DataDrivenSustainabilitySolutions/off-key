@@ -34,13 +34,14 @@ function preview(snapshot: Partial<LiveNodeSnapshot> = {}): ReadingActivitySourc
 
 describe("topic activity", () => {
   it("shows fresh traffic independently of a long recording interval and old stored history", () => {
-    expect(readingActivity(node, recording(), undefined, now)).toEqual({ receiving: true, label: "Receiving data (last 30 seconds)" });
+    expect(readingActivity(node, recording(), undefined, now)).toEqual({ receiving: true, label: "Receiving data (last 2 minutes)" });
   });
 
-  it.each([0, 29_999, 30_000, 60_000, -60_000])("expires persistent activity at age %s milliseconds", age => {
+  it.each([0, 119_999, 120_000, 180_000, -60_000])("expires persistent activity at age %s milliseconds", age => {
     const source = recording();
     source.runtime!.ingress!.readings!.temperature!.fresh_received_at = time(age);
-    expect(readingActivity(node, source, undefined, now).receiving).toBe(age >= 0 && age < 30_000);
+    // A receipt from the future is browser clock skew, not stale data.
+    expect(readingActivity(node, source, undefined, now).receiving).toBe(age < 120_000);
   });
 
   it("keeps a slow source receiving between its usual arrivals", () => {
@@ -54,7 +55,7 @@ describe("topic activity", () => {
     expect(readingActivity(node, preview({ lastSeen: now - 5 * 60_000, typicalInterval: 180 }), liveStatus, now).receiving).toBe(true);
   });
 
-  it.each([[null, 30_000], [1, 30_000], [60, 180_000], [86_400, 1_800_000]])(
+  it.each([[null, 120_000], [1, 120_000], [60, 180_000], [86_400, 1_800_000]])(
     "bounds the activity window for a typical interval of %s seconds", (typical, window) => {
       expect(activityWindow(typical)).toBe(window);
     });
@@ -67,10 +68,23 @@ describe("topic activity", () => {
     expect(readingActivity(node, preview({ received: 0, lastSeen: 0, retained: true }), liveStatus, now).receiving).toBe(false);
   });
 
+  it("keeps fast readings receiving through a short broker reconnect", () => {
+    const source = recording();
+    source.runtime!.ingress!.sources!.broker!.state = "reconnecting";
+    source.runtime!.ingress!.readings!.temperature = { fresh_received_at: time(60_000), typical_interval_seconds: 1 };
+    expect(readingActivity(node, source, undefined, now)).toEqual({ receiving: true, label: "Broker reconnecting, received data (last 2 minutes)" });
+    source.runtime!.ingress!.readings!.temperature!.fresh_received_at = time(120_000);
+    expect(readingActivity(node, source, undefined, now)).toEqual({ receiving: false, label: "Not listening" });
+    const status = structuredClone(liveStatus);
+    status.phase = "reconnecting";
+    status.connections[0]!.state = "reconnecting";
+    expect(readingActivity(node, preview({ lastSeen: now - 60_000, typicalInterval: 1 }), status, now).receiving).toBe(true);
+  });
+
   it.each(["off", "disconnected", "old-revision", "applying"])("does not present %s recording as receiving", state => {
     const source = recording();
     if (state === "off") source.runtime!.bindings!.temperature!.policy.mode = "off";
-    if (state === "disconnected") source.runtime!.ingress!.sources!.broker!.state = "reconnecting";
+    if (state === "disconnected") source.runtime!.ingress!.sources!.broker!.state = "error";
     if (state === "old-revision") source.runtime!.ingress!.revision = 6;
     if (state === "applying") source.runtime!.collection!.status = "applying";
     expect(readingActivity(node, source, undefined, now)).toEqual({ receiving: false, label: "Not listening" });
@@ -92,6 +106,6 @@ describe("topic activity", () => {
   });
 
   it("ages out a live receipt without requiring another network response", () => {
-    expect(readingActivity(node, preview(), liveStatus, now + 30_000)).toEqual({ receiving: false, label: "Listening, waiting for fresh data" });
+    expect(readingActivity(node, preview(), liveStatus, now + 120_000)).toEqual({ receiving: false, label: "Listening, waiting for fresh data" });
   });
 });

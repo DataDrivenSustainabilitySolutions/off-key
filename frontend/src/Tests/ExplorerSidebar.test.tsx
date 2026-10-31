@@ -159,8 +159,8 @@ describe("explorer sidebar and catalogue list", () => {
     const circle = row.querySelector("svg")!;
     expect(circle.getAttribute("width")).toBe("16");
     expect(circle.getAttribute("fill")).toBe("currentColor");
-    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 30 seconds)");
-    act(() => vi.advanceTimersByTime(30_000));
+    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 2 minutes)");
+    act(() => vi.advanceTimersByTime(120_000));
     expect(circle.getAttribute("fill")).toBe("none");
     expect(row.getAttribute("aria-current")).toBe("true");
     expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Listening, waiting for fresh data");

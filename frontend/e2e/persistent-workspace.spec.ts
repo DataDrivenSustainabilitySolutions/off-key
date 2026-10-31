@@ -249,6 +249,8 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
 });
 
 test("filters online topics and their paths as real MQTT traffic starts and expires", async ({ page }, testInfo) => {
+  // A fast reading keeps receiving for the 2 minute activity floor after it stops.
+  test.setTimeout(300_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   const fixture = await createFixture(page, 2);
   const run = fixture.broker.slice(-8);
@@ -324,7 +326,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     await expect(quiet).toBeVisible();
     await toggle.click();
     clearInterval(publishTimer); publishTimer = undefined;
-    await expect(sidebar.getByText("No active topics", { exact: true })).toBeVisible({ timeout: 40_000 });
+    await expect(sidebar.getByText("No active topics", { exact: true })).toBeVisible({ timeout: 150_000 });
     const showAll = sidebar.getByRole("button", { name: "Show all topics", exact: true });
     await expect(showAll).toHaveCSS("text-decoration-line", "underline");
     await sidebar.locator(".ex-list-empty").screenshot({ path: testInfo.outputPath("no-active-topics.png") });

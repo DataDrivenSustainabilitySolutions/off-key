@@ -6,6 +6,8 @@ import { addTestCharger } from "./helpers/collection";
 import { accessToken } from "./helpers/auth";
 
 test("offers only entities with fresh MQTT data and retains their exact broker context", async ({ page, playwright }, testInfo) => {
+  // A fast reading keeps receiving for the 2 minute activity floor after it stops.
+  test.setTimeout(300_000);
   const runId = randomUUID();
   const activeId = `active-${runId}`;
   const quietId = `quiet-${runId}`;
@@ -64,7 +66,7 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
     await picker.click();
     await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
-    await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible({ timeout: 40_000 });
+    await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible({ timeout: 150_000 });
     await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
   } finally {
     if (publisher) {

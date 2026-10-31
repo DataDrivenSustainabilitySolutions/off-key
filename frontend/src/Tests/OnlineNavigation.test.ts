@@ -31,7 +31,7 @@ describe("online catalogue navigation", () => {
     const index = buildNavigationIndex(document);
     const original = structuredClone(index);
     const source = activity(document, ["active", "disconnected"]);
-    source.runtime.ingress!.sources!.offline!.state = "reconnecting";
+    source.runtime.ingress!.sources!.offline!.state = "error";
     const online = onlineNavigationIndex(index, source, source.telemetry.getStatus(), now);
     expect(online.counts).toEqual({ connections: 1, devices: 1, topics: 1, readings: 1 });
     expect([...online.objectKeys.keys()].sort()).toEqual(["active", "broker", "room"]);
@@ -68,10 +68,10 @@ describe("online catalogue navigation", () => {
     const document: SystemDocument = { ...createEmptySystem(), connections: [connection("broker")], streams: [stream("active", "deep/path/reading")] };
     const index = buildNavigationIndex(document);
     const source = activity(document, ["active"]);
-    const expired = onlineNavigationIndex(index, source, source.telemetry.getStatus(), now + 30_000);
+    const expired = onlineNavigationIndex(index, source, source.telemetry.getStatus(), now + 120_000);
     expect([...expired.nodes.keys()]).toEqual([index.rootKey]);
     expect(expired.counts.readings).toBe(0);
     expect(navigationRows(expired, index.rootKey)).toEqual([]);
-    expect(onlineNavigationIndex(index, source, source.telemetry.getStatus(), now + 29_999).counts.readings).toBe(1);
+    expect(onlineNavigationIndex(index, source, source.telemetry.getStatus(), now + 119_999).counts.readings).toBe(1);
   });
 });

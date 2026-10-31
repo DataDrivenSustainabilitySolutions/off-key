@@ -1,16 +1,18 @@
-"""How often a reading usually arrives, so slow sources are not reported idle."""
+"""How long a reading's gaps usually get, so quiet spells are not reported idle."""
 
 from collections import deque
-from statistics import median
+from math import ceil
 
-GAPS = 9
+GAPS = 50
+QUANTILE = 0.9
 
 
 class ArrivalCadence:
-    """The median of a reading's recent gaps between fresh arrivals.
+    """The 90th percentile of a reading's recent gaps between fresh arrivals.
 
-    A median ignores the occasional outage or burst, so the typical interval
-    stays the source's own reporting rhythm.
+    A median follows the bursts of a sensor that reports on change, or the fast
+    phase of one that slows down when idle, so its pauses look like outages. The
+    upper tail learns those pauses while one rare outage still cannot dominate.
     """
 
     def __init__(self):
@@ -24,4 +26,7 @@ class ArrivalCadence:
 
     @property
     def typical_seconds(self) -> float | None:
-        return round(median(self.gaps), 3) if self.gaps else None
+        if not self.gaps:
+            return None
+        ordered = sorted(self.gaps)
+        return round(ordered[ceil(QUANTILE * len(ordered)) - 1], 3)

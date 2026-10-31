@@ -1,26 +1,10 @@
 ---
-# The route's MQTT login comes from the vault. An inventory that kept it in a
-# private file on the manager before names that file in
-# broker_route_legacy_access_file; it is read only while the vault has none.
-- name: Read the route login an earlier release kept on the manager
-  slurp:
-    src: "{{ broker_route_legacy_access_file }}"
-  register: broker_route_legacy_access
-  when:
-    - broker_route_mqtt_password | default('') | length == 0
-    - broker_route_legacy_access_file | default('') | length > 0
-  no_log: true
-
+# The route's MQTT login comes from the vault.
 - name: Resolve the broker route login
   set_fact:
-    broker_route_login: >-
-      {{ {'username': broker_route_mqtt_username | default(''),
-          'password': broker_route_mqtt_password | default('')}
-         if broker_route_legacy_access.content is not defined else
-         {'username': legacy.mqtt_username | default(''),
-          'password': legacy.mqtt_password | default('')} }}
-  vars:
-    legacy: "{{ broker_route_legacy_access.content | default('e30=') | b64decode | from_json }}"
+    broker_route_login:
+      username: "{{ broker_route_mqtt_username | default('') }}"
+      password: "{{ broker_route_mqtt_password | default('') }}"
   no_log: true
 
 - name: Check whether the broker route login is complete

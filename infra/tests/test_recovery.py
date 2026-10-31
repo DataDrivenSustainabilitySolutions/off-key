@@ -18,7 +18,7 @@ trust = load_script("trust_ssh_host")
 
 
 class RecoveryTests(unittest.TestCase):
-    def test_route_login_comes_from_the_vault_or_once_from_the_legacy_file(self):
+    def test_route_login_comes_only_from_the_vault(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             legacy = root / "legacy-access.json"
@@ -67,19 +67,12 @@ class RecoveryTests(unittest.TestCase):
                     {
                         "broker_route_mqtt_username": "vault-user",
                         "broker_route_mqtt_password": "vault-pass",
-                        "broker_route_legacy_access_file": str(legacy),
                     },
                     {"username": "vault-user", "password": "vault-pass"},
                 ),
-                (
-                    {"broker_route_legacy_access_file": str(legacy)},
-                    {"username": "legacy-user", "password": "legacy-pass"},
-                ),
                 ({}, None),
-                (
-                    {"broker_route_legacy_access_file": str(root / "missing.json")},
-                    None,
-                ),
+                # A login file an earlier release left behind is never read.
+                ({"broker_route_legacy_access_file": str(legacy)}, None),
                 ({"broker_route_anonymous": True}, {"username": "", "password": ""}),
                 (
                     {

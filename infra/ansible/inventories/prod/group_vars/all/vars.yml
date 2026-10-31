@@ -119,10 +119,9 @@ broker_route_state_dir: "{{ stack_dir }}/tailscale-ambibox-data"
 # A node identity must never be copied while another cluster still uses it.
 broker_route_seed_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}/tailscale-ambibox-data"
 
-# One-time migration from the Ambibox-specific release; removed once done.
-# Until broker_route_mqtt_username/password are in the vault, the login is read
-# from the file the earlier release kept on the manager.
-broker_route_legacy_access_file: "{{ stack_dir }}/ambibox-access.json"
+# One-time migration from the Ambibox-specific release. Releases before
+# broker routes read their login from {{ stack_dir }}/ambibox-access.json on the
+# manager; keep that file while a rollback past broker routes stays possible.
 broker_route_legacy_exports_file: ambibox.exports
 # Stopped before the release starts, so the node identity never runs twice.
 stack_replaced_services: [tailscale-ambibox, mqtt-tailscale-bridge]

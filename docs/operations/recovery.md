@@ -74,8 +74,8 @@ their inventory check before they change the stack. To roll back past it anyway:
    `rm /etc/exports.d/broker-route.exports && exportfs -ra`; the older release
    writes its own export file for the same directory.
 5. Add the manager back to that group and keep the login file the older release
-   reads on the manager (`broker_route_legacy_access_file` in the production
-   inventory). Then dispatch the older SHA.
+   reads on the manager (named in the production inventory next to
+   `broker_route_legacy_exports_file`). Then dispatch the older SHA.
 
 There is **no automatic database downgrade**. If schema restoration is necessary,
 use a maintenance window, stop all writers and restore a verified backup before

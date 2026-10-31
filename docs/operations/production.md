@@ -93,9 +93,8 @@ this on the controller before contacting hosts.
 The broker route's node identity must exist on the manager's NFS export or be
 restored from a private seed before deployment. CI never registers a replacement
 route device. Its MQTT login belongs in the vault as `broker_route_mqtt_username`
-and `broker_route_mqtt_password`. Until then, deployments read it once more from
-the file an earlier release kept on the manager (`broker_route_legacy_access_file`),
-which no backup covers: copy it into the vault before relying on the fallback.
+and `broker_route_mqtt_password`; deployment stops without it unless
+`broker_route_anonymous` is set.
 NFS permits the discovered backend management-tailnet /32 addresses only.
 
 Provisioning installs the Docker Engine release pinned as `docker_engine_version` in

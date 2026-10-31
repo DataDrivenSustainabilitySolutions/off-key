@@ -6,7 +6,12 @@ from unittest.mock import MagicMock
 import pytest
 from off_key_core.schemas.system import SystemConnection
 from off_key_tactic_middleware.services.catalogue.system_live import LiveSessionError
-from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
+from off_key_tactic_middleware.services.catalogue.system_live_mqtt import (
+    LiveMqttWorker,
+    refusal_message,
+)
+from paho.mqtt.packettypes import PacketTypes
+from paho.mqtt.reasoncodes import ReasonCode
 
 from tests.support.system_live import manager as harness
 from tests.support.system_live import snapshot as configuration
@@ -168,13 +173,23 @@ def test_refused_credentials_stop_the_worker_instead_of_resending_them():
         client_factory=lambda *_args, **_kwargs: client,
     )
     worker.start()
-    worker._connected(client, None, None, SimpleNamespace(is_failure=True), None)
+    refused = ReasonCode(PacketTypes.CONNACK, identifier=134)
+    worker._connected(client, None, None, refused, None)
     assert worker.denied
     client.disconnect.assert_called_once()
-    worker._disconnected(client, None, None, SimpleNamespace(is_failure=True), None)
+    worker._disconnected(client, None, None, refused, None)
     state.assert_called_once_with(
         "error", "The broker rejected the connection credentials."
     )
     assert not worker.update_topics(["room/other"])
     client.subscribe.assert_not_called()
     worker.stop()
+
+
+def test_a_restarting_broker_is_not_reported_as_a_bad_login():
+    def refusal(code):
+        return refusal_message(ReasonCode(PacketTypes.CONNACK, identifier=code))
+
+    assert refusal(134) == refusal(135)
+    assert "credentials" in refusal(134)
+    assert refusal(136) == "The broker refused the connection (Server unavailable)."

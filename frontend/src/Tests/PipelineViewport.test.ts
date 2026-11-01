@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 import type { CanvasNode } from "@/features/pipelines/types";
-import { fitReadableView, revealNode } from "@/features/pipelines/viewport";
+import { fitReadableView, revealNode, VIEW_MARGIN } from "@/features/pipelines/viewport";
 
 type Box = { x: number; y: number; width: number; height: number };
 type Placed = Box & { id: string; kind?: string };
@@ -75,13 +75,14 @@ describe("fitReadableView", () => {
   });
 
   it.each([
-    ["starts at the input", wideGraph, undefined, { x: 24, y: 70, zoom: 1 }],
+    ["starts at the input", wideGraph, undefined, { x: 32, y: 70, zoom: 1 }],
     ["centres the selection", wideGraph, "model", { x: -450, y: 110, zoom: 1 }],
+    ["keeps the start in view when centring the input", wideGraph, "input", { x: 32, y: 70, zoom: 1 }],
     [
       "starts at the first component without an input",
       wideGraph.slice(0, 1).concat({ ...wideGraph[0]!, id: "late", x: 0 }),
       undefined,
-      { x: -576, y: 110, zoom: 1 },
+      { x: -568, y: 110, zoom: 1 },
     ],
   ])("%s of a graph too large to read when fitted", async (_, placed, selected, view) => {
     const { flow, instance } = canvas(placed);
@@ -94,6 +95,15 @@ describe("fitReadableView", () => {
 
 describe("revealNode", () => {
   const viewport = { x: 10, y: 20, zoom: 2 };
+
+  it("leaves a view fitted at the start where it is", async () => {
+    const start = { x: VIEW_MARGIN, y: 70, zoom: 1 };
+    const { flow, instance } = canvas(wideGraph, { viewport: start });
+
+    await revealNode(instance, surface(500, 300), "input");
+
+    expect(flow.setViewport).not.toHaveBeenCalled();
+  });
 
   it.each([
     ["is already visible", { x: 50, y: 40, width: 100, height: 50 }, null],

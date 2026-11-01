@@ -13,7 +13,8 @@ import {
 import { PipelineDesignSettings } from "@/features/pipelines/PipelineDesignSettings";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
 import { NODE_SIZE } from "@/features/pipelines/semantics";
-import { addReading, selectReadings, targetInputs } from "@/features/pipelines/slots";
+import { addReading, featureName, selectReadings, targetInputs } from "@/features/pipelines/slots";
+import { startupEstimate } from "@/features/pipelines/startup";
 import { useGraphEditor } from "@/features/pipelines/useGraphEditor";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { clearNavigationDrafts, useNavigationDraft } from "@/lib/navigation-draft";
@@ -132,9 +133,27 @@ describe("graph editing", () => {
       onChange={() => {}} onAdd={() => {}} onUndo={() => { undone++; }} onRedo={() => {}} settings={<input aria-label="Name" />} />);
     fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
-    fireEvent.click(screen.getByRole("button", { name: "Learning settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "z", ctrlKey: true });
     expect(undone).toBe(1);
+  });
+
+  it("says when the first alarm can come and offers another check when one fails", async () => {
+    const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
+    const valid = { valid: true, definition: pipeline().definition, issues: [], features: {}, provenance_complete: true };
+    const startup = startupEstimate(pipeline().definition, [1, 0.5]);
+    let retried = 0;
+    const props = { catalog, document: pipeline(), onSelect: () => {}, onChange: () => {}, onAdd: () => {}, startup,
+      onRetryValidation: () => { retried++; } };
+    const view = render(<PipelineWorkbench {...props} validation={valid} />);
+    const chip = screen.getByRole("button", { name: "Graph is valid, first alarm after about 26 min" });
+    fireEvent.click(chip);
+    expect(screen.getByText(/1,200 to learn and 360 to calibrate\. At one observation every 1 s, that is about 26 min\./)).toBeTruthy();
+    view.rerender(<PipelineWorkbench {...props} validationError="Validation service unavailable" />);
+    expect(screen.getByRole("button", { name: "Graph not checked" })).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Validation service unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    expect(retried).toBe(1);
   });
 });
 
@@ -152,25 +171,36 @@ describe("service settings", () => {
     expect(changes[changes.length - 1]?.definition.settings.calibration_window_size).toBe(500);
   });
 
-  it("derives one uniquely named slot per enabled reading", () => {
+  it("names one slot per enabled reading after the reading", () => {
     const target = { id: "a", label: "Charger A", inputs: [
-      { stream: { id: "v", label: "Voltage", unit: "V" }, binding: { policy: { mode: "always" } } },
+      { stream: { id: "v", label: "DC voltage", unit: "V" }, binding: { policy: { mode: "always" } } },
       { stream: { id: "c", label: "Current", unit: "A" }, binding: { policy: { mode: "always" } } },
       { stream: { id: "x", label: "Off", unit: null }, binding: { policy: { mode: "off" } } },
     ] } as unknown as MonitoringTarget;
-    const inputs = targetInputs(target, [{ id: "input_2", label: "Value", unit: null }])!;
+    const inputs = targetInputs(target)!;
     expect(inputs.slots).toEqual([
-      { id: "input_2", label: "Voltage", unit: "V" },
-      { id: "input_3", label: "Current", unit: "A" },
+      { id: "dc_voltage", label: "DC voltage", unit: "V" },
+      { id: "current", label: "Current", unit: "A" },
     ]);
-    expect(inputs.bindings).toEqual({ input_2: "v", input_3: "c" });
+    expect(inputs.bindings).toEqual({ dc_voltage: "v", current: "c" });
+  });
+
+  it("turns any reading label into a valid, readable feature name", () => {
+    expect(featureName("DC voltage")).toBe("dc_voltage");
+    expect(featureName("  Température extérieure (°C) ")).toBe("temperature_exterieure_c");
+    expect(featureName("1st phase")).toBe("reading_1st_phase");
+    expect(featureName("电流")).toBe("reading");
+    expect(featureName("x".repeat(80))).toHaveLength(48);
+    for (const label of ["DC voltage", "1st phase", "电流", "a--b", "x".repeat(80)])
+      expect(featureName(label)).toMatch(/^[A-Za-z][A-Za-z0-9_-]{0,99}$/);
   });
 
   it("keeps exact reading identities when labels repeat, and preserves slot IDs through subset changes", () => {
     const target = { inputs: ["ac1", "ac2", "ac3", "ac4"].map((id) => ({
       stream: { id, label: "Current", unit: "A" }, binding: { policy: { mode: "original" } },
     })) } as MonitoringTarget;
-    const all = targetInputs(target, [{ id: "value", label: "Value" }])!;
+    const all = targetInputs(target)!;
+    expect(all.slots.map((slot) => slot.id)).toEqual(["current", "current_2", "current_3", "current_4"]);
     expect(Object.values(all.bindings)).toEqual(["ac1", "ac2", "ac3", "ac4"]);
     const subset = selectReadings(target, all.slots, all.bindings, ["ac1", "ac3"]);
     expect(subset.slots).toEqual([all.slots[0], all.slots[2]]);
@@ -188,7 +218,7 @@ describe("service settings", () => {
     const target = { inputs: Array.from({ length: 101 }, (_, index) => ({
       stream: { id: `ac${index}`, label: `Current ${index}` }, binding: { policy: { mode: "original" } },
     })) } as MonitoringTarget;
-    const all = targetInputs(target, [])!;
+    const all = targetInputs(target)!;
     expect(all.slots).toHaveLength(100);
     expect(addReading(all.slots, all.bindings, target.inputs[100]!).slots).toHaveLength(100);
     expect(selectReadings(target, [], {}, target.inputs.map((input) => input.stream.id)).slots).toHaveLength(100);
@@ -196,12 +226,51 @@ describe("service settings", () => {
 });
 
 describe("component menu", () => {
-  it("offers to select a one-per-design component that is already present", () => {
+  it("leaves out one-per-pipeline steps that are present and opens them instead", () => {
     let selected = "";
-    render(<PipelineToolbox catalog={catalog} document={pipeline()} onAdd={() => {}}
+    render(<PipelineToolbox components={components} document={pipeline()} onAdd={() => {}}
       onSelect={(id) => { selected = id; }} />);
+    expect(screen.queryByRole("button", { name: "Add Detector A" })).toBeNull();
+    expect(screen.getByText(/The detector is already in this pipeline\. Open it to change it\./)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Select Detector A" }));
     expect(selected).toBe("detector");
-    expect(screen.getByText(/Select it to change the detector model/)).toBeTruthy();
+  });
+
+  it("groups steps by what they do, with one line each, and adds from the keyboard", () => {
+    const added: string[] = [];
+    const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [], components:
+      ["adaptive.standard_scaler", "adaptive.uncentered_pca", "features.select"].map((id) => ({
+        id, kind: "transform" as const, label: id, description: "Catalog text", strategies: ["adaptive_stream" as const],
+        input_type: "features" as const, output_type: "features" as const })),
+    }).components];
+    render(<PipelineToolbox components={steps} document={pipeline()} onAdd={(id) => added.push(id)} />);
+    expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["Normalize", "Reduce", "Route"]);
+    expect(screen.getByRole("button", { name: "Add adaptive.standard_scaler" }).getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.getByText("Center and scale with running statistics.")).toBeTruthy();
+    const search = screen.getByRole("searchbox", { name: "Search steps" });
+    search.focus();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Add adaptive.standard_scaler");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Add adaptive.uncentered_pca");
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Add features.select");
+    fireEvent.change(search, { target: { value: "main directions" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(added).toEqual(["adaptive.uncentered_pca"]);
+  });
+
+  it("lists only the steps that fit a connection when inserting on it", () => {
+    const added: string[] = [];
+    render(<PipelineToolbox components={components} document={pipeline()}
+      link={{ source: "input", target: "detector" }} onAdd={(id) => added.push(id)} />);
+    // One-per-design components and other strategies' components never fit a wire.
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label")))
+      .toEqual(["Insert Pass through"]);
+    expect(screen.getByRole("button", { name: "Insert Pass through" }).getAttribute("draggable")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Insert Pass through" }));
+    expect(added).toEqual(["features.passthrough"]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search steps" }), { target: { value: "scaling" } });
+    expect(screen.getByText("No matching steps.")).toBeTruthy();
   });
 });

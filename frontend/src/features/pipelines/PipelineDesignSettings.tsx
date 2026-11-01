@@ -1,7 +1,42 @@
 import { useId, useState } from "react";
-import { PIPELINE_LIMITS, type GraphDocument } from "./model";
+import type { PipelineCatalog } from "./contracts";
+import { nodeOptionLabeler, PIPELINE_LIMITS, type GraphDocument } from "./model";
+import { strategyLabel } from "./semantics";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
+import { observationCount, roughDuration, startupSummary, type Startup } from "./startup";
+import { convertStrategy, type Strategy } from "./strategy";
 import type { HistoryMode } from "./types";
+
+const STRATEGIES: Strategy[] = ["static_baseline", "adaptive_stream"];
+
+/** Learning and calibration as one bar, with their lengths and durations. */
+function StartupTimeline({ startup }: { startup: Startup }) {
+  const { phases, observations, interval } = startup;
+  const heading = useId();
+  return (
+    <section className="pl-startup" aria-labelledby={heading}>
+      <div className="pl-startup-heading">
+        <h4 id={heading}>Before the first alarm</h4>
+        <span>{observationCount(observations)}{interval ? ` · ${startupSummary(startup)}` : ""}</span>
+      </div>
+      <div className="pl-startup-bar" aria-hidden="true">
+        {phases.map((phase) => <span key={phase.id} className={`is-${phase.id}`} style={{ flexGrow: phase.observations }} />)}
+      </div>
+      <dl>
+        {phases.map((phase) => <div key={phase.id} className={`is-${phase.id}`}>
+          <dt>{phase.label}</dt>
+          <dd>{phase.observations.toLocaleString()}{interval ? ` · ≈ ${roughDuration(phase.observations * interval)}` : ""}</dd>
+        </div>)}
+      </dl>
+      <p className="pl-help">
+        {interval
+          ? `Durations use the slowest reading's typical interval of ${roughDuration(interval)}. `
+          : "Durations appear once the chosen readings report how often they arrive. "}
+        Learned steps before the detector can need a few observations of their own first.
+      </p>
+    </section>
+  );
+}
 
 /** Keeps the typed text while it is incomplete; only valid numbers reach the design. */
 function NumberSetting({
@@ -56,15 +91,38 @@ function NumberSetting({
 
 export function PipelineDesignSettings({
   document,
+  catalog,
+  startup,
   readOnly,
   onChange,
 }: {
   document: GraphDocument;
+  /** Offers the strategy switch, which needs every component's counterpart. */
+  catalog?: PipelineCatalog;
+  startup?: Startup;
   readOnly: boolean;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 }) {
   const definition = document.definition;
   const settings = definition.settings;
+  const [switched, setSwitched] = useState<{ strategy: Strategy; message: string }>();
+  const strategyLabelId = useId();
+  const switchTo = (strategy: Strategy) => {
+    if (!catalog || strategy === definition.strategy) return;
+    const change = convertStrategy(document, strategy, catalog);
+    const name = nodeOptionLabeler(change.document, catalog.components);
+    const missing = change.unconverted.map((id) => name(definition.nodes.find((node) => node.id === id)));
+    const moved = change.converted.length;
+    const kind = strategy === "adaptive_stream" ? "adaptive" : "static";
+    setSwitched({ strategy, message: [
+      `Switched to ${strategyLabel(strategy)}.`,
+      moved === 1 ? `1 step moved to its ${kind} counterpart.`
+        : moved ? `${moved} steps moved to their ${kind} counterparts.` : "",
+      missing.length ? `No counterpart for ${missing.join(", ")}; replace ${missing.length === 1 ? "it" : "them"} to apply.` : "",
+      "Undo switches back.",
+    ].filter(Boolean).join(" ") });
+    onChange(change.document);
+  };
   const setting = (change: Partial<typeof settings>, field: string) =>
     onChange({
       ...document,
@@ -74,6 +132,18 @@ export function PipelineDesignSettings({
     onChange({ ...document, definition: { ...definition, input_slots } }, history);
   return (
     <>
+      {catalog && <div className="pl-field pl-strategy-field">
+        <span id={strategyLabelId}>Strategy</span>
+        <div className="pl-segmented" role="group" aria-labelledby={strategyLabelId}>
+          {STRATEGIES.map((strategy) => <button key={strategy} type="button" aria-pressed={definition.strategy === strategy}
+            disabled={readOnly} onClick={() => switchTo(strategy)}>{strategyLabel(strategy)}</button>)}
+        </div>
+        <small className="pl-help">
+          {definition.strategy === "adaptive_stream" ? "Learns from live readings and keeps adapting." : "Learns a baseline, then monitors against it."}
+          {" "}Switching moves learned steps to their counterparts and changes the detector.
+        </small>
+        {switched?.strategy === definition.strategy && <p className="pl-notice" role="status">{switched.message}</p>}
+      </div>}
       <div className="pl-settings-grid">
         <NumberSetting
           label={definition.strategy === "adaptive_stream"
@@ -102,9 +172,10 @@ export function PipelineDesignSettings({
           onChange={(value) => setting({ seed: value }, "seed")}
         />
       </div>
+      {startup && <StartupTimeline startup={startup} />}
       {definition.strategy === "adaptive_stream" && (
         <p className="pl-help">
-          Upstream components initialize first. The configured learning count
+          Upstream steps initialize first. The configured learning count
           tracks successful updates to the detector; calibration starts only
           after the whole graph is ready.
         </p>

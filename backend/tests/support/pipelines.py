@@ -1,6 +1,10 @@
 """Small executable pipelines for tests that need a real bound execution."""
 
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    execution_fingerprint,
+    pipeline_catalog,
+)
 from off_key_core.schemas.pipelines import PipelineDefinition, PipelineExecutionConfig
 from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
 
@@ -50,3 +54,63 @@ def minimal_static_execution(topic="telemetry/entity/a"):
         revision_id="revision",
         run_id="run",
     )
+
+
+def template(strategy="adaptive_stream"):
+    """A copy of the bundled template for a strategy."""
+    return next(
+        item.definition.model_copy(deep=True)
+        for item in pipeline_catalog().templates
+        if item.definition.strategy == strategy
+    )
+
+
+def branched(strategy="adaptive_stream"):
+    """Select, scale and project two readings; keep the third raw; merge."""
+    definition = template(strategy)
+    family = "adaptive" if strategy == "adaptive_stream" else "static"
+    projection = "uncentered_pca" if family == "adaptive" else "pca"
+    data = definition.model_dump(mode="json")
+    data["input_slots"] = [
+        {"id": "voltage", "label": "Voltage"},
+        {"id": "current", "label": "Current"},
+        {"id": "temperature", "label": "Temperature"},
+    ]
+    data["nodes"].extend(
+        [
+            {
+                "id": "scaled_inputs",
+                "kind": "transform",
+                "component": "features.select",
+                "params": {"features": ["voltage", "current"]},
+            },
+            {
+                "id": "scaler",
+                "kind": "transform",
+                "component": f"{family}.standard_scaler",
+            },
+            {
+                "id": "projection",
+                "kind": "transform",
+                "component": f"{family}.{projection}",
+                "params": {"n_components": 1},
+            },
+            {
+                "id": "raw",
+                "kind": "transform",
+                "component": "features.select",
+                "params": {"features": ["temperature"]},
+            },
+            {"id": "merge", "kind": "merge", "component": "features.merge"},
+        ]
+    )
+    data["edges"] = [edge for edge in data["edges"] if edge["target"] != "detector"] + [
+        {"source": "input", "target": "scaled_inputs"},
+        {"source": "scaled_inputs", "target": "scaler"},
+        {"source": "scaler", "target": "projection"},
+        {"source": "input", "target": "raw"},
+        {"source": "projection", "target": "merge", "order": 0},
+        {"source": "raw", "target": "merge", "order": 1},
+        {"source": "merge", "target": "detector"},
+    ]
+    return PipelineDefinition.model_validate(data)

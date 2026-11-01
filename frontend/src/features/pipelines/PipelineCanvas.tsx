@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   Controls,
   ControlButton,
@@ -12,18 +12,32 @@ import {
 import { LocateFixed, Magnet } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
-import { connectNodes, connectionIssue, removeElements, type GraphDocument } from "./model";
-import { NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
+import {
+  connectNodes, connectionIssue, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements,
+  type GraphDocument, type Link,
+} from "./model";
+import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard } from "./PipelineNodeCard";
 import { PipelineGrid } from "./PipelineGrid";
 import { fitReadableView, revealNode } from "./viewport";
 import type { CanvasNode, HistoryMode, PlacementRequest } from "./types";
-import { PipelineEdge } from "./PipelineEdge";
-import { routeConnections, type ConnectionRoute } from "./routing";
+import { PipelineEdge, type RoutedEdge } from "./PipelineEdge";
+import { PipelineToolbox } from "./PipelineToolbox";
+import { routeConnections, routeHandles, type ConnectionRoute } from "./routing";
+import { WireActionsContext, type WireActions } from "./wireActions";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
+
+/** The connection that linking source to target would replace, if any. */
+function displaced(definition: GraphDocument["definition"], source: string, target: string) {
+  const occupied = occupiedInput(definition, target);
+  return occupied && occupied.source !== source ? occupied : undefined;
+}
+
+const nodeName = (document: GraphDocument, components: PipelineComponent[], id: string) =>
+  nodeOptionLabeler(document, components)(document.definition.nodes.find((node) => node.id === id));
 const edgeTypes = { pipeline: PipelineEdge };
 type Props = {
   document: GraphDocument;
@@ -33,6 +47,10 @@ type Props = {
   layoutEditable?: boolean;
   states?: Record<string, string>;
   issues?: PipelineValidation["issues"];
+  /** Feature columns per component; output ports show how many leave them. */
+  features?: PipelineValidation["features"];
+  /** The features predate the latest edit and are being checked again. */
+  featuresStale?: boolean;
   /** Increment after an explicit arrangement; data refreshes preserve the camera. */
   fitRequest?: number;
   /** Pan just enough to show a newly placed component. */
@@ -51,6 +69,8 @@ export default function PipelineCanvas({
   layoutEditable,
   states,
   issues,
+  features,
+  featuresStale,
   fitRequest = 0,
   reveal,
   onSelect,
@@ -64,6 +84,17 @@ export default function PipelineCanvas({
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   const [zoom, setZoom] = useState(1);
   const [connecting, setConnecting] = useState<OnConnectStartParams>();
+  // A step menu belongs to the graph it was opened on; any edit closes it.
+  const [openWire, setOpenWire] = useState<{ id: string; definition: GraphDocument["definition"] }>();
+  const [hoveredWire, setHoveredWire] = useState<string>();
+  const hoverTimer = useRef<number | undefined>(undefined);
+  // Leaving a wire for its label, or the label for the wire, keeps the offer to insert.
+  const hover = useCallback((id?: string) => {
+    window.clearTimeout(hoverTimer.current);
+    if (id) setHoveredWire(id);
+    else hoverTimer.current = window.setTimeout(() => setHoveredWire(undefined), 120);
+  }, []);
+  useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
   const surface = useRef<HTMLDivElement>(null);
   const lastFit = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -80,6 +111,23 @@ export default function PipelineCanvas({
     });
     return () => cancelAnimationFrame(frame);
   }, [flow, reveal]);
+  // A step inserted on a wire may land beside the view, or push the cards right of it.
+  // Its menu closed with the wire it was opened on, so keyboard focus moves to the new card.
+  const [inserted, setInserted] = useState<string>();
+  useEffect(() => {
+    if (!flow || !inserted) return;
+    const frame = requestAnimationFrame(() => {
+      setInserted(undefined);
+      const element = surface.current;
+      if (!element) return;
+      void revealNode(flow, element, inserted);
+      const focused = element.ownerDocument.activeElement;
+      if (!focused || focused === element.ownerDocument.body)
+        element.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(inserted)}"]`)
+          ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, inserted]);
   // The settings panel narrows the canvas; keep the component being edited in view.
   const selectedRef = useRef(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
@@ -130,24 +178,39 @@ export default function PipelineCanvas({
   const routes = useMemo(() => routeConnections(routingBoxes, document.definition.edges, dragged),
     [routingBoxes, document.definition.edges, dragged]);
   const blocked = [...routes.values()].some((route) => route.blocked);
-  const nodes = useMemo(
-    () =>
-      graph.nodes.map((node) => ({
-        ...node,
-        selected: node.id === selected,
-        measured: measurements[node.id],
-        data: {
-          ...node.data,
-          inputIssue: connecting?.nodeId && connecting.handleType === "source"
-            ? connectionIssue(document.definition, connecting.nodeId, node.id, components) ?? null
-            : undefined,
-          outputIssue: connecting?.nodeId && connecting.handleType === "target"
-            ? connectionIssue(document.definition, node.id, connecting.nodeId, components) ?? null
-            : undefined,
-        },
-      })),
-    [graph.nodes, selected, connecting, document.definition, components, measurements],
-  );
+  const handles = useMemo(() => routeHandles(routes), [routes]);
+  // A wire offers "+" only where some step fits; the menu lists exactly those.
+  const insertable = useMemo(() => new Set(readOnly ? [] : document.definition.edges
+    .filter((edge) => components.some((component) => !insertBlocker(document.definition, edge, component, components)))
+    .map(edgeId)), [readOnly, document.definition, components]);
+  const nodes = useMemo(() => {
+    // While a wire is drawn, every dot says whether it can take it; an occupied
+    // input takes it by replacing its current connection.
+    const hints = (id: string) => {
+      if (!connecting?.nodeId) return {};
+      const [source, target] = connecting.handleType === "source" ? [connecting.nodeId, id] : [id, connecting.nodeId];
+      const issue = connectionIssue(document.definition, source, target, components, { replace: true }) ?? null;
+      if (connecting.handleType === "target") return { outputIssue: issue };
+      const replaced = issue === null ? displaced(document.definition, source, target) : undefined;
+      return { inputIssue: issue, inputReplaces: replaced && nodeName(document, components, replaced.source) };
+    };
+    // An output port of features says how many columns leave it, as the compiler reports them.
+    const slotLabels = new Map(document.definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
+    const emitted = (id: string, kind?: string) => {
+      const columns = kind === "features" ? features?.[id] : undefined;
+      return columns ? {
+        outputCount: columns.length,
+        outputFeatures: columns.map((column) => slotLabels.get(column.name) ?? column.name),
+        outputStale: featuresStale,
+      } : {};
+    };
+    return graph.nodes.map((node) => ({
+      ...node,
+      selected: node.id === selected,
+      measured: measurements[node.id],
+      data: { ...node.data, ...emitted(node.id, node.data.outputType), ...hints(node.id) },
+    }));
+  }, [graph.nodes, selected, connecting, document, components, measurements, features, featuresStale]);
   const connectingNode = graph.nodes.find((node) => node.id === connecting?.nodeId);
   const connectingType = connecting?.handleType === "source"
     ? connectingNode?.data.outputType : connectingNode?.data.inputType;
@@ -157,20 +220,53 @@ export default function PipelineCanvas({
       const [source, target] = connection.fromHandle?.type === "source"
         ? [connection.fromNode.id, connection.toNode.id]
         : [connection.toNode.id, connection.fromNode.id];
-      setFeedback(connectionIssue(document.definition, source, target, components) ?? "");
+      setFeedback(connectionIssue(document.definition, source, target, components, { replace: true }) ?? "");
     }
   };
   const edges = useMemo(
     () =>
-      graph.edges.map((edge) => ({
-        ...edge,
-        type: "pipeline",
-        data: routes.get(edge.id),
-        selectable: !readOnly,
-        selected: selectedEdges.includes(edge.id),
-      })),
-    [graph.edges, readOnly, selectedEdges, routes],
+      graph.edges.map((edge): RoutedEdge => {
+        const route = routes.get(edge.id);
+        const position = handles.get(edge.id);
+        const source = graph.nodes.find((node) => node.id === edge.source);
+        const target = graph.nodes.find((node) => node.id === edge.target);
+        return {
+          ...edge,
+          type: "pipeline",
+          data: route && {
+            ...route,
+            insert: position && insertable.has(edge.id) ? {
+              ...position,
+              kind: source?.data.outputType,
+              between: `${source?.ariaLabel ?? edge.source} and ${target?.ariaLabel ?? edge.target}`,
+            } : undefined,
+            // While a new wire is drawn, existing wires do not offer to insert.
+            active: !readOnly && !connecting && (hoveredWire === edge.id || selectedEdges.includes(edge.id)),
+          },
+          selectable: !readOnly,
+          selected: selectedEdges.includes(edge.id),
+        };
+      }),
+    [graph, readOnly, selectedEdges, routes, handles, insertable, hoveredWire, connecting],
   );
+  const insert = (link: Link, componentId: string) => {
+    setOpenWire(undefined);
+    const component = components.find((item) => item.id === componentId);
+    const result = component && insertOnEdge(document, link, component, components);
+    if (!result) return;
+    setFeedback("");
+    setSelectedEdges([]);
+    onChange(result.document);
+    onSelect(result.id);
+    setInserted(result.id);
+  };
+  const wireActions: WireActions = {
+    open: openWire?.definition === document.definition ? openWire.id : undefined,
+    setOpen: (id) => setOpenWire(id ? { id, definition: document.definition } : undefined),
+    hover,
+    menu: (link) => <PipelineToolbox components={components} document={document} link={link}
+      onAdd={(componentId) => insert(link, componentId)} />,
+  };
   const drop = (event: DragEvent) => {
     event.preventDefault();
     if (readOnly || !flow) return;
@@ -195,6 +291,7 @@ export default function PipelineCanvas({
       onDrop={drop}
     >
       <div className="pl-flow-surface" ref={surface}>
+        <WireActionsContext.Provider value={wireActions}>
         <ReactFlow<CanvasNode>
           nodes={nodes}
           edges={edges}
@@ -204,6 +301,7 @@ export default function PipelineCanvas({
           colorMode={resolvedTheme}
           minZoom={0.01}
           maxZoom={2}
+          onMoveStart={() => setOpenWire(undefined)}
           onMoveEnd={(_event, viewport) => setZoom(viewport.zoom)}
           snapToGrid={snapToGrid}
           snapGrid={SNAP_GRID}
@@ -222,9 +320,12 @@ export default function PipelineCanvas({
               connection.source,
               connection.target,
               components,
+              { replace: true },
             )
           }
           elementsSelectable
+          onEdgeMouseEnter={(_event, edge) => hover(edge.id)}
+          onEdgeMouseLeave={() => hover()}
           onNodeClick={(_event, node) => onSelect(node.id)}
           onPaneClick={() => {
             onSelect(undefined);
@@ -294,18 +395,22 @@ export default function PipelineCanvas({
               connection.source,
               connection.target,
               components,
+              { replace: true },
             );
             if (issue) {
               setFeedback(issue);
               return;
             }
+            // Dropping on an occupied input replaces its connection; undo restores it.
+            const replaced = displaced(document.definition, connection.source, connection.target);
             const definition = connectNodes(
               document.definition,
               connection.source,
               connection.target,
               components,
+              { replace: true },
             );
-            setFeedback("");
+            setFeedback(replaced ? `Replaced the input from ${nodeName(document, components, replaced.source)}.` : "");
             onChange({ ...document, definition });
           }}
           onBeforeDelete={async ({
@@ -363,6 +468,7 @@ export default function PipelineCanvas({
             </ControlButton>
           </Controls>
         </ReactFlow>
+        </WireActionsContext.Provider>
       </div>
       {(feedback || blocked) && (
         <p className="pl-canvas-feedback" role="status">

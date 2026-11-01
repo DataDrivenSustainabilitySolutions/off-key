@@ -11,7 +11,9 @@ import { ingressOptions } from "./helpers/mqtt";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import {
   expectReadablePipeline,
+  expectValidPipeline,
   fitPipelineOverview,
+  openPipelineInput,
   openPipelineSettings,
   locatePipelineSelection,
   savePipelineTemplate,
@@ -35,13 +37,13 @@ import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 const selected = (page: Page) =>
-  page.getByRole("combobox", { name: "Selected component", exact: true });
+  page.getByRole("combobox", { name: "Selected step", exact: true });
 const connect = (page: Page, source: string) =>
   page
     .getByRole("combobox", { name: "Connect input from", exact: true })
     .selectOption(source);
 const add = async (page: Page, name: string) => {
-  await page.getByRole("button", { name: "Add component", exact: true }).click();
+  await page.getByRole("button", { name: "Add step", exact: true }).click();
   await page.getByRole("button", { name: `Add ${name}`, exact: true }).click();
 };
 const processingId = (number: number) =>
@@ -52,13 +54,16 @@ async function buildBranchedGraph(
   adaptive: boolean,
   slots: Record<string, string>,
 ) {
+  // A feature named after its reading is listed by that name alone.
+  const feature = (label: string) =>
+    slots[label] === label ? label : `${label} · ${slots[label]!}`;
   await dropPipelineComponent(page, "Select features", "features_select_1");
   await connect(page, "input");
   await page
-    .getByRole("checkbox", { name: `voltage · ${slots.voltage!}`, exact: true })
+    .getByRole("checkbox", { name: feature("voltage"), exact: true })
     .check();
   await page
-    .getByRole("checkbox", { name: `current · ${slots.current!}`, exact: true })
+    .getByRole("checkbox", { name: feature("current"), exact: true })
     .check();
   await add(page, adaptive ? "Online standard scaling" : "Standard scaling");
   await connect(page, "features_select_1");
@@ -69,10 +74,7 @@ async function buildBranchedGraph(
   await add(page, "Select features");
   await connect(page, "input");
   await page
-    .getByRole("checkbox", {
-      name: `temperature · ${slots.temperature!}`,
-      exact: true,
-    })
+    .getByRole("checkbox", { name: feature("temperature"), exact: true })
     .check();
   await add(page, "Merge features");
   await connect(page, adaptive ? "adaptive_uncentered_pca_1" : "static_pca_1");
@@ -86,8 +88,7 @@ async function buildBranchedGraph(
     })
     .click();
   await connect(page, "features_merge_1");
-  const serviceSettings = page.getByRole("button", { name: "Learning settings", exact: true });
-  if (await serviceSettings.count()) await serviceSettings.click();
+  await openPipelineSettings(page, "Service");
   await page
     .getByRole("spinbutton", {
       name: adaptive
@@ -99,10 +100,7 @@ async function buildBranchedGraph(
   await page
     .getByRole("spinbutton", { name: "Calibration observations", exact: true })
     .fill("8");
-  await page.getByRole("button", { name: "Validate", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Valid processing graph", exact: true }),
-  ).toBeVisible();
+  await expectValidPipeline(page);
   await page.getByRole("button", { name: "Arrange", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Arrange", exact: true }),
@@ -160,7 +158,6 @@ test.describe("visual pipeline real infrastructure", () => {
         await expect(
           page.getByRole("region", { name: "Monitoring workbench", exact: true }),
         ).toBeVisible();
-        await openPipelineSettings(page, "Service");
         await page
           .getByRole("textbox", { name: "Service name", exact: true })
           .fill(`Branched ${strategy} ${deviceId}`);
@@ -168,7 +165,9 @@ test.describe("visual pipeline real infrastructure", () => {
           await page.getByRole("button", { name: "Load template", exact: true }).click();
           await page.getByRole("button", { name: "Use Static baseline", exact: true }).click();
         }
+        // A new service opens at its readings, also after loading a starting point.
         await page.getByRole("checkbox", { name: "Monitor unused", exact: true }).uncheck();
+        await openPipelineSettings(page, "Service");
         await page.getByText("Input slots", { exact: true }).click();
         const slots = Object.fromEntries(await page.getByRole("textbox", { name: /^Label for / }).evaluateAll((inputs) =>
           inputs.map((input) => [(input as HTMLInputElement).value, input.getAttribute("aria-label")!.slice("Label for ".length)])));
@@ -181,6 +180,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await openPipelineSettings(page, "Component");
         await selected(page).selectOption("features_merge_1");
         await expect(page.getByRole("heading", { name: "Incoming connections · output order", exact: true })).toBeVisible();
+        await openPipelineInput(page);
         await page.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
         await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
         await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
@@ -397,7 +397,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await openPipelineSettings(page, "Component");
         await expect(
           page.getByRole("combobox", {
-            name: "Selected component",
+            name: "Selected step",
             exact: true,
           }),
         ).toBeVisible();
@@ -415,6 +415,7 @@ test.describe("visual pipeline real infrastructure", () => {
           await openPipelineSettings(page, "Service");
           await page.getByRole("spinbutton", { name: "Calibration observations", exact: true }).fill("9");
           await expect(page.getByText(/Monitoring pauses briefly and learning starts again/)).toBeVisible();
+          await openPipelineInput(page);
           for (const name of ["voltage", "current", "temperature"])
             await expect(page.getByRole("combobox", { name: `Reading for ${name}`, exact: true })).toHaveValue(`${deviceId}:${name}`);
           const replacementResponse = page.waitForResponse(
@@ -670,7 +671,7 @@ test.describe("visual pipeline real infrastructure", () => {
       await page.keyboard.press("End");
       await page.keyboard.press("Enter");
       await expect(
-        page.getByRole("textbox", { name: "Node title", exact: true }),
+        page.getByRole("textbox", { name: "Step title", exact: true }),
       ).toBeVisible();
       await page
         .locator(`.react-flow__node[data-id="${processingId(60)}"]`)
@@ -779,7 +780,7 @@ test.describe("visual pipeline real infrastructure", () => {
         page.locator('.pl-inspector input[type="checkbox"]'),
       ).toHaveCount(100);
       await page
-        .getByRole("textbox", { name: "Node title", exact: true })
+        .getByRole("textbox", { name: "Step title", exact: true })
         .fill("Keyboard and mobile inspection");
       await savePipelineTemplate(page);
       await expectNoHorizontalScroll(page);
@@ -807,7 +808,7 @@ test.describe("visual pipeline real infrastructure", () => {
       );
       expect(collaborator.ok(), await collaborator.text()).toBeTruthy();
       await page
-        .getByRole("textbox", { name: "Node title", exact: true })
+        .getByRole("textbox", { name: "Step title", exact: true })
         .fill("Preserved conflicted edit");
       await page.getByRole("button", { name: "Save template", exact: true }).click();
       const saveDialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
@@ -817,7 +818,7 @@ test.describe("visual pipeline real infrastructure", () => {
       await saveDialog.getByRole("button", { name: "Save as new template", exact: true }).click();
       copyId = ((await (await copied).json()) as PipelineView).id;
       await expect(saveDialog).toBeHidden();
-      await expect(page.getByRole("textbox", { name: "Node title", exact: true })).toHaveValue("Preserved conflicted edit");
+      await expect(page.getByRole("textbox", { name: "Step title", exact: true })).toHaveValue("Preserved conflicted edit");
       const copyResponse = await api.get(
         `/api/v1/monitors/pipelines/${copyId}`,
         { headers },

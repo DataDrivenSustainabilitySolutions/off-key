@@ -1,15 +1,33 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
-import { dataKinds, nodeKinds, sampledState, type DataKind } from "./semantics";
+import { dataKinds, sampledState, type DataKind } from "./semantics";
 import type { CanvasNode } from "./types";
 
-function ConnectionDot({ direction, kind, connectable, issue }: {
+/** Chips beyond these collapse into a count; the inspector lists every feature. */
+const MAX_CHIPS = 3;
+/** Feature names a port's tooltip lists before it summarizes the rest. */
+const MAX_NAMES = 6;
+
+function emittedFeatures(names: string[]) {
+  const shown = names.slice(0, MAX_NAMES).join(", ");
+  const rest = names.length > MAX_NAMES ? ` and ${names.length - MAX_NAMES} more` : "";
+  return `${names.length} ${names.length === 1 ? "feature" : "features"}${shown ? `: ${shown}${rest}` : ""}`;
+}
+
+function ConnectionDot({ direction, kind, connectable, issue, replaces, count, features, stale }: {
   direction: "input" | "output";
   kind?: DataKind | null;
   connectable: boolean;
   issue?: string | null;
+  replaces?: string;
+  count?: number;
+  features?: string[];
+  stale?: boolean;
 }) {
   const label = `${direction === "input" ? "Input" : "Output"}: ${kind ? dataKinds[kind].label : "Unavailable type"}`;
+  const detail = issue ? issue
+    : replaces ? `Replaces the connection from ${replaces}.`
+      : features ? `${emittedFeatures(features)}.` : undefined;
   return <Handle
     id={direction}
     type={direction === "input" ? "target" : "source"}
@@ -17,8 +35,10 @@ function ConnectionDot({ direction, kind, connectable, issue }: {
     isConnectable={connectable}
     isConnectableStart={connectable}
     isConnectableEnd={connectable && !issue}
-    className={`pl-data--${kind ?? "unknown"}${issue === null ? " is-compatible" : issue ? " is-incompatible" : ""}`}
-    title={issue ? `${label}. ${issue}` : label}
+    className={`pl-data--${kind ?? "unknown"}${issue === null ? " is-compatible" : issue ? " is-incompatible" : ""}${
+      count !== undefined ? " has-count" : ""}${stale ? " is-stale" : ""}`}
+    data-count={count}
+    title={detail ? `${label}. ${detail}` : label}
     role="img"
     aria-label={label}
   />;
@@ -46,7 +66,7 @@ export function PipelineNodeCard({
       }}
     >
       <span className="pl-node-kind">
-        {nodeKinds[data.kind]}
+        {data.family}
       </span>
       <div className="pl-node-title">
         <strong title={data.label}>{data.label}</strong>
@@ -55,11 +75,23 @@ export function PipelineNodeCard({
             {data.operation}
           </small>
         )}
+        {data.summary && (
+          <small className="pl-node-summary" title={data.summary}>
+            {data.summary}
+          </small>
+        )}
+        {!!data.chips?.length && (
+          <span className="pl-node-chips" title={data.chips.join(", ")}>
+            {data.chips.slice(0, MAX_CHIPS).map((chip, index) => <span key={index}>{chip}</span>)}
+            {data.chips.length > MAX_CHIPS && <span className="is-more">+{data.chips.length - MAX_CHIPS}</span>}
+          </span>
+        )}
       </div>
       {data.inputPort && <ConnectionDot direction="input" kind={data.inputType}
-        connectable={isConnectable && data.available} issue={data.inputIssue} />}
+        connectable={isConnectable && data.available} issue={data.inputIssue} replaces={data.inputReplaces} />}
       {data.outputPort && <ConnectionDot direction="output" kind={data.outputType}
-        connectable={isConnectable && data.available} issue={data.outputIssue} />}
+        connectable={isConnectable && data.available} issue={data.outputIssue}
+        count={data.outputCount} features={data.outputFeatures} stale={data.outputStale} />}
       <div className="pl-node-status">
         {!data.available && (
           <span className="pl-node-issue">
@@ -74,6 +106,12 @@ export function PipelineNodeCard({
           >
             <TriangleAlert size={11} aria-hidden="true" />
             {data.issueCount} {data.issueCount === 1 ? "issue" : "issues"}
+          </span>
+        )}
+        {!data.issueCount && !!data.warningCount && (
+          <span className="pl-node-issue is-warning" title="Warnings do not stop this design. Select the step for details.">
+            <TriangleAlert size={11} aria-hidden="true" />
+            {data.warningCount} {data.warningCount === 1 ? "warning" : "warnings"}
           </span>
         )}
         {status && (

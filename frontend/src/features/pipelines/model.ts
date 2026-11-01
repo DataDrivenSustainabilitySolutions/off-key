@@ -112,6 +112,24 @@ export function addComponent(
 const PLACEMENT_GAP = { x: 64, y: 32 };
 const snap = (value: number) => Math.round(value / GRID_STEP) * GRID_STEP;
 
+/** Whether a card at x, y would touch any box, including half a placement gap around it. */
+const collides = (boxes: { x: number; y: number }[], x: number, y: number) =>
+  boxes.some(
+    (box) =>
+      box.x < x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
+      x < box.x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
+      box.y < y + NODE_SIZE.height + PLACEMENT_GAP.y / 2 &&
+      y < box.y + NODE_SIZE.height + PLACEMENT_GAP.y / 2,
+  );
+
+/** The first free row at x, moving down from y. */
+function freeRow(boxes: { x: number; y: number }[], x: number, y: number) {
+  let top = y;
+  for (let attempt = 0; attempt < 64 && collides(boxes, x, top); attempt++)
+    top = snap(top + NODE_SIZE.height + PLACEMENT_GAP.y);
+  return top;
+}
+
 /** Place to the right of the anchor (or the rightmost component) without covering another box. */
 export function freePosition(document: GraphDocument, anchor?: string) {
   const boxes = document.definition.nodes.map((node, index) =>
@@ -124,18 +142,7 @@ export function freePosition(document: GraphDocument, anchor?: string) {
       ? boxes[anchorIndex]!
       : boxes.reduce((right, box) => (box.x > right.x ? box : right));
   const x = snap(from.x + NODE_SIZE.width + PLACEMENT_GAP.x);
-  let y = snap(from.y);
-  const overlaps = (top: number) =>
-    boxes.some(
-      (box) =>
-        box.x < x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
-        x < box.x + NODE_SIZE.width + PLACEMENT_GAP.x / 2 &&
-        box.y < top + NODE_SIZE.height + PLACEMENT_GAP.y / 2 &&
-        top < box.y + NODE_SIZE.height + PLACEMENT_GAP.y / 2,
-    );
-  for (let attempt = 0; attempt < 64 && overlaps(y); attempt++)
-    y = snap(y + NODE_SIZE.height + PLACEMENT_GAP.y);
-  return { x, y };
+  return { x, y: freeRow(boxes, x, snap(from.y)) };
 }
 
 /** Current V1 execution profile, shared by drag/drop and the component palette. */
@@ -218,6 +225,15 @@ export function setNodeLabel(document: GraphDocument, nodeId: string, label: str
   };
 }
 
+/** `replace` lets a new connection take over a single input that is already connected. */
+type ConnectOptions = { replace?: boolean };
+
+/** The connection into a single input, which a new connection to it would replace. */
+export const occupiedInput = (definition: PipelineDefinition, target: string) =>
+  definition.nodes.find((node) => node.id === target)?.kind === "merge"
+    ? undefined
+    : definition.edges.find((edge) => edge.target === target);
+
 /** Authoring guard shared by the canvas and keyboard/menu connection editor.
  * The backend compiler remains authoritative for publication and activation.
  */
@@ -226,6 +242,7 @@ export function connectionIssue(
   source: string,
   target: string,
   components: PipelineComponent[],
+  { replace = false }: ConnectOptions = {},
 ): string | undefined {
   const from = definition.nodes.find((node) => node.id === source);
   const to = definition.nodes.find((node) => node.id === target);
@@ -237,7 +254,8 @@ export function connectionIssue(
     )
   )
     return "This connection is already present.";
-  if (definition.edges.length >= PIPELINE_LIMITS.edges)
+  const replaced = replace ? occupiedInput(definition, target) : undefined;
+  if (definition.edges.length - (replaced ? 1 : 0) >= PIPELINE_LIMITS.edges)
     return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
   const fromComponent = componentFor(from, components);
   const toComponent = componentFor(to, components);
@@ -254,10 +272,7 @@ export function connectionIssue(
   if (!input) return "Aligned inputs have no incoming port.";
   if (output !== input)
     return `Cannot connect ${dataKinds[output].label} to ${dataKinds[input].label}.`;
-  if (
-    to.kind !== "merge" &&
-    definition.edges.some((edge) => edge.target === target)
-  )
+  if (!replace && occupiedInput(definition, target))
     return "This input is occupied. Disconnect it before choosing a replacement.";
   const reachable = new Set([target]);
   for (let changed = true; changed; ) {
@@ -276,10 +291,14 @@ export function connectNodes(
   source: string,
   target: string,
   components: PipelineComponent[],
+  options: ConnectOptions = {},
 ): PipelineDefinition {
-  if (connectionIssue(definition, source, target, components))
+  if (connectionIssue(definition, source, target, components, options))
     return definition;
-  const incoming = incomingEdges(definition, target);
+  // A merge appends the new input; a single input keeps only the new connection.
+  const incoming = definition.nodes.find((node) => node.id === target)?.kind === "merge"
+    ? incomingEdges(definition, target)
+    : [];
   return {
     ...definition,
     edges: [
@@ -287,6 +306,94 @@ export function connectNodes(
       ...incoming.map((edge, order) => ({ ...edge, order })),
       { source, target, order: incoming.length },
     ],
+  };
+}
+
+/** A connection by its ends; V1 allows one per pair. */
+export type Link = Pick<PipelineEdge, "source" | "target">;
+
+/** Why a component cannot be placed on a connection; undefined when it fits. */
+export function insertBlocker(
+  definition: PipelineDefinition,
+  link: Link,
+  component: PipelineComponent,
+  components: PipelineComponent[],
+): string | undefined {
+  const blocker = addBlocker(definition, component);
+  if (blocker) return blocker;
+  // The link is replaced by two, so the design needs room for one more.
+  if (definition.edges.length >= PIPELINE_LIMITS.edges)
+    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+  const from = definition.nodes.find((node) => node.id === link.source);
+  const to = definition.nodes.find((node) => node.id === link.target);
+  const fromComponent = componentFor(from, components);
+  const toComponent = componentFor(to, components);
+  if (!from || !fromComponent || !toComponent)
+    return "Compatible component metadata is required before inserting here.";
+  const carried = outputKind(from, fromComponent);
+  const produces = component.kind === "output" ? undefined : (component.output_type ?? "features");
+  if (!carried || inputKind(component) !== carried || produces !== inputKind(toComponent))
+    return `Does not fit a connection that carries ${dataKinds[carried ?? "features"].label.toLowerCase()}.`;
+}
+
+/** Room for a card on a link: between its ends when there is space, otherwise a
+ * column opened at the target by moving it and everything to its right. */
+function roomOnLink(document: GraphDocument, link: Link) {
+  const { definition, layout } = document;
+  const boxes = definition.nodes.map((node, index) => ({
+    id: node.id, ...nodePosition(layout, node.id, index),
+  }));
+  const source = boxes.find((box) => box.id === link.source)!;
+  const target = boxes.find((box) => box.id === link.target)!;
+  const gap = target.x - (source.x + NODE_SIZE.width);
+  if (gap >= NODE_SIZE.width + PLACEMENT_GAP.x) {
+    const x = snap(source.x + NODE_SIZE.width + (gap - NODE_SIZE.width) / 2);
+    const y = snap((source.y + target.y) / 2);
+    if (!collides(boxes, x, y)) return { layout, position: { x, y } };
+  }
+  if (target.x <= source.x) return { layout, position: freePosition(document, link.source) };
+  const shift = snap(NODE_SIZE.width + PLACEMENT_GAP.x);
+  const moved = boxes.map((box) => (box.x >= target.x ? { ...box, x: box.x + shift } : box));
+  const nodes = { ...layout.nodes };
+  for (const [index, box] of moved.entries())
+    if (box.x !== boxes[index]!.x) nodes[box.id] = { ...layout.nodes[box.id], x: box.x, y: box.y };
+  return {
+    layout: { ...layout, nodes },
+    position: { x: target.x, y: freeRow(moved, target.x, target.y) },
+  };
+}
+
+/** Place a component on a link, source → component → target. The target keeps
+ * the link's merge position, so execution order elsewhere does not change. */
+export function insertOnEdge(
+  document: GraphDocument,
+  link: Link,
+  component: PipelineComponent,
+  components: PipelineComponent[],
+): { document: GraphDocument; id: string } | undefined {
+  const { definition } = document;
+  const existing = definition.edges.find(
+    (edge) => edge.source === link.source && edge.target === link.target,
+  );
+  if (!existing || insertBlocker(definition, link, component, components)) return;
+  const room = roomOnLink(document, link);
+  const added = addComponent({ definition, layout: room.layout }, component, room.position);
+  const id = added.definition.nodes[added.definition.nodes.length - 1]!.id;
+  return {
+    id,
+    document: {
+      ...added,
+      definition: {
+        ...added.definition,
+        edges: [
+          ...added.definition.edges.filter(
+            (edge) => edge.source !== link.source || edge.target !== link.target,
+          ),
+          { source: link.source, target: id, order: 0 },
+          { source: id, target: link.target, order: existing.order },
+        ],
+      },
+    },
   };
 }
 

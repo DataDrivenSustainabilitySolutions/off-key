@@ -17,17 +17,19 @@ type Options = {
   readOnly?: boolean;
   historyKey?: string;
   onSelect?: (id: string) => void;
+  /** The step selected when the editor opens. */
+  initialSelected?: string;
 };
 
 /** The same graph operations serve new designs and saved drafts. */
 export function useGraphEditor({
-  document, onChange, components, readOnly = false, historyKey, onSelect,
+  document, onChange, components, readOnly = false, historyKey, onSelect, initialSelected,
 }: Options) {
   const [history, setHistory] = useNavigationDraft<GraphHistory>(
     historyKey,
     () => ({ undo: [], redo: [] }),
   );
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState(initialSelected);
   const [fitRequest, setFitRequest] = useState(0);
   const [reveal, setReveal] = useState<PlacementRequest>();
   const [validation, setValidation] = useState<PipelineValidation>();

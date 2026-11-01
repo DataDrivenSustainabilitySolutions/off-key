@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
+import { getErrorMessage } from "@/lib/errors";
 import type { PipelineDefinition, PipelineValidation } from "./contracts";
 import { pipelinesApi } from "./api";
 
-/** Inferred names come from the canonical compiler; diagnostics remain an explicit action. */
+/** The canonical compiler checks every edit shortly after it is made; a failed
+ * check is reported with a retry instead of leaving the last result on screen. */
 export function useGraphMetadata(
   definition: PipelineDefinition,
   enabled: boolean,
   selectedNodeId?: string,
 ) {
+  const [attempt, setAttempt] = useState(0);
   const [snapshot, setSnapshot] = useState<{
     definition: PipelineDefinition;
-    validation: PipelineValidation;
     selectedNodeId: string | undefined;
+    validation?: PipelineValidation;
+    error?: string;
   }>();
   useEffect(() => {
     if (!enabled) return;
@@ -29,8 +33,9 @@ export function useGraphMetadata(
           );
           if (!controller.signal.aborted)
             setSnapshot({ definition, validation, selectedNodeId });
-        } catch {
-          /* Explicit Validate reports transport and compiler failures. */
+        } catch (reason) {
+          if (!controller.signal.aborted)
+            setSnapshot({ definition, selectedNodeId, error: getErrorMessage(reason) });
         }
       }, 800);
     };
@@ -41,9 +46,17 @@ export function useGraphMetadata(
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [definition, enabled, selectedNodeId]);
-  return snapshot?.definition === definition &&
+  }, [definition, enabled, selectedNodeId, attempt]);
+  const current = snapshot?.definition === definition &&
     snapshot.selectedNodeId === selectedNodeId
-    ? snapshot.validation
+    ? snapshot
     : undefined;
+  return {
+    validation: current?.validation,
+    error: current?.error,
+    retry: () => {
+      setSnapshot(undefined);
+      setAttempt((value) => value + 1);
+    },
+  };
 }

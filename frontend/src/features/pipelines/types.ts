@@ -6,6 +6,8 @@ import type { DataKind } from "./semantics";
 type CanvasData = {
   label: string;
   kind: PipelineNode["kind"];
+  /** What the step does, as the add-step menu groups it. */
+  family: string;
   operation: string;
   available: boolean;
   inputPort: boolean;
@@ -15,8 +17,20 @@ type CanvasData = {
   /** Undefined at rest, null for a valid target, otherwise the rejection reason. */
   inputIssue?: string | null;
   outputIssue?: string | null;
+  /** A compatible input that is taken: the component whose connection a drop replaces. */
+  inputReplaces?: string;
+  /** Feature columns leaving the output, with their names, once the compiler reported them. */
+  outputCount?: number;
+  outputFeatures?: string[];
+  /** The count predates the latest edit and is being checked again. */
+  outputStale?: boolean;
   state?: string;
   issueCount: number;
+  /** Warnings never block applying the design. */
+  warningCount?: number;
+  /** One line about the settings, or the features a selection keeps. */
+  summary?: string;
+  chips?: string[];
   [key: string]: unknown;
 };
 export type CanvasNode = Node<CanvasData, "component">;

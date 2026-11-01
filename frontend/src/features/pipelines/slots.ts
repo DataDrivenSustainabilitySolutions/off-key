@@ -2,19 +2,30 @@ import type { MonitoringInput, MonitoringTarget } from "@/domain/monitoring/serv
 import { PIPELINE_LIMITS } from "@/types/pipelines.generated";
 import type { PipelineDefinition } from "./contracts";
 
-/** One slot per enabled reading of the target; the first keeps the design's own slot ID. */
-export function targetInputs(
-  target: MonitoringTarget | undefined,
-  slots: PipelineDefinition["input_slots"],
-  reading?: string,
-) {
+/** A feature name from a reading's label, such as "DC voltage" to dc_voltage. Steps
+ * refer to features by these names, so they stay readable and valid slot IDs. */
+export function featureName(label: string) {
+  const slug = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+/, "").slice(0, 48).replace(/_+$/, "");
+  if (!slug) return "reading";
+  return /^[a-z]/.test(slug) ? slug : `reading_${slug}`;
+}
+
+function uniqueName(label: string, taken: (id: string) => boolean) {
+  const base = featureName(label);
+  let id = base;
+  for (let suffix = 2; taken(id); suffix++) id = `${base}_${suffix}`;
+  return id;
+}
+
+/** One slot per enabled reading of the target, named after the reading. */
+export function targetInputs(target: MonitoringTarget | undefined, reading?: string) {
   const readings = target?.inputs.filter((input) => input.binding.policy.mode !== "off"
     && (!reading || !target.inputs.some((item) => item.stream.id === reading) || input.stream.id === reading)) ?? [];
   if (!readings.length) return undefined;
   const used = new Set<string>();
-  const next = readings.slice(0, PIPELINE_LIMITS.slots).map((input, index) => {
-    let id = index === 0 ? (slots[0]?.id ?? "input_1") : `input_${index + 1}`;
-    for (let suffix = index + 1; used.has(id); suffix++) id = `input_${suffix}`;
+  const next = readings.slice(0, PIPELINE_LIMITS.slots).map((input) => {
+    const id = uniqueName(input.stream.label, (name) => used.has(name));
     used.add(id);
     return { id, label: input.stream.label, unit: input.stream.unit ?? null };
   });
@@ -25,8 +36,8 @@ export function targetInputs(
 export function addReading(slots: PipelineDefinition["input_slots"], bindings: Record<string, string>, input: MonitoringInput) {
   if (slots.length >= PIPELINE_LIMITS.slots || slots.some((slot) => bindings[slot.id] === input.stream.id)) return { slots, bindings };
   const previous = Object.keys(bindings).find((id) => bindings[id] === input.stream.id && !slots.some((slot) => slot.id === id));
-  let id = previous ?? "input_1";
-  for (let index = 2; !previous && (slots.some((slot) => slot.id === id) || id in bindings); index++) id = `input_${index}`;
+  const id = previous ?? uniqueName(input.stream.label, (name) =>
+    slots.some((slot) => slot.id === name) || Object.prototype.hasOwnProperty.call(bindings, name));
   return { slots: [...slots, { id, label: input.stream.label, unit: input.stream.unit ?? null }],
     bindings: { ...bindings, [id]: input.stream.id } };
 }

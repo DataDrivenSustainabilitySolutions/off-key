@@ -60,15 +60,10 @@
 .pl-toolbox .pl-toolbox-item {
   width: 100%;
   text-align: left;
-  justify-content: space-between;
-  margin: 4px 0;
+  margin: 0;
   font-size: var(--text-body);
   padding: 10px;
   background: hsl(var(--background));
-}
-
-.pl-toolbox-item span {
-  min-width: 0;
 }
 
 .pl-toolbox-item small {
@@ -239,9 +234,6 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
-.pl-toolbox-existing .pl-help {
-  margin: 0 0 6px;
-}
 .pl-field-error {
   display: block;
   margin-top: 4px;
@@ -253,4 +245,48 @@
 }
 .pl-issue-status.is-checking {
   opacity: 0.6;
+}
+/* Warnings never block applying a design: they stay quieter than errors. */
+.pl-issue-status.has-warnings {
+  border-color: color-mix(in srgb, #f59e0b 30%, hsl(var(--border)));
+}
+.pl-issue-warnings {
+  color: #b45309;
+  font-weight: 400;
+}
+.dark .pl-issue-warnings {
+  color: #fcd34d;
+}
+.pl-issue-popover li.is-warning > :is(button, span) {
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+/* Applies to and Result on learned steps. */
+.pl-scope fieldset.pl-field {
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+.pl-scope legend {
+  padding: 0;
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+/* Like the Select features list, the choices grow with the panel, which scrolls. */
+.pl-scope-features {
+  display: grid;
+}
+.pl-scope .parameter-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.pl-scope .parameter-check.is-missing {
+  color: #dc2626;
+}
+.pl-scope .parameter-check small {
+  color: hsl(var(--muted-foreground));
 }

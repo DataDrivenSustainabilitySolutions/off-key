@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useConfirm } from "@/hooks/use-confirm";
 import { Link, useLocation } from "react-router-dom";
@@ -29,6 +29,7 @@ import { usePipelineApply } from "./applySession";
 import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
 import { strategyLabel } from "./semantics";
+import { startupEstimate } from "./startup";
 
 export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
@@ -44,17 +45,19 @@ export type PipelineSetupProps = {
 
 function startingSetup(catalog: PipelineCatalog, id?: string, target?: MonitoringTarget, reading?: string) {
   const template = catalog.templates.find((item) => item.id === id) ?? catalog.templates[0];
-  const inputs = targetInputs(target, template?.definition.input_slots ?? [], reading);
+  const inputs = targetInputs(target, reading);
   return { document: { definition: template ? { ...template.definition,
     input_slots: inputs?.slots ?? template.definition.input_slots } : normalizeDefinition({}), layout: template?.layout ?? normalizeLayout() },
   bindings: inputs?.bindings ?? {} };
 }
 
+const inputNode = (document: GraphDocument) => document.definition.nodes.find((node) => node.kind === "source")?.id;
+
 /** The same setup surface configures a new service, a template or a replacement. */
 export function PipelineCreate(props: PipelineSetupProps) {
   const { catalog, targets, initialTarget, initialReading, initialDesign, initialDocument, replaceService, predecessor, onStarted } = props;
   const { userId } = useAuth();
-  const { document: catalogueDocument } = useCatalogue();
+  const { document: catalogueDocument, system } = useCatalogue();
   const [confirm, confirmation] = useConfirm();
   const location = useLocation();
   const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
@@ -84,7 +87,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const [attempted, setAttempted] = useState(false);
   const [issuesRequest, setIssuesRequest] = useState(0);
   const nameInput = useRef<HTMLInputElement>(null);
-  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(null);
+  // A new service starts at its readings; a saved design or a replacement starts at its graph.
+  const [opensAtInput] = useState(!initialDesign && !initialDocument && !replaceId);
+  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(opensAtInput ? "component" : null);
   const completed = useCallback((id: string) => { session.discard(initial()); onStarted(id); }, [initial, onStarted, session]);
   const apply = usePipelineApply(`${creationKey}:apply`, completed);
   const locked = !!apply.request || !!apply.operation;
@@ -93,11 +98,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const graph = useGraphEditor({
     document: draft.document, components: catalog.components, readOnly: !canAuthor || locked || checking,
     historyKey: `${creationKey}:history`, onChange: (document) => setDraft((previous) => ({ ...previous, document })),
-    onSelect: () => setInspectorPanel("component"),
+    onSelect: () => setInspectorPanel("component"), initialSelected: opensAtInput ? inputNode(draft.document) : undefined,
   });
   const { selected, select, fitRequest, validation, commit, add } = graph;
   const metadata = useGraphMetadata(draft.document.definition, canAuthor, selected);
-  const compiledValidation = metadata ?? validation;
+  const compiledValidation = metadata.validation ?? validation;
   const runtimeIssues = apply.operation?.issues ?? [];
   const displayedValidation = compiledValidation && runtimeIssues.length
     ? { ...compiledValidation, valid: false, issues: [...compiledValidation.issues, ...runtimeIssues] }
@@ -109,6 +114,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const owned = readingOwnedElsewhere(props.services, props.byStream, replaceService?.id);
   const ready = bindingsReady(slots, target, bindings, owned);
   const dirty = session.isDirty();
+  const mapped = Object.keys(bindings).length;
+  const readingCount = draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"}` : `${mapped} of ${slots.length} readings`;
+  const intervals = system.snapshot?.runtime.ingress?.readings;
+  const startup = startupEstimate(draft.document.definition,
+    Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds));
+  const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
   useUnsavedChanges(dirty && !locked);
 
   useEffect(() => {
@@ -137,14 +148,16 @@ export function PipelineCreate(props: PipelineSetupProps) {
     session.detachTemplate();
     setDraft((previous) => ({ ...previous, startingId: undefined, name: previous.name || name, description,
       bindings: bindings ?? suggestBindings(document.definition.input_slots, target, previous.bindings) }));
-    select(undefined); graph.requestFit();
+    // A new service goes on to its readings; a design's own editor returns to the graph.
+    select(opensAtInput ? inputNode(document) : undefined); graph.requestFit();
     toast.success(`Loaded ${name}. Your changes will not affect the original template.`, { id: "pipeline-template-load" });
   };
   const start = async () => {
     if (!canAuthor || busy) return;
     setAttempted(true); setError("");
     if (!draft.name.trim()) { nameInput.current?.focus(); return; }
-    if (!ready || !props.collectionReady || props.activationBlocked) return;
+    if (!ready) { openInput(); return; }
+    if (!props.collectionReady || props.activationBlocked) return;
     setChecking(true);
     try {
       const result = await validateGraph();
@@ -160,96 +173,101 @@ export function PipelineCreate(props: PipelineSetupProps) {
     catch (reason) { setError(getErrorMessage(reason)); }
     finally { setArranging(false); }
   };
+  const title = replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service";
+  const inputStep = <div className="pl-input-step">
+    <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy}
+      // A service starts on live sources; a template may be mapped to any entity.
+      receivingOnly={!initialDesign}
+      onChange={(targetId) => {
+        const next = targets.find((item) => item.id === targetId);
+        const matched = draft.startingId ? targetInputs(next, initialReading) : undefined;
+        const document = matched ? { ...draft.document, definition: { ...draft.document.definition, input_slots: matched.slots } } : draft.document;
+        commit(document);
+        setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
+      }} /></div>
+    {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
+      recordingHref={(ids) => sourceHref(ids.includes(initialReading ?? "") ? [initialReading!] : ids, catalogueDocument, `${location.pathname}${location.search}`)}
+      onChange={(selected) => {
+        if (!target) return;
+        picked.current = true;
+        const next = selectReadings(target, slots, draft.bindings ?? {}, selected);
+        changeInputs(next.slots, next.bindings);
+      }} />
+      : <PipelineInputBindings slots={slots} target={target} bindings={draft.bindings ?? {}} disabled={!canAuthor || locked || checking} owned={owned}
+        onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} onSlotsChange={changeInputs} />}
+    {attempted && !ready && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
+      : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
+    <div className="pl-input-step-footer">
+      <p className="pl-help">{target ? draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"} selected`
+        : `${mapped} of ${slots.length} inputs mapped` : "Select an entity to choose its readings."}</p>
+      <Link to={sourceHref(target?.inputs.map((input) => input.stream.id) ?? [], catalogueDocument, `${location.pathname}${location.search}`)}>Configure readings in Sources</Link>
+    </div>
+  </div>;
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
     <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
       current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
-    <div className="pl-header pl-setup-header"><div>
-      <h1>{replaceId ? "Update monitoring service" : initialDesign ? initialDesign.name : "Create monitoring service"}</h1>
-      <p className="pl-help">Choose readings, adjust the flow, and apply. Save a template whenever you want to reuse it.</p>
-    </div><div className="pl-actions pl-setup-actions">
-      {canAuthor && <>
-        <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
-          onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
-            const setup = startingSetup(catalog, id, target, initialReading);
-            load(setup.document, item.name, "", setup.bindings);
-            setDraft((previous) => ({ ...previous, startingId: id })); }} />
-        <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
-          existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
-          onSave={async (details) => !!await session.save(details)} />
-        <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-          <Play size={15} />{checking ? "Checking…" : replaceId ? "Apply changes" : "Apply monitoring"}</button>
-      </>}
-    </div></div>
+    <header className="pl-header pl-setup-header">
+      <h1 className="ex-sr-only">{title}</h1>
+      <div className="pl-setup-identity">
+        <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
+          disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
+          value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
+        {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
+        <div className="pl-setup-meta">
+          <button type="button" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
+            title="Choose readings" onClick={openInput}>
+            {target ? `${target.label} · ${readingCount}` : "Choose readings"}
+          </button>
+          <button type="button" aria-label={`Strategy: ${strategyLabel(draft.document.definition.strategy)}`}
+            title="Strategy and learning" onClick={() => setInspectorPanel("service")}>
+            {strategyLabel(draft.document.definition.strategy)}
+          </button>
+        </div>
+      </div>
+      <div className="pl-actions pl-setup-actions">
+        {canAuthor && <>
+          <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
+            onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
+              const setup = startingSetup(catalog, id, target, initialReading);
+              load(setup.document, item.name, "", setup.bindings);
+              setDraft((previous) => ({ ...previous, startingId: id })); }} />
+          <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
+            existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
+            onSave={async (details) => !!await session.save(details)} />
+          <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
+            <Play size={15} />{checking ? "Checking…" : replaceId ? "Apply changes" : "Apply monitoring"}</button>
+        </>}
+      </div>
+    </header>
     {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
       : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "An administrator can configure monitoring services."}</p>}
-    <>
-      {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
-      {error && <p className="pl-error" role="alert">{error}</p>}
-      <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
-      <div className="pl-setup-card">
-        <div className="pl-setup-fields">
-          <label className="pl-field"><span>Service name</span><input ref={nameInput} aria-label="Service name" maxLength={120} placeholder="e.g. Machine health"
-            disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
-            value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
-            {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
-          </label>
-          <div className="pl-field"><span>Readings from</span><MonitoringTargetPicker targets={targets} value={draft.targetId} disabled={!canAuthor || busy}
-            // A service starts on live sources; a template may be mapped to any entity.
-            receivingOnly={!initialDesign}
-            onChange={(targetId) => {
-              const next = targets.find((item) => item.id === targetId);
-              const matched = draft.startingId ? targetInputs(next, slots, initialReading) : undefined;
-              const document = matched ? { ...draft.document, definition: { ...draft.document.definition, input_slots: matched.slots } } : draft.document;
-              commit(document);
-              setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
-            }} /></div>
-          <div className="pl-strategy-summary"><span>Learning strategy</span><strong>{strategyLabel(draft.document.definition.strategy)}</strong>
-            <small>{draft.document.definition.strategy === "adaptive_stream" ? "Learns from live readings" : "Learns a baseline, then monitors"}</small></div>
-        </div>
-        {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
-          recordingHref={(ids) => sourceHref(ids.includes(initialReading ?? "") ? [initialReading!] : ids, catalogueDocument, `${location.pathname}${location.search}`)}
-          onChange={(selected) => {
-            if (!target) return;
-            picked.current = true;
-            const next = selectReadings(target, slots, draft.bindings ?? {}, selected);
-            changeInputs(next.slots, next.bindings);
-          }} />
-          : <PipelineInputBindings slots={slots} target={target} bindings={draft.bindings ?? {}} disabled={!canAuthor || locked || checking} owned={owned}
-            onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} onSlotsChange={changeInputs} />}
-        <div className="pl-setup-card-footer">
-          <p className="pl-help">{target ? draft.startingId ? `${Object.keys(bindings).length} readings selected`
-            : `${Object.keys(bindings).length} of ${slots.length} inputs mapped` : "Select an entity to choose its readings."}</p>
-          <Link to={sourceHref(target?.inputs.map((input) => input.stream.id) ?? [], catalogueDocument, `${location.pathname}${location.search}`)}>Configure readings in Sources</Link>
-        </div>
-        {attempted && !ready && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
-          : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
-        {!props.collectionReady && <p className="pl-help" role="status">Enable collection in Sources and wait for it to connect before applying monitoring.</p>}
-        {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-        {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
-      </div>
-      <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
-        inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel}
-        selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
-        onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
-        actions={canAuthor && !locked && <>
-          <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title="Undo (Ctrl+Z)" onClick={graph.undo}><Undo2 size={15} /></button>
-          <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
-          <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
-          <button type="button" disabled={checking} onClick={async () => {
-            try { await validateGraph(); setIssuesRequest((value) => value + 1); }
-            catch (reason) { setError(getErrorMessage(reason)); }
-          }}><Check size={15} />Validate</button>
-          {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
-            if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",
-              confirmLabel: "Discard and start again", destructive: true })) return;
-            session.discard(initial()); graph.resetHistory(); select(undefined); graph.requestFit(); setAttempted(false);
-          }}><RotateCcw size={15} />Reset</button>}
-        </>}
-        settings={<PipelineDesignSettings document={draft.document} readOnly={!canAuthor || locked || checking} onChange={(document, history) => {
+    {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
+    {error && <p className="pl-error" role="alert">{error}</p>}
+    <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
+    {!props.collectionReady && <p className="pl-warning" role="status">Enable collection in Sources and wait for it to connect before applying monitoring.</p>}
+    {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
+    {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
+    <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
+      inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
+      validationError={metadata.error} onRetryValidation={metadata.retry}
+      selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}
+      onBeginMove={graph.beginMove} onUndo={graph.undo} onRedo={graph.redo} issuesRequest={issuesRequest}
+      actions={canAuthor && !locked && <>
+        <button type="button" disabled={!graph.canUndo} aria-label="Undo graph change" title="Undo (Ctrl+Z)" onClick={graph.undo}><Undo2 size={15} /></button>
+        <button type="button" disabled={!graph.canRedo} aria-label="Redo graph change" title="Redo (Ctrl+Shift+Z)" onClick={graph.redo}><Redo2 size={15} /></button>
+        <button type="button" disabled={arranging} onClick={() => void arrange()}><LayoutGrid size={15} />Arrange</button>
+        {dirty && <button type="button" title="Reset to the initial configuration" onClick={async () => {
+          if (!await confirm({ title: "Discard this setup?", description: "Your changes to this flow are cleared and the setup starts again.",
+            confirmLabel: "Discard and start again", destructive: true })) return;
+          const fresh = initial();
+          session.discard(fresh); graph.resetHistory(); select(opensAtInput ? inputNode(fresh.document) : undefined); graph.requestFit(); setAttempted(false);
+        }}><RotateCcw size={15} />Reset</button>}
+      </>}
+      settings={<PipelineDesignSettings document={draft.document} catalog={catalog} startup={startup} readOnly={!canAuthor || locked || checking}
+        onChange={(document, history) => {
           commit(document, history);
           if (document.definition.input_slots !== slots) setDraft((previous) => ({ ...previous, startingId: undefined }));
         }} />} />
-    </>
     {confirmation}
   </section>;
 }

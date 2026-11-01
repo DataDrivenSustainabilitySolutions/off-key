@@ -4,14 +4,10 @@ from collections.abc import Callable
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .pipeline_scope import PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
-PROJECTIONS = {
-    "static.pca",
-    "adaptive.uncentered_pca",
-    "static.random_projection",
-    "adaptive.random_projection",
-}
+__all__ = ["PROJECTIONS", "Columns", "adaptive_input_errors", "node_features"]
 
 
 def _select(node: PipelineNode, columns: Columns) -> Columns:
@@ -36,36 +32,63 @@ def _min_max(node: PipelineNode, columns: Columns) -> Columns:
     return columns
 
 
-def _standard(_node: PipelineNode, columns: Columns) -> Columns:
+def _unbounded(_node: PipelineNode, columns: Columns) -> Columns:
     for item in columns:
         item.minimum = item.maximum = None
         item.raw = False
     return columns
 
 
-TRANSFORMS: dict[str, Callable[[PipelineNode, Columns], Columns]] = {
+ROUTES: dict[str, Callable[[PipelineNode, Columns], Columns]] = {
     "features.select": _select,
     "features.rename": _rename,
+}
+# Learned steps that map each feature they use to one value.
+ELEMENTWISE: dict[str, Callable[[PipelineNode, Columns], Columns]] = {
     "static.min_max_scaler": _min_max,
     "adaptive.min_max_scaler": _min_max,
-    "static.standard_scaler": _standard,
-    "adaptive.standard_scaler": _standard,
+    "static.standard_scaler": _unbounded,
+    "adaptive.standard_scaler": _unbounded,
+    "static.robust_scaler": _unbounded,
+    "adaptive.robust_scaler": _unbounded,
 }
+
+
+def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
+    scope = step_scope(node.component, node.params, [item.name for item in columns])
+    position = {item.name: item for item in columns}
+    used = [position[name] for name in scope.selected]
+    if not scope.add:
+        # The used columns are the incoming ones, so they change in place.
+        ELEMENTWISE[node.component](node, used)
+        return columns
+    added = ELEMENTWISE[node.component](
+        node, [item.model_copy(deep=True) for item in used]
+    )
+    for item, name in zip(added, scope.added, strict=True):
+        item.name = name
+    return columns + added
 
 
 def _projection(
     definition: PipelineDefinition, node: PipelineNode, columns: Columns
 ) -> Columns:
+    scope = step_scope(node.component, node.params, [item.name for item in columns])
+    used = [columns[index] for index in scope.indices]
     count = node.params["n_components"]
-    if count > len(columns):
-        raise ValueError("n_components must not exceed incoming feature count")
+    if count > len(used):
+        raise ValueError(
+            "n_components must not exceed incoming feature count"
+            if len(used) == len(columns)
+            else f"n_components must not exceed the {len(used)} features it uses"
+        )
     if (
         node.component == "static.pca"
         and count > definition.settings.training_window_size
     ):
         raise ValueError("PCA components exceed training observations")
-    lineage = sorted({slot for item in columns for slot in item.slots})
-    return [
+    lineage = sorted({slot for item in used for slot in item.slots})
+    return [columns[index] for index in scope.kept] + [
         FeatureDescription(
             name=f"{node.id}.component_{index + 1}", slots=lineage, raw=False
         )
@@ -82,8 +105,10 @@ def node_features(
             FeatureDescription(name=slot.id, slots=[slot.id])
             for slot in definition.input_slots
         ]
-    elif node.component in TRANSFORMS:
-        columns = TRANSFORMS[node.component](node, columns)
+    elif node.component in ROUTES:
+        columns = ROUTES[node.component](node, columns)
+    elif node.component in ELEMENTWISE:
+        columns = _elementwise(node, columns)
     elif node.component in PROJECTIONS:
         columns = _projection(definition, node, columns)
     if len(columns) > 100:

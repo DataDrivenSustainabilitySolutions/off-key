@@ -63,10 +63,25 @@ describe("bounded focused pipeline metadata", () => {
     expect(vi.mocked(pipelinesApi.validate).mock.calls[0]?.[2]).toBe("first");
     hook.rerender({ selected: "second" });
     await act(async () => finishFirst(report("first")));
-    expect(hook.result.current).toBeUndefined();
+    expect(hook.result.current.validation).toBeUndefined();
     await act(() => vi.advanceTimersByTimeAsync(800));
-    expect(hook.result.current?.selected_node_id).toBe("second");
-    expect(hook.result.current?.features.second).toHaveLength(1);
+    expect(hook.result.current.validation?.selected_node_id).toBe("second");
+    expect(hook.result.current.validation?.features.second).toHaveLength(1);
+  });
+
+  it("reports a failed check for the current graph and checks again on retry", async () => {
+    vi.useFakeTimers();
+    vi.mocked(pipelinesApi.validate)
+      .mockRejectedValueOnce(new Error("Validation service unavailable"))
+      .mockResolvedValue(report("input"));
+    const hook = renderHook(() => useGraphMetadata(definition, true, "input"));
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(hook.result.current.error).toBe("Validation service unavailable");
+    expect(hook.result.current.validation).toBeUndefined();
+    act(() => hook.result.current.retry());
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    expect(hook.result.current.error).toBeUndefined();
+    expect(hook.result.current.validation?.valid).toBe(true);
   });
 
   it("keeps read-only metadata scoped to its run and inspected component", async () => {

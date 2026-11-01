@@ -8,6 +8,7 @@ Schema = dict[str, Any]
 SCALAR_TYPES = {"number", "integer", "boolean", "string"}
 SPECIAL_TYPES: dict[str, FieldType] = {
     "features": "features",
+    "apply_to": "features",
     "mapping": "rename",
     "feature_range": "number_pair",
 }

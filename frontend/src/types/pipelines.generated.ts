@@ -62,6 +62,12 @@ export type ComponentField = {
   variants?: Record<string, Array<ComponentField>> | null;
 };
 
+export type ElementwiseScopeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string;
+};
+
 export type FeatureDescription = {
   name: string;
   slots: Array<string>;
@@ -77,11 +83,16 @@ export type InputSlot = {
 };
 
 export type MinMaxScalerParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string;
   feature_range?: [number, number];
   clip?: boolean;
 };
 
 export type OnlinePCAParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
   n_components?: number;
   n0?: number;
   tol?: number;
@@ -201,6 +212,7 @@ export type PipelineIssue = {
   message: string;
   node_id?: string | null;
   parameter_path?: Array<string | number> | null;
+  severity?: "error" | "warning";
 };
 
 export type PipelineLayout = {
@@ -449,6 +461,8 @@ export type PipelineWorkspace = {
 };
 
 export type ProjectionParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
   n_components?: number;
   seed?: number | null;
 };
@@ -457,11 +471,33 @@ export type RenameParameters = {
   mapping: Record<string, string>;
 };
 
+export type RobustScalerParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string;
+};
+
+export type RollingRobustScalerParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string;
+  window_size?: number;
+  min_samples?: number;
+};
+
+export type ScopeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+};
+
 export type SelectParameters = {
   features: Array<string>;
 };
 
 export type StandardScalerParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string;
   with_std?: boolean;
 };
 

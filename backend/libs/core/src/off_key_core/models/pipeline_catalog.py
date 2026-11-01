@@ -89,6 +89,13 @@ def pipeline_components() -> list[PipelineComponent]:
             ["static_baseline"],
         ),
         (
+            "static.robust_scaler",
+            "transform",
+            "Robust scaling",
+            "Center on the training median and divide by its interquartile range.",
+            ["static_baseline"],
+        ),
+        (
             "static.pca",
             "transform",
             "Centered PCA",
@@ -114,6 +121,13 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Online min-max scaling",
             "Online observed bounds; clipping is explicit.",
+            ["adaptive_stream"],
+        ),
+        (
+            "adaptive.robust_scaler",
+            "transform",
+            "Online robust scaling",
+            "Center on the recent median and divide by the recent interquartile range.",
             ["adaptive_stream"],
         ),
         (
@@ -265,9 +279,11 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 if strategy == "static_baseline"
                 else "Adaptive stream",
                 definition=compile_pipeline(definition).definition,
+                # 64px between cards leaves every wire room for the editor's
+                # insert handle beside the 28px connection dots.
                 layout=PipelineLayout(
                     nodes={
-                        identifier: {"x": index * 260, "y": 100}
+                        identifier: {"x": index * 288, "y": 100}
                         for index, identifier in enumerate(
                             ["input", "detector", "policy", "output"]
                         )

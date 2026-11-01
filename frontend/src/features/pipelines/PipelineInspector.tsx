@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
-import type { PipelineCatalog, PipelineValidation } from "./contracts";
+import type { PipelineCatalog, PipelineNode, PipelineValidation } from "./contracts";
 import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
 import { hasParameterControl } from "@/components/parameter-editor/types";
 import {
@@ -15,6 +15,8 @@ import {
   setNodeParams,
   type GraphDocument,
 } from "./model";
+import { PipelineScope } from "./PipelineScope";
+import { hasScope, isWarning, SCOPE_FIELDS } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import type { HistoryMode } from "./types";
 
@@ -23,9 +25,13 @@ type Props = {
   catalog: PipelineCatalog;
   selected?: string;
   validation?: PipelineValidation;
+  /** The latest report while an edit is being checked; its features stay listed meanwhile. */
+  lastValidation?: PipelineValidation;
   readOnly?: boolean;
   header?: ReactNode;
   content?: ReactNode;
+  /** Shown for the input instead of its generic settings: the readings it monitors. */
+  input?: ReactNode;
   onSelect: (id?: string) => void;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 };
@@ -35,9 +41,11 @@ export function PipelineInspector({
   catalog,
   selected,
   validation,
+  lastValidation,
   readOnly,
   header,
   content,
+  input: inputContent,
   onSelect,
   onChange,
 }: Props) {
@@ -46,11 +54,13 @@ export function PipelineInspector({
   const node = document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
   const incoming = selected ? incomingEdges(document.definition, selected) : [];
+  // Feature lists keep the latest report while an edit is checked, so choices do not jump.
+  const report = validation ?? lastValidation;
   const features = [
     ...new Set(
       incoming.flatMap(
         (edge) =>
-          validation?.features[edge.source]?.map((feature) => feature.name) ??
+          report?.features[edge.source]?.map((feature) => feature.name) ??
           [],
       ),
     ),
@@ -75,17 +85,85 @@ export function PipelineInspector({
       slot.label === slot.id ? slot.id : `${slot.label} · ${slot.id}`,
     ]),
   );
+  const lineage = node && report?.features[node.id] && (
+    <>
+      <h4>
+        {component?.output_type === "features" ||
+        ["source", "transform", "merge"].includes(node.kind)
+          ? "Output features"
+          : "Contributing feature lineage"}
+      </h4>
+      {report.provenance_complete === false && (
+        <p className="pl-help">
+          Some source provenance is omitted to keep this inspection
+          bounded. Feature names and order remain complete for this
+          step.
+        </p>
+      )}
+      <ul className="pl-lineage">
+        {report.features[node.id]?.map((feature) => (
+          <li key={feature.name}>
+            <strong>
+              {featureLabels[feature.name] ?? feature.name}
+            </strong>
+            <small>
+              {feature.slots.length ? (
+                <>
+                  From{" "}
+                  {feature.slots
+                    .map((slot) => featureLabels[slot] ?? slot)
+                    .join(", ")}
+                </>
+              ) : report.provenance_complete === false ? (
+                "Source provenance omitted"
+              ) : (
+                "Source provenance unavailable"
+              )}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+  const titleField = node && (
+    <label className="pl-field">
+      <span>Step title</span>
+      <input
+        maxLength={120}
+        value={document.layout.nodes[node.id]?.label ?? ""}
+        placeholder={component?.label ?? node.component}
+        disabled={readOnly}
+        onChange={(event) =>
+          onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
+        }
+      />
+    </label>
+  );
+  // Errors on a setting appear beside it; warnings never block and are listed here.
+  const nodeIssues = node && validation?.issues
+    .filter((issue) => issue.node_id === node.id
+      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path)))
+    .map((issue, index) => isWarning(issue)
+      ? <p key={index} className="pl-warning" role="status">{issue.message}</p>
+      : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
+  const fieldIssues = (validation?.issues ?? [])
+    .filter((issue) => node && issue.node_id === node.id && issue.parameter_path != null && !isWarning(issue))
+    .map((issue) => ({ path: issue.parameter_path!, message: issue.message }));
+  const scoped = hasScope(component);
+  const changeParams = (params: PipelineNode["params"], changed: string) => {
+    if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
+  };
   return (
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
       {content ?? <>
       <label className="pl-field">
-        <span>Selected component</span>
+        <span>Selected step</span>
         <select
           value={selected ?? ""}
           onChange={(event) => onSelect(event.target.value || undefined)}
         >
-          <option value="">Choose component</option>
+          <option value="">Choose a step</option>
           {document.definition.nodes.map((item) => (
             <option key={item.id} value={item.id}>
               {optionLabel(item)}
@@ -93,7 +171,15 @@ export function PipelineInspector({
           ))}
         </select>
       </label>
-      {node ? (
+      {node && node.kind === "source" && inputContent ? (
+        <>
+          <h3>Input</h3>
+          {inputContent}
+          {titleField}
+          {lineage}
+          {nodeIssues}
+        </>
+      ) : node ? (
         <>
           <h3>{component?.label ?? node.component}</h3>
           {component?.description && (
@@ -156,34 +242,24 @@ export function PipelineInspector({
               </div>
             );
           })()}
-          <label className="pl-field">
-            <span>Node title</span>
-            <input
-              maxLength={120}
-              value={document.layout.nodes[node.id]?.label ?? ""}
-              placeholder={component?.label ?? node.component}
-              disabled={readOnly}
-              onChange={(event) =>
-                onChange(setNodeLabel(document, node.id, event.target.value), `title:${node.id}`)
-              }
-            />
-          </label>
+          {titleField}
+          {component && scoped && (
+            <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+              issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
           {component && (
             <ParameterFields
-              fields={component.fields}
-              issues={(validation?.issues ?? []).filter(issue => issue.node_id === node.id && issue.parameter_path != null).map(issue => ({ path: issue.parameter_path!, message: issue.message }))}
+              fields={scoped ? component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)) : component.fields}
+              issues={fieldIssues}
               values={node.params}
               features={features}
               featureLabels={featureLabels}
               prefix={node.id}
               readOnly={readOnly}
-              onChange={(params) => {
-                const changed = Object.keys(params)
-                  .filter((key) => params[key] !== node.params[key])
-                  .sort()
-                  .join(",");
-                onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
-              }}
+              onChange={(params) => changeParams(params, Object.keys(params)
+                .filter((key) => params[key] !== node.params[key])
+                .sort()
+                .join(","))}
             />
           )}
           <h4>
@@ -290,7 +366,7 @@ export function PipelineInspector({
                     });
                   }}
                 >
-                  <option value="">Choose upstream component</option>
+                  <option value="">Choose upstream step</option>
                   {candidates.map((item) => (
                     <option key={item.id} value={item.id}>
                       {optionLabel(item)}
@@ -300,69 +376,24 @@ export function PipelineInspector({
                 <small className="pl-help" id={connectionHelpId}>
                   {candidates.length
                     ? "Only compatible, cycle-free connections are listed."
-                    : "No compatible upstream output is available. Add a component or disconnect an occupied input."}
+                    : "No compatible upstream output is available. Add a step or disconnect an occupied input."}
                 </small>
               </label>
             )}
-          {validation?.features[node.id] && (
-            <>
-              <h4>
-                {component?.output_type === "features" ||
-                ["source", "transform", "merge"].includes(node.kind)
-                  ? "Output features"
-                  : "Contributing feature lineage"}
-              </h4>
-              {validation.provenance_complete === false && (
-                <p className="pl-help">
-                  Some source provenance is omitted to keep this inspection
-                  bounded. Feature names and order remain complete for this
-                  component.
-                </p>
-              )}
-              <ul className="pl-lineage">
-                {validation.features[node.id]?.map((feature) => (
-                  <li key={feature.name}>
-                    <strong>
-                      {featureLabels[feature.name] ?? feature.name}
-                    </strong>
-                    <small>
-                      {feature.slots.length ? (
-                        <>
-                          From{" "}
-                          {feature.slots
-                            .map((slot) => featureLabels[slot] ?? slot)
-                            .join(", ")}
-                        </>
-                      ) : validation.provenance_complete === false ? (
-                        "Source provenance omitted"
-                      ) : (
-                        "Source provenance unavailable"
-                      )}
-                    </small>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {validation?.issues
-            .filter((issue) => issue.node_id === node.id && !hasParameterControl(component?.fields ?? [], issue.parameter_path))
-            .map((issue, index) => (
-              <p key={index} className="pl-error" role="alert">
-                {issue.message}
-              </p>
-            ))}
+          {lineage}
+          {nodeIssues}
           {!readOnly && (
             <button
               type="button"
               className="pl-danger"
               onClick={() => onChange(removeNode(document, node.id))}
             >
-              Remove component
+              Remove step
             </button>
           )}
         </>
       ) : (
-        <p className="pl-help">Select a component.</p>
+        <p className="pl-help">Select a step.</p>
       )}
       </>}
     </aside>

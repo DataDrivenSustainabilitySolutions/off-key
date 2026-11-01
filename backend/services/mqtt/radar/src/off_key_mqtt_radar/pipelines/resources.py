@@ -7,6 +7,7 @@ from struct import calcsize
 from typing import Any
 
 import numpy as np
+from off_key_core.models.pipeline_scope import step_scope
 from pydantic import BaseModel
 
 from .plan import ExecutionPlan
@@ -71,7 +72,19 @@ def _dense_projection(_node, width: int, outputs: int) -> tuple[int, int]:
     return width * outputs * 8, 0
 
 
-# Projection state as (numeric bytes, retained container bytes) per component.
+def _rolling_windows(node, width: int, _outputs: int) -> tuple[int, int]:
+    """Aberrant keeps one tuple of Python floats per feature and window.
+
+    A learning transaction keeps the previous tuple while the next one and its
+    sorted copy exist, so three pointer arrays per feature can be alive.
+    """
+    window = node.params["window_size"]
+    floats = width * window * sys.getsizeof(0.0)
+    pointers = width * 3 * (sys.getsizeof(()) + window * calcsize("P"))
+    return floats, pointers
+
+
+# Learned state as (numeric bytes, retained container bytes) per component.
 STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
     "adaptive.uncentered_pca": lambda node, width, outputs: _adaptive_pca_allocations(
         node.params["n0"], width, outputs
@@ -79,6 +92,7 @@ STATE_ESTIMATORS: dict[str, Callable[[Any, int, int], tuple[int, int]]] = {
     "static.pca": _dense_projection,
     "static.random_projection": _dense_projection,
     "adaptive.random_projection": _dense_projection,
+    "adaptive.robust_scaler": _rolling_windows,
 }
 
 
@@ -110,8 +124,12 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
         peak = max(peak, sum(alive.values()))
         estimate = STATE_ESTIMATORS.get(node.component)
         if estimate is not None:
-            width = len(plan.names(plan.parents(node.id)[0]))
-            numeric, retained = estimate(node, width, len(plan.names(node.id)))
+            # A scoped step holds state only for the features it uses.
+            scope = step_scope(
+                node.component, node.params, plan.names(plan.parents(node.id)[0])
+            )
+            outputs = node.params.get("n_components", len(scope.selected))
+            numeric, retained = estimate(node, len(scope.selected), outputs)
             initialization += numeric
             projection_containers += retained
         for parent in plan.parents(node.id):

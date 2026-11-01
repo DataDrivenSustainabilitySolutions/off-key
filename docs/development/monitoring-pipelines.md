@@ -42,12 +42,19 @@ match. Unrelated catalog descriptions or components do not invalidate a revision
 
 ## Creation workbench
 
-`?create=monitoring` opens one setup page with the service name, entity,
-reading bindings and processing graph. Its main actions are **Load template**,
-**Save template** and **Apply monitoring**. Users do not save drafts or publish
-revisions to start a service. Learning settings and component parameters stay in
-the graph inspector. Learning fields appear immediately when its panel opens;
-only advanced input-slot editing is collapsed. Entity selection includes configured
+`?create=monitoring` opens one setup page: the processing graph under a header
+with the service name, an input summary that opens the **Input** step (entity and
+reading bindings) and a strategy shortcut that opens **Service settings**. A new
+service opens at the Input step. Its main actions are **Load template**, **Save
+template** and **Apply monitoring**. Users do not save drafts or publish
+revisions to start a service. Service settings (strategy, learning counts and
+the start-up timeline) and step parameters stay in the side panel; only advanced
+input-slot editing is collapsed. `useGraphMetadata` checks every edit after
+800 ms, and the status chip offers a retry when the check fails. The strategy
+switch (`strategy.ts`) maps learned steps through explicit counterpart pairs and
+falls back to the target template's detector and policy. The start-up estimate
+(`startup.ts`) takes the slowest bound reading's typical interval, because RADAR
+aligns observations across all readings. Entity selection includes configured
 entities even when there is no recent traffic; collection and reading ownership
 still gate Apply.
 
@@ -172,6 +179,28 @@ Incomplete drafts still expose every knowable feature schema. An invalid node
 blocks inference for its dependent paths while independent branches and valid
 upstream outputs remain available to the inspector. Executable compilation still
 requires the entire graph to validate.
+
+Scalers and projections take an optional scope (`pipeline_scope.py`): `apply_to`
+names the features they use, unset for all, and `result` is `replace` or `add`.
+Elementwise steps add `<feature>_<suffix>`; a replacing projection drops the
+features it uses and appends `<node>.component_i`. Untouched features keep their
+order and added ones follow in `apply_to` order. Scope settings at their defaults,
+and a suffix when replacing, are left out of the normalized parameters, so
+designs saved before scopes existed keep their fingerprints. The compiler reports
+an unknown `apply_to` name, a repeated output name or more components than used
+features with their parameter path. Static graphs fit a scoped step on its
+columns only. Adaptive graphs wrap the transformer in `ScopedStep`, which forwards
+readiness and learning transactions; unscoped steps keep their plain runtime
+shape, so existing checkpoints load unchanged. Tests pin that a scoped step
+computes exactly what select, the step and an ordered merge compute, under both
+strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
+and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
+by 1 when a feature's interquartile range is zero.
+
+Validation issues carry a severity. Errors block compilation, publishing and
+Apply; warnings use the same shape, appear on the step and in the status chip, and
+do not. The inspector keeps the last checked features while an edit is checked, so
+feature choices do not jump between checks.
 
 ## Activation and recovery
 

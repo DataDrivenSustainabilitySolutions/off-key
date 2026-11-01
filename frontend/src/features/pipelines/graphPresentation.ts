@@ -11,6 +11,9 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+import { isWarning } from "./scope";
+import { familyLabel, stepFamily } from "./steps";
+import { nodeSummary } from "./summaries";
 
 /** Project the canonical definition into the renderer. Never normalize or mutate execution here. */
 export function presentGraph(
@@ -24,6 +27,7 @@ export function presentGraph(
     const component = componentFor(node, components);
     const input = inputKind(component);
     const output = outputKind(node, component);
+    const summary = nodeSummary(node, component, document.definition);
     return {
       id: node.id,
       type: "component",
@@ -33,6 +37,7 @@ export function presentGraph(
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
+        family: familyLabel(stepFamily(node.kind, node.component)),
         operation: component?.label ?? node.component,
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",
@@ -40,7 +45,10 @@ export function presentGraph(
         inputType: input,
         outputType: output,
         state: states?.[node.id],
-        issueCount: issues.filter((issue) => issue.node_id === node.id).length,
+        issueCount: issues.filter((issue) => issue.node_id === node.id && !isWarning(issue)).length,
+        warningCount: issues.filter((issue) => issue.node_id === node.id && isWarning(issue)).length,
+        summary: summary.text,
+        chips: summary.chips,
       },
     };
   });

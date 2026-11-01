@@ -2,8 +2,12 @@
 import { describe, expect, it } from "vitest";
 import {
   addComponent,
+  connectionIssue,
   connectNodes,
   disconnectEdge,
+  incomingEdges,
+  insertBlocker,
+  insertOnEdge,
   executableChanges,
   moveMergeInput,
   removeElements,
@@ -260,5 +264,69 @@ describe("graph document helpers", () => {
   it("names learning strategies", () => {
     expect(strategyLabel("adaptive_stream")).toBe("Adaptive stream");
     expect(strategyLabel("static_baseline")).toBe("Static baseline");
+  });
+});
+
+describe("editing on connections", () => {
+  const passthrough = components.find((item) => item.id === "features.passthrough")!;
+  const placed = (nodes: Record<string, { x: number; y: number }>): GraphDocument =>
+    ({ definition: definition(), layout: normalizeLayout({ nodes }) });
+
+  it("inserts a step on a connection and keeps the target's merge position", () => {
+    const document = placed({ source: { x: 0, y: 0 }, raw: { x: 300, y: 0 }, merge: { x: 900, y: 0 } });
+    const inserted = insertOnEdge(document, { source: "raw", target: "merge" }, passthrough, components)!;
+    expect(inserted.id).toBe("features_passthrough_1");
+    const edges = inserted.document.definition.edges;
+    expect(edges.some((edge) => edge.source === "raw" && edge.target === "merge")).toBe(false);
+    expect(edges).toContainEqual({ source: "raw", target: inserted.id, order: 0 });
+    expect(incomingEdges(inserted.document.definition, "merge").map((edge) => [edge.source, edge.order]))
+      .toEqual([["scale", 0], [inserted.id, 3]]);
+    // Room between the ends: the card sits centered there and nothing moves.
+    expect(inserted.document.layout.nodes[inserted.id]).toMatchObject({ x: 608, y: 0 });
+    expect(inserted.document.layout.nodes.merge).toEqual({ x: 900, y: 0 });
+  });
+
+  it("opens a column at the target when the connection is too short for a card", () => {
+    const document = placed({
+      source: { x: 0, y: 0 }, raw: { x: 288, y: 0 }, scale: { x: 288, y: 192 },
+      merge: { x: 576, y: 0 }, model: { x: 864, y: 0 },
+    });
+    const inserted = insertOnEdge(document, { source: "raw", target: "merge" }, passthrough, components)!;
+    const layout = inserted.document.layout.nodes;
+    expect(layout[inserted.id]).toMatchObject({ x: 576, y: 0 });
+    // The target and everything right of it move one column; the rest stays put.
+    expect(layout.merge).toEqual({ x: 864, y: 0 });
+    expect(layout.model).toEqual({ x: 1152, y: 0 });
+    expect(layout.scale).toEqual({ x: 288, y: 192 });
+    expect(layout.raw).toEqual({ x: 288, y: 0 });
+  });
+
+  it("refuses steps that do not fit the connection and explains why", () => {
+    const document = placed({});
+    const detector = components.find((item) => item.kind === "detector")!;
+    const scores: PipelineComponent = { ...passthrough, id: "scores.only", input_type: "scores", output_type: "scores" };
+    const link = { source: "raw", target: "merge" };
+    expect(insertBlocker(document.definition, link, detector, components)).toBe("A design has one of these.");
+    expect(insertBlocker(document.definition, link, scores, [...components, scores]))
+      .toBe("Does not fit a connection that carries features.");
+    expect(insertBlocker(document.definition, link, passthrough, components)).toBeUndefined();
+    expect(insertOnEdge(document, link, detector, components)).toBeUndefined();
+    expect(insertOnEdge(document, { source: "raw", target: "model" }, passthrough, components)).toBeUndefined();
+  });
+
+  it("replaces an occupied single input on request and still rejects cycles", () => {
+    const graph = definition();
+    expect(connectionIssue(graph, "raw", "model", components)).toContain("occupied");
+    expect(connectionIssue(graph, "raw", "model", components, { replace: true })).toBeUndefined();
+    const replaced = connectNodes(graph, "raw", "model", components, { replace: true });
+    expect(incomingEdges(replaced, "model")).toEqual([{ source: "raw", target: "model", order: 0 }]);
+    // The merge keeps both of its branches; only the detector's input changed.
+    expect(incomingEdges(replaced, "merge")).toEqual(incomingEdges(graph, "merge"));
+    // Feeding the scaler from the merge it feeds would close a loop.
+    expect(connectionIssue(graph, "merge", "scale", components, { replace: true })).toContain("cycle");
+    expect(connectNodes(graph, "merge", "scale", components, { replace: true })).toBe(graph);
+    // A merge never replaces: a new connection is another input.
+    expect(incomingEdges(connectNodes(graph, "source", "merge", components, { replace: true }), "merge"))
+      .toHaveLength(3);
   });
 });

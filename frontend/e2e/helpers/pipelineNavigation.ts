@@ -2,8 +2,23 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import type { PipelineView } from "../../src/types/pipelines.generated";
 
 export async function openPipelineSettings(scope: Page | Locator, panel: "Service" | "Component") {
-  const button = scope.getByRole("button", { name: panel === "Service" ? "Learning settings" : "Component settings", exact: true });
+  const button = scope.getByRole("button", { name: panel === "Service" ? "Service settings" : "Step settings", exact: true });
   if (await button.getAttribute("aria-expanded") !== "true") await button.click();
+}
+
+/** The readings live in the Input step; a saved design opens at its graph. */
+export async function openPipelineInput(scope: Page | Locator) {
+  await scope.getByRole("button", { name: /^Input: / }).click();
+  await expect(scope.getByRole("heading", { name: "Input", exact: true })).toBeVisible();
+}
+
+/** The status chip reports the compiler's check of the latest edit; it replaced the Validate button. */
+export async function expectValidPipeline(page: Page) {
+  const status = page.getByRole("button", { name: /^(Graph is valid|Graph not checked|\d+\+? graph issues?)/ });
+  await expect(status).toHaveAccessibleName(/^Graph is valid(?!.*checking changes$)/);
+  await status.click();
+  await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
 }
 
 export async function savePipelineTemplate(page: Page, name?: string, copy = false): Promise<PipelineView> {

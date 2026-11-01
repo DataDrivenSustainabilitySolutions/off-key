@@ -24,6 +24,7 @@ from .pipeline_features import (
 )
 from .pipeline_fields import parameter_path
 from .pipeline_parameters import normalized_parameters
+from .pipeline_scope import ScopeError
 
 
 @dataclass
@@ -59,6 +60,29 @@ class _Compilation:
         )
         if node_id is not None and blocks_features:
             self.unresolved.add(node_id)
+
+    def warning(
+        self,
+        code: str,
+        message: str,
+        node_id: str | None = None,
+        *,
+        parameter_path: list[str | int] | None = None,
+    ) -> None:
+        """Report something to review that does not stop the design from running."""
+        self.issues.append(
+            PipelineIssue(
+                code=code,
+                message=message,
+                node_id=node_id,
+                parameter_path=parameter_path,
+                severity="warning",
+            )
+        )
+
+    @property
+    def valid(self) -> bool:
+        return not any(issue.severity == "error" for issue in self.issues)
 
 
 def _validate_identity(compilation: _Compilation) -> None:
@@ -206,6 +230,10 @@ def _propagate_features(compilation: _Compilation) -> None:
             compilation.features[identifier] = node_features(
                 compilation.definition, node, branches
             )
+        except ScopeError as exc:
+            compilation.error(
+                "scope", str(exc), identifier, parameter_path=exc.parameter_path
+            )
         except (ValueError, KeyError) as exc:
             compilation.error("feature_schema", str(exc), identifier)
 
@@ -264,19 +292,21 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
             "training", "Static baseline requires at least 20 training observations"
         )
     return PipelineValidation(
-        valid=not compilation.issues,
+        valid=compilation.valid,
         issues=compilation.issues,
         definition=normalized,
         order=compilation.order,
         features=compilation.features,
-        fingerprint=_definition_fingerprint(normalized)
-        if not compilation.issues
-        else None,
+        fingerprint=_definition_fingerprint(normalized) if compilation.valid else None,
     )
 
 
 def compile_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     result = validate_pipeline(definition)
     if not result.valid:
-        raise ValueError("; ".join(item.message for item in result.issues))
+        raise ValueError(
+            "; ".join(
+                item.message for item in result.issues if item.severity == "error"
+            )
+        )
     return result

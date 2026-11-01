@@ -47,6 +47,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         if self.plan.execution.definition.strategy != "adaptive_stream":
             raise ValueError("Adaptive execution requires an adaptive pipeline")
         self._scored_features: dict[str, float] | None = None
+        # The bound readings of the current observation, before any Prepare step.
+        self._bound: dict[str, float] = {}
         self.config = config
         adaptive_config = config.monitoring
         if not isinstance(adaptive_config, AdaptiveStreamConfig):
@@ -123,6 +125,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             raise ValueError("Checkpoint has no usable adaptive graph")
         if self.state == AdaptiveStreamState.FAILED:
             raise ValueError("Failed adaptive executions cannot be restored")
+        self._restore_prepare(checkpoint)
         self.pipeline.observer = self._observe
 
     @classmethod
@@ -195,6 +198,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             result.processed_features = self._scored_features
             self._record_result(result)
             return result
+        except ObservationRejected:
+            raise
         except Exception as error:
             self._execution_failed = True
             self.state = AdaptiveStreamState.FAILED
@@ -238,7 +243,15 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         charger_id: str | None,
     ) -> AnomalyResult:
         # Binding has checked the schema and finiteness; failures stop the run.
-        return self._process_current_state(data, topic, charger_id, time.time())
+        started = time.time()
+        self._bound = data
+        prepared = self._prepared(data)
+        if prepared is None:
+            self.processed_count += 1
+            return self._result(
+                data, 0.0, False, "preparing", topic, charger_id, started
+            )
+        return self._process_current_state(prepared, topic, charger_id, started)
 
     def _process_current_state(
         self,
@@ -323,7 +336,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
 
     def _score(self, data: dict[str, float]) -> float:
         self._diagnose(self.diagnostics.select_pass, "score")
-        self.diagnostics.record(self.plan.source_id, data, data)
+        self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
         score = float(self.pipeline.score_one(data))
         if not math.isfinite(score):
             raise ValueError("Aberrant returned a non-finite anomaly score")
@@ -331,7 +344,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
 
     def _learn(self, data: dict[str, float]) -> None:
         self._diagnose(self.diagnostics.select_pass, "learn")
-        self.diagnostics.record(self.plan.source_id, data, data)
+        self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
         self.pipeline.learn_one(data)
         self._diagnose(
             self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
@@ -416,25 +429,27 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     def export_checkpoint(self) -> dict[str, Any]:
         """Export state without I/O for the managed persistence barrier."""
         self._require_exportable()
-        return {
-            "strategy": "adaptive_stream",
-            "adaptive_state": self.state.value,
-            "feature_keys": self.feature_keys,
-            "pipeline": self.pipeline,
-            "detector_config": self.detector_config.as_dict(),
-            "detector_fingerprint": self.detector_fingerprint,
-            "severity_scale": self.severity_scale,
-            "calibration_scores": self.calibration_scores,
-            "threshold": self.threshold,
-            "processed_count": self.processed_count,
-            "warmup_count": self.warmup_count,
-            "calibration_count": self.calibration_count,
-            "operational_count": self.operational_count,
-            "anomaly_count": self.anomaly_count,
-            "training_error": self.training_error,
-            "schema_signature": self.schema_signature,
-            "aberrant_version": aberrant_version,
-        }
+        return self._export_prepare(
+            {
+                "strategy": "adaptive_stream",
+                "adaptive_state": self.state.value,
+                "feature_keys": self.feature_keys,
+                "pipeline": self.pipeline,
+                "detector_config": self.detector_config.as_dict(),
+                "detector_fingerprint": self.detector_fingerprint,
+                "severity_scale": self.severity_scale,
+                "calibration_scores": self.calibration_scores,
+                "threshold": self.threshold,
+                "processed_count": self.processed_count,
+                "warmup_count": self.warmup_count,
+                "calibration_count": self.calibration_count,
+                "operational_count": self.operational_count,
+                "anomaly_count": self.anomaly_count,
+                "training_error": self.training_error,
+                "schema_signature": self.schema_signature,
+                "aberrant_version": aberrant_version,
+            }
+        )
 
     def refresh_background_state(self) -> None:
         """Adaptive models train inline and have no background state."""
@@ -449,6 +464,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             "ready": self.pipeline.readiness.ready,
             "reason": self.pipeline.readiness.reason,
         }
+        snapshot.update(self._preparation())
         return snapshot
 
     def get_model_info(self) -> dict[str, Any]:
@@ -469,6 +485,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             "calibration_window_size": self.adaptive_config.calibration_window_size,
             "threshold": self.threshold,
             "training_error": self.training_error,
+            **self._preparation(),
             "memory_usage_mb": process_rss_mb(),
             "avg_processing_time_ms": (
                 sum(self.processing_times) / max(len(self.processing_times), 1) * 1000

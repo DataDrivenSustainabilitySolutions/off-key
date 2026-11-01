@@ -205,6 +205,11 @@ class PipelineValidationReport(PipelineModel):
     provenance_complete: bool = True
     definition_omitted: bool = False
     issues_truncated: bool = False
+    preparation_observations: int = Field(
+        default=0,
+        ge=0,
+        description="Observations the Prepare stage takes before anything learns.",
+    )
 
 
 FieldType = Literal[
@@ -520,6 +525,18 @@ class PipelineNodeRuntime(PipelineModel):
     readiness_reason: str | None
     blocked_by: list[str] = Field(default_factory=list)
     error: str | None = None
+    rejections: dict[str, int] = Field(default_factory=dict)
+    """Observations a Prepare step skipped, by reason."""
+
+
+class PreparationState(PipelineModel):
+    """Progress of the Prepare stage, which runs before anything learns."""
+
+    ready: bool
+    observed: int
+    required: int
+    """Observations until the first prepared row reaches the learned stage."""
+    rejected: int
 
 
 class AdaptiveLearningState(PipelineModel):
@@ -558,6 +575,7 @@ class PipelineRuntimeState(PipelineModel):
     diagnostic_errors: int
     adaptive_learning: AdaptiveLearningState | None = None
     batch_training: BatchTrainingState | None = None
+    preparation: PreparationState | None = None
 
 
 class ScopeParameters(PipelineModel):
@@ -692,4 +710,164 @@ class OnlinePCAParameters(ScopeParameters):
     def enough_initial_observations(self) -> "OnlinePCAParameters":
         if self.n0 < self.n_components:
             raise ValueError("n0 must be at least n_components")
+        return self
+
+
+# Prepare steps run once per observation, in arrival order, before anything learns.
+PREPARE_WINDOW_LIMIT = 3600
+
+
+class PrepareScopeParameters(ScopeParameters):
+    """A Prepare step maps each feature it uses to one value.
+
+    Left unset, the suffix follows the step's settings, such as diff1 for a
+    difference over one observation.
+    """
+
+    suffix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Za-z0-9_]+$",
+        title="Suffix",
+        description=(
+            "Added features are named <feature>_<suffix>. Leave unset for the "
+            "step's short name."
+        ),
+    )
+
+
+def _window(
+    default: int,
+    description: str,
+    *,
+    minimum: int = 2,
+    maximum: int = PREPARE_WINDOW_LIMIT,
+) -> Any:
+    return Field(
+        default=default,
+        ge=minimum,
+        le=maximum,
+        title="Window",
+        description=description,
+    )
+
+
+class SmoothParameters(PrepareScopeParameters):
+    method: Literal["exponential", "rolling"] = Field(
+        default="exponential",
+        description=(
+            "Exponential weighs recent values more, with alpha = 2 / (window + 1). "
+            "Rolling takes the plain mean of the window."
+        ),
+    )
+    window_size: int = _window(10, "Observations to smooth over.")
+
+
+class DespikeParameters(PrepareScopeParameters):
+    window_size: int = _window(
+        11,
+        "Recent observations, an odd number, whose median replaces a spike.",
+        minimum=5,
+        maximum=301,
+    )
+    threshold: float = Field(
+        default=3.0,
+        gt=0,
+        le=100,
+        description=(
+            "How many scaled median absolute deviations a value may differ from "
+            "the window median before the median replaces it."
+        ),
+    )
+
+    @field_validator("window_size")
+    @classmethod
+    def odd_window(cls, value: int) -> int:
+        if value % 2 == 0:
+            raise ValueError("Choose an odd number, so the window has a middle value")
+        return value
+
+
+class ChangeParameters(PrepareScopeParameters):
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Replace the features this step uses, or keep them and add the "
+            "step's output as new features."
+        ),
+    )
+    mode: Literal["difference", "percent", "lag"] = Field(
+        default="difference",
+        description=(
+            "Difference x(t) - x(t - lag), percent change against x(t - lag), or "
+            "the value lag observations back."
+        ),
+    )
+    lag: int = Field(
+        default=1,
+        ge=1,
+        le=PREPARE_WINDOW_LIMIT,
+        description="Observations back to compare with.",
+    )
+
+
+class RollingParameters(PrepareScopeParameters):
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Replace the features this step uses, or keep them and add the "
+            "step's output as new features."
+        ),
+    )
+    statistic: Literal["mean", "median", "min", "max", "std", "range"] = Field(
+        default="mean",
+        description=(
+            "Statistic of the window; std is the sample standard deviation and "
+            "range is max minus min."
+        ),
+    )
+    window_size: int = _window(60, "Recent observations the statistic covers.")
+
+
+class MathParameters(PrepareScopeParameters):
+    function: Literal["log", "log1p", "sqrt", "abs", "square", "linear"] = Field(
+        default="log",
+        description=(
+            "log needs values above 0, log1p above -1 and sqrt at least 0; "
+            "linear computes scale * x + offset."
+        ),
+    )
+    scale: float = Field(default=1.0, description="Factor of linear.")
+    offset: float = Field(default=0.0, description="Constant added by linear.")
+
+
+class RangeParameters(PrepareScopeParameters):
+    low: float | None = Field(
+        default=0.0, description="Smallest accepted value; none leaves it open."
+    )
+    high: float | None = Field(
+        default=1.0, description="Largest accepted value; none leaves it open."
+    )
+    action: Literal["clip", "skip"] = Field(
+        default="clip",
+        description=(
+            "Clip moves values outside the range to its nearest end. Skip drops "
+            "the whole observation and counts it as a coverage gap."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def ordered_bounds(self) -> "RangeParameters":
+        if self.low is None and self.high is None:
+            raise ValueError("Set low, high or both")
+        if self.low is not None and self.high is not None and self.low >= self.high:
+            raise ValueError("low must be less than high")
+        if self.action == "skip" and self.result == "add":
+            raise ValueError(
+                "Skipping leaves values unchanged, so there is nothing to add. "
+                "Choose Replace values."
+            )
         return self

@@ -17,6 +17,7 @@ from ..schemas.pipelines import (
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import validate_adaptive_model_params
+from .pipeline_prepare import PREPARE_MODELS
 from .pipeline_scope import SCOPED_COMPONENTS, canonical_scope
 from .static import validate_static_model_params
 
@@ -36,6 +37,7 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     "static.random_projection": ProjectionParameters,
     "adaptive.random_projection": ProjectionParameters,
     "adaptive.uncentered_pca": OnlinePCAParameters,
+    **PREPARE_MODELS,
     "output.evidence": PipelineModel,
 }
 POLICY_MODELS = {
@@ -58,4 +60,6 @@ def normalized_parameters(
     params = model.model_validate(node.params).model_dump(mode="json")
     if "seed" in params and params["seed"] is None:
         params["seed"] = definition.settings.seed
-    return canonical_scope(params) if node.component in SCOPED_COMPONENTS else params
+    if node.component in SCOPED_COMPONENTS:
+        return canonical_scope(node.component, params)
+    return params

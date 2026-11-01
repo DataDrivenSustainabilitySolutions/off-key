@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .pipeline_prepare import PREPARE_COMPONENTS, prepared_bounds
 from .pipeline_scope import PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
@@ -54,17 +55,29 @@ ELEMENTWISE: dict[str, Callable[[PipelineNode, Columns], Columns]] = {
 }
 
 
+def _prepared(node: PipelineNode, columns: Columns) -> Columns:
+    for item in columns:
+        item.minimum, item.maximum = prepared_bounds(
+            node.component, node.params, (item.minimum, item.maximum)
+        )
+        item.raw = False
+    return columns
+
+
 def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
     scope = step_scope(node.component, node.params, [item.name for item in columns])
     position = {item.name: item for item in columns}
     used = [position[name] for name in scope.selected]
+    change = (
+        _prepared
+        if node.component in PREPARE_COMPONENTS
+        else ELEMENTWISE[node.component]
+    )
     if not scope.add:
         # The used columns are the incoming ones, so they change in place.
-        ELEMENTWISE[node.component](node, used)
+        change(node, used)
         return columns
-    added = ELEMENTWISE[node.component](
-        node, [item.model_copy(deep=True) for item in used]
-    )
+    added = change(node, [item.model_copy(deep=True) for item in used])
     for item, name in zip(added, scope.added, strict=True):
         item.name = name
     return columns + added
@@ -107,7 +120,7 @@ def node_features(
         ]
     elif node.component in ROUTES:
         columns = ROUTES[node.component](node, columns)
-    elif node.component in ELEMENTWISE:
+    elif node.component in ELEMENTWISE or node.component in PREPARE_COMPONENTS:
         columns = _elementwise(node, columns)
     elif node.component in PROJECTIONS:
         columns = _projection(definition, node, columns)

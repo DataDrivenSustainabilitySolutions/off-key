@@ -6,6 +6,7 @@ from ..schemas.pipelines import (
     PipelineValidationReport,
 )
 from ..utils.json_budget import bounded_utf8_text, fits_json_budget, json_size_up_to
+from .pipeline_prepare import stage_split
 
 MAX_PIPELINE_REPORT_BYTES = 512 * 1024
 _ISSUE_BUDGET = 64 * 1024
@@ -66,6 +67,12 @@ def _budget_notice(report):
     )
 
 
+def _preparation(result: PipelineValidation) -> int:
+    """Observations the Prepare stage takes before the learned stage sees one."""
+    split = stage_split(result) if result.valid else None
+    return 0 if split is None else split.required - 1
+
+
 def bounded_validation_report(
     result: PipelineValidation,
     selected_node_id: str | None = None,
@@ -83,6 +90,7 @@ def bounded_validation_report(
         fingerprint=result.fingerprint,
         selected_node_id=selected_node_id,
         issues_truncated=truncated,
+        preparation_observations=_preparation(result),
     )
     if selected_node_id is not None and selected_node_id not in {
         node.id for node in result.definition.nodes

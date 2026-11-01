@@ -20,14 +20,44 @@ const strings = (value: JsonValue | undefined) =>
 export const hasScope = (component?: PipelineComponent) =>
   !!component?.fields.some((field) => field.name === "apply_to");
 
-/** A step's scope as the compiler reads it, with the catalog's default suffix. */
+/** A setting of the node, or the catalog default it leaves out. */
+export function setting(node: PipelineNode, component: PipelineComponent | undefined, name: string): JsonValue | undefined {
+  if (node.params[name] !== undefined) return node.params[name];
+  const field = component?.fields.find((item) => item.name === name);
+  return field?.default ?? undefined;
+}
+
+const CHANGE_SUFFIXES: Record<string, string> = { difference: "diff", percent: "pct", lag: "lag" };
+
+/** The short name a Prepare step gives added features, following its settings, as core
+ * names them: smooth10, diff1, mean60, log. Other steps carry theirs in the catalog. */
+export function defaultSuffix(node: PipelineNode, component?: PipelineComponent): string | undefined {
+  const value = (name: string) => setting(node, component, name);
+  switch (node.component) {
+    case "prepare.smooth": return `smooth${value("window_size")}`;
+    case "prepare.despike": return "despiked";
+    case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
+    case "prepare.rolling": return `${value("statistic")}${value("window_size")}`;
+    case "prepare.math": return value("function") === "linear" ? "scaled" : String(value("function"));
+    case "prepare.range": return "clipped";
+  }
+  const field = component?.fields.find((item) => item.name === "suffix");
+  return typeof field?.default === "string" ? field.default : undefined;
+}
+
+/** Whether a step adds its output when Result is left at the step's default. */
+export const addsByDefault = (component?: PipelineComponent) =>
+  component?.fields.find((field) => field.name === "result")?.default === "add";
+
+/** A step's scope as the compiler reads it, with the step's default result and suffix. */
 export function stepScope(node: PipelineNode, component?: PipelineComponent): StepScope | undefined {
   if (!component || !hasScope(component)) return undefined;
   const suffixField = component.fields.find((field) => field.name === "suffix");
   const suffix = typeof node.params.suffix === "string" && node.params.suffix
     ? node.params.suffix
-    : typeof suffixField?.default === "string" ? suffixField.default : undefined;
-  return { applyTo: strings(node.params.apply_to), add: node.params.result === "add", suffix, elementwise: !!suffixField };
+    : defaultSuffix(node, component);
+  const add = (node.params.result ?? (addsByDefault(component) ? "add" : "replace")) === "add";
+  return { applyTo: strings(node.params.apply_to), add, suffix, elementwise: !!suffixField };
 }
 
 export const addedName = (feature: string, suffix: string) => `${feature}_${suffix}`;

@@ -60,6 +60,8 @@ class PipelineDiagnostics:
         self.phase = "waiting_for_data"
         self.sequence_number = 0
         self.errors = 0
+        # Nodes the Prepare stage reports; the learned graph only forwards them.
+        self.external: frozenset[str] = frozenset()
         self._last_sample = float("-inf")
         self._pending: dict[str, Any] | None = None
         self._observation: dict[str, Any] | None = None
@@ -89,6 +91,8 @@ class PipelineDiagnostics:
     def observe(self, event) -> None:
         """Consume an Aberrant NodeObservation without retaining its full data."""
         identifier = self.model_id if event.node_id == "$model" else event.node_id
+        if identifier in self.external:
+            return
         inputs = output = None
         if self._pending is not None:
             # Only a pending sample reads the values; skip the copies otherwise.
@@ -135,6 +139,70 @@ class PipelineDiagnostics:
         except Exception:
             self.errors += 1
 
+    def prepare_step(
+        self,
+        node_id: str,
+        inputs: dict[str, float] | None,
+        output: dict[str, float] | None,
+        *,
+        elapsed_ns: int,
+        updates: int | None,
+        required: int | None,
+        blocked_by: tuple[str, ...] = (),
+    ) -> None:
+        """One Prepare step's part in an accepted observation, in the learn pass."""
+        metrics = self.nodes[node_id]
+        state = (
+            "ready"
+            if output is not None
+            else "waiting_for_dependency"
+            if blocked_by
+            else "initializing"
+        )
+        if inputs is not None:
+            metrics["learn_count"] += 1
+            metrics["learn_time_ns"] += max(int(elapsed_ns), 0)
+        metrics.update(
+            state=state,
+            ready=output is not None,
+            learned_updates=updates,
+            readiness_observed=None
+            if required is None
+            else min(updates or 0, required),
+            readiness_required=required,
+            readiness_reason=(
+                f"Needs {required} values before its first output"
+                if state == "initializing" and required
+                else None
+            ),
+            blocked_by=[key for key in blocked_by if key in self.nodes],
+        )
+        if self._pending is not None:
+            self._pending["passes"]["learn"][node_id] = {
+                "input": self._preview(inputs),
+                "output": self._preview(output),
+                "state": state,
+            }
+
+    def prepare_rejected(
+        self,
+        node_id: str,
+        inputs: dict[str, float] | None,
+        reason: str,
+        message: str,
+    ) -> None:
+        """A Prepare step skipped the observation; its counts say why."""
+        metrics = self.nodes[node_id]
+        rejections = metrics.setdefault("rejections", {})
+        rejections[reason] = rejections.get(reason, 0) + 1
+        if self._pending is not None:
+            self._pending["passes"]["learn"][node_id] = {
+                "input": self._preview(inputs),
+                "output": None,
+                "state": "rejected",
+                "reason": self._bounded_text(message),
+            }
+
     def readiness(self, states, graph=None) -> None:
         intrinsic = (
             {
@@ -147,7 +215,7 @@ class PipelineDiagnostics:
         )
         for item in states:
             metrics = self.nodes.get(item.node_id)
-            if metrics is not None:
+            if metrics is not None and item.node_id not in self.external:
                 self._readiness(
                     metrics,
                     item.updates,

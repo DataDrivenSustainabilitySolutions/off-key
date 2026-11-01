@@ -44,6 +44,32 @@ def test_maximum_graph_executes_once_per_node_with_observation_equivalence(
     )
 
 
+def test_prepare_workload_scores_the_same_with_observation():
+    execution = build_workload("prepare")
+    values = observations(8, 240, seed=42)
+    clean = StreamRunner(execution, observed=False)
+    observed = StreamRunner(execution, observed=True)
+    clean.prepare(values[:160])
+    observed.prepare(values[:160])
+    for data in values[160:]:
+        assert observed.step(data) == clean.step(data)
+    # Despike 11, Smooth 10, Change 1 and a 60-value spread lead by 79.
+    assert clean.stage.status() == {
+        "ready": True,
+        "observed": 80,
+        "required": 80,
+        "rejected": 0,
+    }
+    nodes = observed.diagnostics.snapshot()["nodes"]
+    # 192 warm-up runs and 80 timed ones; each step starts once its input does.
+    assert [nodes[step]["learn_count"] for step in ("despike", "smooth", "change")] == [
+        272,
+        262,
+        253,
+    ]
+    assert nodes["spread"]["learn_count"] == 252
+
+
 @pytest.mark.parametrize(
     "workload", ["maximum_edges", pytest.param("maximum_width", marks=pytest.mark.slow)]
 )

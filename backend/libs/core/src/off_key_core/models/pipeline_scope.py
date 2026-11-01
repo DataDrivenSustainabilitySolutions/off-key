@@ -1,4 +1,4 @@
-"""Applies to and Result: which features a learned step uses and where its output goes.
+"""Applies to and Result: which features a step uses and where its output goes.
 
 The compiler, the validation API and both RADAR runtimes read a step's scope
 through this module, so a feature order is decided in exactly one place:
@@ -16,6 +16,7 @@ from ..schemas.pipelines import (
     RollingRobustScalerParameters,
     StandardScalerParameters,
 )
+from .pipeline_prepare import PREPARE_COMPONENTS, PREPARE_MODELS, default_suffix
 
 # Steps that map each feature to one value, by the parameters that name their
 # added features; each parameter model holds the step's default suffix.
@@ -40,8 +41,16 @@ PROJECTIONS = frozenset(
         "adaptive.random_projection",
     }
 )
-SCOPED_COMPONENTS = frozenset(ELEMENTWISE_SUFFIXES) | PROJECTIONS
+# Steps that learn from data; nothing in the Prepare stage may follow one.
+LEARNED_COMPONENTS = frozenset(ELEMENTWISE_SUFFIXES) | PROJECTIONS
+SCOPED_COMPONENTS = LEARNED_COMPONENTS | PREPARE_COMPONENTS
 SCOPE_DEFAULTS: dict[str, Any] = {"apply_to": None, "result": "replace", "suffix": None}
+# Steps whose output is usually wanted next to their input add it by default.
+RESULT_DEFAULTS: dict[str, str] = {
+    component: model.model_fields["result"].default
+    for component, model in PREPARE_MODELS.items()
+    if model.model_fields["result"].default != "replace"
+}
 MAX_FEATURE_NAME_LENGTH = 120
 
 
@@ -53,14 +62,24 @@ class ScopeError(ValueError):
         self.parameter_path: list[str | int] = [parameter]
 
 
-def canonical_scope(params: dict[str, Any]) -> dict[str, Any]:
+def scope_defaults(component: str) -> dict[str, Any]:
+    return {**SCOPE_DEFAULTS, "result": RESULT_DEFAULTS.get(component, "replace")}
+
+
+def canonical_scope(component: str, params: dict[str, Any]) -> dict[str, Any]:
     """Leave scope settings out at their defaults, and a suffix that adds nothing."""
-    if params.get("result", "replace") == "replace":
+    defaults = scope_defaults(component)
+    if params.get("result", defaults["result"]) == "replace":
         params.pop("suffix", None)
-    for name, default in SCOPE_DEFAULTS.items():
+    for name, default in defaults.items():
         if name in params and params[name] == default:
             del params[name]
     return params
+
+
+def adds(component: str, params: dict[str, Any]) -> bool:
+    """Whether a step keeps the features it uses and adds its output."""
+    return params.get("result", RESULT_DEFAULTS.get(component, "replace")) == "add"
 
 
 def split_scope(params: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -73,10 +92,8 @@ def split_scope(params: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 
 def is_scoped(component: str, params: dict[str, Any]) -> bool:
     """Whether a step changes only some features or adds its output."""
-    return component in SCOPED_COMPONENTS and any(
-        params.get(name, default) != default
-        for name, default in SCOPE_DEFAULTS.items()
-        if name != "suffix"
+    return component in SCOPED_COMPONENTS and (
+        params.get("apply_to") is not None or adds(component, params)
     )
 
 
@@ -127,11 +144,15 @@ def step_scope(
         if missing:
             raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
         selected = tuple(apply_to)
-    add = params.get("result", "replace") == "add"
-    elementwise = component in ELEMENTWISE_SUFFIXES
+    add = adds(component, params)
+    elementwise = component in ELEMENTWISE_SUFFIXES or component in PREPARE_COMPONENTS
     added: tuple[str, ...] = ()
     if elementwise and add:
-        suffix = params.get("suffix") or ELEMENTWISE_SUFFIXES[component]
+        suffix = params.get("suffix") or (
+            ELEMENTWISE_SUFFIXES[component]
+            if component in ELEMENTWISE_SUFFIXES
+            else default_suffix(component, params)
+        )
         added = tuple(f"{name}_{suffix}" for name in selected)
         taken = next((name for name in added if name in available), None)
         if taken is not None:

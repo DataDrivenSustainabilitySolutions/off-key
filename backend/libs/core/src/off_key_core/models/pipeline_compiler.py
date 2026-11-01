@@ -24,7 +24,8 @@ from .pipeline_features import (
 )
 from .pipeline_fields import parameter_path
 from .pipeline_parameters import normalized_parameters
-from .pipeline_scope import ScopeError
+from .pipeline_prepare import MAX_WINDOW_VALUES, PREPARE_COMPONENTS, kernel
+from .pipeline_scope import LEARNED_COMPONENTS, ScopeError
 
 
 @dataclass
@@ -238,6 +239,55 @@ def _propagate_features(compilation: _Compilation) -> None:
             compilation.error("feature_schema", str(exc), identifier)
 
 
+def _label(compilation: _Compilation, identifier: str) -> str:
+    node = compilation.nodes[identifier]
+    component = compilation.components.get(node.component)
+    return node.label or (component.label if component else node.component)
+
+
+def _validate_stages(compilation: _Compilation) -> None:
+    """Prepare steps run before anything learns, so none may follow a learned step."""
+    learned: dict[str, str | None] = {}
+    for identifier in compilation.order:
+        node = compilation.nodes[identifier]
+        edges = sorted(compilation.incoming[identifier], key=lambda item: item.order)
+        upstream = next(
+            (learned[edge.source] for edge in edges if learned.get(edge.source)), None
+        )
+        if node.component in PREPARE_COMPONENTS and upstream is not None:
+            compilation.error(
+                "stage",
+                f"{_label(compilation, identifier)} must come before "
+                f"{_label(compilation, upstream)}: prepare steps run before "
+                "anything learns.",
+                identifier,
+                blocks_features=False,
+            )
+        learned[identifier] = (
+            identifier if node.component in LEARNED_COMPONENTS else upstream
+        )
+
+
+def _validate_windows(compilation: _Compilation) -> None:
+    """Bound the past values all Prepare windows keep, across their features."""
+    total = 0
+    for identifier, node in compilation.nodes.items():
+        edges = compilation.incoming[identifier]
+        if (
+            node.component not in PREPARE_COMPONENTS
+            or identifier not in compilation.features
+            or len(edges) != 1
+        ):
+            continue
+        used = node.params.get("apply_to") or compilation.features[edges[0].source]
+        total += kernel(node.component, node.params).window * len(used)
+    if total > MAX_WINDOW_VALUES:
+        compilation.error(
+            "prepare_budget",
+            f"Windows hold {total:,} values; the limit is {MAX_WINDOW_VALUES:,}.",
+        )
+
+
 def _validate_model(compilation: _Compilation) -> None:
     if compilation.definition.strategy != "adaptive_stream":
         return
@@ -278,6 +328,8 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
         _validate_node_connections(compilation, node)
     _topological_order(compilation)
     _propagate_features(compilation)
+    _validate_stages(compilation)
+    _validate_windows(compilation)
     _validate_model(compilation)
     if not fits_json_budget(normalized, MAX_PIPELINE_EXECUTION_BYTES):
         compilation.error(

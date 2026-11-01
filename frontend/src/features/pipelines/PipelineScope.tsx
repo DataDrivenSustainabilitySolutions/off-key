@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { addedName, stepScope } from "./scope";
+import { addedName, addsByDefault, defaultSuffix, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
 
@@ -11,7 +11,7 @@ const listed = (names: string[], limit = 3) =>
     : `${names.slice(0, limit).join(", ")} and ${names.length - limit} more`;
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-/** Applies to and Result: which incoming features a learned step uses and where its output goes. */
+/** Applies to and Result: which incoming features a step uses and where its output goes. */
 export function PipelineScope({ node, component, features, featureLabels, issues, readOnly, onChange }: {
   node: PipelineNode;
   component: PipelineComponent;
@@ -43,10 +43,14 @@ export function PipelineScope({ node, component, features, featureLabels, issues
     set("apply_to", next.length === features.length && !kept.length ? undefined : [...next, ...kept]);
   };
   const components = typeof node.params.n_components === "number" ? node.params.n_components : 1;
+  // A Range check that skips leaves values unchanged, so there is nothing to add.
+  const keepsValues = node.component === "prepare.range" && setting(node, component, "action") === "skip";
   const outcome = scope.elementwise
     ? scope.add
       ? used.length ? `Keeps the values and adds ${listed(used.map((name) => addedName(name, scope.suffix ?? "new")))}.` : "Keeps the values and adds a copy of each."
-      : "Changes the values in place; the names stay the same."
+      : keepsValues
+        ? "Skips observations outside the range; the values that pass stay the same."
+        : "Changes the values in place; the names stay the same."
     : scope.add
       ? `Keeps every feature and adds ${plural(components, "component")}.`
       : chosen
@@ -54,7 +58,7 @@ export function PipelineScope({ node, component, features, featureLabels, issues
         : `Replaces every feature with ${plural(components, "component")}.`;
   const applyErrors = messages("apply_to");
   const suffixErrors = messages("suffix");
-  const suffixField = component.fields.find((field) => field.name === "suffix");
+  const defaultResult = addsByDefault(component) ? "add" : "replace";
   return <div className="pl-scope">
     <fieldset className="pl-field" aria-describedby={`${id}-applies ${id}-applies-errors`}>
       <legend>Applies to</legend>
@@ -84,9 +88,10 @@ export function PipelineScope({ node, component, features, featureLabels, issues
     <div className="pl-field">
       <span id={`${id}-result`}>Result</span>
       <div className="pl-segmented" role="group" aria-labelledby={`${id}-result`}>
-        {(["replace", "add"] as const).map((result) => <button key={result} type="button" disabled={readOnly}
+        {(["replace", "add"] as const).map((result) => <button key={result} type="button"
+          disabled={readOnly || (result === "add" && keepsValues && !scope.add)}
           aria-pressed={scope.add === (result === "add")}
-          onClick={() => set("result", result === "add" ? "add" : undefined)}>
+          onClick={() => set("result", result === defaultResult ? undefined : result)}>
           {result === "add" ? scope.elementwise ? "Add new features" : "Keep features" : scope.elementwise ? "Replace values" : "Replace features"}
         </button>)}
       </div>
@@ -95,7 +100,7 @@ export function PipelineScope({ node, component, features, featureLabels, issues
     {scope.elementwise && scope.add && <div className="pl-field">
       <label htmlFor={`${id}-suffix`}>Suffix</label>
       <input id={`${id}-suffix`} value={typeof node.params.suffix === "string" ? node.params.suffix : ""} disabled={readOnly}
-        placeholder={typeof suffixField?.default === "string" ? suffixField.default : undefined}
+        placeholder={defaultSuffix(node, component)}
         maxLength={24} aria-invalid={suffixErrors.length > 0} aria-describedby={`${id}-suffix-help ${id}-suffix-errors`}
         onChange={(event) => set("suffix", event.target.value || undefined)} />
       <small className="pl-help" id={`${id}-suffix-help`}>Added features are named feature_{scope.suffix ?? "suffix"}.</small>

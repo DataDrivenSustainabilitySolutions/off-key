@@ -16,8 +16,9 @@ import {
   type GraphDocument,
 } from "./model";
 import { PipelineScope } from "./PipelineScope";
-import { hasScope, isWarning, SCOPE_FIELDS } from "./scope";
+import { hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
+import { stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
 type Props = {
@@ -249,7 +250,7 @@ export function PipelineInspector({
           )}
           {component && (
             <ParameterFields
-              fields={scoped ? component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)) : component.fields}
+              fields={stepFields(node, component)}
               issues={fieldIssues}
               values={node.params}
               features={features}

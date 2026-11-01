@@ -1,6 +1,6 @@
 import { useNow } from "@/hooks/use-now";
 import { useState } from "react";
-import type { NodePass, PipelineState } from "./diagnostics";
+import { rejectionSummary, type NodePass, type PipelineState } from "./diagnostics";
 import { PipelineLearningSummary } from "./PipelineLearningSummary";
 export type { PipelineState } from "./diagnostics";
 
@@ -137,6 +137,12 @@ export function PipelineDiagnostics({
           )}
           {node.readiness_reason && (
             <p className="pl-help">{node.readiness_reason}</p>
+          )}
+          {rejectionSummary(node.rejections) && (
+            <p className="pl-warning" role="status">
+              {rejectionSummary(node.rejections)} Skipped observations change
+              no state and count as coverage gaps.
+            </p>
           )}
           {!!node.blocked_by?.length && (
             <div className="pl-actions">

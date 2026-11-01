@@ -1,7 +1,7 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
-import { addedName, SCOPE_FIELDS, stepScope } from "./scope";
+import { addedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
@@ -53,6 +53,56 @@ function scopeSummary(
   return { text: scope.add ? "Keeps its inputs" : undefined, chips: used?.map((name) => labels.get(name) ?? name) };
 }
 
+const STATISTICS: Record<string, string> = {
+  mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
+};
+const FUNCTIONS: Record<string, string> = {
+  log: "log(x)", log1p: "log(1 + x)", sqrt: "√x", abs: "|x|", square: "x²",
+};
+
+function linear(scale: number, offset: number) {
+  const term = scale === 1 ? "x" : `${number(scale)} × x`;
+  if (offset === 0) return scale === 1 ? "x, unchanged" : term;
+  return `${term} ${offset < 0 ? "−" : "+"} ${number(Math.abs(offset))}`;
+}
+
+/** What a Prepare step does, in the words of its settings. */
+function prepareSummary(node: PipelineNode, component: PipelineComponent | undefined): string | undefined {
+  const value = (name: string) => setting(node, component, name);
+  const amount = (name: string, fallback: number) => {
+    const raw = value(name);
+    return typeof raw === "number" ? raw : fallback;
+  };
+  switch (node.component) {
+    case "prepare.smooth": {
+      const window = number(amount("window_size", 10));
+      return value("method") === "rolling" ? `Mean of last ${window}` : `Exponential over ${window}`;
+    }
+    case "prepare.despike":
+      return `Window ${number(amount("window_size", 11))} · limit ${number(amount("threshold", 3))} MAD`;
+    case "prepare.change": {
+      const lag = amount("lag", 1);
+      if (value("mode") === "lag") return `Value ${count(lag, "observation")} back`;
+      return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
+    }
+    case "prepare.rolling":
+      return `${STATISTICS[String(value("statistic"))] ?? "Mean"} of last ${number(amount("window_size", 60))}`;
+    case "prepare.math":
+      return value("function") === "linear"
+        ? linear(amount("scale", 1), amount("offset", 0))
+        : FUNCTIONS[String(value("function"))];
+    case "prepare.range": {
+      const low = value("low");
+      const high = value("high");
+      const verb = value("action") === "skip" ? "Skip" : "Clip";
+      if (typeof low === "number" && typeof high === "number")
+        return `${verb} ${verb === "Skip" ? "outside" : "to"} ${number(low)} to ${number(high)}`;
+      if (typeof low === "number") return `${verb} below ${number(low)}`;
+      if (typeof high === "number") return `${verb} above ${number(high)}`;
+    }
+  }
+}
+
 /** A card's one-line account of what it does with its inputs. Presentation only. */
 export function nodeSummary(
   node: PipelineNode,
@@ -76,6 +126,8 @@ function settingsSummary(
   labels: Map<string, string>,
 ): NodeSummary {
   const params = node.params;
+  const prepared = prepareSummary(node, component);
+  if (prepared) return { text: prepared };
   switch (node.component) {
     case "source.aligned":
       return { text: count(definition.input_slots.length, "reading") };

@@ -29,6 +29,7 @@ from .config.config import AnomalyDetectionConfig
 from .pipelines.adapters import adaptive_graph
 from .pipelines.batch import BatchFeatureGraph
 from .pipelines.plan import ExecutionPlan
+from .pipelines.prepare import PrepareStage
 from .pipelines.resources import estimate_resources
 
 
@@ -56,6 +57,8 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         pipeline=execution, memory_limit_mb=settings.RADAR_MEMORY_LIMIT_MB
     )
     resources = estimate_resources(plan, config.memory_limit_mb)
+    if plan.stage is not None:
+        PrepareStage(plan)
     readiness = []
     capabilities = None
     if execution.definition.strategy == "adaptive_stream":

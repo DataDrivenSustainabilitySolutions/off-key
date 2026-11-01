@@ -3,7 +3,7 @@
 from aberrant.catalog import DetectorConfig, ResolvedDetectorConfig
 from aberrant.compose import INPUT, GraphNode, GraphPipeline, MergeNode
 
-from .components import online_component
+from .components import Prepared, online_component
 from .plan import ExecutionPlan
 
 
@@ -37,9 +37,21 @@ def adaptive_graph(
     plan: ExecutionPlan, observer=None, config: ResolvedDetectorConfig | None = None
 ):
     nodes = []
-    for node in plan.feature_nodes:
+    stage = plan.stage
+    # Without a Prepare stage the graph keeps its shape, also in checkpoints.
+    # With one, the graph's input is the prepared row and each node crossing
+    # the cut, the input included, becomes a node that picks its features.
+    if stage is not None:
+        nodes.extend(
+            GraphNode(key, Prepared(key, plan.names(key))) for key in stage.frontier
+        )
+
+    def reference(parent: str) -> str:
+        return INPUT if stage is None and parent == plan.source_id else parent
+
+    for node in plan.learned_nodes:
         parents = plan.parents(node.id)
-        inputs = [INPUT if parent == plan.source_id else parent for parent in parents]
+        inputs = [reference(parent) for parent in parents]
         if node.kind == "merge":
             nodes.append(MergeNode(node.id, inputs=tuple(inputs)))
             continue
@@ -56,11 +68,10 @@ def adaptive_graph(
     if minimum > plan.execution.definition.settings.training_window_size:
         raise ValueError(f"Detector warm-up must contain at least {minimum} updates")
     terminal = config.build()
-    output = plan.feature_output_id
     return GraphPipeline(
         nodes,
         terminal,
-        INPUT if output == plan.source_id else output,
+        reference(plan.feature_output_id),
         model_minimum_updates=minimum,
         observer=observer,
     ), config

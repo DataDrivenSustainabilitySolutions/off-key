@@ -38,6 +38,14 @@ export type CanvasViewport = {
   zoom?: number;
 };
 
+export type ChangeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  mode?: "difference" | "percent" | "lag";
+  lag?: number;
+};
+
 export type CollectionPolicy = {
   mode?: "off" | "original" | "sample";
   interval_seconds?: number;
@@ -62,6 +70,14 @@ export type ComponentField = {
   variants?: Record<string, Array<ComponentField>> | null;
 };
 
+export type DespikeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  window_size?: number;
+  threshold?: number;
+};
+
 export type ElementwiseScopeParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
@@ -80,6 +96,15 @@ export type InputSlot = {
   id: string;
   label: string;
   unit?: string | null;
+};
+
+export type MathParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  function?: "log" | "log1p" | "sqrt" | "abs" | "square" | "linear";
+  scale?: number;
+  offset?: number;
 };
 
 export type MinMaxScalerParameters = {
@@ -272,6 +297,7 @@ export type PipelineNodeRuntime = {
   readiness_reason: string | null;
   blocked_by?: Array<string>;
   error?: string | null;
+  rejections?: Record<string, number>;
 };
 
 export type PipelineObservation = {
@@ -372,6 +398,7 @@ export type PipelineRuntimeState = {
   diagnostic_errors: number;
   adaptive_learning?: AdaptiveLearningState | null;
   batch_training?: BatchTrainingState | null;
+  preparation?: PreparationState | null;
 };
 
 export type PipelineServiceView = {
@@ -436,6 +463,7 @@ export type PipelineValidationReport = {
   provenance_complete?: boolean;
   definition_omitted?: boolean;
   issues_truncated?: boolean;
+  preparation_observations?: number;
 };
 
 export type PipelineView = {
@@ -460,11 +488,33 @@ export type PipelineWorkspace = {
   pipeline_state?: Record<string, unknown> | null;
 };
 
+export type PreparationState = {
+  ready: boolean;
+  observed: number;
+  required: number;
+  rejected: number;
+};
+
+export type PrepareScopeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+};
+
 export type ProjectionParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   n_components?: number;
   seed?: number | null;
+};
+
+export type RangeParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  low?: number | null;
+  high?: number | null;
+  action?: "clip" | "skip";
 };
 
 export type RenameParameters = {
@@ -475,6 +525,14 @@ export type RobustScalerParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string;
+};
+
+export type RollingParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  statistic?: "mean" | "median" | "min" | "max" | "std" | "range";
+  window_size?: number;
 };
 
 export type RollingRobustScalerParameters = {
@@ -492,6 +550,14 @@ export type ScopeParameters = {
 
 export type SelectParameters = {
   features: Array<string>;
+};
+
+export type SmoothParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  method?: "exponential" | "rolling";
+  window_size?: number;
 };
 
 export type StandardScalerParameters = {

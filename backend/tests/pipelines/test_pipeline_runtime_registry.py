@@ -3,6 +3,7 @@
 import pytest
 from off_key_core.models.pipeline_catalog import pipeline_components
 from off_key_core.models.pipeline_features import PROJECTIONS
+from off_key_core.models.pipeline_prepare import PREPARE_COMPONENTS, kernel
 from off_key_mqtt_radar.pipelines.components import (
     BATCH_BUILDERS,
     BATCH_PASSTHROUGH,
@@ -19,6 +20,11 @@ FEATURE_COMPONENTS = [
 
 @pytest.mark.parametrize("component", FEATURE_COMPONENTS, ids=lambda item: item.id)
 def test_each_strategy_can_build_the_feature_components_it_offers(component):
+    if component.id in PREPARE_COMPONENTS:
+        # Both strategies run Prepare steps in the same Prepare stage.
+        assert set(component.strategies) == {"static_baseline", "adaptive_stream"}
+        assert kernel(component.id, {}).initial() is not None
+        return
     if "static_baseline" in component.strategies:
         assert component.id in BATCH_PASSTHROUGH | BATCH_BUILDERS.keys()
     if "adaptive_stream" in component.strategies:

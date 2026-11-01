@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 
+from off_key_core.models.pipeline_prepare import StageSplit, stage_split
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
 from off_key_core.schemas.pipelines import PipelineExecutionConfig, PipelineValidation
 
@@ -68,6 +69,26 @@ class ExecutionPlan:
     @cached_property
     def feature_output_id(self) -> str:
         return self.compiled.feature_output_id
+
+    @cached_property
+    def stage(self) -> StageSplit | None:
+        """The Prepare stage, when the design has one."""
+        return stage_split(self.compiled)
+
+    @cached_property
+    def learned_nodes(self) -> list:
+        """Feature nodes after the Prepare stage, in compiled order."""
+        if self.stage is None:
+            return self._feature_nodes
+        steps = set(self.stage.steps)
+        return [node for node in self._feature_nodes if node.id not in steps]
+
+    @cached_property
+    def input_columns(self) -> list[str]:
+        """What the learned stage reads: the readings, or the prepared features."""
+        if self.stage is None:
+            return self.names(self.source_id)
+        return self.stage.columns(self._names)
 
     @cached_property
     def _expected_inputs(self) -> frozenset[str]:

@@ -78,9 +78,12 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         self.state = StaticConformalState.COLLECTING
         self.training_buffer: list[dict[str, float]] = []
         self.calibration_buffer: list[dict[str, float]] = []
-        # Binding guarantees every observation carries exactly these slots.
-        self.feature_keys = sorted(
-            slot.id for slot in self.plan.compiled.definition.input_slots
+        # Binding guarantees every observation carries exactly these slots;
+        # a Prepare stage hands over exactly its prepared columns.
+        self.feature_keys = (
+            sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
+            if self.prepare is None
+            else list(self.plan.input_columns)
         )
         self.conformal_detector = None
         self.alarm_controller: MartingaleAlarmController | None = None
@@ -118,6 +121,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             checkpoint.get("discarded_during_training_count", 0)
         )
         self.training_error = checkpoint.get("training_error")
+        self._restore_prepare(checkpoint)
         if self.state == StaticConformalState.TRAINING:
             if (
                 len(self.training_buffer) < self.static_config.training_window_size
@@ -232,6 +236,8 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
                 result.processed_features = self.conformal_detector.last_features
                 self.diagnostics.record(self.plan.output_id, None, result.anomaly_score)
             return result
+        except ObservationRejected:
+            raise
         except Exception as error:
             self._execution_failed = True
             self.state = StaticConformalState.FAILED
@@ -250,6 +256,20 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
     ) -> AnomalyResult:
         start_time = time.time()
         self._complete_training_if_ready()
+        # Prepare runs in every state, so the baseline starts on a continuous
+        # history even after observations were discarded during fitting.
+        prepared = self._prepared(data)
+        if prepared is None:
+            self.processed_count += 1
+            return self._non_inference_result(
+                data,
+                topic,
+                charger_id,
+                start_time,
+                phase="preparing",
+                extra_context=self._preparation(),
+            )
+        data = prepared
         if self.state == StaticConformalState.COLLECTING:
             result = self._process_collecting(data, topic, charger_id, start_time)
         elif self.state == StaticConformalState.CALIBRATING:
@@ -460,8 +480,8 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         )
 
     def _feature_order(self) -> list[str]:
-        """Column order of model matrices: the order of the graph's source."""
-        return self.plan.names(self.plan.source_id)
+        """Column order of model matrices: the readings, or the prepared columns."""
+        return self.plan.input_columns
 
     def _vectorize(self, data: dict[str, float]) -> list[float]:
         return [float(data[key]) for key in self._feature_order()]
@@ -579,7 +599,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             raise error
 
     def _publish_fit_readiness(self):
-        for node in self.plan.feature_nodes:
+        for node in self.plan.learned_nodes:
             self.diagnostics.nodes[node.id].update(state="ready", ready=True)
         self.diagnostics.nodes[self.plan.detector_id].update(state="ready", ready=True)
 
@@ -702,24 +722,28 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
     def export_checkpoint(self) -> dict[str, Any]:
         """Export state without performing I/O; the caller freezes model bytes."""
         self._require_exportable()
-        return {
-            "strategy": "static_baseline",
-            "static_state": self.state.value,
-            "training_buffer": self.training_buffer,
-            "calibration_buffer": self.calibration_buffer,
-            "feature_keys": self.feature_keys,
-            "conformal_detector": self.conformal_detector,
-            "alarm_controller": self.alarm_controller,
-            "processed_count": self.processed_count,
-            "anomaly_count": self.anomaly_count,
-            "discarded_during_training_count": self.discarded_during_training_count,
-            "training_error": self.training_error,
-            "schema_signature": self.schema_signature,
-        }
+        return self._export_prepare(
+            {
+                "strategy": "static_baseline",
+                "static_state": self.state.value,
+                "training_buffer": self.training_buffer,
+                "calibration_buffer": self.calibration_buffer,
+                "feature_keys": self.feature_keys,
+                "conformal_detector": self.conformal_detector,
+                "alarm_controller": self.alarm_controller,
+                "processed_count": self.processed_count,
+                "anomaly_count": self.anomaly_count,
+                "discarded_during_training_count": self.discarded_during_training_count,
+                "training_error": self.training_error,
+                "schema_signature": self.schema_signature,
+            }
+        )
 
     def get_pipeline_state(self) -> dict[str, Any]:
         state = self.diagnostics.snapshot()
-        state["phase"] = self.state.value
+        preparing = self.prepare is not None and not self.prepare.ready
+        state["phase"] = "preparing" if preparing else self.state.value
+        state.update(self._preparation())
         state["batch_training"] = {
             "state": self.state.value,
             "training_samples": len(self.training_buffer),
@@ -752,6 +776,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
                 else 0
             ),
             "discarded_during_training_count": self.discarded_during_training_count,
+            **self._preparation(),
             "memory_usage_mb": process_rss_mb(),
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)

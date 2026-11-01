@@ -47,6 +47,15 @@ describe("start-up estimate", () => {
     expect(startupSentence(untimed)).toBe("The first alarm can come after at least 1,560 observations: "
       + "1,200 to train and 360 to calibrate.");
   });
+
+  it("counts the observations Prepare steps need first, as the last check reported them", () => {
+    const startup = startupEstimate(definition("adaptive_stream"), [1], 79);
+    expect(startup.phases.map((phase) => [phase.label, phase.observations]))
+      .toEqual([["Preparing", 79], ["Detector learning", 1200], ["Calibration", 360]]);
+    expect(startupSentence(startup)).toBe("The first alarm can come after at least 1,639 observations: "
+      + "79 to prepare, 1,200 to learn and 360 to calibrate. At one observation every 1 s, that is about 27 min.");
+    expect(startupPhases(definition("adaptive_stream"), 0)).toHaveLength(2);
+  });
 });
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], strategies: Wire.PipelineComponent["strategies"],

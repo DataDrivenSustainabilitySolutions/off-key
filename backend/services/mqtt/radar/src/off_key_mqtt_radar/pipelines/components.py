@@ -51,6 +51,21 @@ BATCH_BUILDERS: dict[str, Callable[[dict], Any]] = {
 }
 
 
+class Prepared(Passthrough):
+    """Hand one Prepare-stage node's features to the learned graph.
+
+    The learned graph's input holds every feature crossing the stage cut as
+    <node>.<feature>; this node picks one node's features under their names.
+    """
+
+    def __init__(self, node_id: str, names: list[str]):
+        self.prefix = f"{node_id}."
+        self.names = tuple(names)
+
+    def transform_one(self, x):
+        return {name: x[self.prefix + name] for name in self.names}
+
+
 class NamedProjection:
     """Adapt public projection output names to canonical graph-scoped names."""
 
@@ -189,6 +204,7 @@ __all__ = [
     "BATCH_PASSTHROUGH",
     "ONLINE_BUILDERS",
     "NamedProjection",
+    "Prepared",
     "ScopedStep",
     "batch_component",
     "online_component",

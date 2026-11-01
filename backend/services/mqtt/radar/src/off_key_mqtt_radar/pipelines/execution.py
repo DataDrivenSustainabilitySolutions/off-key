@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
 from ..execution_errors import FatalExecutionError
 from .diagnostics import PipelineDiagnostics
 from .plan import ExecutionPlan
+from .prepare import PrepareStage
 
 
 class PipelineExecutionMixin:
@@ -14,12 +16,45 @@ class PipelineExecutionMixin:
 
     plan: ExecutionPlan
     diagnostics: PipelineDiagnostics
+    prepare: PrepareStage | None
     _execution_failed: bool
 
     def _init_pipeline_execution(self, config) -> None:
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
+        stage = self.plan.stage
+        self.prepare = PrepareStage(self.plan) if stage is not None else None
+        if stage is not None:
+            self.diagnostics.external = frozenset(stage.frontier)
+
+    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | None:
+        """The learned stage's input, or None while the Prepare stage warms up.
+
+        A rejected observation raises PrepareRejected and changes no state.
+        """
+        if self.prepare is None:
+            return bound
+        prepared = self.prepare.run(bound, self.diagnostics)
+        if prepared is None:
+            self.diagnostics.phase = "preparing"
+        return prepared
+
+    def _preparation(self) -> dict[str, Any]:
+        return {} if self.prepare is None else {"preparation": self.prepare.status()}
+
+    def _export_prepare(self, checkpoint: dict[str, Any]) -> dict[str, Any]:
+        if self.prepare is not None:
+            checkpoint["prepare"] = self.prepare.export_state()
+        return checkpoint
+
+    def _restore_prepare(self, checkpoint: dict[str, Any]) -> None:
+        if self.prepare is None:
+            return
+        state = checkpoint.get("prepare")
+        if state is None:
+            raise ValueError("Checkpoint is missing its Prepare stage state")
+        self.prepare.load_state(state)
 
     @staticmethod
     def _pipeline_signature(settings: str, config) -> str:

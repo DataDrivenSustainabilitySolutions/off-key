@@ -18,21 +18,23 @@ class BatchFeatureGraph:
 
     A training pass fits each shared component once. Calibration and scoring
     use transform only; a branch never receives another branch's writable array.
-    Intermediate arrays are released after their final consumer.
+    Intermediate arrays are released after their final consumer. With a
+    Prepare stage the matrices hold prepared rows, one column per feature
+    crossing the cut, and only the learned stage runs here.
     """
 
     def __init__(self, plan: ExecutionPlan):
         self.plan = plan
         self.components = {
             node.id: batch_component(node)
-            for node in plan.feature_nodes
+            for node in plan.learned_nodes
             if node.component not in BATCH_PASSTHROUGH
         }
         self.scopes = {
             node.id: step_scope(
                 node.component, node.params, plan.names(plan.parents(node.id)[0])
             )
-            for node in plan.feature_nodes
+            for node in plan.learned_nodes
             if is_scoped(node.component, node.params)
         }
         self.fitted = False
@@ -49,22 +51,33 @@ class BatchFeatureGraph:
             raise RuntimeError("Static preprocessing has not been fitted")
         return self._execute(matrix, fit=False, observer=observer)
 
+    def _inputs(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
+        """The learned stage's inputs: the readings, or each prepared node's columns."""
+        stage = self.plan.stage
+        if stage is None:
+            return {self.plan.source_id: matrix}
+        available, start = {}, 0
+        for key in stage.frontier:
+            width = len(self.plan.names(key))
+            available[key] = matrix[:, start : start + width]
+            start += width
+        return available
+
     def _execute(self, matrix: np.ndarray, *, fit: bool, observer=None) -> np.ndarray:
-        source = self.plan.source_id
         matrix = np.asarray(matrix, dtype=float)
-        if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.names(source)):
+        if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.input_columns):
             raise ValueError("Batch graph input width differs from its compiled schema")
         if not np.isfinite(matrix).all():
             raise ValueError("Batch graph requires finite inputs")
-        available = {source: matrix}
+        available = self._inputs(matrix)
         remaining = Counter(
             parent
-            for node in self.plan.feature_nodes
+            for node in self.plan.learned_nodes
             for parent in self.plan.parents(node.id)
         )
         output_id = self.plan.feature_output_id
         remaining[output_id] += 1
-        for node in self.plan.feature_nodes:
+        for node in self.plan.learned_nodes:
             started = perf_counter_ns()
             parents = self.plan.parents(node.id)
             current = available[parents[0]]

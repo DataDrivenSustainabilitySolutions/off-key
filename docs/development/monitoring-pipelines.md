@@ -197,6 +197,42 @@ strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
 and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
 by 1 when a feature's interquartile range is zero.
 
+Prepare steps (`pipeline_prepare.py`) are deterministic kernels that run once
+per observation, in arrival order, before anything learns. `stage_split()` takes
+every Prepare node and its ancestors, except the source, as the stage. Its
+frontier is the stage nodes, and the source, whose features a later node uses, in
+compiled order. RADAR's `PrepareStage` runs the stage on the bound observation and
+passes the frontier's features, keyed `<node>.<feature>`, to the learned stage:
+static graphs fit and score those columns, and adaptive graphs read them through
+`Prepared` input nodes. Designs without Prepare steps keep their runtime shape,
+so existing checkpoints load unchanged.
+
+Each kernel advances an immutable state per feature and returns a value, or none
+while its window fills. The stage commits an observation only when every step
+succeeds. A step that cannot use a value raises `PrepareRejected`, an
+`ObservationRejected`: every state stays as it was, the observation becomes a
+`pipeline_observation_rejected` coverage gap, and the run continues. Rejections
+are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`).
+A kernel with lead L outputs from its (L+1)-th value, so the stage is ready at
+one plus the largest sum of leads along a chain. Until then the detectors return
+`preparing` results, the run stage reads `N/M observations prepared` and no
+learned node runs. The static strategy keeps preparing while it trains in the
+background, so windows never restart. Checkpoints carry the stage state
+(`prepare`, version 1), and a restore refuses state that does not match the
+design. A valid check reports `preparation_observations`, the observations before
+the first prepared one, which the composer shows as **Preparing** before learning.
+
+The compiler marks Prepare outputs as derived (`raw=False`) and propagates bounds
+through them. It rejects a Prepare step downstream of a learned one (`stage`)
+and limits all windows to 50,000 values across their features
+(`prepare_budget`). Means use `math.fsum`, standard deviations divide
+`math.sumprod` of the deviations by n − 1, and order statistics keep a sorted copy
+updated by bisection; an even window's median averages the middle pair. Despike
+compares against 1.4826 × MAD and leaves a flat window unchanged. Change and
+Rolling statistic default to `result: add`, with suffixes named after their
+settings, such as `diff1` and `mean60`; scope settings at a step's own defaults
+are left out of the normalized parameters.
+
 Validation issues carry a severity. Errors block compilation, publishing and
 Apply; warnings use the same shape, appear on the step and in the status chip, and
 do not. The inspector keeps the last checked features while an edit is checked, so
@@ -380,6 +416,23 @@ reasons and errors, bounding both UTF-8 and JSON-escaped text. The fixture tests
 also verify one learning update per eligible node and exact observation-on/off score
 equivalence. Timing-only reruns use `--timing-only`; a full run also repeats the
 sustained bounds probes.
+
+The `prepare` workload despikes and smooths eight inputs, adds a change and a
+60-value rolling standard deviation for four of them, and scales the 16 features
+into a moving Mahalanobis distance (`window_size=128`). Its Prepare stage needs
+80 observations before its first output. A 2026-11-01 timing-only run with the
+default settings used a four-CPU cloud container (Intel Xeon at 2.10 GHz, Linux
+x86-64, Python 3.13.18, Aberrant 1.4.0, one thread per numerical library, no
+cgroup CPU limit).
+
+| Prepare workload | CPU without observation | CPU with observation | CPU change |
+| --- | ---: | ---: | ---: |
+| Whole graph | 0.783 ms/observation | 0.891 ms/observation | +13.70% |
+| Prepare stage alone | 0.055 ms/observation | 0.067 ms/observation | +21.85% |
+
+The detector dominates; four Prepare steps over eight inputs cost about 55 µs per
+observation. The [Prepare evidence](evidence/monitoring-pipelines-prepare.json)
+keeps the raw trials of that run.
 
 The [runtime evidence](evidence/monitoring-pipelines-runtime.json) preserves the
 raw trials, component parameters, environment and retention results. Separate

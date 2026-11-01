@@ -120,8 +120,8 @@ template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
 Read a graph from left to right. Each card names its step family (Input,
-Normalize, Reduce, Route, Transform, Detector, Decision policy or Evidence
-output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
+Prepare, Normalize, Reduce, Route, Transform, Detector, Decision policy or
+Evidence output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -165,8 +165,8 @@ counterparts, such as **Standard scaling** to **Online standard scaling**, and
 keep the settings both versions share. A detector without a counterpart becomes
 the strategy's default detector, and the decision policy follows the strategy.
 A notice names any step without a counterpart, and **Undo** switches back.
-**Before the first alarm** shows the learning and calibration phases in
-observations. Once every chosen reading reports how often it arrives, it also
+**Before the first alarm** shows the observations Prepare steps need first, then
+the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
 observation waits for all of its readings.
 
@@ -188,6 +188,40 @@ arrives stays listed as *not available here* until it is unchecked, and a suffix
 that repeats an existing name is refused; both stop **Apply monitoring**. One
 scoped step computes the same values as a branch of **Select features**, the step
 and **Merge features**.
+
+**Prepare** steps clean and derive features before anything learns. They run once
+per observation, in arrival order, and compute the same values under both
+strategies; the static strategy keeps running them while it trains, so their
+windows never restart.
+
+- **Smooth** averages recent values, exponentially or over a rolling window.
+- **Despike** replaces a value further than **Threshold** robust deviations from
+  the median of its window with that median.
+- **Change** adds the difference or percent change since **Lag** observations
+  back, or the value from then.
+- **Rolling statistic** adds the mean, median, minimum, maximum, standard
+  deviation or range of the last **Window** values.
+- **Math** takes a logarithm, square root, absolute value or square, or computes
+  scale × x + offset.
+- **Range check** clips values to **Low** and **High**, or skips observations
+  outside them.
+
+Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
+**Change** and **Rolling statistic** add features by default, such as
+`dc_voltage_diff1` and `dc_voltage_mean60`; the others replace values. A step
+with a window has its first value once the window is full, and steps in a chain
+add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
+the 11th observation. **Before the first alarm** counts those observations as
+**Preparing**; meanwhile the service shows how many observations are prepared,
+and nothing learns. A window holds at most 3,600 values per feature,
+and a design's Prepare windows hold at most 50,000 values in all.
+
+An observation a Prepare step cannot use is skipped as a whole: a logarithm or
+root outside its domain, a percent change from zero, a result too large to
+represent, or a value outside a skipping **Range check**. Skipping changes no
+step's state, nothing learns from the observation, and it counts as a coverage
+gap. The step's diagnostics count skipped observations by reason. Evidence
+always records the raw readings.
 
 **Robust scaling** centers each feature on its median and divides by its
 interquartile range, so occasional spikes shift it less than standard scaling.

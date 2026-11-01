@@ -38,6 +38,7 @@ GUEST_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/v1/chargers/active/id"),
         ("GET", "/v1/telemetry/{charger_id}/type"),
         ("GET", "/v1/telemetry/{charger_id}/data"),
+        ("GET", "/v1/telemetry/{charger_id}/range"),
         ("GET", "/v1/favorites"),
         ("GET", "/v1/anomalies"),
         ("GET", "/v1/anomalies/count"),

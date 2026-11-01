@@ -41,9 +41,7 @@ class MQTTProxyService:
         self.buffer = CollectionBuffer(self.config.max_message_queue_size)
         self.mqtt_client.set_message_handler(self.buffer.receive)
         self.session_factory = get_async_session_local()
-        self.database_writer = DatabaseWriter(
-            self.config, self.session_factory, self.config.build_topic_extractor()
-        )
+        self.database_writer = DatabaseWriter(self.config, self.session_factory)
         self.shutdown_event = asyncio.Event()
         self.is_running = False
         self.revision = -1

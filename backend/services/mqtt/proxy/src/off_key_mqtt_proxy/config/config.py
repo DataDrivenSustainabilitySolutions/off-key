@@ -8,10 +8,6 @@ from functools import lru_cache
 from typing import Literal, Self
 
 from off_key_core.config.validation import SECRETS_DIR, Environment
-from off_key_core.utils.mqtt_topics import (
-    DEFAULT_TOPIC_REGEX,
-    TopicMetadataExtractor,
-)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,8 +51,6 @@ class MQTTConfig(BaseModel):
     use_auth: bool
     mqtt_username: str
     mqtt_api_key: str
-
-    topic_regex: str = DEFAULT_TOPIC_REGEX
 
     # Service Configuration
     enabled: bool
@@ -104,9 +98,7 @@ class MQTTConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_runtime_dependencies(self) -> Self:
-        """Validate topic extraction and broker authentication."""
-        TopicMetadataExtractor(topic_regex=self.topic_regex)
-
+        """Validate broker authentication."""
         _validate_auth_credentials(
             enabled=self.use_auth,
             username=self.mqtt_username,
@@ -129,11 +121,6 @@ class MQTTConfig(BaseModel):
             jitter = random.uniform(-jitter_amount, jitter_amount)
             delay += jitter
         return max(0.0, delay)
-
-    def build_topic_extractor(self) -> TopicMetadataExtractor:
-        return TopicMetadataExtractor(
-            topic_regex=self.topic_regex,
-        )
 
 
 # MQTTConfig fields whose setting is not MQTT_<FIELD>.
@@ -173,8 +160,6 @@ class MQTTSettings(BaseSettings):
     MQTT_USE_AUTH: bool = False
     MQTT_USERNAME: str = ""
     MQTT_APIKEY: str = ""
-
-    MQTT_TOPIC_REGEX: str = DEFAULT_TOPIC_REGEX
 
     # Message Processing
     MQTT_BATCH_SIZE: int = Field(default=100, ge=1, le=10_000)

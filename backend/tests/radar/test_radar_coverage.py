@@ -66,7 +66,13 @@ def test_environment_rate_limit_is_disabled_by_default(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("payload", "reason"),
-    [(b"not-json", "invalid_payload"), (b'{"value": "no-number"}', "invalid_features")],
+    [
+        (b"not-json", "invalid_payload"),
+        # Valid JSON that is not an object is malformed input, not a crash.
+        (b"[1, 2]", "invalid_payload"),
+        (b"42", "invalid_payload"),
+        (b'{"value": "no-number"}', "invalid_features"),
+    ],
 )
 async def test_invalid_observations_record_coverage_losses(payload, reason):
     tracker = CoverageTracker()

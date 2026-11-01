@@ -16,7 +16,6 @@ from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer, Observation
 from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_proxy.telemetry import DatabaseWriter
-from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from off_key_tactic_middleware.config.system_live import SystemLiveSettings
 from off_key_tactic_middleware.services.catalogue import system_ingress
 from off_key_tactic_middleware.services.catalogue.arrival_cadence import ArrivalCadence
@@ -94,7 +93,7 @@ async def test_original_burst_preserves_every_writer_identity(
     config = MQTTSettings(
         MQTT_USE_AUTH=False, MQTT_USE_TLS=False, ENVIRONMENT="development"
     ).config
-    writer = DatabaseWriter(config, MagicMock(), TopicMetadataExtractor())
+    writer = DatabaseWriter(config, MagicMock())
     for observation in observations:
         await writer.write_record(observation.telemetry_record())
     records = [record.to_dict() for record in writer.pending_batch.records]
@@ -111,17 +110,24 @@ async def test_original_burst_preserves_every_writer_identity(
 
 
 @pytest.mark.parametrize("value", [42, 42.5, -0.25])
-def test_observation_records_match_the_parsed_downstream_message(value):
-    """Direct records equal what the regex parser reads back from the message."""
+def test_observation_records_match_the_downstream_message(value):
+    """The stored row names the reading the way RADAR reads the published message."""
     catalog = definition()
     stream = catalog.streams()[0]
     observation = Observation(stream, value, datetime.now(UTC), snapshot=False)
-    extractor = MQTTSettings(
-        MQTT_USE_AUTH=False, MQTT_USE_TLS=False, ENVIRONMENT="development"
-    ).config.build_topic_extractor()
-    parsed = parse_telemetry_message(observation.message(), extractor).record
-    record = observation.telemetry_record(created=parsed.created)
-    assert record == parsed
+    message = observation.message()
+    metadata = TopicMetadataExtractor().extract(message.topic, message.payload)
+    record = observation.telemetry_record()
+    assert metadata is not None
+    assert (metadata.charger_id, metadata.telemetry_type) == (
+        record.charger_id,
+        record.telemetry_type,
+    )
+    assert message.payload == {
+        "value": value,
+        "timestamp": record.timestamp.isoformat(),
+    }
+    assert record.value == float(value)
 
 
 @pytest.mark.asyncio

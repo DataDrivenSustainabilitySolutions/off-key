@@ -132,7 +132,6 @@
   padding: 10px var(--pl-node-padding-x);
   gap: 3px;
   border: 1px solid color-mix(in srgb, var(--pl-node-accent) 35%, hsl(var(--border)));
-  border-top: 3px solid var(--pl-node-accent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--pl-node-accent) 7%, hsl(var(--background)));
   color: hsl(var(--foreground));

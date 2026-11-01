@@ -16,7 +16,7 @@ feature semantics for an unavailable component.
 
 | Concept | Meaning | Visual treatment |
 | --- | --- | --- |
-| Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a colored top border; feature processing is teal, detectors violet, policies amber and evidence slate |
+| Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a tinted outline; feature processing is teal, detectors violet, policies amber and evidence slate |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
 | Data kind | What crosses a boundary | Matching dot and wire colors: features teal, scores violet, P-values blue and decisions amber; all links share a solid line and arrow style |
 | Connection | A directed dependency between operations | Left-to-right ports, orthogonal segments and an arrow; placement never changes execution |

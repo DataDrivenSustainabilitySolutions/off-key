@@ -138,7 +138,6 @@ service_environment:
     MQTT_CLIENT_ID_PREFIX: "{{ mqtt_client_id_prefix }}"
     MQTT_USE_AUTH: "{{ mqtt_use_auth }}"
     MQTT_USERNAME: "{{ mqtt_local_proxy_username }}"
-    MQTT_TOPIC_REGEX: "{{ mqtt_topic_regex }}"
     SYSTEM_COLLECTION_ENABLED: "{{ system_collection_enabled | default(true) | bool | lower }}"
     MQTT_TELEMETRY_ENABLED: "{{ mqtt_telemetry_enabled }}"
     MQTT_BATCH_SIZE: "{{ mqtt_batch_size }}"

@@ -11,24 +11,20 @@ from typing import Any, TypeGuard, cast
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from sqlalchemy import CursorResult
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .client.models import MQTTMessage
 from .config.config import MQTTConfig
 from .telemetry_models import (
     HealthStatus,
-    ParseFailure,
     TelemetryRecord,
     WriteBatch,
     WriterHealthStatus,
     WriterPerformanceMetrics,
     WriteStatus,
 )
-from .telemetry_parsing import parse_telemetry_message
 
 
 class PermanentRecordError(Exception):
@@ -68,11 +64,9 @@ class DatabaseWriter:
         self,
         config: MQTTConfig,
         session_factory: Callable[[], AsyncSession],
-        topic_extractor: TopicMetadataExtractor,
     ) -> None:
         self.config = config
         self._session_factory = session_factory
-        self.topic_extractor = topic_extractor
 
         # Batching configuration
         self.batch_size = config.batch_size
@@ -177,33 +171,6 @@ class DatabaseWriter:
             if self._writer_task is None or self._writer_task.done():
                 raise RuntimeError("Database writer stopped before draining")
             await asyncio.sleep(0.05)
-
-    async def write_telemetry_message(self, message: MQTTMessage) -> None:
-        """
-        Write MQTT telemetry message to database
-
-        Args:
-            message: MQTT message containing telemetry data
-        """
-        # Parse message with explicit result handling
-        parse_result = parse_telemetry_message(message, self.topic_extractor)
-
-        if isinstance(parse_result, ParseFailure):
-            # Handle failure with centralized logging
-            if parse_result.is_error:
-                logger.error(
-                    parse_result.log_message,
-                    extra={**self._log_context, **parse_result.context},
-                    exc_info=True,
-                )
-            else:
-                logger.warning(
-                    parse_result.log_message,
-                    extra={**self._log_context, **parse_result.context},
-                )
-            return
-
-        await self.write_record(parse_result.record)
 
     async def write_record(self, record: TelemetryRecord) -> None:
         """Queue one telemetry row, waiting while the pending batch is full."""

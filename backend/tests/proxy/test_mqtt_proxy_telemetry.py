@@ -1,25 +1,18 @@
-"""Telemetry parsing and batched database writes in the MQTT proxy."""
+"""Batched database writes in the MQTT proxy."""
 
 import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from off_key_mqtt_proxy.client.models import MQTTMessage
 from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
 from off_key_mqtt_proxy.telemetry_models import (
     HealthStatus,
-    ParseFailure,
-    ParseSuccess,
+    TelemetryRecord,
     WriteBatch,
     WriteStatus,
 )
-from off_key_mqtt_proxy.telemetry_parsing import parse_telemetry_message
 from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
-
-TOPIC = "telemetry/charger-1/sine"
-VALID = {"timestamp": "2024-01-01T12:00:00+00:00", "value": "2.5"}
 
 
 def _writer() -> DatabaseWriter:
@@ -28,33 +21,18 @@ def _writer() -> DatabaseWriter:
     config.batch_timeout = 5.0
     config.graceful_shutdown_timeout = 5.0
     config.health_monitor_interval = 60.0
-    return DatabaseWriter(
-        config=config,
-        session_factory=MagicMock(),
-        topic_extractor=TopicMetadataExtractor(),
+    return DatabaseWriter(config=config, session_factory=MagicMock())
+
+
+def _record(telemetry_type="sine", timestamp=None) -> TelemetryRecord:
+    now = datetime.now(UTC)
+    return TelemetryRecord(
+        charger_id="charger-1",
+        timestamp=timestamp or now,
+        value=1.0,
+        telemetry_type=telemetry_type,
+        created=now,
     )
-
-
-def _message(topic=TOPIC, payload=None) -> MQTTMessage:
-    if payload is None:
-        payload = {"timestamp": datetime.now(UTC).isoformat(), "value": 1.0}
-    return MQTTMessage(
-        topic=topic,
-        payload=payload,
-        timestamp=datetime.now(UTC),
-        qos=0,
-        retain=False,
-    )
-
-
-def _parse(payload, topic=TOPIC):
-    return parse_telemetry_message(_message(topic, payload), TopicMetadataExtractor())
-
-
-def _record(**overrides):
-    result = _parse({**VALID, **overrides})
-    assert isinstance(result, ParseSuccess)
-    return result.record
 
 
 def _use_session(writer: DatabaseWriter) -> AsyncMock:
@@ -69,88 +47,6 @@ def _database_error(sqlstate, message="database failure") -> DBAPIError:
     error = Exception(message)
     error.sqlstate = sqlstate
     return DBAPIError("insert", None, error)
-
-
-@pytest.mark.parametrize(
-    ("timestamp", "expected"),
-    [
-        ("2024-01-01T12:00:00+02:00", datetime(2024, 1, 1, 10, 0, tzinfo=UTC)),
-        ("2024-01-01T12:00:00", datetime(2024, 1, 1, 12, 0, tzinfo=UTC)),
-        ("2024-01-01T12:00:00Z", datetime(2024, 1, 1, 12, 0, tzinfo=UTC)),
-        (1704110400, datetime.fromtimestamp(1704110400, tz=UTC)),
-    ],
-    ids=["offset", "naive_is_utc", "utc_suffix", "unix_epoch"],
-)
-def test_parse_normalizes_timestamps_to_utc(timestamp, expected):
-    result = _parse({"timestamp": timestamp, "value": "2.5"})
-
-    assert isinstance(result, ParseSuccess)
-    assert result.record.timestamp == expected
-    assert result.record.value == 2.5
-    assert result.record.created.tzinfo is not None
-
-
-def test_parse_uses_ingestion_time_without_timestamp():
-    before = datetime.now(UTC)
-
-    result = _parse({"value": 12.5}, topic="telemetry/0/currentDc")
-
-    assert isinstance(result, ParseSuccess)
-    record = result.record
-    assert (record.charger_id, record.telemetry_type, record.value) == (
-        "0",
-        "currentDc",
-        12.5,
-    )
-    assert before <= record.timestamp <= datetime.now(UTC)
-
-
-@pytest.mark.parametrize(
-    ("topic", "payload", "reason", "is_error"),
-    [
-        pytest.param(
-            "telemetry/abc",
-            VALID,
-            "Topic metadata extraction failed",
-            False,
-            id="topic",
-        ),
-        *[
-            pytest.param(
-                TOPIC,
-                {**VALID, "timestamp": timestamp},
-                "Invalid timestamp format",
-                False,
-                id=f"timestamp-{timestamp}",
-            )
-            for timestamp in [
-                "not-a-date",
-                "2024-01-01T12:00:00+25:00",
-                None,
-                True,
-                "1e100",
-            ]
-        ],
-        *[
-            pytest.param(
-                TOPIC,
-                {**VALID, "value": value},
-                "Invalid telemetry value",
-                False,
-                id=f"value-{value}",
-            )
-            for value in [None, True, False, "not-a-number", "NaN", "Infinity"]
-        ],
-        pytest.param(TOPIC, 5, "Unexpected parsing error", True, id="bare-number"),
-    ],
-)
-def test_parse_rejects_malformed_telemetry_without_raising(
-    topic, payload, reason, is_error
-):
-    result = _parse(payload, topic)
-
-    assert isinstance(result, ParseFailure)
-    assert (result.reason, result.is_error) == (reason, is_error)
 
 
 async def test_process_batch_returns_true_for_empty_batch():
@@ -204,7 +100,10 @@ async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch
     monkeypatch.setattr("off_key_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
     batch_id = "test-batch"
     writer.processing_batches[batch_id] = WriteBatch(
-        records=[_record(), _record(timestamp="2024-01-01T12:00:01+00:00")]
+        records=[
+            _record(),
+            _record(timestamp=datetime(2024, 1, 1, 12, 0, 1, tzinfo=UTC)),
+        ]
     )
     writer._process_batch = AsyncMock(return_value=False)
 
@@ -288,10 +187,10 @@ async def test_stalled_database_bounds_batches_and_backpressures_producers():
     await writer.start()
     producer = None
     try:
-        await writer.write_telemetry_message(_message())
+        await writer.write_record(_record())
         await asyncio.wait_for(entered.wait(), 1)
-        await writer.write_telemetry_message(_message())
-        producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+        await writer.write_record(_record())
+        producer = asyncio.create_task(writer.write_record(_record()))
         await asyncio.sleep(0)
         assert not producer.done()
         assert writer.pending_batch.size() == 1
@@ -321,10 +220,10 @@ async def test_shutdown_releases_waiting_producers_and_retains_unwritten_batches
 
     writer._process_batch = persist
     await writer.start()
-    await writer.write_telemetry_message(_message())
+    await writer.write_record(_record())
     await asyncio.wait_for(entered.wait(), 1)
-    await writer.write_telemetry_message(_message())
-    producer = asyncio.create_task(writer.write_telemetry_message(_message()))
+    await writer.write_record(_record())
+    producer = asyncio.create_task(writer.write_record(_record()))
     await asyncio.sleep(0)
     with pytest.raises(TimeoutError):
         await writer.stop()
@@ -360,9 +259,9 @@ async def test_permanent_record_failure_does_not_block_valid_telemetry(sqlstate)
     session.commit.side_effect = commit
     session.rollback.side_effect = staged.clear
     for sensor in ("good-before", "bad", "good-after"):
-        await writer.write_telemetry_message(_message(f"telemetry/charger-1/{sensor}"))
+        await writer.write_record(_record(sensor))
     await writer._trigger_batch_processing()
-    await writer.write_telemetry_message(_message())
+    await writer.write_record(_record())
     await writer._trigger_batch_processing()
 
     assert committed == ["good-before", "good-after", "sine"]
@@ -382,7 +281,7 @@ async def test_non_record_database_errors_retain_batch(sqlstate):
     session = _use_session(writer)
     session.execute.side_effect = _database_error(sqlstate)
 
-    await writer.write_telemetry_message(_message())
+    await writer.write_record(_record())
     await writer._trigger_batch_processing()
 
     assert len(writer.processing_batches) == 1
@@ -398,7 +297,7 @@ async def test_isolation_retains_only_unfinished_records_after_interruption(
 ):
     writer = _writer()
     for _ in range(3):
-        await writer.write_telemetry_message(_message())
+        await writer.write_record(_record())
     batch = writer.pending_batch
     original = list(batch.records)
     writer._process_batch = AsyncMock(

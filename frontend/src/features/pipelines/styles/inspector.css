@@ -29,7 +29,7 @@
 .pl-component-menu-heading h3,
 .pl-inspector .pl-inspector-heading h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 600;
 }
 .pl-component-menu-heading button,
@@ -39,14 +39,14 @@
   padding: 6px;
 }
 .pl-toolbox-count {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
   margin: 8px 0 0;
   text-align: right;
 }
 
 .pl-toolbox h4 {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -54,7 +54,7 @@
 }
 
 .pl-toolbox .pl-help {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .pl-toolbox .pl-toolbox-item {
@@ -62,7 +62,7 @@
   text-align: left;
   justify-content: space-between;
   margin: 4px 0;
-  font-size: 13px;
+  font-size: var(--text-body);
   padding: 10px;
   background: hsl(var(--background));
 }
@@ -72,7 +72,7 @@
 }
 
 .pl-toolbox-item small {
-  font-size: 9px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
 }
 
@@ -87,19 +87,19 @@
 }
 .pl-inspector .pl-help,
 .pl-inspector .pl-field {
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 .pl-inspector .pl-field :is(input, select, textarea) {
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 
 .pl-inspector h3 {
-  font-size: 16px;
+  font-size: var(--text-title3);
   margin: 16px 0 6px;
 }
 
 .pl-inspector h4 {
-  font-size: 11px;
+  font-size: var(--text-caption);
   margin: 20px 0 8px;
 }
 
@@ -145,7 +145,7 @@
 
 .pl-feature-order {
   padding-left: 20px;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .pl-feature-order li {
@@ -160,7 +160,7 @@
 
 .pl-connections {
   padding-left: 16px;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .pl-connections li {
@@ -184,7 +184,7 @@
 .pl-lineage {
   list-style: none;
   padding: 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .pl-lineage li {
@@ -207,7 +207,7 @@
 
 .pl-issue-popover {
   width: min(360px, calc(100vw - 24px));
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 .pl-issue-popover ul {
   margin: 0;
@@ -246,7 +246,7 @@
   display: block;
   margin-top: 4px;
   color: #dc2626;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 .pl-field :is(input, select, textarea)[aria-invalid="true"] {
   border-color: #dc2626;

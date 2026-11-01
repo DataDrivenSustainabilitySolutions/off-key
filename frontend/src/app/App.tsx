@@ -26,7 +26,7 @@ const App = () => (
           border: "1px solid hsl(var(--border))",
           borderRadius: "12px",
           boxShadow: "0 16px 40px hsl(220 20% 10% / 0.12)",
-          fontSize: "14px",
+          fontSize: "var(--text-body)",
         },
       }}
     />

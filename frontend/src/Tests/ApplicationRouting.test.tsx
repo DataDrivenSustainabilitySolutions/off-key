@@ -72,12 +72,25 @@ describe("application home", () => {
     expect(router.state.location.pathname).toBe("/sources");
   });
 
-  it.each(["/system/status", "/account/settings"])("opens diagnostics from %s", async (path) => {
-    const router = visit(path);
-    expect(await screen.findByRole("heading", { name: "System status" })).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/system/status");
-    fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    expect(screen.getByRole("menuitem", { name: "System status" }).getAttribute("aria-current")).toBe("page");
+  it.each([["/system/status", "status", "System status"], ["/account/settings", "status", "System status"], ["/account", "account", "Account"]])(
+    "opens %s as a settings section above Monitoring", async (path, section, heading) => {
+      const router = visit(path);
+      const dialog = await screen.findByRole("dialog", { name: "Settings" });
+      expect(await within(dialog).findByRole("heading", { name: heading, level: 2 })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Monitoring home", hidden: true })).toBeTruthy();
+      expect(router.state.location.pathname).toBe("/");
+      expect(router.state.location.search).toBe(`?settings=${section}`);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
+      await waitFor(() => expect(router.state.location.search).toBe(""));
+      expect(router.state.location.pathname).toBe("/");
+    });
+
+  it("opens catalogue settings from an earlier link as the overlay's catalogue section", async () => {
+    const router = visit("/sources?catalogue=settings");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByRole("heading", { name: "Catalogue", level: 2 })).toBeTruthy();
+    await waitFor(() => expect(router.state.location.search).toBe("?settings=catalogue"));
+    expect(router.state.location.pathname).toBe("/sources");
   });
 
   it("keeps the primary navigation on Reporting and provides a way back to Monitoring", async () => {
@@ -103,8 +116,8 @@ describe("application home", () => {
 
   it("keeps mobile section navigation in the navbar and uses the drawer for MQTT entities", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
-    const router = visit("/account");
-    await screen.findByRole("heading", { name: "Account" });
+    const router = visit("/sources");
+    await screen.findByRole("heading", { name: "Sources" });
     const trigger = screen.getByRole("button", { name: "Show catalogue" });
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "MQTT catalogue" });

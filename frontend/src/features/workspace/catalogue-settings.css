@@ -1,22 +1,3 @@
-.ex-dialog.ex-settings-dialog {
-  width: min(660px,calc(100vw - 32px));
-  padding: 0;
-  border-radius: 14px;
-}
-.ex-settings-dialog > .catalogue-settings-heading {
-  display: flex; align-items: center; gap: 14px;
-  position: sticky; top: 0; z-index: 1; background: var(--ex-bg);
-  margin: 0; padding: 22px 24px;
-  border-bottom: 1px solid var(--ex-line);
-}
-.catalogue-settings-heading-icon {
-  display: grid; place-items: center; flex-shrink: 0;
-  width: 40px; height: 40px; border: 1px solid var(--ex-line);
-  border-radius: 10px; background: var(--ex-side); color: var(--ex-muted);
-}
-.catalogue-settings-heading-copy { flex: 1; min-width: 0; }
-.ex-settings-dialog .catalogue-settings-heading-copy h2 { margin: 0; font-size: 17px; font-weight: 550; }
-.catalogue-settings-heading-copy p { margin: 4px 0 0; color: var(--ex-muted); font-size: 12px; }
 .catalogue-settings { min-width: 0; }
 .catalogue-settings-content { display: grid; gap: 26px; min-width: 0; padding: 24px; }
 .catalogue-settings-overview {
@@ -75,8 +56,6 @@
 .catalogue-settings-error { margin: 16px 0 0; padding: 10px 12px; border-radius: 7px; background: hsl(var(--destructive) / .08); color: hsl(var(--destructive)); font-size: 12px; overflow-wrap: anywhere; }
 .catalogue-settings-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 14px 24px; border-top: 1px solid var(--ex-line); color: var(--ex-muted); font-size: 11px; }
 @media (max-width: 520px) {
-  .ex-settings-dialog > .catalogue-settings-heading { gap: 10px; padding: 18px; }
-  .catalogue-settings-heading-icon { width: 34px; height: 34px; }
   .catalogue-settings-content { gap: 22px; padding: 18px; }
   .catalogue-settings-create-grid { grid-template-columns: minmax(0,1fr); gap: 8px; }
   .catalogue-settings .catalogue-settings-create { min-height: 70px; padding: 12px; }

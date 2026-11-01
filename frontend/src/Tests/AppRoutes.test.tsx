@@ -9,7 +9,7 @@ const auth = vi.hoisted(() => ({ isAuthenticated: false, isLoading: false, guest
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../pages/Login", () => ({ default: () => <h1>Log in</h1> }));
 vi.mock("../pages/MonitoringWorkspace", () => ({ default: () => <h1>Monitoring workspace</h1> }));
-vi.mock("../pages/Account", () => ({
+vi.mock("../pages/Anomalies", () => ({
   default: () => { throw new Error("Internal rendering details"); },
 }));
 
@@ -68,7 +68,7 @@ describe("application route recovery", () => {
   it("catches rendering failures without exposing details and recovers home", async () => {
     auth.isAuthenticated = true;
     vi.spyOn(console, "error").mockImplementation(() => {});
-    renderRoute("/account");
+    renderRoute("/anomalies");
 
     expect(await screen.findByRole("heading", { name: "Something went wrong" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload page" })).toBeTruthy();

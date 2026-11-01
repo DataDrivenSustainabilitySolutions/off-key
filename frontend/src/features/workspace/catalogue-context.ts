@@ -7,7 +7,7 @@ import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIn
 import type { ExplorerPreferences } from "./preferences";
 import type { ListPosition } from "./ExplorerList";
 
-export type CatalogueDialog = { kind: "settings" } | { kind: "editor"; entityKind: SystemEntityKind; id?: string; key: number } | null;
+export type CatalogueDialog = { kind: "editor"; entityKind: SystemEntityKind; id?: string; key: number } | null;
 
 export type CatalogueContextValue = {
   system: ReturnType<typeof useSystemDocument>;
@@ -39,6 +39,7 @@ export type CatalogueContextValue = {
   setEditingLocked: Dispatch<SetStateAction<boolean>>;
   dialog: CatalogueDialog;
   dialogOrigin: RefObject<HTMLElement | null>;
+  /** Opens the settings overlay at the catalogue section. */
   openSettings: () => void;
   openEditor: (kind: SystemEntityKind, id?: string) => void;
   closeDialog: () => void;

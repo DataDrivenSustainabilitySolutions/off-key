@@ -212,9 +212,12 @@ class MessageProcessor:
     def _parse_payload(self, message: MQTTMessage) -> dict[str, Any] | None:
         """Parse raw MQTT payload into JSON."""
         try:
-            return message.get_json_payload()
+            payload = message.get_json_payload()
         except ValueError as e:
             raise InvalidPayloadError(str(e)) from e
+        if payload is not None and not isinstance(payload, dict):
+            raise InvalidPayloadError("JSON payload must be an object")
+        return payload
 
     def _sanitize_payload(
         self, data: dict[str, Any], message: MQTTMessage

@@ -59,8 +59,27 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-editable \
         --package ${SERVICE_NAME}
 
-# Verify the shipped metadata against the actual RADAR dependency environment.
-RUN if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then /app/bin/python -m off_key_mqtt_radar.catalog --check; fi
+# Leave out what no service runs; only /app reaches the runtime image.
+# - The packages' own test suites (directories named "tests"), which nothing imports.
+# - For RADAR, matplotlib and the packages that only it needs, as uv.lock resolves them.
+#   PyOD declares matplotlib for its plotting helpers and for detectors RADAR does not
+#   offer (off_key_core.models.static).
+RUN find /app/lib -depth -type d -name tests -path '*/site-packages/*' -exec rm -rf {} + \
+    && if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then \
+        export_args="--frozen --no-dev --package $SERVICE_NAME --no-emit-workspace --no-header --no-hashes --no-annotate" \
+        && uv export $export_args > /tmp/locked.txt \
+        && uv export $export_args --prune matplotlib > /tmp/kept.txt \
+        && uv pip uninstall --python /app/bin/python $(grep -vxFf /tmp/kept.txt /tmp/locked.txt | cut -d= -f1); \
+    fi
+
+# Verify the shipped metadata against the actual RADAR dependency environment, then
+# import every RADAR module and offered component from it, so a change that needs a
+# package the image leaves out fails this build instead of a running monitor.
+RUN --mount=type=bind,source=scripts/check_radar_image.py,target=/tmp/check_radar_image.py \
+    if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then \
+        /app/bin/python -m off_key_mqtt_radar.catalog --check \
+        && /app/bin/python /tmp/check_radar_image.py; \
+    fi
 
 ########################################################################################################################
 FROM python:3.14-slim-bookworm

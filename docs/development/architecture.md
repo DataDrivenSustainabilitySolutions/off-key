@@ -163,7 +163,9 @@ uv run --project backend python -m off_key_mqtt_radar.catalog --check
 ```
 
 CI compares the snapshot with the installed runtime, and RADAR's Docker build
-runs the same check. API responses expose `catalog_id`, `algorithm_family`,
+runs the same check. The image leaves out matplotlib, which PyOD needs only for
+plotting and for detectors RADAR does not offer, so the build then imports every
+RADAR module and offered component and fails if one needs it. API responses expose `catalog_id`, `algorithm_family`,
 `available`, and `default_capabilities`. These capabilities describe application
 **defaults**, not arbitrary edited parameters. Shared request validation checks
 schemas, sensor cardinality, resource budgets, and preprocessing policy. RADAR

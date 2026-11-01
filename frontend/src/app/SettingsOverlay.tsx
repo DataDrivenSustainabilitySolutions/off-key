@@ -52,8 +52,9 @@ export function SettingsOverlay() {
   const dialog = useRef<HTMLDivElement>(null);
   const nav = useRef<HTMLElement>(null);
   // On phones the sections scroll sideways; keep the open one in view.
-  const revealSection = () => nav.current?.querySelector<HTMLElement>("[aria-current]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  useEffect(revealSection, [current?.id]);
+  // Braced: browsers may return a promise from scrollIntoView, which an effect must not return.
+  const revealSection = () => { nav.current?.querySelector<HTMLElement>("[aria-current]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); };
+  useEffect(() => { revealSection(); }, [current?.id]);
 
   // Earlier links opened catalogue settings with ?catalogue=settings.
   const legacyCatalogue = new URLSearchParams(location.search).get("catalogue") === "settings";

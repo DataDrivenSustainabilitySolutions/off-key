@@ -72,7 +72,8 @@
 /* Grouped rows, in the manner of system settings. */
 .app-settings-group { min-width: 0; }
 .app-settings-group-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 0 2px 8px; }
-.app-settings-group-header h3 { display: flex; align-items: center; gap: 2px; margin: 0; font-size: 13px; font-weight: 600; }
+.app-settings-group-title { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.app-settings-group-header h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .app-settings-group-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .app-settings-group-body {
   min-width: 0;

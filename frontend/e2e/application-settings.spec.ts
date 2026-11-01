@@ -81,7 +81,8 @@ test("keeps settings usable on small screens and across workspaces", async ({ pa
     await expect(dialog.getByRole("button", { name: "Close settings" })).toBeInViewport();
     await expectDialogFits(dialog);
     await dialog.screenshot({ path: testInfo.outputPath(`appearance-${width}x${height}.png`) });
-    if (path === "/anomalies") await page.mouse.click(2, 2);
+    // Phones get a full-screen sheet, so only the landscape window has a backdrop to click.
+    if (width > 680) await page.mouse.click(2, 2);
     else await dialog.getByRole("button", { name: "Close settings" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page).toHaveURL(location);

@@ -20,7 +20,10 @@ export function SettingsGroup({ title, help, actions, footer, padded, children, 
     <section className={cn("app-settings-group", className)} aria-label={title}>
       {(title || actions) && (
         <header className="app-settings-group-header">
-          {title && <h3>{title}{help && <HelpTooltip label={title}>{help}</HelpTooltip>}</h3>}
+          {title && <div className="app-settings-group-title">
+            <h3>{title}</h3>
+            {help && <HelpTooltip label={title}>{help}</HelpTooltip>}
+          </div>}
           {actions && <div className="app-settings-group-actions">{actions}</div>}
         </header>
       )}

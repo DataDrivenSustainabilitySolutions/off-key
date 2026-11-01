@@ -156,7 +156,7 @@ export const buildTelemetryEventMarkPoints = (
         color: options.colors.foreground,
         backgroundColor: options.colors.popover,
         padding: [1, 3],
-        fontSize: 10,
+        fontSize: 12,
       },
       tooltip: {
         trigger: "item" as const,

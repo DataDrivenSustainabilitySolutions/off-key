@@ -344,9 +344,9 @@ export const buildMonitoringChartOption = ({
     : domain ? domain[1] - domain[0] : Infinity;
   const axisLabel = {
     color: colors.mutedForeground,
-    fontSize: 11,
+    fontSize: 12,
     formatter: timeAxisLabelFormatter(timeZone, locale, visibleSpan, !compact),
-    rich: { day: { color: colors.foreground, fontSize: 11, fontWeight: 600 } },
+    rich: { day: { color: colors.foreground, fontSize: 12, fontWeight: 600 } },
     hideOverlap: true,
     alignMinLabel: "left" as const,
     alignMaxLabel: "right" as const,
@@ -369,7 +369,7 @@ export const buildMonitoringChartOption = ({
       !compact && index === panes.length - 1 ? `Local time (${timeZone})` : undefined,
     nameLocation: "middle" as const,
     nameGap: 35,
-    nameTextStyle: { color: colors.mutedForeground, fontSize: 11 },
+    nameTextStyle: { color: colors.mutedForeground, fontSize: 12 },
   }));
   const dataZoomRange =
     viewport.mode === "absolute"
@@ -480,7 +480,7 @@ export const buildMonitoringChartOption = ({
       top: 10,
       left: 18,
       right: 18,
-      textStyle: { color: colors.foreground, fontSize: 11 },
+      textStyle: { color: colors.foreground, fontSize: 12 },
       pageTextStyle: { color: colors.mutedForeground },
     },
     axisPointer: {
@@ -517,9 +517,9 @@ export const buildMonitoringChartOption = ({
         gridIndex: index,
         name: compact && !monitoring ? reading.unit : reading.unit
           ? `${reading.name} (${reading.unit})` : reading.name,
-        nameTextStyle: { color: monitoring ? reading.color : colors.mutedForeground, fontSize: 11, align: "left" as const,
+        nameTextStyle: { color: monitoring ? reading.color : colors.mutedForeground, fontSize: 12, align: "left" as const,
           ...(monitoring ? { overflow: "truncate" as const, width: 220 } : {}) },
-        axisLabel: { color: colors.mutedForeground, fontSize: 11 },
+        axisLabel: { color: colors.mutedForeground, fontSize: 12 },
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
@@ -534,10 +534,10 @@ export const buildMonitoringChartOption = ({
               max: boundsByPane.get("static")?.maximum,
               gridIndex: panes.indexOf("static"),
               name: "Sequential evidence (log)",
-              nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
+              nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: {
                 color: colors.mutedForeground,
-                fontSize: 11,
+                fontSize: 12,
                 formatter: (value: number) => Number(value).toPrecision(2),
               },
               axisLine: { show: false },
@@ -558,8 +558,8 @@ export const buildMonitoringChartOption = ({
               max: boundsByPane.get("adaptive")?.maximum,
               gridIndex: panes.indexOf("adaptive"),
               name: monitoring ? model.secondarySeries.find(series => series.pane === "adaptive")?.name : "Adaptive anomaly score",
-              nameTextStyle: { color: colors.mutedForeground, fontSize: 11, align: "left" as const },
-              axisLabel: { color: colors.mutedForeground, fontSize: 11,
+              nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
+              axisLabel: { color: colors.mutedForeground, fontSize: 12,
                 formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
               axisLine: { show: false },
               axisTick: { show: false },

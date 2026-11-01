@@ -12,22 +12,22 @@
 }
 
 .pl-activation h4 {
-  font-size: 12px;
+  font-size: var(--text-caption);
   margin: 18px 0 5px;
 }
 
 .pl-activation ul {
-  font-size: 12px;
+  font-size: var(--text-caption);
   padding-left: 18px;
 }
 
 .pl-activation > a {
-  font-size: 12px;
+  font-size: var(--text-caption);
   text-decoration: underline;
 }
 
 .pl-activation > p {
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 

@@ -289,10 +289,10 @@ export function StaticMonitoringSetup({
                 <HelpTooltip label="Martingale ensemble">Each tracker has a betting method, alarm statistic, and threshold. A new crossing by any tracker creates an anomaly.</HelpTooltip>
               </div>
               <div className="mt-5 flex items-end justify-between gap-3">
-                <div className="text-5xl font-semibold tracking-[-0.05em] tabular-nums">
+                <div className="text-[length:var(--text-display)] font-semibold leading-[var(--leading-display)] tracking-[-0.02em] tabular-nums">
                   {draft.martingaleTrackers.length}
                 </div>
-                <span className="mb-1 rounded-full border border-emerald-500/25 bg-background/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-700 dark:text-emerald-300">
+                <span className="mb-1 rounded-full border border-emerald-500/25 bg-background/70 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                   {draft.martingaleTrackers.length === 1 ? "Tracker" : "Trackers"}
                 </span>
               </div>

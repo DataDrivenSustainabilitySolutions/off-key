@@ -403,19 +403,19 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             {displayName}
           </CardTitle>
           {hasStaticPane && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Sequential evidence
             </span>
           )}
           {hasAdaptivePane && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-violet-700 dark:text-violet-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.07] px-2.5 py-1 text-xs font-semibold text-violet-700 dark:text-violet-300">
               <span className="size-1.5 rounded-full bg-violet-500" />
               Adaptive scores
             </span>
           )}
           {monitoringService && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs font-semibold text-muted-foreground">
               {awaitingFirstScore
                 ? "Awaiting first score"
                 : `Monitoring: ${formatOperationalStage(
@@ -424,7 +424,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             </span>
           )}
           {pendingTelemetryTimestamps.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/[0.07] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/[0.07] px-2.5 py-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
               {pendingTelemetryTimestamps.length} awaiting score
             </span>
           )}
@@ -434,7 +434,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
             <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
               <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="min-w-0 space-y-1">
-                  <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span className="block text-xs font-medium text-muted-foreground">
                     From
                   </span>
                   <DateTimePicker
@@ -446,7 +446,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   />
                 </label>
                 <label className="min-w-0 space-y-1">
-                  <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span className="block text-xs font-medium text-muted-foreground">
                     To
                   </span>
                   <DateTimePicker
@@ -481,7 +481,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                   </Button>
                 )}
               </div>
-              <span className="basis-full text-[11px] text-muted-foreground">
+              <span className="basis-full text-xs text-muted-foreground">
                 Local time zone: {timeZone}
               </span>
             </div>

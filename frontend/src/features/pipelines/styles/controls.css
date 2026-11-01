@@ -37,7 +37,7 @@
 
 .pl-help {
   font-size: var(--text-caption);
-  line-height: 1.6;
+  line-height: var(--leading-body);
   color: hsl(var(--muted-foreground));
   margin: 6px 0 12px;
   overflow-wrap: anywhere;

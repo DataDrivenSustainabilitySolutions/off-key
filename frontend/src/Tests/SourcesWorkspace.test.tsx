@@ -68,7 +68,7 @@ describe("dedicated Sources configuration", () => {
           readings: collectionRevision === 4 ? saved.runtime.ingress?.readings : {} } } };
     });
     mount("/sources?broker=broker");
-    await screen.findByLabelText("Recording policy");
+    await screen.findByRole("radiogroup", { name: "Recording" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "Remote reading" } });
     const row = await screen.findByRole("button", { name: "Remote reading, preview" });
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
@@ -148,96 +148,91 @@ describe("dedicated Sources configuration", () => {
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
-  it("selects a broker directly, automatically previews a rule and applies once", async () => {
+  it("saves a recording choice at once and undoes it", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Workshop broker, open" }));
-    await screen.findByLabelText("Recording policy");
-    expect(screen.queryByRole("button", { name: "Review change" })).toBeNull();
-    fireEvent.change(screen.getByLabelText("Recording policy"), { target: { value: "original" } });
-    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/preview", expect.objectContaining({ rule_changes: [expect.objectContaining({ scope: { kind: "broker", connection_id: "broker" }, include_future_readings: false })] }), expect.anything()));
-    expect(apiUtils.put).not.toHaveBeenCalled();
-    const apply = await screen.findByRole("button", { name: "Apply changes" });
-    await waitFor(() => expect(apply.hasAttribute("disabled")).toBe(false));
-    fireEvent.click(apply);
-    await screen.findByRole("button", { name: "Undo last recording change" });
-    expect(apiUtils.put).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Undo last recording change" }));
-    await waitFor(() => expect(apiUtils.post).toHaveBeenLastCalledWith("/v1/system/collection/preview", expect.objectContaining({ expected_collection_revision: 5,
-      rule_changes: [expect.objectContaining({ operation: "restore", restore_rule: null })] }), expect.anything()));
+    const choice = await screen.findByRole("radiogroup", { name: "Recording" });
+    expect((within(choice).getByRole("radio", { name: "Off" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(choice).getByRole("radio", { name: "Every message" }));
+    // The picked option shows as selected while it saves.
+    expect((within(choice).getByRole("radio", { name: "Every message" }) as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ pause_affected_monitors: false,
+      rule_changes: [{ scope: { kind: "broker", connection_id: "broker" }, operation: "set",
+        policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }] }), expect.anything());
+    expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ expected_collection_revision: 5,
+      rule_changes: [expect.objectContaining({ operation: "restore", restore_rule: null })] }), expect.anything());
   });
 
-  it("offers an explicit future-reading opt-in and keeps draft changes until applied", async () => {
+  it("switches the rate of a recording broker without any extra step", async () => {
+    const scope = { kind: "broker" as const, connection_id: "broker" };
+    saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1 }];
+    for (const binding of Object.values(saved.runtime.bindings!)) binding.policy = { mode: "original", interval_seconds: 10 };
     mount("/sources?broker=broker");
-    const mode = await screen.findByLabelText("Recording policy");
-    fireEvent.change(mode, { target: { value: "sample" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Include readings added later/ }));
-    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/preview", expect.objectContaining({ rule_changes: [expect.objectContaining({ include_future_readings: true, policy: { mode: "sample", interval_seconds: 10 } })] }), expect.anything()));
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(apiUtils.put).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("inherit");
+    const choice = await screen.findByRole("radiogroup", { name: "Recording" });
+    expect(screen.getByText("2 of 2 recording · Every message")).toBeTruthy();
+    fireEvent.change(within(choice).getByLabelText("Seconds between samples"), { target: { value: "60" } });
+    fireEvent.click(within(choice).getByRole("radio", { name: /Sampled/ }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{ scope, operation: "set",
+      policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: true }] }), expect.anything());
   });
 
-  it("includes reviewed readings without replacing the chosen broker policy", async () => {
+  it("opts single readings in and out of a broker's recording", async () => {
+    const scope = { kind: "broker" as const, connection_id: "broker" };
+    saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1 }];
+    saved.runtime.bindings!.temperature!.policy = { mode: "original", interval_seconds: 10 };
+    mount("/sources?broker=broker");
+    const readings = await screen.findByRole("group", { name: /Readings/ });
+    fireEvent.click(within(readings).getByRole("checkbox", { name: /temperature/ }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "reading", connection_id: "broker", reading_id: "temperature" }, operation: "set", policy: { mode: "off", interval_seconds: 10 } }] }), expect.anything());
+    fireEvent.click(await within(screen.getByRole("group", { name: /Readings/ })).findByRole("checkbox", { name: /power/ }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
+    // A broker that records takes the reading back at its own rate.
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
+  });
+
+  it("records readings added after recording started with one click", async () => {
     const scope = { kind: "broker" as const, connection_id: "broker" };
     saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1 }];
     saved.runtime.bindings!.temperature!.policy = { mode: "original", interval_seconds: 10 };
     saved.runtime.bindings!.power!.policy_origin = { scope, inherited: true, needs_review: true };
-    vi.mocked(apiUtils.put).mockImplementation(async () => {
-      const policy = { mode: "sample" as const, interval_seconds: 60 };
-      saved = { ...saved, revision: 4, runtime: {
-        ...saved.runtime, collection_revision: 5, collection_rules: [
-          { scope, policy, include_future_readings: false, admitted_before: 1 },
-          { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, policy: null, include_future_readings: false, admitted_before: 0 },
-        ],
-        bindings: Object.fromEntries(Object.entries(saved.runtime.bindings!).map(([id, binding]) => [id, {
-          ...binding, policy, policy_origin: { scope, inherited: true, needs_review: false },
-        }])),
-      } };
-      return saved;
-    });
     mount("/sources?broker=broker");
-    fireEvent.change(await screen.findByLabelText("Recording policy"), { target: { value: "sample" } });
-    fireEvent.change(screen.getByLabelText("Recording interval"), { target: { value: "60" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Apply changes" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "Include current readings" }));
-    await waitFor(() => expect(apiUtils.post).toHaveBeenLastCalledWith("/v1/system/collection/preview", expect.objectContaining({
-      rule_changes: [
-        { scope, operation: "set", policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: false },
-        { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" },
-      ],
-    }), expect.anything()));
-    expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("sample");
-    expect(screen.queryByRole("button", { name: "Include current readings" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
-    await screen.findByRole("button", { name: "Undo last recording change" });
-    expect(apiUtils.put).toHaveBeenCalledOnce();
-    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({
-      rule_changes: expect.arrayContaining([
-        expect.objectContaining({ scope, operation: "set", policy: { mode: "sample", interval_seconds: 60 } }),
-        { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" },
-      ]),
-    }), expect.anything());
-    expect(screen.getByText(/2 of 2 enabled/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Record it too" }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [
+      { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
   });
 
-  it("protects an unsaved broker draft when leaving for Monitoring", async () => {
-    mount("/sources?broker=broker");
-    fireEvent.change(await screen.findByLabelText("Recording policy"), { target: { value: "original" } });
-    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
-    const dialog = await screen.findByRole("dialog", { name: "Unsaved recording changes" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Stay" }));
-    expect((screen.getByLabelText("Recording policy") as HTMLSelectElement).value).toBe("original");
-    fireEvent.click(screen.getByRole("link", { name: "Monitoring" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Unsaved recording changes" })).getByRole("button", { name: "Discard and leave" }));
-    await screen.findByRole("heading", { name: "Monitoring home" });
-    expect(apiUtils.put).not.toHaveBeenCalled();
-  });
+  it("records and stops a broker from its overview row", async () => {
+    mount();
+    const overview = await screen.findByRole("region", { name: "Broker overview" });
+    expect(within(overview).getByText("Not recorded")).toBeTruthy();
+    fireEvent.click(within(overview).getByRole("button", { name: "Record Workshop broker" }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "broker", connection_id: "broker" }, operation: "set", policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }] }), expect.anything());
+    saved = { ...saved, runtime: { ...saved.runtime, ingress: { revision: 5, status: "applied", sources: { broker: { state: "connected" } } } } };
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/system/collection/status"
+      ? { revision: saved.revision, runtime: saved.runtime }
+      : { revision: 4, collection_revision: 5, selected_readings: 0, sampled_rows_per_day_ceiling: 0, original_rate_readings: 0, affected_monitors: [], changed_readings: 2, starting_readings: 0, stopping_readings: 2, rate_changed_readings: 0 });
+    fireEvent.click(await within(overview).findByRole("button", { name: "Stop recording Workshop broker" }, { timeout: 7000 }));
+    await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [
+      { scope: { kind: "broker", connection_id: "broker" }, operation: "inherit" }] }), expect.anything());
+  }, 15000);
 
   it("members inspect acknowledged policies without recording write controls", async () => {
     saved.can_edit = false;
     mount("/sources?broker=broker");
     await screen.findByRole("region", { name: "Recording configuration" });
-    expect(screen.queryByLabelText("Recording policy")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Recording" })).toBeNull();
     expect(screen.queryByText(/administrator can/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Add broker" })).toBeNull();
   });
@@ -258,10 +253,10 @@ describe("dedicated Sources configuration", () => {
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
     expect(await within(overview).findByRole("img", { name: /^Unreachable · Nothing accepts connections on this host and port\. · Checked at/ })).toBeTruthy();
-    expect(within(overview).getByText("Connected")).toBeTruthy();
-    expect(within(overview).getByText("Not subscribed")).toBeTruthy();
+    expect(within(overview).getByText("Recording")).toBeTruthy();
+    expect(within(overview).getByText("Not recorded")).toBeTruthy();
     // A broker nobody records from but that could not be reached reads as unavailable, with the reason.
-    expect(within(overview).getByText("Not subscribed · Unreachable")).toBeTruthy();
+    expect(within(overview).getByText("Not recorded · Unreachable")).toBeTruthy();
     expect(within(overview).getByText("Nothing accepts connections on this host and port.")).toBeTruthy();
     expect(within(overview).getByText("Used broker").closest(".source-broker")?.className).toContain("source-broker--positive");
     expect(within(overview).getByText("Workshop broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
@@ -297,7 +292,7 @@ describe("dedicated Sources configuration", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
   });
 
-  it("offers Connect on brokers that passed their check and Reconnect on failed recordings", async () => {
+  it("offers Reconnect and Stop on failed recordings and Record on the others, never a live connection", async () => {
     const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
     saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" },
       { ...saved.document.connections[0]!, id: "down", label: "Down broker" });
@@ -312,20 +307,14 @@ describe("dedicated Sources configuration", () => {
     const router = mount();
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     expect(within(overview).getByText(message)).toBeTruthy();
-    // Nothing connects before a check, except retrying a recording that failed.
-    expect(within(overview).queryByRole("button", { name: /^Connect to/ })).toBeNull();
+    expect(within(overview).getByRole("button", { name: "Stop recording Used broker" })).toBeTruthy();
     fireEvent.click(within(overview).getByRole("button", { name: "Reconnect Used broker" }));
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "used" }, undefined));
     fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
-    expect(await within(overview).findByText("Not subscribed · Unreachable")).toBeTruthy();
-    expect(within(overview).queryByRole("button", { name: "Connect to Down broker" })).toBeNull();
-    fireEvent.click(await within(overview).findByRole("button", { name: "Connect to Workshop broker" }));
-    // The broker connects live in place; the overview stays open.
-    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith(expect.stringMatching(/\/leases$/), expect.objectContaining({ stream_ids: ["power", "temperature"] }), expect.anything()));
-    expect(router.state.location.search).toBe("");
-    expect(within(overview).getByText("Connecting…")).toBeTruthy();
-    fireEvent.click(within(overview).getByRole("button", { name: "Disconnect Workshop broker" }));
-    expect(await within(overview).findByRole("button", { name: "Connect to Workshop broker" })).toBeTruthy();
+    expect(await within(overview).findByText("Not recorded · Unreachable")).toBeTruthy();
+    expect(within(overview).getByRole("button", { name: "Record Workshop broker" })).toBeTruthy();
+    expect(within(overview).queryByRole("button", { name: /^Connect/ })).toBeNull();
+    expect(apiUtils.post).not.toHaveBeenCalledWith(expect.stringMatching(/\/leases$/), expect.anything(), expect.anything());
 
     await act(() => router.navigate("/sources?broker=down"));
     expect(await screen.findByText("Unreachable")).toBeTruthy();

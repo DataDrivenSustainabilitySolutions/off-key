@@ -7,6 +7,8 @@ type Props = {
   canStart: boolean;
   canView: boolean;
   disabled: boolean;
+  /** Sources offers the live view as a preview of a broker that is not recorded. */
+  preview?: boolean;
 };
 const titles = {
   idle: "Live view off",
@@ -23,6 +25,7 @@ export function SystemLiveControls({
   canStart,
   canView,
   disabled,
+  preview = false,
 }: Props) {
   const status = useSyncExternalStore(
     telemetry.subscribeUpdates,
@@ -33,20 +36,20 @@ export function SystemLiveControls({
   ).length;
   return (
     <div className="sp-system-live-controls">
-      <div className="sp-live-indicator" title={status.message} role="status">
+      {!(preview && status.phase === "idle") && <div className="sp-live-indicator" title={status.message} role="status">
         <i className={status.phase === "live" ? "active" : ""} />
-        {titles[status.phase]}
+        {preview && status.phase === "live" ? "Live preview" : titles[status.phase]}
         {status.phase === "live" && issues > 0 && (
           <span> · {issues} connection issues</span>
         )}
-      </div>
+      </div>}
       {status.dataSource === "simulated" && status.active && (
         <span className="sp-live-source">Simulated data</span>
       )}
       {status.active || status.phase === "paused" ? (
         <button className="sp-live-toggle" title="Disconnect this view." onClick={() => telemetry.stop()}>
           <Square size={11} />
-          Disconnect
+          {preview ? "Stop preview" : "Disconnect"}
         </button>
       ) : (
         <button
@@ -55,14 +58,15 @@ export function SystemLiveControls({
           onClick={() => void telemetry.start()}
           title={
             canView
-              ? canStart ? "Connect to configured brokers." : "View the active live connection."
+              ? preview ? "Stream the readings that are not recorded into this page while it is open."
+                : canStart ? "Connect to configured brokers." : "View the active live connection."
               : "Sign in to view live data."
           }
         >
           <Plug size={13} />
           {status.phase === "error" || status.phase === "blocked"
             ? "Retry"
-            : "Connect"}
+            : preview ? "Preview" : "Connect"}
         </button>
       )}
       {(status.phase === "error" ||

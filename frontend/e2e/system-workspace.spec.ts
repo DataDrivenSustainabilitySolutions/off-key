@@ -65,18 +65,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(preview).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const collection = preview.getByRole("region", { name: "Recording configuration", exact: true });
-    await collection.getByLabel("Recording policy", { exact: true }).selectOption("sample");
-    await collection.getByLabel("Recording interval", { exact: true }).fill("1");
-    await expect(collection.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
-    expect((await readSystem()).runtime.collection_revision).toBe(initial.runtime.collection_revision);
-    await collection.getByRole("button", { name: "Discard changes", exact: true }).click();
-    await expect(collection.getByRole("button", { name: "Apply changes", exact: true })).toHaveCount(0);
     expect((await readSystem()).runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
-    await collection.getByLabel("Recording policy", { exact: true }).selectOption("sample");
-    await collection.getByLabel("Recording interval", { exact: true }).fill("1");
-    await expect(collection.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
-    await collection.getByRole("button", { name: "Apply changes", exact: true }).click();
-    await expect(collection.locator(".source-collection-status")).toContainText("Applied", { timeout: 120_000 });
+    // Choosing a rate saves it at once; there is no separate apply step.
+    await collection.getByLabel("Seconds between samples", { exact: true }).fill("1");
+    expect((await readSystem()).runtime.collection_revision).toBe(initial.runtime.collection_revision);
+    await collection.getByRole("radio", { name: /^Sampled/ }).check();
+    await expect(collection.getByText("1 of 1 recording · Every 1 s", { exact: true })).toBeVisible({ timeout: 120_000 });
     const applied = await readSystem();
     expect(keys.map(key => {
       const reading = applied.document.streams.find(item => item.topic === `tests/${localId}/${key}`)!;

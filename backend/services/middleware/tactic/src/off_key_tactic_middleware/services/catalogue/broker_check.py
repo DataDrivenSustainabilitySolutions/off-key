@@ -21,11 +21,7 @@ from socks import ProxyError
 
 from ...config.system_live import SystemLiveSettings
 from .broker_access import ResolvedBroker, resolve_broker
-from .system_live_mqtt import configure_client
-
-# CONNACK refusals that mean "these credentials", as Callback API v2 maps both
-# MQTT 3.1.1 return codes 4/5 and MQTT 5 reason codes onto them.
-_AUTH_REFUSALS = {134, 135}
+from .system_live_mqtt import CREDENTIAL_REFUSALS, configure_client
 
 _BLOCKED = {
     "host_not_allowed": "The broker is not in the operator's live host allowlist.",
@@ -81,7 +77,7 @@ def _connect_failure(error: OSError, tls: bool) -> tuple[str, str]:
 def _answer(reason, latency_ms: int) -> tuple[str, str | None, int | None]:
     if not reason.is_failure:
         return "reachable", None, latency_ms
-    if getattr(reason, "value", None) in _AUTH_REFUSALS:
+    if getattr(reason, "value", None) in CREDENTIAL_REFUSALS:
         return (
             "auth_rejected",
             "The broker answered but rejected the saved credentials.",

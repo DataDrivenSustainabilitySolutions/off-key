@@ -32,12 +32,10 @@ def workload_labels(workload: Any) -> dict[str, str]:
     return attrs.get("Spec", {}).get("Labels") or {}
 
 
-def _extract_latest_workload_state(
-    tasks: list[object], no_tasks_state: str = "no_tasks"
-) -> str:
+def _extract_latest_workload_state(tasks: list[object]) -> str:
     status = latest_task_status(tasks)
     if status is None:
-        return no_tasks_state
+        return "no_tasks"
     return str(status.get("State", "unknown")).strip().lower()
 
 
@@ -56,7 +54,6 @@ class AsyncDocker:
                 client if client is not None else DockerClient(base_url=config.base_url)
             )
             self.semaphore = asyncio.Semaphore(config.max_concurrent_calls)
-            self.config = config
             logger.info(
                 f"Docker client initialized successfully |"
                 f" URL: {config.base_url} | "

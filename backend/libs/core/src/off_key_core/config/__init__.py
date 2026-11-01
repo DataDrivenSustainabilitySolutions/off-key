@@ -7,12 +7,6 @@ from .logging import LoggingSettings, get_logging_settings
 from .runtime import RuntimeSettings, get_runtime_settings
 from .telemetry import TelemetrySettings, get_telemetry_settings
 
-
-def get_retention_days() -> int:
-    """Return validated telemetry retention days for use across services."""
-    return get_telemetry_settings().retention_days
-
-
 __all__ = [
     "AuthSettings",
     "DatabaseSettings",
@@ -24,7 +18,6 @@ __all__ = [
     "get_database_settings",
     "get_email_settings",
     "get_logging_settings",
-    "get_retention_days",
     "get_runtime_settings",
     "get_telemetry_settings",
 ]

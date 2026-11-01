@@ -17,6 +17,10 @@ from ...domain import AuthenticationError, ConflictError, NotFoundError, Validat
 from .tokens import digest_token
 
 
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
 class MemberService:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -121,9 +125,7 @@ class MemberService:
         else:
             user.session_version += 1
             status = "updated"
-        user.hashed_password = bcrypt.hashpw(
-            password.encode(), bcrypt.gensalt()
-        ).decode()
+        user.hashed_password = _hash_password(password)
         user.is_verified = True
         user.verification_token = None
         user.invitation_expires_at = None
@@ -230,9 +232,7 @@ class MemberService:
             or user.invitation_expires_at <= datetime.now(UTC)
         ):
             raise ValidationError("Invalid or expired invitation")
-        user.hashed_password = bcrypt.hashpw(
-            password.encode(), bcrypt.gensalt()
-        ).decode()
+        user.hashed_password = _hash_password(password)
         user.is_verified = True
         user.verification_token = None
         user.invitation_expires_at = None
@@ -267,9 +267,7 @@ class MemberService:
             or user.reset_token_expires_at <= datetime.now(UTC)
         ):
             raise ValidationError("Invalid or expired reset link")
-        user.hashed_password = bcrypt.hashpw(
-            password.encode(), bcrypt.gensalt()
-        ).decode()
+        user.hashed_password = _hash_password(password)
         user.reset_token_hash = None
         user.reset_token_expires_at = None
         user.session_version += 1

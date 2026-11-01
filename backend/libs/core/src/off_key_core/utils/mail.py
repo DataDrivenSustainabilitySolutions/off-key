@@ -87,9 +87,10 @@ async def send_anomaly_alert_email(anomaly: dict):
     Anomaly Type: {anomaly["anomaly_type"]}
     Anomaly Value: {anomaly["anomaly_value"]}
     """
+        recipients = settings.anomaly_alert_recipients_list
         message = MessageSchema(
             subject=f"Anomaly Detected - Charger {anomaly['charger_id']}",
-            recipients=settings.anomaly_alert_recipients_list,
+            recipients=recipients,
             body=body,
             subtype=MessageType.plain,
         )
@@ -101,7 +102,7 @@ async def send_anomaly_alert_email(anomaly: dict):
             "anomaly_type=%s recipient_count=%s",
             charger_id,
             anomaly_type,
-            len(settings.anomaly_alert_recipients_list),
+            len(recipients),
         )
         log_performance("send_anomaly_alert_email", start_time)
 

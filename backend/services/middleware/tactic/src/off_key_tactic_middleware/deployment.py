@@ -39,6 +39,13 @@ from .services.pipelines.release import (
     saved_form_monitor,
 )
 
+# A saved launch can be restarted without reading the old workload.
+_LAUNCH_KEYS = ("container_name", "mqtt_topics", "monitoring")
+
+
+def _has_launch(configuration: dict) -> bool:
+    return all(key in configuration for key in _LAUNCH_KEYS)
+
 
 def captured_configuration(name: str, environment: list[str]) -> dict:
     """One-time capture of pre-integration workers, excluding runtime credentials."""
@@ -74,10 +81,7 @@ async def capture_existing(session, workloads: RadarWorkloadManager) -> dict:
     count = 0
     for service in services:
         configuration = service.launch_config or {}
-        if all(
-            key in configuration
-            for key in ("container_name", "mqtt_topics", "monitoring")
-        ):
+        if _has_launch(configuration):
             continue
         workload = await workloads.async_docker.run(
             workloads.async_docker.client.services.get, service.container_id
@@ -109,10 +113,7 @@ async def prepare_operation(session, workloads, revision: str):
     )
     for service in services:
         restart = service.stop_requested_at is None
-        if restart and not all(
-            key in (service.launch_config or {})
-            for key in ("container_name", "mqtt_topics", "monitoring")
-        ):
+        if restart and not _has_launch(service.launch_config or {}):
             raise ValueError(
                 "Capture existing active monitor configuration before cutover"
             )
@@ -304,7 +305,7 @@ async def resume(session, orchestration, revision: str) -> dict:
         service = await orchestration.create_radar_service(
             RadarStartConfig.model_validate(monitor["config"]), **arguments
         )
-        await record_release_run(session, monitor, service)
+        await record_release_run(session, service)
         snapshots[index] = monitor | {"replacement_id": service.id}
         operation.monitors = list(snapshots)
         operation.updated_at = datetime.now(UTC)

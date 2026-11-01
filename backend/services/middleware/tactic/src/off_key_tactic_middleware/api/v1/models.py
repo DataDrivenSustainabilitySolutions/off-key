@@ -1,6 +1,5 @@
 """The detector catalogue the setup forms read."""
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Query
@@ -8,8 +7,6 @@ from off_key_core.schemas.pipelines import ComponentField
 from pydantic import BaseModel, Field
 
 from ...models.catalog import available_models
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/models", tags=["models"])
 

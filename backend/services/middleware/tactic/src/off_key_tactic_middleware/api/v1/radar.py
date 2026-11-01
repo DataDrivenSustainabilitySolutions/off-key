@@ -25,6 +25,19 @@ class RadarServiceResponse(BaseModel):
     mqtt_topics: list[str]
 
 
+def _require_one_identifier(container_name: str | None, container_id: str | None):
+    if not container_name and not container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide either container_name or container_id.",
+        )
+    if container_name and container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide only one of container_name or container_id.",
+        )
+
+
 @router.get("/radar/services/", response_model=list[dict[str, Any]])
 async def list_radar_services(
     active_only: bool = False,
@@ -78,17 +91,7 @@ async def get_radar_service_details(
     """
     Gets details for a specific RADAR service by container name or ID.
     """
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+    _require_one_identifier(container_name, container_id)
 
     try:
         service_detail = await service.get_radar_service(container_name, container_id)
@@ -115,20 +118,10 @@ async def stop_radar_service(
     Stops and removes a running RADAR Docker service.
     Updates the corresponding record in the database.
     """
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+    _require_one_identifier(container_name, container_id)
 
     try:
-        lookup_target = container_name if container_name else container_id
+        lookup_target = container_name or container_id
         success = await service.stop_radar_service(container_name, container_id)
 
         if not success:

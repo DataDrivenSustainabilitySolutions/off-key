@@ -30,9 +30,7 @@ class LiveSocksProxy(LiveCredential):
     @field_validator("host")
     @classmethod
     def exact_proxy_host(cls, value: str) -> str:
-        from off_key_core.schemas.system import SystemConnection
-
-        return SystemConnection(id="validation", label="Proxy", host=value).host
+        return _exact_host(value)
 
 
 def _exact_host(value: str) -> str:

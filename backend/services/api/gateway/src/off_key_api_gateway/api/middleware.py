@@ -44,6 +44,15 @@ SECURITY_STATUS_EVENTS = {
 }
 
 
+# Only security events and failures log these, so they are built on demand.
+def _client_ip(request: Request) -> str:
+    return redact_ip_address(forwarded_client_ip(request))
+
+
+def _safe_query(request: Request) -> dict:
+    return redact_query_params(dict(request.query_params))
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log each request and its security events.
 
@@ -55,15 +64,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         method = request.method
         path = request.url.path
-        client_ip = redact_ip_address(forwarded_client_ip(request))
         safe_user_agent = _safe_user_agent(request)
-        safe_query = redact_query_params(dict(request.query_params))
+        lowered_path = path.lower()
 
-        if any(pattern in path.lower() for pattern in SUSPICIOUS_PATTERNS):
+        if any(pattern in lowered_path for pattern in SUSPICIOUS_PATTERNS):
             logger.warning(
                 "event=security.suspicious_request ip=%s method=%s "
                 "path=%s user_agent=%s",
-                client_ip,
+                _client_ip(request),
                 method,
                 path,
                 safe_user_agent,
@@ -79,7 +87,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 method,
                 path,
                 duration_ms,
-                safe_query,
+                _safe_query(request),
                 safe_user_agent,
                 str(e),
             )
@@ -96,11 +104,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 path,
                 response.status_code,
                 duration_ms,
-                safe_query,
+                _safe_query(request),
                 safe_user_agent,
             )
         if event := SECURITY_STATUS_EVENTS.get(response.status_code):
-            logger.warning(event, client_ip, path)
+            logger.warning(event, _client_ip(request), path)
         return response
 
 

@@ -33,10 +33,16 @@ class SystemService:
         row = await self.session.scalar(
             select(SystemConfiguration).where(SystemConfiguration.id == 1)
         )
-        document = row.document if row is not None else SystemDocument()
+        # Validated once: the snapshot below reuses the instance, and current()
+        # only reads it (it keeps a deep copy).
+        document = (
+            SystemDocument.model_validate(row.document)
+            if row is not None
+            else SystemDocument()
+        )
         runtime = SystemRuntime()
         active, definition = await SystemCollectionService(self.session).current(
-            SystemDocument.model_validate(document)
+            document
         )
         runtime.collection_revision = active.revision
         runtime.collection = active.collection
@@ -60,7 +66,7 @@ class SystemService:
         if row is not None:
             return SystemSnapshot(
                 revision=row.revision,
-                document=row.document,
+                document=document,
                 storage_origin="saved",
                 runtime=runtime,
                 updated_at=row.updated_at.isoformat(),
@@ -68,7 +74,7 @@ class SystemService:
             )
         return SystemSnapshot(
             revision=0,
-            document=SystemDocument(),
+            document=document,
             storage_origin="empty",
             runtime=runtime,
         )

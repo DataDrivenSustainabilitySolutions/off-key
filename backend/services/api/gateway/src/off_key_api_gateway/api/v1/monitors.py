@@ -67,6 +67,19 @@ class ServiceResponse(BaseModel):
     mqtt_topics: list[str]
 
 
+def _require_one_container(container_name: str | None, container_id: str | None):
+    if not container_name and not container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You must provide either container_name or container_id.",
+        )
+    if container_name and container_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide only one of container_name or container_id.",
+        )
+
+
 @router.get("/all", response_model=list[dict[str, Any]])
 @shared_limit_fetch
 async def list_services(
@@ -161,8 +174,6 @@ async def start_monitoring_service(
         return await tactic.start_radar_service(config)
     except TacticError:
         raise
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start monitoring service: {e!s}"
@@ -179,17 +190,7 @@ async def get_service_details(
     """
     Gets details for a specific monitoring service by container name or ID.
     """
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+    _require_one_container(container_name, container_id)
 
     try:
         service_detail = await tactic.get_radar_service_details(
@@ -219,17 +220,7 @@ async def stop_monitoring_service(
     """
     Stops and removes a running monitoring service container via TACTIC.
     """
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+    _require_one_container(container_name, container_id)
 
     try:
         response = await tactic.stop_radar_service(

@@ -1,6 +1,10 @@
 """Allowlisted component metadata, independent of scientific runtime imports."""
 
-from typing import get_args
+from copy import deepcopy
+from functools import cache
+from typing import Any, get_args
+
+from pydantic import BaseModel
 
 from ..schemas.pipelines import (
     NodeKind,
@@ -11,14 +15,23 @@ from ..schemas.pipelines import (
     PipelineStrategy,
     PipelineTemplate,
 )
-from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
-from .pipeline_parameters import PARAMETER_MODELS
+from .pipeline_parameters import PARAMETER_MODELS, POLICY_MODELS
 from .static import STATIC_MODELS
 
 BOTH: list[PipelineStrategy] = list(get_args(PipelineStrategy))
+
+
+@cache
+def _generated_schema(model: type[BaseModel]) -> dict[str, Any]:
+    return model.model_json_schema()
+
+
+def _json_schema(model: type[BaseModel]) -> dict[str, Any]:
+    # Generation dominates catalogue builds; the copy keeps each caller's dict private.
+    return deepcopy(_generated_schema(model))
 
 
 def pipeline_components() -> list[PipelineComponent]:
@@ -141,15 +154,8 @@ def pipeline_components() -> list[PipelineComponent]:
     ]
     result = []
     for identifier, kind, label, description, strategies in specifications:
-        model = PARAMETER_MODELS.get(identifier)
-        schema = (
-            model.model_json_schema()
-            if model
-            else (
-                StaticMartingaleConfig
-                if identifier == "policy.martingale"
-                else AdaptiveThresholdConfig
-            ).model_json_schema()
+        schema = _json_schema(
+            PARAMETER_MODELS.get(identifier) or POLICY_MODELS[identifier]
         )
         input_type = (
             None
@@ -185,7 +191,7 @@ def pipeline_components() -> list[PipelineComponent]:
             )
         )
     for identifier, model in STATIC_MODELS.items():
-        schema = model.parameters.model_json_schema()
+        schema = _json_schema(model.parameters)
         result.append(
             PipelineComponent(
                 id=f"detector:{identifier}",
@@ -215,8 +221,12 @@ def pipeline_components() -> list[PipelineComponent]:
     return result
 
 
+def _catalog_id(components: list[PipelineComponent]) -> str:
+    return digest([item.model_dump(mode="json") for item in components])
+
+
 def pipeline_catalog_id() -> str:
-    return digest([item.model_dump(mode="json") for item in pipeline_components()])
+    return _catalog_id(pipeline_components())
 
 
 def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
@@ -265,9 +275,10 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 ),
             )
         )
+    components = pipeline_components()
     return PipelineCatalog(
-        catalog_id=pipeline_catalog_id(),
+        catalog_id=_catalog_id(components),
         authoring_enabled=authoring_enabled,
-        components=pipeline_components(),
+        components=components,
         templates=templates,
     )

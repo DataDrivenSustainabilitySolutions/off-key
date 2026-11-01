@@ -51,6 +51,12 @@ class RadarServiceQueries:
         for service in services:
             configuration = getattr(service, "launch_config", None) or {}
             monitoring = configuration.get("monitoring") or {}
+            # Optionally check actual Docker state
+            docker_status, labels = (
+                await self.workloads.get_status_and_labels(service.container_id)
+                if include_docker_status
+                else (None, {})
+            )
             service_dict = {
                 "id": service.id,
                 "container_id": service.container_id,
@@ -60,20 +66,13 @@ class RadarServiceQueries:
                 "model_type": monitoring.get("model_type"),
                 "mqtt_topics": service.mqtt_topic,
                 "status": service.status,
-                "operational_status": derive_operational_status(service),
+                "operational_status": derive_operational_status(service, docker_status),
                 "created_at": (
                     service.created_at.isoformat() if service.created_at else None
                 ),
             }
-            # Optionally check actual Docker state
             if include_docker_status:
-                docker_status, labels = await self.workloads.get_status_and_labels(
-                    service.container_id
-                )
                 service_dict["docker_status"] = docker_status
-                service_dict["operational_status"] = derive_operational_status(
-                    service, docker_status
-                )
                 if labels:
                     service_dict["monitoring_strategy"] = labels.get(
                         "monitoring_strategy"

@@ -16,26 +16,31 @@ from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
 
 
+def _static_model(model_type: str, definition) -> dict[str, Any]:
+    schema = definition.parameters.model_json_schema()
+    return {
+        "model_type": model_type,
+        "family": STATIC_MODEL_FAMILY,
+        "name": definition.name,
+        "description": (
+            f"Static {definition.name} detector wrapped by conformal p-values"
+        ),
+        "complexity": definition.complexity,
+        "memory_usage": definition.memory_usage,
+        "import_paths": [definition.import_path],
+        "parameter_schema": schema,
+        "fields": component_fields(schema),
+        "default_parameters": definition.parameters().model_dump(),
+        "version": "1.0.0",
+        "requires_special_handling": False,
+        "strategy": STATIC_MONITORING_STRATEGY,
+    }
+
+
 def available_models() -> list[dict[str, Any]]:
     """Every executable detector with its parameter schema and defaults."""
     static = [
-        {
-            "model_type": model_type,
-            "family": STATIC_MODEL_FAMILY,
-            "name": definition.name,
-            "description": (
-                f"Static {definition.name} detector wrapped by conformal p-values"
-            ),
-            "complexity": definition.complexity,
-            "memory_usage": definition.memory_usage,
-            "import_paths": [definition.import_path],
-            "parameter_schema": definition.parameters.model_json_schema(),
-            "fields": component_fields(definition.parameters.model_json_schema()),
-            "default_parameters": definition.parameters().model_dump(),
-            "version": "1.0.0",
-            "requires_special_handling": False,
-            "strategy": STATIC_MONITORING_STRATEGY,
-        }
+        _static_model(model_type, definition)
         for model_type, definition in STATIC_MODELS.items()
     ]
     adaptive = [

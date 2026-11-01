@@ -93,15 +93,13 @@ class RadarWorkloadManager:
         tactic_config = get_tactic_settings().config
         docker_config = tactic_config.docker
         budget = docker_config.resource_budget
+        image = environment.get("RADAR_RUNTIME_IMAGE", tactic_config.radar_image)
         service_kwargs: dict[str, Any] = {
             "name": radar_workload_name(service_id),
             "labels": build_radar_workload_labels(
-                environment=environment,
-                radar_image=environment.get(
-                    "RADAR_RUNTIME_IMAGE", tactic_config.radar_image
-                ),
+                environment=environment, radar_image=image
             ),
-            "image": environment.get("RADAR_RUNTIME_IMAGE", tactic_config.radar_image),
+            "image": image,
             "env": environment,
             "command": ["/app/bin/python", "-m", "off_key_mqtt_radar"],
             "mode": ServiceMode("replicated", replicas=1),

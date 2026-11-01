@@ -11,8 +11,6 @@ from ..collection_auth import current_member, require_admin
 
 router = APIRouter(prefix="/live", tags=["system-live"])
 
-live_service = get_live_service
-
 
 @router.get("")
 async def get_live(

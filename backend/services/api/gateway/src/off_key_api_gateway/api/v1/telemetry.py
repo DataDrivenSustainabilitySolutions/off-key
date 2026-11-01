@@ -29,10 +29,7 @@ async def get_telemetry(
     after_event_timestamp: datetime | None = Query(None),  # Cursor tie-breaker
     paginated: bool = False,  # Enable paginated response format
 ):
-    cursor_values = (after_created, after_event_timestamp)
-    if any(value is not None for value in cursor_values) and not all(
-        value is not None for value in cursor_values
-    ):
+    if (after_created is None) != (after_event_timestamp is None):
         raise HTTPException(
             status_code=422,
             detail="All telemetry live cursor fields are required",
@@ -71,14 +68,16 @@ async def get_telemetry_range(
     buckets: int = Query(600, ge=10, le=2000, description="Time buckets to return"),
 ):
     """Return each bucket's lowest and highest value, so spikes survive."""
-    if start is not None and end is not None and as_utc(start) >= as_utc(end):
+    start = as_utc(start) if start is not None else None
+    end = as_utc(end) if end is not None else None
+    if start is not None and end is not None and start >= end:
         raise HTTPException(
             status_code=422, detail="Telemetry range start must precede its end"
         )
     return await tactic.get_telemetry_range(
         charger_id=charger_id,
         telemetry_type=telemetry_type,
-        start=as_utc(start) if start is not None else None,
-        end=as_utc(end) if end is not None else None,
+        start=start,
+        end=end,
         buckets=buckets,
     )

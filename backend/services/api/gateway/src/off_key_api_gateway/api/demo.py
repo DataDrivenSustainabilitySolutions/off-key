@@ -161,10 +161,11 @@ class DemoGuestMiddleware:
             await self.app(scope, receive, send)
             return
         method, path = scope["method"], scope["path"]
-        if method == "OPTIONS" or path.startswith(OPEN_PREFIXES):
-            await self.app(scope, receive, send)
-            return
-        if not path.startswith("/v1/"):
+        if (
+            method == "OPTIONS"
+            or path.startswith(OPEN_PREFIXES)
+            or not path.startswith("/v1/")
+        ):
             await self.app(scope, receive, send)
             return
         if not guest_may_call(method, path):

@@ -18,6 +18,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# An anomaly row and its public identity share this natural key.
+_ANOMALY_IDENTITY_JOIN = and_(
+    Anomaly.charger_id == AnomalyIdentity.charger_id,
+    Anomaly.timestamp == AnomalyIdentity.timestamp,
+    Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
+    Anomaly.service_id == AnomalyIdentity.service_id,
+)
+
 
 class ChargerRepository:
     """Persistence operations for chargers."""
@@ -223,15 +231,7 @@ class AnomalyRepository:
     ) -> list[tuple[str, Anomaly]]:
         query = (
             select(AnomalyIdentity.anomaly_id, Anomaly)
-            .join(
-                Anomaly,
-                and_(
-                    Anomaly.charger_id == AnomalyIdentity.charger_id,
-                    Anomaly.timestamp == AnomalyIdentity.timestamp,
-                    Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
-                    Anomaly.service_id == AnomalyIdentity.service_id,
-                ),
-            )
+            .join(Anomaly, _ANOMALY_IDENTITY_JOIN)
             .where(Anomaly.charger_id == charger_id)
         )
         if telemetry_type:
@@ -282,15 +282,7 @@ class AnomalyRepository:
     ) -> tuple[str, Anomaly] | None:
         result = await self._session.execute(
             select(AnomalyIdentity.anomaly_id, Anomaly)
-            .join(
-                Anomaly,
-                and_(
-                    Anomaly.charger_id == AnomalyIdentity.charger_id,
-                    Anomaly.timestamp == AnomalyIdentity.timestamp,
-                    Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
-                    Anomaly.service_id == AnomalyIdentity.service_id,
-                ),
-            )
+            .join(Anomaly, _ANOMALY_IDENTITY_JOIN)
             .where(AnomalyIdentity.anomaly_id == anomaly_id)
         )
         row = result.first()

@@ -381,8 +381,10 @@ async def finish(session, revision: str) -> dict:
 async def run(action: str, revision: str) -> dict:
     sessions = get_async_session_local()
     async with sessions() as session:
-        workloads = RadarWorkloadManager(get_async_docker())
         if action == "capture":
+            # Building the Docker client queries the daemon, so only the
+            # action that inspects workloads connects to it.
+            workloads = RadarWorkloadManager(get_async_docker())
             return await capture_existing(session, workloads)
         if action == "reserve":
             return await reserve(session, revision)

@@ -33,10 +33,6 @@ def resolved_detector_config(plan: ExecutionPlan) -> ResolvedDetectorConfig:
     return config
 
 
-def detector_config(plan: ExecutionPlan) -> DetectorConfig:
-    return resolved_detector_config(plan).config
-
-
 def adaptive_graph(
     plan: ExecutionPlan, observer=None, config: ResolvedDetectorConfig | None = None
 ):

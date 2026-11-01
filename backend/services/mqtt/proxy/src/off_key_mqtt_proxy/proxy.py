@@ -167,7 +167,6 @@ class MQTTProxyService:
         states = {}
         live_seen = {}
         for observation in observations:
-            message = observation.message()
             if not observation.snapshot:
                 charger_id = observation.stream.charger_id
                 live_seen[charger_id] = max(
@@ -180,6 +179,7 @@ class MQTTProxyService:
                     await self.database_writer.write_record(
                         observation.telemetry_record()
                     )
+                message = observation.message()
                 if not await self.mqtt_client.publish(
                     message.topic, message.payload, qos=1
                 ):

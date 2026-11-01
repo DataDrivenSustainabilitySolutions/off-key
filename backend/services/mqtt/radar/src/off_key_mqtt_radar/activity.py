@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Any
 
 from off_key_core.schemas.radar import RadarActivityStatus
+from off_key_core.utils.timestamps import as_utc
 
 from .models import AnomalyResult, MQTTMessage, is_inference
 
@@ -44,10 +45,7 @@ class ActivityTracker:
 
     def record_input(self, sensor: str | None, message: MQTTMessage) -> None:
         now = self._clock()
-        received_at = message.timestamp or datetime.now(UTC)
-        if received_at.tzinfo is None:
-            received_at = received_at.replace(tzinfo=UTC)
-        received_at = received_at.astimezone(UTC)
+        received_at = as_utc(message.timestamp or datetime.now(UTC))
         receipt_clock = getattr(message, "received_monotonic", None)
         if not isinstance(receipt_clock, int | float) or not math.isfinite(
             receipt_clock

@@ -155,9 +155,7 @@ class RadarService:
                     self.config,
                     runtime.durable_checkpoint_secret_bytes,
                 )
-
-            # Durable recovery must complete before MQTT receives live input.
-            if self.config.db_write_enabled:
+                # Durable recovery must complete before MQTT receives live input.
                 await self._setup_database_writer()
 
             restored = await self._setup_anomaly_detection()
@@ -385,10 +383,6 @@ class RadarService:
 
     async def _setup_database_writer(self):
         """Initialize database writer"""
-        if not self.config.db_write_enabled:
-            logger.info("Database writing disabled; not creating writer")
-            return
-
         logger.info("Setting up database writer")
 
         self.database_writer = DatabaseWriter(
@@ -475,7 +469,7 @@ class RadarService:
                         .get("pipeline_state")
                     )
                 if self.coverage is not None:
-                    coverage = self.coverage.snapshot().model_dump(mode="json")
+                    coverage = self.coverage.snapshot_json()
             except Exception:
                 logger.exception("event=radar.final_failure_diagnostics_failed")
             await self._persist_execution_failure(error, diagnostics, coverage)
@@ -552,7 +546,7 @@ class RadarService:
             primary.processed_count - primary.last_checkpoint
             >= self.config.checkpoint_interval
         )
-        coverage_state = self.coverage.snapshot().model_dump(mode="json")
+        coverage_state = self.coverage.snapshot_json()
         gap = (
             coverage_state.get("dropped_message_count", 0),
             coverage_state.get("possible_gap_count", 0),
@@ -596,8 +590,6 @@ class RadarService:
                         await self._checkpoint_if_due()
                     elif self._detector_runtime is not None:
                         await self._detector_runtime.refresh()
-        except asyncio.CancelledError:
-            raise
         except FatalExecutionError as error:
             await self._fail_execution(error)
         except Exception as error:

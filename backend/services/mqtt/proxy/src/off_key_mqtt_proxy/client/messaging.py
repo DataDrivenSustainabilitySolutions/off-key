@@ -60,7 +60,9 @@ class MessageHandler:
             self.messages_received += 1
             self.last_message_time = message.timestamp
 
-            logger.debug(f"Received message from {msg.topic}: {len(msg.payload)} bytes")
+            logger.debug(
+                "Received message from %s: %s bytes", msg.topic, len(msg.payload)
+            )
 
             handler = self.message_handler
             if handler is None:
@@ -79,7 +81,7 @@ class MessageHandler:
         """Queue message when no handler is available"""
         if len(self.message_queue) < self.max_queue_size:
             self.message_queue.append(message)
-            logger.debug(f"Queued message from {message.topic}")
+            logger.debug("Queued message from %s", message.topic)
         else:
             logger.warning(
                 f"Message queue full ({self.max_queue_size}), "

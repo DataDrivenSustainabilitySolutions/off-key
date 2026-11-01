@@ -7,7 +7,6 @@ import importlib
 import json
 import logging
 import math
-import os
 import time
 from collections import deque
 from datetime import UTC, datetime
@@ -16,7 +15,6 @@ from time import perf_counter_ns
 from typing import Any
 
 import numpy as np
-import psutil
 from off_key_core.models.static import (
     get_static_model_definition,
     validate_static_model_params,
@@ -27,6 +25,7 @@ from .alarm_calibration import resolve_tracker_thresholds
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
 from .martingales import MartingaleAlarmController
+from .memory import process_rss_mb
 from .models import AnomalyResult
 from .pipelines.batch import BatchFeatureGraph, FittedStaticPipeline
 from .pipelines.execution import PipelineExecutionMixin
@@ -753,16 +752,9 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
                 else 0
             ),
             "discarded_during_training_count": self.discarded_during_training_count,
-            "memory_usage_mb": self._get_memory_usage(),
+            "memory_usage_mb": process_rss_mb(),
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)
             * 1000,
             "uptime_seconds": time.time() - self.start_time,
         }
-
-    def _get_memory_usage(self) -> float:
-        try:
-            process = psutil.Process(os.getpid())
-            return process.memory_info().rss / 1024 / 1024
-        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-            return 0.0

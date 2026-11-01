@@ -9,7 +9,6 @@ buffer, reconnects and re-applies subscriptions, so this class never retries.
 import asyncio
 import ssl
 from collections.abc import Callable, Coroutine
-from datetime import datetime
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -39,7 +38,6 @@ class ConnectionManager:
         # Connection state
         self.state = ConnectionState.DISCONNECTED
         self.client: mqtt.Client | None = None
-        self.connection_start_time: datetime | None = None
 
         # Async coordination
         self._connection_event = asyncio.Event()
@@ -120,7 +118,6 @@ class ConnectionManager:
 
                 if self.state == ConnectionState.CONNECTED:
                     logger.info("MQTT connection established successfully")
-                    self.connection_start_time = datetime.now()
 
                     # Notify connected callback
                     if self.on_connected:
@@ -205,8 +202,8 @@ class ConnectionManager:
     def _on_log(self, client, userdata, level, buf):
         """MQTT log callback"""
         if level == mqtt.MQTT_LOG_ERR:
-            logger.error(f"MQTT: {buf}")
+            logger.error("MQTT: %s", buf)
         elif level == mqtt.MQTT_LOG_WARNING:
-            logger.warning(f"MQTT: {buf}")
+            logger.warning("MQTT: %s", buf)
         else:
-            logger.debug(f"MQTT: {buf}")
+            logger.debug("MQTT: %s", buf)

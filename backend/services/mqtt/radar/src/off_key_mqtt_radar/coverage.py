@@ -53,3 +53,8 @@ class CoverageTracker:
     def snapshot(self) -> RadarCoverageStatus:
         with self._lock:
             return self._state.model_copy(deep=True)
+
+    def snapshot_json(self) -> dict[str, Any]:
+        """Serialize the counters directly; the dump is already a fresh copy."""
+        with self._lock:
+            return self._state.model_dump(mode="json")

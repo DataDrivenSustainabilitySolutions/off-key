@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import math
-import os
 import time
 from collections import deque
 from datetime import UTC, datetime
@@ -14,7 +13,6 @@ from enum import Enum
 from typing import Any
 
 import numpy as np
-import psutil
 from aberrant import __version__ as aberrant_version
 from aberrant.base import ModelProtocol
 from aberrant.catalog import ResolvedDetectorConfig
@@ -24,6 +22,7 @@ from off_key_core.schemas.radar import AdaptiveStreamConfig
 
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
+from .memory import process_rss_mb
 from .models import AnomalyResult, inference_key
 from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.execution import PipelineExecutionMixin
@@ -470,19 +469,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             "calibration_window_size": self.adaptive_config.calibration_window_size,
             "threshold": self.threshold,
             "training_error": self.training_error,
-            "memory_usage_mb": self._memory_usage(),
+            "memory_usage_mb": process_rss_mb(),
             "avg_processing_time_ms": (
                 sum(self.processing_times) / max(len(self.processing_times), 1) * 1000
             ),
             "uptime_seconds": time.time() - self.start_time,
         }
-
-    @staticmethod
-    def _memory_usage() -> float:
-        try:
-            return psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
-        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-            return 0.0
 
     def shutdown(self) -> None:
         """Adaptive models hold no background resources."""

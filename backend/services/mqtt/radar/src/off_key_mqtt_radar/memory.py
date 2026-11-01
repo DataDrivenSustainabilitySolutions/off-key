@@ -3,8 +3,22 @@
 import gc
 import logging
 import os
+from functools import cache
 
 import psutil
+
+
+@cache
+def _current_process() -> psutil.Process:
+    return psutil.Process(os.getpid())
+
+
+def process_rss_mb() -> float:
+    """Resident memory of this process, or 0.0 when the OS refuses the read."""
+    try:
+        return _current_process().memory_info().rss / 1024 / 1024
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+        return 0.0
 
 
 class MemoryManager:

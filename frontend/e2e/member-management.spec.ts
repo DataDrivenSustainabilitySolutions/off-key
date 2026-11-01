@@ -157,7 +157,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);
     await expect(memberPage.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
-    await expect(memberPage.getByText(/Signed in as .* · Member/)).toBeVisible();
+    await expect(memberPage.getByRole("region", { name: "Signed in", exact: true })).toContainText("Member");
     await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.delete(new URL(`/api/v1/members/${initial.id}`, page.url()).href, { headers: oldHeaders });
     expect(forbidden.status()).toBe(403);

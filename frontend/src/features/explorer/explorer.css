@@ -1,4 +1,4 @@
-.ex-shell,.ex-dialog,.ex-popover,.ex-mobile-sidebar {
+.ex-shell,.ex-dialog,.ex-popover,.ex-mobile-sidebar,.app-settings-dialog {
   --ex-bg: hsl(var(--background)); --ex-side: hsl(var(--muted));
   --ex-ink: hsl(var(--foreground)); --ex-muted: hsl(var(--muted-foreground));
   --ex-line: hsl(var(--border)); --ex-hover: hsl(var(--accent));
@@ -15,7 +15,7 @@
 .ex-sidebar-resize:hover::after,.ex-sidebar-resize:focus-visible::after,.ex-sidebar-resize[data-resizing]::after { background: var(--ex-accent); }
 .ex-sidebar-resize:focus-visible { box-shadow: inset 0 0 0 1px var(--ex-accent); }
 .ex-shell.is-resizing,.ex-shell.is-resizing * { cursor: col-resize !important; user-select: none; }
-.ex-shell *, .ex-dialog *, .ex-popover *, .ex-mobile-sidebar * { box-sizing: border-box; }
+.ex-shell *, .ex-dialog *, .ex-popover *, .ex-mobile-sidebar *, .app-settings-dialog * { box-sizing: border-box; }
 .ex-shell button:where(:not(.app-header button,[data-slot="button"])),.ex-dialog button:where(:not([data-slot="button"])),.ex-popover button:where(:not([data-slot="button"])),.ex-mobile-sidebar button:where(:not([data-slot="button"])) { cursor: pointer; font: inherit; color: inherit; border: 0; background: none; }
 .ex-shell button:where(:not(.app-header button,[data-slot="button"])):disabled,.ex-dialog button:where(:not([data-slot="button"])):disabled { cursor: default; opacity: .45; }
 .ex-shell button:where(:not(.app-header button,[data-slot="button"])):focus-visible,.ex-dialog button:where(:not([data-slot="button"])):focus-visible,.ex-popover button:where(:not([data-slot="button"])):focus-visible,.ex-mobile-sidebar button:where(:not([data-slot="button"])):focus-visible,

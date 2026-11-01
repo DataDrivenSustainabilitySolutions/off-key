@@ -3,10 +3,10 @@ import { createRoutesFromElements, Navigate, Route } from "react-router-dom";
 
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { RouteErrorBoundary, RouteErrorPage } from "./RouteErrorPage";
+import { SettingsRedirect } from "./SettingsRedirect";
 
 export function createAppRoutes() {
   const ApplicationWorkspace = lazy(() => import("./ApplicationWorkspace").then(module => ({ default: module.ApplicationWorkspace })));
-  const Account = lazy(() => import("@/pages/Account"));
   const Anomalies = lazy(() => import("@/pages/Anomalies"));
   const Details = lazy(() => import("@/pages/Details"));
   const DataSources = lazy(() => import("@/pages/SystemCatalogue"));
@@ -14,7 +14,6 @@ export function createAppRoutes() {
   const Login = lazy(() => import("@/pages/Login"));
   const Registration = lazy(() => import("@/pages/Registration"));
   const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-  const SystemStatus = lazy(() => import("@/pages/SystemStatus"));
   const MonitoringWorkspace = lazy(() => import("@/pages/MonitoringWorkspace"));
 
   return createRoutesFromElements(
@@ -38,9 +37,10 @@ export function createAppRoutes() {
           <Route path="/services" element={<Navigate to="/" replace />} />
           <Route path="/sources" element={<DataSources />} />
           <Route path="/details/:chargerId" element={<Details />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/system/status" element={<SystemStatus />} />
-          <Route path="/account/settings" element={<Navigate to="/system/status" replace />} />
+          {/* Account and status open as the settings overlay above Monitoring. */}
+          <Route path="/account" element={<SettingsRedirect section="account" />} />
+          <Route path="/system/status" element={<SettingsRedirect section="status" />} />
+          <Route path="/account/settings" element={<SettingsRedirect section="status" />} />
           <Route path="/anomalies" element={<Anomalies />} />
         </Route>
       </Route>

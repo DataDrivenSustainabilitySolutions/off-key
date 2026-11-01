@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicationMenu } from "@/app/ApplicationMenu";
+import { SettingsOverlay } from "@/app/SettingsOverlay";
 import { BrandHome } from "@/components/BrandHome";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -14,7 +15,7 @@ function Location() {
   return <p>{location.pathname + location.search}</p>;
 }
 function mount(path = "/") {
-  render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={[path]}><BrandHome /><ApplicationMenu /><Location /></MemoryRouter></ThemeProvider>);
+  render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={[path]}><BrandHome /><ApplicationMenu /><SettingsOverlay /><Location /></MemoryRouter></ThemeProvider>);
   fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
 }
 
@@ -40,11 +41,6 @@ describe("shared application menu", () => {
     expect(screen.getByText("jane.doe@example.com", { selector: ".app-menu-account" })).toBeTruthy();
   });
 
-  it.each([["/account", "Account"], ["/system/status", "System status"]])("marks the current page at %s", (path, label) => {
-    mount(path);
-    expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-current")).toBe("page");
-  });
-
   it("offers sign-in without authenticated application actions", () => {
     auth.isAuthenticated = false;
     render(<MemoryRouter><ApplicationMenu /></MemoryRouter>);
@@ -52,38 +48,60 @@ describe("shared application menu", () => {
     expect(screen.queryByRole("button", { name: "Application menu" })).toBeNull();
   });
 
-  it("links directly to system diagnostics", async () => {
-    mount();
-    fireEvent.click(screen.getByRole("menuitem", { name: "System status" }));
-    expect(await screen.findByText("/system/status")).toBeTruthy();
+  it.each([["Account", "account"], ["System status", "status"]])("opens %s as a settings section above the current page", async (label, section) => {
+    mount("/sources?reading=temperature");
+    fireEvent.click(screen.getByRole("menuitem", { name: label }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(screen.getByText(`/sources?reading=temperature&settings=${section}`)).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: label, level: 2 })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: label }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("switches sections in place and closes back to the page it opened from", async () => {
+    mount("/anomalies");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Account" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Preferences" }));
+    expect(await screen.findByText("/anomalies?settings=preferences")).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Preferences", level: 2 })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
+    expect(await screen.findByText("/anomalies")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("opens a linked section directly and closes it without leaving the page", async () => {
+    render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={["/sources?settings=preferences"]}><SettingsOverlay /><Location /></MemoryRouter></ThemeProvider>);
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(await screen.findByText("/sources")).toBeTruthy();
   });
 
   it("opens preferences over the current route, persists the theme and restores menu focus", async () => {
     const path = "/sources?reading=temperature";
     mount(path);
     fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
-    const dialog = await screen.findByRole("dialog", { name: "Preferences" });
-    expect(screen.getByText(path)).toBeTruthy();
-    expect(within(dialog).getByRole("tab", { name: "Appearance" }).getAttribute("aria-selected")).toBe("true");
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(screen.getByText(`${path}&settings=preferences`)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Preferences" }).getAttribute("aria-current")).toBe("page");
     expect(within(dialog).queryByText("Collection diagnostics")).toBeNull();
     expect((within(dialog).getByRole("radio", { name: "Light" }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(dialog).getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(localStorage.getItem("vite-ui-theme")).toBe("dark");
     expect((within(dialog).getByRole("radio", { name: "Dark" }) as HTMLInputElement).checked).toBe(true);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close preferences" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText(path)).toBeTruthy();
+    expect(await screen.findByText(path)).toBeTruthy();
   });
 
   it("preserves a newer focus choice while preferences finishes closing", async () => {
     mount("/sources");
     fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
-    const dialog = await screen.findByRole("dialog", { name: "Preferences" });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
     vi.useFakeTimers();
     try {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Close preferences" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
       const home = screen.getByRole("link", { name: "Aberration home" });
       home.focus();
       expect(document.activeElement).toBe(home);
@@ -97,7 +115,7 @@ describe("shared application menu", () => {
   it("closes preferences with Escape and reopens the saved choice", async () => {
     mount();
     fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
-    const dialog = await screen.findByRole("dialog", { name: "Preferences" });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
     fireEvent.click(within(dialog).getByRole("radio", { name: "Follow system" }));
     expect(localStorage.getItem("vite-ui-theme")).toBe("system");
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -105,7 +123,7 @@ describe("shared application menu", () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })));
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
-    const reopened = await screen.findByRole("dialog", { name: "Preferences" });
+    const reopened = await screen.findByRole("dialog", { name: "Settings" });
     expect((within(reopened).getByRole("radio", { name: "Follow system" }) as HTMLInputElement).checked).toBe(true);
   });
 });

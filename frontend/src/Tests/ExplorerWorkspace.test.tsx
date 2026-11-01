@@ -455,10 +455,9 @@ describe("hierarchical explorer workspace", () => {
     }
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const [label, path] of [["Account", "/account"], ["System status", "/system/status"]]) {
-      expect(screen.getByRole("menuitem", { name: label }).getAttribute("href")).toBe(path);
+    for (const label of ["Account", "Preferences", "System status"]) {
+      expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-haspopup")).toBe("dialog");
     }
-    expect(screen.getByRole("menuitem", { name: "Preferences" }).getAttribute("aria-haspopup")).toBe("dialog");
     expect(screen.queryByRole("menuitem", { name: "Monitoring" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Entities" })).toBeNull();
     expect(apiUtils.put).not.toHaveBeenCalled();
@@ -525,7 +524,7 @@ describe("hierarchical explorer workspace", () => {
     expect(apiUtils.put).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
-    const dialog = await screen.findByRole("dialog", { name: "Catalogue settings" });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(dialog).queryByRole("button", { name: "Export workspace" })).toBeNull();
     const contents = JSON.stringify(fixture());
     const file = new File([], "catalogue.json", { type: "application/json" });
@@ -562,7 +561,7 @@ describe("hierarchical explorer workspace", () => {
     expect(apiUtils.get).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
-    const dialog = await screen.findByRole("dialog", { name: "Catalogue settings" });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Add broker" })).toBeTruthy());
     expect((within(dialog).getByRole("button", { name: "Add broker" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(dialog).getByRole("button", { name: "Import file" }) as HTMLButtonElement).disabled).toBe(true);
@@ -655,7 +654,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Imported building" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
-    const settings = await screen.findByRole("dialog", { name: "Catalogue settings" });
+    const settings = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(settings).getByText("Imported building")).toBeTruthy();
   });
 

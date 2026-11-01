@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { SectionPanel } from "@/components/DashboardLayout";
+import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { apiUtils } from "@/lib/api-client";
 import { collectionDiagnosis, diagnosticsFresh } from "@/lib/collection-diagnostics";
@@ -42,21 +42,22 @@ export function CollectionHealth() {
   usePollingLoop(refresh, { intervalMs: 3000, overlap: "skip", startImmediately: true, onTick: advanceClock });
 
   return (
-    <SectionPanel
+    <SettingsGroup
       title="Collection diagnostics"
       help="Live status for the saved data source configuration. Refreshes automatically every three seconds."
+      padded={!snapshot}
     >
       {error && (
-        <p role="alert" className="mb-3 text-sm text-destructive">
+        <p role="alert" className="app-settings-group-note text-destructive">
           Collection status unavailable: {error}. Retrying automatically.
         </p>
       )}
       {snapshot ? (
         <CollectionMeasurements snapshot={snapshot} now={now} />
       ) : !error && (
-        <p role="status" className="text-sm text-muted-foreground">Loading collection status…</p>
+        <p role="status" className="text-muted-foreground">Loading collection status…</p>
       )}
-    </SectionPanel>
+    </SettingsGroup>
   );
 }
 
@@ -78,38 +79,37 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
 
   return (
     <>
-      <p className={`mn-state mn-state--${tone(title)} is-headline`} role="status">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{explanation}</p>
+      <SettingsRow label={<span className={`mn-state mn-state--${tone(title)} is-headline`} role="status">{title}</span>} detail={explanation} />
+      {data && !current && (
+        <p className="app-settings-group-note">Measurements below are from the last worker report.</p>
+      )}
       {data && (
-        <>
-          {!current && (
-            <p className="mt-3 text-sm">
-              Measurements below are from the last worker report.
-            </p>
-          )}
-          <dl className="mt-4 grid gap-4 sm:grid-cols-3">
-            {measurements.map(([label, value, time]) => (
-              <div key={label} className="min-w-0">
-                <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="mt-1 break-words text-sm font-medium" title={time ? formatExactDateTime(time) : undefined}>{value}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="mt-4 text-xs text-muted-foreground">
+        <dl className="app-settings-list">
+          {measurements.map(([label, value, time]) => (
+            <div key={label} className="app-settings-row">
+              <dt className="app-settings-row-copy app-settings-row-label">{label}</dt>
+              <dd className="app-settings-row-trailing tabular-nums" title={time ? formatExactDateTime(time) : undefined}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div className="app-settings-group-note">
+        {data && (
+          <p>
             Rates cover the last {data.window_seconds.toLocaleString()} seconds.
             Incoming counts selected MQTT subscriptions, not all upstream broker
             traffic. Accepted includes state and retained snapshots; snapshots
             do not add numeric history. Latest samples normally fill their slots
             while waiting for the next interval.
           </p>
-        </>
-      )}
-      <p className="mt-3 text-xs text-muted-foreground">
-        Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
-        rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
-        observations dropped at queue capacity ·{" "}
-        {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
-      </p>
+        )}
+        <p>
+          Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
+          rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
+          observations dropped at queue capacity ·{" "}
+          {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
+        </p>
+      </div>
     </>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { navigationDraft, useNavigationDraft } from "@/lib/navigation-draft";
+import { settingsHref, settingsSectionOf, useSettingsNavigation } from "@/lib/settings-navigation";
 import { useSystemDocument } from "@/domain/system/useSystemDocument";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import { scopeReadingIds, safeServiceReturn } from "@/domain/system/collectionRules";
@@ -56,7 +57,8 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   const scopeKey = index.nodes.has(preferences.scopeKey) || document.groups.some(group => preferences.scopeKey === `catalogue:${group.id}`)
     ? preferences.scopeKey : index.rootKey;
   const [editingLocked, setEditingLocked] = useState(false);
-  const [dialog, setDialog] = useState<CatalogueDialog>(() => params.get("catalogue") === "settings" ? { kind: "settings" } : null);
+  const [dialog, setDialog] = useState<CatalogueDialog>(null);
+  const settings = useSettingsNavigation();
   const dialogOrigin = useRef<HTMLElement | null>(null);
   const initialReveal = useRef(false);
 
@@ -109,7 +111,12 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   const selectSource: CatalogueContextValue["selectSource"] = node => {
     const path = isWorkspacePath(location.pathname) ? location.pathname : "/sources";
     const returnTo = path === "/sources" ? safeServiceReturn(params.get("returnTo")) : "/";
-    navigate(selectedSourceHref(returnTo === "/" ? path : `${path}?returnTo=${encodeURIComponent(returnTo)}`, node));
+    const href = selectedSourceHref(returnTo === "/" ? path : `${path}?returnTo=${encodeURIComponent(returnTo)}`, node);
+    // A change made from the settings overlay, such as an import, keeps the overlay open.
+    const section = settingsSectionOf(location.search);
+    if (!section) return navigate(href);
+    const url = new URL(href, "https://workspace.invalid");
+    navigate(settingsHref(url, section), { replace: true, state: location.state });
   };
   const sectionHref = (path: string) => {
     let href = path;
@@ -136,7 +143,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     selectSource, sectionHref,
     toggleFavourite: (kind, id) => setPreferences(previous => toggleExplorerFavourite(previous, kind, id)),
     editingLocked, setEditingLocked, dialog, dialogOrigin,
-    openSettings: () => { dialogOrigin.current = window.document.activeElement as HTMLElement; setDialog({ kind: "settings" }); },
+    openSettings: () => settings.open("catalogue", window.document.activeElement as HTMLElement),
     openEditor, closeDialog: () => { if (!system.saving) setDialog(null); },
   }}>{children}</CatalogueContext.Provider>;
 }

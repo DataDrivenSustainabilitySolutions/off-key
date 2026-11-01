@@ -15,6 +15,8 @@ import { DEFAULT_SIDEBAR_WIDTH } from "@/features/workspace/sidebarSizing";
 import "@/features/explorer/explorer.css";
 import "@/features/workspace/workspace.css";
 import { MonitoringServicesProvider } from "@/domain/monitoring/MonitoringServicesProvider";
+import { settingsSectionOf } from "@/lib/settings-navigation";
+import { SettingsOverlay } from "./SettingsOverlay";
 
 const subscribeMobile = (listener: () => void) => {
   const media = window.matchMedia("(max-width: 760px)");
@@ -26,7 +28,7 @@ const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
 function WorkspaceFrame() {
   const { preferences, setPreferences, sectionHref, dialog, stored } = useCatalogue();
   const { isGuest } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -66,12 +68,13 @@ function WorkspaceFrame() {
     <Dialog.Root open={mobile && mobileOpen} onOpenChange={setMobileOpen}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay app-catalogue-mobile-overlay" />
       <Dialog.Content ref={mobileDrawer} className="ex-mobile-sidebar app-catalogue-mobile-sidebar"
         onOpenAutoFocus={event => { event.preventDefault(); mobileDrawer.current?.focus(); }}
-        onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog) toggle.current?.focus(); }}>
+        onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog && !settingsSectionOf(search)) toggle.current?.focus(); }}>
         <Dialog.Title className="ex-sr-only">MQTT catalogue</Dialog.Title>
         <Dialog.Description className="ex-sr-only">Browse brokers, entities, topics and readings for the current section.</Dialog.Description>
         <WorkspaceCatalogue onDismiss={() => setMobileOpen(false)} />
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>
+    <SettingsOverlay />
     <CatalogueDialogs toggle={toggle} />
   </div>;
 }

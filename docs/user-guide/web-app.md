@@ -24,8 +24,9 @@ Use this page for account, entity, favourites, monitoring-service, and anomaly w
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |
-| `/account` | User profile and account actions | Authenticated |
-| `/system/status` | Live collection diagnostics, database size and retention status | Authenticated |
+| `?settings=<section>` | Settings overlay above any workspace page: `account`, `preferences`, `catalogue` or `status` | Authenticated |
+| `/account` | Legacy link: opens the Account settings section above Monitoring | Authenticated |
+| `/system/status` | Legacy link: opens the System status settings section above Monitoring | Authenticated |
 
 ## Workspace navigation
 
@@ -82,13 +83,22 @@ this device. Follow system also responds to changes in the device's appearance.
 Settings opens over the current page, preserving your workspace and unsaved input.
 Close it with the close button or Escape to return to the page.
 
-Open **Menu → Status** for live collection diagnostics, database size and
+Account, Preferences, Catalogue and System status share one settings overlay. It
+opens above the page you are on, which keeps running underneath, and closing it
+(the close button, Escape, a click outside or the browser's Back button) returns
+you to that page as you left it. The open section is part of the address, for
+example `/sources?settings=status`, so it can be linked to and survives a reload.
+Switching sections does not add browser history.
+
+Open **Menu → System status** for live collection diagnostics, database size and
 retention information. Collection status refreshes automatically every three
 seconds; **Refresh storage** requests updated database measurements. The former
-`/account/settings` diagnostic link redirects to `/system/status`.
+`/system/status` and `/account/settings` links open this section above Monitoring.
 
-Account management remains under **Menu → Account**. Catalogue configuration is
-available from **Catalogue settings** at the bottom of the catalogue sidebar.
+**Menu → Account** shows who is signed in and, for administrators, member access.
+Catalogue configuration opens from **Catalogue settings** at the bottom of the
+catalogue sidebar as the overlay's Catalogue section; adding or editing an entry
+opens the editor on top of it.
 
 ## Readings and telemetry workflow
 

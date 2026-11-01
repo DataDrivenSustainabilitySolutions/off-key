@@ -10,7 +10,9 @@ import { expectDialogFits } from "./helpers/layout";
 test("reviews a real catalogue export before replacement", async ({ page }) => {
   await page.goto("/sources");
   await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Catalogue settings", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  await expect(page).toHaveURL(/\/sources\?settings=catalogue$/);
+  await expect(dialog.getByRole("heading", { name: "Catalogue", exact: true, level: 2 })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Import & export", exact: true })).toBeVisible();
   const token = await accessToken(page);
@@ -68,6 +70,11 @@ test("saves a source from settings and supports both themes and mobile entry poi
     const snapshot = await saved.json() as SystemSnapshot;
     createdId = snapshot.document.connections.find(item => item.label === name)?.id;
     expect(createdId).toBeTruthy();
+    // The editor closes back onto the settings overlay, which then closes to the page.
+    const editor = page.getByRole("dialog", { name: "Edit catalogue", exact: true });
+    const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+    await expect(editor).toHaveCount(0);
+    await settings.getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.reload();
     await expect(page.getByRole("button", { name: `${name}, preview`, exact: true })).toBeVisible();
@@ -81,17 +88,18 @@ test("saves a source from settings and supports both themes and mobile entry poi
     expect(entitySaved.ok(), await entitySaved.text()).toBeTruthy();
     createdEntityId = ((await entitySaved.json()) as SystemSnapshot).document.devices.find(item => item.label === `${name} asset`)?.id;
     expect(createdEntityId).toBeTruthy();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-    await page.getByRole("combobox", { name: "Edit entity", exact: true }).selectOption(createdEntityId!);
+    await expect(editor).toHaveCount(0);
+    await settings.getByRole("combobox", { name: "Edit entity", exact: true }).selectOption(createdEntityId!);
     await expect(page.getByRole("textbox", { name: "device name", exact: true })).toHaveValue(`${name} asset`);
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await settings.getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     for (const theme of ["Dark", "Light"] as const) {
       await setAppearance(page, theme);
       await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Catalogue settings", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
       await expectDialogFits(dialog);
       await dialog.screenshot({ path: testInfo.outputPath(`settings-${theme.toLowerCase()}.png`) });
@@ -103,7 +111,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
       await page.goto(path);
       await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
       await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Catalogue settings", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
       await expectDialogFits(dialog);
       await dialog.getByRole("button", { name: "Import file", exact: true }).scrollIntoViewIfNeeded();

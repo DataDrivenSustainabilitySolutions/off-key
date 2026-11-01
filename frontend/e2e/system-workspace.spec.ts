@@ -107,7 +107,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
 
     // Background collection continues after the page has been left.
-    await page.goto("/account");
+    await page.goto("/anomalies");
     await publisher.publishAsync(`tests/${localId}/temperature`, "27", { qos: 1 });
     await expect.poll(async () => {
       const response = await api.get(`/api/v1/telemetry/${binding.entity_id}/data?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });

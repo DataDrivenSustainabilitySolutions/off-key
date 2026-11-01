@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import Account from "@/pages/Account";
+import Account from "@/features/account/AccountSettings";
 import Registration from "@/pages/Registration";
 
 const { auth, getMembers, inviteMember, updateMember, removeMember, post } = vi.hoisted(() => ({
@@ -33,9 +33,10 @@ it("shows member access without offering administrator controls", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   expect(screen.queryByRole("button", { name: "Send invitation" })).toBeNull();
   expect(getMembers).not.toHaveBeenCalled();
-  expect(screen.getByRole("heading", { name: "Account" }).tagName).toBe("H1");
-  // The signed-in identity sits under the title instead of in a one-line panel.
-  expect(screen.getByText(/Signed in as admin@example.com · Member/).textContent).toContain("Members can view organization data");
+  const signedIn = screen.getByRole("region", { name: "Signed in" });
+  expect(within(signedIn).getByText("admin@example.com")).toBeTruthy();
+  expect(within(signedIn).getByText("Member")).toBeTruthy();
+  expect(signedIn.textContent).toContain("Members can view organization data");
   expect(screen.queryByRole("heading", { name: "Members" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Invite member" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();

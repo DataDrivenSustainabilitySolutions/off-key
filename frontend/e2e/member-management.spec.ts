@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import type { Member } from "../src/lib/member-types";
 import { accessToken, loginWithEmail, PASSWORD } from "./helpers/auth";
-import { setAppearance } from "./helpers/appearance";
 
 const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
 
@@ -100,7 +99,12 @@ test("removes a disabled invitation after confirmation and retains shared data",
 
     for (const [theme, width, height] of [["Light", 1280, 900], ["Dark", 1280, 900], ["Dark", 320, 568]] as const) {
       await page.setViewportSize({ width, height });
-      await setAppearance(page, theme);
+      // Account is open in the settings overlay, so switch theme from its Preferences section.
+      const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+      await settings.getByRole("button", { name: "Preferences", exact: true }).click();
+      await settings.getByRole("radio", { name: theme, exact: true }).check();
+      await settings.getByRole("button", { name: "Account", exact: true }).click();
+      await expect(fixture.row.getByText("Disabled", { exact: true })).toBeVisible();
       await fixture.row.getByRole("button", { name: "Remove", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Remove member?", exact: true });
       await expect(dialog).toContainText(fixture.email);
@@ -157,7 +161,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);
     await expect(memberPage.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
-    await expect(memberPage.getByText(/Signed in as .* · Member/)).toBeVisible();
+    await expect(memberPage.getByRole("region", { name: "Signed in", exact: true })).toContainText("Member");
     await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.delete(new URL(`/api/v1/members/${initial.id}`, page.url()).href, { headers: oldHeaders });
     expect(forbidden.status()).toBe(403);

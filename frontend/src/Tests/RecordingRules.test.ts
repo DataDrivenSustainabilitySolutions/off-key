@@ -1,11 +1,11 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import type { CollectionRule, RuleChange, RuleEdit, RuleScope } from "@/domain/system/collectionRules";
-import { scopeKey } from "@/domain/system/collectionRules";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { SystemCollectionPreview, SystemSnapshot } from "@/types/system";
-import { useRecordingRules } from "@/features/catalogue/useRecordingRules";
+import { useRecording } from "@/features/catalogue/useRecording";
+import { recordingEdit, startRecording, stopRecording } from "@/features/catalogue/recordingEdits";
 import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
@@ -13,136 +13,94 @@ vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
 const broker: RuleScope = { kind: "broker", connection_id: "broker" };
 const power: RuleScope = { kind: "reading", connection_id: "broker", reading_id: "power" };
 const original: CollectionRule = {
-  scope: broker, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1,
+  scope: broker, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1,
 };
-const sample: RuleEdit = { scope: broker, operation: "set", policy: { mode: "sample", interval_seconds: 60 } };
+const sample: RuleEdit = { scope: broker, operation: "set", policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: true };
 
-function fixture(): SystemSnapshot {
-  const streams = ["temperature", "power", "other"].map(id => ({
-    id, label: id, connection_id: id === "other" ? "other-broker" : "broker", topic: `room/${id}`,
-    value_type: "number" as const, category: "Environment",
+function fixture(rules: CollectionRule[] = [original]): SystemSnapshot {
+  const streams = ["temperature", "power"].map(id => ({
+    id, label: id, connection_id: "broker", topic: `room/${id}`, value_type: "number" as const, category: "Environment",
   }));
   return {
-    document: { ...createEmptySystem(), streams, connections: ["broker", "other-broker"].map(id => mqttConnection({ id, label: id, host: "localhost" })) }, revision: 3, can_edit: true, storage_origin: "saved",
-    runtime: {
-      mode: "configured_only", message: "", collection_revision: 4, collection_rules: [original],
-      bindings: Object.fromEntries(streams.map(stream => [stream.id, {
-        connection_id: stream.connection_id, entity_id: "entity", telemetry_key: stream.id,
-        accepted_topic: `telemetry/entity/${stream.id}`,
-        policy: { mode: stream.id === "temperature" ? "original" : "off", interval_seconds: 10 },
-        policy_origin: { scope: broker, inherited: true, needs_review: stream.id !== "temperature" },
-      }])),
-    },
+    document: { ...createEmptySystem(), streams, connections: [mqttConnection({ id: "broker", label: "broker", host: "localhost" })] },
+    revision: 3, can_edit: true, storage_origin: "saved",
+    runtime: { mode: "collection", message: "", collection_revision: 4, collection_rules: rules, bindings: {} },
   };
 }
 
-function preview(snapshot: SystemSnapshot): SystemCollectionPreview {
+function preview(snapshot: SystemSnapshot, monitors: SystemCollectionPreview["affected_monitors"] = []): SystemCollectionPreview {
   return {
     revision: snapshot.revision, collection_revision: snapshot.runtime.collection_revision ?? 0,
-    selected_readings: 2, sampled_rows_per_day_ceiling: 2880, original_rate_readings: 0,
-    affected_monitors: [], starting_readings: 1, stopping_readings: 0, rate_changed_readings: 1,
-    bindings: snapshot.runtime.bindings, rules: snapshot.runtime.collection_rules,
+    selected_readings: 2, sampled_rows_per_day_ceiling: 0, original_rate_readings: 2,
+    affected_monitors: monitors, starting_readings: 0, stopping_readings: 0, rate_changed_readings: 2,
+    bindings: {}, rules: snapshot.runtime.collection_rules,
   };
 }
 
-function lastChange(): RuleChange {
-  return vi.mocked(apiUtils.post).mock.lastCall![1] as RuleChange;
-}
-
-
-describe("recording rule composition", () => {
-  it.each(["policy first", "include first"])("preserves policy and admission through Apply and Undo: %s", async order => {
+describe("recording changes", () => {
+  it("saves a choice at once and undoes it by restoring the previous rules", async () => {
     const before = fixture();
-    const after: SystemSnapshot = { ...before, revision: 4, runtime: {
-      ...before.runtime, collection_revision: 5,
-      collection_rules: [
-        { ...original, policy: sample.policy },
-        { scope: power, policy: null, include_future_readings: false, admitted_before: 0 },
-      ],
-      bindings: Object.fromEntries(Object.entries(before.runtime.bindings!).map(([id, binding]) => [id,
-        id === "other" ? binding : { ...binding, policy: sample.policy,
-          policy_origin: { scope: broker, inherited: true, needs_review: false } },
-      ])),
-    } };
+    const after = { ...fixture([{ ...original, policy: sample.policy }]), revision: 4,
+      runtime: { ...fixture().runtime, collection_revision: 5, collection_rules: [{ ...original, policy: sample.policy }] } };
     vi.mocked(apiUtils.post).mockResolvedValue(preview(before));
     const applyRules = vi.fn().mockResolvedValue(after);
-    const hook = renderHook(({ snapshot }) => useRecordingRules(snapshot, "broker", applyRules), {
-      initialProps: { snapshot: before },
-    });
-    const setPolicy = () => act(() => hook.result.current.edit(sample));
-    const include = () => act(() => hook.result.current.includeReadings(["power"]));
-    if (order === "policy first") setPolicy(); else include();
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
-    if (order === "policy first") include(); else setPolicy();
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
+    const hook = renderHook(({ snapshot }) => useRecording(snapshot, applyRules), { initialProps: { snapshot: before } });
 
-    expect(lastChange().rule_changes).toEqual(expect.arrayContaining([
-      sample, { scope: power, operation: "inherit" },
-    ]));
-    expect(new Set(lastChange().rule_changes.map(edit => scopeKey(edit.scope))).size).toBe(2);
-    expect(lastChange().rule_changes).toHaveLength(2);
-    expect(hook.result.current.ownRule(broker)?.policy).toEqual(sample.policy);
-    expect(hook.result.current.pendingReadingIds(["power"])).toEqual([]);
-    await act(async () => { expect(await hook.result.current.apply()).toBe(true); });
-    expect(applyRules).toHaveBeenCalledWith({ ...lastChange(), pause_affected_monitors: false });
+    await act(async () => { expect(await hook.result.current.save([sample])).toBe(true); });
+    expect(applyRules).toHaveBeenCalledWith({
+      expected_revision: 3, expected_collection_revision: 4, rule_changes: [sample], pause_affected_monitors: false,
+    });
     hook.rerender({ snapshot: after });
-    expect(hook.result.current.dirty).toBe(false);
+    expect(hook.result.current.canUndo("broker")).toBe(true);
 
-    act(() => hook.result.current.stageUndo());
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
-    expect(lastChange()).toMatchObject({ expected_revision: 4, expected_collection_revision: 5 });
-    expect(lastChange().rule_changes).toEqual(expect.arrayContaining([
-      { scope: broker, operation: "restore", restore_rule: original },
-      { scope: power, operation: "restore", restore_rule: null },
-    ]));
-    expect(lastChange().rule_changes).toHaveLength(2);
     applyRules.mockResolvedValue(before);
-    await act(async () => { expect(await hook.result.current.apply()).toBe(true); });
-    expect(applyRules).toHaveBeenLastCalledWith({ ...lastChange(), pause_affected_monitors: false });
-  });
-
-  it("includes each excluded reading once and stays within the current broker", async () => {
-    const snapshot = fixture();
-    vi.mocked(apiUtils.post).mockResolvedValue(preview(snapshot));
-    const hook = renderHook(() => useRecordingRules(snapshot, "broker", vi.fn()));
-    const ids = ["power", "power", "temperature", "other", "missing"];
-    expect(hook.result.current.pendingReadingIds(ids)).toEqual(["power"]);
-    act(() => hook.result.current.includeReadings(ids));
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
-    act(() => hook.result.current.includeReadings(ids));
-    expect(lastChange().rule_changes).toEqual([{ scope: power, operation: "inherit" }]);
-    expect(hook.result.current.pendingReadingIds(ids)).toEqual([]);
-  });
-
-  it.each<RuleEdit>([
-    { scope: power, operation: "set", policy: { mode: "off", interval_seconds: 10 } },
-    { scope: power, operation: "restore", restore_rule: null },
-  ])("preserves a staged reading exception or restoration: $operation", async edit => {
-    const snapshot = fixture();
-    vi.mocked(apiUtils.post).mockResolvedValue(preview(snapshot));
-    const hook = renderHook(() => useRecordingRules(snapshot, "broker", vi.fn()));
-    act(() => {
-      hook.result.current.edit(edit);
-      hook.result.current.includeReadings(["power"]);
+    await act(async () => { hook.result.current.undo(); });
+    expect(applyRules.mock.lastCall![0] as RuleChange).toMatchObject({
+      expected_revision: 4, expected_collection_revision: 5,
+      rule_changes: [{ scope: broker, operation: "restore", restore_rule: original }],
     });
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
-    expect(lastChange().rule_changes).toEqual([edit]);
-    expect(hook.result.current.pendingReadingIds(["power"])).toEqual([]);
   });
 
-  it("uses reviewed admission status instead of the saved status after a parent change", async () => {
+  it("asks once before stopping running monitors and saves only after confirmation", async () => {
     const snapshot = fixture();
-    const reviewed = preview(snapshot);
-    reviewed.bindings = { power: {
-      policy: sample.policy, policy_origin: { scope: broker, inherited: true, needs_review: false },
-    } };
-    vi.mocked(apiUtils.post).mockResolvedValue(reviewed);
-    const hook = renderHook(() => useRecordingRules(snapshot, "broker", vi.fn()));
-    const change = { ...sample, include_future_readings: true };
-    act(() => hook.result.current.edit(change));
-    await waitFor(() => expect(hook.result.current.preview).toBeDefined());
-    expect(hook.result.current.pendingReadingIds(["power"])).toEqual([]);
-    act(() => hook.result.current.includeReadings(["power"]));
-    expect(lastChange().rule_changes).toEqual([change]);
+    vi.mocked(apiUtils.post).mockResolvedValue(preview(snapshot, [{ id: "m1", name: "Pump" }]));
+    const applyRules = vi.fn().mockResolvedValue(snapshot);
+    const hook = renderHook(() => useRecording(snapshot, applyRules));
+
+    await act(async () => { expect(await hook.result.current.save([sample])).toBe(false); });
+    expect(applyRules).not.toHaveBeenCalled();
+    expect(hook.result.current.pending?.monitors).toHaveLength(1);
+
+    await act(async () => { hook.result.current.confirm(); });
+    expect(applyRules).toHaveBeenCalledWith(expect.objectContaining({ rule_changes: [sample], pause_affected_monitors: true }));
+    expect(hook.result.current.pending).toBeUndefined();
+  });
+
+  it("keeps the draft-free state when a save fails", async () => {
+    const snapshot = fixture();
+    vi.mocked(apiUtils.post).mockRejectedValue(new Error("The catalogue changed."));
+    const applyRules = vi.fn();
+    const hook = renderHook(() => useRecording(snapshot, applyRules));
+    await act(async () => { expect(await hook.result.current.save([sample])).toBe(false); });
+    expect(hook.result.current.problem).toBe("The catalogue changed.");
+    expect(applyRules).not.toHaveBeenCalled();
+  });
+});
+
+describe("recording edits", () => {
+  it("records a broker including later readings and turns it off by dropping its rule", () => {
+    expect(startRecording("broker")).toEqual([{ scope: broker, operation: "set",
+      policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }]);
+    expect(recordingEdit(broker, "off", 10)).toEqual({ scope: broker, operation: "inherit" });
+    expect(recordingEdit(power, "sample", 30)).toEqual({ scope: power, operation: "set", policy: { mode: "sample", interval_seconds: 30 } });
+    expect(recordingEdit(power, "off", 10)).toEqual({ scope: power, operation: "set", policy: { mode: "off", interval_seconds: 10 } });
+  });
+
+  it("stops a broker together with readings that record on their own", () => {
+    const own: CollectionRule = { scope: power, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 0 };
+    const off: CollectionRule = { ...own, scope: { ...power, reading_id: "temperature" }, policy: { mode: "off", interval_seconds: 10 } };
+    expect(stopRecording("broker", fixture([original, own, off]).runtime)).toEqual([
+      { scope: broker, operation: "inherit" }, { scope: power, operation: "inherit" },
+    ]);
   });
 });

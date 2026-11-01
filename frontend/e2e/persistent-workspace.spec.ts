@@ -192,20 +192,16 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
       expect(previewStops).toBe(0);
     };
     await navigation.getByRole("link", { name: "Sources", exact: true }).click();
-    await expect(page.getByLabel("Recording policy", { exact: true })).toBeVisible();
+    const recording = page.getByRole("radiogroup", { name: "Recording", exact: true });
+    await expect(recording).toBeVisible();
     await unchanged();
-    await page.getByLabel("Recording policy", { exact: true }).selectOption("sample");
+    // Recording choices save when clicked, so leaving never asks about a draft.
     await navigation.getByRole("link", { name: "Reporting", exact: true }).click();
-    const guard = page.getByRole("dialog", { name: "Unsaved recording changes", exact: true });
-    await guard.getByRole("button", { name: "Stay", exact: true }).click();
-    await expect(page.getByLabel("Recording policy", { exact: true })).toHaveValue("sample");
-    await unchanged();
-    await navigation.getByRole("link", { name: "Reporting", exact: true }).click();
-    await guard.getByRole("button", { name: "Discard and leave", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Reporting", exact: true })).toBeVisible();
     await unchanged();
     await page.goBack();
-    await expect(page.getByLabel("Recording policy", { exact: true })).toHaveValue("inherit");
+    await expect(recording.getByRole("radio", { name: "Same as above", exact: true })).toBeChecked();
     await unchanged();
     await navigation.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
@@ -402,9 +398,9 @@ test("filters real recorded reports by entity and reading across the shared navb
     await navigation.getByRole("link", { name: "Sources", exact: true }).click();
     const entityReadings = page.getByRole("region", { name: "Entity readings", exact: true });
     await expect(entityReadings).toBeVisible();
-    await expect(page.getByLabel("Recording policy", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("radiogroup", { name: "Recording", exact: true })).toHaveCount(0);
     await entityReadings.getByRole("button", { name: /North value 01/ }).click();
-    await expect(page.getByLabel("Recording policy", { exact: true })).toHaveValue("original");
+    await expect(page.getByRole("radio", { name: "Every message", exact: true })).toBeChecked();
     await navigation.getByRole("link", { name: "Reporting", exact: true }).click();
     await expect(page.getByRole("cell", { name: names[0], exact: true })).toBeVisible();
     await expect(page.getByRole("cell", { name: names[1], exact: true })).toHaveCount(0);

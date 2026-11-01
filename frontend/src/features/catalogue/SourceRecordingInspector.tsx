@@ -1,64 +1,110 @@
-import { Button } from "@/components/ui/button";
-import type { CollectionPolicy } from "@/types/collection";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { originLabel, policyLabel, scopeKey, topicWithinPrefix, type RuleScope } from "@/domain/system/collectionRules";
+import type { RuleEdit } from "@/domain/system/collectionRules";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
-import type { useRecordingRules } from "./useRecordingRules";
+import type { CollectionPolicy } from "@/types/collection";
+import type { Recording } from "./useRecording";
+import { recordingEdit, type Choice } from "./recordingEdits";
 
 type Props = { scope: RuleScope; ids: string[]; document: SystemDocument; runtime?: SystemRuntime;
-  canEdit: boolean; draft: ReturnType<typeof useRecordingRules> };
+  canEdit: boolean; recording: Recording };
 
-export function SourceRecordingInspector({ scope, ids, document, runtime, canEdit, draft }: Props) {
-  const rule = draft.ownRule(scope);
-  const mode = rule?.policy?.mode ?? "inherit";
-  const interval = rule?.policy?.interval_seconds ?? 10;
-  const [confirmed, setConfirmed] = useState<string>();
+
+export function SourceRecordingInspector({ scope, ids, document, runtime, canEdit, recording }: Props) {
+  const rule = (runtime?.collection_rules ?? []).find(item => scopeKey(item.scope) === scopeKey(scope));
+  const own: Choice = rule?.policy?.mode ?? "inherit";
+  const choice: Choice = scope.kind === "broker" && own === "inherit" ? "off" : own;
+  const saved = rule?.policy?.interval_seconds ?? 10;
+  const [interval, setIntervalText] = useState(String(saved));
   const selected = ids.flatMap(id => runtime?.bindings?.[id] ?? []);
   const enabled = selected.filter(item => item.policy.mode !== "off").length;
-  const uniform = selected.length && selected.every(item => item.policy.mode === selected[0]!.policy.mode
-    && item.policy.interval_seconds === selected[0]!.policy.interval_seconds) ? selected[0]!.policy : undefined;
-  const excluded = draft.pendingReadingIds(ids);
+  // The rate is summarised over the readings that record; the checkboxes show which ones those are.
+  const recorded = selected.filter(item => item.policy.mode !== "off");
+  const sameRate = (left: CollectionPolicy, right: CollectionPolicy) => left.mode === right.mode
+    && (left.mode !== "sample" || left.interval_seconds === right.interval_seconds);
+  const uniform = recorded.length && recorded.every(item => sameRate(item.policy, recorded[0]!.policy)) ? recorded[0]!.policy : undefined;
+  const excluded = ids.filter(id => runtime?.bindings?.[id]?.policy_origin?.needs_review);
   const exceptions = (runtime?.collection_rules ?? []).filter(item => item.policy && scopeKey(item.scope) !== scopeKey(scope)
     && item.scope.connection_id === scope.connection_id && (scope.kind === "broker" || scope.kind === "topic"
       && (item.scope.kind === "topic" ? topicWithinPrefix(item.scope.topic_prefix ?? "", scope.topic_prefix ?? "")
         : ids.includes(item.scope.reading_id ?? "")))).length;
-  const change = (next: string, seconds = interval, future = rule?.include_future_readings ?? false) => {
-    draft.edit(next === "inherit" ? { scope, operation: "inherit" } : { scope, operation: "set",
-      policy: { mode: next as CollectionPolicy["mode"], interval_seconds: seconds }, include_future_readings: future });
+  const busy = recording.saving === scope.connection_id;
+  const seconds = Math.round(Number(interval));
+  const validInterval = Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600;
+  const choose = (next: Choice) => {
+    if (busy || next === choice && (next !== "sample" || seconds === saved)) return;
+    if (next === "sample" && !validInterval) return;
+    void recording.save([recordingEdit(scope, next, next === "sample" ? seconds : saved)]);
   };
-  const preview = draft.preview;
-  const reviewKey = JSON.stringify(preview);
-  const pause = confirmed === reviewKey;
+  const commitInterval = () => {
+    if (choice !== "sample") return;
+    if (!validInterval) { setIntervalText(String(saved)); return; }
+    if (seconds !== saved) choose("sample");
+  };
+  const applying = enabled > 0 && !(runtime?.collection?.status === "applied" && runtime.collection.revision === runtime.collection_revision);
+  const summary = enabled === 0 ? "Not recorded" : `${enabled} of ${ids.length} recording${uniform ? ` · ${policyLabel(uniform)}`
+    : " · Mixed rates"}${applying ? " · Starting…" : ""}`;
+  const options: [Choice, string][] = [
+    ...scope.kind === "broker" ? [] : [["inherit", "Same as above"] as [Choice, string]],
+    ["off", "Off"], ["original", "Every message"], ["sample", "Sampled"],
+  ];
+  // Readings opt in by following this scope when it records, or with their own rule when it does not.
+  const parentRecords = choice === "original" || choice === "sample";
+  const readingEdit = (reading_id: string, on: boolean): RuleEdit => {
+    const reading: RuleScope = { kind: "reading", connection_id: scope.connection_id, reading_id };
+    return on ? parentRecords ? { scope: reading, operation: "inherit" }
+      : { scope: reading, operation: "set", policy: { mode: "original", interval_seconds: saved } }
+      : { scope: reading, operation: "set", policy: { mode: "off", interval_seconds: saved } };
+  };
+  const isOn = (id: string) => (runtime?.bindings?.[id]?.policy.mode ?? "off") !== "off";
+  const toggleAll = (on: boolean) => {
+    const edits = ids.filter(id => isOn(id) !== on).map(id => readingEdit(id, on));
+    if (edits.length) void recording.save(edits);
+  };
+  /** A reading that records at a rate of its own says so next to its name. */
+  const rateNote = (id: string) => {
+    const policy = runtime?.bindings?.[id]?.policy;
+    const parent = parentRecords ? { mode: choice as CollectionPolicy["mode"], interval_seconds: saved } : undefined;
+    return policy && policy.mode !== "off" && (!parent || !sameRate(policy, parent)) ? policyLabel(policy).toLowerCase() : undefined;
+  };
+  const streams = new Map(document.streams.map(stream => [stream.id, stream]));
+  const pending = recording.pending && recording.pending.edits.some(edit => edit.scope.connection_id === scope.connection_id);
   return <section className="source-recording" aria-label="Recording configuration">
-    <div className="ex-preview-section-heading"><h3>Recording</h3><span>{enabled} of {ids.length} enabled{selected.length && !uniform ? " · Mixed" : uniform ? ` · ${policyLabel(uniform)}` : ""}</span></div>
-    {ids.length === 1 && <p className="ex-muted">{originLabel(runtime, ids[0]!, document)}</p>}
-    {exceptions > 0 && <p className="ex-muted">{exceptions} {exceptions === 1 ? "child exception" : "child exceptions"} · kept when this policy changes</p>}
-    {enabled > 0 && <p className="source-collection-status">Collection: {runtime?.collection?.status === "applied" && runtime.collection.revision === runtime.collection_revision ? "Applied" : runtime?.collection?.status ?? "Applying…"}</p>}
-    {canEdit ? <>
-      <div className="ex-collection-controls"><label><span>Recording policy</span><select aria-label="Recording policy" value={mode} disabled={draft.saving}
-        onChange={event => change(event.target.value)}><option value="inherit">{scope.kind === "broker" ? "Default setting (Off)" : "Use parent setting"}</option>
-        <option value="off">Off</option><option value="sample">Sample</option><option value="original">Original rate</option></select></label>
-        {mode === "sample" && <label><span>Every · seconds</span><input aria-label="Recording interval" type="number" min={1} max={3600} value={interval}
-          disabled={draft.saving} onChange={event => change(mode, Number(event.target.value))} /></label>}</div>
-      {scope.kind !== "reading" && <label className="source-future"><input type="checkbox" checked={rule?.include_future_readings ?? false}
-        disabled={draft.saving || mode === "inherit"} onChange={event => change(mode, interval, event.target.checked)} />
-        <span>Include readings added later<small>Applies to registered readings added to this scope. Existing child exceptions stay in place.</small></span></label>}
-      {excluded.length > 0 && <div className="source-pending"><span>{excluded.length} added {excluded.length === 1 ? "reading needs" : "readings need"} review</span>
-        <Button variant="outline" disabled={draft.saving} onClick={() => draft.includeReadings(excluded)}>Include current readings</Button></div>}
-      {draft.dirty && <div className="source-apply" aria-live="polite">
-        {draft.reviewing ? <p>Reviewing changes…</p> : preview && <>
-          <p>{preview.starting_readings ?? 0} start · {preview.stopping_readings ?? 0} stop · {preview.rate_changed_readings ?? 0} change rate</p>
-          {preview.sampled_rows_per_day_ceiling > 0 && <p className="ex-muted">Up to {preview.sampled_rows_per_day_ceiling.toLocaleString()} numeric samples per day across the catalogue.</p>}
-          {preview.affected_monitors.length > 0 && <label className="source-monitor-confirm"><input type="checkbox" checked={pause} onChange={event => setConfirmed(event.target.checked ? reviewKey : undefined)} />
-            Stop {preview.affected_monitors.length} affected {preview.affected_monitors.length === 1 ? "monitor" : "monitors"} before applying. Their settings are retained.</label>}
-        </>}
-        <div className="ex-collection-actions"><Button disabled={draft.saving || !preview || !!preview.affected_monitors.length && !pause}
-          onClick={() => void draft.apply(pause)}>{draft.saving ? "Applying…" : "Apply changes"}</Button>
-          <Button variant="ghost" disabled={draft.saving} onClick={draft.discard}>Discard changes</Button></div>
+    <div className="ex-preview-section-heading"><h3>Recording</h3><span>{summary}</span></div>
+    {scope.kind === "reading" && ids.length === 1 && <p className="ex-muted">{originLabel(runtime, ids[0]!, document)}</p>}
+    {canEdit && <>
+      <div className="source-recording-choice" role="radiogroup" aria-label="Recording" aria-busy={busy}>
+        {options.map(([value, label]) => <label key={value} className={choice === value ? "is-selected" : undefined}>
+          <input type="radio" name={`recording-${scopeKey(scope)}`} value={value} checked={choice === value}
+            disabled={busy} onChange={() => choose(value)} />{label}
+          {value === "sample" && <span className="source-recording-interval">every
+            <input aria-label="Seconds between samples" type="number" min={1} max={3600} value={interval} disabled={busy}
+              onClick={event => event.stopPropagation()} onChange={event => setIntervalText(event.target.value)}
+              onBlur={commitInterval} onKeyDown={event => { if (event.key === "Enter") commitInterval(); }} />s</span>}
+        </label>)}
+      </div>
+      {busy && <p className="ex-muted" role="status">Saving…</p>}
+      {scope.kind !== "reading" && ids.length > 1 && <fieldset className="source-readings" disabled={busy}>
+        <legend>Readings<span>
+          <button type="button" onClick={() => toggleAll(true)} disabled={enabled === ids.length}>All</button>
+          <button type="button" onClick={() => toggleAll(false)} disabled={enabled === 0}>None</button></span></legend>
+        {ids.map(id => <label key={id}><input type="checkbox" checked={isOn(id)}
+          onChange={event => void recording.save([readingEdit(id, event.target.checked)])} />
+          <span>{streams.get(id)?.label ?? id}{rateNote(id) && <em> · {rateNote(id)}</em>}<small>{streams.get(id)?.topic}</small></span></label>)}
+      </fieldset>}
+      {pending && <div className="source-confirm" role="alert">
+        <p>This stops {recording.pending!.monitors.length === 1 ? "1 running monitor that uses" : `${recording.pending!.monitors.length} running monitors that use`} these readings. Their settings are kept.</p>
+        <div className="ex-collection-actions"><Button size="sm" onClick={recording.confirm}>Stop monitors and save</Button>
+          <Button size="sm" variant="ghost" onClick={recording.cancel}>Cancel</Button></div>
       </div>}
-      {draft.canUndo && <Button variant="ghost" onClick={draft.stageUndo}>Undo last recording change</Button>}
-      {draft.problem && <p role="alert" className="ex-preview-error">{draft.problem}<Button variant="ghost" onClick={draft.rebase}>Review against current configuration</Button></p>}
-      <p className="ex-muted">Recording continues after you leave this page. Turning it Off preserves stored history.</p>
-    </> : null}
+      {excluded.length > 0 && !busy && <div className="source-pending"><span>{excluded.length} {excluded.length === 1 ? "reading was" : "readings were"} added after recording started and {excluded.length === 1 ? "isn't" : "aren't"} recorded.</span>
+        <Button size="sm" variant="outline" onClick={() => void recording.save(excluded.map(reading_id =>
+          ({ scope: { kind: "reading", connection_id: scope.connection_id, reading_id }, operation: "inherit" })))}>Record {excluded.length === 1 ? "it" : "them"} too</Button></div>}
+      {exceptions > 0 && scope.kind === "topic" && <p className="ex-muted">{exceptions === 1 ? "1 topic or reading below keeps its own setting." : `${exceptions} topics or readings below keep their own setting.`}</p>}
+      {recording.problem && <p role="alert" className="ex-preview-error">{recording.problem}</p>}
+      {recording.canUndo(scope.connection_id) && !busy && <Button variant="ghost" size="sm" onClick={recording.undo}>Undo</Button>}
+      <p className="ex-muted">Recording runs on the server and keeps going while you are signed out. Off keeps the stored history.</p>
+    </>}
   </section>;
 }

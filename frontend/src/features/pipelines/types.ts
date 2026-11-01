@@ -26,6 +26,8 @@ type CanvasData = {
   outputStale?: boolean;
   state?: string;
   issueCount: number;
+  /** Warnings never block applying the design. */
+  warningCount?: number;
   /** One line about the settings, or the features a selection keeps. */
   summary?: string;
   chips?: string[];

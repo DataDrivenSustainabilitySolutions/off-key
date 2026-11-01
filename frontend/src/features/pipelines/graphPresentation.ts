@@ -11,6 +11,7 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+import { isWarning } from "./scope";
 import { familyLabel, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
 
@@ -44,7 +45,8 @@ export function presentGraph(
         inputType: input,
         outputType: output,
         state: states?.[node.id],
-        issueCount: issues.filter((issue) => issue.node_id === node.id).length,
+        issueCount: issues.filter((issue) => issue.node_id === node.id && !isWarning(issue)).length,
+        warningCount: issues.filter((issue) => issue.node_id === node.id && isWarning(issue)).length,
         summary: summary.text,
         chips: summary.chips,
       },

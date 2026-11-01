@@ -13,65 +13,9 @@ from off_key_core.models.pipelines import (
 )
 from off_key_core.schemas.pipelines import BoundInput, PipelineDefinition
 
+from tests.support.pipelines import branched, template
+
 pytestmark = pytest.mark.radar_integration
-
-
-def template(strategy="adaptive_stream"):
-    return next(
-        item.definition.model_copy(deep=True)
-        for item in pipeline_catalog().templates
-        if item.definition.strategy == strategy
-    )
-
-
-def branched(strategy="adaptive_stream"):
-    definition = template(strategy)
-    family = "adaptive" if strategy == "adaptive_stream" else "static"
-    projection = "uncentered_pca" if family == "adaptive" else "pca"
-    data = definition.model_dump(mode="json")
-    data["input_slots"] = [
-        {"id": "voltage", "label": "Voltage"},
-        {"id": "current", "label": "Current"},
-        {"id": "temperature", "label": "Temperature"},
-    ]
-    data["nodes"].extend(
-        [
-            {
-                "id": "scaled_inputs",
-                "kind": "transform",
-                "component": "features.select",
-                "params": {"features": ["voltage", "current"]},
-            },
-            {
-                "id": "scaler",
-                "kind": "transform",
-                "component": f"{family}.standard_scaler",
-            },
-            {
-                "id": "projection",
-                "kind": "transform",
-                "component": f"{family}.{projection}",
-                "params": {"n_components": 1},
-            },
-            {
-                "id": "raw",
-                "kind": "transform",
-                "component": "features.select",
-                "params": {"features": ["temperature"]},
-            },
-            {"id": "merge", "kind": "merge", "component": "features.merge"},
-        ]
-    )
-    data["edges"] = [edge for edge in data["edges"] if edge["target"] != "detector"] + [
-        {"source": "input", "target": "scaled_inputs"},
-        {"source": "scaled_inputs", "target": "scaler"},
-        {"source": "scaler", "target": "projection"},
-        {"source": "input", "target": "raw"},
-        {"source": "projection", "target": "merge", "order": 0},
-        {"source": "raw", "target": "merge", "order": 1},
-        {"source": "merge", "target": "detector"},
-    ]
-    return PipelineDefinition.model_validate(data)
 
 
 def test_complete_catalog_and_templates_have_bounded_controls():

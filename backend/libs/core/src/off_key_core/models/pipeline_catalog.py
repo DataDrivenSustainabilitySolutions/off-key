@@ -89,6 +89,13 @@ def pipeline_components() -> list[PipelineComponent]:
             ["static_baseline"],
         ),
         (
+            "static.robust_scaler",
+            "transform",
+            "Robust scaling",
+            "Center on the training median and divide by its interquartile range.",
+            ["static_baseline"],
+        ),
+        (
             "static.pca",
             "transform",
             "Centered PCA",
@@ -114,6 +121,13 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Online min-max scaling",
             "Online observed bounds; clipping is explicit.",
+            ["adaptive_stream"],
+        ),
+        (
+            "adaptive.robust_scaler",
+            "transform",
+            "Online robust scaling",
+            "Center on the recent median and divide by the recent interquartile range.",
             ["adaptive_stream"],
         ),
         (

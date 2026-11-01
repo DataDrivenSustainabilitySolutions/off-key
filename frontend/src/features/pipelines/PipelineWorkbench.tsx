@@ -5,6 +5,7 @@ import type { PipelineCatalog } from "./contracts";
 import PipelineCanvas from "./PipelineCanvas";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
+import { isWarning } from "./scope";
 import { startupSentence, startupSummary, type Startup } from "./startup";
 import { useUndoShortcuts } from "./useGraphEditor";
 
@@ -44,10 +45,15 @@ export function PipelineWorkbench({
   const checking = !validation && !failed && !!lastValidation;
   const status = failed ? undefined : validation ?? lastValidation;
   const estimate = startup && startupSummary(startup);
-  const issueCount = status && `${status.issues.length}${status.issues_truncated ? "+" : ""}`;
-  const statusLabel = failed ? "Graph not checked" : status?.issues.length
-    ? `${issueCount} graph ${status.issues.length === 1 ? "issue" : "issues"}`
-    : `Graph is valid${estimate ? `, first alarm after ${estimate.replace("≈", "about")}` : ""}`;
+  // Errors block applying the graph; warnings are listed and do not.
+  const errors = status?.issues.filter((issue) => !isWarning(issue)).length ?? 0;
+  const warnings = (status?.issues.length ?? 0) - errors;
+  const issueCount = status && `${errors}${status.issues_truncated ? "+" : ""}`;
+  const warningCount = warnings ? `${warnings} ${warnings === 1 ? "warning" : "warnings"}` : "";
+  const statusLabel = failed ? "Graph not checked" : errors
+    ? `${issueCount} graph ${errors === 1 ? "issue" : "issues"}`
+    : `Graph is valid${warningCount ? `, ${warningCount}` : ""}${
+      estimate ? `, first alarm after ${estimate.replace("≈", "about")}` : ""}`;
   const [lastIssuesRequest, setLastIssuesRequest] = useState(issuesRequest);
   if (issuesRequest !== lastIssuesRequest) {
     setLastIssuesRequest(issuesRequest);
@@ -137,17 +143,20 @@ export function PipelineWorkbench({
       </div>
       <div className="pl-actions" aria-label="Settings panels">
         {(status || failed) && <Popover.Root open={issuesOpen} onOpenChange={setIssuesOpen}>
-          <Popover.Trigger className={`pl-issue-status${failed || status?.issues.length ? " has-issues" : ""}${checking ? " is-checking" : ""}`}
+          <Popover.Trigger className={`pl-issue-status${failed || errors ? " has-issues" : warnings ? " has-warnings" : ""}${
+            checking ? " is-checking" : ""}`}
             aria-label={`${statusLabel}${checking ? ", checking changes" : ""}`}>
             {failed ? <><TriangleAlert size={15} aria-hidden="true" />Not checked</>
-              : status?.issues.length
-                ? <><TriangleAlert size={15} aria-hidden="true" />{issueCount} {status.issues.length === 1 ? "issue" : "issues"}</>
-                : <><CircleCheck size={15} aria-hidden="true" />Valid{estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
+              : errors
+                ? <><TriangleAlert size={15} aria-hidden="true" />{issueCount} {errors === 1 ? "issue" : "issues"}</>
+                : <><CircleCheck size={15} aria-hidden="true" />Valid
+                  {warningCount && <span className="pl-issue-warnings">· {warningCount}</span>}
+                  {estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
           </Popover.Trigger>
           <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8} collisionPadding={12}
             aria-label="Graph validation">
             <div className="pl-component-menu-heading">
-              <h3>{failed ? "Graph not checked" : status?.valid ? "Valid processing graph" : "Validation errors"}</h3>
+              <h3>{failed ? "Graph not checked" : status?.valid && !errors ? "Valid processing graph" : "Validation errors"}</h3>
               <Popover.Close aria-label="Close validation"><X size={16} aria-hidden="true" /></Popover.Close>
             </div>
             {failed ? <>
@@ -157,12 +166,17 @@ export function PipelineWorkbench({
               {checking && <p className="pl-help" role="status">Checking the latest changes…</p>}
               {status.issues_truncated && <p className="pl-help">Additional validation messages were omitted.
                 Resolve the listed issues to see the rest.</p>}
-              {status.issues.length ? <ul>{status.issues.map((issue, index) => <li key={index}>
-                {issue.node_id
-                  ? <button type="button" onClick={() => { setIssuesOpen(false); select(issue.node_id!); }}>{issue.message}</button>
-                  : <span>{issue.message}</span>}
-              </li>)}</ul> : <>
-                <p className="pl-help">The compiler accepts this graph.</p>
+              {status.issues.length > 0 && <ul>{status.issues.map((issue, index) => {
+                // Warnings are marked by name too, not only by their colour.
+                const label = isWarning(issue) ? `Warning: ${issue.message}` : undefined;
+                return <li key={index} className={isWarning(issue) ? "is-warning" : undefined}>
+                  {issue.node_id
+                    ? <button type="button" aria-label={label} onClick={() => { setIssuesOpen(false); select(issue.node_id!); }}>{issue.message}</button>
+                    : <span aria-label={label}>{issue.message}</span>}
+                </li>;
+              })}</ul>}
+              {!errors && <>
+                {!warnings && <p className="pl-help">The compiler accepts this graph.</p>}
                 {startup && <p className="pl-help">{startupSentence(startup)}</p>}
               </>}
             </>}
@@ -185,7 +199,8 @@ export function PipelineWorkbench({
         }
       }}>
         <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
-          validation={validation} readOnly={props.readOnly} onSelect={select} onChange={props.onChange} input={input}
+          validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
+          onChange={props.onChange} input={input}
           header={<div className="pl-inspector-heading">
             <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
             <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">

@@ -10,6 +10,7 @@ export type Strategy = PipelineDefinition["strategy"];
 const COUNTERPARTS: [static_: string, adaptive: string][] = [
   ["static.standard_scaler", "adaptive.standard_scaler"],
   ["static.min_max_scaler", "adaptive.min_max_scaler"],
+  ["static.robust_scaler", "adaptive.robust_scaler"],
   ["static.pca", "adaptive.uncentered_pca"],
   ["static.random_projection", "adaptive.random_projection"],
   ["detector:pyod_iforest", "detector:aberrant_online_isolation_forest"],

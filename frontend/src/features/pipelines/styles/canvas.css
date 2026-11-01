@@ -254,6 +254,10 @@
 .dark .pl-node-sample--waiting {
   color: #fcd34d;
 }
+.pl-node-issue.is-warning,
+.dark .pl-node-issue.is-warning {
+  color: hsl(var(--muted-foreground));
+}
 .dark .pl-node-sample--ready {
   color: #86efac;
 }

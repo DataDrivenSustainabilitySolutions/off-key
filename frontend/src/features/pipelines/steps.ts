@@ -21,7 +21,7 @@ export function stepFamily(kind: PipelineNode["kind"], component: string): StepF
   if (kind === "source") return "input";
   if (kind === "merge" || ROUTES.has(component)) return "route";
   if (kind !== "transform") return kind;
-  if (/(standard|min_max)_scaler$/.test(component)) return "normalize";
+  if (/(standard|min_max|robust)_scaler$/.test(component)) return "normalize";
   if (/(pca|random_projection)$/.test(component)) return "reduce";
   return "transform";
 }
@@ -40,6 +40,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "adaptive.standard_scaler": "Center and scale with running statistics.",
   "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
   "adaptive.min_max_scaler": "Scale to 0 to 1 with the bounds seen so far.",
+  "static.robust_scaler": "Center on the median and divide by the quartile range of training data.",
+  "adaptive.robust_scaler": "Center on the recent median and divide by the recent quartile range.",
   "static.pca": "Keep the main directions of the training data.",
   "adaptive.uncentered_pca": "Keep the main directions, updated as data arrives.",
   "static.random_projection": "Fewer dimensions through a fixed random map.",

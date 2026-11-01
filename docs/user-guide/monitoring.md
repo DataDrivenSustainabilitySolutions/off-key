@@ -176,6 +176,25 @@ combines columns from the same aligned observation in the explicit input order;
 rename colliding feature names before combining branches. A card title changes
 presentation only; the **Rename features** component changes execution.
 
+Scaling and projection steps use every feature that reaches them until **Applies
+to** narrows them; unchecked features pass through unchanged and keep their place.
+**Result** decides where the output goes. A scaler replaces the values it uses, or
+with **Add new features** keeps them and adds copies named with a suffix, such as
+`dc_voltage_std`. A projection replaces the features it uses with its components,
+or with **Keep features** keeps every feature and adds the components. Added
+features follow the untouched ones, in the order of **Applies to**. The card lists
+the features a step uses, or the ones it adds. A chosen feature that no longer
+arrives stays listed as *not available here* until it is unchecked, and a suffix
+that repeats an existing name is refused; both stop **Apply monitoring**. One
+scoped step computes the same values as a branch of **Select features**, the step
+and **Merge features**.
+
+**Robust scaling** centers each feature on its median and divides by its
+interquartile range, so occasional spikes shift it less than standard scaling.
+The static step learns them from the training window. **Online robust scaling**
+uses a window of recent observations per feature, 256 by default, and is ready
+after **Min Samples** observations.
+
 Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature
 is named after its label, such as `dc_voltage` for *DC Voltage*; a repeated label

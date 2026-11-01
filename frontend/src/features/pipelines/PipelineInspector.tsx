@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
-import type { PipelineCatalog, PipelineValidation } from "./contracts";
+import type { PipelineCatalog, PipelineNode, PipelineValidation } from "./contracts";
 import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
 import { hasParameterControl } from "@/components/parameter-editor/types";
 import {
@@ -15,6 +15,8 @@ import {
   setNodeParams,
   type GraphDocument,
 } from "./model";
+import { PipelineScope } from "./PipelineScope";
+import { hasScope, isWarning, SCOPE_FIELDS } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import type { HistoryMode } from "./types";
 
@@ -23,6 +25,8 @@ type Props = {
   catalog: PipelineCatalog;
   selected?: string;
   validation?: PipelineValidation;
+  /** The latest report while an edit is being checked; its features stay listed meanwhile. */
+  lastValidation?: PipelineValidation;
   readOnly?: boolean;
   header?: ReactNode;
   content?: ReactNode;
@@ -37,6 +41,7 @@ export function PipelineInspector({
   catalog,
   selected,
   validation,
+  lastValidation,
   readOnly,
   header,
   content,
@@ -49,11 +54,13 @@ export function PipelineInspector({
   const node = document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
   const incoming = selected ? incomingEdges(document.definition, selected) : [];
+  // Feature lists keep the latest report while an edit is checked, so choices do not jump.
+  const report = validation ?? lastValidation;
   const features = [
     ...new Set(
       incoming.flatMap(
         (edge) =>
-          validation?.features[edge.source]?.map((feature) => feature.name) ??
+          report?.features[edge.source]?.map((feature) => feature.name) ??
           [],
       ),
     ),
@@ -78,7 +85,7 @@ export function PipelineInspector({
       slot.label === slot.id ? slot.id : `${slot.label} · ${slot.id}`,
     ]),
   );
-  const lineage = node && validation?.features[node.id] && (
+  const lineage = node && report?.features[node.id] && (
     <>
       <h4>
         {component?.output_type === "features" ||
@@ -86,7 +93,7 @@ export function PipelineInspector({
           ? "Output features"
           : "Contributing feature lineage"}
       </h4>
-      {validation.provenance_complete === false && (
+      {report.provenance_complete === false && (
         <p className="pl-help">
           Some source provenance is omitted to keep this inspection
           bounded. Feature names and order remain complete for this
@@ -94,7 +101,7 @@ export function PipelineInspector({
         </p>
       )}
       <ul className="pl-lineage">
-        {validation.features[node.id]?.map((feature) => (
+        {report.features[node.id]?.map((feature) => (
           <li key={feature.name}>
             <strong>
               {featureLabels[feature.name] ?? feature.name}
@@ -107,7 +114,7 @@ export function PipelineInspector({
                     .map((slot) => featureLabels[slot] ?? slot)
                     .join(", ")}
                 </>
-              ) : validation.provenance_complete === false ? (
+              ) : report.provenance_complete === false ? (
                 "Source provenance omitted"
               ) : (
                 "Source provenance unavailable"
@@ -132,13 +139,20 @@ export function PipelineInspector({
       />
     </label>
   );
+  // Errors on a setting appear beside it; warnings never block and are listed here.
   const nodeIssues = node && validation?.issues
-    .filter((issue) => issue.node_id === node.id && !hasParameterControl(component?.fields ?? [], issue.parameter_path))
-    .map((issue, index) => (
-      <p key={index} className="pl-error" role="alert">
-        {issue.message}
-      </p>
-    ));
+    .filter((issue) => issue.node_id === node.id
+      && (isWarning(issue) || !hasParameterControl(component?.fields ?? [], issue.parameter_path)))
+    .map((issue, index) => isWarning(issue)
+      ? <p key={index} className="pl-warning" role="status">{issue.message}</p>
+      : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
+  const fieldIssues = (validation?.issues ?? [])
+    .filter((issue) => node && issue.node_id === node.id && issue.parameter_path != null && !isWarning(issue))
+    .map((issue) => ({ path: issue.parameter_path!, message: issue.message }));
+  const scoped = hasScope(component);
+  const changeParams = (params: PipelineNode["params"], changed: string) => {
+    if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
+  };
   return (
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
@@ -229,22 +243,23 @@ export function PipelineInspector({
             );
           })()}
           {titleField}
+          {component && scoped && (
+            <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+              issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
           {component && (
             <ParameterFields
-              fields={component.fields}
-              issues={(validation?.issues ?? []).filter(issue => issue.node_id === node.id && issue.parameter_path != null).map(issue => ({ path: issue.parameter_path!, message: issue.message }))}
+              fields={scoped ? component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)) : component.fields}
+              issues={fieldIssues}
               values={node.params}
               features={features}
               featureLabels={featureLabels}
               prefix={node.id}
               readOnly={readOnly}
-              onChange={(params) => {
-                const changed = Object.keys(params)
-                  .filter((key) => params[key] !== node.params[key])
-                  .sort()
-                  .join(",");
-                onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
-              }}
+              onChange={(params) => changeParams(params, Object.keys(params)
+                .filter((key) => params[key] !== node.params[key])
+                .sort()
+                .join(","))}
             />
           )}
           <h4>

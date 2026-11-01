@@ -65,4 +65,36 @@ describe("card summaries", () => {
     // An unknown component has no catalogue entry to compare against.
     expect(summary("detector:missing", { window_size: 1 })).toEqual({});
   });
+
+  it("names the features a scoped step uses and the ones it adds", () => {
+    const scope: PipelineComponent["fields"] = [
+      { name: "apply_to", label: "Applies to", type: "features", default: null },
+      { name: "result", label: "Result", type: "enum", default: "replace" },
+    ];
+    const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
+      id, kind: "transform", label: id, description: "", strategies: ["adaptive_stream"], fields,
+    });
+    const scaler = step("adaptive.standard_scaler", [...scope,
+      { name: "suffix", label: "Suffix", type: "string", default: "std" },
+      { name: "with_std", label: "With Std", type: "boolean", default: true }]);
+    const robust = step("adaptive.robust_scaler", [...scope,
+      { name: "suffix", label: "Suffix", type: "string", default: "robust" },
+      { name: "window_size", label: "Window Size", type: "integer", default: 256 }]);
+    const pca = step("static.pca", [...scope, { name: "n_components", label: "N Components", type: "integer", default: 1 }]);
+
+    // A step that changes values in place lists the readings it uses.
+    expect(summary("adaptive.standard_scaler", { apply_to: ["value", "input_2"] }, scaler))
+      .toEqual({ chips: ["DC voltage", "DC current"] });
+    // One that adds features names them by their new names.
+    expect(summary("adaptive.standard_scaler", { apply_to: ["value"], result: "add", with_std: false }, scaler))
+      .toEqual({ text: "Centering only", chips: ["+ value_std"] });
+    expect(summary("adaptive.standard_scaler", { result: "add", suffix: "z" }, scaler)).toEqual({ text: "Adds *_z" });
+    // Scope settings are not counted among the changed settings.
+    expect(summary("adaptive.robust_scaler", { apply_to: ["value"], result: "replace", suffix: "robust", window_size: 128 }, robust))
+      .toEqual({ text: "Window size 128", chips: ["DC voltage"] });
+    expect(summary("adaptive.robust_scaler", { apply_to: null, result: "replace" }, robust)).toEqual({});
+    expect(summary("static.pca", { n_components: 2, result: "add" }, pca)).toEqual({ text: "2 components · Keeps its inputs" });
+    expect(summary("static.pca", { n_components: 2, apply_to: ["input_3"] }, pca))
+      .toEqual({ text: "2 components", chips: ["input_3"] });
+  });
 });

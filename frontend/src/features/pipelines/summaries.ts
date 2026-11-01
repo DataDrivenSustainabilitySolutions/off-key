@@ -1,6 +1,7 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
+import { addedName, SCOPE_FIELDS, stepScope } from "./scope";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
@@ -29,12 +30,27 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 
 /** Settings that differ from the catalogue defaults, at most two, then a count of the rest. */
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
-  const changed = component.fields.filter((field) =>
-    node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
+  const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)
+    && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
   const shown = lines.filter((line): line is string => !!line).slice(0, 2);
   const rest = changed.length - shown.length;
   return [...shown, ...(rest ? [`${count(rest, "more setting")}`] : [])].join(" · ") || undefined;
+}
+
+/** The features a scoped step uses as chips, or the features it adds as "+ name". */
+function scopeSummary(
+  node: PipelineNode,
+  component: PipelineComponent | undefined,
+  labels: Map<string, string>,
+): NodeSummary | undefined {
+  const scope = stepScope(node, component);
+  if (!scope) return undefined;
+  const used = scope.applyTo;
+  if (scope.add && scope.elementwise)
+    return used ? { chips: used.map((name) => `+ ${addedName(name, scope.suffix ?? "new")}`) }
+      : { text: `Adds *_${scope.suffix ?? "new"}` };
+  return { text: scope.add ? "Keeps its inputs" : undefined, chips: used?.map((name) => labels.get(name) ?? name) };
 }
 
 /** A card's one-line account of what it does with its inputs. Presentation only. */
@@ -44,6 +60,21 @@ export function nodeSummary(
   definition: PipelineDefinition,
 ): NodeSummary {
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
+  const base = settingsSummary(node, component, definition, labels);
+  const scope = scopeSummary(node, component, labels);
+  if (!scope) return base;
+  return {
+    text: [base.text, scope.text].filter(Boolean).join(" · ") || undefined,
+    chips: scope.chips ?? base.chips,
+  };
+}
+
+function settingsSummary(
+  node: PipelineNode,
+  component: PipelineComponent | undefined,
+  definition: PipelineDefinition,
+  labels: Map<string, string>,
+): NodeSummary {
   const params = node.params;
   switch (node.component) {
     case "source.aligned":
@@ -68,6 +99,8 @@ export function nodeSummary(
     case "static.standard_scaler":
     case "adaptive.standard_scaler":
       return params.with_std === false ? { text: "Centering only" } : {};
+    case "static.robust_scaler":
+      return {};
     case "static.pca":
     case "static.random_projection":
     case "adaptive.uncentered_pca":

@@ -31,8 +31,8 @@ def test_runtime_registries_hold_no_component_the_catalog_lacks():
     assert ONLINE_BUILDERS.keys() <= offered
 
 
-def test_every_projection_has_a_state_estimate():
-    assert set(STATE_ESTIMATORS) == PROJECTIONS
+def test_every_projection_and_rolling_window_has_a_state_estimate():
+    assert set(STATE_ESTIMATORS) == PROJECTIONS | {"adaptive.robust_scaler"}
 
 
 def test_unknown_components_keep_their_strategy_specific_errors():

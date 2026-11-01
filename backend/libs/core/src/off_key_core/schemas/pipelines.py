@@ -14,6 +14,8 @@ PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
 DEFAULT_TRAINING_WINDOW_SIZE = 1200
 DEFAULT_CALIBRATION_WINDOW_SIZE = 360
 NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output"]
+# Errors block applying a design; warnings are shown and do not.
+IssueSeverity = Literal["error", "warning"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 
@@ -131,6 +133,7 @@ class PipelineIssue(PipelineModel):
     message: str
     node_id: str | None = None
     parameter_path: list[str | int] | None = Field(default=None, max_length=32)
+    severity: IssueSeverity = "error"
 
 
 class FeatureDescription(PipelineModel):
@@ -557,11 +560,89 @@ class PipelineRuntimeState(PipelineModel):
     batch_training: BatchTrainingState | None = None
 
 
-class StandardScalerParameters(PipelineModel):
+class ScopeParameters(PipelineModel):
+    """Which incoming features a learned step changes, and where its output goes.
+
+    At their defaults the fields are left out of normalized parameters, so a
+    design that does not use them keeps its fingerprint.
+    """
+
+    apply_to: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        title="Applies to",
+        description="The features this step uses. Leave unset to use every feature.",
+    )
+    result: Literal["replace", "add"] = Field(
+        default="replace",
+        title="Result",
+        description=(
+            "Replace the features this step uses, or keep them and add the "
+            "step's output as new features."
+        ),
+    )
+
+    @field_validator("apply_to")
+    @classmethod
+    def unique_scope(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("List each feature at most once")
+        if value is not None and any(not name or len(name) > 120 for name in value):
+            raise ValueError("Feature names must contain 1 to 120 characters")
+        return value
+
+
+def _suffix(default: str) -> Any:
+    return Field(
+        default=default,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Za-z0-9_]+$",
+        title="Suffix",
+        description="Added features are named <feature>_<suffix>.",
+    )
+
+
+class ElementwiseScopeParameters(ScopeParameters):
+    """A step that maps each feature to one value names the features it adds."""
+
+    suffix: str = _suffix("new")
+
+
+class StandardScalerParameters(ElementwiseScopeParameters):
+    suffix: str = _suffix("std")
     with_std: bool = True
 
 
-class MinMaxScalerParameters(PipelineModel):
+class RobustScalerParameters(ElementwiseScopeParameters):
+    suffix: str = _suffix("robust")
+
+
+class RollingRobustScalerParameters(ElementwiseScopeParameters):
+    suffix: str = _suffix("robust")
+    window_size: int = Field(
+        default=256,
+        ge=2,
+        le=3600,
+        description="Recent observations per feature for the median and quartiles.",
+    )
+    min_samples: int = Field(
+        default=32,
+        ge=1,
+        le=3600,
+        description="Observations per feature before the step is ready.",
+    )
+
+    @model_validator(mode="after")
+    def window_holds_minimum(self) -> "RollingRobustScalerParameters":
+        if self.min_samples > self.window_size:
+            raise ValueError("min_samples must not exceed window_size")
+        return self
+
+
+class MinMaxScalerParameters(ElementwiseScopeParameters):
+    suffix: str = _suffix("minmax")
     feature_range: tuple[float, float] = (0.0, 1.0)
     clip: bool = False
 
@@ -596,12 +677,12 @@ class RenameParameters(PipelineModel):
         return value
 
 
-class ProjectionParameters(PipelineModel):
+class ProjectionParameters(ScopeParameters):
     n_components: int = Field(default=1, ge=1, le=100)
     seed: int | None = None
 
 
-class OnlinePCAParameters(PipelineModel):
+class OnlinePCAParameters(ScopeParameters):
     n_components: int = Field(default=1, ge=1, le=100)
     n0: int = Field(default=50, ge=2, le=1_000_000)
     tol: float = Field(default=1e-7, gt=0)

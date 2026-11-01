@@ -6,6 +6,7 @@ from collections import Counter
 from time import perf_counter_ns
 
 import numpy as np
+from off_key_core.models.pipeline_scope import is_scoped, step_scope
 
 from ..execution_errors import FatalExecutionError
 from .components import BATCH_PASSTHROUGH, batch_component
@@ -26,6 +27,13 @@ class BatchFeatureGraph:
             node.id: batch_component(node)
             for node in plan.feature_nodes
             if node.component not in BATCH_PASSTHROUGH
+        }
+        self.scopes = {
+            node.id: step_scope(
+                node.component, node.params, plan.names(plan.parents(node.id)[0])
+            )
+            for node in plan.feature_nodes
+            if is_scoped(node.component, node.params)
         }
         self.fitted = False
 
@@ -102,12 +110,23 @@ class BatchFeatureGraph:
         if node.component in {"features.rename", "features.passthrough"}:
             return current.copy()
         component = self.components[node.id]
+        scope = self.scopes.get(node.id)
+        used = current if scope is None else current[:, scope.indices]
         result = (
-            component.fit_transform(current.copy())
+            component.fit_transform(used.copy())
             if fit
-            else component.transform(current.copy())
+            else component.transform(used.copy())
         )
-        return result.toarray() if hasattr(result, "toarray") else result
+        result = result.toarray() if hasattr(result, "toarray") else result
+        if scope is None:
+            return result
+        if scope.elementwise and scope.add:
+            return np.concatenate([current, result], axis=1)
+        if scope.elementwise:
+            replaced = current.copy()
+            replaced[:, scope.indices] = result
+            return replaced
+        return np.concatenate([current[:, scope.kept], result], axis=1)
 
 
 class FittedStaticPipeline:

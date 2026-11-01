@@ -108,6 +108,12 @@ export function PipelineNodeCard({
             {data.issueCount} {data.issueCount === 1 ? "issue" : "issues"}
           </span>
         )}
+        {!data.issueCount && !!data.warningCount && (
+          <span className="pl-node-issue is-warning" title="Warnings do not stop this design. Select the step for details.">
+            <TriangleAlert size={11} aria-hidden="true" />
+            {data.warningCount} {data.warningCount === 1 ? "warning" : "warnings"}
+          </span>
+        )}
         {status && (
           <span
             className={`pl-node-sample pl-node-sample--${status.tone}`}

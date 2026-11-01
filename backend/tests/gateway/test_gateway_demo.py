@@ -80,8 +80,12 @@ def test_every_guest_route_exists_and_reads():
         if method != "GET" and path != "/v1/system/collection/status"
     }
     assert writes == set()
-    assert ("GET", "/v1/members") not in demo.GUEST_ROUTES
-    assert ("GET", "/v1/system/revisions") not in demo.GUEST_ROUTES
+    # A new read route must be listed or deliberately closed here, so guests
+    # do not silently lose a chart or panel the app depends on.
+    closed_reads = {
+        (method, path) for method, path in routes - demo.GUEST_ROUTES if method == "GET"
+    }
+    assert closed_reads == {("GET", "/v1/members"), ("GET", "/v1/system/revisions")}
 
 
 @pytest.mark.asyncio

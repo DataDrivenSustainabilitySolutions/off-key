@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import SystemStatus from "../pages/SystemStatus";
+import SystemStatus from "../features/settings/SystemStatusSettings";
 import type { StorageStatus } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
@@ -37,7 +37,6 @@ describe("system status, storage and retention", () => {
         <SystemStatus />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "System status", level: 1 })).toBeTruthy();
     expect(await screen.findByText(/^1[.,]5 GB$/)).toBeTruthy();
     expect(screen.getAllByText("30 days")).toHaveLength(2);
     expect(screen.getByText("Anomaly retention")).toBeTruthy();
@@ -60,7 +59,7 @@ describe("system status, storage and retention", () => {
     });
     render(<MemoryRouter><SystemStatus /></MemoryRouter>);
     expect(await screen.findByText("Cleanup paused")).toBeTruthy();
-    const evidence = screen.getByText("Monitoring evidence retention").parentElement!;
+    const evidence = screen.getByText("Monitoring evidence retention").closest<HTMLElement>(".app-settings-row")!;
     expect(within(evidence).getByText("Not configured")).toBeTruthy();
     expect(screen.queryByText("14 days")).toBeNull();
   });
@@ -72,10 +71,10 @@ describe("system status, storage and retention", () => {
       storage_cap_scheduled: true,
     });
     render(<MemoryRouter><SystemStatus /></MemoryRouter>);
-    const cap = (await screen.findByText("Storage cap")).parentElement!;
+    const cap = (await screen.findByText("Storage cap")).closest<HTMLElement>(".app-settings-row")!;
     expect(within(cap).getByText(/^1[.,]3 GB$/)).toBeTruthy();
     expect(within(cap).getByText(/^1[.,]2 GB used by telemetry and evidence$/)).toBeTruthy();
-    expect(cap.querySelector(".bg-amber-500")).toBeTruthy();
+    expect(cap.dataset.tone).toBe("warning");
   });
 
   it("reports failures and refreshes measurements on request", async () => {

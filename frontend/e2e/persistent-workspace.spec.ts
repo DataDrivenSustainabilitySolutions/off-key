@@ -86,6 +86,8 @@ test("returns to the catalogue root from collections, branches and search with a
     const createdId = (await created.json() as SystemSnapshot).document.groups.find(group => group.label === collectionName)?.id;
     expect(createdId).toBeTruthy();
     fixture.ownedIds.add(createdId!);
+    await expect(page.getByRole("dialog", { name: "Edit catalogue", exact: true })).toHaveCount(0);
+    await page.getByRole("dialog", { name: "Settings", exact: true }).getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const viewport = sidebar.getByRole("list", { name: "Catalogue items", exact: true }).locator("..");
     await viewport.evaluate(element => { element.scrollTop = 1400; });

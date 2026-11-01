@@ -131,7 +131,7 @@ export function MetricCard({
         {label}
         {help && <HelpTooltip label={label}>{help}</HelpTooltip>}
       </div>
-      <div className="mt-2.5 text-2xl font-medium leading-none tracking-[-0.03em] tabular-nums">{value}</div>
+      <div className="mt-2.5 text-[length:var(--text-metric)] font-medium leading-none tracking-[-0.03em] tabular-nums">{value}</div>
       {helper ? <div className="mt-2 text-xs leading-5 text-muted-foreground">{helper}</div> : null}
     </div>
   );

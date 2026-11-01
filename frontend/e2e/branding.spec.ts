@@ -14,7 +14,7 @@ test("the brand returns to dashboard home and inverts with the chosen appearance
     expect(bounds?.width).toBeGreaterThanOrEqual(44);
     expect(bounds?.height).toBeGreaterThanOrEqual(44);
   }
-  for (const route of ["/sources", "/anomalies", "/account"]) {
+  for (const route of ["/sources", "/anomalies"]) {
     await page.getByRole("navigation", { name: "Primary navigation", exact: true }).waitFor();
     if (new URL(page.url()).pathname !== route) await page.goto(route);
     const beforeHome = await page.evaluate(() => performance.timeOrigin);

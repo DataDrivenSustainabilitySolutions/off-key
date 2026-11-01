@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { collectionDiagnosis } from "../lib/collection-diagnostics";
-import { CollectionHealth } from "../pages/system-status/CollectionHealth";
+import { CollectionHealth } from "../features/settings/CollectionHealth";
 import type { CollectionStatus, CollectionDiagnostics } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));

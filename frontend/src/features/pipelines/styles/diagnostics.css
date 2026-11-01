@@ -3,12 +3,12 @@
   border-radius: 10px;
   padding: 18px;
   margin: 18px 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
 .pl-diagnostics h3 {
-  font-size: 14px;
+  font-size: var(--text-body);
   margin: 0 0 10px;
 }
 
@@ -24,7 +24,7 @@
 }
 
 .pl-metrics dt {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
   overflow-wrap: anywhere;
 }
@@ -59,7 +59,7 @@
 }
 
 .pl-sample > strong {
-  font-size: 10px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
 }
 

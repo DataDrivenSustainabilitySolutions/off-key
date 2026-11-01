@@ -101,12 +101,6 @@
   .pl-search {
     max-width: none;
   }
-  .pl-header :is(h1, h2) {
-    font-size: 20px;
-  }
-  .pl-setup-header h1 {
-    font-size: 24px;
-  }
   .pl-canvas-toolbar {
     gap: 10px;
   }

@@ -327,6 +327,48 @@ async def test_an_unreachable_broker_stops_reconnecting_after_its_deadline(
 
 
 @pytest.mark.asyncio
+async def test_a_broker_refusing_clients_while_it_restarts_is_retried(monkeypatch):
+    """A refused reconnect used to end recording until someone pressed Reconnect."""
+    ingress, now = recording_ingress(
+        monkeypatch,
+        SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS=60,
+        SYSTEM_COLLECTION_RETRY_SECONDS=300,
+    )
+    await ingress._configure(definition())
+    first = FakeWorker.created[0]
+    first.on_state("connected", None)
+    now[0] = 3600
+    first.on_state("reconnecting", "Broker disconnected.")
+    # Paho does not reconnect after a refused CONNACK; the worker has given up.
+    first.on_state("error", "The broker refused the connection (Server unavailable).")
+    assert ingress.states["broker"]["state"] == "error"
+
+    await ingress._supervise()
+    assert first.stopped and ingress.workers == []
+    assert ingress.states["broker"]["message"].startswith(
+        "The broker refused the connection (Server unavailable). It is retried"
+    )
+    assert ingress.retries["broker"] == 3600 + 300
+
+    # A refused retry keeps its own reason and backs off further.
+    now[0] = 3900
+    await ingress._supervise()
+    retry = FakeWorker.created[1]
+    assert retry.started
+    retry.on_state("error", "The broker rejected the connection credentials.")
+    await ingress._supervise()
+    assert retry.stopped
+    assert "credentials" in ingress.states["broker"]["message"]
+    assert ingress.retries["broker"] == 3900 + 600
+
+    now[0] = 4500
+    await ingress._supervise()
+    FakeWorker.created[2].on_state("connected", None)
+    assert ingress.states["broker"] == {"state": "connected", "message": None}
+    assert ingress.deadlines == {} and ingress.failures == {}
+
+
+@pytest.mark.asyncio
 async def test_a_connected_broker_tolerates_short_outages(monkeypatch):
     ingress, now = recording_ingress(
         monkeypatch, SYSTEM_COLLECTION_CONNECT_TIMEOUT_SECONDS=60

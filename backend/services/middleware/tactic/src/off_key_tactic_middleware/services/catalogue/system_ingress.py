@@ -35,6 +35,10 @@ from .arrival_cadence import ArrivalCadence
 from .broker_access import resolve_broker
 from .system_live_mqtt import LiveMqttWorker
 
+# A deadline that has always passed: the broker's client gave up after a refusal.
+REFUSED = float("-inf")
+RETRY_HINT = "It is retried automatically; reconnect to try again now."
+
 
 class SystemIngress:
     def __init__(self, *, access_resolver=None, clock=time.monotonic):
@@ -49,8 +53,9 @@ class SystemIngress:
         self.sources = {}
         self.source_workers = {}
         self.attempts = {}
-        # One deadline per outage; a broker past it is stopped and retried
-        # quietly (``quiet``) after a backoff that grows with each failure.
+        # One deadline per outage; a broker past it, or whose client was refused,
+        # is stopped and retried quietly (``quiet``) after a backoff that grows
+        # with each failure.
         self.deadlines = {}
         self.retries = {}
         self.failures = {}
@@ -215,7 +220,11 @@ class SystemIngress:
                 if connection_id in self.quiet:
                     return
             else:
-                self.deadlines.pop(connection_id, None)
+                # The client gave up for good: the broker refused the login or the
+                # topics, and Paho does not reconnect after that. A broker that is
+                # restarting refuses clients too, so retire this client at the next
+                # supervision and retry it after the outage backoff, not never.
+                self.deadlines[connection_id] = REFUSED
                 self.quiet.discard(connection_id)
             self.states[connection_id].update(state=phase, message=message)
 
@@ -238,6 +247,7 @@ class SystemIngress:
             for connection_id, deadline in list(self.deadlines.items()):
                 if now < deadline:
                     continue
+                refused = deadline == REFUSED
                 worker = self._detach(connection_id)
                 if worker is not None:
                     retired.append(worker)
@@ -248,14 +258,18 @@ class SystemIngress:
                     * 2 ** min(failures - 1, 16),
                     self.settings.SYSTEM_COLLECTION_RETRY_MAX_SECONDS,
                 )
-                self.states[connection_id].update(
-                    state="error",
-                    message=(
+                state = self.states[connection_id]
+                if refused:
+                    message = (
+                        f"{state['message'] or 'The broker refused the connection.'}"
+                        f" {RETRY_HINT}"
+                    )
+                else:
+                    message = (
                         f"Could not reach the broker within {timeout} seconds, "
-                        "so recording from it is paused. It is retried "
-                        "automatically; reconnect to try again now."
-                    ),
-                )
+                        f"so recording from it is paused. {RETRY_HINT}"
+                    )
+                state.update(state="error", message=message)
             for connection_id, due in list(self.retries.items()):
                 if now >= due and connection_id in self.sources:
                     del self.retries[connection_id]

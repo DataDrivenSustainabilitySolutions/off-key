@@ -40,6 +40,17 @@ def configure_client(
         client.ws_set_options(path=connection.websocket_path or "/mqtt")
 
 
+# CONNACK reason codes that blame the login; MQTT 3.1.1 codes 4 and 5 map onto them.
+CREDENTIAL_REFUSALS = {134, 135}
+
+
+def refusal_message(reason) -> str:
+    """Say why the broker refused; a restarting broker is not a bad login."""
+    if getattr(reason, "value", None) in CREDENTIAL_REFUSALS:
+        return "The broker rejected the connection credentials."
+    return f"The broker refused the connection ({reason})."
+
+
 class LiveMqttWorker:
     def __init__(
         self,
@@ -131,11 +142,11 @@ class LiveMqttWorker:
             if reason.is_failure:
                 self.denied = True
                 self.connected = False
-                self.on_state(
-                    "error", "The broker rejected the connection credentials."
-                )
-                # Paho would otherwise reconnect and resend the refused credentials,
-                # which can lock the account; a settings change starts a new worker.
+                self.on_state("error", refusal_message(reason))
+                # Paho would otherwise reconnect at once and resend refused
+                # credentials, which can lock the account. The owner decides when
+                # to try again: ingress retries after its backoff, a settings
+                # change or a reconnect starts a new worker.
                 client.disconnect()
                 return
             self.connected = True

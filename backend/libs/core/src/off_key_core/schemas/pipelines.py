@@ -1,7 +1,7 @@
 """Versioned monitoring designs; safe to import in the control plane."""
 
 from datetime import datetime
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -11,12 +11,10 @@ from .collection_policy import CollectionPolicy
 
 # The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
 PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
-MONITORING_STRATEGIES: frozenset[str] = frozenset(get_args(PipelineStrategy))
 DEFAULT_TRAINING_WINDOW_SIZE = 1200
 DEFAULT_CALIBRATION_WINDOW_SIZE = 360
 NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
-Identifier = str
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 
 
@@ -153,12 +151,9 @@ class PipelineValidation(PipelineModel):
 
     @property
     def incoming(self) -> dict[str, list[str]]:
+        edges = sorted(self.definition.edges, key=lambda item: item.order)
         return {
-            node.id: [
-                edge.source
-                for edge in sorted(self.definition.edges, key=lambda item: item.order)
-                if edge.target == node.id
-            ]
+            node.id: [edge.source for edge in edges if edge.target == node.id]
             for node in self.definition.nodes
         }
 
@@ -166,13 +161,6 @@ class PipelineValidation(PipelineModel):
     def feature_names(self) -> dict[str, list[str]]:
         return {
             identifier: [item.name for item in columns]
-            for identifier, columns in self.features.items()
-        }
-
-    @property
-    def lineage(self) -> dict[str, dict[str, list[str]]]:
-        return {
-            identifier: {item.name: item.slots for item in columns}
             for identifier, columns in self.features.items()
         }
 
@@ -198,20 +186,6 @@ class PipelineValidation(PipelineModel):
     @property
     def feature_output_id(self) -> str:
         return self.incoming[self.detector_id][0]
-
-    @property
-    def model_type(self) -> str:
-        return next(
-            node.component.removeprefix("detector:")
-            for node in self.definition.nodes
-            if node.kind == "detector"
-        )
-
-    @property
-    def model_params(self) -> dict[str, Any]:
-        return next(
-            node.params for node in self.definition.nodes if node.kind == "detector"
-        )
 
 
 class PipelineValidationReport(PipelineModel):

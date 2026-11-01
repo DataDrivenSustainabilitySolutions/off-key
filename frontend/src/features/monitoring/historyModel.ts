@@ -27,30 +27,38 @@ export function buildServiceHistoryModel({
   }));
   const times = [...new Set(detectors.flatMap(detector => detector.observations.map(observation => observation.timeMs)))].sort((a, b) => a - b);
   const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: times, selectedDetectorIds });
+  const palette = dark ? DARK_READING_COLORS : READING_COLORS;
   const readings = inputs.map(input => {
     const { stream, binding } = input;
     const data = normalizeTelemetry(histories.get(stream.id) ?? []);
-    const scoredTimes = rows.flatMap(row => {
+    // One parse per evidence row yields both the latest scored time and the alarm times.
+    let lastScore: number | undefined;
+    const alarmTimes = new Set<number>();
+    for (const row of rows) {
       const time = Date.parse(row.input_timestamps[binding.telemetry_key] ?? "");
-      return Number.isFinite(time) ? [time] : [];
-    });
-    const lastScore = scoredTimes.length ? Math.max(...scoredTimes) : undefined;
+      if (!Number.isFinite(time)) continue;
+      if (lastScore === undefined || time > lastScore) lastScore = time;
+      if (row.alarm) alarmTimes.add(time);
+    }
     const index = allInputs.findIndex(item => item.stream.id === stream.id);
-    const palette = dark ? DARK_READING_COLORS : READING_COLORS;
     const duplicate = inputs.some(other => other.stream.id !== stream.id && other.stream.label === stream.label);
     return { id: `reading:${stream.id}`, inputKey: binding.telemetry_key,
       name: duplicate ? `${input.path} / ${stream.label}` : stream.label,
       unit: stream.unit, color: palette[index % palette.length]!, data,
       pendingTelemetry: !operational || lastScore === undefined ? [] : data.filter(([time]) => time > lastScore),
       anomalyMarkers: [],
-      alarmTimes: [...new Set(rows.filter(row => row.alarm).flatMap(row => {
-        const time = Date.parse(row.input_timestamps[binding.telemetry_key] ?? "");
-        return Number.isFinite(time) ? [time] : [];
-      }))],
+      alarmTimes: [...alarmTimes],
     };
   });
-  const allTimes = [...times, ...readings.flatMap(reading => reading.data.map(([time]) => time))];
+  // Detector times and normalized telemetry are sorted, so their ends bound the extent
+  // without spreading every point into Math.min/Math.max.
+  let first = times[0], last = times[times.length - 1];
+  for (const { data } of readings) {
+    const start = data[0]?.[0], end = data[data.length - 1]?.[0];
+    if (start !== undefined && (first === undefined || start < first)) first = start;
+    if (end !== undefined && (last === undefined || end > last)) last = end;
+  }
   const model: MonitoringChartModel = { readings, secondarySeries, range: {},
-    extent: allTimes.length ? [Math.min(...allTimes), Math.max(...allTimes)] : undefined };
+    extent: first === undefined || last === undefined ? undefined : [first, last] };
   return { model, detectors };
 }

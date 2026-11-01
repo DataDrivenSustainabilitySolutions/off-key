@@ -134,7 +134,6 @@ class DatabaseWriter:
         self.total_written = 0
         self.total_evidence_written = 0
         self.total_errors = 0
-        self.write_times = deque(maxlen=100)
 
         # Control
         self._writer_task: asyncio.Task | None = None
@@ -629,7 +628,6 @@ class DatabaseWriter:
         anomaly_records, identity_records, evidence_records = _rows(prepared)
         batch_size = len(batch_snapshot)
         anomaly_count = len(anomaly_records)
-        start_time = time.time()
 
         try:
             if anomaly_records or evidence_records:
@@ -654,10 +652,7 @@ class DatabaseWriter:
                     )
 
             self._record_commit(
-                persistence_candidates,
-                anomaly_records,
-                evidence_records,
-                write_time=time.time() - start_time,
+                persistence_candidates, anomaly_records, evidence_records
             )
 
         except asyncio.CancelledError:
@@ -819,9 +814,7 @@ class DatabaseWriter:
         await self._execute_upsert(session, anomalies, identities)
         await self._execute_evidence_upsert(session, evidence)
 
-    def _record_commit(self, results, anomalies, evidence, *, write_time=None) -> None:
-        if write_time is not None:
-            self.write_times.append(write_time)
+    def _record_commit(self, results, anomalies, evidence) -> None:
         self.total_written += len(anomalies)
         self.total_evidence_written += len(evidence)
         self.last_write_time = time.time()

@@ -7,6 +7,7 @@ import type {
 } from "./contracts";
 import { arrangeGraph } from "./layout";
 import { addComponent, type GraphDocument } from "./model";
+import type { HistoryMode, PlacementRequest } from "./types";
 
 type GraphHistory = { undo: GraphDocument[]; redo: GraphDocument[] };
 type Options = {
@@ -17,9 +18,6 @@ type Options = {
   historyKey?: string;
   onSelect?: (id: string) => void;
 };
-
-import type { HistoryMode, PlacementRequest } from "./types";
-export type { HistoryMode, PlacementRequest } from "./types";
 
 /** The same graph operations serve new designs and saved drafts. */
 export function useGraphEditor({

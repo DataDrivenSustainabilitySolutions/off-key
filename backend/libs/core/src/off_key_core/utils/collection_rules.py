@@ -1,7 +1,6 @@
 """Resolve policy inheritance without allocating descendant lists per topic."""
 
 from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.collection_rules import CollectionRuleScope
 
 
 class CollectionRuleResolver:
@@ -10,30 +9,24 @@ class CollectionRuleResolver:
         self.rules = {rule.scope.key: rule for rule in definition.rules}
 
     def resolve(self, stream):
-        scope = CollectionRuleScope(
-            kind="reading", connection_id=stream.connection_id, reading_id=stream.id
-        )
-        reading = self.rules.get(scope.key)
+        # Scope keys are plain tuples (CollectionRuleScope.key), so candidates are
+        # looked up without building and validating a scope model per depth.
+        connection_id = stream.connection_id
+        reading = self.rules.get(("reading", connection_id, None, stream.id))
         if reading and reading.policy is not None:
             return reading.policy, {
-                "scope": scope.model_dump(mode="json"),
+                "scope": reading.scope.model_dump(mode="json"),
                 "inherited": False,
                 "needs_review": False,
             }
         segments = stream.topic.split("/")
-        scopes = [
-            CollectionRuleScope(
-                kind="topic",
-                connection_id=stream.connection_id,
-                topic_prefix="/".join(segments[:depth]),
-            )
+        candidates = [
+            ("topic", connection_id, "/".join(segments[:depth]), None)
             for depth in range(len(segments), 0, -1)
         ]
-        scopes.append(
-            CollectionRuleScope(kind="broker", connection_id=stream.connection_id)
-        )
-        for candidate in scopes:
-            rule = self.rules.get(candidate.key)
+        candidates.append(("broker", connection_id, None, None))
+        for candidate in candidates:
+            rule = self.rules.get(candidate)
             if rule is None:
                 continue
             admitted = (
@@ -43,7 +36,7 @@ class CollectionRuleResolver:
                 <= rule.admitted_before
             )
             return (rule.policy if admitted else CollectionPolicy()), {
-                "scope": candidate.model_dump(mode="json"),
+                "scope": rule.scope.model_dump(mode="json"),
                 "inherited": True,
                 "needs_review": not admitted,
             }

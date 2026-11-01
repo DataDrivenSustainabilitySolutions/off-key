@@ -74,7 +74,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, telemetryType, new Date(cutoff))),
   }), [telemetryType, stream.label, stream.unit, colors.primary, telemetry, detectors,
     selectedDetectorIds, pending, history, anomalies, cutoff]);
-  const domain = getChartDomain(model.extent);
+  // Stable between renders, so the inspect callback below is too.
+  const domain = useMemo(() => getChartDomain(model.extent), [model.extent]);
   const description = `${stream.label}. ${model.telemetry.data.length} received samples. Times in ${timeZone}.`
     + (model.secondarySeries.length ? " Monitoring scores and thresholds share the time axis." : "");
   const option = useMemo(() => buildTelemetryChartOption({

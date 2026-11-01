@@ -235,10 +235,13 @@ class PipelineLibrary:
         run = await self.session.scalar(
             select(PipelineRun).where(PipelineRun.service_id == service_id)
         )
-        service = await self.session.get(MonitoringService, service_id)
-        if run is None and service is None:
-            raise NotFoundError("Monitoring service not found")
-        config = run.launch_config if run else service.launch_config
+        if run is not None:
+            config = run.launch_config
+        else:
+            service = await self.session.get(MonitoringService, service_id)
+            if service is None:
+                raise NotFoundError("Monitoring service not found")
+            config = service.launch_config
         execution = config.get("pipeline") if config else None
         if execution:
             definition = PipelineDefinition.model_validate(execution["definition"])

@@ -8,7 +8,7 @@ from off_key_core.db.collection import (
 )
 from off_key_core.db.collection_runtime import monitoring_collection_fingerprint
 from off_key_core.db.maintenance import require_application_writes
-from off_key_core.db.models import MonitoringService
+from off_key_core.db.models import MonitoringService, PipelineActivation, PipelineRun
 from off_key_core.db.pipeline_claims import (
     claim_owners,
     first_overlap,
@@ -173,7 +173,7 @@ class RadarOrchestrationService:
             desired_state="running",
             lifecycle_version=1,
             config_fingerprint=config_fingerprint,
-            collection_fingerprint=env_vars["RADAR_COLLECTION_FINGERPRINT"],
+            collection_fingerprint=collection_fingerprint,
             operational_stage="starting",
             operational_status=RadarOperationalStatus(stage="starting").model_dump(
                 mode="json", exclude_none=True
@@ -201,8 +201,6 @@ class RadarOrchestrationService:
     async def _activation_for_launch(self, config, activation_id, service_id):
         if activation_id is None:
             return None
-        from off_key_core.db.models import PipelineActivation, PipelineRun
-
         activation = await self.session.get(
             PipelineActivation, activation_id, populate_existing=True
         )
@@ -447,7 +445,7 @@ class RadarOrchestrationService:
             )
             service_ids = list(service_id_result.scalars().all())
             await lock_execution_records(self.session, service_ids)
-            db_rows_deleted = await self._delete_service_rows_by_ids(service_ids)
+            db_rows_deleted = await purge_service_rows(self.session, service_ids)
             await self.session.commit()
 
         if removal_failures:
@@ -461,9 +459,6 @@ class RadarOrchestrationService:
             "docker_workloads_removed": removed_workloads,
             "workloads_targeted": len(target_ids),
         }
-
-    async def _delete_service_rows_by_ids(self, service_ids: list[str]) -> int:
-        return await purge_service_rows(self.session, service_ids)
 
     async def retire_service(self, service: MonitoringService) -> bool:
         """Persist delete intent, remove the worker and purge the rows."""
@@ -495,7 +490,7 @@ class RadarOrchestrationService:
             ):
                 await self.session.rollback()
                 return False
-            deleted_rows = await self._delete_service_rows_by_ids([service_id])
+            deleted_rows = await purge_service_rows(self.session, [service_id])
             await self.session.commit()
             logger.info(
                 "Deleted RADAR service %s (workload_removed=%s)",

@@ -95,10 +95,11 @@ export const getAllTelemetryData = async (
           pageSize: TELEMETRY_PAGE_SIZE,
         });
         const nextCursor = getTelemetryCursor(data);
+        const definition = definitions.get(type);
         return {
           type,
-          category: definitions.get(type)?.category ?? "Other",
-          ...(definitions.get(type)?.label && { label: definitions.get(type)!.label }),
+          category: definition?.category ?? "Other",
+          ...(definition?.label && { label: definition.label }),
           data: data.map(({ timestamp, value }) => ({ timestamp, value })),
           ...(nextCursor && { cursor: nextCursor }),
         };
@@ -139,9 +140,12 @@ export const mergeTelemetryData = (
     series.data.forEach((point) => points.set(point.timestamp, point));
     return {
       ...series,
+      // Parse each timestamp once instead of twice per comparison.
       data: [...points.values()]
-        .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
-        .slice(0, limit),
+        .map((point) => ({ point, time: Date.parse(point.timestamp) }))
+        .sort((left, right) => right.time - left.time)
+        .slice(0, limit)
+        .map(({ point }) => point),
     };
   });
   merged.push(...incomingByType.values());

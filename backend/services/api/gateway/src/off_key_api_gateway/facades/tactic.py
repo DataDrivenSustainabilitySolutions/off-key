@@ -259,8 +259,8 @@ class Tactic:
             List[Dict]: List of services
         """
         params = {
-            "active_only": str(active_only).lower(),
-            "include_docker_status": str(include_docker_status).lower(),
+            "active_only": active_only,
+            "include_docker_status": include_docker_status,
         }
 
         return await self.request(
@@ -306,7 +306,7 @@ class Tactic:
         params = {
             "skip": skip,
             "limit": limit,
-            "active_only": str(active_only).lower(),
+            "active_only": active_only,
         }
         return await self.request(
             method="GET",
@@ -529,8 +529,3 @@ class Tactic:
 
 
 tactic = Tactic()
-
-
-def get_tactic_client() -> Tactic:
-    """Return the process-wide TACTIC client."""
-    return tactic

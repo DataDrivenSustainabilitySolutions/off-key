@@ -48,11 +48,11 @@ async def _form_request(session, config: FormMonitorConfig) -> PipelineApplyRequ
 
 
 async def start_form_monitor(
-    session, config: FormMonitorConfig, workloads=None
+    session, config: FormMonitorConfig
 ) -> PipelineActivationView:
     """Convert a form launch into its equivalent graph and activate it."""
     request = await _form_request(session, config)
-    return await PipelineActivations(session, workloads).apply_form(
+    return await PipelineActivations(session).apply_form(
         request, config.performance_config
     )
 

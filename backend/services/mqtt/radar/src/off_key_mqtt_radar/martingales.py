@@ -8,6 +8,8 @@ import numpy as np
 
 from .betting import betting_function
 
+_LOG_FLOAT_MAX = float(np.log(np.finfo(float).max))
+
 
 @dataclass(frozen=True)
 class _Statistic:
@@ -121,7 +123,8 @@ class MartingaleTrackerController:
 
         statistic = self.config.alarm_statistic
         fields = _STATISTICS[statistic]
-        selected = _statistic_payload(state, statistic)
+        statistics = {name: _statistic_payload(state, name) for name in _STATISTICS}
+        selected = statistics[statistic]
         raw_selected_value = float(getattr(state, fields.value_field))
         threshold_crossed = (
             fields.trigger in state.triggered_alarms
@@ -133,13 +136,11 @@ class MartingaleTrackerController:
             self.alarm_count += 1
 
         log_e_value = self._log_e_value(p_value, previous_log_martingale)
-        max_log_float = float(np.log(np.finfo(float).max))
         e_value = (
             float(np.exp(log_e_value))
-            if np.isfinite(log_e_value) and log_e_value <= max_log_float
+            if np.isfinite(log_e_value) and log_e_value <= _LOG_FLOAT_MAX
             else None
         )
-        statistics = {name: _statistic_payload(state, name) for name in _STATISTICS}
         parameters = self.config.model_dump(
             exclude={
                 "tracker_id",
@@ -161,7 +162,7 @@ class MartingaleTrackerController:
             "e_value": e_value,
             "e_value_is_infinite": bool(
                 np.isposinf(log_e_value)
-                or (np.isfinite(log_e_value) and log_e_value > max_log_float)
+                or (np.isfinite(log_e_value) and log_e_value > _LOG_FLOAT_MAX)
             ),
             "log_e_value": _finite_or_none(log_e_value),
             "threshold": self.threshold,

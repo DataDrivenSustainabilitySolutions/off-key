@@ -63,7 +63,6 @@ class RadarMQTTClient:
 
         # Performance tracking
         self.connection_time = None
-        self.last_message_time = None
 
         # Event loop for async coordination
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -399,7 +398,6 @@ class RadarMQTTClient:
             try:
                 self._message_bridge.sync_q.put_nowait(message)
                 self.message_count += 1
-                self.last_message_time = datetime.now()
             except janus.SyncQueueFull:
                 self._drop_counts["queue_full"] += 1
                 self.coverage.record_drop("queue_full")
@@ -523,7 +521,7 @@ class RadarMQTTClient:
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status information"""
-        coverage = self.coverage.snapshot().model_dump(mode="json")
+        coverage = self.coverage.snapshot_json()
         if not self.is_connected:
             return {
                 "status": "unhealthy",

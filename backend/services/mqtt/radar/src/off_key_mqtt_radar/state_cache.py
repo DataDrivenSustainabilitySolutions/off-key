@@ -173,16 +173,11 @@ class SensorStateCache:
 
             if not self.required_sensors:
                 # No alignment requested; emit the incoming values as-is
-                input_timestamps = {
-                    sensor_type: (
-                        current_time if sample_timestamp is None else sample_timestamp
-                    )
-                }
                 return AlignmentUpdate(
                     status="aligned_emit",
                     features=values,
-                    input_timestamps=input_timestamps,
-                    sample_timestamp=max(input_timestamps.values()),
+                    input_timestamps={sensor_type: event_timestamp},
+                    sample_timestamp=event_timestamp,
                 )
 
             sensor_ages = self._collect_sensor_ages(charger_cache, current_time)
@@ -292,7 +287,8 @@ class SensorStateCache:
             return "observation_too_old"
         if timestamp - now > self.observation_future_tolerance_seconds:
             return "observation_in_future"
-        previous = self._watermarks.get(charger_id, {}).get(sensor_type)
+        charger_watermarks = self._watermarks.get(charger_id, {})
+        previous = charger_watermarks.get(sensor_type)
         if previous is not None and timestamp <= previous:
             return (
                 "observation_duplicate"
@@ -305,8 +301,8 @@ class SensorStateCache:
         ):
             return "observation_capacity"
         if (
-            sensor_type not in self._watermarks.get(charger_id, {})
-            and len(self._watermarks.get(charger_id, {})) >= self._max_sensor_keys
+            sensor_type not in charger_watermarks
+            and len(charger_watermarks) >= self._max_sensor_keys
         ):
             return "observation_capacity"
         return None

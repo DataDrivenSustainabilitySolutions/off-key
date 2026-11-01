@@ -9,6 +9,7 @@ sensitive keys redacted in both.
 import contextvars
 import hashlib
 import ipaddress
+import json
 import logging
 import logging.config
 import os
@@ -85,8 +86,6 @@ class JsonFormatter(logging.Formatter):
     """JSON formatter for structured logging."""
 
     def format(self, record):
-        import json
-
         log_data = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
@@ -188,11 +187,6 @@ def correlation_headers() -> dict[str, str]:
     if request_id is None:
         return {}
     return {get_logging_settings().LOG_CORRELATION_HEADER: request_id}
-
-
-def set_correlation_id(request_id: str) -> None:
-    """Set correlation ID for current context."""
-    correlation_id.set(request_id)
 
 
 def get_correlation_id() -> str | None:
@@ -341,19 +335,15 @@ def log_security_event(
         )
         for key, value in (details or {}).items()
     }
-    redacted_user_id = (
-        redact_email(user_id, level=resolved_level)
-        if isinstance(user_id, str) and "@" in user_id
-        else redact_value(user_id, level=resolved_level)
-    )
-    details_repr = redacted_details if redacted_details else {}
+    # redact_value already masks email-like values with redact_email.
+    redacted_user_id = redact_value(user_id, level=resolved_level)
 
     log_instance.log(
         resolved_level,
         "event=security.%s user=%s details=%s",
         event_type,
         redacted_user_id or "none",
-        details_repr,
+        redacted_details,
     )
 
 
@@ -392,22 +382,13 @@ def load_yaml_config(service_config_path: str | None = None) -> None:
     # Load base configuration from core
     core_config_path = Path(__file__).parent / "logging.yaml"
 
-    with open(core_config_path) as f:
-        config_text = f.read()
-        # Expand environment variables
-        config_text = _expand_env_vars(config_text)
-        config = yaml.safe_load(config_text)
+    config = _read_yaml_config(core_config_path)
 
     # Load and merge service-specific configuration if provided
     if service_config_path and os.path.exists(service_config_path):
-        with open(service_config_path) as f:
-            service_config_text = f.read()
-            # Expand environment variables
-            service_config_text = _expand_env_vars(service_config_text)
-            service_config = yaml.safe_load(service_config_text)
+        service_config = _read_yaml_config(service_config_path)
 
-        # Extract the service logger name from the service config
-        # Look for the first logger that's not sqlalchemy-related
+        # The service's own logger is the first one its config declares.
         if "loggers" in service_config:
             logger_names = list(service_config["loggers"].keys())
             if logger_names:
@@ -424,6 +405,12 @@ def load_yaml_config(service_config_path: str | None = None) -> None:
 
     # Apply the configuration
     logging.config.dictConfig(config)
+
+
+def _read_yaml_config(path: str | Path) -> dict[str, Any]:
+    """Read a logging YAML file after expanding ${VAR:default} references."""
+    with open(path) as f:
+        return yaml.safe_load(_expand_env_vars(f.read()))
 
 
 def _apply_log_format(config: dict[str, Any]) -> None:
@@ -460,11 +447,8 @@ def log_startup_logging_configuration(
     log_instance = logger_instance or logger
     settings = get_logging_settings()
     effective_name = logger_name or _service_logger_name or "root"
-    target_logger = (
-        logging.getLogger()
-        if effective_name == "root"
-        else logging.getLogger(effective_name)
-    )
+    # getLogger("root") is the root logger itself.
+    target_logger = logging.getLogger(effective_name)
     handler_names = [handler.__class__.__name__ for handler in target_logger.handlers]
     root_handler_names = [
         handler.__class__.__name__ for handler in logging.getLogger().handlers
@@ -537,7 +521,6 @@ class LazyLogger:
     """A lazy logger that creates the actual logger on first use."""
 
     def __getattr__(self, name):
-        global _default_logger_instance, _service_logger_name
         if _default_logger_instance == "YAML_CONFIGURED":
             # When YAML config is used, return the service logger
             if _service_logger_name:
@@ -565,5 +548,4 @@ __all__ = [
     "redact_ip_address",
     "redact_query_params",
     "redact_value",
-    "set_correlation_id",
 ]

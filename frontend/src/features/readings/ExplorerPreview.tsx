@@ -207,7 +207,7 @@ export default function ExplorerPreview({
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
-          stream={stream} connection={readingConnection} snapshot={snapshot} binding={runtime?.bindings?.[stream.id]} historyCache={historyCache} />}
+          stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
       </> : <div className="ex-preview-metrics">
         <div><strong>{number.format(related.length)}</strong><span>Readings</span></div>
         <div><strong>{number.format(topicCount)}</strong><span>MQTT topics</span></div>

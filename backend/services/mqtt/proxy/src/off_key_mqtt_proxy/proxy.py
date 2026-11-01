@@ -9,10 +9,8 @@ from datetime import UTC, datetime
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
-from off_key_core.db.collection import (
-    COLLECTION_PROXY_LOCK,
-)
 from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.db.locks import COLLECTION_PROXY_LOCK
 from off_key_core.db.models import Charger, CollectionState
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.schemas.collection_status import (
@@ -167,7 +165,6 @@ class MQTTProxyService:
         states = {}
         live_seen = {}
         for observation in observations:
-            message = observation.message()
             if not observation.snapshot:
                 charger_id = observation.stream.charger_id
                 live_seen[charger_id] = max(
@@ -180,6 +177,7 @@ class MQTTProxyService:
                     await self.database_writer.write_record(
                         observation.telemetry_record()
                     )
+                message = observation.message()
                 if not await self.mqtt_client.publish(
                     message.topic, message.payload, qos=1
                 ):

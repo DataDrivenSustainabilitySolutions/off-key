@@ -649,6 +649,7 @@ MonitoringConfig = Annotated[
     StaticBaselineConfig | AdaptiveStreamConfig,
     Field(discriminator="strategy"),
 ]
+_MONITORING_CONFIG = TypeAdapter(MonitoringConfig)
 
 
 class LegacyMonitoringConfig(BaseModel):
@@ -680,7 +681,7 @@ class LegacyMonitoringConfig(BaseModel):
             payload = self.model_dump(
                 include={"strategy", "model_type", "model_params"}, exclude_none=True
             )
-            config = TypeAdapter(MonitoringConfig).validate_python(payload)
+            config = _MONITORING_CONFIG.validate_python(payload)
         if self.model_type is not None and self.model_type != config.model_type:
             raise ValueError(
                 f"model_type conflicts with {self.strategy}_config.model_type"

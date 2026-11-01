@@ -89,10 +89,16 @@ class PipelineDiagnostics:
     def observe(self, event) -> None:
         """Consume an Aberrant NodeObservation without retaining its full data."""
         identifier = self.model_id if event.node_id == "$model" else event.node_id
-        output = dict(event.output) if isinstance(event.output, tuple) else event.output
+        inputs = output = None
+        if self._pending is not None:
+            # Only a pending sample reads the values; skip the copies otherwise.
+            inputs = dict(event.inputs)
+            output = event.output
+            if isinstance(output, tuple):
+                output = dict(output)
         self.record(
             identifier,
-            dict(event.inputs),
+            inputs,
             output,
             elapsed_ns=event.duration_ns,
             count=(event.phase != "transform" or self._pass == "score"),

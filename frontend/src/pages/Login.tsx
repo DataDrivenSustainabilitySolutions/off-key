@@ -10,8 +10,6 @@ import {
   AuthLayout,
   AUTH_LINK_CLASS,
   AUTH_ERROR_CLASS,
-  AUTH_SUCCESS_CLASS,
-
   AUTH_LABEL_CLASS,
   AUTH_SUBMIT_BUTTON_CLASS,
 } from "@/components/AuthLayout";
@@ -188,16 +186,9 @@ const Login: React.FC = () => {
           {isSubmitting ? "Logging in…" : "Log in"}
         </Button>
 
-        {/* Fehlermeldung oder Erfolgsnachricht */}
+        {/* A successful login navigates away, so a message is always an error. */}
         {message && (
-          <p
-            role={message === "Login successful!" ? "status" : "alert"}
-            className={`mt-2 text-center text-sm ${
-              message === "Login successful!"
-                ? AUTH_SUCCESS_CLASS
-                : AUTH_ERROR_CLASS
-            }`}
-          >
+          <p role="alert" className={`mt-2 text-center text-sm ${AUTH_ERROR_CLASS}`}>
             {message}
           </p>
         )}

@@ -146,7 +146,7 @@ class MQTTClient:
                         if not item.is_published()
                     ]
                     self._pending_publishes.append(result)
-                logger.debug(f"Published message to {topic}")
+                logger.debug("Published message to %s", topic)
                 return True
             logger.error(f"Failed to publish to {topic}: {result.rc}")
             return False

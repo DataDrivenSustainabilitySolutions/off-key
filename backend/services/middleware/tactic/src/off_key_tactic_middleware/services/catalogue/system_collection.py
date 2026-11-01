@@ -116,17 +116,17 @@ class SystemCollectionService:
                     if stream.id in selected
                 ],
             )
+        streams = proposed.streams(selected_only=True)
         previous_inputs = {
             item.accepted_topic: item.signature
             for item in runtime.catalog.streams(selected_only=True)
         }
         if any(
             previous_inputs.get(item.accepted_topic) != item.signature
-            for item in proposed.streams(selected_only=True)
+            for item in streams
         ):
             self._validate_access(proposed)
         affected = await self.affected(runtime.catalog, proposed)
-        streams = proposed.streams(selected_only=True)
         numeric = [item for item in streams if item.value_type == "number"]
         before = {
             stream.id: stream.policy or runtime.catalog.document.default_policy
@@ -175,13 +175,13 @@ class SystemCollectionService:
 
     @staticmethod
     def _validate_access(definition):
-        if not definition.streams(selected_only=True):
+        selected = {item.source_id for item in definition.streams(selected_only=True)}
+        if not selected:
             return
         settings = get_system_live_settings()
         if not settings.SYSTEM_COLLECTION_ENABLED:
             raise ValidationError("Collection is disabled by the operator.")
         access = BrokerRouteAccess(settings)
-        selected = {item.source_id for item in definition.streams(selected_only=True)}
         for connection in definition.document.connections:
             if connection.id not in selected:
                 continue
@@ -294,11 +294,8 @@ class SystemCollectionService:
         row.document = definition.model_dump(mode="json")
         row.updated_by = actor
         row.updated_at = datetime.now(UTC)
-        if (
-            changed
-            or previous is None
-            or policy_metadata(previous) != policy_metadata(definition)
-        ):
+        # changed already covers a first save (previous is None).
+        if changed or policy_metadata(previous) != policy_metadata(definition):
             row.revision += 1
             row.ingress_status = {}
             row.collection_status = {}

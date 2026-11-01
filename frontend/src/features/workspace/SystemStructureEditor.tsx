@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
@@ -70,17 +70,20 @@ export function SystemStructureEditor({
   const device = entity as SystemDevice;
   const stream = entity as SystemStream;
   const group = entity as SystemGroup;
-  const objects = [
-    ...baseline.connections,
-    ...baseline.devices,
-    ...baseline.streams,
-  ];
-  const matches = objects.filter((item) =>
-    item.label.toLowerCase().includes(search.trim().toLowerCase()),
+  // The baseline is fixed for the dialog's lifetime, so typing only reruns
+  // the search, not the dependency walk.
+  const matches = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return [
+      ...baseline.connections,
+      ...baseline.devices,
+      ...baseline.streams,
+    ].filter((item) => item.label.toLowerCase().includes(needle));
+  }, [baseline, search]);
+  const dependencies = useMemo(
+    () => (entityId ? systemRemovalIds(baseline, kind, entityId) : []),
+    [baseline, kind, entityId],
   );
-  const dependencies = entityId
-    ? systemRemovalIds(baseline, kind, entityId)
-    : [];
   const existingDevice =
     kind === "device" && entityId
       ? baseline.devices.find((item) => item.id === entityId)

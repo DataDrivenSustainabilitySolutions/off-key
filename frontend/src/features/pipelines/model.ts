@@ -45,18 +45,21 @@ export function nodeLabel(
   );
 }
 
-export function nodeOptionLabel(
-  node: PipelineNode | undefined,
+/** Option labels that add the node ID where several nodes share a label. Labels
+ * are counted once per document instead of once per labelled node. */
+export function nodeOptionLabeler(
   document: GraphDocument,
   components: PipelineComponent[],
-): string {
-  const label = nodeLabel(node, components, document.layout);
-  return node &&
-    document.definition.nodes.filter(
-      (item) => nodeLabel(item, components, document.layout) === label,
-    ).length > 1
-    ? `${label} · ${node.id}`
-    : label;
+): (node: PipelineNode | undefined) => string {
+  const counts = new Map<string, number>();
+  for (const item of document.definition.nodes) {
+    const label = nodeLabel(item, components, document.layout);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return (node) => {
+    const label = nodeLabel(node, components, document.layout);
+    return node && (counts.get(label) ?? 0) > 1 ? `${label} · ${node.id}` : label;
+  };
 }
 
 /** Node IDs and slot IDs are stable; displayed labels never enter connections. */
@@ -276,9 +279,7 @@ export function connectNodes(
 ): PipelineDefinition {
   if (connectionIssue(definition, source, target, components))
     return definition;
-  const incoming = definition.edges
-    .filter((edge) => edge.target === target)
-    .sort((left, right) => left.order - right.order);
+  const incoming = incomingEdges(definition, target);
   return {
     ...definition,
     edges: [
@@ -368,9 +369,7 @@ export function moveMergeInput(
   index: number,
   direction: -1 | 1,
 ): PipelineDefinition {
-  const incoming = definition.edges
-    .filter((edge) => edge.target === target)
-    .sort((left, right) => left.order - right.order);
+  const incoming = incomingEdges(definition, target);
   const next = index + direction;
   if (!incoming[index] || !incoming[next]) return definition;
   [incoming[index], incoming[next]] = [incoming[next]!, incoming[index]!];

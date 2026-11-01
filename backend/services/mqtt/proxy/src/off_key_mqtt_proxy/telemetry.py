@@ -224,8 +224,8 @@ class DatabaseWriter:
         # Log high-frequency messages intelligently
         if self.total_records_received % 100 == 0:
             logger.debug(
-                "event=db_writer.record_queued total_received=%s \
-                     charger_id=%s telemetry_type=%s batch_size=%s",
+                "event=db_writer.record_queued total_received=%s "
+                "charger_id=%s telemetry_type=%s batch_size=%s",
                 self.total_records_received,
                 record.charger_id,
                 record.telemetry_type,
@@ -301,8 +301,8 @@ class DatabaseWriter:
                 if attempt > 0:
                     delay = self.config.get_jittered_backoff_delay(attempt - 1)
                     logger.warning(
-                        "event=db_writer.batch_retry batch_id=%s batch_size=%s \
-                             attempt=%s max_attempts=%s delay_s=%.3f",
+                        "event=db_writer.batch_retry batch_id=%s batch_size=%s "
+                        "attempt=%s max_attempts=%s delay_s=%.3f",
                         batch_id,
                         batch_size,
                         attempt + 1,
@@ -324,8 +324,8 @@ class DatabaseWriter:
                     batch.status = WriteStatus.SUCCESS
                     self.processing_batches.pop(batch_id, None)
                     logger.debug(
-                        "event=db_writer.batch_success batch_id=%s \
-                             batch_size=%s attempt=%s",
+                        "event=db_writer.batch_success batch_id=%s "
+                        "batch_size=%s attempt=%s",
                         batch_id,
                         batch_size,
                         attempt + 1,
@@ -340,8 +340,8 @@ class DatabaseWriter:
 
             except Exception as e:
                 logger.error(
-                    "event=db_writer.batch_attempt_failed batch_id=%s \
-                        batch_size=%s attempt=%s error=%s",
+                    "event=db_writer.batch_attempt_failed batch_id=%s "
+                    "batch_size=%s attempt=%s error=%s",
                     batch_id,
                     batch_size,
                     attempt + 1,
@@ -415,8 +415,6 @@ class DatabaseWriter:
 
         start_time = time.time()
 
-        charger_ids = batch.get_charger_ids()
-
         try:
             # Convert records to database format
             records_data = [record.to_dict() for record in batch.records]
@@ -464,13 +462,13 @@ class DatabaseWriter:
                     "total_batches": self.total_batches_processed,
                     "total_records": self.total_records_written,
                     "avg_latency": self.write_latency_sum / self.write_latency_count,
-                    "charger_count": len(charger_ids),
+                    "charger_count": len(batch.get_charger_ids()),
                 }
 
                 if write_latency <= 1.0:
                     logger.debug(
-                        "event=db_writer.batch_processed batch_size=%s \
-                             write_latency_s=%.3f",
+                        "event=db_writer.batch_processed batch_size=%s "
+                        "write_latency_s=%.3f",
                         records_written,
                         write_latency,
                         extra=extra_data,

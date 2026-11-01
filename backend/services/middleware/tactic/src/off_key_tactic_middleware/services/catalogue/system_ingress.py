@@ -326,6 +326,8 @@ class SystemIngress:
             except UnicodeError:
                 self.dropped += 1
                 return
+            received_at = received_at_us / 1_000_000
+            fresh_received_at = datetime.fromtimestamp(received_at, UTC).isoformat()
             for stream in streams:
                 result = self.output.publish(
                     stream.ingress_topic, envelope, qos=1, retain=False
@@ -333,14 +335,14 @@ class SystemIngress:
                 if result.rc == MQTT_ERR_SUCCESS:
                     self.last_publish = datetime.now(UTC).isoformat()
                     if not retained:
-                        cadence = self.cadences.setdefault(
-                            stream.definition.id, ArrivalCadence()
-                        )
-                        cadence.add(received_at_us / 1_000_000)
+                        # setdefault would build a throwaway cadence per message.
+                        cadence = self.cadences.get(stream.definition.id)
+                        if cadence is None:
+                            cadence = ArrivalCadence()
+                            self.cadences[stream.definition.id] = cadence
+                        cadence.add(received_at)
                         self.readings[stream.definition.id] = {
-                            "fresh_received_at": datetime.fromtimestamp(
-                                received_at_us / 1_000_000, UTC
-                            ).isoformat(),
+                            "fresh_received_at": fresh_received_at,
                             "typical_interval_seconds": cadence.typical_seconds,
                         }
                 else:

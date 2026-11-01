@@ -18,7 +18,7 @@ import {
   getAnomalyValueLabel,
   isProbabilityAnomalyValue,
 } from "@/lib/anomaly-semantics";
-import { formatAnomalySensorSet } from "@/lib/anomaly-utils";
+import { formatAnomalySensorSet, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
 import {
   deleteAnomaly,
   getAllChargers,
@@ -34,12 +34,11 @@ import { entitySource, filterSourceReports, reportLabels, selectedEntity } from 
 import { selectedSourceHref, withCatalogueSource } from "@/features/workspace/catalogue-navigation";
 import "./reporting.css";
 
-const MULTIVARIATE = "__multivariate__";
 const ranges = [{ id: "any", label: "Any time", ms: Infinity }, { id: "24h", label: "Last 24 hours", ms: 86_400_000 },
   { id: "7d", label: "Last 7 days", ms: 7 * 86_400_000 }, { id: "30d", label: "Last 30 days", ms: 30 * 86_400_000 }];
 const signals = [{ id: "any", label: "Any signal", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
 const readingKeys = (anomaly: Anomaly) => anomaly.sensor_set?.length ? anomaly.sensor_set
-  : anomaly.telemetry_type === MULTIVARIATE ? [] : [anomaly.telemetry_type];
+  : anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? [] : [anomaly.telemetry_type];
 const anomalyKey = (anomaly: Anomaly) => anomaly.anomaly_id
   || `${anomaly.charger_id}-${anomaly.timestamp}-${anomaly.telemetry_type}-${anomaly.anomaly_type}`;
 
@@ -100,8 +99,14 @@ export default function AnomalyTable() {
     return scopedData.filter(anomaly => (activeReading === "any" || anomaly.charger_id === entity && readingKeys(anomaly).includes(key!))
       && (range === "any" || Date.parse(anomaly.timestamp) >= since)
       && (maximum === Infinity || isProbabilityAnomalyValue(anomaly.value_type) && anomaly.anomaly_value <= maximum))
-      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+      .map(anomaly => ({ anomaly, time: Date.parse(anomaly.timestamp) }))
+      .sort((left, right) => right.time - left.time)
+      .map(({ anomaly }) => anomaly);
   }, [scopedData, activeReading, range, signal, now]);
+  // One catalogue scan per entity, not one per table row and render.
+  const sources = useMemo(() => new Map([...new Set(scopedData.map(anomaly => anomaly.charger_id))]
+    .map(id => [id, entitySource(index, system.snapshot?.document, runtime, id)] as const)),
+  [scopedData, index, system.snapshot?.document, runtime]);
   const days = useMemo(() => {
     const groups: Array<{ key: string; label: string; rows: Anomaly[] }> = [];
     for (const anomaly of filtered) {
@@ -226,7 +231,7 @@ export default function AnomalyTable() {
                 <tr className="rp-day"><th colSpan={6} scope="rowgroup">{day.label}</th></tr>
                 {day.rows.map(anomaly => {
                   const entity = labels.entity(anomaly.charger_id);
-                  const source = entitySource(index, system.snapshot?.document, runtime, anomaly.charger_id);
+                  const source = sources.get(anomaly.charger_id);
                   const scopedHere = !!source && source.key === selected?.key;
                   const sensors = formatAnomalySensorSet(anomaly.sensor_set?.map(key => labels.reading(anomaly.charger_id, key)));
                   return <tr key={anomalyKey(anomaly)} className="rp-row">
@@ -234,9 +239,9 @@ export default function AnomalyTable() {
                       ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}</td>
                     <td className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
                     <td className="rp-readings"><div>
-                      <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE ? "multivariate" : labels.reading(anomaly.charger_id, anomaly.telemetry_type)}</span>
+                      <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : labels.reading(anomaly.charger_id, anomaly.telemetry_type)}</span>
                       {/* A single reading is already named by its badge. */}
-                      {(anomaly.telemetry_type === MULTIVARIATE || (anomaly.sensor_set?.length ?? 0) > 1) && <span className="rp-sensors" title={sensors}>{sensors}</span>}
+                      {(anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (anomaly.sensor_set?.length ?? 0) > 1) && <span className="rp-sensors" title={sensors}>{sensors}</span>}
                     </div></td>
                     <td className="rp-type">{anomaly.anomaly_type}</td>
                     <td className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}

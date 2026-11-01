@@ -14,7 +14,7 @@ from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.utils.mqtt_topics import normalize_sensor_key_strategy
-from off_key_core.utils.timestamps import parse_utc_timestamp
+from off_key_core.utils.timestamps import as_utc, parse_utc_timestamp
 
 from .activity import ActivityTracker
 from .coverage import CoverageTracker
@@ -137,11 +137,8 @@ class MessageProcessor:
             self.received_message_count += 1
 
             # Step 3: Extract metadata
-            charger_id = TopicParser.extract_charger_id(message.topic, payload=data)
-            sensor_type = TopicParser.extract_sensor_type(
-                message.topic,
-                sensor_key_strategy=self.sensor_key_strategy,
-                payload=data,
+            charger_id, sensor_type = TopicParser.extract_ids(
+                message.topic, self.sensor_key_strategy, payload=data
             )
 
             # Step 4: Align features (for multi-sensor)
@@ -227,7 +224,8 @@ class MessageProcessor:
             sanitized = self.feature_validator.validate_and_sanitize(data)
             if not sanitized:
                 logger.debug(
-                    f"No valid features in message from {message.topic}",
+                    "No valid features in message from %s",
+                    message.topic,
                     extra=self._log_context,
                 )
                 return None
@@ -247,10 +245,7 @@ class MessageProcessor:
                     f"Invalid timestamp format: {timestamp_value}"
                 ) from error
 
-        received_at = message.timestamp or datetime.now(UTC)
-        if received_at.tzinfo is None:
-            received_at = received_at.replace(tzinfo=UTC)
-        return received_at.astimezone(UTC).timestamp()
+        return as_utc(message.timestamp or datetime.now(UTC)).timestamp()
 
     def _align_features(
         self,
@@ -369,10 +364,7 @@ class MessageProcessor:
             return message.received_monotonic
         if message.timestamp is None:
             return None
-        received_at = message.timestamp
-        if received_at.tzinfo is None:
-            received_at = received_at.replace(tzinfo=UTC)
-        age = max((datetime.now(UTC) - received_at).total_seconds(), 0.0)
+        age = max((datetime.now(UTC) - as_utc(message.timestamp)).total_seconds(), 0.0)
         return time.monotonic() - age
 
     def _direct_alignment_context(
@@ -426,13 +418,14 @@ class MessageProcessor:
         result = self.detector.process(
             features, topic=message.topic, charger_id=charger_id
         )
+        alignment_context = alignment_context or {}
         result.context = result.context or {}
-        result.context["alignment"] = alignment_context or {}
-        sensor_ages = (alignment_context or {}).get("sensor_ages")
+        result.context["alignment"] = alignment_context
+        sensor_ages = alignment_context.get("sensor_ages")
         if isinstance(sensor_ages, dict):
             result.context["sensor_ages"] = sensor_ages
-        input_timestamps = (alignment_context or {}).get("input_timestamps")
-        sample_timestamp = (alignment_context or {}).get("sample_timestamp")
+        input_timestamps = alignment_context.get("input_timestamps")
+        sample_timestamp = alignment_context.get("sample_timestamp")
         if isinstance(input_timestamps, dict):
             finite_input_timestamps = [
                 float(timestamp)

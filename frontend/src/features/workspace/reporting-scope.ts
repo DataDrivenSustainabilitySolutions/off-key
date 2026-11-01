@@ -1,3 +1,4 @@
+import { MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
 import type { Anomaly } from "@/types/charger";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
@@ -19,7 +20,7 @@ export function filterSourceReports(reports: Anomaly[], ids: readonly string[] |
     const keys = entityKeys.get(report.charger_id);
     if (!keys) return false;
     if (report.sensor_set?.length) return report.sensor_set.some(key => keys.has(key));
-    if (report.telemetry_type === "__multivariate__") return entireEntity.get(report.charger_id) === true;
+    if (report.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE) return entireEntity.get(report.charger_id) === true;
     return keys.has(report.telemetry_type);
   });
 }

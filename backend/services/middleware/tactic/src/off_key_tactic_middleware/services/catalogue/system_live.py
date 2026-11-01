@@ -122,12 +122,12 @@ class SystemLiveService:
             for key, value in self.lease_streams.items()
             if key in self.leases
         }
-        if self.identity is not None and (
-            _identity(snapshot) != self.identity or not self.leases
-        ):
-            await self._stop_workers()
-        elif self.identity is not None:
-            await self._apply_scope(snapshot)
+        if self.identity is not None:
+            # Without leases the snapshot identity is irrelevant; skip hashing it.
+            if not self.leases or _identity(snapshot) != self.identity:
+                await self._stop_workers()
+            else:
+                await self._apply_scope(snapshot)
         self.revision = snapshot.revision
         await self._retire_failed_workers(now)
 
@@ -273,9 +273,7 @@ class SystemLiveService:
         return scope
 
     def _desired_scope(self):
-        return (
-            set().union(*self.lease_streams.values()) if self.lease_streams else set()
-        )
+        return set().union(*self.lease_streams.values())
 
     async def _apply_scope(self, snapshot):
         desired = self._desired_scope()
@@ -383,7 +381,7 @@ class SystemLiveService:
         self.rates[stream.id] = _Rate()
         self.cadences[stream.id] = ArrivalCadence()
 
-    def _initialize(self, snapshot: SystemSnapshot, scope=None) -> None:
+    def _initialize(self, snapshot: SystemSnapshot, scope: set[str]) -> None:
         with self.guard:
             self.identity = _identity(snapshot)
             self.revision = snapshot.revision
@@ -391,7 +389,7 @@ class SystemLiveService:
             self.sequence += 1
             generation = self.generation
             for stream in snapshot.document.streams:
-                if scope is not None and stream.id not in scope:
+                if stream.id not in scope:
                     continue
                 topics = self.bindings.setdefault(stream.connection_id, {})
                 topics.setdefault(stream.topic, []).append(stream)

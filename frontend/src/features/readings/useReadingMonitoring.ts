@@ -95,8 +95,6 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const host = connection?.host, port = connection?.port, transport = connection?.transport, tls = connection?.tls;
   const entityId = savedBinding?.entity_id, telemetryType = savedBinding?.telemetry_key;
   const context = useMemo(() => host && port && transport && tls !== undefined ? {
-    connection: { host, port, transport, tls },
-    stream: { topic, payload_pointer, value_type },
     binding: entityId && telemetryType ? { entityId, telemetryType } : undefined,
     key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type }, entityId, telemetryType)!,
   } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, entityId, telemetryType]);

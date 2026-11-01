@@ -67,7 +67,7 @@ def normalize_saved_launch(value: dict) -> RadarStartConfig:
     return RadarStartConfig.model_validate(value)
 
 
-async def _previous_run(session, monitor, config):
+async def _previous_run(session, monitor):
     original = monitor.get("previous_config") or monitor["config"]
     execution = original.get("pipeline")
     return await ensure_predecessor_run(
@@ -87,7 +87,7 @@ async def prepare_release_monitors(session, operation, workloads):
             continue
         config = normalize_saved_launch(monitor["config"])
         if not monitor.get("previous_run_id"):
-            previous = await _previous_run(session, monitor, config)
+            previous = await _previous_run(session, monitor)
             monitor = monitor | {"previous_run_id": previous.id}
         monitor = await _prepare_graph_run(session, monitor, config, workloads)
         snapshots[index] = monitor
@@ -144,7 +144,7 @@ async def _prepare_graph_run(session, monitor, config, workloads):
     }
 
 
-async def record_release_run(session, monitor, service):
+async def record_release_run(session, service):
     run = await session.scalar(
         select(PipelineRun)
         .where(PipelineRun.service_id == service.id)

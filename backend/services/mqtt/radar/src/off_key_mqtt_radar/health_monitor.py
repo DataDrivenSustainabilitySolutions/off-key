@@ -523,8 +523,6 @@ class HealthMonitor:
             return "training", "Fitting static baseline", None
         if state == "ready":
             return "operational", None, None
-        if state == "failed":
-            return "failed", "Static baseline training failed", None
         return "waiting_for_data", "Waiting for detector state", None
 
     @staticmethod
@@ -550,8 +548,6 @@ class HealthMonitor:
             )
         if state == "operational":
             return "operational", None, None
-        if state == "failed":
-            return "failed", "Adaptive stream detector failed", None
         return "waiting_for_data", "Waiting for adaptive detector state", None
 
     def _maybe_log_healthy_summary(self, status: HealthStatus) -> None:

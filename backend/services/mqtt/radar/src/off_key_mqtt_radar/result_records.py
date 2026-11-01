@@ -4,6 +4,7 @@ import logging
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
@@ -241,14 +242,14 @@ class ResultProjector:
     def _derive_input_timestamps(
         result: AnomalyResult,
         sensor_set: list[str],
-    ) -> dict[str, str] | None:
+    ) -> dict[str, datetime] | None:
         """Normalize exact telemetry references for one inference result."""
         alignment_context = (result.context or {}).get("alignment", {})
         raw_timestamps = alignment_context.get("input_timestamps")
         if not isinstance(raw_timestamps, dict) or not raw_timestamps:
             return None
 
-        normalized: dict[str, str] = {}
+        normalized: dict[str, datetime] = {}
         for sensor in sensor_set:
             value = raw_timestamps.get(sensor)
             try:
@@ -261,7 +262,7 @@ class ResultProjector:
                     result.timestamp,
                 )
                 return None
-            normalized[sensor] = timestamp.isoformat()
+            normalized[sensor] = timestamp
 
         return normalized if len(normalized) == len(sensor_set) else None
 
@@ -313,9 +314,9 @@ class ResultProjector:
             sequence_number = context.get(
                 "tested_count", context.get("sequence_number")
             )
-            threshold = context.get("restarted_ville_threshold")
-            tracker_results = _normalize_tracker_results(context.get("tracker_results"))
-            threshold = context.get("threshold", threshold)
+            threshold = context.get(
+                "threshold", context.get("restarted_ville_threshold")
+            )
             anomaly_score = context.get("anomaly_score", result.anomaly_score)
             if is_static and (
                 not isinstance(p_value, int | float) or not math.isfinite(p_value)
@@ -342,9 +343,7 @@ class ResultProjector:
                     result.timestamp,
                 )
                 continue
-            canonical_timestamp = max(
-                parse_utc_timestamp(value) for value in input_timestamps.values()
-            )
+            canonical_timestamp = max(input_timestamps.values())
 
             records.append(
                 {
@@ -353,7 +352,10 @@ class ResultProjector:
                     "sequence_number": sequence_number,
                     "charger_id": result.charger_id or "unknown",
                     "sensor_set": sensor_set,
-                    "input_timestamps": input_timestamps,
+                    "input_timestamps": {
+                        sensor: timestamp.isoformat()
+                        for sensor, timestamp in input_timestamps.items()
+                    },
                     "strategy": ("static_baseline" if is_static else "adaptive_stream"),
                     "model_type": (
                         (result.context or {}).get("model_type")
@@ -375,7 +377,9 @@ class ResultProjector:
                     "log_restarted_martingale": _optional_finite_float(
                         context.get("log_restarted_martingale")
                     ),
-                    "tracker_results": tracker_results,
+                    "tracker_results": _normalize_tracker_results(
+                        context.get("tracker_results")
+                    ),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
                 }

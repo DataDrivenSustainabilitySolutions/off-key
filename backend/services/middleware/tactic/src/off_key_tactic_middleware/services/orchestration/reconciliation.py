@@ -221,12 +221,12 @@ class RadarStatusReconciliationService:
         self, session: AsyncSession, service: MonitoringService
     ) -> None:
         if getattr(service, "desired_state", None) == "deleted":
-            await self._delete_service_row(session, service.id)
+            await purge_service_rows(session, [service.id])
         elif service.stop_requested_at is not None or service.status:
             complete_stop(service)
             await complete_stopped_runs(session, [service.id])
         elif self._is_purge_due(service):
-            await self._delete_service_row(session, service.id)
+            await purge_service_rows(session, [service.id])
 
     def _apply_terminal(self, service: MonitoringService, docker_status: str) -> None:
         if getattr(service, "desired_state", "running") == "running":
@@ -254,10 +254,6 @@ class RadarStatusReconciliationService:
         return reference_time <= datetime.now(UTC) - timedelta(
             hours=self.terminal_service_retention_hours
         )
-
-    @staticmethod
-    async def _delete_service_row(session: AsyncSession, service_id: str) -> int:
-        return await purge_service_rows(session, [service_id])
 
     async def _remove_workload_if_present(self, container_id: str | None) -> bool:
         return await RadarWorkloadManager(self.async_docker).remove(container_id)

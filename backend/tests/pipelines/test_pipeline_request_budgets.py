@@ -8,7 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
 from off_key_api_gateway.api.v1.pipelines import router as gateway_router
-from off_key_api_gateway.facades.tactic import get_tactic_client, tactic
+from off_key_api_gateway.facades.tactic import tactic
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.db.base import get_db_async
@@ -76,9 +76,7 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
     )
     task = asyncio.create_task(server.serve())
     await tactic.close()
-    monkeypatch.setattr(
-        get_tactic_client(), "base_url", f"http://127.0.0.1:{unused_tcp_port}"
-    )
+    monkeypatch.setattr(tactic, "base_url", f"http://127.0.0.1:{unused_tcp_port}")
     gateway = FastAPI()
     gateway.state.limiter = limiter
     gateway.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)

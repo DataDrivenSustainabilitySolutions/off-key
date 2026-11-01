@@ -1,5 +1,6 @@
 """Persist monitor presentation independently of workload identity and lifecycle."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -198,6 +199,28 @@ async def test_renamed_legacy_monitor_still_captures_restart_configuration(monke
         FormMonitorConfig.model_validate(record.launch_config).container_name
         == "stable-workload"
     )
+
+
+@pytest.mark.asyncio
+async def test_maintenance_actions_without_workloads_do_not_need_docker(monkeypatch):
+    session = AsyncMock()
+    session.get.return_value = None
+
+    @asynccontextmanager
+    async def open_session():
+        yield session
+
+    def unreachable_docker():
+        raise ConnectionError("Docker daemon is unreachable")
+
+    monkeypatch.setattr(deployment, "get_async_session_local", lambda: open_session)
+    monkeypatch.setattr(deployment, "get_async_docker", unreachable_docker)
+    assert await deployment.run("status", "0" * 40) == {
+        "phase": "complete",
+        "revision": None,
+    }
+    with pytest.raises(ConnectionError):
+        await deployment.run("capture", "0" * 40)
 
 
 @pytest.mark.parametrize("age,stale", [(60, False), (240, True)])

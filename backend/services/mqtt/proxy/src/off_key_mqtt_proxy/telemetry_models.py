@@ -60,22 +60,6 @@ class TelemetryRecord:
         }
 
 
-@dataclass(frozen=True, slots=True)
-class ParseSuccess:
-    record: TelemetryRecord
-
-
-@dataclass(frozen=True, slots=True)
-class ParseFailure:
-    reason: str
-    is_error: bool
-    log_message: str
-    context: dict[str, object]
-
-
-ParseResult = ParseSuccess | ParseFailure
-
-
 @dataclass(slots=True)
 class WriteBatch:
     records: list[TelemetryRecord] = field(default_factory=list)

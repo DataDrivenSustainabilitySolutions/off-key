@@ -58,6 +58,8 @@ ROUTES = [
     ("GET", "/v1/system", None),
     ("PATCH", "/v1/monitors/svc-1/label", {"display_name": "Pump"}),
     ("GET", "/v1/monitors/pipelines/p1", None),
+    ("GET", "/v1/monitors/all", None),
+    ("GET", "/v1/monitors?container_name=svc-1", None),
     (
         "POST",
         "/v1/auth/reset-password",

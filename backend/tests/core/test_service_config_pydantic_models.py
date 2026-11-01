@@ -40,7 +40,6 @@ def _base_mqtt_config() -> dict:
         "use_auth": True,
         "mqtt_username": "user",
         "mqtt_api_key": "secret-key-123",
-        "topic_regex": (r"^telemetry/(?P<charger_id>[^/]+)/(?P<telemetry_type>.+)$"),
         "enabled": True,
         "batch_size": 100,
         "batch_timeout": 5.0,

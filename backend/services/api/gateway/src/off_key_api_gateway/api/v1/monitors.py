@@ -102,6 +102,8 @@ async def list_services(
             active_only=active_only,
             include_docker_status=include_docker_status,
         )
+    except TacticError:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to list monitoring services: {e!s}"
@@ -202,7 +204,7 @@ async def get_service_details(
             raise HTTPException(status_code=404, detail="Service not found")
 
         return service_detail
-    except HTTPException:
+    except (HTTPException, TacticError):
         raise
     except Exception as e:
         raise HTTPException(

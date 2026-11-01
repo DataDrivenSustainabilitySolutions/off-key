@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy import collection_diagnostics as diagnostics_module
 from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
 from off_key_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
@@ -13,11 +12,7 @@ from tests.support.collection import runtime_catalog as catalog
 
 
 def _writer():
-    return DatabaseWriter(
-        MagicMock(batch_size=5, batch_timeout=1.0),
-        MagicMock(),
-        TopicMetadataExtractor(),
-    )
+    return DatabaseWriter(MagicMock(batch_size=5, batch_timeout=1.0), MagicMock())
 
 
 def test_rates_measure_wall_time_and_recover_after_old_errors(monkeypatch):

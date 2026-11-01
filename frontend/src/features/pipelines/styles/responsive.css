@@ -43,9 +43,12 @@
   .pl-editor-grid--settings {
     height: auto;
   }
+  /* The sheet takes its content's height up to its cap; the settings scroll inside it. */
   .pl-settings-panel {
     position: absolute;
     inset: auto 0 0 0;
+    display: flex;
+    flex-direction: column;
     max-height: 58%;
     z-index: 6;
     border-top: 1px solid hsl(var(--border));
@@ -54,14 +57,14 @@
     overflow: hidden;
   }
   .pl-settings-panel .pl-inspector {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
     border-left: 0;
   }
   .pl-component-menu,
   .pl-issue-popover {
     max-height: min(55dvh, var(--radix-popover-content-available-height));
-  }
-  .pl-settings-panel .pl-inspector {
-    max-height: 100%;
   }
   .pl-inspector .pl-field :is(input, select, textarea) {
     font-size: 16px;

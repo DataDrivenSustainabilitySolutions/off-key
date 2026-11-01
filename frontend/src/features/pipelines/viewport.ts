@@ -1,6 +1,12 @@
 import type { ReactFlowInstance } from "@xyflow/react";
 import type { CanvasNode } from "./types";
 
+/**
+ * Room kept between the canvas edge and a card. A fitted view and a revealed card
+ * use the same room, so resizing the canvas never nudges a view that was just fitted.
+ */
+export const VIEW_MARGIN = 32;
+
 /** Fit small graphs; start larger ones at the input without shrinking the type. */
 export async function fitReadableView(
   flow: ReactFlowInstance<CanvasNode>,
@@ -18,7 +24,7 @@ export async function fitReadableView(
   const focus = flow.getNodesBounds([anchor]);
   // Graphs read from the left, so centring a selection never pans past the graph's start.
   await flow.setViewport({
-    x: Math.min(24 - bounds.x, selected ? width / 2 - focus.x - focus.width / 2 : 24 - focus.x),
+    x: Math.min(VIEW_MARGIN - bounds.x, selected ? width / 2 - focus.x - focus.width / 2 : VIEW_MARGIN - focus.x),
     y: height / 2 - focus.y - focus.height / 2,
     zoom: 1,
   });
@@ -29,7 +35,7 @@ export async function revealNode(
   flow: ReactFlowInstance<CanvasNode>,
   surface: HTMLElement,
   id: string,
-  margin = 32,
+  margin = VIEW_MARGIN,
 ) {
   const node = flow.getNode(id);
   if (!node) return;

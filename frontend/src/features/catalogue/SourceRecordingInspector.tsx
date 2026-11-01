@@ -14,7 +14,9 @@ type Props = { scope: RuleScope; ids: string[]; document: SystemDocument; runtim
 export function SourceRecordingInspector({ scope, ids, document, runtime, canEdit, recording }: Props) {
   const rule = (runtime?.collection_rules ?? []).find(item => scopeKey(item.scope) === scopeKey(scope));
   const own: Choice = rule?.policy?.mode ?? "inherit";
-  const choice: Choice = scope.kind === "broker" && own === "inherit" ? "off" : own;
+  const stored: Choice = scope.kind === "broker" && own === "inherit" ? "off" : own;
+  // The picked option stays selected while it saves or waits for the monitor confirmation.
+  const [picked, setPicked] = useState<Choice>();
   const saved = rule?.policy?.interval_seconds ?? 10;
   const [interval, setIntervalText] = useState(String(saved));
   const selected = ids.flatMap(id => runtime?.bindings?.[id] ?? []);
@@ -30,11 +32,14 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       && (item.scope.kind === "topic" ? topicWithinPrefix(item.scope.topic_prefix ?? "", scope.topic_prefix ?? "")
         : ids.includes(item.scope.reading_id ?? "")))).length;
   const busy = recording.saving === scope.connection_id;
+  const pending = !!recording.pending && recording.pending.edits.some(edit => edit.scope.connection_id === scope.connection_id);
+  const choice: Choice = (busy || pending) && picked ? picked : stored;
   const seconds = Math.round(Number(interval));
   const validInterval = Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600;
   const choose = (next: Choice) => {
     if (busy || next === choice && (next !== "sample" || seconds === saved)) return;
     if (next === "sample" && !validInterval) return;
+    setPicked(next);
     void recording.save([recordingEdit(scope, next, next === "sample" ? seconds : saved)]);
   };
   const commitInterval = () => {
@@ -69,7 +74,6 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     return policy && policy.mode !== "off" && (!parent || !sameRate(policy, parent)) ? policyLabel(policy).toLowerCase() : undefined;
   };
   const streams = new Map(document.streams.map(stream => [stream.id, stream]));
-  const pending = recording.pending && recording.pending.edits.some(edit => edit.scope.connection_id === scope.connection_id);
   return <section className="source-recording" aria-label="Recording configuration">
     <div className="ex-preview-section-heading"><h3>Recording</h3><span>{summary}</span></div>
     {scope.kind === "reading" && ids.length === 1 && <p className="ex-muted">{originLabel(runtime, ids[0]!, document)}</p>}

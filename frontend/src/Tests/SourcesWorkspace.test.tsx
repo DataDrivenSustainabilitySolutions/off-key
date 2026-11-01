@@ -154,6 +154,8 @@ describe("dedicated Sources configuration", () => {
     const choice = await screen.findByRole("radiogroup", { name: "Recording" });
     expect((within(choice).getByRole("radio", { name: "Off" }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(choice).getByRole("radio", { name: "Every message" }));
+    // The picked option shows as selected while it saves.
+    expect((within(choice).getByRole("radio", { name: "Every message" }) as HTMLInputElement).checked).toBe(true);
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
     expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ pause_affected_monitors: false,
       rule_changes: [{ scope: { kind: "broker", connection_id: "broker" }, operation: "set",

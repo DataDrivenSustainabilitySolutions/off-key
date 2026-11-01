@@ -8,7 +8,7 @@ import {
   disconnectEdge,
   incomingEdges,
   moveMergeInput,
-  nodeOptionLabel,
+  nodeOptionLabeler,
   removeNode,
   replaceComponent,
   setNodeLabel,
@@ -68,6 +68,7 @@ export function PipelineInspector({
           ),
       )
     : [];
+  const optionLabel = nodeOptionLabeler(document, catalog.components);
   const featureLabels = Object.fromEntries(
     document.definition.input_slots.map((slot) => [
       slot.id,
@@ -87,7 +88,7 @@ export function PipelineInspector({
           <option value="">Choose component</option>
           {document.definition.nodes.map((item) => (
             <option key={item.id} value={item.id}>
-              {nodeOptionLabel(item, document, catalog.components)}
+              {optionLabel(item)}
             </option>
           ))}
         </select>
@@ -199,12 +200,10 @@ export function PipelineInspector({
               <li key={edge.source}>
                 <span>
                   {node.kind === "merge" && <small>Input {index + 1} · </small>}
-                  {nodeOptionLabel(
+                  {optionLabel(
                     document.definition.nodes.find(
                       (item) => item.id === edge.source,
                     ),
-                    document,
-                    catalog.components,
                   )}
                 </span>
                 {!readOnly && (
@@ -294,7 +293,7 @@ export function PipelineInspector({
                   <option value="">Choose upstream component</option>
                   {candidates.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {nodeOptionLabel(item, document, catalog.components)}
+                      {optionLabel(item)}
                     </option>
                   ))}
                 </select>

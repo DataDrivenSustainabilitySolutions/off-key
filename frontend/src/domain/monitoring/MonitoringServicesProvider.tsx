@@ -6,7 +6,7 @@ import { FeedContext, useWorkspacePoll, type Registration } from "./useMonitorin
  * shortest interval any mounted consumer asks for; with no consumer it stops.
  */
 export function MonitoringServicesProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
-  const [registrations, setRegistrations] = useState<ReadonlyMap<string, Registration>>(new Map());
+  const [registrations, setRegistrations] = useState<ReadonlyMap<string, Registration>>(() => new Map());
   const wanted = [...registrations.values()];
   const intervalMs = Math.min(...wanted.map(item => item.intervalMs));
   const selectedServiceId = wanted.find(item => item.selectedServiceId)?.selectedServiceId;

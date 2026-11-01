@@ -63,9 +63,8 @@ export const FullPageLoading: React.FC<{ message?: string }> = ({
 // EMPTY STATES
 
 interface EmptyStateProps {
-  icon?: React.ReactNode;
+  icon: React.ReactNode;
   title: string;
-  description?: string;
   action?: {
     label: string;
     onClick: () => void;
@@ -75,18 +74,14 @@ interface EmptyStateProps {
 const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
   title,
-  description,
   action,
 }) => (
   <Card className="w-full shadow-none">
     <CardContent className="flex flex-col items-center justify-center px-6 py-12 text-center">
       <div aria-hidden="true" className="mb-4 flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-5">
-        {icon || <Database />}
+        {icon}
       </div>
       <h3 className="mb-2 text-sm font-medium">{title}</h3>
-      {description && (
-        <p className="mb-4 max-w-sm text-sm leading-6 text-muted-foreground">{description}</p>
-      )}
       {action && (
         <Button onClick={action.onClick} variant="outline">
           {action.label}
@@ -115,13 +110,6 @@ export const NoDataFound: React.FC<{
 );
 
 // No charts available
-export const NoChartsAvailable: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
-  <EmptyState
-    icon={<BarChart3 />}
-    title="No chart data available"
-    action={onRefresh ? {
-      label: 'Refresh',
-      onClick: onRefresh,
-    } : undefined}
-  />
+export const NoChartsAvailable: React.FC = () => (
+  <EmptyState icon={<BarChart3 />} title="No chart data available" />
 );

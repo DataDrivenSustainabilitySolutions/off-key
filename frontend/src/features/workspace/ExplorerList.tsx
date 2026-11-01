@@ -110,7 +110,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
                 <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></> : <Icon size={16} strokeWidth={1.6} />}
             </span>
             <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
-              <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" ? `${node.streamIds.length} readings` : node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
+              <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" || node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
             </span>
             {!onBrowse && node.children.length > 0 && <ChevronRight className="ex-row-arrow" size={14} />}
           </button>{onBrowse && node.children.length > 0 && <button className="ex-browse" aria-label={`Browse children of ${row.label}`} onClick={() => onBrowse(node)}><ChevronRight size={16} /></button>}</div>

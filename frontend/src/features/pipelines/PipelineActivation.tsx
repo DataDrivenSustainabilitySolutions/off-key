@@ -14,6 +14,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import type { PipelineDefinition, PipelineRevisionView } from "./contracts";
 import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
+import { applyFinished } from "./applySession";
 import { strategyLabel } from "./semantics";
 import { readingOwnedElsewhere } from "./bindings";
 import {
@@ -39,7 +40,6 @@ type Props = {
   onOperation: (id: string) => void;
 };
 
-const terminal = new Set(["succeeded", "failed", "cancelled"]);
 type ReviewDraft = {
   targetId: string | undefined;
   bindings: Record<string, string>;
@@ -126,7 +126,6 @@ export function PipelineActivation({
   const changes = previous
     ? executableChanges(previous, revision.definition)
     : [];
-  const operationPhase = operation?.phase;
   const pollActivation = useCallback(async (signal: AbortSignal) => {
     if (!operationId) return;
     try {
@@ -140,7 +139,7 @@ export function PipelineActivation({
     }
   }, [operationId, onComplete]);
   usePollingLoop(pollActivation, {
-    enabled: !!operationId && !(operationPhase && terminal.has(operationPhase)),
+    enabled: !!operationId && !applyFinished(operation),
     intervalMs: 3_000, overlap: "skip", pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true,
   });
   const activate = async () => {
@@ -209,7 +208,7 @@ export function PipelineActivation({
               {operation.error}
             </p>
           )}
-          {!terminal.has(operation.phase) && (
+          {!applyFinished(operation) && (
             <button
               type="button"
               disabled={busy || operation.phase === "cancelling"}

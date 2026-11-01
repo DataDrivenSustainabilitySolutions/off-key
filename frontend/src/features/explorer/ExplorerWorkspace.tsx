@@ -72,13 +72,13 @@ export function ExplorerWorkspace() {
     </p>;
     if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>;
     if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}
-      initialTarget={initialTarget} initialReading={requestedReading ?? undefined}
+      initialTarget={initialTarget} initialReading={requestedReading}
       onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;
     if (creating) return <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
       {system.canEdit ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
         targets={monitoringIndex.targets} services={monitoring.services}
         initialTarget={initialTarget}
-        initialReading={requestedReading ?? undefined} byStream={monitoringIndex.byStream}
+        initialReading={requestedReading} byStream={monitoringIndex.byStream}
         collectionReady={collectionApplied(system.snapshot?.runtime)} document={document}
         draftKey={`service-setup:${userId}:${params.get("target") ?? ""}:${requestedReading ?? ""}`}
         onStarted={async id => { await monitoring.reload(); if (id) openService(id); else closeView(); }} onBack={closeView} />

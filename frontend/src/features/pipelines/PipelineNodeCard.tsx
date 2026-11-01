@@ -3,8 +3,6 @@ import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
 import { dataKinds, nodeKinds, sampledState, type DataKind } from "./semantics";
 import type { CanvasNode } from "./types";
 
-export type { CanvasNode } from "./types";
-
 function ConnectionDot({ direction, kind, connectable, issue }: {
   direction: "input" | "output";
   kind?: DataKind | null;

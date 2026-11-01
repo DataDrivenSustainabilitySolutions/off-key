@@ -110,9 +110,7 @@ export function InlineName({
   const isEditing = editing && editable;
   const saveFailed = error === SAVE_FAILURE;
   const errorMessage = saveFailed ? saveError || error : error;
-  const description =
-    errorMessage ||
-    (isEditing ? status : editable ? status : disabledReason || status);
+  const description = errorMessage || (editable ? status : disabledReason || status);
   return (
     <span className={`sp-inline-name${className ? ` ${className}` : ""}`}>
       {isEditing ? (

@@ -51,18 +51,21 @@ const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
   left.length === right.length &&
   left.every((item, index) => item.anomaly_id === right[index]?.anomaly_id);
 
+// A loop instead of Math.max(...all points): spreading every point of every
+// reading as arguments can exceed the engine's argument limit.
 const getLatestTelemetryTimestamp = (
   telemetryData: TelemetryTypeData[]
 ): number | undefined => {
-  const timestamps = telemetryData
-    .flatMap((telemetry) => telemetry.data.map((point) => Date.parse(point.timestamp)))
-    .filter((timestamp) => Number.isFinite(timestamp));
-
-  if (timestamps.length === 0) {
-    return undefined;
+  let latest: number | undefined;
+  for (const telemetry of telemetryData) {
+    for (const point of telemetry.data) {
+      const timestamp = Date.parse(point.timestamp);
+      if (Number.isFinite(timestamp) && (latest === undefined || timestamp > latest)) {
+        latest = timestamp;
+      }
+    }
   }
-
-  return Math.max(...timestamps);
+  return latest;
 };
 
 const LiveTelemetryIndicator: React.FC<{

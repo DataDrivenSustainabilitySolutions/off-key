@@ -479,22 +479,23 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
     this.sequence = batch.sequence;
     this.hasBaseline = true;
     if (animate && !replay && batch.sequence > previousSequence) {
-      const changed = batch.streams.filter(
-        (record) =>
+      const changed = batch.streams.filter((record) => {
+        const received = timestamp(record.fresh_received_at);
+        return (
           knownStreams.has(record.stream_id) &&
           record.fresh_count > (previousFresh.get(record.stream_id) ?? 0) &&
-          timestamp(record.fresh_received_at) !== null &&
-          Date.now() - timestamp(record.fresh_received_at)! < 5000,
-      );
+          received !== null &&
+          Date.now() - received < 5000
+        );
+      });
       // Rotate capped visual representatives. Cumulative counters retain every receipt.
+      const others = changed.filter(
+        (record) => record.stream_id !== this.priorityId,
+      );
       const ordered = [
         ...changed.filter((record) => record.stream_id === this.priorityId),
-        ...changed
-          .filter((record) => record.stream_id !== this.priorityId)
-          .slice(this.pulseOffset),
-        ...changed
-          .filter((record) => record.stream_id !== this.priorityId)
-          .slice(0, this.pulseOffset),
+        ...others.slice(this.pulseOffset),
+        ...others.slice(0, this.pulseOffset),
       ];
       for (const record of ordered.slice(0, MAX_PULSES)) {
         const message = {
@@ -625,18 +626,17 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
       (streamId) => this.records.get(streamId) ?? [],
     );
     if (!records.length) return undefined;
+    const lastSeen = Math.max(
+      ...records.map((stream) => timestamp(stream.fresh_received_at) ?? 0),
+    );
+    const rate = records.reduce((sum, stream) => sum + stream.rate_hz, 0);
     return {
       latestValue: null,
-      value: records.reduce((sum, stream) => sum + stream.rate_hz, 0),
-      receivedAt:
-        Math.max(
-          ...records.map((stream) => timestamp(stream.fresh_received_at) ?? 0),
-        ) || null,
-      lastSeen: Math.max(
-        ...records.map((stream) => timestamp(stream.fresh_received_at) ?? 0),
-      ),
+      value: rate,
+      receivedAt: lastSeen || null,
+      lastSeen,
       received: records.reduce((sum, stream) => sum + stream.fresh_count, 0),
-      rate: records.reduce((sum, stream) => sum + stream.rate_hz, 0),
+      rate,
       samples: [],
       retained: false,
       retainedCount: records.reduce(

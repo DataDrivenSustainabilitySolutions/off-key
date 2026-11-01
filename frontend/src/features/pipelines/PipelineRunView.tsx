@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
 import type {
@@ -9,7 +9,7 @@ import type { PipelineLayout } from "./contracts";
 import { pipelinesApi } from "./api";
 import { PipelineWorkbench, type InspectorPanel } from "./PipelineWorkbench";
 import { PipelineDiagnostics, type PipelineState } from "./PipelineDiagnostics";
-import { nodeOptionLabel } from "./model";
+import { nodeOptionLabeler } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
 import { PipelineRunHistory } from "./PipelineRunHistory";
@@ -64,6 +64,31 @@ export default function PipelineRunView({
     return () => controller.abort();
   }, [serviceId, retry]);
   const edit = () => setParams(editFromRun(params, serviceId, replaceable));
+  // Run state polls re-render this view; stable props let the canvas keep its graph memo.
+  const graphDocument = useMemo(
+    () => view && { definition: view.definition, layout: layout ?? view.layout },
+    [view, layout],
+  );
+  const runId = view?.run?.id;
+  const nodeStates = useMemo(
+    () =>
+      state && state.run_id === runId
+        ? Object.fromEntries(
+            Object.entries(state.nodes).map(([id, node]) => [id, node.state]),
+          )
+        : undefined,
+    [state, runId],
+  );
+  const nodeLabels = useMemo(() => {
+    if (!view || !catalog) return {};
+    const optionLabel = nodeOptionLabeler(
+      { definition: view.definition, layout: view.layout },
+      catalog.components,
+    );
+    return Object.fromEntries(
+      view.definition.nodes.map((node) => [node.id, optionLabel(node)]),
+    );
+  }, [view, catalog]);
   return (
     <section className="pl-run" aria-label="Running pipeline">
       {error && (
@@ -179,26 +204,14 @@ export default function PipelineRunView({
             </div>
           )}
             <PipelineWorkbench
-              document={{
-                definition: view.definition,
-                layout: layout ?? view.layout,
-              }}
+              document={graphDocument!}
               catalog={catalog}
               validation={metadata.validation ?? view.validation ?? undefined}
               fitRequest={fitRequest}
               selected={selected}
               readOnly
               layoutEditable={arranging && !busy}
-              states={
-                state && state.run_id === view.run?.id
-                  ? Object.fromEntries(
-                      Object.entries(state.nodes).map(([id, node]) => [
-                        id,
-                        node.state,
-                      ]),
-                    )
-                  : undefined
-              }
+              states={nodeStates}
               onSelect={select}
               inspectorPanel={inspectorPanel}
               onInspectorPanelChange={setInspectorPanel}
@@ -231,16 +244,7 @@ export default function PipelineRunView({
             state={state}
             selected={selected}
             expectedRunId={view.run?.id}
-            nodeLabels={Object.fromEntries(
-              view.definition.nodes.map((node) => [
-                node.id,
-                nodeOptionLabel(
-                  node,
-                  { definition: view.definition, layout: view.layout },
-                  catalog.components,
-                ),
-              ]),
-            )}
+            nodeLabels={nodeLabels}
             onSelect={select}
           />
           <PipelineRunHistory

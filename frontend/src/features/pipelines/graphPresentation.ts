@@ -1,7 +1,7 @@
 import { MarkerType, type Edge } from "@xyflow/react";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import type { CanvasNode } from "./types";
-import { incomingEdges, nodeLabel, nodeOptionLabel, type GraphDocument } from "./model";
+import { incomingEdges, nodeLabel, nodeOptionLabeler, type GraphDocument } from "./model";
 import {
   componentFor,
   dataKinds,
@@ -19,6 +19,7 @@ export function presentGraph(
   states?: Record<string, string>,
   issues: PipelineValidation["issues"] = [],
 ) {
+  const optionLabel = nodeOptionLabeler(document, components);
   const nodes: CanvasNode[] = document.definition.nodes.map((node, index) => {
     const component = componentFor(node, components);
     const input = inputKind(component);
@@ -28,7 +29,7 @@ export function presentGraph(
       type: "component",
       position: nodePosition(document.layout, node.id, index),
       style: NODE_SIZE,
-      ariaLabel: nodeOptionLabel(node, document, components),
+      ariaLabel: optionLabel(node),
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,

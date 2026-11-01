@@ -45,7 +45,6 @@ export const parseDeviceTelemetryTopic = (
   const telemetryLevels = levels.slice(offset + 1);
   if (
     !isConcreteHierarchy(chargerId) ||
-    chargerId.includes("/") ||
     telemetryLevels.some(
       (level) =>
         level.length === 0 || level.includes("+") || level.includes("#"),

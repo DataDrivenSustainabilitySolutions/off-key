@@ -70,10 +70,12 @@ export function mergeMonitoringChartEvidence(
   });
 
   return [...rows.values()]
+    .map((item) => ({ item, time: Date.parse(item.timestamp) }))
     .sort((left, right) =>
-      Date.parse(left.timestamp) - Date.parse(right.timestamp) ||
-      left.service_id.localeCompare(right.service_id) ||
-      left.sequence_number - right.sequence_number
+      left.time - right.time ||
+      left.item.service_id.localeCompare(right.item.service_id) ||
+      left.item.sequence_number - right.item.sequence_number
     )
-    .slice(-limit);
+    .slice(-limit)
+    .map(({ item }) => item);
 }

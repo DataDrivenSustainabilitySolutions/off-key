@@ -21,8 +21,6 @@ export const AUTH_SUBMIT_BUTTON_CLASS =
 interface AuthLayoutProps {
   title: string;
   children: ReactNode;
-  contentClassName?: string;
-  titleProps?: ComponentProps<"h1">;
   brandVariant?: ComponentProps<typeof BrandHome>["variant"];
   hideTitle?: boolean;
 }
@@ -30,12 +28,9 @@ interface AuthLayoutProps {
 export function AuthLayout({
   title,
   children,
-  contentClassName,
-  titleProps,
   brandVariant,
   hideTitle = false,
 }: AuthLayoutProps) {
-  const { className: titleClassName, ...restTitleProps } = titleProps ?? {};
   useDocumentTitle(title);
 
   return (
@@ -45,13 +40,12 @@ export function AuthLayout({
           <div className={cn("flex justify-center", !hideTitle && "mb-4")}><BrandHome variant={brandVariant} /></div>
           <h1
             data-slot="card-title"
-            className={cn(hideTitle ? "sr-only" : "text-center text-xl font-medium leading-7 tracking-[-0.02em]", titleClassName)}
-            {...restTitleProps}
+            className={hideTitle ? "sr-only" : "text-center text-xl font-medium leading-7 tracking-[-0.02em]"}
           >
             {title}
           </h1>
         </CardHeader>
-        <CardContent className={cn("pb-0", contentClassName)}>{children}</CardContent>
+        <CardContent className="pb-0">{children}</CardContent>
       </Card>
     </AuthBackdrop>
   );

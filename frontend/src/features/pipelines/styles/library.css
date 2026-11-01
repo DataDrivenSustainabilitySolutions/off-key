@@ -38,7 +38,7 @@
 }
 
 .pl-library-list strong {
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 
 .pl-library-list :is(strong, span, small) {
@@ -47,13 +47,13 @@
 }
 
 .pl-library-list span {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: hsl(var(--muted-foreground));
   line-height: 1.6;
 }
 
 .pl-library-list small {
-  font-size: 10px;
+  font-size: var(--text-caption);
   margin-top: 10px;
   color: hsl(var(--muted-foreground));
 }
@@ -64,7 +64,7 @@
   color: hsl(var(--muted-foreground));
   border: 1px dashed hsl(var(--border));
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .pl-template-popover {
@@ -98,4 +98,4 @@
   text-align: left;
   padding: 14px;
 }
-.pl-starting-points span { font-size: 11px; color: hsl(var(--muted-foreground)); }
+.pl-starting-points span { font-size: var(--text-caption); color: hsl(var(--muted-foreground)); }

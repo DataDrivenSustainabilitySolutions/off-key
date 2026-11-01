@@ -17,7 +17,7 @@ export function TelemetryEventDetails({ groups, timeZone, unit }: Props) {
   if (events.length === 0) return null;
   return (
     <details className="mt-3 min-w-0 rounded-md border border-border text-xs">
-      <summary className="cursor-pointer rounded-md px-3 py-2 font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
         Event details ({events.length})
       </summary>
       <Table aria-label="Anomaly event details" className="text-xs">

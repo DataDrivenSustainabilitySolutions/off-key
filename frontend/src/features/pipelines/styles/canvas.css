@@ -92,7 +92,7 @@
 }
 .pl-canvas-wrap .react-flow__controls-button.pl-canvas-scale {
   width: 54px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
 }
 
@@ -149,7 +149,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 16px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -174,7 +174,7 @@
   -webkit-box-orient: vertical;
 }
 .pl-node-operation {
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   overflow: hidden;
   white-space: nowrap;
@@ -187,7 +187,7 @@
   justify-content: flex-start;
   min-width: 0;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .pl-node-status > span {
   display: flex;
@@ -262,6 +262,6 @@
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   pointer-events: none;
 }

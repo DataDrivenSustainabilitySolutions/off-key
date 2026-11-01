@@ -16,7 +16,7 @@
   border-radius: 8px;
   padding: 12px 16px;
   margin: 12px 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .pl-design-settings summary,
@@ -43,7 +43,7 @@
 }
 
 .pl-slot code {
-  font-size: 10px;
+  font-size: var(--text-caption);
   overflow-wrap: anywhere;
 }
 
@@ -78,7 +78,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   margin: 12px 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }

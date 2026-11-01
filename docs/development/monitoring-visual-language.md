@@ -16,7 +16,7 @@ feature semantics for an unavailable component.
 
 | Concept | Meaning | Visual treatment |
 | --- | --- | --- |
-| Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a tinted outline; feature processing is teal, detectors violet, policies amber and evidence slate |
+| Step family | What a step does: input, normalize, reduce, route, transform, detector, decision policy or evidence output | Family name at the top of the card, with a surface and outline tinted by role; feature processing is teal, detectors violet, policies amber and evidence slate |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
 | Settings summary | What the operation does with its inputs | One muted line naming the settings that differ from their catalog defaults, or chips naming the readings a selection keeps |
 | Feature count | How many feature columns a component emits, as the compiler reports them | The number inside the output dot; hover text lists the names |
@@ -53,8 +53,9 @@ view of a larger graph; **Fit entire graph** restores its overview. Keyboard and
 narrow-screen navigation use the same component identities and inspector.
 Node titles are 16px at the default working scale. Descriptions live in component
 settings. The percentage control returns an overview or manually zoomed canvas
-to readable size. Panels start closed; closing settings restores canvas width
-without discarding edits or moving nodes.
+to readable size. A new service opens at its Input step and a saved design with
+its panels closed; centring a selected step never pans past the graph's start.
+Closing settings restores canvas width without discarding edits or moving nodes.
 
 `routing.ts` adapts the pinned MIT React Flow Smart Edge library to the shared
 card geometry. It checks returned paths against every box and preserves port

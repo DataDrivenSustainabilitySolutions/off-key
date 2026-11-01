@@ -103,10 +103,14 @@ assigning its readings elsewhere.
 
 ## Visual monitoring pipelines
 
-The setup page holds the service name, the entity (**Readings from**), the
-**Readings to monitor** checklist and the processing graph. Its main actions are
-**Load template**, **Save template** and **Apply monitoring**. Starting a
-service never requires saving a template.
+The setup page is the processing graph under a compact header. The header holds
+the service name and two shortcuts: the input summary, such as **Room · 3
+readings**, opens the **Input** step, and the strategy opens **Service
+settings**. A new service opens at its Input step, where **Readings from** picks
+the entity and **Readings to monitor** its readings; a saved template or a
+service being replaced opens at its graph. The main actions are **Load
+template**, **Save template** and **Apply monitoring**. Starting a service never
+requires saving a template.
 
 **Load template** offers the built-in static and adaptive starting flows plus
 **Your templates**; **Manage templates** opens the shared template library.
@@ -115,8 +119,9 @@ flow. **Save template** stores the current graph and layout under its own
 template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
-Read a graph from left to right. Each card shows its role, title and underlying
-operation; renaming a card helps explain its purpose while the operation name
+Read a graph from left to right. Each card names its step family (Input,
+Normalize, Reduce, Route, Transform, Detector, Decision policy or Evidence
+output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -126,26 +131,44 @@ over the dot for their names. The canvas has no separate legend; type names appe
 on hover, in the inspector and in accessible descriptions. Scores are
 model-specific; the static strategy's P-values come from conformal calibration.
 
-Drag components from **Add component** onto the canvas, or add one beside the
-selected component without changing connections. To put a step into an existing
+**Add step** lists the steps the strategy offers, grouped by family, with one
+line on what each does. Search by name, description or family; the arrow keys
+move through the list, and Enter in the search box adds the first match. Drag a
+step onto the canvas, or click it to add it beside the selected step without
+changing connections. To put a step into an existing
 connection, point at the connection, or select it, and choose **+**. The menu lists
 only the steps that fit there; the new step is connected on both sides and takes
 the connection's place in a merge's input order. Drawing a connection onto an
 input that is already connected replaces its connection: the dot's hover text
 names the connection it replaces, the canvas confirms the change and **Undo**
-restores it. Components a design can contain only once (input, detector, decision
-policy and output) stay listed with a shortcut to the existing one. The inspector
-switches between **Learning settings** and **Component settings** and provides the
-same connection editing on keyboards and narrow screens, listing compatible,
-cycle-free upstream choices.
+restores it. A design has one input, detector, decision policy and output, so the
+menu does not offer them again; it links to the existing detector, policy and
+output instead. **Service settings** and **Step settings** open the side panel.
+Step settings provide the same connection editing on keyboards and narrow
+screens, listing compatible, cycle-free upstream choices.
 **Locate selected component** brings its card into a readable view and **Fit
 entire graph** shows the whole graph. **Arrange** lays out the graph while
 preserving processing order; the magnet button (**Snap to grid**) toggles grid
 snapping. Undo and redo also work with Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z outside
 text fields. Click empty canvas or press Escape to release a selection before
-using Delete. The validation button lists current issues; selecting one opens
-that component. An unsaved setup survives a reload of the same browser tab, and
+using Delete. An unsaved setup survives a reload of the same browser tab, and
 **Reset** discards it.
+
+Every edit is checked shortly after it is made. The status chip beside the
+panel buttons shows the result: **Valid** with the time until the first alarm
+can come, or the number of issues. Open it to list the issues; selecting one
+opens that step. When a check cannot reach the server, the chip shows **Not
+checked** and offers **Check again**.
+
+**Service settings** switches the strategy. Learned steps move to their
+counterparts, such as **Standard scaling** to **Online standard scaling**, and
+keep the settings both versions share. A detector without a counterpart becomes
+the strategy's default detector, and the decision policy follows the strategy.
+A notice names any step without a counterpart, and **Undo** switches back.
+**Before the first alarm** shows the learning and calibration phases in
+observations. Once every chosen reading reports how often it arrives, it also
+shows durations. The slowest reading paces observations, because each
+observation waits for all of its readings.
 
 To keep features raw, branch from **Aligned inputs** and select the required
 features. **Pass through** preserves the values at its input. **Merge features**
@@ -154,7 +177,10 @@ rename colliding feature names before combining branches. A card title changes
 presentation only; the **Rename features** component changes execution.
 
 Unchecking readings in **Readings to monitor** changes the input slots and
-bindings together; a service accepts up to 100 readings. Every slot binds a
+bindings together; a service accepts up to 100 readings. Each reading's feature
+is named after its label, such as `dc_voltage` for *DC Voltage*; a repeated label
+continues with `_2`, `_3` and so on. Saved templates keep their own input names.
+**Apply monitoring** opens the Input step when a reading is still missing. Every slot binds a
 distinct numeric reading on one entity. Labels are cosmetic; expected units
 require an exact match, and unknown units remain unknown.
 

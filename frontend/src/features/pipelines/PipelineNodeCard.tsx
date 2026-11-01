@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { CheckCircle2, Clock3, TriangleAlert } from "lucide-react";
-import { dataKinds, nodeKinds, sampledState, type DataKind } from "./semantics";
+import { dataKinds, sampledState, type DataKind } from "./semantics";
 import type { CanvasNode } from "./types";
 
 /** Chips beyond these collapse into a count; the inspector lists every feature. */
@@ -66,7 +66,7 @@ export function PipelineNodeCard({
       }}
     >
       <span className="pl-node-kind">
-        {nodeKinds[data.kind]}
+        {data.family}
       </span>
       <div className="pl-node-title">
         <strong title={data.label}>{data.label}</strong>

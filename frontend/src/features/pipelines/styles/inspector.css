@@ -60,15 +60,10 @@
 .pl-toolbox .pl-toolbox-item {
   width: 100%;
   text-align: left;
-  justify-content: space-between;
-  margin: 4px 0;
+  margin: 0;
   font-size: var(--text-body);
   padding: 10px;
   background: hsl(var(--background));
-}
-
-.pl-toolbox-item span {
-  min-width: 0;
 }
 
 .pl-toolbox-item small {
@@ -238,9 +233,6 @@
 .pl-toolbox-item:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-.pl-toolbox-existing .pl-help {
-  margin: 0 0 6px;
 }
 .pl-field-error {
   display: block;

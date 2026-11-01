@@ -33,6 +33,134 @@
   margin-top: 16px;
 }
 
+/* Service settings: the strategy switch and the start-up timeline. */
+.pl-strategy-field {
+  margin: 0 0 16px;
+}
+
+.pl-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted));
+}
+
+.pl-inspector .pl-segmented button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-inspector .pl-segmented button[aria-pressed="true"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}
+
+.pl-strategy-field .pl-help,
+.pl-strategy-field .pl-notice {
+  margin: 0;
+}
+
+.pl-startup {
+  --pl-learning: hsl(var(--primary));
+  --pl-calibration: #b45309;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+
+.dark .pl-startup {
+  --pl-calibration: #f59e0b;
+}
+
+.pl-startup-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+
+.pl-inspector .pl-startup-heading h4 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.pl-startup-heading span,
+.pl-startup dd {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-startup .is-learning {
+  --pl-phase: var(--pl-learning);
+}
+
+.pl-startup .is-calibration {
+  --pl-phase: var(--pl-calibration);
+}
+
+.pl-startup-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 10px 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pl-startup-bar span {
+  min-width: 6px;
+  background: color-mix(in srgb, var(--pl-phase) 70%, transparent);
+}
+
+.pl-startup dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.pl-startup dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-caption);
+}
+
+.pl-startup dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pl-startup dt::before {
+  content: "";
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pl-phase);
+}
+
+.pl-startup dd {
+  margin: 0;
+  text-align: right;
+}
+
+.pl-startup .pl-help {
+  margin: 8px 0 0;
+  font-size: var(--text-caption);
+}
+
 .pl-slot {
   display: grid;
   grid-template-columns: 110px minmax(100px, 1fr) minmax(90px, 160px) auto;

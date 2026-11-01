@@ -109,6 +109,7 @@ describe("monitoring graph visual language", () => {
     ]);
     expect(graph.nodes.find((node) => node.id === "left")?.data).toMatchObject({
       label: "Unmodified temperature",
+      family: "Route",
       operation: "Pass through",
       state: "ready",
       issueCount: 1,

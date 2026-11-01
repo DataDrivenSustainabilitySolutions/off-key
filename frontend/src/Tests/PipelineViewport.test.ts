@@ -77,6 +77,7 @@ describe("fitReadableView", () => {
   it.each([
     ["starts at the input", wideGraph, undefined, { x: 24, y: 70, zoom: 1 }],
     ["centres the selection", wideGraph, "model", { x: -450, y: 110, zoom: 1 }],
+    ["keeps the start in view when centring the input", wideGraph, "input", { x: 24, y: 70, zoom: 1 }],
     [
       "starts at the first component without an input",
       wideGraph.slice(0, 1).concat({ ...wideGraph[0]!, id: "late", x: 0 }),

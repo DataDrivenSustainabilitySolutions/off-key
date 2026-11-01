@@ -6,6 +6,8 @@ import type { DataKind } from "./semantics";
 type CanvasData = {
   label: string;
   kind: PipelineNode["kind"];
+  /** What the step does, as the add-step menu groups it. */
+  family: string;
   operation: string;
   available: boolean;
   inputPort: boolean;

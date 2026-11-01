@@ -36,8 +36,8 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
     const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
     await openPipelineSettings(editor, "Component");
-    await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
-    const title = editor.getByRole("textbox", { name: "Node title", exact: true });
+    await editor.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
+    const title = editor.getByRole("textbox", { name: "Step title", exact: true });
     await title.fill("Submitted title");
     await openPipelineSettings(editor, "Service");
     const name = editor.getByRole("textbox", { name: "Service name", exact: true });
@@ -68,7 +68,7 @@ test("preserves edits made after a real atomic draft save was submitted", async 
     await savePipelineTemplate(page, "Updated template");
     await page.reload();
     await openPipelineSettings(editor, "Component");
-    await editor.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+    await editor.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
     await expect(title).toHaveValue("New unsaved title");
     await expect(name).toHaveValue("New unsaved name");
   } finally {

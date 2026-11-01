@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { accessToken } from "./helpers/auth";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
-import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
+import { expectValidPipeline, openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
@@ -28,9 +28,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     try {
       await page.goto(`/?view=pipelines&pipeline=${design.id}`);
       await openPipelineSettings(page, "Component");
-      await page.getByRole("combobox", { name: "Selected component", exact: true }).selectOption(detector.id);
-      const validate = page.getByRole("button", { name: "Validate", exact: true });
-      await validate.click();
+      await page.getByRole("combobox", { name: "Selected step", exact: true }).selectOption(detector.id);
+      // Every edit is checked shortly after it is made; invalid settings are marked in place.
       const k = page.getByRole("spinbutton", { name: "K", exact: true });
       const warm = page.getByRole("spinbutton", { name: "Warm Up", exact: true });
       const window = page.getByRole("spinbutton", { name: "Window Size", exact: true });
@@ -38,12 +37,11 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await expect(warm).toHaveAttribute("aria-invalid", "true");
       await expect(window).toHaveAttribute("aria-invalid", "true");
       await expect(window).toHaveCSS("border-top-width", "1px");
-      await page.getByRole("button", { name: "Close validation", exact: true }).click();
+      await expect(page.getByRole("button", { name: /^\d+\+? graph issues?$/ })).toBeVisible();
       await warm.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath(`parameter-graph-errors-${viewport.width}.png`) });
       await k.fill("2"); await warm.fill("3"); await window.fill("8");
-      await validate.click();
-      await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+      await expectValidPipeline(page);
       await savePipelineTemplate(page);
 
       await page.getByRole("combobox", { name: "Detector model", exact: true })
@@ -53,8 +51,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await page.getByRole("button", { name: "Add feature", exact: true }).click();
       await page.getByRole("button", { name: "Add neighbor", exact: true }).first().click();
       await page.getByRole("spinbutton", { name: "Graph feature 0 neighbor 1", exact: true }).fill("1");
-      await validate.click();
-      await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+      await expectValidPipeline(page);
       const adjacency = await savePipelineTemplate(page);
       expect(adjacency.draft.nodes!.find(node => node.id === detector.id)!.params!.graph)
         .toEqual({ "0": [1], "1": [] });

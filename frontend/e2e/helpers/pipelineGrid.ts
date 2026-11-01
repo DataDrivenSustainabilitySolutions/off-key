@@ -5,7 +5,7 @@ import { openPipelineSettings } from "./pipelineNavigation";
 export async function dropPipelineComponent(page: Page, component: string, nodeId: string) {
   const close = page.getByRole("button", { name: "Close settings", exact: true });
   if (await close.count()) await close.click();
-  await page.getByRole("button", { name: "Add component", exact: true }).click();
+  await page.getByRole("button", { name: "Add step", exact: true }).click();
   const canvas = page.getByLabel("Pipeline graph", { exact: true });
   const snap = canvas.getByRole("button", { name: "Snap to grid", exact: true });
   await expect(snap).toHaveAttribute("aria-pressed", "true");

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
 import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
-import { openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
+import { openPipelineInput, openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
@@ -44,6 +44,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     await page.setViewportSize({ width: 1600, height: 1100 });
     await page.goto(`${new URL(setupUrl).origin}/?pipeline=${template.id}`);
     const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+    await openPipelineInput(editor);
     await editor.getByRole("button", { name: "Choose monitoring inputs", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search entities", exact: true }).fill(deviceId);
     await page.getByRole("button", { name: new RegExp(deviceId) }).click();
@@ -56,6 +57,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     expect(saved.id).toBe(template.id);
     expect(saved.draft.input_slots?.map((slot) => slot.id)).toEqual(retainedIds);
     await page.reload();
+    await openPipelineInput(editor);
     await expect(editor.getByRole("combobox", { name: "Reading for AC1", exact: true })).toHaveValue(`${deviceId}:AC1`);
     await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
     await expect(editor.getByRole("combobox", { name: "Reading for AC2", exact: true })).toHaveCount(0);
@@ -118,8 +120,8 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
       await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Service ${deviceId}`);
       await openPipelineSettings(workbench, "Component");
-      await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
-      const title = workbench.getByRole("textbox", { name: "Node title", exact: true });
+      await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
+      const title = workbench.getByRole("textbox", { name: "Step title", exact: true });
       await title.fill("Submitted title");
       await page.route(`**${endpoint}`, async (route) => {
         if (route.request().method() !== "POST") { await route.continue(); return; }
@@ -140,7 +142,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
         await sources.getByRole("link", { name: "Return to service setup", exact: true }).click();
         await expect(workbench.getByRole("button", { name: "Save template", exact: true })).toBeDisabled();
         await openPipelineSettings(workbench, "Component");
-        await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+        await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
         await expect(title).toHaveValue("Edited after submission"); await title.fill("Edited after returning");
       }
       release(); expect((await delivered).ok()).toBe(true);
@@ -150,7 +152,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       }
       await page.unroute(`**${endpoint}`);
       await openPipelineSettings(workbench, "Component");
-      await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+      await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
       const finalTitle = acknowledgement === "after returning" ? "Edited after returning" : "Edited after submission";
       await expect(title).toHaveValue(finalTitle);
       const id = [...createdIds][0]!;
@@ -159,7 +161,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await savePipelineTemplate(page);
       expect(creates).toBe(1);
       await page.reload(); await openPipelineSettings(workbench, "Component");
-      await workbench.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("input");
+      await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
       await expect(title).toHaveValue(finalTitle);
       await expect(workbench.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue(`Service ${deviceId}`);
     } finally {

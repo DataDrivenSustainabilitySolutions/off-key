@@ -16,8 +16,9 @@ export async function fitReadableView(
     ?? nodes.find((node) => node.data.kind === "source") ?? nodes[0];
   if (!anchor) return;
   const focus = flow.getNodesBounds([anchor]);
+  // Graphs read from the left, so centring a selection never pans past the graph's start.
   await flow.setViewport({
-    x: selected ? width / 2 - focus.x - focus.width / 2 : 24 - focus.x,
+    x: Math.min(24 - bounds.x, selected ? width / 2 - focus.x - focus.width / 2 : 24 - focus.x),
     y: height / 2 - focus.y - focus.height / 2,
     zoom: 1,
   });

@@ -16,15 +16,6 @@ export const dataKinds: Record<DataKind, { label: string }> = {
   evidence: { label: "Evidence" },
 };
 
-export const nodeKinds: Record<PipelineNode["kind"], string> = {
-  source: "Input",
-  transform: "Transform",
-  merge: "Combine",
-  detector: "Detector",
-  policy: "Decision policy",
-  output: "Evidence output",
-};
-
 export const NODE_SIZE = { width: 224, height: 144 };
 export const GRID_STEP = 16;
 export const SNAP_GRID: [number, number] = [GRID_STEP, GRID_STEP];

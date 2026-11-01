@@ -11,6 +11,7 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+import { familyLabel, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
 
 /** Project the canonical definition into the renderer. Never normalize or mutate execution here. */
@@ -35,6 +36,7 @@ export function presentGraph(
       data: {
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
+        family: familyLabel(stepFamily(node.kind, node.component)),
         operation: component?.label ?? node.component,
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",

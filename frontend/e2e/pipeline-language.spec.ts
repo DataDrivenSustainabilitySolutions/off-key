@@ -14,6 +14,7 @@ import {
   savePipelineTemplate,
   openPipelineSettings,
   expectReadablePipeline,
+  expectValidPipeline,
 } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
 import { setAppearance } from "./helpers/appearance";
@@ -44,8 +45,8 @@ test("drags from the compact component menu without covering the drop area", asy
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/?create=monitoring");
   await dropPipelineComponent(page, "Pass through", "features_passthrough_1");
-  await expect(page.getByRole("textbox", { name: "Node title", exact: true })).toHaveAttribute("placeholder", "Pass through");
-  await expect(page.getByRole("combobox", { name: "Selected component", exact: true })).toHaveValue("features_passthrough_1");
+  await expect(page.getByRole("textbox", { name: "Step title", exact: true })).toHaveAttribute("placeholder", "Pass through");
+  await expect(page.getByRole("combobox", { name: "Selected step", exact: true })).toHaveValue("features_passthrough_1");
 });
 
 for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
@@ -117,7 +118,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       });
       const graph = page.getByLabel("Pipeline graph", { exact: true });
       const selector = editor.getByRole("combobox", {
-        name: "Selected component",
+        name: "Selected step",
         exact: true,
       });
       const node = (id: string) =>
@@ -125,20 +126,20 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expectReadablePipeline(page);
       await expectClearPipelineRouting(page);
       await expect(editor.getByRole("complementary")).toHaveCount(0);
-      await expect(editor.getByRole("searchbox", { name: "Search components" })).toHaveCount(0);
+      await expect(editor.getByRole("searchbox", { name: "Search steps" })).toHaveCount(0);
       await expect(node("input")).toBeInViewport();
       await expect(node("input").locator(".pl-node-operation")).toHaveCount(0);
       const canvasWidth = (await graph.boundingBox())!.width;
-      const addComponent = editor.getByRole("button", { name: "Add component", exact: true });
+      const addComponent = editor.getByRole("button", { name: "Add step", exact: true });
       await addComponent.click();
-      const search = page.getByRole("searchbox", { name: "Search components", exact: true });
+      const search = page.getByRole("searchbox", { name: "Search steps", exact: true });
       await search.fill("Pass through");
       await expect(page.getByRole("button", { name: "Add Pass through", exact: true })).toBeVisible();
       await search.press("Escape");
       await expect(addComponent).toBeFocused();
       await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-laptop.png`), fullPage: true });
       await node("input").click();
-      await expect(editor.getByRole("button", { name: "Component settings", exact: true })).toHaveAttribute("aria-expanded", "true");
+      await expect(editor.getByRole("button", { name: "Step settings", exact: true })).toHaveAttribute("aria-expanded", "true");
       await expect.poll(async () => (await graph.boundingBox())!.width).toBeLessThan(canvasWidth - 250);
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
@@ -215,16 +216,8 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await editor.getByRole("button", { name: "Disconnect raw from merge", exact: true }).click();
       // The inspector remains an equivalent keyboard authoring route.
       await upstream.selectOption("raw");
-      await editor
-        .getByRole("button", { name: "Validate", exact: true })
-        .click();
-      // The validation result opens in a popover outside the editor region.
-      await expect(
-        page.getByRole("heading", {
-          name: "Valid processing graph",
-          exact: true,
-        }),
-      ).toBeVisible();
+      // The status chip opens the check's result in a popover outside the editor region.
+      await expectValidPipeline(page);
       await selector.selectOption("raw");
       await locatePipelineSelection(page);
       for (const handle of ["input", "output"]) {
@@ -262,7 +255,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await openPipelineSettings(editor, "Component");
       await selector.selectOption("raw");
       await expect(
-        editor.getByRole("textbox", { name: "Node title", exact: true }),
+        editor.getByRole("textbox", { name: "Step title", exact: true }),
       ).toHaveValue("Raw reference");
       await expectNoHorizontalScroll(page);
       await page.screenshot({
@@ -318,7 +311,7 @@ test("inserts a step on a wire and replaces an occupied input, both undoable", a
     }).toPass({ timeout: 10_000 });
     await insert.click();
     const menu = page.getByRole("dialog", { name: "Insert a step", exact: true });
-    const search = menu.getByRole("searchbox", { name: "Search components", exact: true });
+    const search = menu.getByRole("searchbox", { name: "Search steps", exact: true });
     await expect(search).toBeFocused();
     // Only steps that take and give features fit here; the detector and policy are not offered.
     await expect(menu.getByRole("button", { name: "Insert Merge features", exact: true })).toBeVisible();
@@ -333,7 +326,7 @@ test("inserts a step on a wire and replaces an occupied input, both undoable", a
     await page.screenshot({ path: testInfo.outputPath("wire-editing-menu.png"), fullPage: true });
     await menu.getByRole("button", { name: "Insert Online standard scaling", exact: true }).click();
     await expect(menu).toBeHidden();
-    await expect(editor.getByRole("combobox", { name: "Selected component", exact: true })).toHaveValue(scaler);
+    await expect(editor.getByRole("combobox", { name: "Selected step", exact: true })).toHaveValue(scaler);
     await expect(wire("input", scaler)).toHaveCount(1);
     await expect(wire(scaler, "detector")).toHaveCount(1);
     await expect(wire("input", "detector")).toHaveCount(0);
@@ -374,7 +367,7 @@ test.describe("touch connection dots", () => {
     await page.goto("/?create=monitoring");
     const graph = page.getByLabel("Pipeline graph", { exact: true });
     await openPipelineSettings(page, "Component");
-    await page.getByRole("combobox", { name: "Selected component", exact: true }).selectOption("detector");
+    await page.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("detector");
     await page.getByRole("button", { name: "Disconnect input from detector", exact: true }).click();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(graph.getByRole("button", { name: "Readable size", exact: true })).toHaveText("100%");
@@ -393,7 +386,6 @@ test.describe("touch connection dots", () => {
     await expect(graph.getByTestId(`rf__edge-${JSON.stringify(["input", "detector"])}`)).toHaveCount(1);
     await expect(graph.locator(".is-compatible, .is-incompatible")).toHaveCount(0);
     await expect(page.getByRole("complementary")).toHaveCount(0);
-    await page.getByRole("button", { name: "Validate", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Valid processing graph", exact: true })).toBeVisible();
+    await expectValidPipeline(page);
   });
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import type {
   PipelineCatalog,
   PipelineDefinition,
@@ -20,6 +20,24 @@ import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.beforeEach(async ({ page }) => openPipelineWorkspace(page));
+
+/** Draws wires between connection dots with the mouse, as a person does. */
+function wiring(page: Page) {
+  const dot = (id: string, direction: "input" | "output") => page.getByLabel("Pipeline graph", { exact: true })
+    .locator(`.react-flow__node[data-id="${id}"] [data-handleid="${direction}"]`);
+  const beginWire = async (id: string, direction: "input" | "output") => {
+    const box = (await dot(id, direction).boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2 + 10, { steps: 3 });
+  };
+  const endWire = async (id: string, direction: "input" | "output") => {
+    const box = (await dot(id, direction).boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  return { dot, beginWire, endWire };
+}
 
 test("drags from the compact component menu without covering the drop area", async ({ page }) => {
   test.setTimeout(30_000);
@@ -175,19 +193,8 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       expect(candidates).not.toContain("policy");
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await fitPipelineOverview(page);
-      const dot = (id: string, direction: "input" | "output") => node(id).locator(`[data-handleid="${direction}"]`);
-      const beginWire = async (id: string, direction: "input" | "output") => {
-        const box = (await dot(id, direction).boundingBox())!;
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(box.x + box.width / 2 + 10, box.y + box.height / 2 + 10, { steps: 3 });
-      };
-      const endWire = async (id: string, direction: "input" | "output") => {
-        const box = (await dot(id, direction).boundingBox())!;
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
-        await page.mouse.up();
-      };
-      // Mismatching colors cannot connect, and occupied inputs stay unavailable.
+      const { dot, beginWire, endWire } = wiring(page);
+      // Mismatching colors cannot connect; an occupied input offers to replace its connection.
       const wireCount = await graph.locator(".react-flow__edge").count();
       await beginWire("detector", "output");
       await expect(dot("merge", "input")).toHaveClass(/is-incompatible/);
@@ -198,8 +205,8 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await beginWire(reverse ? "merge" : "raw", reverse ? "input" : "output");
       await expect(dot(reverse ? "raw" : "merge", reverse ? "output" : "input")).toHaveClass(/is-compatible/);
       if (!reverse) {
-        await expect(dot("detector", "input")).toHaveClass(/is-incompatible/);
-        await expect(dot("detector", "input")).toHaveAttribute("title", /input is occupied/);
+        await expect(dot("detector", "input")).toHaveClass(/is-compatible/);
+        await expect(dot("detector", "input")).toHaveAttribute("title", /Replaces the connection from Merge features\./);
       }
       await endWire(reverse ? "raw" : "merge", reverse ? "output" : "input");
       await expect(graph.locator(".react-flow__edge")).toHaveCount(wireCount + 1);
@@ -267,6 +274,97 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     }
   });
 }
+
+test("inserts a step on a wire and replaces an occupied input, both undoable", async ({ page }, testInfo) => {
+  const token = await accessToken(page);
+  const headers = { Authorization: `Bearer ${token}` };
+  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  expect(response.ok()).toBe(true);
+  const catalog = (await response.json()) as PipelineCatalog;
+  const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
+  const created = await page.request.post("/api/v1/monitors/pipelines", {
+    headers,
+    data: { name: `Wire editing ${randomUUID()}`, definition: template.definition, layout: template.layout },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  const design = (await created.json()) as PipelineView;
+  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  try {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
+    const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+    const graph = page.getByLabel("Pipeline graph", { exact: true });
+    const { dot, beginWire, endWire } = wiring(page);
+    const wire = (source: string, target: string) => graph.getByTestId(`rf__edge-${JSON.stringify([source, target])}`);
+    const scaler = "adaptive_standard_scaler_1";
+    await expectReadablePipeline(page);
+    await fitPipelineOverview(page);
+    // A features output counts the columns that leave it; wires carry no labels.
+    await expect(dot("input", "output")).toHaveAttribute("data-count", "1");
+    await expect(dot("input", "output")).toHaveAttribute("title", "Output: Features. 1 feature: Value.");
+    await expect(graph.locator(".react-flow__edge-text")).toHaveCount(0);
+    // The "+" waits on the wire until the wire is pointed at, then takes the pointer.
+    const insert = page.getByRole("button", { name: /^Insert a step between Aligned inputs and / });
+    await expect(insert).toHaveCSS("opacity", "0");
+    await expect(async () => {
+      const point = await wire("input", "detector").locator("path.react-flow__edge-path")
+        .evaluate((path: SVGPathElement) => {
+          const spot = path.getPointAtLength(path.getTotalLength() / 2);
+          const matrix = path.getScreenCTM()!;
+          return { x: spot.x * matrix.a + matrix.e, y: spot.y * matrix.d + matrix.f };
+        });
+      await page.mouse.move(point.x, point.y);
+      await expect(insert).toHaveCSS("opacity", "1", { timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+    await insert.click();
+    const menu = page.getByRole("dialog", { name: "Insert a step", exact: true });
+    const search = menu.getByRole("searchbox", { name: "Search components", exact: true });
+    await expect(search).toBeFocused();
+    // Only steps that take and give features fit here; the detector and policy are not offered.
+    await expect(menu.getByRole("button", { name: "Insert Merge features", exact: true })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /^Insert .*(forest|threshold)/i })).toHaveCount(0);
+    await search.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(insert).toBeFocused();
+    // The keyboard reaches the same menu.
+    await page.keyboard.press("Enter");
+    await expect(search).toBeFocused();
+    await search.fill("standard");
+    await page.screenshot({ path: testInfo.outputPath("wire-editing-menu.png"), fullPage: true });
+    await menu.getByRole("button", { name: "Insert Online standard scaling", exact: true }).click();
+    await expect(menu).toBeHidden();
+    await expect(editor.getByRole("combobox", { name: "Selected component", exact: true })).toHaveValue(scaler);
+    await expect(wire("input", scaler)).toHaveCount(1);
+    await expect(wire(scaler, "detector")).toHaveCount(1);
+    await expect(wire("input", "detector")).toHaveCount(0);
+    await expectClearPipelineRouting(page);
+    // The new step reports its own columns once the change is checked.
+    await expect(dot(scaler, "output")).toHaveAttribute("data-count", "1");
+    await editor.getByRole("button", { name: "Close settings", exact: true }).click();
+    await fitPipelineOverview(page);
+    // Dropping on a taken input replaces its connection and says which one it was.
+    await beginWire("input", "output");
+    await expect(dot("detector", "input")).toHaveClass(/is-compatible/);
+    await expect(dot("detector", "input")).toHaveAttribute("title",
+      "Input: Features. Replaces the connection from Online standard scaling.");
+    await page.screenshot({ path: testInfo.outputPath("wire-editing-replace.png"), fullPage: true });
+    await endWire("detector", "input");
+    await expect(graph.getByText("Replaced the input from Online standard scaling.", { exact: true })).toBeVisible();
+    await expect(wire("input", "detector")).toHaveCount(1);
+    await expect(wire(scaler, "detector")).toHaveCount(0);
+    await expect(wire("input", scaler)).toHaveCount(1);
+    const undo = editor.getByRole("button", { name: "Undo graph change", exact: true });
+    await undo.click();
+    await expect(wire(scaler, "detector")).toHaveCount(1);
+    await expect(wire("input", "detector")).toHaveCount(0);
+    await undo.click();
+    await expect(graph.locator(`.react-flow__node[data-id="${scaler}"]`)).toHaveCount(0);
+    await expect(wire("input", "detector")).toHaveCount(1);
+    await expectClearPipelineRouting(page);
+  } finally {
+    await archivePipelines(page.request, headers, [endpoint]);
+  }
+});
 
 test.describe("touch connection dots", () => {
   test.use({ hasTouch: true });

@@ -11,6 +11,7 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+import { nodeSummary } from "./summaries";
 
 /** Project the canonical definition into the renderer. Never normalize or mutate execution here. */
 export function presentGraph(
@@ -24,6 +25,7 @@ export function presentGraph(
     const component = componentFor(node, components);
     const input = inputKind(component);
     const output = outputKind(node, component);
+    const summary = nodeSummary(node, component, document.definition);
     return {
       id: node.id,
       type: "component",
@@ -41,6 +43,8 @@ export function presentGraph(
         outputType: output,
         state: states?.[node.id],
         issueCount: issues.filter((issue) => issue.node_id === node.id).length,
+        summary: summary.text,
+        chips: summary.chips,
       },
     };
   });

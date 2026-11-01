@@ -18,6 +18,8 @@ feature semantics for an unavailable component.
 | --- | --- | --- |
 | Component role | Input, transform, combine, detector, decision policy or evidence output | Role text, a tinted surface and a tinted outline; feature processing is teal, detectors violet, policies amber and evidence slate |
 | Operation | The catalog implementation and contract selected for that node | Operation name remains visible when a user supplies a custom title |
+| Settings summary | What the operation does with its inputs | One muted line naming the settings that differ from their catalog defaults, or chips naming the readings a selection keeps |
+| Feature count | How many feature columns a component emits, as the compiler reports them | The number inside the output dot; hover text lists the names |
 | Data kind | What crosses a boundary | Matching dot and wire colors: features teal, scores violet, P-values blue and decisions amber; all links share a solid line and arrow style |
 | Connection | A directed dependency between operations | Left-to-right ports, orthogonal segments and an arrow; placement never changes execution |
 | Ordered feature merge | Column concatenation for one aligned observation | Inspector ordering and accessible incoming ranks |
@@ -34,9 +36,12 @@ describes its contributing inputs, not the shape of its score output.
 
 Hover text, accessible names and the inspector expose type names without adding
 labels to cards. During mouse dragging or two-tap connection, a ring marks valid
-targets and incompatible or occupied inputs fade. These hints use the same
-authoring guard as the inspector, including cycle and resource limits.
-Dots have a 28px interaction area around their 16px visible circle.
+targets and incompatible inputs fade. An occupied single input is a valid target:
+dropping on it replaces its connection, and its hover text names the connection
+it replaces. These hints use the same authoring guard as the inspector, including
+cycle and resource limits. Dots have a 28px interaction area around their 16px
+visible circle; a features output dot widens to hold its feature count, which
+recedes while an edit is checked again.
 Every connection uses the same
 solid line, width and arrow style; data kinds change only its color. Runtime state
 uses its own labeled badge, so an invalid draft, an initializing model and a
@@ -67,8 +72,11 @@ its complete route. The draft remains available for inspection and editing.
 Keep the main canvas readable as a continuous process: a component explains its
 operation, a port explains its contract, and a link shows the dependency. Do not
 repeat the same data label along every wire or add a legend to explain decorative
-symbols. Selection exposes parameters, ordered inputs, feature lineage and live
-values in the inspector. More expressive operations should add meaningful typed
+symbols. A wire carries no permanent label. Pointing at, focusing or selecting it
+thickens it and shows a **+** that inserts a step; the **+** sits on a stretch the
+wire does not share with other wires, so it always belongs to the wire it is on.
+Selection exposes parameters, ordered inputs, feature lineage and live values in
+the inspector. More expressive operations should add meaningful typed
 capabilities through the catalog, rather than require more permanent annotations
 on every connection. A saved layout is for arrangement; it never substitutes for
 explicit execution semantics.

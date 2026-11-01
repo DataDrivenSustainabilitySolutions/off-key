@@ -117,18 +117,27 @@ work and offers to save it as a new template.
 
 Read a graph from left to right. Each card shows its role, title and underlying
 operation; renaming a card helps explain its purpose while the operation name
-remains visible. Ports carry their data type as a colored dot, and connections are
-solid directional links in the same color, without text labels. The canvas has no
-separate legend; type names appear on hover, in the inspector and in accessible
-descriptions. Scores are model-specific; the static strategy's P-values come from
-conformal calibration.
+remains visible. Below the title, a card summarizes the settings that differ from
+their defaults, such as a scaling range, and a **Select features** card lists the
+readings it keeps. Ports carry their data type as a colored dot, and connections
+are solid directional links in the same color, without text labels. Once the graph
+has been checked, a features output dot shows how many features leave it; hover
+over the dot for their names. The canvas has no separate legend; type names appear
+on hover, in the inspector and in accessible descriptions. Scores are
+model-specific; the static strategy's P-values come from conformal calibration.
 
 Drag components from **Add component** onto the canvas, or add one beside the
-selected component without changing connections. Components a design can contain
-only once (input, detector, decision policy and output) stay listed with a
-shortcut to the existing one. The inspector switches between **Learning
-settings** and **Component settings** and provides the same connection editing on
-keyboards and narrow screens, listing compatible, cycle-free upstream choices.
+selected component without changing connections. To put a step into an existing
+connection, point at the connection, or select it, and choose **+**. The menu lists
+only the steps that fit there; the new step is connected on both sides and takes
+the connection's place in a merge's input order. Drawing a connection onto an
+input that is already connected replaces its connection: the dot's hover text
+names the connection it replaces, the canvas confirms the change and **Undo**
+restores it. Components a design can contain only once (input, detector, decision
+policy and output) stay listed with a shortcut to the existing one. The inspector
+switches between **Learning settings** and **Component settings** and provides the
+same connection editing on keyboards and narrow screens, listing compatible,
+cycle-free upstream choices.
 **Locate selected component** brings its card into a readable view and **Fit
 entire graph** shows the whole graph. **Arrange** lays out the graph while
 preserving processing order; the magnet button (**Snap to grid**) toggles grid

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { routeConnections, type ConnectionRoute, type RoutingBox } from "@/features/pipelines/routing";
+import { routeConnections, routeHandles, type ConnectionRoute, type RoutingBox } from "@/features/pipelines/routing";
 import { edgeId, NODE_SIZE } from "@/features/pipelines/semantics";
 
 const box = (id: string, x: number, y: number): RoutingBox => ({ id, x, y, ...NODE_SIZE });
@@ -121,5 +121,41 @@ describe("drag routing", () => {
     expect(moved.get(key)).not.toBe(settled.get(key));
     expect(moved.get(key)?.blocked).toBe(false);
     expect(moved.get(key)?.points.some((point) => point.y !== NODE_SIZE.height / 2)).toBe(true);
+  });
+});
+
+describe("wire handles", () => {
+  const routed = (...points: [number, number][]): ConnectionRoute =>
+    ({ path: "", points: points.map(([x, y]) => ({ x, y })), blocked: false });
+
+  it("sits on the part of a link that no other link runs along", () => {
+    // Two links leave one port along a shared trunk and part at x = 100.
+    const handles = routeHandles(new Map([
+      ["up", routed([0, 0], [100, 0], [100, -100], [300, -100])],
+      ["down", routed([0, 0], [100, 0], [100, 100], [300, 100])],
+    ]));
+    expect(handles.get("up")).toEqual({ x: 200, y: -100 });
+    expect(handles.get("down")).toEqual({ x: 200, y: 100 });
+  });
+
+  it("prefers a horizontal stretch, then any free stretch, then the longest segment", () => {
+    const handles = routeHandles(new Map([
+      ["bend", routed([0, 0], [48, 0], [48, 400], [100, 400])],
+      ["short", routed([500, 0], [520, 0], [520, 200], [540, 200])],
+      ["same-a", routed([0, 600], [200, 600])],
+      ["same-b", routed([0, 600], [200, 600])],
+    ]));
+    // A horizontal stretch holds the handle clear of both ports, although the vertical one is longer.
+    expect(handles.get("bend")).toEqual({ x: 74, y: 400 });
+    // Horizontal stretches too short for a handle give way to the free vertical one.
+    expect(handles.get("short")).toEqual({ x: 520, y: 100 });
+    // Links that share every stretch still get a handle on their longest segment.
+    expect(handles.get("same-a")).toEqual({ x: 100, y: 600 });
+    expect(handles.get("same-b")).toEqual({ x: 100, y: 600 });
+  });
+
+  it("leaves a blocked connection without a handle", () => {
+    const handles = routeHandles(new Map([["blocked", { path: "", points: [], blocked: true }]]));
+    expect(handles.size).toBe(0);
   });
 });

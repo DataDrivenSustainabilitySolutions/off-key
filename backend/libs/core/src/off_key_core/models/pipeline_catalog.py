@@ -265,9 +265,11 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 if strategy == "static_baseline"
                 else "Adaptive stream",
                 definition=compile_pipeline(definition).definition,
+                # 64px between cards leaves every wire room for the editor's
+                # insert handle beside the 28px connection dots.
                 layout=PipelineLayout(
                     nodes={
-                        identifier: {"x": index * 260, "y": 100}
+                        identifier: {"x": index * 288, "y": 100}
                         for index, identifier in enumerate(
                             ["input", "detector", "policy", "output"]
                         )

@@ -54,6 +54,77 @@ function compact(points: XYPosition[]) {
   return result;
 }
 
+type Stretch = { from: number; to: number };
+
+/** Parts of [from, to] that no listed interval covers. */
+function uncovered(from: number, to: number, covered: Stretch[]) {
+  const free: Stretch[] = [];
+  let cursor = from;
+  for (const stretch of [...covered].sort((left, right) => left.from - right.from)) {
+    if (stretch.from > cursor) free.push({ from: cursor, to: Math.min(stretch.from, to) });
+    cursor = Math.max(cursor, stretch.to);
+    if (cursor >= to) break;
+  }
+  if (cursor < to) free.push({ from: cursor, to });
+  return free;
+}
+
+/** Shortest horizontal stretch that holds a handle clear of the ports and the arrowhead. */
+const MIN_HANDLE_STRETCH = 40;
+/** Shorter free stretches sit where links part, too close to the junction for a handle. */
+const MIN_FREE_STRETCH = 32;
+
+/** Where each routed link carries its handle: the middle of its longest horizontal
+ * stretch that no other link runs along, so a handle never sits on a shared trunk
+ * where it would be ambiguous. Vertical stretches are used when no horizontal one is
+ * long enough, and the longest segment when the link shares every stretch. */
+export function routeHandles(routes: Map<string, ConnectionRoute>) {
+  type Segment = { id: string; horizontal: boolean; line: number; from: number; to: number };
+  type Candidate = { horizontal: boolean; length: number; point: XYPosition };
+  // Links run on a shared grid, so collinear segments have identical coordinates.
+  const lines = new Map<string, Segment[]>();
+  const segments: Segment[] = [];
+  for (const [id, route] of routes)
+    for (const [index, end] of route.points.slice(1).entries()) {
+      const start = route.points[index]!;
+      const horizontal = Math.abs(start.y - end.y) < EPSILON;
+      if (!horizontal && Math.abs(start.x - end.x) >= EPSILON) continue;
+      const axis = horizontal ? "x" : "y";
+      const segment = {
+        id, horizontal, line: horizontal ? start.y : start.x,
+        from: Math.min(start[axis], end[axis]), to: Math.max(start[axis], end[axis]),
+      };
+      const key = `${horizontal ? "h" : "v"}${Math.round(segment.line / EPSILON)}`;
+      lines.set(key, [...(lines.get(key) ?? []), segment]);
+      segments.push(segment);
+    }
+  const rank = (candidate: Candidate) => (candidate.horizontal && candidate.length >= MIN_HANDLE_STRETCH ? 1 : 0);
+  const better = (candidate: Candidate, best?: Candidate) => !best || rank(candidate) > rank(best)
+    || (rank(candidate) === rank(best) && candidate.length > best.length);
+  const best = new Map<string, Candidate>();
+  const fallback = new Map<string, Candidate>();
+  for (const segment of segments) {
+    const { id, horizontal, line, from, to } = segment;
+    const at = (middle: number) => (horizontal ? { x: middle, y: line } : { x: line, y: middle });
+    const whole = { horizontal, length: to - from, point: at((from + to) / 2) };
+    if (better(whole, fallback.get(id))) fallback.set(id, whole);
+    const covered = lines.get(`${horizontal ? "h" : "v"}${Math.round(line / EPSILON)}`)!
+      .filter((other) => other.id !== id);
+    for (const stretch of uncovered(from, to, covered)) {
+      if (stretch.to - stretch.from < MIN_FREE_STRETCH) continue;
+      const candidate = { horizontal, length: stretch.to - stretch.from, point: at((stretch.from + stretch.to) / 2) };
+      if (better(candidate, best.get(id))) best.set(id, candidate);
+    }
+  }
+  const handles = new Map<string, XYPosition>();
+  // A link that shares every stretch still needs a handle; its longest segment is the clearest.
+  for (const [id, route] of routes) {
+    const chosen = route.blocked ? undefined : best.get(id) ?? fallback.get(id);
+    if (chosen) handles.set(id, chosen.point);
+  }
+  return handles;
+}
+
 /** Derived canvas geometry only: bends never become saved or executable state. */
 export function routeConnections(
   boxes: RoutingBox[],

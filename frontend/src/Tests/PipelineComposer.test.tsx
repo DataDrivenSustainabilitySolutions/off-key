@@ -198,10 +198,24 @@ describe("service settings", () => {
 describe("component menu", () => {
   it("offers to select a one-per-design component that is already present", () => {
     let selected = "";
-    render(<PipelineToolbox catalog={catalog} document={pipeline()} onAdd={() => {}}
+    render(<PipelineToolbox components={components} document={pipeline()} onAdd={() => {}}
       onSelect={(id) => { selected = id; }} />);
     fireEvent.click(screen.getByRole("button", { name: "Select Detector A" }));
     expect(selected).toBe("detector");
     expect(screen.getByText(/Select it to change the detector model/)).toBeTruthy();
+  });
+
+  it("lists only the steps that fit a connection when inserting on it", () => {
+    const added: string[] = [];
+    render(<PipelineToolbox components={components} document={pipeline()}
+      link={{ source: "input", target: "detector" }} onAdd={(id) => added.push(id)} />);
+    // One-per-design components and other strategies' components never fit a wire.
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label")))
+      .toEqual(["Insert Pass through"]);
+    expect(screen.getByRole("button", { name: "Insert Pass through" }).getAttribute("draggable")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Insert Pass through" }));
+    expect(added).toEqual(["features.passthrough"]);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search components" }), { target: { value: "scaling" } });
+    expect(screen.getByText("No matching components.")).toBeTruthy();
   });
 });

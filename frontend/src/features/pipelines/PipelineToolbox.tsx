@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { PipelineCatalog } from "./contracts";
-import { addBlocker, isMultiInstanceKind, nodeLabel, PIPELINE_LIMITS, type GraphDocument } from "./model";
+import type { PipelineComponent } from "./contracts";
+import {
+  addBlocker, insertBlocker, isMultiInstanceKind, nodeLabel, PIPELINE_LIMITS, type GraphDocument, type Link,
+} from "./model";
 import { nodeKinds } from "./semantics";
 
 const kinds = ["source", "transform", "merge", "detector", "policy", "output"] as const;
@@ -12,15 +14,18 @@ const singleHints: Partial<Record<(typeof kinds)[number], string>> = {
 };
 
 export function PipelineToolbox({
-  catalog,
+  components,
   document,
+  link,
   onAdd,
   onSelect,
   onDragStart,
   onDragEnd,
 }: {
-  catalog: PipelineCatalog;
+  components: PipelineComponent[];
   document: GraphDocument;
+  /** Inserting on this connection: only the steps that fit it are listed. */
+  link?: Link;
   onAdd: (componentId: string) => void;
   /** Opens an existing single-instance component instead of hiding its section. */
   onSelect?: (nodeId: string) => void;
@@ -30,15 +35,16 @@ export function PipelineToolbox({
   const [query, setQuery] = useState("");
   const definition = document.definition;
   const search = query.trim().toLocaleLowerCase();
-  const strategyComponents = catalog.components.filter((component) =>
-    component.strategies.includes(definition.strategy));
+  const strategyComponents = components.filter((component) =>
+    component.strategies.includes(definition.strategy)
+    && (!link || !insertBlocker(definition, link, component, components)));
   const matches = strategyComponents.filter((component) =>
     `${component.label} ${component.description} ${nodeKinds[component.kind]}`
       .toLocaleLowerCase()
       .includes(search));
   const full = definition.nodes.length >= PIPELINE_LIMITS.nodes;
   const sections = kinds.map((kind) => {
-    const existing = isMultiInstanceKind(kind)
+    const existing = link || isMultiInstanceKind(kind)
       ? undefined : definition.nodes.find((node) => node.kind === kind);
     const items = matches.filter((component) => component.kind === kind);
     return { kind, existing, items };
@@ -62,18 +68,18 @@ export function PipelineToolbox({
             <p className="pl-help">{singleHints[kind]}</p>
             {onSelect && <button type="button" className="pl-toolbox-item"
               onClick={() => onSelect(existing.id)}>
-              <span>Select {nodeLabel(existing, catalog.components, document.layout)}</span>
+              <span>Select {nodeLabel(existing, components, document.layout)}</span>
             </button>}
           </div> : items.map((component) => {
-            const blocker = addBlocker(definition, component);
+            const blocker = link ? undefined : addBlocker(definition, component);
             return <button
               type="button"
               key={component.id}
               className="pl-toolbox-item"
               title={blocker ?? component.description}
-              aria-label={`Add ${component.label}`}
+              aria-label={`${link ? "Insert" : "Add"} ${component.label}`}
               disabled={!!blocker}
-              draggable={!blocker}
+              draggable={!link && !blocker}
               onDragStart={(event) => {
                 event.dataTransfer.setData(
                   "application/off-key-component",
@@ -90,7 +96,9 @@ export function PipelineToolbox({
           })}
         </section>
       ))}
-      {!sections.length && <p className="pl-help">No matching components.</p>}
+      {!sections.length && <p className="pl-help">
+        {link && !search ? "No component fits this connection." : "No matching components."}
+      </p>}
     </aside>
   );
 }

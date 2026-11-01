@@ -180,6 +180,43 @@
   text-overflow: ellipsis;
   color: hsl(var(--muted-foreground));
 }
+.pl-node-summary {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: hsl(var(--muted-foreground));
+}
+.pl-node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 40px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.pl-node-chips > span {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--pl-node-accent) 24%, hsl(var(--background)));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--pl-node-accent) 12%, hsl(var(--background)));
+  color: color-mix(in srgb, var(--pl-node-accent) 78%, hsl(var(--foreground)));
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+.pl-node-chips > span.is-more {
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+/* Two rows of chips under an operation name need the room of a second title line. */
+.pl-node-title:has(.pl-node-operation):has(.pl-node-chips) strong {
+  -webkit-line-clamp: 1;
+}
 .pl-node-status {
   display: flex;
   align-items: center;
@@ -250,6 +287,65 @@
 }
 .pl-node .react-flow__handle.is-incompatible {
   cursor: not-allowed;
+}
+
+/* An output port of features carries how many columns leave it. */
+.pl-node .react-flow__handle.has-count::after {
+  content: attr(data-count);
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  color: hsl(var(--background));
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* A count from before the latest edit recedes until it has been checked again. */
+.pl-node .react-flow__handle.has-count.is-stale::after {
+  color: color-mix(in srgb, hsl(var(--background)) 45%, var(--pl-data-color));
+}
+
+/* "+" on a pointed-at, focused or selected wire inserts a step there. At rest it
+   neither shows nor takes the pointer, so it never covers a dot on a short wire;
+   once offered it sits above the cards for the same reason. */
+.pl-wire-insert {
+  position: absolute;
+  pointer-events: none;
+}
+.pl-wire-insert:is(.is-active, :focus-within) {
+  pointer-events: all;
+  z-index: 2000;
+}
+.pl-canvas-wrap .pl-wire-insert button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--pl-data-color, hsl(var(--muted-foreground)));
+  border-radius: 50%;
+  background: hsl(var(--background));
+  color: var(--pl-data-color, hsl(var(--muted-foreground)));
+  box-shadow: 0 1px 4px #0000001f;
+  cursor: pointer;
+  opacity: 0;
+}
+.pl-canvas-wrap .pl-wire-insert.is-active button,
+.pl-canvas-wrap .pl-wire-insert button:is(:hover, :focus-visible, [data-state="open"]) {
+  opacity: 1;
 }
 
 .pl-canvas-feedback {

@@ -8,7 +8,7 @@ import { PipelineToolbox } from "./PipelineToolbox";
 import { useUndoShortcuts } from "./useGraphEditor";
 
 export type InspectorPanel = "service" | "component" | null;
-type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"> & {
+type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale"> & {
   catalog: PipelineCatalog;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
@@ -95,7 +95,7 @@ export function PipelineWorkbench({
             <div className="pl-component-menu-heading"><h3>Components</h3>
               <Popover.Close aria-label="Close components"><X size={16} aria-hidden="true" /></Popover.Close>
             </div>
-            <PipelineToolbox catalog={catalog} document={props.document} onAdd={add}
+            <PipelineToolbox components={catalog.components} document={props.document} onAdd={add}
               onSelect={(id) => { setMenu(false); select(id); }}
               onDragStart={() => {
                 // Keep the source visible until the browser captures its drag image.
@@ -145,7 +145,7 @@ export function PipelineWorkbench({
     </div>
     <div className={`pl-editor-grid${panel ? " pl-editor-grid--settings" : ""}`}>
       <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-        onSelect={select} onAdd={add} />
+        features={status?.features} featuresStale={checking} onSelect={select} onAdd={add} />
       {panel && <div className="pl-settings-panel" id={panelId} onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
           event.stopPropagation(); close();

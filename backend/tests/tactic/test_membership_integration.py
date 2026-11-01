@@ -38,6 +38,23 @@ from tests.support.tokens import access_token
 
 
 @pytest.mark.asyncio
+async def test_remembered_session_grace_accepts_a_naive_replacement_time():
+    # issued_at and expires_at are normalised to UTC; replaced_at must be too.
+    remembered = SimpleNamespace(
+        session_version=1,
+        replaced_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5),
+    )
+    user = SimpleNamespace(
+        id=1, email="a@example.com", session_version=1, is_active=True, is_verified=True
+    )
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(first=lambda: (remembered, user))
+    claims = await RememberedSessionService(session).refresh("token")
+    assert claims == {"id": 1, "email": "a@example.com", "session_version": 1}
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
     member_database,
 ):

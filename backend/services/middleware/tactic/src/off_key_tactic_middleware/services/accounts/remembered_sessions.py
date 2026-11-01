@@ -97,7 +97,7 @@ class RememberedSessionService:
             "session_version": user.session_version,
         }
         if remembered.replaced_at is not None:
-            if now - remembered.replaced_at <= ROTATION_GRACE:
+            if now - _utc(remembered.replaced_at) <= ROTATION_GRACE:
                 # A concurrent refresh already set the replacement cookie.
                 await self.session.commit()
                 return identity

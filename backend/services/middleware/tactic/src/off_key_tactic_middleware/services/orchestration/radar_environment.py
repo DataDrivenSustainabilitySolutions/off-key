@@ -82,8 +82,11 @@ def build_radar_environment(
 ) -> dict[str, str]:
     """Compile validated service configuration into RADAR environment variables.
 
-    ``validate_params`` merges catalogue defaults into the model parameters. A
-    persisted launch already holds merged parameters, so rebuilding it skips this.
+    ``validate_params`` checks the model parameters, with catalogue defaults
+    filled in, against the detector catalogue. The environment still carries the
+    pipeline's own parameters, because RADAR rejects a monitoring config that
+    differs from the one it derives from the pipeline. A persisted launch was
+    validated when it was saved, so rebuilding it skips the check.
     """
     monitoring = config.monitoring
     mqtt_config = RadarMqttOverrides.model_validate(

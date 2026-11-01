@@ -28,7 +28,9 @@ ENV VITE_LOCAL_ADMIN_EMAIL=${VITE_LOCAL_ADMIN_EMAIL}
 COPY --chown=node:node . .
 RUN npm run build
 
-FROM nginx:1.31.8-alpine AS production
+# alpine-slim runs the same nginx build as alpine, without the optional modules
+# (njs, xslt, image-filter, geoip, acme) and curl that this config never loads.
+FROM nginx:1.31.8-alpine-slim AS production
 
 LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
       org.opencontainers.image.description="Production image for the Off-Key frontend" \

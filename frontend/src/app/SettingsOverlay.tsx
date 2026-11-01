@@ -50,6 +50,8 @@ export function SettingsOverlay() {
   const current = sections.find(entry => entry.id === section);
   useOverlayDocumentTitle(current?.label);
   const dialog = useRef<HTMLDivElement>(null);
+  const inOtherDialog = (target: EventTarget | null) => target instanceof Element
+    && !dialog.current?.contains(target) && !!target.closest("[role=dialog], [role=alertdialog]");
   const nav = useRef<HTMLElement>(null);
   // On phones the sections scroll sideways; keep the open one in view.
   // Braced: browsers may return a promise from scrollIntoView, which an effect must not return.
@@ -71,7 +73,10 @@ export function SettingsOverlay() {
       <Dialog.Content ref={dialog} className="app-settings-dialog"
         // Start on the window itself rather than lighting up the first section.
         onOpenAutoFocus={event => { event.preventDefault(); dialog.current?.focus(); revealSection(); }}
-        onEscapeKeyDown={event => { if (saving) event.preventDefault(); }}
+        // A dialog opened above the overlay (remove member, catalogue editor) handles its
+        // own Escape and clicks; Radix can briefly count the overlay as topmost too.
+        onEscapeKeyDown={event => { if (saving || inOtherDialog(event.target)) event.preventDefault(); }}
+        onInteractOutside={event => { if (inOtherDialog(event.target)) event.preventDefault(); }}
         onCloseAutoFocus={event => {
           event.preventDefault();
           if (document.activeElement && document.activeElement !== document.body) return;

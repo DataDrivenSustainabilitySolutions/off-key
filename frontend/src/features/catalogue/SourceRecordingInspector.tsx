@@ -79,14 +79,15 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     {scope.kind === "reading" && ids.length === 1 && <p className="ex-muted">{originLabel(runtime, ids[0]!, document)}</p>}
     {canEdit && <>
       <div className="source-recording-choice" role="radiogroup" aria-label="Recording" aria-busy={busy}>
-        {options.map(([value, label]) => <label key={value} className={choice === value ? "is-selected" : undefined}>
-          <input type="radio" name={`recording-${scopeKey(scope)}`} value={value} checked={choice === value}
-            disabled={busy} onChange={() => choose(value)} />{label}
+        {options.map(([value, label]) => <div key={value} className={`source-recording-option${choice === value ? " is-selected" : ""}`}>
+          <label><input type="radio" name={`recording-${scopeKey(scope)}`} value={value} checked={choice === value}
+            disabled={busy} onChange={() => choose(value)} />{label}</label>
+          {/* The interval sits beside its option, not inside the label, so typing in it never picks an option. */}
           {value === "sample" && <span className="source-recording-interval">every
             <input aria-label="Seconds between samples" type="number" min={1} max={3600} value={interval} disabled={busy}
-              onClick={event => event.stopPropagation()} onChange={event => setIntervalText(event.target.value)}
+              onChange={event => setIntervalText(event.target.value)}
               onBlur={commitInterval} onKeyDown={event => { if (event.key === "Enter") commitInterval(); }} />s</span>}
-        </label>)}
+        </div>)}
       </div>
       {busy && <p className="ex-muted" role="status">Saving…</p>}
       {scope.kind !== "reading" && ids.length > 1 && <fieldset className="source-readings" disabled={busy}>

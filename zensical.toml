@@ -13,6 +13,7 @@ nav = [
   { "User guide" = [
     { "Web app" = "user-guide/web-app.md" },
     { "Monitoring" = "user-guide/monitoring.md" },
+    { "Monitor three phases together" = "user-guide/phase-monitoring.md" },
   ] },
   { "Development" = [
     { "Setup" = "development/setup.md" },

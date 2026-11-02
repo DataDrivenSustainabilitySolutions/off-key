@@ -589,13 +589,16 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`ab080c999591da03b0a7d75574bb0db4051037b9`, which retains the previous platform
-code at `b5c6dd3c` with the published ABERRANT 1.4.0 pin, frozen lock, generated
-catalog and reviewed 1.3.0 saved-launch normalization. It retains the additive
-field discovery metadata so an already-open new browser can keep its controls
-while the backend rolls back. The binary
-rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0 is checked
-separately and incompatible checkpoints relearn. Its migration ledger, numerical
+`a13839cafe0d9a810e7ea102e41027b7187989cd`, the detector fusion runtime that added
+migration 015 (`detector_results`). It shares the current migration ledger, the
+published ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery
+metadata, so an already-open new browser keeps its controls while the backend
+rolls back. The previous reference, `ab080c99`, kept the platform code at
+`b5c6dd3c`; it cannot be a reference any more, because releases before migration
+015 refuse a database that has applied it. Rolling back past migration 015 means
+restoring a verified backup, as [recovery](../operations/recovery.md) describes.
+The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0
+is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:
 each release calibrates its own run, and detector checkpoints refuse a changed

@@ -11,6 +11,7 @@ from typing import Any
 
 # Detector context keys, in precedence order, and the phase that scores live data.
 INFERENCE_PHASES = {"static_conformal": "ready", "adaptive_stream": "operational"}
+HELD_BACK_PHASE = "held_back"
 
 
 def strategy_context_key(context: dict[str, Any] | None) -> str | None:
@@ -31,6 +32,12 @@ def inference_key(context: dict[str, Any] | None) -> str | None:
 
 def is_inference(context: dict[str, Any] | None) -> bool:
     return inference_key(context) is not None
+
+
+def is_held_back(context: dict[str, Any] | None) -> bool:
+    """A Gate held the observation back: processed as designed, not scored."""
+    key = strategy_context_key(context)
+    return key is not None and context[key].get("phase") == HELD_BACK_PHASE
 
 
 @dataclass

@@ -80,7 +80,8 @@ def main() -> None:
         "\nexport const PIPELINE_LIMITS = { "
         f"nodes: {limits['nodes']['maxItems']}, "
         f"edges: {limits['edges']['maxItems']}, "
-        f"slots: {limits['input_slots']['maxItems']} }} as const;\n"
+        f"slots: {limits['input_slots']['maxItems']}, "
+        f"detectors: {pipelines.MAX_DETECTORS} }} as const;\n"
     )
     target = (
         Path(__file__).resolve().parents[2]

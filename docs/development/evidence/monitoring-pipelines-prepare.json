@@ -1,0 +1,188 @@
+{
+  "environment": {
+    "python": "3.13.18 (main, Oct 26 2026, 14:08:19) [Clang 23.1.3 ]",
+    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+    "aberrant": "1.4.0",
+    "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logical_cpus_visible": 4,
+    "cgroup_cpu_max": null,
+    "cgroup_memory_max_bytes": null,
+    "thread_controls": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "settings": {
+    "samples": 1000,
+    "repeats": 5,
+    "warmup": 512,
+    "bounds_samples": 2000,
+    "seed": 42,
+    "timing_only": true
+  },
+  "timing_scope": "Numeric score/learn and bounded diagnostics; excludes I/O",
+  "workloads": {
+    "prepare": {
+      "nodes": 9,
+      "edges": 8,
+      "input_features": 8,
+      "fingerprint": "14708a93080355e550e5dca936b401f6d7adc215b8bb1df92c3a2cb49bcad101",
+      "detector": {
+        "id": "model",
+        "kind": "detector",
+        "component": "detector:aberrant_moving_mahalanobis_distance",
+        "contract_version": 1,
+        "params": {
+          "bias": true,
+          "window_size": 128
+        },
+        "label": null
+      },
+      "feature_components": [
+        {
+          "id": "despike",
+          "kind": "transform",
+          "component": "prepare.despike",
+          "contract_version": 1,
+          "params": {
+            "window_size": 11,
+            "threshold": 3.0
+          },
+          "label": null
+        },
+        {
+          "id": "smooth",
+          "kind": "transform",
+          "component": "prepare.smooth",
+          "contract_version": 1,
+          "params": {
+            "method": "exponential",
+            "window_size": 10
+          },
+          "label": null
+        },
+        {
+          "id": "change",
+          "kind": "transform",
+          "component": "prepare.change",
+          "contract_version": 1,
+          "params": {
+            "apply_to": [
+              "f0",
+              "f1",
+              "f2",
+              "f3"
+            ],
+            "mode": "difference",
+            "lag": 1
+          },
+          "label": null
+        },
+        {
+          "id": "spread",
+          "kind": "transform",
+          "component": "prepare.rolling",
+          "contract_version": 1,
+          "params": {
+            "apply_to": [
+              "f0",
+              "f1",
+              "f2",
+              "f3"
+            ],
+            "statistic": "std",
+            "window_size": 60
+          },
+          "label": null
+        },
+        {
+          "id": "scale",
+          "kind": "transform",
+          "component": "adaptive.standard_scaler",
+          "contract_version": 1,
+          "params": {
+            "with_std": true
+          },
+          "label": null
+        }
+      ],
+      "comparison_method": "Paired states, alternating 10-observation chunks",
+      "cpu_overhead_percent": 13.696487135270097,
+      "cpu_ns_per_observation_disabled": 783334.091,
+      "cpu_ns_per_observation_enabled": 890623.344,
+      "wall_overhead_percent": 13.291371460423829,
+      "wall_ns_per_observation_disabled": 800348.928,
+      "wall_ns_per_observation_enabled": 906726.277,
+      "timings": {
+        "disabled": [
+          {
+            "wall_ns": 867594479,
+            "cpu_ns": 855063316
+          },
+          {
+            "wall_ns": 821571508,
+            "cpu_ns": 820911897
+          },
+          {
+            "wall_ns": 775659865,
+            "cpu_ns": 764394882
+          },
+          {
+            "wall_ns": 800348928,
+            "cpu_ns": 783334091
+          },
+          {
+            "wall_ns": 794440481,
+            "cpu_ns": 781719392
+          }
+        ],
+        "enabled": [
+          {
+            "wall_ns": 998177659,
+            "cpu_ns": 976889851
+          },
+          {
+            "wall_ns": 938785594,
+            "cpu_ns": 938266495
+          },
+          {
+            "wall_ns": 878964334,
+            "cpu_ns": 870786494
+          },
+          {
+            "wall_ns": 893680658,
+            "cpu_ns": 880863880
+          },
+          {
+            "wall_ns": 906726277,
+            "cpu_ns": 890623344
+          }
+        ]
+      },
+      "equal_scores_and_alarms": true,
+      "prepare_stage": {
+        "required_observations": 80,
+        "cpu_ns_per_observation_disabled": 55003.019,
+        "cpu_ns_per_observation_enabled": 67023.547,
+        "timings_cpu_ns": {
+          "disabled": [
+            55003019,
+            54058320,
+            55169034,
+            56385972,
+            54654208
+          ],
+          "enabled": [
+            70024796,
+            66290416,
+            67023547,
+            75975824,
+            66831521
+          ]
+        }
+      }
+    }
+  }
+}

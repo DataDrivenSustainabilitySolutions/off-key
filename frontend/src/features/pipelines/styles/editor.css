@@ -69,6 +69,7 @@
 }
 
 .pl-startup {
+  --pl-preparing: hsl(var(--muted-foreground));
   --pl-learning: hsl(var(--primary));
   --pl-calibration: #b45309;
   margin: 16px 0;
@@ -99,6 +100,10 @@
   color: hsl(var(--muted-foreground));
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
+}
+
+.pl-startup .is-preparing {
+  --pl-phase: var(--pl-preparing);
 }
 
 .pl-startup .is-learning {

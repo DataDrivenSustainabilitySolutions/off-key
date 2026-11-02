@@ -17,7 +17,7 @@ from .adaptive import ADAPTIVE_MODELS_BY_TYPE
 from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
 from .pipeline_compiler import compile_pipeline, validate_pipeline
 from .pipeline_digest import digest
-from .pipeline_parameters import PARAMETER_MODELS
+from .pipeline_parameters import PARAMETER_MODELS, policy_settings
 
 __all__ = [
     "PARAMETER_MODELS",
@@ -34,22 +34,28 @@ __all__ = [
 
 
 def derive_monitoring_config(definition: PipelineDefinition):
-    definition = compile_pipeline(definition).definition
-    detector = next(node for node in definition.nodes if node.kind == "detector")
-    policy = next(node for node in definition.nodes if node.kind == "policy")
+    """The run's monitoring settings: its first detector and the policy's own.
+
+    A design that combines detectors reads the others from its graph.
+    """
+    compiled = compile_pipeline(definition)
+    nodes = {node.id: node for node in compiled.definition.nodes}
+    detector = nodes[compiled.detector_id]
+    policy = policy_settings(nodes[compiled.policy_id].params)
+    settings = compiled.definition.settings
     common: dict[str, Any] = dict(
         model_type=detector.component.removeprefix("detector:"),
         model_params=detector.params,
-        training_window_size=definition.settings.training_window_size,
-        calibration_window_size=definition.settings.calibration_window_size,
+        training_window_size=settings.training_window_size,
+        calibration_window_size=settings.calibration_window_size,
     )
-    if definition.strategy == "adaptive_stream":
-        return AdaptiveStreamConfig(**common, threshold_config=policy.params)
+    if compiled.definition.strategy == "adaptive_stream":
+        return AdaptiveStreamConfig(**common, threshold_config=policy)
     return StaticBaselineConfig(
         **common,
-        seed=definition.settings.seed,
-        conformal_strategy=definition.settings.conformal_strategy,
-        martingale_config=policy.params,
+        seed=settings.seed,
+        conformal_strategy=settings.conformal_strategy,
+        martingale_config=policy,
     )
 
 

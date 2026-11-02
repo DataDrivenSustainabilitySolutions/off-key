@@ -137,6 +137,7 @@ async def test_chart_evidence_service_uses_compact_cursor_projection():
             "anomaly_score": None,
             "restarted_martingale": 4.0,
             "tracker_results": [],
+            "detector_results": [],
             "threshold": 100.0,
             "alarm": False,
             "created": now + timedelta(milliseconds=1),

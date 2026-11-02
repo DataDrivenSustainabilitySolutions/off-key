@@ -117,6 +117,22 @@ inspector instead of narrowing the graph. Cards use larger titles, stage colors
 and typed ports; descriptions appear in component settings. Opening and arranging
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
+Detectors are the one step kind a design may repeat outside the add-step menu.
+`addDetector()` copies the selected detector, model and settings, as
+`detector_N`, connects it to the same input and appends it to the policy, up to
+`PIPELINE_LIMITS.detectors`, which the type generator exports from
+`MAX_DETECTORS`. `occupiedInput()` and `connectNodes()` treat the policy like a
+merge, so another detector's connection is added instead of replacing one, and
+`detectorIds()` orders detectors by node ID as RADAR does. **Combine detectors**
+has its own control (`FUSION_CHOICES`) once there are two detectors; a strategy
+switch keeps it, and the policy card leads with *Strongest of 2 detectors*.
+`featuresView()` takes the detector to show, and `detectorsAfter()` lets a row's
+menu say when a Prepare step on a shared path also reaches other detectors. A
+sampled observation of combined detectors carries `detectors`, each detector's
+score and surprise (`ObservedDetector`); each detector's own preview outputs its
+score. The live inspector lists them for the policy, and the chart tooltip lists
+an evidence row's `detector_results`.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint
@@ -197,10 +213,173 @@ strategies. Robust scaling uses scikit-learn's `RobustScaler` on training data
 and Aberrant's `RollingRobustScaler` online; both use linear quartiles and scale
 by 1 when a feature's interquartile range is zero.
 
+Prepare steps (`pipeline_prepare.py`) are deterministic kernels that run once
+per observation, in arrival order, before anything learns. `stage_split()` takes
+every Prepare node and its ancestors, except the source, as the stage. Its
+frontier is the stage nodes, and the source, whose features a later node uses, in
+compiled order. RADAR's `PrepareStage` runs the stage on the bound observation and
+passes the frontier's features, keyed `<node>.<feature>`, to the learned stage:
+static graphs fit and score those columns, and adaptive graphs read them through
+`Prepared` input nodes. Designs without Prepare steps keep their runtime shape,
+so existing checkpoints load unchanged.
+
+Each kernel advances an immutable state per feature and returns a value, or none
+while its window fills. The stage commits an observation only when every step
+succeeds. A step that cannot use a value raises `PrepareRejected`, an
+`ObservationRejected`: every state stays as it was, the observation becomes a
+`pipeline_observation_rejected` coverage gap, and the run continues. Rejections
+are counted per node by reason (`non_finite`, `out_of_domain`, `out_of_range`).
+A kernel with lead L outputs from its (L+1)-th value, so the stage is ready at
+one plus the largest sum of leads along a chain. Until then the detectors return
+`preparing` results, the run stage reads `N/M observations prepared` and no
+learned node runs. The static strategy keeps preparing while it trains in the
+background, so windows never restart. Checkpoints carry the stage state
+(`prepare`, version 1), and a restore refuses state that does not match the
+design. A valid check reports `preparation_observations`, the observations before
+the first prepared one, which the composer shows as **Preparing** before learning.
+
+The compiler marks Prepare outputs as derived (`raw=False`) and propagates bounds
+through them. It rejects a Prepare step downstream of a learned one (`stage`)
+and limits all windows to 50,000 values across their features
+(`prepare_budget`). Means use `math.fsum`, standard deviations divide
+`math.sumprod` of the deviations by n − 1, and order statistics keep a sorted copy
+updated by bisection; an even window's median averages the middle pair. Despike
+compares against 1.4826 × MAD and leaves a flat window unchanged. Change and
+Rolling statistic default to `result: add`, with suffixes named after their
+settings, such as `diff1` and `mean60`; scope settings at a step's own defaults
+are left out of the normalized parameters.
+
+Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
+state and have output from the first observation. A recursive-descent parser in
+`pipeline_formula.py` reads formulas and conditions, never `eval`. Its tree serves
+the compiler, which checks names and kinds and infers ranges by interval
+arithmetic, and RADAR, which compiles it into closures once per run. An
+expression holds at most 512 characters, 32 nested levels and 100 levels of
+operations. Problems raise `FormulaError` with a 1-based character position and
+a `difflib` suggestion, reported as `formula` issues on the setting. Evaluation
+raises `PrepareFailure` for a division by 0, a value outside a function's domain
+or a result that is not finite, so the observation is skipped like any other
+Prepare rejection; `and` and `or` short-circuit, so a guard such as
+`x > 0 and log(x) > 1` holds. The compiler's `values` check derives, from the
+ranges of their inputs, the values a Math step, a percent Change, a Formula or a
+Gate will skip: a warning when some are skipped and an error when every
+observation would be, or when a condition is never true. A seeded fuzz test
+checks that any text parses or fails with `FormulaError`, that evaluation fails
+only with `PrepareFailure`, and that every value lies in the inferred range.
+
+A Gate whose condition is false withholds the observation: the steps before it
+commit their states, the steps after it do not run, and `PrepareStage.run`
+returns `Withheld("held_back", gate)`. Both detectors return a `held_back` result,
+which is neither learned, scored nor persisted and is no coverage gap. The
+activity tracker counts it as progress, so a Gate that stays closed does not read
+as stalled inference. A rejection anywhere in the pass wins over a closed Gate.
+Stage readiness follows each step's own update count, so observations held back
+before a window do not fill it: a step needs the observations its predecessors
+still need, then its own warm-up. The stage state counts `held_back`; checkpoints
+without the count load it as 0.
+
+A failure in the learned stage costs one observation too, when no learned state
+changed. Aberrant's `GraphPipeline.score_one` only reads committed state, and
+`learn_one` rolls every learner back when a step fails before the detector
+learns; both raise `GraphExecutionError`. The adaptive detector turns that into
+`StepRejected(node, "error", message)`, the `ObservationRejected` that
+`PrepareRejected` also extends. A `GraphStateUncertainError`, raised when a learner
+without a transaction, such as the detector, may have changed, still fails the
+run. In the static strategy `BatchFeatureGraph` raises `NonFiniteFeatures` when a
+fitted step returns values that are not finite: fatal while fitting, and a
+`non_finite` skip while scoring one observation, which only reads fitted state.
+Before raising, `_skip()` calls `PrepareStage.revert()`, which restores the
+states the observation's Prepare commit replaced, so a skipped observation
+changes no state anywhere. The step's diagnostics count it under `rejections`.
+
+Each `FeatureDescription` in a validation report says where it comes from.
+`previous` names the feature it continues at the step before, as `node.name`, and
+`steps` lists the steps that changed the feature or its name. Readings have no
+`previous`, and neither have the features an Aggregate, a Formula or a projection
+makes; their `steps` start with that node. Neither field changes a fingerprint,
+and the report's budget pass drops them along with `slots`. The composer's
+Features view follows `previous` back from the detector's input to draw one row
+per feature. Its **+** places a step with `rowPlacement()`: a Prepare or Combine
+step on the wire into the first learned node on the feature's path, or into the
+detector when there is none, and a learned step on the detector's input wire,
+each scoped with `apply_to` to that feature.
+
+A valid report's `ready_after` maps each step of the Prepare stage to the
+observation, counted from 1, that gives its first output: one plus the leads
+along its longest chain. The inspector shows it as *Ready after N observations*,
+and as *at least* N after a Gate, because held-back observations do not count;
+the start-up timeline says *at least* for the same reason. A `formula` issue can
+carry a `fix`: the characters `start` to `end` and the `text` that replaces them,
+such as the closest known feature for an unknown one, written as a formula writes
+it. The composer offers it as **Use …**. The formula editor suggests the features
+that arrive at the step, the functions and, in a condition, `and`, `or` and `not`.
+
 Validation issues carry a severity. Errors block compilation, publishing and
 Apply; warnings use the same shape, appear on the step and in the status chip, and
 do not. The inspector keeps the last checked features while an edit is checked, so
 feature choices do not jump between checks.
+
+A design may combine up to four detectors (`MAX_DETECTORS`), each with one
+input. The policy takes one connection from each, and its `fusion` setting,
+**Combine detectors** in the composer, says how their scores make one: `max`
+(**Strongest**, the default) or `mean` (**Average**).
+`PipelineValidation.detector_ids` orders the detectors by node ID, `detector_id`
+is the first of them and `detector_inputs` maps each to the node it reads; a
+policy with several inputs has no features of its own. `fusion` is left out of
+the normalized parameters at `max`, and with a single detector, so existing
+designs keep their fingerprints. The compiler reports a design without a
+detector, one with more than four and a detector the policy does not read.
+`derive_monitoring_config` describes the first detector.
+
+`fusion.RankFusion` combines detectors by rank, so detectors on different scales
+need no tuning. A detector's surprise for a score s is the share of its n
+calibration scores strictly below it, u = #{i : c_i < s} / n. Strongest combines
+the counts by their maximum and Average by their sum; both stay integers, so ties
+are exact, and `value()` maps a combined count back to [0, 1]. Counting strictly
+below keeps one detector's rule: with one detector, or the same detector twice,
+`combined > threshold_count(q)` holds exactly when the score exceeds the
+`method="higher"` quantile q of the calibration scores.
+
+The static strategy makes the combined count a conformal p-value. `p_value()`
+ranks the new observation among the calibration observations: on each detector
+a calibration observation counts the calibration scores below it, plus one when
+the new score is lower, and the new observation counts the calibration scores
+below its score. Without a change these n + 1 combined counts are exchangeable,
+so the new observation's rank among them, with ties broken by a seeded
+generator, is uniform on 1 to n + 1. The p-value, rank / (n + 1), takes the same
+values with the same law as a single detector's, so the martingale trackers and
+their thresholds work unchanged. A test draws 10,000 calibrations, with
+continuous and with tied scores, and checks that law with a Kolmogorov–Smirnov
+test. `FusedStaticPipeline` keeps a `ConformalDetector` per detector, fitted on
+that detector's training and calibration features; `BatchFeatureGraph` fits each
+shared step once and returns every detector's input (`fit_transform_all`). The
+tie-breaking generator is saved with the checkpoint.
+
+The adaptive strategy builds one Aberrant `GraphPipeline` per detector from the
+nodes it reads (`ExecutionPlan.reads`), so each detector learns its own copy of a
+shared step; the copies see the same observations and stay equal. Every detector
+scores an observation before any of them learns it. A failed score skips the
+observation for all of them, and so does a learning failure of the first
+detector, before anything has learned. A later detector that fails cleanly misses
+that one observation and counts an `error` rejection; `GraphStateUncertainError`
+still stops the run. Warm-up ends when every graph is ready and the slowest has
+made the configured updates. Calibration keeps each observation's scores; when it
+is full, `RankFusion` freezes them, the threshold count is the policy's quantile
+(`method="higher"`) of the calibration observations' combined counts, and an
+observation alarms when its combined count exceeds it. The anomaly score is the
+fused surprise. Diagnostics report a shared step once, under the first detector
+that reads it (`ExecutionPlan.owned`), and the model nodes per detector.
+
+A combined run's checkpoint holds `pipelines`, `detector_configs` and
+`detector_fingerprints` in detector order in place of `pipeline`, and a restore
+refuses any difference. Admission counts the rank fusion, five n × K arrays of
+doubles plus the lists an adaptive run collects, and each adaptive copy of a
+learned step's state. Preflight builds every detector and reports a failure on
+its node. Results carry each detector's `detector_id`, `score` and `surprise` in
+their context, and `processed_features` holds each detector's features under its
+ID. Evidence stores them as `detector_results` (migration 015), while `p_value`
+or `anomaly_score` holds the fused value. Runs with one detector write an empty
+list and keep their results, checkpoints and diagnostics.
 
 ## Activation and recovery
 
@@ -381,6 +560,23 @@ also verify one learning update per eligible node and exact observation-on/off s
 equivalence. Timing-only reruns use `--timing-only`; a full run also repeats the
 sustained bounds probes.
 
+The `prepare` workload despikes and smooths eight inputs, adds a change and a
+60-value rolling standard deviation for four of them, and scales the 16 features
+into a moving Mahalanobis distance (`window_size=128`). Its Prepare stage needs
+80 observations before its first output. A 2026-11-01 timing-only run with the
+default settings used a four-CPU cloud container (Intel Xeon at 2.10 GHz, Linux
+x86-64, Python 3.13.18, Aberrant 1.4.0, one thread per numerical library, no
+cgroup CPU limit).
+
+| Prepare workload | CPU without observation | CPU with observation | CPU change |
+| --- | ---: | ---: | ---: |
+| Whole graph | 0.783 ms/observation | 0.891 ms/observation | +13.70% |
+| Prepare stage alone | 0.055 ms/observation | 0.067 ms/observation | +21.85% |
+
+The detector dominates; four Prepare steps over eight inputs cost about 55 µs per
+observation. The [Prepare evidence](evidence/monitoring-pipelines-prepare.json)
+keeps the raw trials of that run.
+
 The [runtime evidence](evidence/monitoring-pipelines-runtime.json) preserves the
 raw trials, component parameters, environment and retention results. Separate
 [browser evidence](evidence/monitoring-pipelines-browser.json) records editor
@@ -393,13 +589,16 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`ab080c999591da03b0a7d75574bb0db4051037b9`, which retains the previous platform
-code at `b5c6dd3c` with the published ABERRANT 1.4.0 pin, frozen lock, generated
-catalog and reviewed 1.3.0 saved-launch normalization. It retains the additive
-field discovery metadata so an already-open new browser can keep its controls
-while the backend rolls back. The binary
-rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0 is checked
-separately and incompatible checkpoints relearn. Its migration ledger, numerical
+`a13839cafe0d9a810e7ea102e41027b7187989cd`, the detector fusion runtime that added
+migration 015 (`detector_results`). It shares the current migration ledger, the
+published ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery
+metadata, so an already-open new browser keeps its controls while the backend
+rolls back. The previous reference, `ab080c99`, kept the platform code at
+`b5c6dd3c`; it cannot be a reference any more, because releases before migration
+015 refuse a database that has applied it. Rolling back past migration 015 means
+restoring a verified backup, as [recovery](../operations/recovery.md) describes.
+The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0
+is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:
 each release calibrates its own run, and detector checkpoints refuse a changed

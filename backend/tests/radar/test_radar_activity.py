@@ -136,3 +136,25 @@ def test_old_successful_write_is_only_a_problem_when_evidence_is_pending():
     assert status.status == "degraded"
     assert status.metrics["activity"]["persistence_stalled"]
     assert "persisted" in status.metrics["operational_status"]["detail"]
+
+
+def test_observations_a_gate_holds_back_are_progress_not_a_stall():
+    clock = [100.0]
+    tracker = ActivityTracker(set(), clock=lambda: clock[0])
+    tracker.record_result(_result())
+    clock[0] = 130.0
+    # A Gate held these back: processed as designed, never scored.
+    tracker.record_result(_result("held_back"))
+
+    def activity():
+        return evaluate_activity(
+            tracker.snapshot(),
+            freshness_seconds=10.0,
+            inference_expected=True,
+            database_health={},
+        )
+
+    assert not activity().inference_stalled
+    assert tracker.snapshot()["last_inference_age_seconds"] == 30.0
+    clock[0] = 145.0
+    assert activity().inference_stalled

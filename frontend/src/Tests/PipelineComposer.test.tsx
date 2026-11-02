@@ -66,8 +66,9 @@ describe("component placement", () => {
 
   it("explains why a component cannot be added instead of hiding it", () => {
     const definition = pipeline().definition;
+    // A second detector comes from the first one's settings, which connect it.
     expect(addBlocker(definition, components.find((item) => item.id === "detector:a")!))
-      .toBe("A design has one of these.");
+      .toBe("Add another detector from a detector's settings.");
     expect(addBlocker(definition, components.find((item) => item.id === "detector:static")!))
       .toBe("Not available for this strategy.");
     expect(addBlocker(definition, passthrough)).toBeUndefined();

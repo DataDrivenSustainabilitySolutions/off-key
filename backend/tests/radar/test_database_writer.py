@@ -247,6 +247,7 @@ def test_build_evidence_record_preserves_static_inference_context(
             "restarted_martingale_is_infinite": False,
             "log_restarted_martingale": 3.74,
             "tracker_results": [],
+            "detector_results": [],
             "threshold": 100.0,
             "alarm": False,
         }

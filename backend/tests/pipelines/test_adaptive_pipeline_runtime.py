@@ -16,6 +16,7 @@ from off_key_mqtt_radar.adaptive_detector import (
 from off_key_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
+    StepRejected,
 )
 from off_key_mqtt_radar.pipelines import adapters
 from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
@@ -259,25 +260,104 @@ def test_retained_history_blocks_calibration_until_reference_exists(model, ignor
     assert service.calibration_count == 0
 
 
-def test_execution_failure_stops_model_and_blocks_checkpoint():
+def _geometric(values):
     service = AdaptiveStreamDetectionService(
         adaptive_pipeline_config(
             model="aberrant_moving_geometric_average", branched=False
         ),
     )
-    for value in (1.0, 2.0, 3.0, 4.0):
+    for value in values:
         service.process_data_point({"reading_a": value})
+    return service
+
+
+def test_a_failed_score_skips_one_observation_and_keeps_the_run():
+    service, reference = (
+        _geometric((1.0, 2.0, 3.0, 4.0)),
+        _geometric((1.0, 2.0, 3.0, 4.0)),
+    )
     assert service.state == AdaptiveStreamState.OPERATIONAL
-    with pytest.raises(FatalExecutionError, match="positive") as failure:
+    before = pickle.dumps(service.pipeline)
+    # Scoring only reads the learned state, so a value the detector cannot
+    # score costs this observation and nothing else.
+    with pytest.raises(StepRejected, match="positive") as skipped:
         service.process_data_point({"reading_a": 0.0})
+    assert isinstance(skipped.value, ObservationRejected)
+    assert (skipped.value.node_id, skipped.value.reason) == ("model", "error")
+    assert pickle.dumps(service.pipeline) == before
+    assert service.state == AdaptiveStreamState.OPERATIONAL
+    assert service.processed_count == reference.processed_count
+    service.export_checkpoint()
+    later = [5.0, 6.0, 7.0]
+    assert [
+        service.process_data_point({"reading_a": v}).anomaly_score for v in later
+    ] == [reference.process_data_point({"reading_a": v}).anomaly_score for v in later]
+    model = service.get_pipeline_state()["nodes"]["model"]
+    assert model["rejections"] == {"error": 1}
+    assert model["state"] != "failed"
+
+
+def test_a_step_failing_while_it_learns_rolls_back_and_skips_one_observation(
+    monkeypatch,
+):
+    config = adaptive_pipeline_config()
+    service = AdaptiveStreamDetectionService(config)
+    reference = AdaptiveStreamDetectionService(config)
+    for index in range(1, 8):
+        service.process_data_point(_point(index))
+        reference.process_data_point(_point(index))
+    assert service.state == AdaptiveStreamState.OPERATIONAL
+    scaler = next(
+        node.transformer for node in service.pipeline.nodes if node.id == "scaled"
+    )
+    learn = type(scaler).learn_one
+    armed = [True]
+
+    def fragile(self, x):
+        if armed[0]:
+            raise ValueError("scaler broke")
+        return learn(self, x)
+
+    monkeypatch.setattr(type(scaler), "learn_one", fragile)
+    before = pickle.dumps(service.pipeline)
+    # Scored first, then learned: the learn pass fails and Aberrant rolls every
+    # learner back, so the whole observation is skipped.
+    with pytest.raises(StepRejected, match="scaler broke") as skipped:
+        service.process_data_point(_point(8))
+    assert (skipped.value.node_id, skipped.value.reason) == ("scaled", "error")
+    assert pickle.dumps(service.pipeline) == before
+    assert not service.pipeline.failed
+    assert (service.processed_count, service.anomaly_count) == (
+        reference.processed_count,
+        reference.anomaly_count,
+    )
+    armed[0] = False
+    later = range(9, 13)
+    assert [service.process_data_point(_point(i)).anomaly_score for i in later] == [
+        reference.process_data_point(_point(i)).anomaly_score for i in later
+    ]
+    assert service.get_pipeline_state()["nodes"]["scaled"]["rejections"] == {"error": 1}
+
+
+def test_a_detector_failing_while_it_learns_stops_the_run_and_blocks_checkpoint(
+    monkeypatch,
+):
+    service = _geometric((1.0, 2.0))
+
+    def broken(self, x):
+        raise RuntimeError("detector broke")
+
+    # The detector has no transaction, so its state is uncertain after this.
+    monkeypatch.setattr(type(service.pipeline.model), "learn_one", broken)
+    with pytest.raises(FatalExecutionError, match="detector broke") as failure:
+        service.process_data_point({"reading_a": 3.0})
     assert failure.value.node_id == "model"
-    count = service.pipeline.model_updates
+    assert service.pipeline.failed
     assert service.state == AdaptiveStreamState.FAILED
     with pytest.raises(FatalExecutionError):
         service.export_checkpoint()
     with pytest.raises(FatalExecutionError):
         service.process_data_point({"reading_a": 5.0})
-    assert service.pipeline.model_updates == count
     snapshot = service.get_pipeline_state()
     assert snapshot["nodes"]["model"]["state"] == "failed"
 

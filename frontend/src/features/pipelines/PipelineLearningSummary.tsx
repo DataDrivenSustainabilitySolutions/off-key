@@ -4,8 +4,43 @@ import type { PipelineState } from "./diagnostics";
 export function PipelineLearningSummary({ state }: { state: PipelineState }) {
   const adaptive = state.adaptive_learning;
   const batch = state.batch_training;
+  const preparation = state.preparation;
   return (
     <>
+      {preparation && (
+        <section aria-label="Prepare progress">
+          <h4>Prepare</h4>
+          <dl className="pl-metrics">
+            <div>
+              <dt>Observations prepared</dt>
+              <dd>
+                {preparation.observed} / {preparation.required}
+              </dd>
+            </div>
+            <div>
+              <dt>Ready</dt>
+              <dd>{preparation.ready ? "Yes" : "No"}</dd>
+            </div>
+            <div>
+              <dt>Skipped observations</dt>
+              <dd>{preparation.rejected}</dd>
+            </div>
+            {!!preparation.held_back && (
+              <div>
+                <dt>Held back by a Gate</dt>
+                <dd>{preparation.held_back}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="pl-help">
+            Prepare steps fill their windows before anything learns. Skipped
+            observations change no state.
+            {preparation.held_back
+              ? " Held-back observations are recorded but neither learned nor scored."
+              : ""}
+          </p>
+        </section>
+      )}
       {adaptive && (
         <section aria-label="Adaptive learning progress">
           <h4>Adaptive learning</h4>

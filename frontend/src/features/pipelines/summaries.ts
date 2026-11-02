@@ -1,7 +1,9 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
-import { addedName, SCOPE_FIELDS, stepScope } from "./scope";
+import { detectorIds } from "./model";
+import { addedName, combinedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { fusionChoice } from "./steps";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
@@ -13,9 +15,15 @@ const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase();
 
+const isRecord = (value: JsonValue | undefined): value is Record<string, JsonValue> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Whether a setting holds its default, comparing lists and nested settings by value. */
 function same(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
   if (Array.isArray(left) && Array.isArray(right))
     return left.length === right.length && left.every((item, index) => same(item, right[index]));
+  if (isRecord(left) && isRecord(right))
+    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => same(left[key], right[key]));
   return (left ?? null) === (right ?? null);
 }
 
@@ -30,7 +38,8 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 
 /** Settings that differ from the catalogue defaults, at most two, then a count of the rest. */
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
-  const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)
+  // The policy names how it combines detectors on its own, and only when there are several.
+  const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name) && field.name !== "fusion"
     && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
   const shown = lines.filter((line): line is string => !!line).slice(0, 2);
@@ -47,10 +56,81 @@ function scopeSummary(
   const scope = stepScope(node, component);
   if (!scope) return undefined;
   const used = scope.applyTo;
+  const computed = combinedName(node, component);
+  if (computed !== undefined)
+    return scope.add ? { chips: [`+ ${computed}`] } : { text: `Replaces them with ${computed}` };
   if (scope.add && scope.elementwise)
     return used ? { chips: used.map((name) => `+ ${addedName(name, scope.suffix ?? "new")}`) }
       : { text: `Adds *_${scope.suffix ?? "new"}` };
   return { text: scope.add ? "Keeps its inputs" : undefined, chips: used?.map((name) => labels.get(name) ?? name) };
+}
+
+const STATISTICS: Record<string, string> = {
+  mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
+};
+const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
+const FUNCTIONS: Record<string, string> = {
+  log: "log(x)", log1p: "log(1 + x)", sqrt: "√x", abs: "|x|", square: "x²",
+};
+
+function linear(scale: number, offset: number) {
+  const term = scale === 1 ? "x" : `${number(scale)} × x`;
+  if (offset === 0) return scale === 1 ? "x, unchanged" : term;
+  return `${term} ${offset < 0 ? "−" : "+"} ${number(Math.abs(offset))}`;
+}
+
+/** A formula or condition on one line. */
+const written = (value: JsonValue | undefined) => typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+
+/** What a Prepare step does, in the words of its settings. */
+function prepareSummary(node: PipelineNode, component: PipelineComponent | undefined): string | undefined {
+  const value = (name: string) => setting(node, component, name);
+  const amount = (name: string, fallback: number) => {
+    const raw = value(name);
+    return typeof raw === "number" ? raw : fallback;
+  };
+  switch (node.component) {
+    case "prepare.smooth": {
+      const window = number(amount("window_size", 10));
+      return value("method") === "rolling" ? `Mean of last ${window}` : `Exponential over ${window}`;
+    }
+    case "prepare.despike":
+      return `Window ${number(amount("window_size", 11))} · limit ${number(amount("threshold", 3))} MAD`;
+    case "prepare.change": {
+      const lag = amount("lag", 1);
+      if (value("mode") === "lag") return `Value ${count(lag, "observation")} back`;
+      return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
+    }
+    case "prepare.rolling":
+      return `${STATISTICS[String(value("statistic"))] ?? "Mean"} of last ${number(amount("window_size", 60))}`;
+    case "prepare.math":
+      return value("function") === "linear"
+        ? linear(amount("scale", 1), amount("offset", 0))
+        : FUNCTIONS[String(value("function"))];
+    case "prepare.range": {
+      const low = value("low");
+      const high = value("high");
+      const verb = value("action") === "skip" ? "Skip" : "Clip";
+      if (typeof low === "number" && typeof high === "number")
+        return `${verb} ${verb === "Skip" ? "outside" : "to"} ${number(low)} to ${number(high)}`;
+      if (typeof low === "number") return `${verb} below ${number(low)}`;
+      if (typeof high === "number") return `${verb} above ${number(high)}`;
+      return;
+    }
+    case "prepare.aggregate": {
+      const used = strings(value("apply_to"));
+      return `${AGGREGATES[String(value("function"))] ?? "Mean"} of ${used.length ? count(used.length, "feature") : "every feature"}`;
+    }
+    case "prepare.formula": {
+      const formula = written(value("expression"));
+      if (!formula) return "No formula yet";
+      return `${combinedName(node, component)} = ${formula}${value("result") === "replace" ? " · Replaces its inputs" : ""}`;
+    }
+    case "prepare.gate": {
+      const condition = written(value("condition"));
+      return condition ? `Only when ${condition}` : "No condition yet";
+    }
+  }
 }
 
 /** A card's one-line account of what it does with its inputs. Presentation only. */
@@ -61,6 +141,9 @@ export function nodeSummary(
 ): NodeSummary {
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
   const base = settingsSummary(node, component, definition, labels);
+  const detectors = detectorIds(definition).length;
+  if (node.kind === "policy" && detectors > 1)
+    return { text: [`${fusionChoice(node).label} of ${detectors} detectors`, base.text].filter(Boolean).join(" · ") };
   const scope = scopeSummary(node, component, labels);
   if (!scope) return base;
   return {
@@ -76,6 +159,8 @@ function settingsSummary(
   labels: Map<string, string>,
 ): NodeSummary {
   const params = node.params;
+  const prepared = prepareSummary(node, component);
+  if (prepared) return { text: prepared };
   switch (node.component) {
     case "source.aligned":
       return { text: count(definition.input_slots.length, "reading") };

@@ -315,7 +315,7 @@ def test_windows_share_one_budget():
         (
             {"window_size": 10},
             ["window_size"],
-            "Value error, Choose an odd number, so the window has a middle value",
+            "Choose an odd number, so the window has a middle value",
         ),
         (
             {"window_size": 303},
@@ -340,7 +340,7 @@ def test_skipping_cannot_add_features():
         )
     )
     assert [item.message for item in result.issues] == [
-        "Value error, Skipping leaves values unchanged, so there is nothing to add. "
+        "Skipping leaves values unchanged, so there is nothing to add. "
         "Choose Replace values."
     ]
 

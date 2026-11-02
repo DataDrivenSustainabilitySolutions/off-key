@@ -1,7 +1,8 @@
 import { useId } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { addedName, addsByDefault, defaultSuffix, setting, stepScope } from "./scope";
+import { CombinedName } from "./PipelineFormula";
+import { addedName, addsByDefault, combinedName, defaultSuffix, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
 
@@ -45,7 +46,14 @@ export function PipelineScope({ node, component, features, featureLabels, issues
   const components = typeof node.params.n_components === "number" ? node.params.n_components : 1;
   // A Range check that skips leaves values unchanged, so there is nothing to add.
   const keepsValues = node.component === "prepare.range" && setting(node, component, "action") === "skip";
-  const outcome = scope.elementwise
+  // An Aggregate computes one feature from at least two.
+  const computed = combinedName(node, component);
+  const fewest = computed === undefined ? 1 : 2;
+  const outcome = computed !== undefined
+    ? scope.add
+      ? `Keeps the features and adds ${computed}.`
+      : `Replaces ${chosen ? listed(used) : "the features"} with ${computed}.`
+    : scope.elementwise
     ? scope.add
       ? used.length ? `Keeps the values and adds ${listed(used.map((name) => addedName(name, scope.suffix ?? "new")))}.` : "Keeps the values and adds a copy of each."
       : keepsValues
@@ -71,7 +79,7 @@ export function PipelineScope({ node, component, features, featureLabels, issues
           {features.map((name) => {
             const checked = !chosen || chosen.includes(name);
             return <label className="parameter-check" key={name}>
-              <input type="checkbox" checked={checked} disabled={readOnly || (checked && used.length === 1)}
+              <input type="checkbox" checked={checked} disabled={readOnly || (checked && used.length <= fewest)}
                 onChange={(event) => toggle(name, event.target.checked)} />
               {featureLabels[name] ?? name}
             </label>;
@@ -97,6 +105,8 @@ export function PipelineScope({ node, component, features, featureLabels, issues
       </div>
       <small className="pl-help">{outcome}</small>
     </div>
+    {computed !== undefined
+      && <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />}
     {scope.elementwise && scope.add && <div className="pl-field">
       <label htmlFor={`${id}-suffix`}>Suffix</label>
       <input id={`${id}-suffix`} value={typeof node.params.suffix === "string" ? node.params.suffix : ""} disabled={readOnly}

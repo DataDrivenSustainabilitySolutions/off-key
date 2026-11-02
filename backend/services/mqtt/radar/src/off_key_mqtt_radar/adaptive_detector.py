@@ -26,6 +26,7 @@ from .memory import process_rss_mb
 from .models import AnomalyResult, inference_key
 from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.execution import PipelineExecutionMixin
+from .pipelines.prepare import Withheld
 
 
 class AdaptiveStreamState(Enum):
@@ -246,10 +247,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         started = time.time()
         self._bound = data
         prepared = self._prepared(data)
-        if prepared is None:
+        if isinstance(prepared, Withheld):
             self.processed_count += 1
             return self._result(
-                data, 0.0, False, "preparing", topic, charger_id, started
+                data, 0.0, False, prepared.reason, topic, charger_id, started
             )
         return self._process_current_state(prepared, topic, charger_id, started)
 

@@ -9,6 +9,13 @@ export type AdaptiveLearningState = {
   reason: string | null;
 };
 
+export type AggregateParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  function?: "mean" | "sum" | "min" | "max" | "std" | "range";
+  name?: string | null;
+};
+
 export type BatchTrainingState = {
   state: string;
   training_samples: number;
@@ -90,6 +97,16 @@ export type FeatureDescription = {
   minimum?: number | null;
   maximum?: number | null;
   raw?: boolean;
+};
+
+export type FormulaParameters = {
+  expression: string;
+  name?: string | null;
+  result?: "replace" | "add";
+};
+
+export type GateParameters = {
+  condition: string;
 };
 
 export type InputSlot = {
@@ -493,6 +510,7 @@ export type PreparationState = {
   observed: number;
   required: number;
   rejected: number;
+  held_back?: number;
 };
 
 export type PrepareScopeParameters = {

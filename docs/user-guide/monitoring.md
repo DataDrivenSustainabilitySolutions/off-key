@@ -120,8 +120,8 @@ template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
 Read a graph from left to right. Each card names its step family (Input,
-Prepare, Normalize, Reduce, Route, Transform, Detector, Decision policy or
-Evidence output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
+Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Decision policy
+or Evidence output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -222,6 +222,39 @@ represent, or a value outside a skipping **Range check**. Skipping changes no
 step's state, nothing learns from the observation, and it counts as a coverage
 gap. The step's diagnostics count skipped observations by reason. Evidence
 always records the raw readings.
+
+**Combine** steps compute one feature from several, usually after the features
+were prepared one by one. They run in the Prepare stage as well and have their
+value from the first observation.
+
+- **Aggregate** computes the mean, sum, minimum, maximum, standard deviation or
+  range across the features in **Applies to**, at least two of them.
+- **Formula** computes a feature from the features that arrive, such as
+  `dc_voltage * dc_current`. It knows `+ - * / ^`, parentheses, and `abs`,
+  `sqrt`, `log`, `log1p`, `exp`, `min`, `max` and `clip(value, low, high)`. A name
+  with other characters goes between backticks, such as `` `dc-voltage` ``; the
+  buttons below the formula insert the features that arrive.
+
+Both keep the features they use and add the result, named by **Name**, or
+`formula` and the function's name, such as `mean`, when it is empty. **Replace
+features** removes the features they use instead. A formula that cannot be read
+says where, such as *The expression ends too early at character 12*, and an
+unknown feature suggests the closest one that arrives. When an earlier step
+limits a feature's range, such as a **Range check**, the check knows the range of
+the result too and warns about values that will be skipped, such as a division by
+a feature that can be 0 or the logarithm of one that can be negative. When every
+observation would be skipped, it is an error.
+
+A **Gate** lets only the observations where its **Condition** holds go on, such
+as `dc_current > 1` to monitor a charger only while it charges. Compare with
+`<`, `<=`, `>`, `>=`, `==` and `!=`, and join comparisons with `and`, `or` and
+`not`. The observations it holds back are recorded, but nothing learns from them
+or scores them, and they are not coverage gaps. Steps before the Gate still see
+them; steps after it do not, so their windows fill only with observations that
+pass. The Prepare summary counts held-back observations, and the Gate's
+diagnostics read **Held back** while its condition does not hold. A condition
+that is never true is an error, and one that is always true a warning. **Before
+the first alarm** assumes that every observation passes.
 
 **Robust scaling** centers each feature on its median and divides by its
 interquartile range, so occasional spikes shift it less than standard scaling.

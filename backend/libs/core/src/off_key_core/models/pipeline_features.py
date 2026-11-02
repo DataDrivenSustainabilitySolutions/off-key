@@ -4,7 +4,8 @@ from collections.abc import Callable
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
-from .pipeline_prepare import PREPARE_COMPONENTS, prepared_bounds
+from .pipeline_combine import combined_columns
+from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
 from .pipeline_scope import PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
@@ -69,9 +70,7 @@ def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
     position = {item.name: item for item in columns}
     used = [position[name] for name in scope.selected]
     change = (
-        _prepared
-        if node.component in PREPARE_COMPONENTS
-        else ELEMENTWISE[node.component]
+        _prepared if node.component in LANE_COMPONENTS else ELEMENTWISE[node.component]
     )
     if not scope.add:
         # The used columns are the incoming ones, so they change in place.
@@ -120,8 +119,10 @@ def node_features(
         ]
     elif node.component in ROUTES:
         columns = ROUTES[node.component](node, columns)
-    elif node.component in ELEMENTWISE or node.component in PREPARE_COMPONENTS:
+    elif node.component in ELEMENTWISE or node.component in LANE_COMPONENTS:
         columns = _elementwise(node, columns)
+    elif node.component in ROW_COMPONENTS:
+        columns = combined_columns(node.component, node.params, columns)
     elif node.component in PROJECTIONS:
         columns = _projection(definition, node, columns)
     if len(columns) > 100:

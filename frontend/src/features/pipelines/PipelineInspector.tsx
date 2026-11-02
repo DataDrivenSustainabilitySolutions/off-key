@@ -15,6 +15,7 @@ import {
   setNodeParams,
   type GraphDocument,
 } from "./model";
+import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
 import { hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
@@ -246,6 +247,10 @@ export function PipelineInspector({
           {titleField}
           {component && scoped && (
             <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+              issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && (node.component === "prepare.formula" || node.component === "prepare.gate") && (
+            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
               issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && (

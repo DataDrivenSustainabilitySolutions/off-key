@@ -45,6 +45,17 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
   return typeof field?.default === "string" ? field.default : undefined;
 }
 
+/** The feature an Aggregate or Formula computes, named as core names it: the chosen
+ * name, "formula", or the Aggregate's function. Other steps compute none. */
+export function combinedName(node: PipelineNode, component?: PipelineComponent): string | undefined {
+  if (typeof node.params.name === "string" && node.params.name) return node.params.name;
+  if (node.component === "prepare.formula") return "formula";
+  if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
+}
+
+/** Feature names a formula can use as they are; others go between backticks. */
+export const formulaName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `\`${name}\``;
+
 /** Whether a step adds its output when Result is left at the step's default. */
 export const addsByDefault = (component?: PipelineComponent) =>
   component?.fields.find((field) => field.name === "result")?.default === "add";

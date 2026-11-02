@@ -25,10 +25,19 @@ export function PipelineLearningSummary({ state }: { state: PipelineState }) {
               <dt>Skipped observations</dt>
               <dd>{preparation.rejected}</dd>
             </div>
+            {!!preparation.held_back && (
+              <div>
+                <dt>Held back by a Gate</dt>
+                <dd>{preparation.held_back}</dd>
+              </div>
+            )}
           </dl>
           <p className="pl-help">
             Prepare steps fill their windows before anything learns. Skipped
             observations change no state.
+            {preparation.held_back
+              ? " Held-back observations are recorded but neither learned nor scored."
+              : ""}
           </p>
         </section>
       )}

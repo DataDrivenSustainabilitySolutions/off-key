@@ -1,7 +1,7 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
-import { addedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { addedName, combinedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
@@ -47,6 +47,9 @@ function scopeSummary(
   const scope = stepScope(node, component);
   if (!scope) return undefined;
   const used = scope.applyTo;
+  const computed = combinedName(node, component);
+  if (computed !== undefined)
+    return scope.add ? { chips: [`+ ${computed}`] } : { text: `Replaces them with ${computed}` };
   if (scope.add && scope.elementwise)
     return used ? { chips: used.map((name) => `+ ${addedName(name, scope.suffix ?? "new")}`) }
       : { text: `Adds *_${scope.suffix ?? "new"}` };
@@ -56,6 +59,7 @@ function scopeSummary(
 const STATISTICS: Record<string, string> = {
   mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
 };
+const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
 const FUNCTIONS: Record<string, string> = {
   log: "log(x)", log1p: "log(1 + x)", sqrt: "√x", abs: "|x|", square: "x²",
 };
@@ -65,6 +69,9 @@ function linear(scale: number, offset: number) {
   if (offset === 0) return scale === 1 ? "x, unchanged" : term;
   return `${term} ${offset < 0 ? "−" : "+"} ${number(Math.abs(offset))}`;
 }
+
+/** A formula or condition on one line. */
+const written = (value: JsonValue | undefined) => typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 
 /** What a Prepare step does, in the words of its settings. */
 function prepareSummary(node: PipelineNode, component: PipelineComponent | undefined): string | undefined {
@@ -99,6 +106,20 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
         return `${verb} ${verb === "Skip" ? "outside" : "to"} ${number(low)} to ${number(high)}`;
       if (typeof low === "number") return `${verb} below ${number(low)}`;
       if (typeof high === "number") return `${verb} above ${number(high)}`;
+      return;
+    }
+    case "prepare.aggregate": {
+      const used = strings(value("apply_to"));
+      return `${AGGREGATES[String(value("function"))] ?? "Mean"} of ${used.length ? count(used.length, "feature") : "every feature"}`;
+    }
+    case "prepare.formula": {
+      const formula = written(value("expression"));
+      if (!formula) return "No formula yet";
+      return `${combinedName(node, component)} = ${formula}${value("result") === "replace" ? " · Replaces its inputs" : ""}`;
+    }
+    case "prepare.gate": {
+      const condition = written(value("condition"));
+      return condition ? `Only when ${condition}` : "No condition yet";
     }
   }
 }

@@ -8,7 +8,7 @@ from typing import Any
 from ..execution_errors import FatalExecutionError
 from .diagnostics import PipelineDiagnostics
 from .plan import ExecutionPlan
-from .prepare import PrepareStage
+from .prepare import PrepareStage, Withheld
 
 
 class PipelineExecutionMixin:
@@ -28,15 +28,17 @@ class PipelineExecutionMixin:
         if stage is not None:
             self.diagnostics.external = frozenset(stage.frontier)
 
-    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | None:
-        """The learned stage's input, or None while the Prepare stage warms up.
+    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | Withheld:
+        """The learned stage's input, or why it gets none from this observation.
 
-        A rejected observation raises PrepareRejected and changes no state.
+        It gets none while the Prepare stage warms up, and none when a Gate
+        holds the observation back. A rejected observation raises
+        PrepareRejected and changes no state.
         """
         if self.prepare is None:
             return bound
         prepared = self.prepare.run(bound, self.diagnostics)
-        if prepared is None:
+        if isinstance(prepared, Withheld) and prepared.reason == "preparing":
             self.diagnostics.phase = "preparing"
         return prepared
 

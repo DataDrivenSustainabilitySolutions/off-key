@@ -29,7 +29,11 @@ from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
 from off_key_mqtt_radar.pipelines.components import Prepared
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.prepare import PrepareRejected, PrepareStage
+from off_key_mqtt_radar.pipelines.prepare import (
+    PrepareRejected,
+    PrepareStage,
+    Withheld,
+)
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 from off_key_mqtt_radar.preflight import preflight
 from sklearn.preprocessing import StandardScaler
@@ -158,7 +162,7 @@ def test_the_stage_waits_for_its_longest_chain_then_hands_over_its_columns():
     # Smooth outputs from observation 3, Change one observation later.
     assert stage.required == 4
     rows = outputs(stage, plan, range(1, 7))
-    assert rows[:3] == [None, None, None]
+    assert rows[:3] == [Withheld("preparing")] * 3
     assert all(list(row) == plan.input_columns for row in rows[3:])
     assert plan.input_columns == [
         "change.a",
@@ -184,6 +188,7 @@ def test_the_stage_waits_for_its_longest_chain_then_hands_over_its_columns():
         "observed": 4,
         "required": 4,
         "rejected": 0,
+        "held_back": 0,
     }
 
 
@@ -347,7 +352,7 @@ def test_static_monitoring_prepares_through_fitting_on_one_continuous_history():
 def test_the_batch_graph_fits_on_prepared_columns():
     plan = ExecutionPlan(execution("static_baseline"))
     stage = PrepareStage(plan)
-    rows = [row for row in outputs(stage, plan, range(1, 30)) if row is not None]
+    rows = [row for row in outputs(stage, plan, range(1, 30)) if isinstance(row, dict)]
     matrix = np.array([[row[name] for name in plan.input_columns] for row in rows])
     graph = BatchFeatureGraph(plan)
     np.testing.assert_allclose(
@@ -363,7 +368,7 @@ def test_a_detector_reading_the_prepared_columns_directly():
     plan = ExecutionPlan(execution("static_baseline", scale=False))
     assert plan.learned_nodes == []
     stage = PrepareStage(plan)
-    rows = [row for row in outputs(stage, plan, range(1, 12)) if row is not None]
+    rows = [row for row in outputs(stage, plan, range(1, 12)) if isinstance(row, dict)]
     matrix = np.array([[row[name] for name in plan.input_columns] for row in rows])
     graph = BatchFeatureGraph(plan)
     np.testing.assert_array_equal(graph.fit_transform(matrix), matrix)

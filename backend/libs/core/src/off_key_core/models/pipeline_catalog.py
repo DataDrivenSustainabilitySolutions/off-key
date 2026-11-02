@@ -117,6 +117,27 @@ def pipeline_components() -> list[PipelineComponent]:
             BOTH,
         ),
         (
+            "prepare.aggregate",
+            "transform",
+            "Aggregate",
+            "Mean, sum, minimum, maximum, spread or range across features.",
+            BOTH,
+        ),
+        (
+            "prepare.formula",
+            "transform",
+            "Formula",
+            "One feature computed from the features arriving here.",
+            BOTH,
+        ),
+        (
+            "prepare.gate",
+            "transform",
+            "Gate",
+            "Learn and score only the observations where a condition holds.",
+            BOTH,
+        ),
+        (
             "static.standard_scaler",
             "transform",
             "Standard scaling",

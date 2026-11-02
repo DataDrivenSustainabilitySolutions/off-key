@@ -149,11 +149,21 @@ class PipelineDiagnostics:
         updates: int | None,
         required: int | None,
         blocked_by: tuple[str, ...] = (),
+        held_back: bool = False,
     ) -> None:
-        """One Prepare step's part in an accepted observation, in the learn pass."""
+        """One Prepare step's part in an accepted observation, in the learn pass.
+
+        A Gate that holds the observation back is ready and says so. The steps
+        after it did not run, so they keep their state.
+        """
         metrics = self.nodes[node_id]
+        if held_back and inputs is None:
+            self._held_back(node_id, "Held back by a Gate before this step")
+            return
         state = (
-            "ready"
+            "held_back"
+            if held_back
+            else "ready"
             if output is not None
             else "waiting_for_dependency"
             if blocked_by
@@ -164,7 +174,7 @@ class PipelineDiagnostics:
             metrics["learn_time_ns"] += max(int(elapsed_ns), 0)
         metrics.update(
             state=state,
-            ready=output is not None,
+            ready=output is not None or held_back,
             learned_updates=updates,
             readiness_observed=None
             if required is None
@@ -182,6 +192,20 @@ class PipelineDiagnostics:
                 "input": self._preview(inputs),
                 "output": self._preview(output),
                 "state": state,
+                **(
+                    {"reason": "The condition does not hold for this observation"}
+                    if held_back
+                    else {}
+                ),
+            }
+
+    def _held_back(self, node_id: str, reason: str) -> None:
+        if self._pending is not None:
+            self._pending["passes"]["learn"][node_id] = {
+                "input": None,
+                "output": None,
+                "state": "held_back",
+                "reason": reason,
             }
 
     def prepare_rejected(

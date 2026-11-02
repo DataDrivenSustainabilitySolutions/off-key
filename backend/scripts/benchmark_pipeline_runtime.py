@@ -276,7 +276,8 @@ class StreamRunner:
             if self.diagnostics:
                 self.diagnostics.select_pass("learn")
             prepared = self._prepared(data)
-            if prepared is not None:
+            # Benchmark workloads have no Gate, so a withheld row is warm-up.
+            if isinstance(prepared, dict):
                 self.graph.learn_one(prepared)
         if not self.graph.readiness.ready:
             raise RuntimeError("Benchmark warm-up did not establish a ready graph")

@@ -16,7 +16,12 @@ from ..schemas.pipelines import (
     RollingRobustScalerParameters,
     StandardScalerParameters,
 )
-from .pipeline_prepare import PREPARE_COMPONENTS, PREPARE_MODELS, default_suffix
+from .pipeline_prepare import (
+    LANE_COMPONENTS,
+    PREPARE_COMPONENTS,
+    PREPARE_MODELS,
+    default_suffix,
+)
 
 # Steps that map each feature to one value, by the parameters that name their
 # added features; each parameter model holds the step's default suffix.
@@ -49,7 +54,8 @@ SCOPE_DEFAULTS: dict[str, Any] = {"apply_to": None, "result": "replace", "suffix
 RESULT_DEFAULTS: dict[str, str] = {
     component: model.model_fields["result"].default
     for component, model in PREPARE_MODELS.items()
-    if model.model_fields["result"].default != "replace"
+    if "result" in model.model_fields
+    and model.model_fields["result"].default != "replace"
 }
 MAX_FEATURE_NAME_LENGTH = 120
 
@@ -145,7 +151,7 @@ def step_scope(
             raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
         selected = tuple(apply_to)
     add = adds(component, params)
-    elementwise = component in ELEMENTWISE_SUFFIXES or component in PREPARE_COMPONENTS
+    elementwise = component in ELEMENTWISE_SUFFIXES or component in LANE_COMPONENTS
     added: tuple[str, ...] = ()
     if elementwise and add:
         suffix = params.get("suffix") or (

@@ -537,6 +537,8 @@ class PreparationState(PipelineModel):
     required: int
     """Observations until the first prepared row reaches the learned stage."""
     rejected: int
+    held_back: int = 0
+    """Observations a Gate held back from learning and scoring."""
 
 
 class AdaptiveLearningState(PipelineModel):
@@ -871,3 +873,77 @@ class RangeParameters(PrepareScopeParameters):
                 "Choose Replace values."
             )
         return self
+
+
+COMBINED_NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+
+def _combined_name(default: str) -> Any:
+    return Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=COMBINED_NAME_PATTERN,
+        title="Name",
+        description=(
+            "Name of the computed feature: letters, digits and underscores, "
+            f"not starting with a digit. Leave unset for {default}."
+        ),
+    )
+
+
+def _keeps(what: str) -> Any:
+    return Field(
+        default="add",
+        title="Result",
+        description=(
+            f"Keep {what} and add the computed feature, or replace them with it."
+        ),
+    )
+
+
+class AggregateParameters(ScopeParameters):
+    """One feature computed across the features this step uses."""
+
+    result: Literal["replace", "add"] = _keeps("the features this step uses")
+    function: Literal["mean", "sum", "min", "max", "std", "range"] = Field(
+        default="mean",
+        description=(
+            "Computed across the features of each observation; std is the sample "
+            "standard deviation and range is max minus min."
+        ),
+    )
+    name: str | None = _combined_name("the function's name, such as mean")
+
+
+class FormulaParameters(PipelineModel):
+    """One feature computed from the features arriving at the step."""
+
+    expression: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Formula",
+        description=(
+            "Arithmetic over the features arriving here, such as "
+            "dc_voltage * dc_current, with + - * / ^, parentheses, and abs, sqrt, "
+            "log, log1p, exp, min, max and clip. Write a name with other "
+            "characters between backticks."
+        ),
+    )
+    name: str | None = _combined_name("formula")
+    result: Literal["replace", "add"] = _keeps("the features the formula reads")
+
+
+class GateParameters(PipelineModel):
+    """Hold back the observations a condition rejects."""
+
+    condition: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Condition",
+        description=(
+            "Observations where it is false are recorded but neither learned nor "
+            "scored, such as dc_current > 1. Compare with < <= > >= == != and "
+            "join with and, or and not."
+        ),
+    )

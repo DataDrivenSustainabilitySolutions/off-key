@@ -59,6 +59,7 @@ def test_prepare_workload_scores_the_same_with_observation():
         "observed": 80,
         "required": 80,
         "rejected": 0,
+        "held_back": 0,
     }
     nodes = observed.diagnostics.snapshot()["nodes"]
     # 192 warm-up runs and 80 timed ones; each step starts once its input does.

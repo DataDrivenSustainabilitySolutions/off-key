@@ -29,6 +29,7 @@ from .memory import process_rss_mb
 from .models import AnomalyResult
 from .pipelines.batch import BatchFeatureGraph, FittedStaticPipeline
 from .pipelines.execution import PipelineExecutionMixin
+from .pipelines.prepare import Withheld
 
 
 class StaticConformalState(Enum):
@@ -259,14 +260,14 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         # Prepare runs in every state, so the baseline starts on a continuous
         # history even after observations were discarded during fitting.
         prepared = self._prepared(data)
-        if prepared is None:
+        if isinstance(prepared, Withheld):
             self.processed_count += 1
             return self._non_inference_result(
                 data,
                 topic,
                 charger_id,
                 start_time,
-                phase="preparing",
+                phase=prepared.reason,
                 extra_context=self._preparation(),
             )
         data = prepared

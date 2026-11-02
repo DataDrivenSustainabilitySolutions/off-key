@@ -233,6 +233,35 @@ Rolling statistic default to `result: add`, with suffixes named after their
 settings, such as `diff1` and `mean60`; scope settings at a step's own defaults
 are left out of the normalized parameters.
 
+Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
+state and have output from the first observation. A recursive-descent parser in
+`pipeline_formula.py` reads formulas and conditions, never `eval`. Its tree serves
+the compiler, which checks names and kinds and infers ranges by interval
+arithmetic, and RADAR, which compiles it into closures once per run. An
+expression holds at most 512 characters, 32 nested levels and 100 levels of
+operations. Problems raise `FormulaError` with a 1-based character position and
+a `difflib` suggestion, reported as `formula` issues on the setting. Evaluation
+raises `PrepareFailure` for a division by 0, a value outside a function's domain
+or a result that is not finite, so the observation is skipped like any other
+Prepare rejection; `and` and `or` short-circuit, so a guard such as
+`x > 0 and log(x) > 1` holds. The compiler's `values` check derives, from the
+ranges of their inputs, the values a Math step, a percent Change, a Formula or a
+Gate will skip: a warning when some are skipped and an error when every
+observation would be, or when a condition is never true. A seeded fuzz test
+checks that any text parses or fails with `FormulaError`, that evaluation fails
+only with `PrepareFailure`, and that every value lies in the inferred range.
+
+A Gate whose condition is false withholds the observation: the steps before it
+commit their states, the steps after it do not run, and `PrepareStage.run`
+returns `Withheld("held_back", gate)`. Both detectors return a `held_back` result,
+which is neither learned, scored nor persisted and is no coverage gap. The
+activity tracker counts it as progress, so a Gate that stays closed does not read
+as stalled inference. A rejection anywhere in the pass wins over a closed Gate.
+Stage readiness follows each step's own update count, so observations held back
+before a window do not fill it: a step needs the observations its predecessors
+still need, then its own warm-up. The stage state counts `held_back`; checkpoints
+without the count load it as 0.
+
 Validation issues carry a severity. Errors block compilation, publishing and
 Apply; warnings use the same shape, appear on the step and in the status chip, and
 do not. The inspector keeps the last checked features while an edit is checked, so

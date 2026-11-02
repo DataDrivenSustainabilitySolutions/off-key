@@ -3,7 +3,9 @@
 Both strategies run it on every observation in arrival order, also while a
 static baseline fits in the background, so the learned stage starts on a
 continuous history. Its output is the learned stage's input: one column per
-feature crossing the cut, named <node>.<feature>.
+feature crossing the cut, named <node>.<feature>. A Gate whose condition fails
+withholds the observation: the steps before it keep what they saw, the steps
+after it see nothing, and nothing learns or scores.
 """
 
 from __future__ import annotations
@@ -12,8 +14,10 @@ from dataclasses import dataclass, field
 from time import perf_counter_ns
 from typing import Any
 
+from off_key_core.models.pipeline_combine import Gate, RowStep, row_step
 from off_key_core.models.pipeline_prepare import (
-    PREPARE_COMPONENTS,
+    LANE_COMPONENTS,
+    ROW_COMPONENTS,
     Kernel,
     PrepareFailure,
     kernel,
@@ -36,18 +40,44 @@ class PrepareRejected(ObservationRejected):
 
 
 @dataclass(frozen=True)
+class Withheld:
+    """An observation the learned stage does not see, and why."""
+
+    reason: str
+    """preparing while windows fill, or held_back when a Gate's condition fails."""
+    node_id: str | None = None
+    """The Gate that held it back."""
+
+
+@dataclass(frozen=True)
 class _Step:
     id: str
     component: str
     parents: tuple[str, ...]
     params: dict[str, Any]
     kernel: Kernel | None = None
-    """None for the routes in front of a Prepare step."""
+    """The per-feature step; None for row steps and routes."""
+    row: RowStep | None = None
+    """Aggregate, Formula or Gate, which work on the whole row."""
     selected: tuple[str, ...] = ()
     targets: tuple[str, ...] = ()
     """Where each selected feature's value goes: its own name, or an added one."""
     required: int = field(default=0)
     """Inputs before the step's first output."""
+
+
+@dataclass(frozen=True)
+class _Record:
+    """One step's part in a pass, for diagnostics."""
+
+    step: _Step
+    values: dict[str, float] | None
+    """What the step received; None when it did not run."""
+    output: dict[str, float] | None
+    elapsed_ns: int
+    blocked_by: tuple[str, ...]
+    held_back: bool
+    """A Gate held the observation back here or before this step."""
 
 
 class PrepareStage:
@@ -80,11 +110,15 @@ class PrepareStage:
         self.updates = {step.id: 0 for step in self.steps}
         self.accepted = 0
         self.rejected = 0
+        self.held_back = 0
 
     @staticmethod
     def _step(plan: ExecutionPlan, node) -> _Step:
         parents = tuple(plan.parents(node.id))
-        if node.component not in PREPARE_COMPONENTS:
+        if node.component in ROW_COMPONENTS:
+            row = row_step(node.component, node.params, plan.names(parents[0]))
+            return _Step(node.id, node.component, parents, dict(node.params), row=row)
+        if node.component not in LANE_COMPONENTS:
             return _Step(node.id, node.component, parents, dict(node.params))
         step = kernel(node.component, node.params)
         scope = step_scope(node.component, node.params, plan.names(parents[0]))
@@ -93,62 +127,132 @@ class PrepareStage:
             node.component,
             parents,
             dict(node.params),
-            step,
-            scope.selected,
-            scope.added if scope.add else scope.selected,
-            step.lead + 1,
+            kernel=step,
+            selected=scope.selected,
+            targets=scope.added if scope.add else scope.selected,
+            required=step.lead + 1,
         )
+
+    def remaining(self) -> int:
+        """Observations until every chain outputs, if they all pass its Gates.
+
+        A step outputs once it has seen its warm-up; until a step before it
+        does, it waits for that step's remaining observations and then its own.
+        Observations a Gate holds back advance nothing after the Gate.
+        """
+        remaining = {self.source_id: 0}
+        for step in self.steps:
+            before = max(remaining[key] for key in step.parents)
+            lead = step.kernel.lead if step.kernel is not None else 0
+            remaining[step.id] = (
+                before + lead if before else max(lead + 1 - self.updates[step.id], 0)
+            )
+        return max(remaining[key] for key in self.frontier)
 
     @property
     def ready(self) -> bool:
-        return self.accepted >= self.required
+        return self.remaining() == 0
 
     def status(self) -> dict[str, Any]:
+        remaining = self.remaining()
         return {
-            "ready": self.ready,
-            "observed": min(self.accepted, self.required),
+            "ready": remaining == 0,
+            "observed": max(self.required - remaining, 0),
             "required": self.required,
             "rejected": self.rejected,
+            "held_back": self.held_back,
         }
 
-    def run(self, bound: dict[str, float], diagnostics=None) -> dict[str, float] | None:
-        """Prepare one observation: its learned-stage input, or None while warming up.
+    def run(
+        self, bound: dict[str, float], diagnostics=None
+    ) -> dict[str, float] | Withheld:
+        """Prepare one observation: the learned stage's input, or why it gets none.
 
         Raises PrepareRejected when a step cannot produce a finite value.
         """
         available: dict[str, dict[str, float]] = {self.source_id: bound}
         staged: dict[str, list[tuple]] = {}
-        records = []
+        records: list[_Record] = []
+        # Gates that held the observation back, and the steps after them.
+        held: set[str] = set()
+        gate: str | None = None
         for step in self.steps:
             started = perf_counter_ns()
+            # A closed Gate, like a step still warming up, has no output, so
+            # the steps after it wait.
             blocked = tuple(key for key in step.parents if key not in available)
             if blocked:
-                records.append((step, None, None, 0, blocked))
+                after = not held.isdisjoint(blocked)
+                if after:
+                    held.add(step.id)
+                records.append(_Record(step, None, None, 0, blocked, after))
                 continue
-            values = available[step.parents[0]]
-            if step.kernel is None:
-                output = self._route(step, available)
-            else:
-                output = self._advance(step, values, staged, diagnostics)
-            if output is not None:
+            values, output = self._execute(step, available, staged, diagnostics)
+            closed = output is None and isinstance(step.row, Gate)
+            if closed:
+                held.add(step.id)
+                gate = gate or step.id
+            elif output is not None:
                 available[step.id] = output
-            # A merge's inputs are its branches; its output shows them in order.
-            shown = output if step.component == "features.merge" else values
-            records.append((step, shown, output, perf_counter_ns() - started, ()))
-        self.states.update(staged)
-        self.accepted += 1
-        for step, values, _output, _elapsed, _blocked in records:
-            if values is not None:
-                self.updates[step.id] += 1
+            elapsed = perf_counter_ns() - started
+            records.append(_Record(step, values, output, elapsed, (), closed))
+        self._commit(staged, records, gate)
         if diagnostics is not None:
             self._report(diagnostics, records)
+        if gate is not None:
+            return Withheld("held_back", gate)
         if any(key not in available for key in self.frontier):
-            return None
+            return Withheld("preparing")
         return {
             f"{key}.{name}": available[key][name]
             for key in self.frontier
             for name in self.names[key]
         }
+
+    def _execute(self, step: _Step, available, staged, diagnostics):
+        """The values a step shows as its input, and its output."""
+        values = available[step.parents[0]]
+        if step.row is not None:
+            return values, self._row(step, values, diagnostics)
+        if step.kernel is None:
+            output = self._route(step, available)
+            # A merge's inputs are its branches; its output shows them in order.
+            return (output if step.component == "features.merge" else values), output
+        return values, self._advance(step, values, staged, diagnostics)
+
+    def _commit(self, staged, records: list[_Record], gate: str | None) -> None:
+        self.states.update(staged)
+        self.accepted += 1
+        self.held_back += gate is not None
+        for record in records:
+            if record.values is not None:
+                self.updates[record.step.id] += 1
+
+    def _reject(
+        self, step: _Step, values, failure: PrepareFailure, diagnostics, name=None
+    ):
+        self.rejected += 1
+        message = f"{name}: {failure}" if name else str(failure)
+        if diagnostics is not None:
+            _safely(
+                diagnostics,
+                diagnostics.prepare_rejected,
+                step.id,
+                values,
+                failure.reason,
+                message,
+            )
+        raise PrepareRejected(step.id, failure.reason, message) from failure
+
+    def _row(self, step: _Step, values, diagnostics) -> dict[str, float] | None:
+        """A row step's output; None when a Gate's condition does not hold."""
+        assert step.row is not None
+        try:
+            if isinstance(step.row, Gate):
+                return values if step.row.opens(values) else None
+            return step.row.apply(values)
+        except PrepareFailure as failure:
+            self._reject(step, values, failure, diagnostics)
 
     def _advance(self, step: _Step, values, staged, diagnostics):
         assert step.kernel is not None
@@ -160,18 +264,7 @@ class PrepareStage:
             try:
                 state, value = step.kernel.advance(states[index], values[name])
             except PrepareFailure as failure:
-                self.rejected += 1
-                message = f"{name}: {failure}"
-                if diagnostics is not None:
-                    _safely(
-                        diagnostics,
-                        diagnostics.prepare_rejected,
-                        step.id,
-                        values,
-                        failure.reason,
-                        message,
-                    )
-                raise PrepareRejected(step.id, failure.reason, message) from failure
+                self._reject(step, values, failure, diagnostics, name)
             advanced.append(state)
             if value is None:
                 complete = False
@@ -197,18 +290,20 @@ class PrepareStage:
             }
         return dict(values)
 
-    def _report(self, diagnostics, records) -> None:
-        for step, values, output, elapsed, blocked in records:
+    def _report(self, diagnostics, records: list[_Record]) -> None:
+        for record in records:
+            step = record.step
             _safely(
                 diagnostics,
                 diagnostics.prepare_step,
                 step.id,
-                values,
-                output,
-                elapsed_ns=elapsed,
+                record.values,
+                record.output,
+                elapsed_ns=record.elapsed_ns,
                 updates=self.updates[step.id] if step.kernel is not None else None,
                 required=step.required or None,
-                blocked_by=blocked,
+                blocked_by=record.blocked_by,
+                held_back=record.held_back,
             )
 
     def export_state(self) -> dict[str, Any]:
@@ -217,6 +312,7 @@ class PrepareStage:
             "version": STATE_VERSION,
             "accepted": self.accepted,
             "rejected": self.rejected,
+            "held_back": self.held_back,
             "updates": dict(self.updates),
             "states": {key: list(value) for key, value in self.states.items()},
         }
@@ -247,13 +343,21 @@ class PrepareStage:
                 )
             ):
                 raise ValueError(f"Prepare checkpoint state of {step.id} is invalid")
-        counts = [state.get("accepted"), state.get("rejected"), *updates.values()]
+        # Checkpoints from before Gates existed carry no held-back count.
+        held_back = state.get("held_back", 0)
+        counts = [
+            state.get("accepted"),
+            state.get("rejected"),
+            held_back,
+            *updates.values(),
+        ]
         if not all(isinstance(value, int) and value >= 0 for value in counts):
             raise ValueError("Prepare checkpoint counts are invalid")
         self.states = {key: list(value) for key, value in states.items()}
         self.updates = dict(updates)
         self.accepted = state["accepted"]
         self.rejected = state["rejected"]
+        self.held_back = held_back
 
 
 def _safely(diagnostics, operation, *args, **kwargs) -> None:
@@ -264,4 +368,4 @@ def _safely(diagnostics, operation, *args, **kwargs) -> None:
         diagnostics.errors += 1
 
 
-__all__ = ["PrepareRejected", "PrepareStage"]
+__all__ = ["PrepareRejected", "PrepareStage", "Withheld"]

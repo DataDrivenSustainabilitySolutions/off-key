@@ -16,6 +16,7 @@ from ..schemas.pipelines import (
 )
 from ..utils.json_budget import fits_json_budget
 from .pipeline_catalog import pipeline_components
+from .pipeline_combine import VALUE_CHECKED, value_issues
 from .pipeline_digest import digest
 from .pipeline_features import (
     Columns,
@@ -23,8 +24,14 @@ from .pipeline_features import (
     node_features,
 )
 from .pipeline_fields import parameter_path
+from .pipeline_formula import FormulaError
 from .pipeline_parameters import normalized_parameters
-from .pipeline_prepare import MAX_WINDOW_VALUES, PREPARE_COMPONENTS, kernel
+from .pipeline_prepare import (
+    LANE_COMPONENTS,
+    MAX_WINDOW_VALUES,
+    PREPARE_COMPONENTS,
+    kernel,
+)
 from .pipeline_scope import LEARNED_COMPONENTS, ScopeError
 
 
@@ -110,6 +117,31 @@ def _validate_identity(compilation: _Compilation) -> None:
             )
 
 
+# What to write where a step's text is missing or empty.
+_EMPTY_TEXT = {
+    "expression": "Write a formula, such as dc_voltage * dc_current.",
+    "condition": "Write a condition, such as dc_current > 1.",
+}
+# The characters a name may hold, in words rather than as a pattern.
+_NAME_CHARACTERS = {
+    "suffix": "Use letters, digits and underscores.",
+    "name": "Use letters, digits and underscores, and start with a letter or "
+    "an underscore.",
+}
+
+
+def _parameter_message(issue) -> str:
+    """A validator's own sentence, without Pydantic's prefix."""
+    field = issue["loc"][-1] if issue["loc"] else None
+    if issue["type"] in {"missing", "string_too_short"} and field in _EMPTY_TEXT:
+        return _EMPTY_TEXT[field]
+    if issue["type"] == "string_pattern_mismatch" and field in _NAME_CHARACTERS:
+        return _NAME_CHARACTERS[field]
+    if issue["type"] == "missing":
+        return "Enter a value."
+    return issue["msg"].removeprefix("Value error, ")
+
+
 def _validate_components(compilation: _Compilation) -> None:
     for node in compilation.definition.nodes:
         component = compilation.components.get(node.component)
@@ -138,7 +170,7 @@ def _validate_components(compilation: _Compilation) -> None:
             for issue in exc.errors(include_url=False, include_context=False):
                 compilation.error(
                     "parameters",
-                    issue["msg"],
+                    _parameter_message(issue),
                     node.id,
                     parameter_path=parameter_path(issue["loc"], component.fields),
                 )
@@ -235,6 +267,13 @@ def _propagate_features(compilation: _Compilation) -> None:
             compilation.error(
                 "scope", str(exc), identifier, parameter_path=exc.parameter_path
             )
+        except FormulaError as exc:
+            compilation.error(
+                "formula",
+                str(exc),
+                identifier,
+                parameter_path=[exc.parameter] if exc.parameter else None,
+            )
         except (ValueError, KeyError) as exc:
             compilation.error("feature_schema", str(exc), identifier)
 
@@ -274,7 +313,7 @@ def _validate_windows(compilation: _Compilation) -> None:
     for identifier, node in compilation.nodes.items():
         edges = compilation.incoming[identifier]
         if (
-            node.component not in PREPARE_COMPONENTS
+            node.component not in LANE_COMPONENTS
             or identifier not in compilation.features
             or len(edges) != 1
         ):
@@ -286,6 +325,43 @@ def _validate_windows(compilation: _Compilation) -> None:
             "prepare_budget",
             f"Windows hold {total:,} values; the limit is {MAX_WINDOW_VALUES:,}.",
         )
+
+
+def _feature_labels(compilation: _Compilation, columns: Columns) -> dict[str, str]:
+    """Readings by their label, so a message says DC current, not dc_current."""
+    slots = {
+        slot.id: slot.label for slot in compilation.definition.input_slots if slot.label
+    }
+    return {
+        item.name: slots[item.name]
+        for item in columns
+        if item.raw and item.slots == [item.name] and item.name in slots
+    }
+
+
+def _validate_values(compilation: _Compilation) -> None:
+    """Values a Prepare step will skip: a warning for some, an error for all."""
+    for identifier in compilation.order:
+        node = compilation.nodes[identifier]
+        edges = compilation.incoming[identifier]
+        if (
+            node.component not in VALUE_CHECKED
+            or identifier not in compilation.features
+            or len(edges) != 1
+        ):
+            continue
+        columns = compilation.features[edges[0].source]
+        labels = _feature_labels(compilation, columns)
+        for issue in value_issues(node.component, node.params, columns, labels):
+            report = (
+                compilation.error if issue.severity == "error" else compilation.warning
+            )
+            report(
+                "values",
+                issue.message,
+                identifier,
+                parameter_path=[issue.parameter],
+            )
 
 
 def _validate_model(compilation: _Compilation) -> None:
@@ -330,6 +406,7 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _propagate_features(compilation)
     _validate_stages(compilation)
     _validate_windows(compilation)
+    _validate_values(compilation)
     _validate_model(compilation)
     if not fits_json_budget(normalized, MAX_PIPELINE_EXECUTION_BYTES):
         compilation.error(

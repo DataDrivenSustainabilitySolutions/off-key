@@ -290,3 +290,33 @@
 .pl-scope .parameter-check small {
   color: hsl(var(--muted-foreground));
 }
+
+/* Formula and Gate: text in a fixed-width face, with the arriving features to insert. */
+.pl-field textarea.pl-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height: 1.5;
+  min-height: 64px;
+  overflow-wrap: anywhere;
+}
+.pl-formula-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pl-formula-names button {
+  min-height: 28px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: var(--text-caption);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.pl-formula-names button:hover {
+  border-color: hsl(var(--ring));
+}

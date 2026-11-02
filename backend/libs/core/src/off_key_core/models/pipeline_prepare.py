@@ -1,10 +1,12 @@
 """Prepare steps: deterministic work that runs once per observation, before learning.
 
-Each step maps every feature it uses to one value. A feature's state is plain
+Most steps map every feature they use to one value. A feature's state is plain
 data, a count or a window of past values, and advancing it returns a new state
 without touching the old one. A runtime can therefore stage a whole
 observation and keep or drop it as one, and checkpoints restore the same
-history. The compiler, the validation API and RADAR read the steps from here.
+history. Aggregate, Formula and Gate work on the whole row instead and keep no
+state (pipeline_combine.py). The compiler, the validation API and RADAR read
+the steps from here.
 """
 
 import math
@@ -15,8 +17,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..schemas.pipelines import (
+    AggregateParameters,
     ChangeParameters,
     DespikeParameters,
+    FormulaParameters,
+    GateParameters,
     MathParameters,
     PipelineModel,
     PipelineValidation,
@@ -32,8 +37,15 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.rolling": RollingParameters,
     "prepare.math": MathParameters,
     "prepare.range": RangeParameters,
+    "prepare.aggregate": AggregateParameters,
+    "prepare.formula": FormulaParameters,
+    "prepare.gate": GateParameters,
 }
 PREPARE_COMPONENTS = frozenset(PREPARE_MODELS)
+# Steps over the whole row; they keep no state and have output from the start.
+ROW_COMPONENTS = frozenset({"prepare.aggregate", "prepare.formula", "prepare.gate"})
+# Steps that map each feature they use to one value, through a Kernel.
+LANE_COMPONENTS = PREPARE_COMPONENTS - ROW_COMPONENTS
 # Past values all Prepare windows hold together, across their features.
 MAX_WINDOW_VALUES = 50_000
 # Scales a median absolute deviation to the standard deviation of normal data.
@@ -344,10 +356,9 @@ class Bound(Kernel):
 
 def kernel(component: str, params: dict[str, Any]) -> Kernel:
     """The step one node runs on each feature it uses."""
-    try:
-        model = PREPARE_MODELS[component]
-    except KeyError:
-        raise ValueError(f"Unsupported prepare step: {component}") from None
+    if component not in LANE_COMPONENTS:
+        raise ValueError(f"Unsupported prepare step: {component}")
+    model = PREPARE_MODELS[component]
     settings = model.model_validate(params)
     if isinstance(settings, SmoothParameters):
         if settings.method == "exponential":
@@ -516,7 +527,7 @@ def stage_split(compiled: PipelineValidation) -> StageSplit | None:
         node = nodes[identifier]
         lead = (
             kernel(node.component, node.params).lead
-            if node.component in PREPARE_COMPONENTS
+            if node.component in LANE_COMPONENTS
             else 0
         )
         first_output[identifier] = lead + max(
@@ -526,10 +537,12 @@ def stage_split(compiled: PipelineValidation) -> StageSplit | None:
 
 
 __all__ = [
+    "LANE_COMPONENTS",
     "MAX_WINDOW_VALUES",
     "PREPARE_COMPONENTS",
     "PREPARE_MODELS",
     "REJECTION_REASONS",
+    "ROW_COMPONENTS",
     "Kernel",
     "PrepareFailure",
     "StageSplit",

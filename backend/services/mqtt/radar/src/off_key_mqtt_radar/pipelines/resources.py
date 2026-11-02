@@ -8,7 +8,7 @@ from struct import calcsize
 from typing import Any
 
 import numpy as np
-from off_key_core.models.pipeline_prepare import PREPARE_COMPONENTS, kernel
+from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, kernel
 from off_key_core.models.pipeline_scope import step_scope
 from pydantic import BaseModel
 
@@ -104,7 +104,7 @@ def _prepare_state(plan: ExecutionPlan) -> int:
 
     A step that needs order statistics keeps a sorted copy as well. A pass
     stages new arrays before the old ones are released, so twice the arrays can
-    be alive at once.
+    be alive at once. Aggregate, Formula and Gate keep no state.
     """
     if plan.stage is None:
         return 0
@@ -112,7 +112,7 @@ def _prepare_state(plan: ExecutionPlan) -> int:
     total = 0
     for identifier in plan.stage.steps:
         node = plan.nodes[identifier]
-        if node.component not in PREPARE_COMPONENTS:
+        if node.component not in LANE_COMPONENTS:
             continue
         step = kernel(node.component, node.params)
         initial = step.initial()

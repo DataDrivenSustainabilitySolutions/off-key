@@ -341,7 +341,7 @@ services:
 
   broker-route:
     # Development SOCKS endpoint stands in for a deployment's broker route sidecar.
-    image: gogost/gost:3.3.1
+    image: gogost/gost:3.3.2
     command: ["-L=socks5://:1055"]
     networks:
       - emqx-network

@@ -277,13 +277,13 @@ def test_a_projection_uses_its_features_and_appends_components(result):
         (
             {"apply_to": ["a", "a"]},
             "parameters",
-            "Value error, List each feature at most once",
+            "List each feature at most once",
             ["apply_to"],
         ),
         (
             {"result": "add", "suffix": "two words"},
             "parameters",
-            "String should match pattern '^[A-Za-z0-9_]+$'",
+            "Use letters, digits and underscores.",
             ["suffix"],
         ),
     ],

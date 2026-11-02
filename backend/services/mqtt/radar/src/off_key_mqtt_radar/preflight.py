@@ -26,9 +26,10 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .config.config import AnomalyDetectionConfig
-from .pipelines.adapters import adaptive_graph
+from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.batch import BatchFeatureGraph
 from .pipelines.plan import ExecutionPlan
+from .pipelines.prepare import PrepareStage
 from .pipelines.resources import estimate_resources
 
 
@@ -56,28 +57,24 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         pipeline=execution, memory_limit_mb=settings.RADAR_MEMORY_LIMIT_MB
     )
     resources = estimate_resources(plan, config.memory_limit_mb)
+    if plan.stage is not None:
+        PrepareStage(plan)
     readiness = []
     capabilities = None
     if execution.definition.strategy == "adaptive_stream":
-        graph, detector = adaptive_graph(plan)
-        capabilities = detector.capabilities.as_dict()
-        readiness = [
-            dict(
-                node_id=item.node_id,
-                ready=item.readiness.ready,
-                observed=item.readiness.observed,
-                required=item.readiness.required,
-                reason=item.readiness.reason,
-            )
-            for item in graph.node_states
-        ]
+        readiness, capabilities = _adaptive_preflight(plan)
     else:
         from .detector import StaticConformalDetectionService
 
         BatchFeatureGraph(plan)
         detector = StaticConformalDetectionService(config)
         try:
-            detector._create_pyod_detector()
+            if plan.fused:
+                for identifier in plan.detector_ids:
+                    with _detector(identifier):
+                        detector._create_pyod_detector(plan.nodes[identifier])
+            else:
+                detector._create_pyod_detector()
         finally:
             detector.shutdown()
     return dict(
@@ -117,6 +114,56 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
     )
 
 
+class DetectorConfigurationError(Exception):
+    """A detector's configuration failed; carries which detector it was."""
+
+    def __init__(self, node_id: str, error: ConfigurationError):
+        super().__init__(str(error))
+        self.node_id = node_id
+        self.error = error
+
+
+class _detector:
+    """Name the detector whose constructor raised a configuration error."""
+
+    def __init__(self, node_id: str):
+        self.node_id = node_id
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, error, traceback):
+        if isinstance(error, ConfigurationError):
+            raise DetectorConfigurationError(self.node_id, error) from error
+        return False
+
+
+def _adaptive_preflight(plan: ExecutionPlan) -> tuple[list[dict], dict | None]:
+    """Build every detector's graph, as the run will; report steps once each."""
+    readiness: dict[str, dict] = {}
+    capabilities = {}
+    for identifier in plan.detector_ids:
+        with _detector(identifier):
+            config = resolved_detector_config(plan, identifier)
+            graph, _ = adaptive_graph(plan, config=config, detector_id=identifier)
+        capabilities[identifier] = config.capabilities.as_dict()
+        for item in graph.node_states:
+            readiness.setdefault(
+                item.node_id,
+                dict(
+                    node_id=item.node_id,
+                    ready=item.readiness.ready,
+                    observed=item.readiness.observed,
+                    required=item.readiness.required,
+                    reason=item.readiness.reason,
+                ),
+            )
+    # One detector reports its capabilities as before; several by detector.
+    return list(readiness.values()), (
+        capabilities if plan.fused else capabilities[plan.detector_id]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
@@ -132,8 +179,11 @@ def main() -> None:
         report = preflight(execution)
     except Exception as error:
         issues = []
+        node_id = None
+        if isinstance(error, DetectorConfigurationError):
+            node_id, error = error.node_id, error.error
         if isinstance(error, ConfigurationError) and execution is not None:
-            node_id = next(
+            node_id = node_id or min(
                 node.id
                 for node in execution.definition.nodes
                 if node.kind == "detector"

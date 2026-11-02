@@ -86,10 +86,9 @@ def test_template_migration_preserves_existing_designs(disposable_database):
                 "VALUES ('existing','Existing template','',false,1,'{}','{}')"
             )
         )
-        assert apply_migrations(connection)["applied"] == [
-            "013_pipeline_templates.sql",
-            "014_drop_unread_schema.sql",
-        ]
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "013_pipeline_templates.sql"
+        )
         assert (
             connection.scalar(
                 text("SELECT is_template FROM monitoring_pipelines WHERE id='existing'")
@@ -106,7 +105,9 @@ def test_retired_schema_migration_keeps_the_telemetry_primary_key(
         restore_retired_schema(connection)
         rewind_ledger(connection, "014_drop_unread_schema.sql")
     with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == ["014_drop_unread_schema.sql"]
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "014_drop_unread_schema.sql"
+        )
         schema = inspect(connection)
         assert schema.get_pk_constraint("telemetry")["constrained_columns"] == [
             "charger_id",

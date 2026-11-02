@@ -438,12 +438,8 @@ class HealthMonitor:
                 and last_alignment_status != "direct_pass_through"
                 else "Waiting for telemetry"
             )
-        elif detector_stats.get("strategy") == "static_baseline":
-            stage, detail, progress = self._static_operational_stage(detector_stats)
-        elif detector_stats.get("strategy") == "adaptive_stream":
-            stage, detail, progress = self._adaptive_operational_stage(detector_stats)
         else:
-            stage = "operational"
+            stage, detail, progress = self._running_stage(detector_stats)
 
         if stage != "failed":
             if (
@@ -497,6 +493,37 @@ class HealthMonitor:
         if activity.persistence_stalled:
             return "Monitoring evidence has not been persisted within its time budget"
         return None
+
+    @classmethod
+    def _running_stage(
+        cls, detector_stats: dict[str, Any]
+    ) -> tuple[str, str | None, dict[str, int] | None]:
+        """Preparing comes first; then each strategy has its own learning phases."""
+        preparing = cls._preparing_stage(detector_stats)
+        if preparing is not None:
+            return preparing
+        strategy = detector_stats.get("strategy")
+        if strategy == "static_baseline":
+            return cls._static_operational_stage(detector_stats)
+        if strategy == "adaptive_stream":
+            return cls._adaptive_operational_stage(detector_stats)
+        return "operational", None, None
+
+    @staticmethod
+    def _preparing_stage(
+        detector_stats: dict[str, Any],
+    ) -> tuple[str, str | None, dict[str, int]] | None:
+        """While Prepare steps fill their windows, nothing reaches the learner."""
+        preparation = detector_stats.get("preparation")
+        if not isinstance(preparation, dict) or preparation.get("ready", True):
+            return None
+        current = int(preparation.get("observed", 0) or 0)
+        target = max(int(preparation.get("required", 1) or 1), 1)
+        return (
+            "collecting_training",
+            f"{current}/{target} observations prepared",
+            {"current": current, "target": target},
+        )
 
     @staticmethod
     def _static_operational_stage(

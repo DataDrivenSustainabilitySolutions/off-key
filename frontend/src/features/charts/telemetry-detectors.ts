@@ -2,6 +2,7 @@ import type {
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
   MonitoringChartEvidence,
+  MonitoringDetectorResult,
 } from "@/types/monitoring";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import {
@@ -32,6 +33,8 @@ export interface DetectionObservation {
   isInfinite: boolean;
   inputTimestamps?: Readonly<Record<string, string>>;
   alarmFired?: boolean;
+  /** Each detector's part when the policy combined several. */
+  detectors?: readonly MonitoringDetectorResult[];
 }
 
 export interface TelemetryChartDetector extends ChartDetector {
@@ -119,7 +122,8 @@ function collectChartDetectors(
       group.observations.push({
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(item.anomaly_score),
         threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false,
-        ...(includeInputs ? { inputTimestamps: item.input_timestamps, alarmFired: item.alarm } : {}),
+        ...(includeInputs ? { inputTimestamps: item.input_timestamps, alarmFired: item.alarm,
+          ...(item.detector_results?.length ? { detectors: item.detector_results } : {}) } : {}),
       });
       groups.set(id, group);
       continue;
@@ -146,7 +150,8 @@ function collectChartDetectors(
         alarmActive: tracker.alarm_active, logValue: finiteOrNull(tracker.log_statistic_value),
         isInfinite: tracker.statistic_is_infinite,
         ...(includeInputs ? { inputTimestamps: item.input_timestamps,
-          alarmFired: "alarm_fired" in tracker ? tracker.alarm_fired : item.alarm } : {}),
+          alarmFired: "alarm_fired" in tracker ? tracker.alarm_fired : item.alarm,
+          ...(item.detector_results?.length ? { detectors: item.detector_results } : {}) } : {}),
       });
       groups.set(id, group);
     }

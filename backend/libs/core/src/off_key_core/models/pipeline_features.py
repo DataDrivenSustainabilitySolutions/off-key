@@ -1,9 +1,11 @@
 """Feature names, lineage, widths and known domains propagated through a graph."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .pipeline_combine import combined_columns
+from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
 from .pipeline_scope import PROJECTIONS, step_scope
 
 Columns = list[FeatureDescription]
@@ -20,7 +22,10 @@ def _rename(node: PipelineNode, columns: Columns) -> Columns:
     if unknown:
         raise ValueError(f"Unknown features to rename: {', '.join(sorted(unknown))}")
     for item in columns:
-        item.name = node.params["mapping"].get(item.name, item.name)
+        name = node.params["mapping"].get(item.name, item.name)
+        if name != item.name:
+            item.name = name
+            item.steps.append(node.id)
     return columns
 
 
@@ -54,19 +59,31 @@ ELEMENTWISE: dict[str, Callable[[PipelineNode, Columns], Columns]] = {
 }
 
 
+def _prepared(node: PipelineNode, columns: Columns) -> Columns:
+    for item in columns:
+        item.minimum, item.maximum = prepared_bounds(
+            node.component, node.params, (item.minimum, item.maximum)
+        )
+        item.raw = False
+    return columns
+
+
 def _elementwise(node: PipelineNode, columns: Columns) -> Columns:
     scope = step_scope(node.component, node.params, [item.name for item in columns])
     position = {item.name: item for item in columns}
     used = [position[name] for name in scope.selected]
+    change = (
+        _prepared if node.component in LANE_COMPONENTS else ELEMENTWISE[node.component]
+    )
     if not scope.add:
         # The used columns are the incoming ones, so they change in place.
-        ELEMENTWISE[node.component](node, used)
+        for item in change(node, used):
+            item.steps.append(node.id)
         return columns
-    added = ELEMENTWISE[node.component](
-        node, [item.model_copy(deep=True) for item in used]
-    )
+    added = change(node, [item.model_copy(deep=True) for item in used])
     for item, name in zip(added, scope.added, strict=True):
         item.name = name
+        item.steps.append(node.id)
     return columns + added
 
 
@@ -96,21 +113,50 @@ def _projection(
     ]
 
 
-def node_features(
-    definition: PipelineDefinition, node: PipelineNode, branches: list[Columns]
+def _continued(branches: Sequence[tuple[str, Columns]]) -> Columns:
+    """Copies of the arriving features that name the feature each continues.
+    Node ids hold no dots, so the first dot of node.name ends the node."""
+    return [
+        item.model_copy(deep=True, update={"previous": f"{parent}.{item.name}"})
+        for parent, branch in branches
+        for item in branch
+    ]
+
+
+def _changed(
+    definition: PipelineDefinition, node: PipelineNode, columns: Columns
 ) -> Columns:
-    columns = [item.model_copy(deep=True) for branch in branches for item in branch]
+    """What the node makes of the features that arrive."""
     if node.kind == "source":
-        columns = [
+        return [
             FeatureDescription(name=slot.id, slots=[slot.id])
             for slot in definition.input_slots
         ]
-    elif node.component in ROUTES:
-        columns = ROUTES[node.component](node, columns)
-    elif node.component in ELEMENTWISE:
-        columns = _elementwise(node, columns)
-    elif node.component in PROJECTIONS:
-        columns = _projection(definition, node, columns)
+    if node.component in ROUTES:
+        return ROUTES[node.component](node, columns)
+    if node.component in ELEMENTWISE or node.component in LANE_COMPONENTS:
+        return _elementwise(node, columns)
+    if node.component in ROW_COMPONENTS:
+        return combined_columns(node.component, node.params, columns)
+    if node.component in PROJECTIONS:
+        return _projection(definition, node, columns)
+    return columns
+
+
+def node_features(
+    definition: PipelineDefinition,
+    node: PipelineNode,
+    branches: Sequence[tuple[str, Columns]],
+) -> Columns:
+    """The features a node gives, from its parents' features in input order."""
+    if node.kind == "policy" and len(branches) > 1:
+        # Scores arrive here, one per detector; no feature goes further.
+        return []
+    columns = _changed(definition, node, _continued(branches))
+    for item in columns:
+        if item.previous is None and node.kind != "source":
+            # Made here: an Aggregate's or Formula's feature, or a component.
+            item.steps = [node.id]
     if len(columns) > 100:
         raise ValueError("Intermediate feature count exceeds the 100-feature budget")
     if len({item.name for item in columns}) != len(columns):

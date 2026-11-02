@@ -1,0 +1,257 @@
+/* The Graph and Features switch sits with the editing actions. */
+.pl-canvas-toolbar .pl-view-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+  padding: 2px;
+  gap: 2px;
+}
+.pl-canvas-toolbar .pl-view-switch button {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+.pl-canvas-toolbar .pl-view-switch button[aria-pressed="true"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}
+
+/* One row per feature the detector receives. */
+.pl-features-view {
+  --pl-features: #0f766e;
+  --pl-route: #475569;
+  --pl-learned: #1d4ed8;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 20px;
+  background: hsl(var(--background));
+}
+.dark .pl-features-view {
+  --pl-features: #5eead4;
+  --pl-route: #cbd5e1;
+  --pl-learned: #93c5fd;
+}
+.pl-features-view.is-stale .pl-features-list {
+  opacity: 0.6;
+}
+.pl-features-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+.pl-features-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.pl-features-heading h3 span {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 500;
+  text-align: center;
+}
+.pl-feature-gates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pl-features-view > .pl-help {
+  margin: 0 0 10px;
+}
+.pl-features-empty {
+  padding: 24px 0;
+}
+.pl-feature-columns,
+.pl-feature-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 2fr) minmax(130px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.pl-feature-columns {
+  padding: 0 10px 6px;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pl-features-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pl-feature-row {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.pl-feature-row:hover {
+  background: color-mix(in srgb, hsl(var(--muted)) 55%, transparent);
+}
+.pl-feature-from {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pl-feature-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pl-feature-raw {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+}
+.pl-features-view .pl-feature-step {
+  --pl-step-accent: var(--pl-features);
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--pl-step-accent) 40%, hsl(var(--border)));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pl-step-accent) 8%, hsl(var(--background)));
+  color: hsl(var(--foreground));
+  font-size: var(--text-caption);
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pl-features-view .pl-feature-step[data-family="route"] {
+  --pl-step-accent: var(--pl-route);
+}
+.pl-features-view .pl-feature-step[data-family="normalize"],
+.pl-features-view .pl-feature-step[data-family="reduce"],
+.pl-features-view .pl-feature-step[data-family="transform"] {
+  --pl-step-accent: var(--pl-learned);
+}
+.pl-features-view .pl-feature-step:hover,
+.pl-features-view .pl-feature-step.is-selected {
+  border-color: var(--pl-step-accent);
+}
+.pl-features-view .pl-feature-step.is-selected {
+  box-shadow: 0 0 0 1px var(--pl-step-accent);
+}
+.pl-features-view .pl-feature-add {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.pl-features-view .pl-feature-add:hover:not(:disabled),
+.pl-features-view .pl-feature-add[data-state="open"] {
+  border-style: solid;
+  border-color: hsl(var(--primary));
+  color: hsl(var(--foreground));
+}
+.pl-features-view .pl-feature-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pl-features-view button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.pl-feature-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pl-feature-name code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: var(--text-caption);
+  overflow-wrap: anywhere;
+}
+.pl-feature-name small {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+}
+.pl-features-group {
+  margin: 18px 0 4px;
+  padding: 0 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pl-features-view .pl-features-list + .pl-help,
+.pl-features-view .pl-features-group + .pl-features-list + .pl-help {
+  margin-top: 12px;
+}
+.pl-component-menu-heading h3 code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-weight: 500;
+}
+
+@media (max-width: 680px) {
+  .pl-features-view {
+    padding: 12px;
+    min-height: 420px;
+  }
+  /* Each feature becomes a short card: where it comes from and its name, then its steps. */
+  .pl-feature-columns {
+    display: none;
+  }
+  .pl-feature-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "from name" "steps steps";
+    gap: 6px 12px;
+    padding: 10px 4px;
+  }
+  .pl-feature-from { grid-area: from; }
+  .pl-feature-name { grid-area: name; text-align: right; }
+  .pl-feature-steps { grid-area: steps; }
+}
+
+/* Which detector's features the view lists, when the policy combines several. */
+.pl-features-detectors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 2px;
+  margin: 0 0 12px;
+  padding: 2px;
+  border-radius: 8px;
+  background: hsl(var(--muted));
+}
+.pl-features-detectors button {
+  max-width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-features-detectors button[aria-pressed="true"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}

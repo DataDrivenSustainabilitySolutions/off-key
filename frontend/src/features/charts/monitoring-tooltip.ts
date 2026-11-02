@@ -41,6 +41,12 @@ export function formatMonitoringObservationTooltip(
     lines.push(`Alarm threshold: ${result.threshold === null ? "unavailable" : String(result.threshold)}`);
     lines.push(`Alarm: ${result.alarmActive ? "active" : "inactive"}`);
   }
+  // A policy that combines detectors names each one's part, so an alarm names its detector.
+  for (const detector of observation.detectors ?? []) {
+    const surprise = detector.surprise === null ? "unavailable" : String(Number(detector.surprise.toPrecision(4)));
+    const score = detector.score === null ? "unavailable" : formatValue(detector.score);
+    lines.push(`Detector ${detector.detector_id}: surprise ${surprise}, score ${score}`);
+  }
   const count = Object.keys(observation.inputTimestamps).length;
   if (count > 1) lines.push(`Joint result across ${count} inputs; no per-sensor attribution.`);
   return lines.join("\n");

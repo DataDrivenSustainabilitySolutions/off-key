@@ -47,6 +47,29 @@ describe("start-up estimate", () => {
     expect(startupSentence(untimed)).toBe("The first alarm can come after at least 1,560 observations: "
       + "1,200 to train and 360 to calibrate.");
   });
+
+  it("counts the observations Prepare steps need first, as the last check reported them", () => {
+    const startup = startupEstimate(definition("adaptive_stream"), [1], 79);
+    expect(startup.phases.map((phase) => [phase.label, phase.observations]))
+      .toEqual([["Preparing", 79], ["Detector learning", 1200], ["Calibration", 360]]);
+    expect(startupSentence(startup)).toBe("The first alarm can come after at least 1,639 observations: "
+      + "79 to prepare, 1,200 to learn and 360 to calibrate. At one observation every 1 s, that is about 27 min.");
+    expect(startupPhases(definition("adaptive_stream"), 0)).toHaveLength(2);
+  });
+
+  it("is a lower bound when a Gate can hold observations back", () => {
+    const gated = { ...definition("adaptive_stream"), nodes: [
+      { id: "gate", kind: "transform" as const, component: "prepare.gate", params: { condition: "value > 1" } },
+    ] };
+    const timed = startupEstimate(gated, [1], 10);
+    expect(timed.gated).toBe(true);
+    expect(startupSummary(timed)).toBe("≥ 26 min");
+    expect(startupSentence(timed)).toBe("The first alarm can come after at least 1,570 observations: "
+      + "10 to prepare, 1,200 to learn and 360 to calibrate. At one observation every 1 s, that is about 26 min. "
+      + "A Gate holds back the observations its condition rejects, and they do not count, so it can take longer.");
+    expect(startupSummary(startupEstimate(gated, [undefined]))).toBe("≥ 1,560 observations");
+    expect(startupEstimate(definition("adaptive_stream"), [1]).gated).toBe(false);
+  });
 });
 
 const component = (id: string, kind: Wire.PipelineComponent["kind"], strategies: Wire.PipelineComponent["strategies"],

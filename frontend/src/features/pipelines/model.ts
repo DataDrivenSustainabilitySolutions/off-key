@@ -20,12 +20,24 @@ import {
 
 export { PIPELINE_LIMITS };
 
-/** Transforms and merges may repeat; every other kind appears once per design. */
+/** Transforms and merges may repeat; a design combines up to four detectors through
+ * Add another detector; every other kind appears once per design. */
 export const isMultiInstanceKind = (kind: string) => kind === "transform" || kind === "merge";
 
 /** A node's inputs in merge order. */
 export const incomingEdges = (definition: PipelineDefinition, nodeId: string) =>
   definition.edges.filter((edge) => edge.target === nodeId).sort((left, right) => left.order - right.order);
+
+/** The detectors in the order RADAR combines and reports them: by node id. */
+export const detectorIds = (definition: PipelineDefinition) =>
+  definition.nodes.filter((node) => node.kind === "detector").map((node) => node.id)
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
+/** Nodes that take several inputs: a merge in order, the policy one per detector. */
+const takesSeveral = (definition: PipelineDefinition, nodeId: string) => {
+  const kind = definition.nodes.find((node) => node.id === nodeId)?.kind;
+  return kind === "merge" || kind === "policy";
+};
 
 export type GraphDocument = {
   definition: PipelineDefinition;
@@ -154,11 +166,62 @@ export function addBlocker(
     return "Not available for this strategy.";
   if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
     return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+  if (component.kind === "detector" && detectorIds(definition).length)
+    return detectorIds(definition).length >= PIPELINE_LIMITS.detectors
+      ? `A design combines at most ${PIPELINE_LIMITS.detectors} detectors.`
+      : "Add another detector from a detector's settings.";
   if (
     !isMultiInstanceKind(component.kind) &&
     definition.nodes.some((node) => node.kind === component.kind)
   )
     return "A design has one of these.";
+}
+
+/** Why Add another detector is unavailable; undefined when it can add one. */
+export function detectorBlocker(definition: PipelineDefinition): string | undefined {
+  if (detectorIds(definition).length >= PIPELINE_LIMITS.detectors)
+    return `A design combines at most ${PIPELINE_LIMITS.detectors} detectors.`;
+  if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
+    return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
+  if (definition.edges.length + 2 > PIPELINE_LIMITS.edges)
+    return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
+}
+
+/** Another detector like this one: the same model and settings, reading the same
+ * input and connected to the policy, placed below it. Its model and input can then be
+ * changed like any step's. */
+export function addDetector(
+  document: GraphDocument,
+  detectorId: string,
+): { document: GraphDocument; id: string } | undefined {
+  const { definition, layout } = document;
+  const original = definition.nodes.find((node) => node.id === detectorId && node.kind === "detector");
+  if (!original || detectorBlocker(definition)) return;
+  let suffix = 2;
+  while (definition.nodes.some((node) => node.id === `detector_${suffix}`)) suffix++;
+  const id = `detector_${suffix}`;
+  const input = incomingEdges(definition, detectorId)[0];
+  const policy = definition.nodes.find((node) => node.kind === "policy");
+  const boxes = definition.nodes.map((node, index) => nodePosition(layout, node.id, index));
+  const anchor = boxes[definition.nodes.indexOf(original)]!;
+  return {
+    id,
+    document: {
+      definition: {
+        ...definition,
+        nodes: [...definition.nodes, { ...structuredClone(original), id }],
+        edges: [
+          ...definition.edges,
+          ...(input ? [{ source: input.source, target: id, order: 0 }] : []),
+          ...(policy ? [{ source: id, target: policy.id, order: incomingEdges(definition, policy.id).length }] : []),
+        ],
+      },
+      layout: {
+        ...layout,
+        nodes: { ...layout.nodes, [id]: { x: anchor.x, y: freeRow(boxes, anchor.x, snap(anchor.y)) } },
+      },
+    },
+  };
 }
 
 /** Remove nodes with every incident edge and their layout, plus any listed edges; merge order is kept. */
@@ -230,7 +293,7 @@ type ConnectOptions = { replace?: boolean };
 
 /** The connection into a single input, which a new connection to it would replace. */
 export const occupiedInput = (definition: PipelineDefinition, target: string) =>
-  definition.nodes.find((node) => node.id === target)?.kind === "merge"
+  takesSeveral(definition, target)
     ? undefined
     : definition.edges.find((edge) => edge.target === target);
 
@@ -295,10 +358,8 @@ export function connectNodes(
 ): PipelineDefinition {
   if (connectionIssue(definition, source, target, components, options))
     return definition;
-  // A merge appends the new input; a single input keeps only the new connection.
-  const incoming = definition.nodes.find((node) => node.id === target)?.kind === "merge"
-    ? incomingEdges(definition, target)
-    : [];
+  // A merge or the policy appends the new input; a single input keeps only the new one.
+  const incoming = takesSeveral(definition, target) ? incomingEdges(definition, target) : [];
   return {
     ...definition,
     edges: [

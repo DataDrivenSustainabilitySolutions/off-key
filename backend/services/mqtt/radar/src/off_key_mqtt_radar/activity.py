@@ -11,7 +11,7 @@ from typing import Any
 from off_key_core.schemas.radar import RadarActivityStatus
 from off_key_core.utils.timestamps import as_utc
 
-from .models import AnomalyResult, MQTTMessage, is_inference
+from .models import AnomalyResult, MQTTMessage, is_held_back, is_inference
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +41,7 @@ class ActivityTracker:
         self._last_input: _ActivityEvent | None = None
         self._last_processed: _ActivityEvent | None = None
         self._last_inference: _ActivityEvent | None = None
+        self._last_held_back: _ActivityEvent | None = None
         self._processed_count = 0
 
     def record_input(self, sensor: str | None, message: MQTTMessage) -> None:
@@ -73,6 +74,8 @@ class ActivityTracker:
             self._processed_count += 1
             if is_inference(context):
                 self._last_inference = event
+            elif is_held_back(context):
+                self._last_held_back = event
 
     def snapshot(self) -> dict[str, Any]:
         now = self._clock()
@@ -101,6 +104,11 @@ class ActivityTracker:
                     now - self._last_processed.monotonic, 0.0
                 )
                 if self._last_processed
+                else None,
+                "last_held_back_age_seconds": max(
+                    now - self._last_held_back.monotonic, 0.0
+                )
+                if self._last_held_back
                 else None,
             }
 
@@ -134,6 +142,11 @@ def evaluate_activity(
         inference_age = snapshot.get("last_processed_age_seconds")
     if inference_age is None:
         inference_age = runtime_age
+    # A Gate that holds observations back works as designed; scoring resumes
+    # when its condition holds again.
+    held_back_age = snapshot.get("last_held_back_age_seconds")
+    if held_back_age is not None:
+        inference_age = min(inference_age, held_back_age)
     persistence_age = database_health.get("oldest_pending_age_seconds")
     persistence_timeout = database_health.get(
         "persistence_timeout_seconds", freshness_seconds

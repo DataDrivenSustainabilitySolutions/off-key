@@ -173,6 +173,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             default=list,
             server_default=text("'[]'"),
         ),
+        # Each detector's score and surprise when the policy combines several.
+        Column(
+            "detector_results",
+            JSON().with_variant(JSONB(), "postgresql"),
+            nullable=False,
+            default=list,
+            server_default=text("'[]'"),
+        ),
         Column("threshold", Float, nullable=False),
         Column("alarm", Boolean, nullable=False, default=False),
         Column(

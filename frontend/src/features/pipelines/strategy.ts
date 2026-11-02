@@ -30,9 +30,13 @@ function counterpart(node: PipelineNode, strategy: Strategy, catalog: PipelineCa
   return catalog.components.find((component) => component.id === chosen && component.strategies.includes(strategy));
 }
 
-/** A learned step keeps the settings both versions share; a model starts from its defaults. */
+/** A learned step keeps the settings both versions share; a model starts from its defaults.
+ * The policy keeps how it combines detectors, which both policies share. */
 function convertedParams(node: PipelineNode, component: PipelineComponent) {
   const params = fieldDefaults(component.fields);
+  if (node.kind === "policy" && node.params.fusion !== undefined
+    && component.fields.some((field) => field.name === "fusion"))
+    params.fusion = structuredClone(node.params.fusion);
   if (node.kind !== "transform") return params;
   for (const field of component.fields)
     if (field.name in node.params) params[field.name] = structuredClone(node.params[field.name]!);

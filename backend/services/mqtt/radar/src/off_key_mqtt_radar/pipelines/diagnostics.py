@@ -30,17 +30,20 @@ class PipelineDiagnostics:
         self.run_id = execution.run_id
         self.revision_id = execution.revision_id
         self.fingerprint = execution.fingerprint
-        self.model_id = next(
+        detectors = sorted(
             node.id for node in execution.definition.nodes if node.kind == "detector"
         )
+        self.model_id = detectors[0]
         self.source_id = next(
             node.id for node in execution.definition.nodes if node.kind == "source"
         )
-        self.model_input = next(
-            edge.source
+        # The node each detector reads.
+        self.model_inputs = {
+            edge.target: edge.source
             for edge in execution.definition.edges
-            if edge.target == self.model_id
-        )
+            if edge.target in detectors
+        }
+        self.model_input = self.model_inputs[self.model_id]
         self.nodes = {
             node.id: dict(
                 state="waiting",
@@ -60,6 +63,8 @@ class PipelineDiagnostics:
         self.phase = "waiting_for_data"
         self.sequence_number = 0
         self.errors = 0
+        # Nodes the Prepare stage reports; the learned graph only forwards them.
+        self.external: frozenset[str] = frozenset()
         self._last_sample = float("-inf")
         self._pending: dict[str, Any] | None = None
         self._observation: dict[str, Any] | None = None
@@ -86,9 +91,17 @@ class PipelineDiagnostics:
             raise ValueError("Diagnostics pass must be score or learn")
         self._pass = phase
 
-    def observe(self, event) -> None:
-        """Consume an Aberrant NodeObservation without retaining its full data."""
-        identifier = self.model_id if event.node_id == "$model" else event.node_id
+    def observe(self, event, model_id: str | None = None) -> None:
+        """Consume an Aberrant NodeObservation without retaining its full data.
+
+        The model is the detector whose graph sent the event, the first one by
+        default.
+        """
+        identifier = (
+            (model_id or self.model_id) if event.node_id == "$model" else event.node_id
+        )
+        if identifier in self.external:
+            return
         inputs = output = None
         if self._pending is not None:
             # Only a pending sample reads the values; skip the copies otherwise.
@@ -135,7 +148,128 @@ class PipelineDiagnostics:
         except Exception:
             self.errors += 1
 
-    def readiness(self, states, graph=None) -> None:
+    def detectors(self, results: list[dict[str, Any]]) -> None:
+        """Each combined detector's score and surprise in a sampled observation."""
+        if self._pending is None:
+            return
+        try:
+            self._pending["detectors"] = [
+                {
+                    "detector_id": str(item["detector_id"]),
+                    "score": self._preview(item["score"]),
+                    "surprise": self._preview(item["surprise"]),
+                }
+                for item in results
+            ]
+        except Exception:
+            self.errors += 1
+
+    def prepare_step(
+        self,
+        node_id: str,
+        inputs: dict[str, float] | None,
+        output: dict[str, float] | None,
+        *,
+        elapsed_ns: int,
+        updates: int | None,
+        required: int | None,
+        blocked_by: tuple[str, ...] = (),
+        held_back: bool = False,
+    ) -> None:
+        """One Prepare step's part in an accepted observation, in the learn pass.
+
+        A Gate that holds the observation back is ready and says so. The steps
+        after it did not run, so they keep their state.
+        """
+        metrics = self.nodes[node_id]
+        if held_back and inputs is None:
+            self._held_back(node_id, "Held back by a Gate before this step")
+            return
+        state = (
+            "held_back"
+            if held_back
+            else "ready"
+            if output is not None
+            else "waiting_for_dependency"
+            if blocked_by
+            else "initializing"
+        )
+        if inputs is not None:
+            metrics["learn_count"] += 1
+            metrics["learn_time_ns"] += max(int(elapsed_ns), 0)
+        metrics.update(
+            state=state,
+            ready=output is not None or held_back,
+            learned_updates=updates,
+            readiness_observed=None
+            if required is None
+            else min(updates or 0, required),
+            readiness_required=required,
+            readiness_reason=(
+                f"Needs {required} values before its first output"
+                if state == "initializing" and required
+                else None
+            ),
+            blocked_by=[key for key in blocked_by if key in self.nodes],
+        )
+        if self._pending is not None:
+            self._pending["passes"]["learn"][node_id] = {
+                "input": self._preview(inputs),
+                "output": self._preview(output),
+                "state": state,
+                **(
+                    {"reason": "The condition does not hold for this observation"}
+                    if held_back
+                    else {}
+                ),
+            }
+
+    def _held_back(self, node_id: str, reason: str) -> None:
+        if self._pending is not None:
+            self._pending["passes"]["learn"][node_id] = {
+                "input": None,
+                "output": None,
+                "state": "held_back",
+                "reason": reason,
+            }
+
+    def rejected(
+        self,
+        node_id: str,
+        inputs: dict[str, float] | None,
+        reason: str,
+        message: str,
+        *,
+        phase: str | None = None,
+    ) -> None:
+        """A step skipped the observation; its counts say why.
+
+        Prepare steps report in the learn pass; a learned step or the detector
+        in the pass it failed in, which is the current one by default.
+        """
+        metrics = self.nodes[node_id]
+        rejections = metrics.setdefault("rejections", {})
+        rejections[reason] = rejections.get(reason, 0) + 1
+        if self._pending is not None:
+            self._pending["passes"][phase or self._pass][node_id] = {
+                "input": self._preview(inputs),
+                "output": None,
+                "state": "rejected",
+                "reason": self._bounded_text(message),
+            }
+
+    def readiness(
+        self,
+        states,
+        graph=None,
+        model_id: str | None = None,
+        owned: frozenset[str] | None = None,
+    ) -> None:
+        """Readiness of a graph's steps and of its detector, the first by default.
+
+        With several detectors, only the steps a graph owns are reported.
+        """
+        model_id = model_id or self.model_id
         intrinsic = (
             {
                 node.id: getattr(node.transformer, "readiness", None)
@@ -147,7 +281,9 @@ class PipelineDiagnostics:
         )
         for item in states:
             metrics = self.nodes.get(item.node_id)
-            if metrics is not None:
+            if owned is not None and item.node_id not in owned:
+                continue
+            if metrics is not None and item.node_id not in self.external:
                 self._readiness(
                     metrics,
                     item.updates,
@@ -158,14 +294,15 @@ class PipelineDiagnostics:
         if graph is not None:
             # Aberrant's node_states covers feature nodes. Its public graph
             # readiness and model_updates describe the terminal learner.
+            model_input = self.model_inputs[model_id]
             blocked = (
-                (self.model_input,)
-                if self.model_input != self.source_id
-                and not self.nodes[self.model_input]["ready"]
+                (model_input,)
+                if model_input != self.source_id
+                and not self.nodes[model_input]["ready"]
                 else ()
             )
             self._readiness(
-                self.nodes[self.model_id], graph.model_updates, graph.readiness, blocked
+                self.nodes[model_id], graph.model_updates, graph.readiness, blocked
             )
 
     def _readiness(

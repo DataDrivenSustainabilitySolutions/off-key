@@ -2,9 +2,11 @@
 
 They keep no state and have output from the first observation. Aggregate and
 Formula compute one feature, which follows the features they keep; Gate holds
-back the observations its condition rejects. The compiler names and bounds
-their features here, checks the values Prepare steps will skip, and RADAR runs
-the steps built here.
+back the observations its condition rejects. A Formula for each feature runs
+its expression once per chosen feature, with x standing for that feature, and
+adds or replaces one feature each. The compiler names and bounds their
+features here, checks the values Prepare steps will skip, and RADAR runs the
+steps built here.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..schemas.pipelines import FeatureDescription
+from ..schemas.pipelines import FORMULA_SUFFIX, FORMULA_VARIABLE, FeatureDescription
 from .pipeline_formula import (
     Expression,
     FormulaError,
@@ -25,7 +27,7 @@ from .pipeline_formula import (
     parse,
 )
 from .pipeline_prepare import PREPARE_MODELS, Bounds, PrepareFailure
-from .pipeline_scope import ScopeError, adds, step_scope
+from .pipeline_scope import MAX_FEATURE_NAME_LENGTH, ScopeError, adds, step_scope
 
 Row = Mapping[str, float]
 Columns = list[FeatureDescription]
@@ -57,10 +59,79 @@ def expression(component: str, params: Mapping[str, Any]) -> Expression:
         raise
 
 
+def for_each(component: str, params: Mapping[str, Any]) -> bool:
+    """Whether a Formula runs once for each of several features."""
+    return component == "prepare.formula" and params.get("apply_to") is not None
+
+
+@dataclass(frozen=True)
+class EachScope:
+    """The features a Formula for each feature uses, and the names it writes."""
+
+    selected: tuple[str, ...]
+    targets: tuple[str, ...]
+    """Each selected feature's own name when it replaces, otherwise an added name."""
+    add: bool
+
+
+def each_scope(params: Mapping[str, Any], names: Sequence[str]) -> EachScope:
+    """Resolve a Formula for each feature against the features that reach it."""
+    available = set(names)
+    if FORMULA_VARIABLE in available:
+        raise ScopeError(
+            f"A feature named {FORMULA_VARIABLE} arrives here, and in a formula for "
+            f"each feature {FORMULA_VARIABLE} stands for that feature. Rename the "
+            "feature first.",
+            "apply_to",
+        )
+    selected = tuple(params["apply_to"])
+    missing = next((name for name in selected if name not in available), None)
+    if missing is not None:
+        raise ScopeError(f"{missing} is not available at this step.", "apply_to")
+    add = adds("prepare.formula", dict(params))
+    if not add:
+        return EachScope(selected, selected, add)
+    suffix = params.get("suffix") or FORMULA_SUFFIX
+    targets = tuple(f"{name}_{suffix}" for name in selected)
+    taken = next((name for name in targets if name in available), None)
+    if taken is not None:
+        raise ScopeError(f"{taken} already exists. Choose another suffix.", "suffix")
+    long = next((name for name in targets if len(name) > MAX_FEATURE_NAME_LENGTH), None)
+    if long is not None:
+        raise ScopeError(
+            f"{long[:40]}… is longer than {MAX_FEATURE_NAME_LENGTH} characters. "
+            "Choose a shorter suffix.",
+            "suffix",
+        )
+    return EachScope(selected, targets, add)
+
+
+def _readable(component: str, params: Mapping[str, Any], names: Sequence[str]):
+    """The names an expression may read: x as well, in a formula for each feature."""
+    if for_each(component, params):
+        return [*names, FORMULA_VARIABLE]
+    return list(names)
+
+
 def _checked(component: str, params: Mapping[str, Any], names: Sequence[str]):
     parsed = expression(component, params)
+    variable = parsed.references.get(FORMULA_VARIABLE)
+    if (
+        component == "prepare.formula"
+        and variable is not None
+        and not for_each(component, params)
+        and FORMULA_VARIABLE not in names
+    ):
+        error = FormulaError(
+            f"{FORMULA_VARIABLE} stands for each feature only in a formula for "
+            "each feature. Choose the features under For each, or write a "
+            "feature's name",
+            variable.start,
+        )
+        error.parameter = parsed_parameter(component)
+        raise error
     try:
-        parsed.check_names(names)
+        parsed.check_names(_readable(component, params, names))
     except FormulaError as error:
         error.parameter = parsed_parameter(component)
         raise
@@ -138,6 +209,24 @@ class Formula:
 
 
 @dataclass(frozen=True)
+class FormulaForEach:
+    """An expression run once per chosen feature, with x standing for it."""
+
+    expression: Expression
+    evaluate: Callable[[Row], Any]
+    scope: EachScope
+
+    def apply(self, row: Row) -> dict[str, float]:
+        # Every value is computed from the incoming row, so the order of the
+        # chosen features never changes a result.
+        values = [
+            float(self.evaluate({**row, FORMULA_VARIABLE: row[name]}))
+            for name in self.scope.selected
+        ]
+        return {**row, **dict(zip(self.scope.targets, values, strict=True))}
+
+
+@dataclass(frozen=True)
 class Gate:
     """Lets an observation on when its condition holds; features pass unchanged."""
 
@@ -148,7 +237,7 @@ class Gate:
         return bool(self.evaluate(row))
 
 
-RowStep = Aggregate | Formula | Gate
+RowStep = Aggregate | Formula | FormulaForEach | Gate
 
 
 def row_step(
@@ -166,6 +255,8 @@ def row_step(
     parsed = _checked(component, params, inputs)
     if component == "prepare.gate":
         return Gate(parsed, evaluator(parsed))
+    if for_each(component, params):
+        return FormulaForEach(parsed, evaluator(parsed), each_scope(params, inputs))
     return Formula(
         parsed,
         evaluator(parsed),
@@ -222,6 +313,8 @@ def combined_columns(
     if component == "prepare.gate":
         _checked(component, params, names)
         return columns
+    if for_each(component, params):
+        return _each_columns(params, columns)
     name = combined_name(component, params)
     if component == "prepare.aggregate":
         scope = step_scope(component, dict(params), names)
@@ -252,6 +345,42 @@ def combined_columns(
             name=name, slots=lineage, minimum=low, maximum=high, raw=False
         ),
     ]
+
+
+def _each_bounds(columns: Columns, name: str) -> dict[str, Bounds]:
+    """The ranges a formula for each feature reads, with x as that feature."""
+    bounds = _bounds(columns)
+    bounds[FORMULA_VARIABLE] = bounds[name]
+    return bounds
+
+
+def _each_columns(params: Mapping[str, Any], columns: Columns) -> Columns:
+    """The features after a Formula for each feature: each chosen feature is
+    replaced in place, or followed at the end by the feature computed from it."""
+    names = [item.name for item in columns]
+    parsed = _checked("prepare.formula", params, names)
+    scope = each_scope(params, names)
+    position = {item.name: item for item in columns}
+    # Every computed feature also depends on the other features the formula reads.
+    shared = sorted(
+        {
+            slot
+            for name in parsed.names
+            if name != FORMULA_VARIABLE
+            for slot in position[name].slots
+        }
+    )
+    computed = []
+    for name, target in zip(scope.selected, scope.targets, strict=True):
+        analysis = analyze(parsed, _each_bounds(columns, name))
+        source = position[name]
+        item = source if not scope.add else source.model_copy(deep=True)
+        item.name = target
+        item.minimum, item.maximum = analysis.low, analysis.high
+        item.slots = sorted({*source.slots, *shared})
+        item.raw = False
+        computed.append(item)
+    return columns + computed if scope.add else columns
 
 
 @dataclass(frozen=True)
@@ -314,6 +443,8 @@ def _expression_issues(
 ) -> list[ValueIssue]:
     parameter = parsed_parameter(component)
     parsed = expression(component, params)
+    if for_each(component, params):
+        return _each_issues(params, parsed, columns, labels)
     analysis = analyze(parsed, _bounds(columns), labels)
     issues = [ValueIssue("error", text, parameter) for text in analysis.errors]
     issues += [ValueIssue("warning", text, parameter) for text in analysis.warnings]
@@ -345,6 +476,37 @@ def _expression_issues(
     return issues
 
 
+def _each_issues(
+    params: Mapping[str, Any],
+    parsed: Expression,
+    columns: Columns,
+    labels: Mapping[str, str],
+) -> list[ValueIssue]:
+    """Values skipped for any of the features, with x named as that feature."""
+    issues: list[ValueIssue] = []
+    for name in params["apply_to"]:
+        named = {**labels, FORMULA_VARIABLE: labels.get(name, name)}
+        analysis = analyze(parsed, _each_bounds(columns, name), named)
+        for severity, texts in (
+            ("error", analysis.errors),
+            ("warning", analysis.warnings),
+        ):
+            for text in texts:
+                issue = ValueIssue(severity, text, "expression")
+                if issue not in issues:
+                    issues.append(issue)
+    if FORMULA_VARIABLE not in parsed.names:
+        issues.append(
+            ValueIssue(
+                "warning",
+                f"The formula never reads {FORMULA_VARIABLE}, so every feature it "
+                "applies to gets the same value.",
+                "expression",
+            )
+        )
+    return issues
+
+
 VALUE_CHECKED = frozenset(
     {"prepare.math", "prepare.change", "prepare.formula", "prepare.gate"}
 )
@@ -352,13 +514,17 @@ VALUE_CHECKED = frozenset(
 __all__ = [
     "VALUE_CHECKED",
     "Aggregate",
+    "EachScope",
     "Formula",
+    "FormulaForEach",
     "Gate",
     "RowStep",
     "ValueIssue",
     "combined_columns",
     "combined_name",
+    "each_scope",
     "expression",
+    "for_each",
     "row_step",
     "value_issues",
 ]

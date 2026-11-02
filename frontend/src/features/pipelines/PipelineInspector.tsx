@@ -18,7 +18,7 @@ import {
   setNodeParams,
   type GraphDocument,
 } from "./model";
-import { afterGate, rangeText, readyText } from "./features";
+import { afterGate, featureBlocker, rangeText, readyText } from "./features";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
 import { combinedName, hasScope, isWarning } from "./scope";
@@ -71,6 +71,17 @@ export function PipelineInspector({
       ),
     ),
   ];
+  // Features that follow one reading; a Formula for each feature starts with these.
+  const readings = [
+    ...new Set(
+      incoming.flatMap(
+        (edge) =>
+          report?.features[edge.source]
+            ?.filter((feature) => feature.slots?.length === 1)
+            .map((feature) => feature.name) ?? [],
+      ),
+    ),
+  ];
   const input = inputKind(component);
   const output = node ? outputKind(node, component) : undefined;
   const candidates = node
@@ -85,6 +96,25 @@ export function PipelineInspector({
       )
     : [];
   const optionLabel = nodeOptionLabeler(document, catalog.components);
+  // When the features that arrive are unknown, the step whose problem hides them.
+  const blocker = node ? featureBlocker(document.definition, report, node.id) : undefined;
+  const blockerNode = document.definition.nodes.find((item) => item.id === blocker?.node);
+  // The problem with the setting it is on, such as "a problem with Mapping: Enter a value."
+  const blockerField = blocker?.issue?.parameter_path?.length
+    ? componentFor(blockerNode, catalog.components)?.fields.find((field) => field.name === blocker.issue!.parameter_path![0])
+    : undefined;
+  const blockerMessage = blocker?.issue && `${blockerField ? ` with ${blockerField.label}` : ""}: ${blocker.issue.message}`;
+  const featureHint = !incoming.length ? undefined : !report
+    ? <p className="pl-help">Checking which features arrive here…</p>
+    : blocker && <p className="pl-warning" role="status">
+      {blockerNode
+        ? <>The features arriving here aren't known yet, because {optionLabel(blockerNode)} has a
+          problem{blockerMessage}
+          <button type="button" className="pl-formula-fix" onClick={() => onSelect(blockerNode.id)}>
+            Go to {optionLabel(blockerNode)}
+          </button></>
+        : "The features arriving here aren't known yet. Fix the problems marked on the steps before this one."}
+    </p>;
   const featureLabels = Object.fromEntries(
     document.definition.input_slots.map((slot) => [
       slot.id,
@@ -302,11 +332,11 @@ export function PipelineInspector({
           {titleField}
           {component && scoped && (
             <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
-              issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && (node.component === "prepare.formula" || node.component === "prepare.gate") && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
-              issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
+              readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
               range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
           )}
           {component && (
@@ -316,6 +346,7 @@ export function PipelineInspector({
               values={node.params}
               features={features}
               featureLabels={featureLabels}
+              featureHint={featureHint}
               prefix={node.id}
               readOnly={readOnly}
               onChange={(params) => changeParams(params, Object.keys(params)

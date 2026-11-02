@@ -77,10 +77,10 @@ const DESCRIPTIONS: Record<string, string> = {
 export const stepDescription = (component: PipelineComponent) =>
   DESCRIPTIONS[component.id] ?? component.description;
 
-/** Settings with controls of their own: the formula editor, Result and Name. */
+/** Settings with controls of their own: the formula editor, For each, Result, Name and Suffix. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
-  "prepare.formula": new Set(["expression", "name", "result"]),
+  "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
   // Combine detectors has its own control, shown once the design has two detectors.
   "policy.martingale": new Set(["fusion"]),

@@ -105,6 +105,8 @@ export type FormulaParameters = {
   expression: string;
   name?: string | null;
   result?: "replace" | "add";
+  apply_to?: Array<string> | null;
+  suffix?: string | null;
 };
 
 export type GateParameters = {

@@ -1,24 +1,22 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { CombinedName } from "./PipelineFormula";
-import { addedName, addsByDefault, combinedName, defaultSuffix, setting, stepScope } from "./scope";
+import { addedName, addsByDefault, combinedName, defaultSuffix, listed, setting, stepScope } from "./scope";
 
 type Issue = { path: (string | number)[]; message: string };
 
-const listed = (names: string[], limit = 3) =>
-  names.length <= limit
-    ? names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
-    : `${names.slice(0, limit).join(", ")} and ${names.length - limit} more`;
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 /** Applies to and Result: which incoming features a step uses and where its output goes. */
-export function PipelineScope({ node, component, features, featureLabels, issues, readOnly, onChange }: {
+export function PipelineScope({ node, component, features, featureLabels, featureHint, issues, readOnly, onChange }: {
   node: PipelineNode;
   component: PipelineComponent;
   /** Incoming feature names in their order, once the graph has been checked. */
   features: string[];
   featureLabels: Record<string, string>;
+  /** Shown in place of the features while they are unknown: why, and where to fix it. */
+  featureHint?: ReactNode;
   issues: Issue[];
   readOnly?: boolean;
   onChange: (params: Record<string, JsonValue>, field: string) => void;
@@ -74,7 +72,7 @@ export function PipelineScope({ node, component, features, featureLabels, issues
         {chosen ? `${plural(chosen.length, "feature")} of ${features.length}` : "Every feature that arrives"}
       </small>
       {!features.length && !missing.length
-        ? <p className="pl-help">Connect an input to choose features.</p>
+        ? featureHint ?? <p className="pl-help">Connect an input to choose features.</p>
         : <div className="pl-scope-features">
           {features.map((name) => {
             const checked = !chosen || chosen.includes(name);

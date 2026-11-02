@@ -267,6 +267,18 @@ observation would be, or when a condition is never true. A seeded fuzz test
 checks that any text parses or fails with `FormulaError`, that evaluation fails
 only with `PrepareFailure`, and that every value lies in the inferred range.
 
+A Formula with `apply_to` is a formula for each feature (`FormulaForEach`): it
+evaluates the expression once per chosen feature with `x` bound to that
+feature's value, always against the incoming row, and either adds
+`<feature>_<suffix>` (suffix `formula` by default) or replaces each value.
+`each_scope` checks that the features arrive, that no incoming feature is
+itself named `x`, and that the added names are free; `name` with `apply_to` is a
+parameter error. The compiler analyses the expression per feature, so ranges,
+lineage and `values` issues are per added feature, and it warns when `x` is
+never read. A plain Formula that reads `x` without such a feature arriving is a
+`formula` error at `x`. Formulas without `apply_to` normalize as before, so
+their fingerprints are unchanged.
+
 A Gate whose condition is false withholds the observation: the steps before it
 commit their states, the steps after it do not run, and `PrepareStage.run`
 returns `Withheld("held_back", gate)`. Both detectors return a `held_back` result,

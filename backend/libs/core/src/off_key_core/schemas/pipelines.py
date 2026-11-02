@@ -935,6 +935,10 @@ class RangeParameters(PrepareScopeParameters):
 
 
 COMBINED_NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+FORMULA_SUFFIX = "formula"
+"""What a Formula for each feature appends to the names it adds, by default."""
+FORMULA_VARIABLE = "x"
+"""The name that stands for each feature in a Formula for each feature."""
 
 
 def _combined_name(default: str) -> Any:
@@ -986,11 +990,52 @@ class FormulaParameters(PipelineModel):
             "Arithmetic over the features arriving here, such as "
             "dc_voltage * dc_current, with + - * / ^, parentheses, and abs, sqrt, "
             "log, log1p, exp, min, max and clip. Write a name with other "
-            "characters between backticks."
+            "characters between backticks. In a formula for each feature, x "
+            "stands for that feature."
         ),
     )
     name: str | None = _combined_name("formula")
     result: Literal["replace", "add"] = _keeps("the features the formula reads")
+    apply_to: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        title="For each",
+        description=(
+            "Compute the formula once for each of these features, with x standing "
+            "for the feature, such as x / mean - 1. Leave unset to compute one "
+            "feature."
+        ),
+    )
+    suffix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Za-z0-9_]+$",
+        title="Suffix",
+        description=(
+            "For each feature, keeping features adds <feature>_<suffix>. Leave "
+            f"unset for {FORMULA_SUFFIX}."
+        ),
+    )
+
+    @field_validator("apply_to")
+    @classmethod
+    def unique_features(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("List each feature at most once")
+        if value is not None and any(not name or len(name) > 120 for name in value):
+            raise ValueError("Feature names must contain 1 to 120 characters")
+        return value
+
+    @model_validator(mode="after")
+    def one_naming(self) -> "FormulaParameters":
+        if self.apply_to is not None and self.name is not None:
+            raise ValueError(
+                "A formula for each feature names its features with Suffix; "
+                "leave Name empty"
+            )
+        return self
 
 
 class GateParameters(PipelineModel):

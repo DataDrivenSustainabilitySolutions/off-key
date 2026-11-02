@@ -289,3 +289,31 @@ describe("the Graph and Features switch", () => {
     expect(screen.queryByRole("region", { name: "Features" })).toBeNull();
   });
 });
+
+describe("a step whose features are unknown", () => {
+  const select = component("features.select", "transform", [
+    { name: "features", label: "Features", type: "features", required: true, has_default: false },
+  ], "Select");
+  const rename = component("features.rename", "transform", [
+    { name: "mapping", label: "Mapping", type: "rename", required: true, has_default: false },
+  ], "Rename features");
+  const blocked = document([transform("rename", "features.rename", { mapping: {} }), transform("pick", "features.select")], [
+    { source: "input", target: "rename" }, { source: "rename", target: "pick" }, { source: "pick", target: "model" },
+  ]);
+  const report = {
+    valid: false, definition: blocked.definition, provenance_complete: true,
+    features: { input: chainReport.features.input },
+    issues: [{ code: "parameters", severity: "error", node_id: "rename", parameter_path: ["mapping"], message: "Enter a value." }],
+  } as unknown as PipelineValidation;
+
+  it("names the step before it whose problem hides them, and goes there", () => {
+    const selections: (string | undefined)[] = [];
+    render(<PipelineInspector document={blocked} catalog={{ ...catalog, components: [select, rename, ...components] }}
+      selected="pick" validation={report} onSelect={(id) => selections.push(id)} onChange={() => {}} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "because Rename features has a problem with Mapping: Enter a value.");
+    expect(screen.queryByText("Connect inputs to select available features.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Go to Rename features" }));
+    expect(selections).toEqual(["rename"]);
+  });
+});

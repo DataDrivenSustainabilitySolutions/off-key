@@ -221,3 +221,32 @@ export function readyText(observation: number, gated: boolean) {
     return gated ? "Ready from the first observation a Gate lets through" : "Ready from the first observation";
   return `Ready after ${gated ? "at least " : ""}${observation.toLocaleString()} observations`;
 }
+
+/** Why the features arriving at a step are unknown: the nearest step before it whose
+ * error stops the check from working out its features. Undefined while they are known. */
+export function featureBlocker(
+  definition: PipelineDefinition,
+  validation: Pick<PipelineValidation, "features" | "issues"> | undefined,
+  target: string,
+): { node?: string; issue?: PipelineValidation["issues"][number] } | undefined {
+  const sources = incomingEdges(definition, target).map((edge) => edge.source);
+  if (!validation || !sources.length) return undefined;
+  const known = (id: string) => validation.features[id] !== undefined;
+  if (sources.every(known)) return undefined;
+  const error = (id: string) => validation.issues.find((issue) => issue.node_id === id && issue.severity !== "warning");
+  const seen = new Set<string>();
+  const queue = sources.filter((id) => !known(id));
+  let fallback: { node: string; issue: PipelineValidation["issues"][number] } | undefined;
+  while (queue.length) {
+    const id = queue.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const parents = incomingEdges(definition, id).map((edge) => edge.source);
+    const issue = error(id);
+    // The step whose own inputs are known is where the features stop.
+    if (issue && parents.every(known)) return { node: id, issue };
+    if (issue) fallback ??= { node: id, issue };
+    queue.push(...parents.filter((parent) => !known(parent)));
+  }
+  return fallback ?? {};
+}

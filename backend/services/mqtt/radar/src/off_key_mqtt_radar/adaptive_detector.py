@@ -558,6 +558,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 self.plan.detector_ids, scores, counts, strict=True
             )
         ]
+        self._diagnose(self.diagnostics.detectors, self._detector_results)
         return self.fusion.value(combined), combined > self.threshold_count
 
     def _observer(self, detector_id: str):

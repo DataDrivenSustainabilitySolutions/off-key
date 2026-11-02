@@ -7,7 +7,7 @@ import pickle
 import numpy as np
 import pytest
 from aberrant.compose import GraphExecutionError, GraphStateUncertainError
-from off_key_core.schemas.pipelines import PipelineDefinition
+from off_key_core.schemas.pipelines import PipelineDefinition, PipelineRuntimeState
 from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
@@ -18,6 +18,7 @@ from off_key_mqtt_radar.detector import (
 )
 from off_key_mqtt_radar.execution_errors import FatalExecutionError, StepRejected
 from off_key_mqtt_radar.fusion import RankFusion, threshold_count
+from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
 from off_key_mqtt_radar.preflight import preflight
@@ -228,9 +229,10 @@ def test_adaptive_strongest_alarms_on_a_shift_one_detector_sees_average_needs_mo
     # Only the first detector sees the jump: it is beyond all its calibration.
     assert surprises[0] == 1.0
     assert strongest.anomaly_score == 1.0 and strongest.is_anomaly
-    # Averaged with a calm second detector the same jump stays below 1.
-    assert average.anomaly_score < 1.0
+    # Averaged with a calm second detector the same jump stays below 1, and
+    # below the threshold: Average needs more than one detector to agree.
     assert average.anomaly_score < strongest.anomaly_score
+    assert not average.is_anomaly
 
 
 def test_adaptive_warm_up_ends_when_every_detector_is_ready():
@@ -432,3 +434,30 @@ def test_evidence_names_each_detector_beside_the_fused_value():
         "detector_2",
     ]
     assert records[0]["anomaly_score"] == operational.anomaly_score
+
+
+@pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])
+def test_the_sampled_observation_shows_each_detector(strategy):
+    """The live inspector reads each detector's score and surprise from the sample."""
+    if strategy == "static_baseline":
+        service = _static(fused_definition())
+        points = 60
+    else:
+        service = _adaptive(training=3, calibration=10)
+        points = 20
+    service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)
+    [result] = _feed(service, _calm(np.random.default_rng(14), points))[-1:]
+    state = PipelineRuntimeState.model_validate(service.get_pipeline_state())
+
+    observation = state.observation
+    assert observation is not None and observation.detectors is not None
+    key = "static_conformal" if strategy == "static_baseline" else "adaptive_stream"
+    expected = result.context[key]["detectors"]
+    assert [item.model_dump() for item in observation.detectors] == expected
+    # Each detector's own sample keeps its features and its score.
+    for item in expected:
+        sample = observation.passes.score[item["detector_id"]]
+        assert sample.output == item["score"]
+        assert sample.input == result.processed_features[item["detector_id"]]
+    if strategy == "static_baseline":
+        service.shutdown()

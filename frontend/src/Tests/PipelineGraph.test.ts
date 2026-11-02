@@ -306,7 +306,8 @@ describe("editing on connections", () => {
     const detector = components.find((item) => item.kind === "detector")!;
     const scores: PipelineComponent = { ...passthrough, id: "scores.only", input_type: "scores", output_type: "scores" };
     const link = { source: "raw", target: "merge" };
-    expect(insertBlocker(document.definition, link, detector, components)).toBe("A design has one of these.");
+    expect(insertBlocker(document.definition, link, detector, components))
+      .toBe("Add another detector from a detector's settings.");
     expect(insertBlocker(document.definition, link, scores, [...components, scores]))
       .toBe("Does not fit a connection that carries features.");
     expect(insertBlocker(document.definition, link, passthrough, components)).toBeUndefined();

@@ -3,8 +3,11 @@ import type { PipelineCatalog, PipelineNode, PipelineValidation } from "./contra
 import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
 import { hasParameterControl } from "@/components/parameter-editor/types";
 import {
+  addDetector,
   connectNodes,
   connectionIssue,
+  detectorBlocker,
+  detectorIds,
   disconnectEdge,
   incomingEdges,
   moveMergeInput,
@@ -20,7 +23,7 @@ import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
 import { combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
-import { stepFields } from "./steps";
+import { FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
 type Props = {
@@ -161,6 +164,7 @@ export function PipelineInspector({
   const changeParams = (params: PipelineNode["params"], changed: string) => {
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
   };
+  const detectors = detectorIds(document.definition);
   return (
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
@@ -251,6 +255,50 @@ export function PipelineInspector({
               </div>
             );
           })()}
+          {node.kind === "detector" && !readOnly && (() => {
+            const blocked = detectorBlocker(document.definition);
+            return (
+              <div className="pl-field">
+                <button
+                  type="button"
+                  disabled={!!blocked}
+                  onClick={() => {
+                    const added = addDetector(document, node.id);
+                    if (!added) return;
+                    onChange(added.document);
+                    onSelect(added.id);
+                  }}
+                >
+                  Add another detector
+                </button>
+                <small className="pl-help">
+                  {blocked ?? "Adds a detector like this one that reads the same features. The decision policy combines them; change its model or input afterwards."}
+                </small>
+              </div>
+            );
+          })()}
+          {node.kind === "policy" && detectors.length > 1 && (
+            <div className="pl-field">
+              <span id={`${node.id}-fusion`}>Combine detectors</span>
+              <div className="pl-segmented" role="group" aria-labelledby={`${node.id}-fusion`}>
+                {FUSION_CHOICES.map((choice) => (
+                  <button
+                    key={choice.value}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={fusionChoice(node).value === choice.value}
+                    onClick={() => changeParams({ ...node.params, fusion: choice.value }, "fusion")}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+              </div>
+              <small className="pl-help">
+                {fusionChoice(node).help} Each score counts by its rank against that
+                detector's own calibration scores.
+              </small>
+            </div>
+          )}
           {titleField}
           {component && scoped && (
             <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
@@ -277,7 +325,9 @@ export function PipelineInspector({
             />
           )}
           <h4>
-            Incoming connections{node.kind === "merge" ? " · output order" : ""}
+            {node.kind === "policy" && detectors.length > 1
+              ? "Detectors"
+              : `Incoming connections${node.kind === "merge" ? " · output order" : ""}`}
           </h4>
           {node.kind === "merge" && (
             <p className="pl-help">
@@ -361,7 +411,7 @@ export function PipelineInspector({
           )}
           {!readOnly &&
             node.kind !== "source" &&
-            (node.kind === "merge" || !incoming.length) && (
+            (node.kind === "merge" || !incoming.length || (node.kind === "policy" && candidates.length > 0)) && (
               <label className="pl-field">
                 <span>Connect input from</span>
                 <select

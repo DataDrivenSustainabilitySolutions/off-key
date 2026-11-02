@@ -148,6 +148,22 @@ class PipelineDiagnostics:
         except Exception:
             self.errors += 1
 
+    def detectors(self, results: list[dict[str, Any]]) -> None:
+        """Each combined detector's score and surprise in a sampled observation."""
+        if self._pending is None:
+            return
+        try:
+            self._pending["detectors"] = [
+                {
+                    "detector_id": str(item["detector_id"]),
+                    "score": self._preview(item["score"]),
+                    "surprise": self._preview(item["surprise"]),
+                }
+                for item in results
+            ]
+        except Exception:
+            self.errors += 1
+
     def prepare_step(
         self,
         node_id: str,

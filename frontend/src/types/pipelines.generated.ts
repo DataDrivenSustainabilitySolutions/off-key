@@ -140,6 +140,12 @@ export type MinMaxScalerParameters = {
   clip?: boolean;
 };
 
+export type ObservedDetector = {
+  detector_id: string;
+  score: number | null;
+  surprise: number | null;
+};
+
 export type OnlinePCAParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
@@ -332,6 +338,7 @@ export type PipelineObservation = {
   phase: string;
   input_timestamps: Record<string, string>;
   passes: PipelineObservationPasses;
+  detectors?: Array<ObservedDetector> | null;
 };
 
 export type PipelineObservationPasses = {
@@ -595,4 +602,4 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
-export const PIPELINE_LIMITS = { nodes: 64, edges: 128, slots: 100 } as const;
+export const PIPELINE_LIMITS = { nodes: 64, edges: 128, slots: 100, detectors: 4 } as const;

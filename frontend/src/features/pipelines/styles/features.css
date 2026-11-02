@@ -226,3 +226,32 @@
   .pl-feature-name { grid-area: name; text-align: right; }
   .pl-feature-steps { grid-area: steps; }
 }
+
+/* Which detector's features the view lists, when the policy combines several. */
+.pl-features-detectors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 2px;
+  margin: 0 0 12px;
+  padding: 2px;
+  border-radius: 8px;
+  background: hsl(var(--muted));
+}
+.pl-features-detectors button {
+  max-width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pl-features-detectors button[aria-pressed="true"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}

@@ -82,7 +82,19 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result"]),
   "prepare.gate": new Set(["condition"]),
+  // Combine detectors has its own control, shown once the design has two detectors.
+  "policy.martingale": new Set(["fusion"]),
+  "policy.quantile": new Set(["fusion"]),
 };
+
+/** How the policy makes one alarm from several detectors, in the composer's words. */
+export const FUSION_CHOICES = [
+  { value: "max", label: "Strongest", help: "The most surprised detector decides, so a change one detector sees is enough." },
+  { value: "mean", label: "Average", help: "Their mean decides, so a change has to show in several detectors, or strongly in one." },
+] as const;
+
+export const fusionChoice = (node: PipelineNode) =>
+  FUSION_CHOICES.find((choice) => choice.value === node.params.fusion) ?? FUSION_CHOICES[0];
 
 /** The settings the inspector lists below Applies to and Result. Scale and offset
  * only mean something to a linear Math step, so they stay hidden otherwise. */

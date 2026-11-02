@@ -258,8 +258,17 @@ interface MonitoringEvidence {
   restarted_martingale_is_infinite: boolean;
   log_restarted_martingale: number | null;
   tracker_results?: MartingaleTrackerResult[];
+  /** Each detector's part when the policy combines several; empty for one detector. */
+  detector_results?: MonitoringDetectorResult[];
   threshold: number;
   alarm: boolean;
+}
+
+/** One detector's score, and its surprise against its own calibration scores. */
+export interface MonitoringDetectorResult {
+  detector_id: string;
+  score: number | null;
+  surprise: number | null;
 }
 
 interface MartingaleStatisticEvidence {
@@ -301,6 +310,7 @@ export type MonitoringChartEvidence = Pick<
   | 'input_timestamps'
   | 'restarted_martingale'
   | 'tracker_results'
+  | 'detector_results'
   | 'threshold'
   | 'alarm'
 > & {

@@ -32,17 +32,65 @@ function Values({
   );
 }
 
+const share = (value: number | null) => (value === null ? "Not captured" : String(Number(value.toPrecision(4))));
+
+/** Each detector's score and surprise in the sampled observation, for a policy that
+ * combines several. */
+function ObservedDetectors({
+  detectors,
+  nodeLabels,
+  onSelect,
+}: {
+  detectors: NonNullable<NonNullable<PipelineState["observation"]>["detectors"]>;
+  nodeLabels?: Record<string, string>;
+  onSelect?: (id: string) => void;
+}) {
+  return (
+    <div className="pl-observed-detectors">
+      <strong>Detectors in this observation</strong>
+      <table>
+        <thead>
+          <tr><th scope="col">Detector</th><th scope="col">Score</th><th scope="col">Surprise</th></tr>
+        </thead>
+        <tbody>
+          {detectors.map((item) => {
+            const label = nodeLabels?.[item.detector_id] ?? item.detector_id;
+            return (
+              <tr key={item.detector_id}>
+                <th scope="row">
+                  {onSelect ? (
+                    <button type="button" onClick={() => onSelect(item.detector_id)}>{label}</button>
+                  ) : label}
+                </th>
+                <td>{item.score === null ? "Not captured" : item.score.toPrecision(7)}</td>
+                <td>{share(item.surprise)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <small className="pl-help">
+        A surprise is the share of that detector&apos;s calibration scores below its score.
+        The policy combines the surprises, so detectors on different scales compare.
+      </small>
+    </div>
+  );
+}
+
 export function PipelineDiagnostics({
   state,
   selected,
   expectedRunId,
   nodeLabels,
+  policyId,
   onSelect,
 }: {
   state?: PipelineState | null;
   selected?: string;
   expectedRunId?: string;
   nodeLabels?: Record<string, string>;
+  /** The decision policy, which shows every detector's part when it combines several. */
+  policyId?: string;
   onSelect?: (id: string) => void;
 }) {
   const [pass, setPass] = useState<"score" | "learn">("score");
@@ -63,6 +111,8 @@ export function PipelineDiagnostics({
   const sample = selected
     ? state.observation?.passes[pass][selected]
     : undefined;
+  const detectors = state.observation?.detectors;
+  const observed = detectors?.find((item) => item.detector_id === selected);
   const age = Math.max(
     0,
     Math.floor((now - Date.parse(state.captured_at)) / 1000),
@@ -195,6 +245,9 @@ export function PipelineDiagnostics({
               Learning pass
             </button>
           </div>
+          {pass === "score" && detectors?.length && selected === policyId ? (
+            <ObservedDetectors detectors={detectors} nodeLabels={nodeLabels} onSelect={onSelect} />
+          ) : null}
           {sample ? (
             <>
               <p>
@@ -203,6 +256,12 @@ export function PipelineDiagnostics({
               </p>
               <Values label="Input" values={sample.input} />
               <Values label="Output" values={sample.output} />
+              {pass === "score" && observed && (
+                <p className="pl-help">
+                  Surprise {share(observed.surprise)}: the share of this detector&apos;s
+                  calibration scores below its score.
+                </p>
+              )}
             </>
           ) : (
             selected && (

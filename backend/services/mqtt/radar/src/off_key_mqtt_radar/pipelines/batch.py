@@ -253,10 +253,11 @@ class FusedStaticPipeline:
             )
         ]
         if self.observer is not None:
-            for identifier, surprise, elapsed in zip(
-                self.detectors, surprises, timings, strict=True
+            for identifier, score, elapsed in zip(
+                self.detectors, scores, timings, strict=True
             ):
                 self.observer.record(
-                    identifier, features[identifier], surprise, elapsed_ns=elapsed
+                    identifier, features[identifier], score, elapsed_ns=elapsed
                 )
+            self.observer.detectors(self.last_detectors)
         return np.asarray([p_value], dtype=float)

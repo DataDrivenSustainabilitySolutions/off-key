@@ -551,12 +551,24 @@ class PipelineObservationPasses(PipelineModel):
     learn: dict[str, PipelineNodePreview]
 
 
+class ObservedDetector(PipelineModel):
+    """One detector's part in a sampled observation of combined detectors."""
+
+    detector_id: str
+    score: float | None
+    """The detector's own score, higher is more anomalous."""
+    surprise: float | None
+    """The share of its calibration scores below the score, from 0 to 1."""
+
+
 class PipelineObservation(PipelineModel):
     sequence_number: int
     timestamp: str
     phase: str
     input_timestamps: dict[str, str]
     passes: PipelineObservationPasses
+    detectors: list[ObservedDetector] | None = None
+    """Each detector's score and surprise when the policy combines several."""
 
 
 class PipelineNodeRuntime(PipelineModel):

@@ -1,5 +1,5 @@
 import type { PipelineComponent, PipelineDefinition, PipelineValidation } from "./contracts";
-import { incomingEdges, insertOnEdge, type GraphDocument, type Link } from "./model";
+import { detectorIds, incomingEdges, insertOnEdge, type GraphDocument, type Link } from "./model";
 import { stepFamily } from "./steps";
 
 /** One feature the detector receives, with the steps that made it. */
@@ -20,6 +20,8 @@ export type FeaturesView = {
   /** The node that hands the detector its features. */
   last?: string;
   detector?: string;
+  /** Every detector of the design, in RADAR's order; the view shows one of them. */
+  detectors: string[];
   /** Features that follow a reading, by reading, then the ones made from several. */
   rows: FeatureRow[];
   /** Readings no feature the detector receives comes from. */
@@ -51,9 +53,15 @@ function featurePath(features: Columns, node: string, name: string): [string, st
   return path.reverse();
 }
 
-/** The features the detector receives, computed from the graph and its last check. */
-export function featuresView(definition: PipelineDefinition, report?: Pick<PipelineValidation, "features" | "provenance_complete">): FeaturesView {
-  const detector = definition.nodes.find((node) => node.kind === "detector")?.id;
+/** The features a detector receives, the chosen one or else the first, computed from
+ * the graph and its last check. */
+export function featuresView(
+  definition: PipelineDefinition,
+  report?: Pick<PipelineValidation, "features" | "provenance_complete">,
+  chosen?: string,
+): FeaturesView {
+  const detectors = detectorIds(definition);
+  const detector = chosen && detectors.includes(chosen) ? chosen : detectors[0];
   const source = definition.nodes.find((node) => node.kind === "source")?.id;
   const last = detector ? incomingEdges(definition, detector)[0]?.source : undefined;
   const columns = (last && report?.features[last]) || [];
@@ -78,6 +86,7 @@ export function featuresView(definition: PipelineDefinition, report?: Pick<Pipel
   return {
     last,
     detector,
+    detectors,
     rows: sorted,
     unused: last && report?.features[last] ? slots.filter((slot) => !used.has(slot)) : [],
     complete: report?.provenance_complete !== false,
@@ -135,6 +144,19 @@ export function rowPlacement(
   if (first === 0) return { reason: `${row.name} comes from a learned step, and Prepare steps run before anything learns.` };
   const [source, feature] = path[first - 1]!;
   return { link: { source, target: path[first]![0] }, feature };
+}
+
+/** The detectors downstream of a node, the node itself included when it is one. */
+export function detectorsAfter(definition: PipelineDefinition, id: string) {
+  const reached = new Set<string>();
+  const pending = [id];
+  while (pending.length) {
+    const current = pending.pop()!;
+    if (reached.has(current)) continue;
+    reached.add(current);
+    pending.push(...definition.edges.filter((edge) => edge.source === current).map((edge) => edge.target));
+  }
+  return detectorIds(definition).filter((detector) => reached.has(detector));
 }
 
 /** Insert a step that uses only the row's feature, set to that feature. */

@@ -2,8 +2,8 @@ import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Plus, X } from "lucide-react";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
-import { addForFeature, featuresView, rangeText, rowPlacement, rowSteps, type FeatureRow } from "./features";
-import { nodeLabel, type GraphDocument } from "./model";
+import { addForFeature, detectorsAfter, featuresView, rangeText, rowPlacement, rowSteps, type FeatureRow } from "./features";
+import { nodeLabel, nodeOptionLabeler, type GraphDocument } from "./model";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { componentFor } from "./semantics";
 import { stepFamily } from "./steps";
@@ -41,6 +41,13 @@ function AddForFeature({ row, document, components, report, view, disabled, onAd
   const placed = (component: PipelineComponent) => rowPlacement(document.definition, report, view, row, component);
   const choices = steps.filter((component) => !("reason" in placed(component)));
   const refused = steps.map(placed).find((placement) => "reason" in placement);
+  // A Prepare step runs before anything learns, so it can sit on a path other detectors share.
+  const prepare = choices.find((component) => stepFamily(component.kind, component.id) === "prepare");
+  const placement = prepare && placed(prepare);
+  const label = nodeOptionLabeler(document, components);
+  const node = (id: string) => document.definition.nodes.find((item) => item.id === id);
+  const others = placement && "link" in placement
+    ? detectorsAfter(document.definition, placement.link.target).filter((id) => id !== view.detector) : [];
   return <Popover.Root open={open} onOpenChange={setOpen}>
     <Popover.Trigger className="pl-feature-add" aria-label={`Add a step for ${row.name}`} disabled={disabled}
       title={disabled ? "Waiting for the latest check" : `Add a step for ${row.name}`}>
@@ -60,6 +67,10 @@ function AddForFeature({ row, document, components, report, view, disabled, onAd
           <Popover.Close aria-label="Close steps"><X size={16} aria-hidden="true" /></Popover.Close>
         </div>
         {refused && "reason" in refused && <p className="pl-help">{refused.reason}</p>}
+        {placement && "link" in placement && others.length > 0 && <p className="pl-help">
+          Prepare steps go before {label(node(placement.link.target))}, so they also change what{" "}
+          {listed(others.map((id) => label(node(id))))} {others.length === 1 ? "receives" : "receive"}.
+        </p>}
         <PipelineToolbox components={components} document={document} choices={choices} onAdd={(id) => {
           const component = components.find((item) => item.id === id);
           const added = component && addForFeature(document, report, components, view, row, component);
@@ -75,7 +86,11 @@ function AddForFeature({ row, document, components, report, view, disabled, onAd
  * It is computed from the graph and its last check, so it always agrees with the graph. */
 export function PipelineFeatures({ document, components, report, stale, selected, readOnly, onSelect, onChange }: Props) {
   const { definition, layout } = document;
-  const view = featuresView(definition, report);
+  // A detector selected when the view opens is the one it shows first.
+  const [chosen, setChosen] = useState(() =>
+    definition.nodes.find((node) => node.id === selected && node.kind === "detector")?.id);
+  const view = featuresView(definition, report, chosen);
+  const optionLabel = nodeOptionLabeler(document, components);
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
   const label = (slot: string) => labels.get(slot) ?? slot;
   const gates = definition.nodes.filter((node) => node.component === "prepare.gate");
@@ -127,6 +142,12 @@ export function PipelineFeatures({ document, components, report, stale, selected
         </button>)}
       </div>}
     </div>
+    {view.detectors.length > 1 && <div className="pl-features-detectors" role="group" aria-label="Detector">
+      {view.detectors.map((id) => <button type="button" key={id} aria-pressed={view.detector === id}
+        onClick={() => setChosen(id)}>
+        {optionLabel(definition.nodes.find((node) => node.id === id))}
+      </button>)}
+    </div>}
     {stale && <p className="pl-help" role="status">Checking the latest changes…</p>}
     {message ? <p className="pl-help pl-features-empty">{message}</p> : <>
       {!view.complete && <p className="pl-help">

@@ -1,7 +1,9 @@
 import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
+import { detectorIds } from "./model";
 import { addedName, combinedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { fusionChoice } from "./steps";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
 export type NodeSummary = { text?: string; chips?: string[] };
@@ -13,9 +15,15 @@ const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 const sentence = (label: string) => label.charAt(0) + label.slice(1).toLowerCase();
 
+const isRecord = (value: JsonValue | undefined): value is Record<string, JsonValue> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Whether a setting holds its default, comparing lists and nested settings by value. */
 function same(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
   if (Array.isArray(left) && Array.isArray(right))
     return left.length === right.length && left.every((item, index) => same(item, right[index]));
+  if (isRecord(left) && isRecord(right))
+    return [...new Set([...Object.keys(left), ...Object.keys(right)])].every((key) => same(left[key], right[key]));
   return (left ?? null) === (right ?? null);
 }
 
@@ -30,7 +38,8 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 
 /** Settings that differ from the catalogue defaults, at most two, then a count of the rest. */
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
-  const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name)
+  // The policy names how it combines detectors on its own, and only when there are several.
+  const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name) && field.name !== "fusion"
     && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
   const shown = lines.filter((line): line is string => !!line).slice(0, 2);
@@ -132,6 +141,9 @@ export function nodeSummary(
 ): NodeSummary {
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
   const base = settingsSummary(node, component, definition, labels);
+  const detectors = detectorIds(definition).length;
+  if (node.kind === "policy" && detectors > 1)
+    return { text: [`${fusionChoice(node).label} of ${detectors} detectors`, base.text].filter(Boolean).join(" · ") };
   const scope = scopeSummary(node, component, labels);
   if (!scope) return base;
   return {

@@ -91,10 +91,12 @@ detectors on different scales need no tuning. The decision policy's **Combine
 detectors** setting decides how the ranks make one: **Strongest**, the default,
 follows the most surprised detector, so a change that one detector sees is
 enough; **Average** follows their mean, so a change has to show in several
-detectors, or strongly in one. The static strategy turns the combined rank into
-a p-value that behaves like a single detector's, so the martingale trackers and
-their thresholds keep their meaning. The adaptive strategy alarms when the
-combined rank exceeds the policy's quantile of the combined ranks it saw during
+detectors, or strongly in one. The setting appears once the design has two
+detectors, and the policy's card then reads, for example, *Strongest of 2
+detectors*. The static strategy turns the combined rank into a p-value that
+behaves like a single detector's, so the martingale trackers and their
+thresholds keep their meaning. The adaptive strategy alarms when the combined
+rank exceeds the policy's quantile of the combined ranks it saw during
 calibration, and it starts calibrating once its slowest detector is ready.
 
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
@@ -155,9 +157,11 @@ only the steps that fit there; the new step is connected on both sides and takes
 the connection's place in a merge's input order. Drawing a connection onto an
 input that is already connected replaces its connection: the dot's hover text
 names the connection it replaces, the canvas confirms the change and **Undo**
-restores it. A design has one input, detector, decision policy and output, so the
-menu does not offer them again; it links to the existing detector, policy and
-output instead. **Service settings** and **Step settings** open the side panel.
+restores it. A design has one input, decision policy and output, so the menu
+does not offer them again; it links to the existing steps instead. A detector's
+settings offer **Add another detector**: it adds a detector with the same model
+that reads the same features and connects it to the policy, up to four
+detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
 Step settings provide the same connection editing on keyboards and narrow
 screens, listing compatible, cycle-free upstream choices.
 **Locate selected component** brings its card into a readable view and **Fit
@@ -289,7 +293,11 @@ selecting a step opens its settings. **+** in a row adds a step for that feature
 alone: a Prepare or Combine step goes in before anything learns, and a learned
 step just before the detector. A feature that a learned step makes, such as a
 projection's component, takes no Prepare step, and the menu says why. The view
-follows the latest check, so it waits while an edit is checked.
+follows the latest check, so it waits while an edit is checked. With several
+detectors, a switch above the rows chooses whose features it lists, starting
+with the selected detector. A Prepare step runs before anything learns, so when
+its place is on a path several detectors share, the row's menu names the other
+detectors it also changes.
 
 **Robust scaling** centers each feature on its median and divides by its
 interquartile range, so occasional spikes shift it less than standard scaling.
@@ -316,7 +324,10 @@ arrangement can be saved independently. The live inspector shows one coherent
 sampled observation, separates score and post-learning passes, and marks nodes
 that did not execute. Snapshot age is visible; fresh diagnostics do not imply
 persisted evidence is current. Static training appears as a batch summary.
-Configuration issues and sampled runtime state have separate badges.
+Configuration issues and sampled runtime state have separate badges. When the
+policy combines detectors, selecting it lists each detector's score and surprise
+for the sampled observation, and a selected detector shows its surprise beside
+its score. A chart's tooltip lists the same for each evidence row.
 
 **Edit service** opens the running definition, layout and bindings. **Apply
 changes** explains the interruption and fresh learning, then replaces the

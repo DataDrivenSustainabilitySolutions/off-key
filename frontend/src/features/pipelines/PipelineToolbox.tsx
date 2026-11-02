@@ -50,7 +50,12 @@ export function PipelineToolbox({
   // The detector, policy and output are changed in their own settings, not added again.
   const present = link || choices ? [] : definition.nodes.filter((node) => node.kind in singleNames
     && (!search || `${nodeLabel(node, components, document.layout)} ${singleNames[node.kind]}`.toLocaleLowerCase().includes(search)));
-  const presentText = listed(present.map((node) => singleNames[node.kind]!));
+  // Several detectors read as one entry: "the 2 detectors, policy and output".
+  const kinds = [...new Set(present.map((node) => node.kind))];
+  const presentText = listed(kinds.map((kind) => {
+    const count = present.filter((node) => node.kind === kind).length;
+    return count > 1 ? `${count} ${singleNames[kind]}s` : singleNames[kind]!;
+  }));
   const full = definition.nodes.length >= PIPELINE_LIMITS.nodes;
   const blocker = (component: PipelineComponent) => link ? undefined : addBlocker(definition, component);
   const items = () => [...list.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []];
@@ -130,6 +135,7 @@ export function PipelineToolbox({
           <p className="pl-help">
             The {presentText} {present.length === 1 ? "is" : "are"} already in this pipeline.
             {onSelect ? ` Open ${present.length === 1 ? "it" : "one"} to change it.` : ""}
+            {present.some((node) => node.kind === "detector") ? " A detector's settings can add another detector." : ""}
           </p>
           {onSelect && <div>
             {present.map((node) => {

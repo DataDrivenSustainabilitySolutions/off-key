@@ -151,7 +151,8 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expect(node("raw")).toContainText("Pass through");
       await expect(graph.locator(".pl-node-ports, .pl-port")).toHaveCount(0);
       await expect(node("raw").getByRole("img", { name: "Input: Features", exact: true })).toHaveAttribute("title", "Input: Features");
-      await expect(node("raw").getByRole("img", { name: "Output: Features", exact: true })).toHaveAttribute("title", "Output: Features");
+      // The compiler's report, when it has arrived, adds the features the dot emits.
+      await expect(node("raw").getByRole("img", { name: "Output: Features", exact: true })).toHaveAttribute("title", /^Output: Features(\. .+)?$/);
       await expect(node("detector").getByRole("img", {
         name: strategy === "static_baseline" ? "Output: P-values" : "Output: Scores", exact: true,
       })).toBeAttached();
@@ -412,6 +413,69 @@ test("lists the features the detector receives and adds a step for one of them",
     await expect(wire("input", "prepare_despike_1")).toHaveCount(1);
     await expect(wire("prepare_despike_1", "adaptive_standard_scaler_1")).toHaveCount(1);
     await expect(wire("adaptive_standard_scaler_1", "detector")).toHaveCount(1);
+  } finally {
+    await archivePipelines(page.request, headers, [endpoint]);
+  }
+});
+
+test("combines a second detector in the policy and lists each detector's features", async ({ page }, testInfo) => {
+  const token = await accessToken(page);
+  const headers = { Authorization: `Bearer ${token}` };
+  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  expect(response.ok()).toBe(true);
+  const catalog = (await response.json()) as PipelineCatalog;
+  const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
+  const created = await page.request.post("/api/v1/monitors/pipelines", {
+    headers,
+    data: { name: `Combined detectors ${randomUUID()}`, definition: template.definition, layout: template.layout },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  const design = (await created.json()) as PipelineView;
+  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  try {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
+    const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
+    const graph = page.getByLabel("Pipeline graph", { exact: true });
+    const node = (id: string) => graph.locator(`.react-flow__node[data-id="${id}"]`);
+    const wire = (source: string, target: string) => graph.getByTestId(`rf__edge-${JSON.stringify([source, target])}`);
+    const selector = editor.getByRole("combobox", { name: "Selected step", exact: true });
+    const reads = template.definition.edges!.find((edge) => edge.target === "detector")!.source;
+    await expectReadablePipeline(page);
+    await node("detector").click();
+    // Another detector reads what the first one reads, and the policy takes both.
+    await editor.getByRole("button", { name: "Add another detector", exact: true }).click();
+    await expect(selector).toHaveValue("detector_2");
+    await expect(wire(reads, "detector_2")).toHaveCount(1);
+    await expect(wire("detector_2", "policy")).toHaveCount(1);
+    await expect(wire("detector", "policy")).toHaveCount(1);
+    const model = editor.getByRole("combobox", { name: "Detector model", exact: true });
+    const current = await model.inputValue();
+    const other = (await model.locator("option").evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value))).find((value) => value !== current)!;
+    await model.selectOption(other);
+    // The policy shows how it combines them once there are two.
+    await selector.selectOption("policy");
+    const combine = editor.getByRole("group", { name: "Combine detectors", exact: true });
+    await expect(combine.getByRole("button", { name: "Strongest", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(node("policy")).toContainText("Strongest of 2 detectors");
+    await combine.getByRole("button", { name: "Average", exact: true }).click();
+    await expect(node("policy")).toContainText("Average of 2 detectors");
+    await expectValidPipeline(page);
+    await page.screenshot({ path: testInfo.outputPath("combined-detectors.png"), fullPage: true });
+    await editor.getByRole("button", { name: "Close settings", exact: true }).click();
+    // The Features view lists one detector's features at a time.
+    await page.getByRole("group", { name: "View", exact: true }).getByRole("button", { name: "Features", exact: true }).click();
+    const features = page.getByRole("region", { name: "Features", exact: true });
+    const detectors = features.getByRole("group", { name: "Detector", exact: true }).getByRole("button");
+    await expect(detectors).toHaveCount(2);
+    await expect(detectors.first()).toHaveAttribute("aria-pressed", "true");
+    const rows = features.getByRole("list", { name: "Features from readings", exact: true }).getByRole("listitem");
+    const first = await rows.allTextContents();
+    await detectors.last().click();
+    await expect(detectors.last()).toHaveAttribute("aria-pressed", "true");
+    await expect(rows).toHaveText(first);
+    await page.screenshot({ path: testInfo.outputPath("combined-detectors-features.png"), fullPage: true });
   } finally {
     await archivePipelines(page.request, headers, [endpoint]);
   }

@@ -117,6 +117,22 @@ inspector instead of narrowing the graph. Cards use larger titles, stage colors
 and typed ports; descriptions appear in component settings. Opening and arranging
 retain readable text size, while Fit entire graph explicitly requests an overview.
 
+Detectors are the one step kind a design may repeat outside the add-step menu.
+`addDetector()` copies the selected detector, model and settings, as
+`detector_N`, connects it to the same input and appends it to the policy, up to
+`PIPELINE_LIMITS.detectors`, which the type generator exports from
+`MAX_DETECTORS`. `occupiedInput()` and `connectNodes()` treat the policy like a
+merge, so another detector's connection is added instead of replacing one, and
+`detectorIds()` orders detectors by node ID as RADAR does. **Combine detectors**
+has its own control (`FUSION_CHOICES`) once there are two detectors; a strategy
+switch keeps it, and the policy card leads with *Strongest of 2 detectors*.
+`featuresView()` takes the detector to show, and `detectorsAfter()` lets a row's
+menu say when a Prepare step on a shared path also reaches other detectors. A
+sampled observation of combined detectors carries `detectors`, each detector's
+score and surprise (`ObservedDetector`); each detector's own preview outputs its
+score. The live inspector lists them for the policy, and the chart tooltip lists
+an evidence row's `detector_results`.
+
 ## Monitoring history
 
 The service Evidence tab presents one timeline for its recorded inputs and joint

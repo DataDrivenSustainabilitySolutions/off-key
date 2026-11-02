@@ -17,8 +17,20 @@ export type StepScope = {
 const strings = (value: JsonValue | undefined) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 
+/** Steps with Applies to and Result. A Formula picks its features in its own editor. */
 export const hasScope = (component?: PipelineComponent) =>
-  !!component?.fields.some((field) => field.name === "apply_to");
+  component?.id !== "prepare.formula" && !!component?.fields.some((field) => field.name === "apply_to");
+
+/** The name that stands for each feature in a Formula for each feature. */
+export const EACH_VARIABLE = "x";
+
+/** The features a Formula for each feature runs on; undefined for a Formula that computes one. */
+export const formulaEach = (node: PipelineNode) =>
+  node.component === "prepare.formula" ? strings(node.params.apply_to) : undefined;
+
+/** What a Formula for each feature appends to the names it adds. */
+export const eachSuffix = (node: PipelineNode) =>
+  typeof node.params.suffix === "string" && node.params.suffix ? node.params.suffix : "formula";
 
 /** A setting of the node, or the catalog default it leaves out. */
 export function setting(node: PipelineNode, component: PipelineComponent | undefined, name: string): JsonValue | undefined {
@@ -48,6 +60,8 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
 /** The feature an Aggregate or Formula computes, named as core names it: the chosen
  * name, "formula", or the Aggregate's function. Other steps compute none. */
 export function combinedName(node: PipelineNode, component?: PipelineComponent): string | undefined {
+  // A Formula for each feature computes one feature per chosen feature, named by its suffix.
+  if (formulaEach(node)) return undefined;
   if (typeof node.params.name === "string" && node.params.name) return node.params.name;
   if (node.component === "prepare.formula") return "formula";
   if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
@@ -75,6 +89,12 @@ export function stepScope(node: PipelineNode, component?: PipelineComponent): St
 }
 
 export const addedName = (feature: string, suffix: string) => `${feature}_${suffix}`;
+
+/** "a", "a and b", "a, b and c", or the first few and a count of the rest. */
+export const listed = (names: string[], limit = 3) =>
+  names.length <= limit
+    ? names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+    : `${names.slice(0, limit).join(", ")} and ${names.length - limit} more`;
 
 /** Errors block applying a design; warnings are shown and do not. */
 export const isWarning = (issue: Pick<PipelineIssue, "severity">) => issue.severity === "warning";

@@ -1,11 +1,12 @@
+import type { ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import { AdjacencyField } from "./AdjacencyField";
 import { objectValue, type ControlProps } from "./types";
 
 export function CollectionControl(props: ControlProps & {
-  features: string[]; featureLabels: Record<string, string>;
+  features: string[]; featureLabels: Record<string, string>; featureHint?: ReactNode;
 }) {
-  const { field, value, id, disabled, onChange, features, featureLabels } = props;
+  const { field, value, id, disabled, onChange, features, featureLabels, featureHint } = props;
   if (field.type === "integer_adjacency")
     return <AdjacencyField label={field.label} value={value} disabled={disabled} onChange={onChange} />;
   if (field.type === "rename") {
@@ -21,7 +22,7 @@ export function CollectionControl(props: ControlProps & {
   }
   const entries: JsonValue[] = Array.isArray(value) ? value : field.type === "number_pair" ? [0, 1] : [];
   if (field.type === "features") return <>
-    {!features.length && <p>Connect inputs to select available features.</p>}
+    {!features.length && (featureHint ?? <p>Connect inputs to select available features.</p>)}
     {features.map(feature => <label className="parameter-check" key={feature}>
       <input type="checkbox" disabled={disabled} checked={entries.includes(feature)}
         onChange={event => onChange(event.target.checked ? [...entries, feature]

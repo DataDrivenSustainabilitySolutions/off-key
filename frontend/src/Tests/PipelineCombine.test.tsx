@@ -134,6 +134,57 @@ describe("the formula editor", () => {
   });
 });
 
+describe("a formula for each feature", () => {
+  const phases = (params: PipelineNode["params"], features = ["L1", "L2", "L3", "mean"]) => {
+    const changes: Record<string, JsonValue>[] = [];
+    render(<PipelineFormula node={node(formula, params)} component={formula} features={features}
+      featureLabels={{ L1: "L1", L2: "L2", L3: "L3" }} issues={[]} onChange={(next) => { changes.push(next); }} />);
+    return changes;
+  };
+
+  it("starts with the readings that arrive and leaves the name to the suffix", () => {
+    const changes = phases({ expression: "L1 / mean - 1", name: "d1" });
+    expect(screen.getByRole("button", { name: "One feature" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "For each feature" }));
+    expect(changes).toEqual([{ expression: "L1 / mean - 1", apply_to: ["L1", "L2", "L3"] }]);
+  });
+
+  it("starts with the features that follow one reading, when the check knows them", () => {
+    const changes: Record<string, JsonValue>[] = [];
+    render(<PipelineFormula node={node(formula, { expression: "x" })} component={formula}
+      features={["phase_a", "phase_b", "mean"]} readings={["phase_a", "phase_b"]} featureLabels={{}} issues={[]}
+      onChange={(next) => { changes.push(next); }} />);
+    fireEvent.click(screen.getByRole("button", { name: "For each feature" }));
+    expect(changes).toEqual([{ expression: "x", apply_to: ["phase_a", "phase_b"] }]);
+  });
+
+  it("offers x, names what it adds and goes back to one feature", () => {
+    const changes = phases({ expression: "x / mean - 1", apply_to: ["L1", "L2", "L3"], suffix: "dev" });
+    expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+    expect(screen.getByText("x stands for L1, L2 and L3, one after another.")).toBeTruthy();
+    expect(screen.getByText("Keeps the features and adds L1_dev, L2_dev and L3_dev.")).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Suffix" }) as HTMLInputElement).value).toBe("dev");
+    fireEvent.click(screen.getByRole("button", { name: "Insert x, each chosen feature" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "L2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace values" }));
+    fireEvent.click(screen.getByRole("button", { name: "One feature" }));
+    expect(changes.slice(1)).toEqual([
+      { expression: "x / mean - 1", apply_to: ["L1", "L3"], suffix: "dev" },
+      { expression: "x / mean - 1", apply_to: ["L1", "L2", "L3"], suffix: "dev", result: "replace" },
+      { expression: "x / mean - 1" },
+    ]);
+    expect(changes[0]!.expression).toMatch(/x/);
+  });
+
+  it("says on the card which features it runs on", () => {
+    expect(summary(formula, { expression: "x / mean - 1", apply_to: ["L1", "L2"], suffix: "dev" }).text)
+      .toBe("x / mean - 1 for L1 and L2 · Adds *_dev");
+    expect(summary(formula, { expression: "x * 2", apply_to: ["L1"], result: "replace" }).text)
+      .toBe("x * 2 for L1 · Replaces them");
+    expect(combinedName(node(formula, { expression: "x", apply_to: ["L1"] }), formula)).toBeUndefined();
+  });
+});
+
 describe("completing a formula", () => {
   it("finds the word before the caret, also inside backticks, but not in a number", () => {
     expect(typedWord("2 * dc_vo", 9)).toEqual({ start: 4, end: 9, prefix: "dc_vo", quoted: false });

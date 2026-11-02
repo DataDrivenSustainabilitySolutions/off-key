@@ -70,7 +70,7 @@ def test_the_catalog_offers_the_steps_to_both_strategies():
     offered = {item.id: item for item in pipeline_components()}
     fields = {
         "prepare.aggregate": ["apply_to", "result", "function", "name"],
-        "prepare.formula": ["expression", "name", "result"],
+        "prepare.formula": ["expression", "name", "result", "apply_to", "suffix"],
         "prepare.gate": ["condition"],
     }
     for component, names in fields.items():
@@ -448,3 +448,84 @@ def test_row_steps_compute_on_one_observation():
     with pytest.raises(PrepareFailure) as raised:
         row_step("prepare.aggregate", {"function": "sum"}, list(huge)).apply(huge)
     assert raised.value.reason == "non_finite"
+
+
+MEAN = ("mean", "prepare.aggregate", {"function": "mean", "name": "m"})
+
+
+def test_a_formula_for_each_feature_adds_one_feature_per_feature():
+    each = (
+        "dev",
+        "prepare.formula",
+        {"expression": "x / m - 1", "apply_to": ["a", "b"], "suffix": "dev"},
+    )
+    result = compile_pipeline(chain(MEAN, each))
+    added = {item.name: item for item in result.features["dev"]}
+    assert list(added) == ["a", "b", "c", "m", "a_dev", "b_dev"]
+    assert added["a_dev"].steps == ["dev"]
+    assert added["a_dev"].slots == ["a", "b", "c"]
+    plain = ("dev", "prepare.formula", {"expression": "x / m - 1", "apply_to": ["a"]})
+    assert [item.name for item in features(MEAN, plain)][-1] == "a_formula"
+
+
+def test_a_formula_for_each_feature_can_replace_the_features():
+    each = (
+        "dev",
+        "prepare.formula",
+        {"expression": "x / m - 1", "apply_to": ["a", "b"], "result": "replace"},
+    )
+    assert [item.name for item in features(MEAN, each)] == ["a", "b", "c", "m"]
+
+
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [
+        (
+            {"expression": "x + 1"},
+            ("error", "formula", ["expression"], "x stands for each feature only"),
+        ),
+        (
+            {"expression": "x", "apply_to": ["z"]},
+            ("error", "scope", ["apply_to"], "z is not available at this step."),
+        ),
+        (
+            {"expression": "x", "apply_to": ["a"], "name": "y"},
+            ("error", "parameters", [], "A formula for each feature names"),
+        ),
+        (
+            {"expression": "m * 2", "apply_to": ["a"]},
+            ("warning", "values", ["expression"], "The formula never reads x"),
+        ),
+        (
+            {"expression": "x", "apply_to": ["a"], "suffix": "dev"},
+            ("error", "scope", ["suffix"], "a_dev"),
+        ),
+    ],
+)
+def test_a_formula_for_each_feature_reports_its_problems(params, expected):
+    taken = ("taken", "prepare.formula", {"expression": "a", "name": "a_dev"})
+    found = issues(MEAN, taken, ("each", "prepare.formula", params))
+    severity, code, path, text = expected
+    assert any(
+        item[0] == severity and item[1] == code and item[3] == path and text in item[4]
+        for item in found
+    ), found
+
+
+def test_a_formula_for_each_feature_computes_on_one_observation():
+    row = {"a": 16.8, "b": 15.2, "m": 16.0}
+    added = row_step(
+        "prepare.formula",
+        {"expression": "x / m - 1", "apply_to": ["a", "b"], "suffix": "dev"},
+        list(row),
+    ).apply(row)
+    assert added["a_dev"] == pytest.approx(0.05) and added["b_dev"] == pytest.approx(
+        -0.05
+    )
+    assert added["a"] == 16.8
+    replaced = row_step(
+        "prepare.formula",
+        {"expression": "x / m - 1", "apply_to": ["a", "b"], "result": "replace"},
+        list(row),
+    ).apply(row)
+    assert replaced == pytest.approx({"a": 0.05, "b": -0.05, "m": 16.0})

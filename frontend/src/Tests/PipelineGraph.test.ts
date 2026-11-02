@@ -145,6 +145,23 @@ describe("visual pipeline documents", () => {
     ).toEqual({ with_std: true });
   });
 
+  it("names a second Formula or Aggregate so the features they compute do not clash", () => {
+    const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
+      id, kind: "transform", label: id, description: "", strategies: ["adaptive_stream"], fields,
+    });
+    const name = { name: "name", label: "Name", type: "string", has_default: true, nullable: true } as const;
+    const formula = step("prepare.formula", [name]);
+    const aggregate = step("prepare.aggregate", [
+      { name: "function", label: "Function", type: "enum", default: "mean", has_default: true, options: ["mean", "std"] },
+      name,
+    ]);
+    let document = { definition: definition(), layout: normalizeLayout() };
+    for (const component of [formula, formula, formula, aggregate, aggregate]) document = addComponent(document, component);
+    expect(document.definition.nodes.slice(-5).map((node) => node.params.name ?? null)).toEqual([
+      null, "formula_2", "formula_3", null, "mean_2",
+    ]);
+  });
+
   it("includes semantic output renaming and learning settings in activation review", () => {
     const before = definition();
     const after = {

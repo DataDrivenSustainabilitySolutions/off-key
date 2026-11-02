@@ -259,8 +259,21 @@ value from the first observation.
   buttons below the formula insert the features that arrive.
 
 Both keep the features they use and add the result, named by **Name**, or
-`formula` and the function's name, such as `mean`, when it is empty. **Replace
-features** removes the features they use instead. A formula that cannot be read
+`formula` and the function's name, such as `mean`, when it is empty. A second
+Formula or Aggregate that would compute a name an earlier one already uses
+starts with its own, such as `formula_2` or `mean_2`. **Replace
+features** removes the features they use instead.
+
+**For each feature** runs one Formula once per feature chosen under **For
+each**, with `x` standing for that feature, so `x / i_mean - 1` on `L1`, `L2`
+and `L3` computes three relative deviations in one step. Every result is
+computed from the observation as it arrives. **Add new features** keeps the
+features and adds `<feature>_<suffix>`, such as `L1_dev`, named by **Suffix**,
+or `L1_formula` when it is empty; **Replace values** puts each result in place
+of its feature. `x` means nothing in a Formula that computes one feature, and a
+formula for each feature that never reads `x` gives every feature the same
+value, which the check warns about. [Monitor three phases together](phase-monitoring.md)
+walks through it. A formula that cannot be read
 says where, such as *The expression ends too early at character 12*, and an
 unknown feature or function suggests the closest one, which **Use** puts in its
 place. While you type, suggestions list the features that arrive and the
@@ -283,6 +296,11 @@ diagnostics read **Held back** while its condition does not hold. A condition
 that is never true is an error, and one that is always true a warning. **Before
 the first alarm** and **Ready after** then say *at least*, because the
 observations a Gate holds back do not count.
+
+A step that chooses features, such as **Select features** or **Applies to**,
+lists the features that arrive once the check has worked them out. When an
+earlier step has an error, the check cannot, and the step names the earlier one
+and its problem instead, with **Go to** to open it.
 
 **Features** beside **Graph** lists the features the detector receives, one row
 each: the reading it comes from, the steps that change it on the way, and the

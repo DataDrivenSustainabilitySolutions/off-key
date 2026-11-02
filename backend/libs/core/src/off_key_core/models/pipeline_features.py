@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 
 from ..schemas.pipelines import FeatureDescription, PipelineDefinition, PipelineNode
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
-from .pipeline_combine import combined_columns
+from .pipeline_combine import combined_columns, each_scope, for_each
 from .pipeline_prepare import LANE_COMPONENTS, ROW_COMPONENTS, prepared_bounds
 from .pipeline_scope import PROJECTIONS, step_scope
 
@@ -137,7 +137,16 @@ def _changed(
     if node.component in ELEMENTWISE or node.component in LANE_COMPONENTS:
         return _elementwise(node, columns)
     if node.component in ROW_COMPONENTS:
-        return combined_columns(node.component, node.params, columns)
+        result = combined_columns(node.component, node.params, columns)
+        if for_each(node.component, node.params):
+            # A formula for each feature changes features that follow a reading.
+            changed = set(
+                each_scope(node.params, [item.name for item in columns]).targets
+            )
+            for item in result:
+                if item.name in changed:
+                    item.steps.append(node.id)
+        return result
     if node.component in PROJECTIONS:
         return _projection(definition, node, columns)
     return columns

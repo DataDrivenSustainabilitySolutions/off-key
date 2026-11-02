@@ -7,6 +7,7 @@ import type {
   PipelineNode,
   PipelineComponent,
 } from "./contracts";
+import { combinedName } from "./scope";
 import {
   componentFor,
   edgeId,
@@ -82,6 +83,19 @@ function nextNodeId(nodes: PipelineNode[], component: string): string {
   return `${prefix}_${suffix}`;
 }
 
+/** Defaults for a new step. A second Formula or Aggregate that would compute a feature
+ * an earlier one already computes gets its own name, such as formula_2 or mean_2. */
+function newParams(nodes: PipelineNode[], component: PipelineComponent): PipelineNode["params"] {
+  const params = fieldDefaults(component.fields);
+  if (component.id !== "prepare.formula" && component.id !== "prepare.aggregate") return params;
+  const taken = new Set(nodes.map((node) => combinedName(node, componentFor(node, [component]))).filter(Boolean));
+  const base = combinedName({ id: "", kind: component.kind, component: component.id, params }, component)!;
+  if (!taken.has(base)) return params;
+  let index = 2;
+  while (taken.has(`${base}_${index}`)) index++;
+  return { ...params, name: `${base}_${index}` };
+}
+
 export function addComponent(
   document: GraphDocument,
   component: PipelineComponent,
@@ -93,7 +107,7 @@ export function addComponent(
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
       .length + 1;
-  const params = fieldDefaults(component.fields);
+  const params = newParams(document.definition.nodes, component);
   return {
     definition: {
       ...document.definition,

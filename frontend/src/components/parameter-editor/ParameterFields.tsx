@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import { CollectionControl } from "./CollectionControl";
 import { NestedControl } from "./NestedControl";
@@ -9,10 +10,12 @@ export type { FieldDescriptor } from "./types";
 type Props = {
   fields: FieldDescriptor[]; values: Parameters; onChange: (values: Parameters) => void;
   features?: string[]; featureLabels?: Record<string, string>; prefix?: string;
+  /** Shown in place of a feature list while the features are unknown. */
+  featureHint?: ReactNode;
   path?: ParameterPath; issues?: ParameterIssue[]; readOnly?: boolean;
 };
 
-export function ParameterFields({ fields, values, onChange, features = [], featureLabels = {},
+export function ParameterFields({ fields, values, onChange, features = [], featureLabels = {}, featureHint,
   prefix = "parameter", path = [], issues = [], readOnly }: Props) {
   return <div className="parameter-editor">{fields.map(field => {
     const fieldPath = [...path, field.name];
@@ -30,10 +33,10 @@ export function ParameterFields({ fields, values, onChange, features = [], featu
         control = <NestedControl {...props} path={fieldPath}
           render={(nested, next, nextPath, change, index) => <ParameterFields fields={nested} values={next}
             onChange={change} path={nextPath} issues={issues} features={features}
-            featureLabels={featureLabels} readOnly={readOnly || value === null} prefix={`${id}-${index}`} />} />;
+            featureLabels={featureLabels} featureHint={featureHint} readOnly={readOnly || value === null} prefix={`${id}-${index}`} />} />;
         break;
       case "number_pair": case "number_list": case "features": case "rename": case "integer_adjacency":
-        control = <CollectionControl {...props} disabled={field.type === "integer_adjacency" ? readOnly : props.disabled} features={features} featureLabels={featureLabels} />;
+        control = <CollectionControl {...props} disabled={field.type === "integer_adjacency" ? readOnly : props.disabled} features={features} featureLabels={featureLabels} featureHint={featureHint} />;
         break;
       case "number": case "integer": case "string": case "boolean": case "enum":
         control = <ScalarControl {...props} />;

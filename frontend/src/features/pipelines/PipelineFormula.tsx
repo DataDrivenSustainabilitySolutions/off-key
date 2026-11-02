@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
 import { suggestions, typedWord, type Suggestion } from "./formula";
-import { addsByDefault, combinedName, formulaName } from "./scope";
+import { addedName, addsByDefault, combinedName, EACH_VARIABLE, eachSuffix, formulaEach, formulaName, listed } from "./scope";
 
 type Fix = { start: number; end: number; text: string };
 type Issue = { path: (string | number)[]; message: string; fix?: Fix | null };
@@ -57,12 +57,16 @@ export function CombinedName({ node, component, issues, readOnly, onChange }: {
 }
 
 /** A Formula's expression or a Gate's condition, written over the features that arrive. */
-export function PipelineFormula({ node, component, features, featureLabels, issues, readOnly, range, onChange }: {
+export function PipelineFormula({ node, component, features, featureLabels, readings, featureHint, issues, readOnly, range, onChange }: {
   node: PipelineNode;
   component: PipelineComponent;
   /** Incoming feature names in their order, once the graph has been checked. */
   features: string[];
   featureLabels: Record<string, string>;
+  /** The incoming features that follow one reading; For each starts with them. */
+  readings?: string[];
+  /** Shown in place of the features while they are unknown: why, and where to fix it. */
+  featureHint?: ReactNode;
   issues: Issue[];
   readOnly?: boolean;
   /** The values the computed feature can take, as the check inferred them. */
@@ -78,13 +82,17 @@ export function PipelineFormula({ node, component, features, featureLabels, issu
   const errors = errorsOf(issues, field);
   const set = setter(node, onChange);
   const help = component.fields.find((item) => item.name === field)?.description;
+  // A Formula for each feature runs once per chosen feature, with x standing for it.
+  const each = gate ? undefined : formulaEach(node);
+  const names = each ? [EACH_VARIABLE, ...features] : features;
+  const labels = each ? { ...featureLabels, [EACH_VARIABLE]: "each chosen feature" } : featureLabels;
   // The caret while the field has focus and nothing is selected; suggestions follow it.
   const [caret, setCaret] = useState<number>();
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState<string>();
   const word = caret === undefined || readOnly ? undefined : typedWord(text, caret);
   const key = word && `${word.start}:${word.prefix}`;
-  const options = word && key !== dismissed ? suggestions(word, features, featureLabels, gate) : [];
+  const options = word && key !== dismissed ? suggestions(word, names, labels, gate) : [];
   const open = options.length > 0;
   const current = Math.min(active, Math.max(options.length - 1, 0));
   // The chosen suggestion stays in view, in the list and in a panel that scrolls.
@@ -135,12 +143,69 @@ export function PipelineFormula({ node, component, features, featureLabels, issu
   const add = (node.params.result ?? (addsByDefault(component) ? "add" : "replace")) === "add";
   const name = combinedName(node, component);
   const listId = `${id}-suggestions`;
+  const suffix = eachSuffix(node);
+  // Choosing For each starts with the readings that arrive, the usual case: x / mean - 1 per phase.
+  const setMode = (forEach: boolean) => {
+    const params = { ...node.params };
+    if (forEach) {
+      const start = (readings ?? features.filter((feature) => feature in featureLabels))
+        .filter((feature) => features.includes(feature));
+      params.apply_to = start.length ? start : features;
+      delete params.name;
+    } else {
+      delete params.apply_to;
+      delete params.suffix;
+    }
+    onChange(params, "apply_to");
+  };
+  // Names that no longer arrive stay listed until they are unchecked.
+  const missing = each?.filter((feature) => !features.includes(feature)) ?? [];
+  const toggle = (feature: string, checked: boolean) => set("apply_to", [
+    ...features.filter((item) => item === feature ? checked : each?.includes(item)),
+    ...missing.filter((item) => item !== feature),
+  ]);
+  const outcome = each
+    ? add
+      ? each.length ? `Keeps the features and adds ${listed(each.map((item) => addedName(item, suffix)))}.` : "Keeps the features and adds one per chosen feature."
+      : `Replaces ${each.length ? listed(each) : "the chosen features"} with their results.`
+    : add ? `Keeps the features and adds ${name}.` : `Replaces the features the formula reads with ${name}.`;
   return <div className="pl-formula">
+    {!gate && <div className="pl-field">
+      <span id={`${id}-mode`}>Computes</span>
+      <div className="pl-segmented" role="group" aria-labelledby={`${id}-mode`}>
+        <button type="button" disabled={readOnly} aria-pressed={!each} onClick={() => each && setMode(false)}>One feature</button>
+        <button type="button" disabled={readOnly} aria-pressed={!!each} onClick={() => !each && setMode(true)}>For each feature</button>
+      </div>
+      <small className="pl-help">
+        {each ? "Runs the formula once for each chosen feature, with x standing for it."
+          : "Computes one feature from the features that arrive."}
+      </small>
+    </div>}
+    {each && <fieldset className="pl-field" aria-describedby={`${id}-each ${id}-each-errors`}>
+      <legend>For each</legend>
+      <small className="pl-help" id={`${id}-each`}>
+        {each.length ? `x stands for ${listed(each)}, one after another.` : "Choose the features x stands for."}
+      </small>
+      {!features.length && !missing.length
+        ? featureHint ?? <p className="pl-help">Connect an input to choose features.</p>
+        : <div className="pl-scope-features">
+          {features.map((feature) => <label className="parameter-check" key={feature}>
+            <input type="checkbox" checked={each.includes(feature)} disabled={readOnly}
+              onChange={(event) => toggle(feature, event.target.checked)} />
+            {featureLabels[feature] ?? feature}
+          </label>)}
+          {missing.map((feature) => <label className="parameter-check is-missing" key={feature}>
+            <input type="checkbox" checked disabled={readOnly} onChange={() => toggle(feature, false)} />
+            {feature} <small>not available here</small>
+          </label>)}
+        </div>}
+      <Errors id={`${id}-each-errors`} issues={errorsOf(issues, "apply_to")} />
+    </fieldset>}
     <div className="pl-field">
       <label htmlFor={`${id}-text`}>{gate ? "Condition" : "Formula"}</label>
       <div className="pl-formula-input">
         <textarea ref={area} id={`${id}-text`} className="pl-code" rows={3} maxLength={512} value={text}
-          placeholder={gate ? "dc_current > 1" : "dc_voltage * dc_current"} disabled={readOnly}
+          placeholder={gate ? "dc_current > 1" : each ? "x / mean - 1" : "dc_voltage * dc_current"} disabled={readOnly}
           spellCheck={false} autoComplete="off" autoCapitalize="off" autoCorrect="off"
           aria-invalid={errors.length > 0} aria-describedby={`${id}-errors ${id}-help`}
           aria-autocomplete="list" aria-controls={open ? listId : undefined}
@@ -168,9 +233,11 @@ export function PipelineFormula({ node, component, features, featureLabels, issu
       </span>
       <Errors id={`${id}-errors`} issues={errors} onFix={readOnly ? undefined : (fix) => write(fix.start, fix.end, fix.text)} />
       {!readOnly && features.length > 0 && <div className="pl-formula-names" role="group" aria-label="Insert a feature">
-        {features.map((feature) => <button type="button" key={feature} title={featureLabels[feature]}
-          aria-label={`Insert ${feature}`} onClick={() => insert(feature)}>{feature}</button>)}
+        {names.map((feature) => <button type="button" key={feature} title={labels[feature]}
+          aria-label={feature === EACH_VARIABLE && each ? "Insert x, each chosen feature" : `Insert ${feature}`}
+          onClick={() => insert(feature)}>{feature}</button>)}
       </div>}
+      {!features.length && !each && featureHint}
       {help && <small className="pl-help" id={`${id}-help`}>{help}</small>}
     </div>
     {!gate && <>
@@ -180,14 +247,22 @@ export function PipelineFormula({ node, component, features, featureLabels, issu
           {(["replace", "add"] as const).map((result) => <button key={result} type="button" disabled={readOnly}
             aria-pressed={add === (result === "add")}
             onClick={() => set("result", result === (addsByDefault(component) ? "add" : "replace") ? undefined : result)}>
-            {result === "add" ? "Keep features" : "Replace features"}
+            {result === "add" ? each ? "Add new features" : "Keep features" : each ? "Replace values" : "Replace features"}
           </button>)}
         </div>
-        <small className="pl-help">
-          {add ? `Keeps the features and adds ${name}.` : `Replaces the features the formula reads with ${name}.`}
-        </small>
+        <small className="pl-help">{outcome}</small>
       </div>
-      <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />
+      {each
+        ? add && <div className="pl-field">
+          <label htmlFor={`${id}-suffix`}>Suffix</label>
+          <input id={`${id}-suffix`} value={typeof node.params.suffix === "string" ? node.params.suffix : ""}
+            placeholder="formula" maxLength={24} spellCheck={false} autoComplete="off" disabled={readOnly}
+            aria-invalid={errorsOf(issues, "suffix").length > 0} aria-describedby={`${id}-suffix-help ${id}-suffix-errors`}
+            onChange={(event) => set("suffix", event.target.value || undefined)} />
+          <small className="pl-help" id={`${id}-suffix-help`}>Added features are named feature_{suffix}.</small>
+          <Errors id={`${id}-suffix-errors`} issues={errorsOf(issues, "suffix")} />
+        </div>
+        : <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />}
       {range && <p className="pl-help pl-formula-range"><span>Range</span> {range}</p>}
     </>}
   </div>;

@@ -2,7 +2,7 @@ import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
-import { addedName, combinedName, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
 import { fusionChoice } from "./steps";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
@@ -124,6 +124,11 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
     case "prepare.formula": {
       const formula = written(value("expression"));
       if (!formula) return "No formula yet";
+      const each = formulaEach(node);
+      if (each) {
+        const added = value("result") !== "replace";
+        return `${formula} for ${each.length ? listed(each) : "no feature yet"}${added ? ` · Adds *_${eachSuffix(node)}` : " · Replaces them"}`;
+      }
       return `${combinedName(node, component)} = ${formula}${value("result") === "replace" ? " · Replaces its inputs" : ""}`;
     }
     case "prepare.gate": {

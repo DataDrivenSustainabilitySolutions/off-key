@@ -196,7 +196,8 @@ windows never restart.
 
 - **Smooth** averages recent values, exponentially or over a rolling window.
 - **Despike** replaces a value further than **Threshold** robust deviations from
-  the median of its window with that median.
+  the median of its window with that median. The detector then sees the median in
+  place of the spike; the evidence keeps the raw reading.
 - **Change** adds the difference or percent change since **Lag** observations
   back, or the value from then.
 - **Rolling statistic** adds the mean, median, minimum, maximum, standard
@@ -211,7 +212,8 @@ Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
 `dc_voltage_diff1` and `dc_voltage_mean60`; the others replace values. A step
 with a window has its first value once the window is full, and steps in a chain
 add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
-the 11th observation. **Before the first alarm** counts those observations as
+the 11th observation, and its settings say **Ready after 11 observations**.
+**Before the first alarm** counts those observations as
 **Preparing**; meanwhile the service shows how many observations are prepared,
 and nothing learns. A window holds at most 3,600 values per feature,
 and a design's Prepare windows hold at most 50,000 values in all.
@@ -221,7 +223,10 @@ root outside its domain, a percent change from zero, a result too large to
 represent, or a value outside a skipping **Range check**. Skipping changes no
 step's state, nothing learns from the observation, and it counts as a coverage
 gap. The step's diagnostics count skipped observations by reason. Evidence
-always records the raw readings.
+always records the raw readings. Learned steps and the detector skip an
+observation the same way when it fails them without changing what they learned,
+such as a value the detector cannot score. Only a failure that can leave learned
+state uncertain, such as the detector failing while it learns, stops the service.
 
 **Combine** steps compute one feature from several, usually after the features
 were prepared one by one. They run in the Prepare stage as well and have their
@@ -239,7 +244,11 @@ Both keep the features they use and add the result, named by **Name**, or
 `formula` and the function's name, such as `mean`, when it is empty. **Replace
 features** removes the features they use instead. A formula that cannot be read
 says where, such as *The expression ends too early at character 12*, and an
-unknown feature suggests the closest one that arrives. When an earlier step
+unknown feature or function suggests the closest one, which **Use** puts in its
+place. While you type, suggestions list the features that arrive and the
+functions, and in a condition `and`, `or` and `not`: the arrow keys choose, Enter
+or Tab inserts, and Escape closes the list. **Range** below a formula shows the
+values its result can take. When an earlier step
 limits a feature's range, such as a **Range check**, the check knows the range of
 the result too and warns about values that will be skipped, such as a division by
 a feature that can be 0 or the logarithm of one that can be negative. When every
@@ -254,7 +263,19 @@ them; steps after it do not, so their windows fill only with observations that
 pass. The Prepare summary counts held-back observations, and the Gate's
 diagnostics read **Held back** while its condition does not hold. A condition
 that is never true is an error, and one that is always true a warning. **Before
-the first alarm** assumes that every observation passes.
+the first alarm** and **Ready after** then say *at least*, because the
+observations a Gate holds back do not count.
+
+**Features** beside **Graph** lists the features the detector receives, one row
+each: the reading it comes from, the steps that change it on the way, and the
+name the detector sees. Features made from several, such as a formula's result,
+follow the readings, and the Gates sit above the rows because they decide which
+observations reach every feature. **Raw** means no step changes the feature, and
+selecting a step opens its settings. **+** in a row adds a step for that feature
+alone: a Prepare or Combine step goes in before anything learns, and a learned
+step just before the detector. A feature that a learned step makes, such as a
+projection's component, takes no Prepare step, and the menu says why. The view
+follows the latest check, so it waits while an edit is checked.
 
 **Robust scaling** centers each feature on its median and divides by its
 interquartile range, so occasional spikes shift it less than standard scaling.

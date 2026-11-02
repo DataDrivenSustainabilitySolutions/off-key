@@ -13,6 +13,14 @@ from .components import BATCH_PASSTHROUGH, batch_component
 from .plan import ExecutionPlan
 
 
+class NonFiniteFeatures(FatalExecutionError):
+    """A learned step returned values that are not finite numbers.
+
+    While fitting this ends the run. While scoring one observation the fitted
+    steps were only read, so the service skips that observation instead.
+    """
+
+
 class BatchFeatureGraph:
     """A fitted numerical graph owned by one static run.
 
@@ -111,11 +119,13 @@ class BatchFeatureGraph:
             result = np.asarray(result, dtype=float)
             if result.shape != (len(current), len(self.plan.names(node.id))):
                 raise ValueError(f"Component {node.id} returned an incompatible matrix")
-            if not np.isfinite(result).all():
-                raise ValueError(f"Component {node.id} returned non-finite features")
-            return result
         except Exception as error:
             raise FatalExecutionError(str(error), node_id=node.id) from error
+        if not np.isfinite(result).all():
+            raise NonFiniteFeatures(
+                f"Component {node.id} returned non-finite features", node_id=node.id
+            )
+        return result
 
     def _transform_node(self, node, current, names, fit):
         if node.component == "features.select":

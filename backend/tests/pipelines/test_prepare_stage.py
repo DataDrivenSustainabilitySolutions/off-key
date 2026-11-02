@@ -23,7 +23,7 @@ from off_key_mqtt_radar.detector import (
     StaticConformalDetectionService,
     StaticConformalState,
 )
-from off_key_mqtt_radar.execution_errors import ObservationRejected
+from off_key_mqtt_radar.execution_errors import ObservationRejected, StepRejected
 from off_key_mqtt_radar.health_monitor import HealthMonitor
 from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
@@ -302,6 +302,40 @@ def test_a_skipped_observation_is_a_coverage_gap_not_a_failure():
     state = PipelineRuntimeState.model_validate(service.get_pipeline_state())
     assert state.nodes["guard"].rejections == {"out_of_range": 1}
     assert state.preparation is not None and state.preparation.rejected == 1
+
+
+def test_a_learned_step_that_skips_an_observation_takes_back_its_preparation(
+    monkeypatch,
+):
+    config = AnomalyDetectionConfig(pipeline=execution(window=3))
+    service = AdaptiveStreamDetectionService(config)
+    reference = AdaptiveStreamDetectionService(config)
+    _scores(service, range(1, 17))
+    _scores(reference, range(1, 17))
+    scaler = next(
+        node.transformer for node in service.pipeline.nodes if node.id == "scale"
+    )
+    learn = type(scaler).learn_one
+    armed = [True]
+
+    def fragile(self, x):
+        if armed[0]:
+            raise ValueError("scaler broke")
+        return learn(self, x)
+
+    monkeypatch.setattr(type(scaler), "learn_one", fragile)
+    prepared = pickle.dumps(service.prepare.export_state())
+    with pytest.raises(StepRejected, match="scaler broke"):
+        service.process_data_point(reading(17))
+    # Prepare had committed the observation; skipping it takes that back too.
+    assert pickle.dumps(service.prepare.export_state()) == prepared
+    armed[0] = False
+    assert [item.anomaly_score for item in _scores(service, range(18, 23))] == [
+        item.anomaly_score for item in _scores(reference, range(18, 23))
+    ]
+    state = PipelineRuntimeState.model_validate(service.get_pipeline_state())
+    assert state.nodes["scale"].rejections == {"error": 1}
+    assert state.preparation is not None and state.preparation.rejected == 0
 
 
 def test_static_monitoring_prepares_through_fitting_on_one_continuous_history():

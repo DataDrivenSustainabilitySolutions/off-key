@@ -97,6 +97,8 @@ export type FeatureDescription = {
   minimum?: number | null;
   maximum?: number | null;
   raw?: boolean;
+  previous?: string | null;
+  steps?: Array<string>;
 };
 
 export type FormulaParameters = {
@@ -113,6 +115,12 @@ export type InputSlot = {
   id: string;
   label: string;
   unit?: string | null;
+};
+
+export type IssueFix = {
+  start: number;
+  end: number;
+  text: string;
 };
 
 export type MathParameters = {
@@ -255,6 +263,7 @@ export type PipelineIssue = {
   node_id?: string | null;
   parameter_path?: Array<string | number> | null;
   severity?: "error" | "warning";
+  fix?: IssueFix | null;
 };
 
 export type PipelineLayout = {
@@ -481,6 +490,7 @@ export type PipelineValidationReport = {
   definition_omitted?: boolean;
   issues_truncated?: boolean;
   preparation_observations?: number;
+  ready_after?: Record<string, number>;
 };
 
 export type PipelineView = {

@@ -128,12 +128,21 @@ class PipelineExecutionConfig(PipelineModel):
         return self
 
 
+class IssueFix(PipelineModel):
+    """A replacement that resolves an issue in the setting the issue names."""
+
+    start: int = Field(ge=0, description="The first character replaced, from 0.")
+    end: int = Field(ge=0, description="The character after the last one replaced.")
+    text: str = Field(max_length=512, description="What replaces them.")
+
+
 class PipelineIssue(PipelineModel):
     code: str
     message: str
     node_id: str | None = None
     parameter_path: list[str | int] | None = Field(default=None, max_length=32)
     severity: IssueSeverity = "error"
+    fix: IssueFix | None = None
 
 
 class FeatureDescription(PipelineModel):
@@ -142,6 +151,18 @@ class FeatureDescription(PipelineModel):
     minimum: float | None = None
     maximum: float | None = None
     raw: bool = True
+    previous: str | None = Field(
+        default=None,
+        description=(
+            "The feature this one continues at the step before, as node.name. "
+            "Readings have none, and neither have the features an Aggregate, a "
+            "Formula or a projection makes."
+        ),
+    )
+    steps: list[str] = Field(
+        default_factory=list,
+        description="The steps that changed the feature or its name, in order.",
+    )
 
 
 class PipelineValidation(PipelineModel):
@@ -209,6 +230,14 @@ class PipelineValidationReport(PipelineModel):
         default=0,
         ge=0,
         description="Observations the Prepare stage takes before anything learns.",
+    )
+    ready_after: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "For each step of the Prepare stage, the observation, counted from 1, "
+            "that gives its first output. Observations a Gate before the step "
+            "holds back do not count."
+        ),
     )
 
 
@@ -526,7 +555,7 @@ class PipelineNodeRuntime(PipelineModel):
     blocked_by: list[str] = Field(default_factory=list)
     error: str | None = None
     rejections: dict[str, int] = Field(default_factory=dict)
-    """Observations a Prepare step skipped, by reason."""
+    """Observations the step skipped, by reason, such as non_finite or error."""
 
 
 class PreparationState(PipelineModel):

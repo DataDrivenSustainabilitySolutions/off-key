@@ -320,3 +320,79 @@
 .pl-formula-names button:hover {
   border-color: hsl(var(--ring));
 }
+
+/* Suggestions follow the caret: a list under the formula, chosen with the arrow keys or the pointer. */
+.pl-formula-input {
+  position: relative;
+}
+.pl-formula-input textarea.pl-code {
+  display: block;
+}
+.pl-formula-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 10px 30px #0002;
+}
+.pl-formula-suggestions li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.pl-formula-suggestions li.is-active {
+  background: hsl(var(--muted));
+}
+.pl-formula-suggestions code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.pl-formula-suggestions small {
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+/* A fix reads as part of its error: one underlined action after the message. */
+.pl-field-error .pl-formula-fix {
+  display: inline;
+  margin: 0 0 0 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: hsl(var(--primary));
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.pl-field-error .pl-formula-fix:hover {
+  text-decoration-thickness: 2px;
+}
+.pl-formula-range {
+  margin-top: 0;
+}
+.pl-formula-range span {
+  margin-right: 4px;
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from ..schemas.pipelines import (
     MAX_PIPELINE_EXECUTION_BYTES,
+    IssueFix,
     PipelineComponent,
     PipelineDefinition,
     PipelineEdge,
@@ -57,6 +58,7 @@ class _Compilation:
         *,
         blocks_features: bool = True,
         parameter_path: list[str | int] | None = None,
+        fix: tuple[int, int, str] | None = None,
     ) -> None:
         self.issues.append(
             PipelineIssue(
@@ -64,6 +66,9 @@ class _Compilation:
                 message=message,
                 node_id=node_id,
                 parameter_path=parameter_path,
+                fix=None
+                if fix is None
+                else IssueFix(start=fix[0], end=fix[1], text=fix[2]),
             )
         )
         if node_id is not None and blocks_features:
@@ -258,7 +263,7 @@ def _propagate_features(compilation: _Compilation) -> None:
         ):
             continue
         node = compilation.nodes[identifier]
-        branches = [compilation.features[edge.source] for edge in edges]
+        branches = [(edge.source, compilation.features[edge.source]) for edge in edges]
         try:
             compilation.features[identifier] = node_features(
                 compilation.definition, node, branches
@@ -273,6 +278,7 @@ def _propagate_features(compilation: _Compilation) -> None:
                 str(exc),
                 identifier,
                 parameter_path=[exc.parameter] if exc.parameter else None,
+                fix=exc.fix if exc.parameter else None,
             )
         except (ValueError, KeyError) as exc:
             compilation.error("feature_schema", str(exc), identifier)

@@ -10,13 +10,17 @@ import time
 from collections import deque
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, NoReturn
 
 import numpy as np
 from aberrant import __version__ as aberrant_version
 from aberrant.base import ModelProtocol
 from aberrant.catalog import ResolvedDetectorConfig
-from aberrant.compose import GraphPipeline
+from aberrant.compose import (
+    GraphExecutionError,
+    GraphPipeline,
+    GraphStateUncertainError,
+)
 from off_key_core.models import ABERRANT_VERSION
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 
@@ -338,7 +342,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     def _score(self, data: dict[str, float]) -> float:
         self._diagnose(self.diagnostics.select_pass, "score")
         self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
-        score = float(self.pipeline.score_one(data))
+        try:
+            score = float(self.pipeline.score_one(data))
+        except GraphExecutionError as error:
+            self._rolled_back(error)
         if not math.isfinite(score):
             raise ValueError("Aberrant returned a non-finite anomaly score")
         return score
@@ -346,10 +353,25 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     def _learn(self, data: dict[str, float]) -> None:
         self._diagnose(self.diagnostics.select_pass, "learn")
         self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
-        self.pipeline.learn_one(data)
+        try:
+            self.pipeline.learn_one(data)
+        except GraphExecutionError as error:
+            self._rolled_back(error)
         self._diagnose(
             self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
         )
+
+    def _rolled_back(self, error: GraphExecutionError) -> NoReturn:
+        """Skip an observation a step or the detector failed on, if no state changed.
+
+        A score pass only reads committed state, and a learn pass that fails
+        before the detector learns rolls every learner back. Both leave the run
+        healthy. Uncertain state, from a detector failing while it learned, still
+        fails the run.
+        """
+        if isinstance(error, GraphStateUncertainError) or self.pipeline.failed:
+            raise error
+        self._skip(self._failure_node(error), "error", str(error))
 
     def _observe(self, event):
         if event.node_id == "$model" and event.phase == "score":

@@ -5,6 +5,7 @@ import {
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
+import { suggestions, typedWord } from "@/features/pipelines/formula";
 import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineLearningSummary } from "@/features/pipelines/PipelineLearningSummary";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
@@ -82,11 +83,21 @@ describe("Combine and Gate steps in the composer", () => {
   });
 });
 
-function formulaPanel(step: PipelineComponent, params: PipelineNode["params"], issues: { path: string[]; message: string }[] = []) {
+type Issue = { path: string[]; message: string; fix?: { start: number; end: number; text: string } };
+function formulaPanel(step: PipelineComponent, params: PipelineNode["params"], issues: Issue[] = [], range?: string) {
   const changes: Record<string, JsonValue>[] = [];
   render(<PipelineFormula node={node(step, params)} component={step} features={["dc_voltage", "dc-current"]}
-    featureLabels={{}} issues={issues} onChange={(next) => { changes.push(next); }} />);
+    featureLabels={{ dc_voltage: "DC voltage" }} issues={issues} range={range} onChange={(next) => { changes.push(next); }} />);
   return changes;
+}
+
+/** Put the caret at the end of the formula, as typing there leaves it. */
+function caretAtEnd(name = "Formula") {
+  const area = screen.getByRole("textbox", { name }) as HTMLTextAreaElement;
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+  fireEvent.select(area);
+  return area;
 }
 
 describe("the formula editor", () => {
@@ -120,6 +131,71 @@ describe("the formula editor", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Condition" }), { target: { value: "dc_voltage > 1" } });
     expect(changes).toEqual([{ condition: "dc_voltage > 1" }]);
     expect(screen.getByText("Condition help")).toBeTruthy();
+  });
+});
+
+describe("completing a formula", () => {
+  it("finds the word before the caret, also inside backticks, but not in a number", () => {
+    expect(typedWord("2 * dc_vo", 9)).toEqual({ start: 4, end: 9, prefix: "dc_vo", quoted: false });
+    expect(typedWord("2 * dc_vo + 1", 7)).toEqual({ start: 4, end: 9, prefix: "dc_", quoted: false });
+    expect(typedWord("`dc-c` + 1", 3)).toEqual({ start: 0, end: 6, prefix: "dc", quoted: true });
+    expect(typedWord("1e5", 3)).toBeUndefined();
+    expect(typedWord("a + ", 4)).toBeUndefined();
+  });
+
+  it("offers features first, then functions, and and/or/not only in a condition", () => {
+    const labels = { dc_voltage: "DC voltage" };
+    const names = (prefix: string, condition = false, quoted = false) =>
+      suggestions({ prefix, quoted }, ["dc_voltage", "dc-current", "max"], labels, condition).map((item) => item.value);
+    expect(names("dc")).toEqual(["dc_voltage", "dc-current"]);
+    expect(names("ma")).toEqual(["max", "max"]);
+    expect(names("o", true)).toEqual(["or", "dc_voltage", "log", "log1p", "not"]);
+    expect(names("o")).toEqual(["dc_voltage", "log", "log1p"]);
+    expect(names("c", false, true)).toEqual(["dc_voltage", "dc-current"]);
+    // A finished word needs no list.
+    expect(names("dc_voltage")).toEqual([]);
+  });
+
+  it("completes with the keyboard and writes backticks where a name needs them", () => {
+    const changes = formulaPanel(formula, { expression: "2 * dc" });
+    const area = caretAtEnd();
+    const list = screen.getByRole("listbox", { name: "Suggestions" });
+    expect([...list.querySelectorAll("[role=option]")].map((option) => option.textContent))
+      .toEqual(["dc_voltageDC voltage", "`dc-current`"]);
+    expect(area.getAttribute("aria-activedescendant")).toBe(list.querySelector("[aria-selected=true]")!.id);
+    fireEvent.keyDown(area, { key: "ArrowDown" });
+    fireEvent.keyDown(area, { key: "Enter" });
+    expect(changes).toEqual([{ expression: "2 * `dc-current`" }]);
+  });
+
+  it("opens a function's parentheses", () => {
+    const changes = formulaPanel(formula, { expression: "sq" });
+    caretAtEnd();
+    fireEvent.click(screen.getByRole("option", { name: /sqrt/ }));
+    expect(changes).toEqual([{ expression: "sqrt()" }]);
+  });
+
+  it("closes the list with Escape and keeps the panel open", () => {
+    const outside: string[] = [];
+    const { container } = render(<div onKeyDown={(event) => { outside.push(event.key); }}>
+      <PipelineFormula node={node(gate, { condition: "dc_voltage > 1 an" })} component={gate} features={["dc_voltage"]}
+        featureLabels={{}} issues={[]} onChange={() => {}} />
+    </div>);
+    const area = caretAtEnd("Condition");
+    expect(screen.getByRole("option", { name: /and/ })).toBeTruthy();
+    fireEvent.keyDown(area, { key: "Escape" });
+    expect(container.querySelector("[role=listbox]")).toBeNull();
+    expect(outside).toEqual([]);
+  });
+
+  it("fixes a misspelt name with one click and shows the computed range", () => {
+    const changes = formulaPanel(formula, { expression: "dc_votage * 2" }, [{
+      path: ["expression"], message: "Unknown feature dc_votage at character 1. Did you mean dc_voltage?",
+      fix: { start: 0, end: 9, text: "dc_voltage" },
+    }], "0 to 1,200");
+    fireEvent.click(screen.getByRole("button", { name: "Use dc_voltage" }));
+    expect(changes).toEqual([{ expression: "dc_voltage * 2" }]);
+    expect(screen.getByText("Range").parentElement?.textContent).toBe("Range 0 to 1,200");
   });
 });
 

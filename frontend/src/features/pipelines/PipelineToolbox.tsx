@@ -13,6 +13,7 @@ export function PipelineToolbox({
   components,
   document,
   link,
+  choices,
   onAdd,
   onSelect,
   onDragStart,
@@ -22,6 +23,8 @@ export function PipelineToolbox({
   document: GraphDocument;
   /** Inserting on this connection: only the steps that fit it are listed. */
   link?: Link;
+  /** The steps to offer instead, such as the ones a feature's row can add. */
+  choices?: PipelineComponent[];
   onAdd: (componentId: string) => void;
   /** Opens a one-per-pipeline step that is already present; it is not offered again. */
   onSelect?: (nodeId: string) => void;
@@ -33,7 +36,7 @@ export function PipelineToolbox({
   const list = useRef<HTMLDivElement>(null);
   const definition = document.definition;
   const search = query.trim().toLocaleLowerCase();
-  const offered = components.filter((component) =>
+  const offered = choices ?? components.filter((component) =>
     component.strategies.includes(definition.strategy)
     && (isMultiInstanceKind(component.kind) || !definition.nodes.some((node) => node.kind === component.kind))
     && (!link || !insertBlocker(definition, link, component, components)));
@@ -45,7 +48,7 @@ export function PipelineToolbox({
     .map((family) => ({ ...family, items: matches.filter((component) => stepFamily(component.kind, component.id) === family.id) }))
     .filter((section) => section.items.length);
   // The detector, policy and output are changed in their own settings, not added again.
-  const present = link ? [] : definition.nodes.filter((node) => node.kind in singleNames
+  const present = link || choices ? [] : definition.nodes.filter((node) => node.kind in singleNames
     && (!search || `${nodeLabel(node, components, document.layout)} ${singleNames[node.kind]}`.toLocaleLowerCase().includes(search)));
   const presentText = listed(present.map((node) => singleNames[node.kind]!));
   const full = definition.nodes.length >= PIPELINE_LIMITS.nodes;
@@ -87,7 +90,7 @@ export function PipelineToolbox({
           }
         }}
       />
-      <p className="pl-toolbox-count" role="status">{definition.nodes.length} / {PIPELINE_LIMITS.nodes}</p>
+      {!choices && <p className="pl-toolbox-count" role="status">{definition.nodes.length} / {PIPELINE_LIMITS.nodes}</p>}
       {full && <p className="pl-help">This pipeline has reached its {PIPELINE_LIMITS.nodes}-step limit.</p>}
       <div ref={list} onKeyDown={navigate}>
         {sections.map((section) => (
@@ -104,7 +107,7 @@ export function PipelineToolbox({
                   aria-label={`${link ? "Insert" : "Add"} ${component.label}`}
                   aria-describedby={`${id}-${component.id}`}
                   disabled={!!reason}
-                  draggable={!link && !reason}
+                  draggable={!link && !choices && !reason}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(
                       "application/off-key-component",

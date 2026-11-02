@@ -262,6 +262,42 @@ before a window do not fill it: a step needs the observations its predecessors
 still need, then its own warm-up. The stage state counts `held_back`; checkpoints
 without the count load it as 0.
 
+A failure in the learned stage costs one observation too, when no learned state
+changed. Aberrant's `GraphPipeline.score_one` only reads committed state, and
+`learn_one` rolls every learner back when a step fails before the detector
+learns; both raise `GraphExecutionError`. The adaptive detector turns that into
+`StepRejected(node, "error", message)`, the `ObservationRejected` that
+`PrepareRejected` also extends. A `GraphStateUncertainError`, raised when a learner
+without a transaction, such as the detector, may have changed, still fails the
+run. In the static strategy `BatchFeatureGraph` raises `NonFiniteFeatures` when a
+fitted step returns values that are not finite: fatal while fitting, and a
+`non_finite` skip while scoring one observation, which only reads fitted state.
+Before raising, `_skip()` calls `PrepareStage.revert()`, which restores the
+states the observation's Prepare commit replaced, so a skipped observation
+changes no state anywhere. The step's diagnostics count it under `rejections`.
+
+Each `FeatureDescription` in a validation report says where it comes from.
+`previous` names the feature it continues at the step before, as `node.name`, and
+`steps` lists the steps that changed the feature or its name. Readings have no
+`previous`, and neither have the features an Aggregate, a Formula or a projection
+makes; their `steps` start with that node. Neither field changes a fingerprint,
+and the report's budget pass drops them along with `slots`. The composer's
+Features view follows `previous` back from the detector's input to draw one row
+per feature. Its **+** places a step with `rowPlacement()`: a Prepare or Combine
+step on the wire into the first learned node on the feature's path, or into the
+detector when there is none, and a learned step on the detector's input wire,
+each scoped with `apply_to` to that feature.
+
+A valid report's `ready_after` maps each step of the Prepare stage to the
+observation, counted from 1, that gives its first output: one plus the leads
+along its longest chain. The inspector shows it as *Ready after N observations*,
+and as *at least* N after a Gate, because held-back observations do not count;
+the start-up timeline says *at least* for the same reason. A `formula` issue can
+carry a `fix`: the characters `start` to `end` and the `text` that replaces them,
+such as the closest known feature for an unknown one, written as a formula writes
+it. The composer offers it as **Use …**. The formula editor suggests the features
+that arrive at the step, the functions and, in a condition, `and`, `or` and `not`.
+
 Validation issues carry a severity. Errors block compilation, publishing and
 Apply; warnings use the same shape, appear on the step and in the status chip, and
 do not. The inspector keeps the last checked features while an edit is checked, so

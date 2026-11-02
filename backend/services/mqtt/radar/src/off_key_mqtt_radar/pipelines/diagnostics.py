@@ -208,19 +208,25 @@ class PipelineDiagnostics:
                 "reason": reason,
             }
 
-    def prepare_rejected(
+    def rejected(
         self,
         node_id: str,
         inputs: dict[str, float] | None,
         reason: str,
         message: str,
+        *,
+        phase: str | None = None,
     ) -> None:
-        """A Prepare step skipped the observation; its counts say why."""
+        """A step skipped the observation; its counts say why.
+
+        Prepare steps report in the learn pass; a learned step or the detector
+        in the pass it failed in, which is the current one by default.
+        """
         metrics = self.nodes[node_id]
         rejections = metrics.setdefault("rejections", {})
         rejections[reason] = rejections.get(reason, 0) + 1
         if self._pending is not None:
-            self._pending["passes"]["learn"][node_id] = {
+            self._pending["passes"][phase or self._pass][node_id] = {
                 "input": self._preview(inputs),
                 "output": None,
                 "state": "rejected",

@@ -17,6 +17,13 @@ def _fits(value, budget=MAX_PIPELINE_REPORT_BYTES):
     return fits_json_budget(value, budget)
 
 
+def _bounded_fix(fix):
+    """A fix whose text would be cut is no longer a fix."""
+    if fix is None or bounded_utf8_text(fix.text, 512) != fix.text:
+        return None
+    return fix
+
+
 def _bounded_issues(issues):
     bounded = []
     truncated = False
@@ -25,6 +32,7 @@ def _bounded_issues(issues):
             update={
                 "message": bounded_utf8_text(issue.message, 1024),
                 "code": bounded_utf8_text(issue.code, 64),
+                "fix": _bounded_fix(issue.fix),
                 "parameter_path": [
                     bounded_utf8_text(part, 128) if isinstance(part, str) else part
                     for part in issue.parameter_path[:32]
@@ -67,10 +75,13 @@ def _budget_notice(report):
     )
 
 
-def _preparation(result: PipelineValidation) -> int:
-    """Observations the Prepare stage takes before the learned stage sees one."""
+def _warm_up(result: PipelineValidation) -> tuple[int, dict[str, int]]:
+    """Observations the Prepare stage takes before the learned stage sees one,
+    and the observation that gives each of its steps a first output."""
     split = stage_split(result) if result.valid else None
-    return 0 if split is None else split.required - 1
+    if split is None:
+        return 0, {}
+    return split.required - 1, {key: split.first_output[key] for key in split.steps}
 
 
 def bounded_validation_report(
@@ -80,6 +91,7 @@ def bounded_validation_report(
     include_definition: bool = True,
 ) -> PipelineValidationReport:
     issues, truncated = _bounded_issues(result.issues)
+    preparation, ready_after = _warm_up(result)
     report = PipelineValidationReport(
         valid=result.valid,
         issues=issues,
@@ -90,7 +102,8 @@ def bounded_validation_report(
         fingerprint=result.fingerprint,
         selected_node_id=selected_node_id,
         issues_truncated=truncated,
-        preparation_observations=_preparation(result),
+        preparation_observations=preparation,
+        ready_after=ready_after,
     )
     if selected_node_id is not None and selected_node_id not in {
         node.id for node in result.definition.nodes
@@ -110,8 +123,12 @@ def bounded_validation_report(
     _budget_notice(report)
     if _fits(report):
         return report
+    # Lineage goes first: which readings, steps and features each one comes from.
     report.features = {
-        identifier: [column.model_copy(update={"slots": []}) for column in columns]
+        identifier: [
+            column.model_copy(update={"slots": [], "steps": [], "previous": None})
+            for column in columns
+        ]
         for identifier, columns in report.features.items()
     }
     report.provenance_complete = False

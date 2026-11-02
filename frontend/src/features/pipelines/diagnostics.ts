@@ -8,6 +8,8 @@ const REJECTIONS: Record<string, string> = {
   non_finite: "not a finite number",
   out_of_domain: "outside the function's domain",
   out_of_range: "outside the range",
+  // A learned step or the detector failed, and nothing it had learned changed.
+  error: "with an error",
 };
 
 /** "Skipped 3 observations: 2 outside the range, 1 not a finite number." */

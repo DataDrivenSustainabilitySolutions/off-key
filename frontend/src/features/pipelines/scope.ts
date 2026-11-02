@@ -53,8 +53,11 @@ export function combinedName(node: PipelineNode, component?: PipelineComponent):
   if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
 }
 
-/** Feature names a formula can use as they are; others go between backticks. */
-export const formulaName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `\`${name}\``;
+const FORMULA_KEYWORDS = new Set(["and", "or", "not"]);
+
+/** Feature names a formula can use as they are; others, and/or/not included, go between backticks. */
+export const formulaName = (name: string) =>
+  /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !FORMULA_KEYWORDS.has(name) ? name : `\`${name}\``;
 
 /** Whether a step adds its output when Result is left at the step's default. */
 export const addsByDefault = (component?: PipelineComponent) =>

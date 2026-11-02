@@ -27,7 +27,11 @@ from .execution_errors import FatalExecutionError, ObservationRejected
 from .martingales import MartingaleAlarmController
 from .memory import process_rss_mb
 from .models import AnomalyResult
-from .pipelines.batch import BatchFeatureGraph, FittedStaticPipeline
+from .pipelines.batch import (
+    BatchFeatureGraph,
+    FittedStaticPipeline,
+    NonFiniteFeatures,
+)
 from .pipelines.execution import PipelineExecutionMixin
 from .pipelines.prepare import Withheld
 
@@ -391,9 +395,13 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
     ) -> AnomalyResult:
         self._diagnose(self.diagnostics.select_pass, "score")
         self.conformal_detector.observer = self.diagnostics
-        self.processed_count += 1
         vector = self._vectorize(data)
-        p_value = self._compute_p_value(vector)
+        try:
+            p_value = self._compute_p_value(vector)
+        except NonFiniteFeatures as error:
+            # Scoring only reads the fitted steps, so this observation is skipped.
+            self._skip(error.node_id or self.plan.detector_id, "non_finite", str(error))
+        self.processed_count += 1
         if self.alarm_controller is None:
             self.alarm_controller = self._create_alarm_controller()
         alarm_context = self._update_alarm_policy(p_value)

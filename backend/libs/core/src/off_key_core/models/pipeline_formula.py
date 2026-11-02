@@ -56,14 +56,37 @@ class FormulaError(ValueError):
     """An expression that cannot be used, named by its first problem."""
 
     def __init__(
-        self, message: str, position: int | None = None, hint: str | None = None
+        self,
+        message: str,
+        position: int | None = None,
+        hint: str | None = None,
+        *,
+        fix: tuple[int, int, str] | None = None,
     ):
         self.position = position
         """Index of the first character concerned, from 0."""
         self.parameter: str | None = None
         """The setting that holds the expression, once a step names it."""
+        self.fix = fix
+        """Characters start to end that the hint replaces, and the text it writes."""
         text = message if position is None else f"{message} at character {position + 1}"
         super().__init__(f"{text}." + (f" Did you mean {hint}?" if hint else ""))
+
+
+def written(name: str) -> str | None:
+    """A feature name as a formula writes it: bare when it can be, otherwise
+    between backticks. None for a name no formula can write."""
+    if _NAME.fullmatch(name) and name not in KEYWORDS:
+        return name
+    return None if "`" in name else f"`{name}`"
+
+
+def _suggested(
+    message: str, term_start: int, term_end: int, hint: str | None, text: str | None
+) -> FormulaError:
+    """An unknown name, with the closest known one offered as its replacement."""
+    fix = (term_start, term_end, text) if hint and text else None
+    return FormulaError(message, term_start, hint, fix=fix)
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,9 +285,13 @@ class _Parser:
     def call(self, name: _Token) -> Term:
         function = name.value
         if function not in FUNCTIONS:
-            hint = difflib.get_close_matches(function, FUNCTIONS, n=1)
-            raise FormulaError(
-                f"Unknown function {function}", name.start, hint[0] if hint else None
+            hint = next(iter(difflib.get_close_matches(function, FUNCTIONS, n=1)), None)
+            raise _suggested(
+                f"Unknown function {function}",
+                name.start,
+                name.start + len(name.text),
+                hint,
+                hint,
             )
         self.accept("(")
         args: list[Term] = []
@@ -332,9 +359,13 @@ class Expression:
         known = set(available)
         for name, term in self.references.items():
             if name not in known:
-                hint = difflib.get_close_matches(name, available, n=1)
-                raise FormulaError(
-                    f"Unknown feature {name}", term.start, hint[0] if hint else None
+                hint = next(iter(difflib.get_close_matches(name, available, n=1)), None)
+                raise _suggested(
+                    f"Unknown feature {name}",
+                    term.start,
+                    term.end,
+                    hint,
+                    written(hint) if hint else None,
                 )
 
     def describe(self, term: Term, labels: Mapping[str, str]) -> str:
@@ -848,4 +879,5 @@ __all__ = [
     "domain_issue",
     "evaluator",
     "parse",
+    "written",
 ]

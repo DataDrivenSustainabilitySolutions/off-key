@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, NoReturn
 
-from ..execution_errors import FatalExecutionError
+from ..execution_errors import FatalExecutionError, StepRejected
 from .diagnostics import PipelineDiagnostics
 from .plan import ExecutionPlan
 from .prepare import PrepareStage, Withheld
@@ -41,6 +41,25 @@ class PipelineExecutionMixin:
         if isinstance(prepared, Withheld) and prepared.reason == "preparing":
             self.diagnostics.phase = "preparing"
         return prepared
+
+    def _skip(
+        self,
+        node_id: str,
+        reason: str,
+        message: str,
+        inputs: dict[str, float] | None = None,
+    ) -> NoReturn:
+        """Skip an observation that a learned step or the detector could not process.
+
+        Only call this when the learned stage is as it was: Aberrant rolled every
+        learner back, or the step only read fitted state. The Prepare stage takes
+        the observation back too, so a skipped observation changes no state, and
+        the run counts it as a coverage gap.
+        """
+        if self.prepare is not None:
+            self.prepare.revert()
+        self._diagnose(self.diagnostics.rejected, node_id, inputs, reason, message)
+        raise StepRejected(node_id, reason, message)
 
     def _preparation(self) -> dict[str, Any]:
         return {} if self.prepare is None else {"preparation": self.prepare.status()}

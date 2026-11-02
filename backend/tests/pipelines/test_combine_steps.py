@@ -170,7 +170,14 @@ def test_a_formula_knows_the_range_of_its_result():
 
 def test_a_gate_passes_its_features_on_unchanged():
     gate = ("gate", "prepare.gate", {"condition": "a > 1"})
-    assert features(CLIP, gate) == features(CLIP, node="clip")
+    passed = features(CLIP, gate)
+    # Each continues the feature before the Gate, and nothing else changes.
+    assert [item.previous for item in passed] == [
+        f"clip.{item.name}" for item in passed
+    ]
+    assert [item.model_dump(exclude={"previous"}) for item in passed] == [
+        item.model_dump(exclude={"previous"}) for item in features(CLIP, node="clip")
+    ]
 
 
 @pytest.mark.parametrize(

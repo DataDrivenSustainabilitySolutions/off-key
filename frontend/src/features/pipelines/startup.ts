@@ -48,6 +48,9 @@ export type Startup = {
   observations: number;
   /** Seconds between observations, when every reading has a measured interval. */
   interval?: number;
+  /** A Gate holds back observations its condition rejects, and they do not count, so the
+   * start can take longer than these numbers. */
+  gated?: boolean;
 };
 
 export function startupEstimate(
@@ -60,15 +63,17 @@ export function startupEstimate(
     phases,
     observations: phases.reduce((total, phase) => total + phase.observations, 0),
     interval: observationSeconds(intervals),
+    gated: definition.nodes.some((node) => node.component === "prepare.gate"),
   };
 }
 
 export const observationCount = (observations: number) =>
   `${observations.toLocaleString()} ${observations === 1 ? "observation" : "observations"}`;
 
-/** "≈ 26 min" with an interval, otherwise the observation count. */
-export const startupSummary = ({ observations, interval }: Startup) =>
-  interval ? `≈ ${roughDuration(observations * interval)}` : observationCount(observations);
+/** "≈ 26 min" with an interval, otherwise the observation count; "≥" when a Gate can make it longer. */
+export const startupSummary = ({ observations, interval, gated }: Startup) =>
+  interval ? `${gated ? "≥" : "≈"} ${roughDuration(observations * interval)}`
+    : `${gated ? "≥ " : ""}${observationCount(observations)}`;
 
 /** The estimate in one sentence, for the status popover and accessible names. */
 export function startupSentence(startup: Startup) {
@@ -77,5 +82,8 @@ export function startupSentence(startup: Startup) {
   const time = startup.interval
     ? ` At one observation every ${roughDuration(startup.interval)}, that is about ${roughDuration(startup.observations * startup.interval)}.`
     : "";
-  return `The first alarm can come after at least ${observationCount(startup.observations)}: ${parts}.${time}`;
+  const gated = startup.gated
+    ? " A Gate holds back the observations its condition rejects, and they do not count, so it can take longer."
+    : "";
+  return `The first alarm can come after at least ${observationCount(startup.observations)}: ${parts}.${time}${gated}`;
 }

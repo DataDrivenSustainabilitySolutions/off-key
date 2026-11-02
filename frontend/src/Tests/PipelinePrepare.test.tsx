@@ -164,6 +164,8 @@ describe("skipped observations", () => {
     expect(rejectionSummary({ out_of_range: 2, non_finite: 1 }))
       .toBe("Skipped 3 observations: 2 outside the range, 1 not a finite number.");
     expect(rejectionSummary({ out_of_domain: 1 })).toBe("Skipped 1 observation: 1 outside the function's domain.");
+    // A learned step or the detector that failed without changing what it learned.
+    expect(rejectionSummary({ error: 2 })).toBe("Skipped 2 observations: 2 with an error.");
     expect(rejectionSummary({})).toBeUndefined();
     expect(rejectionSummary(undefined)).toBeUndefined();
   });

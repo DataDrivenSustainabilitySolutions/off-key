@@ -67,7 +67,11 @@ def test_maximum_report_preserves_complete_selected_feature_choices(
         assert [
             feature.name for feature in report.features[identifier]
         ] == result.feature_names[identifier]
-        assert all(not feature.slots for feature in report.features[identifier])
+        # Lineage is left out first: readings, recipe steps and previous features.
+        assert all(
+            not feature.slots and not feature.steps and feature.previous is None
+            for feature in report.features[identifier]
+        )
         assert [feature.raw for feature in report.features[identifier]] == [
             feature.raw for feature in result.features[identifier]
         ]

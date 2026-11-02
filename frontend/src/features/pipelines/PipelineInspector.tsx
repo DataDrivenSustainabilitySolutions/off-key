@@ -15,9 +15,10 @@ import {
   setNodeParams,
   type GraphDocument,
 } from "./model";
+import { afterGate, rangeText, readyText } from "./features";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
-import { hasScope, isWarning } from "./scope";
+import { combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import { stepFields } from "./steps";
 import type { HistoryMode } from "./types";
@@ -103,8 +104,9 @@ export function PipelineInspector({
         </p>
       )}
       <ul className="pl-lineage">
-        {report.features[node.id]?.map((feature) => (
-          <li key={feature.name}>
+        {report.features[node.id]?.map((feature) => {
+          const range = rangeText(feature.minimum, feature.maximum);
+          return <li key={feature.name}>
             <strong>
               {featureLabels[feature.name] ?? feature.name}
             </strong>
@@ -121,9 +123,10 @@ export function PipelineInspector({
               ) : (
                 "Source provenance unavailable"
               )}
+              {range && ` · ${range}`}
             </small>
-          </li>
-        ))}
+          </li>;
+        })}
       </ul>
     </>
   );
@@ -150,7 +153,10 @@ export function PipelineInspector({
       : <p key={index} className="pl-error" role="alert">{issue.message}</p>);
   const fieldIssues = (validation?.issues ?? [])
     .filter((issue) => node && issue.node_id === node.id && issue.parameter_path != null && !isWarning(issue))
-    .map((issue) => ({ path: issue.parameter_path!, message: issue.message }));
+    .map((issue) => ({ path: issue.parameter_path!, message: issue.message, fix: issue.fix }));
+  // When the step first has output, for the steps of the Prepare stage.
+  const ready = node && report?.ready_after?.[node.id];
+  const computed = node && report?.features[node.id]?.find((feature) => feature.name === combinedName(node, component));
   const scoped = hasScope(component);
   const changeParams = (params: PipelineNode["params"], changed: string) => {
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
@@ -193,6 +199,7 @@ export function PipelineInspector({
               {output ? dataKinds[output].label : "Stored evidence and alarms"}
             </p>
           )}
+          {ready ? <p className="pl-help pl-ready">{readyText(ready, afterGate(document.definition, node.id))}</p> : null}
           {node.kind === "detector" && (() => {
             const query = modelQuery.trim().toLocaleLowerCase();
             const models = catalog.components
@@ -251,7 +258,8 @@ export function PipelineInspector({
           )}
           {component && (node.component === "prepare.formula" || node.component === "prepare.gate") && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
-              issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+              issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
+              range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
           )}
           {component && (
             <ParameterFields

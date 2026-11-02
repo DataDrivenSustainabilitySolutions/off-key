@@ -104,6 +104,9 @@ export function PipelineScope({ node, component, features, featureLabels, issues
         </button>)}
       </div>
       <small className="pl-help">{outcome}</small>
+      {node.component === "prepare.despike" && !scope.add && <small className="pl-help">
+        The detector sees the median in place of a spike. The raw value stays in the evidence.
+      </small>}
     </div>
     {computed !== undefined
       && <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />}

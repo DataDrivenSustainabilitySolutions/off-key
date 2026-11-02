@@ -24,19 +24,14 @@ from off_key_core.models.pipeline_prepare import (
 )
 from off_key_core.models.pipeline_scope import step_scope
 
-from ..execution_errors import ObservationRejected
+from ..execution_errors import StepRejected
 from .plan import ExecutionPlan
 
 STATE_VERSION = 1
 
 
-class PrepareRejected(ObservationRejected):
+class PrepareRejected(StepRejected):
     """A Prepare step skipped this observation; every state stays as it was."""
-
-    def __init__(self, node_id: str, reason: str, message: str):
-        super().__init__(message)
-        self.node_id = node_id
-        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -111,6 +106,10 @@ class PrepareStage:
         self.accepted = 0
         self.rejected = 0
         self.held_back = 0
+        # What the last commit replaced, until the next observation runs.
+        self._undo: tuple[dict[str, list[tuple]], dict[str, int], int, int] | None = (
+            None
+        )
 
     @staticmethod
     def _step(plan: ExecutionPlan, node) -> _Step:
@@ -170,6 +169,7 @@ class PrepareStage:
 
         Raises PrepareRejected when a step cannot produce a finite value.
         """
+        self._undo = None
         available: dict[str, dict[str, float]] = {self.source_id: bound}
         staged: dict[str, list[tuple]] = {}
         records: list[_Record] = []
@@ -221,12 +221,32 @@ class PrepareStage:
         return values, self._advance(step, values, staged, diagnostics)
 
     def _commit(self, staged, records: list[_Record], gate: str | None) -> None:
+        # States are replaced, never changed in place, so keeping them is enough.
+        self._undo = (
+            {key: self.states[key] for key in staged},
+            dict(self.updates),
+            self.accepted,
+            self.held_back,
+        )
         self.states.update(staged)
         self.accepted += 1
         self.held_back += gate is not None
         for record in records:
             if record.values is not None:
                 self.updates[record.step.id] += 1
+
+    def revert(self) -> None:
+        """Take back the observation run last, which a learned step then skipped.
+
+        Afterwards the stage is as it was before that observation. Only the last
+        observation can be taken back, and only once.
+        """
+        if self._undo is None:
+            return
+        states, updates, accepted, held_back = self._undo
+        self.states.update(states)
+        self.updates, self.accepted, self.held_back = updates, accepted, held_back
+        self._undo = None
 
     def _reject(
         self, step: _Step, values, failure: PrepareFailure, diagnostics, name=None
@@ -236,11 +256,12 @@ class PrepareStage:
         if diagnostics is not None:
             _safely(
                 diagnostics,
-                diagnostics.prepare_rejected,
+                diagnostics.rejected,
                 step.id,
                 values,
                 failure.reason,
                 message,
+                phase="learn",
             )
         raise PrepareRejected(step.id, failure.reason, message) from failure
 

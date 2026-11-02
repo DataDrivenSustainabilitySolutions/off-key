@@ -3,6 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { CircleCheck, Plus, TriangleAlert, X } from "lucide-react";
 import type { PipelineCatalog } from "./contracts";
 import PipelineCanvas from "./PipelineCanvas";
+import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { isWarning } from "./scope";
@@ -53,13 +54,15 @@ export function PipelineWorkbench({
   const statusLabel = failed ? "Graph not checked" : errors
     ? `${issueCount} graph ${errors === 1 ? "issue" : "issues"}`
     : `Graph is valid${warningCount ? `, ${warningCount}` : ""}${
-      estimate ? `, first alarm after ${estimate.replace("≈", "about")}` : ""}`;
+      estimate ? `, first alarm after ${estimate.replace("≈", "about").replace("≥", "at least")}` : ""}`;
   const [lastIssuesRequest, setLastIssuesRequest] = useState(issuesRequest);
   if (issuesRequest !== lastIssuesRequest) {
     setLastIssuesRequest(issuesRequest);
     if (issuesRequest) setIssuesOpen(true);
   }
   const [localPanel, setLocalPanel] = useState<InspectorPanel>(null);
+  // The graph, or one row per feature the detector receives; both show the same design.
+  const [view, setView] = useState<"graph" | "features">("graph");
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragFrame = useRef<number | undefined>(undefined);
@@ -102,6 +105,8 @@ export function PipelineWorkbench({
     addedFromMenu.current = adding;
     setMenu(false);
     setPanel("component");
+    // A new step is placed and wired on the graph.
+    setView("graph");
     props.onAdd(...args);
   };
   return <div className="pl-workbench">
@@ -140,6 +145,12 @@ export function PipelineWorkbench({
           </Popover.Content></div></Popover.Portal>
         </Popover.Root>}
         {actions}
+        <div className="pl-segmented pl-view-switch" role="group" aria-label="View">
+          {(["graph", "features"] as const).map((item) => <button type="button" key={item}
+            aria-pressed={view === item} onClick={() => setView(item)}>
+            {item === "graph" ? "Graph" : "Features"}
+          </button>)}
+        </div>
       </div>
       <div className="pl-actions" aria-label="Settings panels">
         {(status || failed) && <Popover.Root open={issuesOpen} onOpenChange={setIssuesOpen}>
@@ -191,8 +202,12 @@ export function PipelineWorkbench({
       </div>
     </div>
     <div className={`pl-editor-grid${panel ? " pl-editor-grid--settings" : ""}`}>
-      <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-        features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} />
+      {view === "features"
+        ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
+          stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
+          onChange={(document) => props.onChange(document)} />
+        : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
+          features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} />}
       {panel && <div className="pl-settings-panel" id={panelId} onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
           event.stopPropagation(); close();

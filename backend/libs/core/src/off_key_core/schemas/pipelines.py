@@ -18,6 +18,9 @@ NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output
 IssueSeverity = Literal["error", "warning"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
+# Detectors that can feed one policy, and how the policy combines them.
+MAX_DETECTORS = 4
+FusionMode = Literal["max", "mean"]
 
 
 class PipelineModel(BaseModel):
@@ -128,12 +131,21 @@ class PipelineExecutionConfig(PipelineModel):
         return self
 
 
+class IssueFix(PipelineModel):
+    """A replacement that resolves an issue in the setting the issue names."""
+
+    start: int = Field(ge=0, description="The first character replaced, from 0.")
+    end: int = Field(ge=0, description="The character after the last one replaced.")
+    text: str = Field(max_length=512, description="What replaces them.")
+
+
 class PipelineIssue(PipelineModel):
     code: str
     message: str
     node_id: str | None = None
     parameter_path: list[str | int] | None = Field(default=None, max_length=32)
     severity: IssueSeverity = "error"
+    fix: IssueFix | None = None
 
 
 class FeatureDescription(PipelineModel):
@@ -142,6 +154,18 @@ class FeatureDescription(PipelineModel):
     minimum: float | None = None
     maximum: float | None = None
     raw: bool = True
+    previous: str | None = Field(
+        default=None,
+        description=(
+            "The feature this one continues at the step before, as node.name. "
+            "Readings have none, and neither have the features an Aggregate, a "
+            "Formula or a projection makes."
+        ),
+    )
+    steps: list[str] = Field(
+        default_factory=list,
+        description="The steps that changed the feature or its name, in order.",
+    )
 
 
 class PipelineValidation(PipelineModel):
@@ -175,8 +199,22 @@ class PipelineValidation(PipelineModel):
         return self._node_id("source")
 
     @property
+    def detector_ids(self) -> list[str]:
+        """The detectors in a fixed order, by id; most designs have one."""
+        return sorted(
+            node.id for node in self.definition.nodes if node.kind == "detector"
+        )
+
+    @property
+    def detector_inputs(self) -> dict[str, str]:
+        """The node whose features each detector reads."""
+        incoming = self.incoming
+        return {identifier: incoming[identifier][0] for identifier in self.detector_ids}
+
+    @property
     def detector_id(self) -> str:
-        return self._node_id("detector")
+        """The first detector, which is the only one in most designs."""
+        return self.detector_ids[0]
 
     @property
     def policy_id(self) -> str:
@@ -188,6 +226,7 @@ class PipelineValidation(PipelineModel):
 
     @property
     def feature_output_id(self) -> str:
+        """The node whose features the first detector reads."""
         return self.incoming[self.detector_id][0]
 
 
@@ -205,6 +244,19 @@ class PipelineValidationReport(PipelineModel):
     provenance_complete: bool = True
     definition_omitted: bool = False
     issues_truncated: bool = False
+    preparation_observations: int = Field(
+        default=0,
+        ge=0,
+        description="Observations the Prepare stage takes before anything learns.",
+    )
+    ready_after: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "For each step of the Prepare stage, the observation, counted from 1, "
+            "that gives its first output. Observations a Gate before the step "
+            "holds back do not count."
+        ),
+    )
 
 
 FieldType = Literal[
@@ -499,12 +551,24 @@ class PipelineObservationPasses(PipelineModel):
     learn: dict[str, PipelineNodePreview]
 
 
+class ObservedDetector(PipelineModel):
+    """One detector's part in a sampled observation of combined detectors."""
+
+    detector_id: str
+    score: float | None
+    """The detector's own score, higher is more anomalous."""
+    surprise: float | None
+    """The share of its calibration scores below the score, from 0 to 1."""
+
+
 class PipelineObservation(PipelineModel):
     sequence_number: int
     timestamp: str
     phase: str
     input_timestamps: dict[str, str]
     passes: PipelineObservationPasses
+    detectors: list[ObservedDetector] | None = None
+    """Each detector's score and surprise when the policy combines several."""
 
 
 class PipelineNodeRuntime(PipelineModel):
@@ -520,6 +584,20 @@ class PipelineNodeRuntime(PipelineModel):
     readiness_reason: str | None
     blocked_by: list[str] = Field(default_factory=list)
     error: str | None = None
+    rejections: dict[str, int] = Field(default_factory=dict)
+    """Observations the step skipped, by reason, such as non_finite or error."""
+
+
+class PreparationState(PipelineModel):
+    """Progress of the Prepare stage, which runs before anything learns."""
+
+    ready: bool
+    observed: int
+    required: int
+    """Observations until the first prepared row reaches the learned stage."""
+    rejected: int
+    held_back: int = 0
+    """Observations a Gate held back from learning and scoring."""
 
 
 class AdaptiveLearningState(PipelineModel):
@@ -558,6 +636,7 @@ class PipelineRuntimeState(PipelineModel):
     diagnostic_errors: int
     adaptive_learning: AdaptiveLearningState | None = None
     batch_training: BatchTrainingState | None = None
+    preparation: PreparationState | None = None
 
 
 class ScopeParameters(PipelineModel):
@@ -693,3 +772,237 @@ class OnlinePCAParameters(ScopeParameters):
         if self.n0 < self.n_components:
             raise ValueError("n0 must be at least n_components")
         return self
+
+
+# Prepare steps run once per observation, in arrival order, before anything learns.
+PREPARE_WINDOW_LIMIT = 3600
+
+
+class PrepareScopeParameters(ScopeParameters):
+    """A Prepare step maps each feature it uses to one value.
+
+    Left unset, the suffix follows the step's settings, such as diff1 for a
+    difference over one observation.
+    """
+
+    suffix: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=24,
+        pattern=r"^[A-Za-z0-9_]+$",
+        title="Suffix",
+        description=(
+            "Added features are named <feature>_<suffix>. Leave unset for the "
+            "step's short name."
+        ),
+    )
+
+
+def _window(
+    default: int,
+    description: str,
+    *,
+    minimum: int = 2,
+    maximum: int = PREPARE_WINDOW_LIMIT,
+) -> Any:
+    return Field(
+        default=default,
+        ge=minimum,
+        le=maximum,
+        title="Window",
+        description=description,
+    )
+
+
+class SmoothParameters(PrepareScopeParameters):
+    method: Literal["exponential", "rolling"] = Field(
+        default="exponential",
+        description=(
+            "Exponential weighs recent values more, with alpha = 2 / (window + 1). "
+            "Rolling takes the plain mean of the window."
+        ),
+    )
+    window_size: int = _window(10, "Observations to smooth over.")
+
+
+class DespikeParameters(PrepareScopeParameters):
+    window_size: int = _window(
+        11,
+        "Recent observations, an odd number, whose median replaces a spike.",
+        minimum=5,
+        maximum=301,
+    )
+    threshold: float = Field(
+        default=3.0,
+        gt=0,
+        le=100,
+        description=(
+            "How many scaled median absolute deviations a value may differ from "
+            "the window median before the median replaces it."
+        ),
+    )
+
+    @field_validator("window_size")
+    @classmethod
+    def odd_window(cls, value: int) -> int:
+        if value % 2 == 0:
+            raise ValueError("Choose an odd number, so the window has a middle value")
+        return value
+
+
+class ChangeParameters(PrepareScopeParameters):
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Replace the features this step uses, or keep them and add the "
+            "step's output as new features."
+        ),
+    )
+    mode: Literal["difference", "percent", "lag"] = Field(
+        default="difference",
+        description=(
+            "Difference x(t) - x(t - lag), percent change against x(t - lag), or "
+            "the value lag observations back."
+        ),
+    )
+    lag: int = Field(
+        default=1,
+        ge=1,
+        le=PREPARE_WINDOW_LIMIT,
+        description="Observations back to compare with.",
+    )
+
+
+class RollingParameters(PrepareScopeParameters):
+    result: Literal["replace", "add"] = Field(
+        default="add",
+        title="Result",
+        description=(
+            "Replace the features this step uses, or keep them and add the "
+            "step's output as new features."
+        ),
+    )
+    statistic: Literal["mean", "median", "min", "max", "std", "range"] = Field(
+        default="mean",
+        description=(
+            "Statistic of the window; std is the sample standard deviation and "
+            "range is max minus min."
+        ),
+    )
+    window_size: int = _window(60, "Recent observations the statistic covers.")
+
+
+class MathParameters(PrepareScopeParameters):
+    function: Literal["log", "log1p", "sqrt", "abs", "square", "linear"] = Field(
+        default="log",
+        description=(
+            "log needs values above 0, log1p above -1 and sqrt at least 0; "
+            "linear computes scale * x + offset."
+        ),
+    )
+    scale: float = Field(default=1.0, description="Factor of linear.")
+    offset: float = Field(default=0.0, description="Constant added by linear.")
+
+
+class RangeParameters(PrepareScopeParameters):
+    low: float | None = Field(
+        default=0.0, description="Smallest accepted value; none leaves it open."
+    )
+    high: float | None = Field(
+        default=1.0, description="Largest accepted value; none leaves it open."
+    )
+    action: Literal["clip", "skip"] = Field(
+        default="clip",
+        description=(
+            "Clip moves values outside the range to its nearest end. Skip drops "
+            "the whole observation and counts it as a coverage gap."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def ordered_bounds(self) -> "RangeParameters":
+        if self.low is None and self.high is None:
+            raise ValueError("Set low, high or both")
+        if self.low is not None and self.high is not None and self.low >= self.high:
+            raise ValueError("low must be less than high")
+        if self.action == "skip" and self.result == "add":
+            raise ValueError(
+                "Skipping leaves values unchanged, so there is nothing to add. "
+                "Choose Replace values."
+            )
+        return self
+
+
+COMBINED_NAME_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+
+def _combined_name(default: str) -> Any:
+    return Field(
+        default=None,
+        min_length=1,
+        max_length=120,
+        pattern=COMBINED_NAME_PATTERN,
+        title="Name",
+        description=(
+            "Name of the computed feature: letters, digits and underscores, "
+            f"not starting with a digit. Leave unset for {default}."
+        ),
+    )
+
+
+def _keeps(what: str) -> Any:
+    return Field(
+        default="add",
+        title="Result",
+        description=(
+            f"Keep {what} and add the computed feature, or replace them with it."
+        ),
+    )
+
+
+class AggregateParameters(ScopeParameters):
+    """One feature computed across the features this step uses."""
+
+    result: Literal["replace", "add"] = _keeps("the features this step uses")
+    function: Literal["mean", "sum", "min", "max", "std", "range"] = Field(
+        default="mean",
+        description=(
+            "Computed across the features of each observation; std is the sample "
+            "standard deviation and range is max minus min."
+        ),
+    )
+    name: str | None = _combined_name("the function's name, such as mean")
+
+
+class FormulaParameters(PipelineModel):
+    """One feature computed from the features arriving at the step."""
+
+    expression: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Formula",
+        description=(
+            "Arithmetic over the features arriving here, such as "
+            "dc_voltage * dc_current, with + - * / ^, parentheses, and abs, sqrt, "
+            "log, log1p, exp, min, max and clip. Write a name with other "
+            "characters between backticks."
+        ),
+    )
+    name: str | None = _combined_name("formula")
+    result: Literal["replace", "add"] = _keeps("the features the formula reads")
+
+
+class GateParameters(PipelineModel):
+    """Hold back the observations a condition rejects."""
+
+    condition: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Condition",
+        description=(
+            "Observations where it is false are recorded but neither learned nor "
+            "scored, such as dc_current > 1. Compare with < <= > >= == != and "
+            "join with and, or and not."
+        ),
+    )

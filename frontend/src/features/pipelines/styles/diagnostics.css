@@ -90,3 +90,37 @@
 .pl-history a {
   text-decoration: underline;
 }
+
+/* Each detector's part in a sampled observation of combined detectors. */
+.pl-observed-detectors {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.pl-observed-detectors table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.pl-observed-detectors th,
+.pl-observed-detectors td {
+  padding: 4px 6px;
+  border-bottom: 1px solid hsl(var(--border));
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.pl-observed-detectors thead th {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.pl-observed-detectors tbody th button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--primary));
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

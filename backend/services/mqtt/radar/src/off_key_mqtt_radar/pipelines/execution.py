@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any, NoReturn
 
-from ..execution_errors import FatalExecutionError
+from ..execution_errors import FatalExecutionError, StepRejected
 from .diagnostics import PipelineDiagnostics
 from .plan import ExecutionPlan
+from .prepare import PrepareStage, Withheld
 
 
 class PipelineExecutionMixin:
@@ -14,12 +16,66 @@ class PipelineExecutionMixin:
 
     plan: ExecutionPlan
     diagnostics: PipelineDiagnostics
+    prepare: PrepareStage | None
     _execution_failed: bool
 
     def _init_pipeline_execution(self, config) -> None:
         self.plan = ExecutionPlan(config.pipeline)
         self.diagnostics = PipelineDiagnostics(config.pipeline)
         self._execution_failed = False
+        stage = self.plan.stage
+        self.prepare = PrepareStage(self.plan) if stage is not None else None
+        if stage is not None:
+            self.diagnostics.external = frozenset(stage.frontier)
+
+    def _prepared(self, bound: dict[str, float]) -> dict[str, float] | Withheld:
+        """The learned stage's input, or why it gets none from this observation.
+
+        It gets none while the Prepare stage warms up, and none when a Gate
+        holds the observation back. A rejected observation raises
+        PrepareRejected and changes no state.
+        """
+        if self.prepare is None:
+            return bound
+        prepared = self.prepare.run(bound, self.diagnostics)
+        if isinstance(prepared, Withheld) and prepared.reason == "preparing":
+            self.diagnostics.phase = "preparing"
+        return prepared
+
+    def _skip(
+        self,
+        node_id: str,
+        reason: str,
+        message: str,
+        inputs: dict[str, float] | None = None,
+    ) -> NoReturn:
+        """Skip an observation that a learned step or the detector could not process.
+
+        Only call this when the learned stage is as it was: Aberrant rolled every
+        learner back, or the step only read fitted state. The Prepare stage takes
+        the observation back too, so a skipped observation changes no state, and
+        the run counts it as a coverage gap.
+        """
+        if self.prepare is not None:
+            self.prepare.revert()
+        self._diagnose(self.diagnostics.rejected, node_id, inputs, reason, message)
+        raise StepRejected(node_id, reason, message)
+
+    def _preparation(self) -> dict[str, Any]:
+        return {} if self.prepare is None else {"preparation": self.prepare.status()}
+
+    def _export_prepare(self, checkpoint: dict[str, Any]) -> dict[str, Any]:
+        if self.prepare is not None:
+            checkpoint["prepare"] = self.prepare.export_state()
+        return checkpoint
+
+    def _restore_prepare(self, checkpoint: dict[str, Any]) -> None:
+        if self.prepare is None:
+            return
+        state = checkpoint.get("prepare")
+        if state is None:
+            raise ValueError("Checkpoint is missing its Prepare stage state")
+        self.prepare.load_state(state)
 
     @staticmethod
     def _pipeline_signature(settings: str, config) -> str:
@@ -27,11 +83,30 @@ class PipelineExecutionMixin:
             f"{settings}:{config.pipeline.fingerprint}".encode()
         ).hexdigest()
 
-    def _failure_node(self, error: BaseException) -> str:
+    def _failure_node(
+        self, error: BaseException, detector_id: str | None = None
+    ) -> str:
         """Name the failing node; model-level errors belong to the detector."""
-        detector_id = self.plan.detector_id
+        detector_id = detector_id or self.plan.detector_id
         node = getattr(error, "node_id", None) or detector_id
         return detector_id if node == "$model" else node
+
+    def _fused_info(self) -> dict[str, Any]:
+        """Which detectors the policy combines, and how; nothing for one."""
+        if not self.plan.fused:
+            return {}
+        return {
+            "fusion": self.plan.fusion,
+            "detectors": [
+                {
+                    "detector_id": identifier,
+                    "model_type": self.plan.nodes[identifier].component.removeprefix(
+                        "detector:"
+                    ),
+                }
+                for identifier in self.plan.detector_ids
+            ],
+        }
 
     def _pipeline_failed(self) -> bool:
         return False

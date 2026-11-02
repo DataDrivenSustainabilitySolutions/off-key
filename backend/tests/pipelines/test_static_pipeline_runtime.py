@@ -12,7 +12,11 @@ from off_key_core.schemas.pipelines import (
 )
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
 from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
+from off_key_mqtt_radar.execution_errors import (
+    FatalExecutionError,
+    ObservationRejected,
+    StepRejected,
+)
 from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
 from off_key_mqtt_radar.pipelines.resources import estimate_resources
@@ -180,6 +184,39 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
         service.shutdown()
         if restored is not None:
             restored.shutdown()
+
+
+def test_non_finite_features_while_scoring_skip_one_observation(monkeypatch):
+    config = AnomalyDetectionConfig(pipeline=execution(), checkpoint_interval=10000)
+    service = StaticConformalDetectionService(config)
+    try:
+        for index in range(25):
+            service.process_data_point({"sensor/z": index, "sensor/a": index % 4})
+        service._training_future.result(timeout=30)
+        assert service.process_data_point({"sensor/z": 5, "sensor/a": 2}).should_persist
+        count = service.processed_count
+        policy = pickle.dumps(service.alarm_controller)
+        transform = BatchFeatureGraph._transform_node
+
+        def overflowing(self, node, current, names, fit):
+            result = transform(self, node, current, names, fit)
+            return np.full_like(result, np.inf) if node.id == "scale" else result
+
+        monkeypatch.setattr(BatchFeatureGraph, "_transform_node", overflowing)
+        # Scoring only reads the fitted steps, so one value is one lost observation.
+        with pytest.raises(StepRejected, match="non-finite") as skipped:
+            service.process_data_point({"sensor/z": 6, "sensor/a": 2})
+        assert (skipped.value.node_id, skipped.value.reason) == ("scale", "non_finite")
+        assert service.processed_count == count
+        assert pickle.dumps(service.alarm_controller) == policy
+        monkeypatch.undo()
+        assert service.process_data_point({"sensor/z": 6, "sensor/a": 2}).should_persist
+        assert service.processed_count == count + 1
+        state = service.get_pipeline_state()
+        assert state["nodes"]["scale"]["rejections"] == {"non_finite": 1}
+        assert state["nodes"]["scale"]["state"] != "failed"
+    finally:
+        service.shutdown()
 
 
 def test_constructor_preflight_uses_compiled_identity_and_reports_known_costs():

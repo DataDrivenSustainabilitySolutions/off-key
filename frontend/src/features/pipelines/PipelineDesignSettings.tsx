@@ -11,13 +11,13 @@ const STRATEGIES: Strategy[] = ["static_baseline", "adaptive_stream"];
 
 /** Learning and calibration as one bar, with their lengths and durations. */
 function StartupTimeline({ startup }: { startup: Startup }) {
-  const { phases, observations, interval } = startup;
+  const { phases, observations, interval, gated } = startup;
   const heading = useId();
   return (
     <section className="pl-startup" aria-labelledby={heading}>
       <div className="pl-startup-heading">
         <h4 id={heading}>Before the first alarm</h4>
-        <span>{observationCount(observations)}{interval ? ` · ${startupSummary(startup)}` : ""}</span>
+        <span>{gated ? "At least " : ""}{observationCount(observations)}{interval ? ` · ${startupSummary(startup)}` : ""}</span>
       </div>
       <div className="pl-startup-bar" aria-hidden="true">
         {phases.map((phase) => <span key={phase.id} className={`is-${phase.id}`} style={{ flexGrow: phase.observations }} />)}
@@ -33,6 +33,7 @@ function StartupTimeline({ startup }: { startup: Startup }) {
           ? `Durations use the slowest reading's typical interval of ${roughDuration(interval)}. `
           : "Durations appear once the chosen readings report how often they arrive. "}
         Learned steps before the detector can need a few observations of their own first.
+        {gated && " A Gate holds back the observations its condition rejects, and they do not count, so the start can take longer."}
       </p>
     </section>
   );

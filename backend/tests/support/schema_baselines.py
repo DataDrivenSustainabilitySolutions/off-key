@@ -19,6 +19,7 @@ EXPECTED_MIGRATIONS = (
     "012_remembered_session_rotation.sql",
     "013_pipeline_templates.sql",
     "014_drop_unread_schema.sql",
+    "015_detector_evidence.sql",
 )
 
 

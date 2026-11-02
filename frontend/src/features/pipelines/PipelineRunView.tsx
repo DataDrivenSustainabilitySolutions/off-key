@@ -245,6 +245,7 @@ export default function PipelineRunView({
             selected={selected}
             expectedRunId={view.run?.id}
             nodeLabels={nodeLabels}
+            policyId={view.definition.nodes.find((node) => node.kind === "policy")?.id}
             onSelect={select}
           />
           <PipelineRunHistory

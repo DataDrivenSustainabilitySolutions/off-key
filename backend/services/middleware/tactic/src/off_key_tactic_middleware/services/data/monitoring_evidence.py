@@ -44,6 +44,7 @@ class MonitoringEvidenceService:
                 ),
                 "log_restarted_martingale": row.log_restarted_martingale,
                 "tracker_results": getattr(row, "tracker_results", []),
+                "detector_results": getattr(row, "detector_results", None) or [],
                 "threshold": row.threshold,
                 "alarm": row.alarm,
             }
@@ -82,6 +83,7 @@ class MonitoringEvidenceService:
                 "anomaly_score": getattr(row, "anomaly_score", None),
                 "restarted_martingale": row.restarted_martingale,
                 "tracker_results": getattr(row, "tracker_results", []),
+                "detector_results": getattr(row, "detector_results", None) or [],
                 "threshold": row.threshold,
                 "alarm": row.alarm,
                 "created": row.created or row.timestamp,

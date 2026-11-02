@@ -118,7 +118,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const readingCount = draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"}` : `${mapped} of ${slots.length} readings`;
   const intervals = system.snapshot?.runtime.ingress?.readings;
   const startup = startupEstimate(draft.document.definition,
-    Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds));
+    Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds),
+    compiledValidation?.preparation_observations);
   const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
   useUnsavedChanges(dirty && !locked);
 

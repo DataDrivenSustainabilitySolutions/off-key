@@ -85,13 +85,29 @@ their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
 change-detection parameters and must be calibrated for the intended null stream;
 `1 / threshold` is not presented as their false-alarm probability.
 
+A design can combine up to four detectors, such as one for each group of
+readings. Each detector's score is ranked against its own calibration scores, so
+detectors on different scales need no tuning. The decision policy's **Combine
+detectors** setting decides how the ranks make one: **Strongest**, the default,
+follows the most surprised detector, so a change that one detector sees is
+enough; **Average** follows their mean, so a change has to show in several
+detectors, or strongly in one. The setting appears once the design has two
+detectors, and the policy's card then reads, for example, *Strongest of 2
+detectors*. The static strategy turns the combined rank into a p-value that
+behaves like a single detector's, so the martingale trackers and their
+thresholds keep their meaning. The adaptive strategy alarms when the combined
+rank exceeds the policy's quantile of the combined ranks it saw during
+calibration, and it starts calibrating once its slowest detector is ready.
+
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
-p-value or score, sensor set, aggregate alarm flag, and bounded `tracker_results`
-evidence for every configured martingale. Charts draw each selected alarm
-statistic on a logarithmic secondary axis with its threshold. Telemetry and
-evidence use the same payload event timestamp and share zoom and crosshair, so
-observations from one inference stay vertically aligned; receive time is used
-only when a publisher omits its event timestamp.
+p-value or score, sensor set, aggregate alarm flag, and bounded
+`tracker_results` evidence for every configured martingale. A design that
+combines detectors also records each detector's score and surprise beside the
+combined value. Charts draw each selected alarm statistic on a logarithmic
+secondary axis with its threshold. Telemetry and evidence use the same payload
+event timestamp and share zoom and crosshair, so observations from one inference
+stay vertically aligned; receive time is used only when a publisher omits its
+event timestamp.
 
 ## Reading ownership
 
@@ -120,8 +136,8 @@ template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
 Read a graph from left to right. Each card names its step family (Input,
-Normalize, Reduce, Route, Transform, Detector, Decision policy or Evidence
-output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
+Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Decision policy
+or Evidence output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -141,9 +157,11 @@ only the steps that fit there; the new step is connected on both sides and takes
 the connection's place in a merge's input order. Drawing a connection onto an
 input that is already connected replaces its connection: the dot's hover text
 names the connection it replaces, the canvas confirms the change and **Undo**
-restores it. A design has one input, detector, decision policy and output, so the
-menu does not offer them again; it links to the existing detector, policy and
-output instead. **Service settings** and **Step settings** open the side panel.
+restores it. A design has one input, decision policy and output, so the menu
+does not offer them again; it links to the existing steps instead. A detector's
+settings offer **Add another detector**: it adds a detector with the same model
+that reads the same features and connects it to the policy, up to four
+detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
 Step settings provide the same connection editing on keyboards and narrow
 screens, listing compatible, cycle-free upstream choices.
 **Locate selected component** brings its card into a readable view and **Fit
@@ -165,8 +183,8 @@ counterparts, such as **Standard scaling** to **Online standard scaling**, and
 keep the settings both versions share. A detector without a counterpart becomes
 the strategy's default detector, and the decision policy follows the strategy.
 A notice names any step without a counterpart, and **Undo** switches back.
-**Before the first alarm** shows the learning and calibration phases in
-observations. Once every chosen reading reports how often it arrives, it also
+**Before the first alarm** shows the observations Prepare steps need first, then
+the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
 observation waits for all of its readings.
 
@@ -188,6 +206,98 @@ arrives stays listed as *not available here* until it is unchecked, and a suffix
 that repeats an existing name is refused; both stop **Apply monitoring**. One
 scoped step computes the same values as a branch of **Select features**, the step
 and **Merge features**.
+
+**Prepare** steps clean and derive features before anything learns. They run once
+per observation, in arrival order, and compute the same values under both
+strategies; the static strategy keeps running them while it trains, so their
+windows never restart.
+
+- **Smooth** averages recent values, exponentially or over a rolling window.
+- **Despike** replaces a value further than **Threshold** robust deviations from
+  the median of its window with that median. The detector then sees the median in
+  place of the spike; the evidence keeps the raw reading.
+- **Change** adds the difference or percent change since **Lag** observations
+  back, or the value from then.
+- **Rolling statistic** adds the mean, median, minimum, maximum, standard
+  deviation or range of the last **Window** values.
+- **Math** takes a logarithm, square root, absolute value or square, or computes
+  scale × x + offset.
+- **Range check** clips values to **Low** and **High**, or skips observations
+  outside them.
+
+Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
+**Change** and **Rolling statistic** add features by default, such as
+`dc_voltage_diff1` and `dc_voltage_mean60`; the others replace values. A step
+with a window has its first value once the window is full, and steps in a chain
+add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
+the 11th observation, and its settings say **Ready after 11 observations**.
+**Before the first alarm** counts those observations as
+**Preparing**; meanwhile the service shows how many observations are prepared,
+and nothing learns. A window holds at most 3,600 values per feature,
+and a design's Prepare windows hold at most 50,000 values in all.
+
+An observation a Prepare step cannot use is skipped as a whole: a logarithm or
+root outside its domain, a percent change from zero, a result too large to
+represent, or a value outside a skipping **Range check**. Skipping changes no
+step's state, nothing learns from the observation, and it counts as a coverage
+gap. The step's diagnostics count skipped observations by reason. Evidence
+always records the raw readings. Learned steps and the detector skip an
+observation the same way when it fails them without changing what they learned,
+such as a value the detector cannot score. Only a failure that can leave learned
+state uncertain, such as the detector failing while it learns, stops the service.
+
+**Combine** steps compute one feature from several, usually after the features
+were prepared one by one. They run in the Prepare stage as well and have their
+value from the first observation.
+
+- **Aggregate** computes the mean, sum, minimum, maximum, standard deviation or
+  range across the features in **Applies to**, at least two of them.
+- **Formula** computes a feature from the features that arrive, such as
+  `dc_voltage * dc_current`. It knows `+ - * / ^`, parentheses, and `abs`,
+  `sqrt`, `log`, `log1p`, `exp`, `min`, `max` and `clip(value, low, high)`. A name
+  with other characters goes between backticks, such as `` `dc-voltage` ``; the
+  buttons below the formula insert the features that arrive.
+
+Both keep the features they use and add the result, named by **Name**, or
+`formula` and the function's name, such as `mean`, when it is empty. **Replace
+features** removes the features they use instead. A formula that cannot be read
+says where, such as *The expression ends too early at character 12*, and an
+unknown feature or function suggests the closest one, which **Use** puts in its
+place. While you type, suggestions list the features that arrive and the
+functions, and in a condition `and`, `or` and `not`: the arrow keys choose, Enter
+or Tab inserts, and Escape closes the list. **Range** below a formula shows the
+values its result can take. When an earlier step
+limits a feature's range, such as a **Range check**, the check knows the range of
+the result too and warns about values that will be skipped, such as a division by
+a feature that can be 0 or the logarithm of one that can be negative. When every
+observation would be skipped, it is an error.
+
+A **Gate** lets only the observations where its **Condition** holds go on, such
+as `dc_current > 1` to monitor a charger only while it charges. Compare with
+`<`, `<=`, `>`, `>=`, `==` and `!=`, and join comparisons with `and`, `or` and
+`not`. The observations it holds back are recorded, but nothing learns from them
+or scores them, and they are not coverage gaps. Steps before the Gate still see
+them; steps after it do not, so their windows fill only with observations that
+pass. The Prepare summary counts held-back observations, and the Gate's
+diagnostics read **Held back** while its condition does not hold. A condition
+that is never true is an error, and one that is always true a warning. **Before
+the first alarm** and **Ready after** then say *at least*, because the
+observations a Gate holds back do not count.
+
+**Features** beside **Graph** lists the features the detector receives, one row
+each: the reading it comes from, the steps that change it on the way, and the
+name the detector sees. Features made from several, such as a formula's result,
+follow the readings, and the Gates sit above the rows because they decide which
+observations reach every feature. **Raw** means no step changes the feature, and
+selecting a step opens its settings. **+** in a row adds a step for that feature
+alone: a Prepare or Combine step goes in before anything learns, and a learned
+step just before the detector. A feature that a learned step makes, such as a
+projection's component, takes no Prepare step, and the menu says why. The view
+follows the latest check, so it waits while an edit is checked. With several
+detectors, a switch above the rows chooses whose features it lists, starting
+with the selected detector. A Prepare step runs before anything learns, so when
+its place is on a path several detectors share, the row's menu names the other
+detectors it also changes.
 
 **Robust scaling** centers each feature on its median and divides by its
 interquartile range, so occasional spikes shift it less than standard scaling.
@@ -214,7 +324,10 @@ arrangement can be saved independently. The live inspector shows one coherent
 sampled observation, separates score and post-learning passes, and marks nodes
 that did not execute. Snapshot age is visible; fresh diagnostics do not imply
 persisted evidence is current. Static training appears as a batch summary.
-Configuration issues and sampled runtime state have separate badges.
+Configuration issues and sampled runtime state have separate badges. When the
+policy combines detectors, selecting it lists each detector's score and surprise
+for the sampled observation, and a selected detector shows its surprise beside
+its score. A chart's tooltip lists the same for each evidence row.
 
 **Edit service** opens the running definition, layout and bindings. **Apply
 changes** explains the interruption and fresh learning, then replaces the

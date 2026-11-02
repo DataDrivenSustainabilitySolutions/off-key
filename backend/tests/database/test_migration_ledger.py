@@ -60,6 +60,9 @@ APPLIED_CHECKSUMS = {
     "014_drop_unread_schema.sql": (
         "e2f93eb810b317ffd9be6e2a64d13f8ed277c3d5f62d966669641e79ff4706f0"
     ),
+    "015_detector_evidence.sql": (
+        "6d4f0ac47f069e8c61dc292b921f0bf3487a05dbdb06e63c7744ee5bb785fc99"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

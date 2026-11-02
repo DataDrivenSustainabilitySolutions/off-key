@@ -35,6 +35,7 @@ from off_key_mqtt_radar.pipelines.diagnostics import (
     PipelineDiagnostics,
 )
 from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
+from off_key_mqtt_radar.pipelines.prepare import PrepareStage
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -63,7 +64,7 @@ def _edge(source, target, order=0):
 
 
 def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
-    """Representative default forest, cheap model and exact boundary fixtures."""
+    """Representative default forest, cheap models and exact boundary fixtures."""
     width = (
         100
         if name in {"maximum_edges", "maximum_width"}
@@ -71,6 +72,7 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
         if name == "light"
         else 8
     )
+    cheap = name in {"light", "prepare"}
     slots = [f"f{index}" for index in range(width)]
     nodes = [_node("source", "source.aligned", kind="source")]
     edges = []
@@ -112,16 +114,20 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
             ]
         )
         output = "merged"
+    elif name == "prepare":
+        output = _prepare_chain(nodes, edges, slots)
     else:
         raise ValueError(f"Unknown workload {name!r}")
     model = (
         "aberrant_moving_average"
         if name == "light"
+        else "aberrant_moving_mahalanobis_distance"
+        if name == "prepare"
         else "aberrant_online_isolation_forest"
     )
     params = (
         {"window_size": 128}
-        if name == "light"
+        if cheap
         else {
             "num_trees": trees,
             "max_leaf_samples": 16,
@@ -148,7 +154,7 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
                 "nodes": nodes,
                 "edges": edges,
                 "settings": {
-                    "training_window_size": 2,
+                    "training_window_size": 32 if name == "prepare" else 2,
                     "calibration_window_size": 32,
                     "seed": 42,
                 },
@@ -172,6 +178,27 @@ def build_workload(name: str, *, trees: int = 100) -> PipelineExecutionConfig:
         run_id=name,
         fingerprint=execution_fingerprint(definition, bindings),
     )
+
+
+def _prepare_chain(nodes, edges, slots):
+    """Despike and smooth every reading, then add changes and spreads of four."""
+    steps = [
+        ("despike", "prepare.despike", {}),
+        ("smooth", "prepare.smooth", {}),
+        ("change", "prepare.change", {"apply_to": slots[:4]}),
+        (
+            "spread",
+            "prepare.rolling",
+            {"statistic": "std", "window_size": 60, "apply_to": slots[:4]},
+        ),
+        ("scale", "adaptive.standard_scaler", {}),
+    ]
+    output = "source"
+    for identifier, component, params in steps:
+        nodes.append(_node(identifier, component, params=params))
+        edges.append(_edge(output, identifier))
+        output = identifier
+    return output
 
 
 def _maximum_edges(nodes, edges):
@@ -231,24 +258,38 @@ class StreamRunner:
         self.graph, _ = adaptive_graph(
             self.plan, self.diagnostics.observe if self.diagnostics else None
         )
+        stage = self.plan.stage
+        self.stage = PrepareStage(self.plan) if stage is not None else None
+        if stage is not None and self.diagnostics:
+            self.diagnostics.external = frozenset(stage.frontier)
         self.threshold = 0.0
         self.sequence = 0
+
+    def _prepared(self, data):
+        """The learned graph's input, as the detectors derive it."""
+        if self.stage is None:
+            return data
+        return self.stage.run(data, self.diagnostics)
 
     def prepare(self, values):
         for data in values:
             if self.diagnostics:
                 self.diagnostics.select_pass("learn")
-            self.graph.learn_one(data)
+            prepared = self._prepared(data)
+            # Benchmark workloads have no Gate, so a withheld row is warm-up.
+            if isinstance(prepared, dict):
+                self.graph.learn_one(prepared)
         if not self.graph.readiness.ready:
             raise RuntimeError("Benchmark warm-up did not establish a ready graph")
         scores = []
         for data in values[-32:]:
             if self.diagnostics:
                 self.diagnostics.select_pass("score")
-            scores.append(self.graph.score_one(data))
+            prepared = self._prepared(data)
+            scores.append(self.graph.score_one(prepared))
             if self.diagnostics:
                 self.diagnostics.select_pass("learn")
-            self.graph.learn_one(data)
+            self.graph.learn_one(prepared)
         self.threshold = float(np.quantile(scores, 0.99, method="higher"))
 
     def step(self, data):
@@ -258,14 +299,15 @@ class StreamRunner:
             diagnostic.begin(self.sequence, "operational")
             diagnostic.select_pass("score")
             diagnostic.record(self.plan.source_id, data, data)
-        score = self.graph.score_one(data)
+        prepared = self._prepared(data)
+        score = self.graph.score_one(prepared)
         alarm = score > self.threshold
         if diagnostic:
             diagnostic.record(self.plan.policy_id, {"score": score}, float(alarm))
             diagnostic.record(self.plan.output_id, {"alarm": float(alarm)}, score)
             diagnostic.select_pass("learn")
             diagnostic.record(self.plan.source_id, data, data)
-        self.graph.learn_one(data)
+        self.graph.learn_one(prepared)
         if diagnostic:
             diagnostic.readiness(self.graph.node_states, self.graph)
             diagnostic.finish()
@@ -324,6 +366,48 @@ def benchmark(execution, settings: BenchmarkSettings) -> dict:
         "timings": {"disabled": timings[False], "enabled": timings[True]},
         "equal_scores_and_alarms": True,
     }
+
+
+def prepare_stage_cost(execution, settings: BenchmarkSettings) -> dict:
+    """The Prepare stage alone, after its warm-up, with diagnostics off and on."""
+    values = observations(
+        len(execution.bindings), settings.warmup + settings.samples, settings.seed
+    )
+    timings = {False: [], True: []}
+    required = 0
+    for _repeat in range(settings.repeats):
+        for observed in (False, True):
+            runner = StreamRunner(execution, observed=observed)
+            if runner.stage is None:
+                raise ValueError("The workload has no Prepare stage")
+            for sequence, data in enumerate(values[: settings.warmup]):
+                _prepare_once(runner, data, sequence)
+            if not runner.stage.ready:
+                raise RuntimeError("Benchmark warm-up did not prepare an observation")
+            required = runner.stage.required
+            gc.collect()
+            started = time.process_time_ns()
+            for sequence, data in enumerate(values[settings.warmup :]):
+                _prepare_once(runner, data, sequence)
+            timings[observed].append(time.process_time_ns() - started)
+    return {
+        "required_observations": required,
+        "cpu_ns_per_observation_disabled": statistics.median(timings[False])
+        / settings.samples,
+        "cpu_ns_per_observation_enabled": statistics.median(timings[True])
+        / settings.samples,
+        "timings_cpu_ns": {"disabled": timings[False], "enabled": timings[True]},
+    }
+
+
+def _prepare_once(runner: StreamRunner, data, sequence: int) -> None:
+    diagnostics = runner.diagnostics
+    if diagnostics:
+        diagnostics.begin(sequence, "operational")
+        diagnostics.select_pass("learn")
+    runner._prepared(data)
+    if diagnostics:
+        diagnostics.finish()
 
 
 def _paired_measurement(runners, values, repeat):
@@ -456,9 +540,12 @@ def main():
         "workloads": {},
         "bounds": {},
     }
-    for name in ("representative", "light"):
+    for name in ("representative", "light", "prepare"):
         print(f"Timing real numeric workload: {name}", file=sys.stderr, flush=True)
         report["workloads"][name] = benchmark(build_workload(name), settings)
+    report["workloads"]["prepare"]["prepare_stage"] = prepare_stage_cost(
+        build_workload("prepare"), settings
+    )
     for name in () if settings.timing_only else ("maximum_edges", "maximum_width"):
         print(f"Checking sustained bounds: {name}", file=sys.stderr, flush=True)
         report["bounds"][name] = sustained_bounds(

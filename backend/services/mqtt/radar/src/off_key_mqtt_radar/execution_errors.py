@@ -9,6 +9,18 @@ class ObservationRejected(ValueError):
     """
 
 
+class StepRejected(ObservationRejected):
+    """One step could not process this observation, and the run stays healthy.
+
+    The reason is a short key the diagnostics count, such as non_finite.
+    """
+
+    def __init__(self, node_id: str, reason: str, message: str):
+        super().__init__(message)
+        self.node_id = node_id
+        self.reason = reason
+
+
 class FatalExecutionError(RuntimeError):
     """Execution cannot continue or export its current state safely.
 

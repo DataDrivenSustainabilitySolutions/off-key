@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from off_key_core.schemas.pipelines import MAX_DETECTORS
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
@@ -44,6 +45,21 @@ def _optional_nonnegative_int(value: Any) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         return None
     return value
+
+
+def _normalize_detector_results(value: Any) -> list[dict[str, Any]]:
+    """Each combined detector's score and surprise, bounded and JSON-safe."""
+    if not isinstance(value, list):
+        return []
+    return [
+        {
+            "detector_id": candidate["detector_id"][:100],
+            "score": _optional_finite_float(candidate.get("score")),
+            "surprise": _optional_finite_float(candidate.get("surprise")),
+        }
+        for candidate in value[:MAX_DETECTORS]
+        if isinstance(candidate, dict) and isinstance(candidate.get("detector_id"), str)
+    ]
 
 
 def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
@@ -379,6 +395,9 @@ class ResultProjector:
                     ),
                     "tracker_results": _normalize_tracker_results(
                         context.get("tracker_results")
+                    ),
+                    "detector_results": _normalize_detector_results(
+                        context.get("detectors")
                     ),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),

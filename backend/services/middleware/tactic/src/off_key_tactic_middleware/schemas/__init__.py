@@ -153,6 +153,8 @@ class MonitoringEvidenceResponse(BaseModel):
     restarted_martingale_is_infinite: bool
     log_restarted_martingale: float | None = None
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
+    # Each detector's score and surprise when the policy combines several.
+    detector_results: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
 
@@ -170,6 +172,7 @@ class MonitoringChartEvidenceResponse(BaseModel):
     anomaly_score: float | None = None
     restarted_martingale: float | None = None
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
+    detector_results: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
     created: datetime

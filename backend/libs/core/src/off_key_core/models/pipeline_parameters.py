@@ -1,8 +1,11 @@
 """Parameter normalization for the explicitly supported component registry."""
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from ..schemas.pipelines import (
+    FusionMode,
     MinMaxScalerParameters,
     OnlinePCAParameters,
     PipelineDefinition,
@@ -40,10 +43,44 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     **PREPARE_MODELS,
     "output.evidence": PipelineModel,
 }
+Fusion = Annotated[
+    FusionMode,
+    Field(
+        title="Combine detectors",
+        description=(
+            "How several detectors raise one alarm. Each score becomes a surprise "
+            "against that detector's calibration scores; max follows the strongest "
+            "surprise, mean their average. With one detector this has no effect."
+        ),
+    ),
+]
+
+
+class MartingalePolicyParameters(StaticMartingaleConfig):
+    """The martingale policy of a design, which can combine several detectors."""
+
+    fusion: Fusion = "max"
+
+
+class ThresholdPolicyParameters(AdaptiveThresholdConfig):
+    """The threshold policy of a design, which can combine several detectors."""
+
+    fusion: Fusion = "max"
+
+
 POLICY_MODELS = {
-    "policy.martingale": StaticMartingaleConfig,
-    "policy.quantile": AdaptiveThresholdConfig,
+    "policy.martingale": MartingalePolicyParameters,
+    "policy.quantile": ThresholdPolicyParameters,
 }
+
+
+def policy_settings(params: dict[str, Any]) -> dict[str, Any]:
+    """A policy's own settings, without how it combines detectors."""
+    return {key: value for key, value in params.items() if key != "fusion"}
+
+
+def fusion_mode(params: dict[str, Any]) -> FusionMode:
+    return params.get("fusion", "max")
 
 
 def normalized_parameters(
@@ -58,6 +95,13 @@ def normalized_parameters(
         )
     model = POLICY_MODELS.get(node.component) or PARAMETER_MODELS[node.component]
     params = model.model_validate(node.params).model_dump(mode="json")
+    if node.component in POLICY_MODELS and (
+        params["fusion"] == "max"
+        or sum(item.kind == "detector" for item in definition.nodes) < 2
+    ):
+        # Left out at its default and with one detector, so designs that do
+        # not combine detectors keep their fingerprints.
+        del params["fusion"]
     if "seed" in params and params["seed"] is None:
         params["seed"] = definition.settings.seed
     if node.component in SCOPED_COMPONENTS:

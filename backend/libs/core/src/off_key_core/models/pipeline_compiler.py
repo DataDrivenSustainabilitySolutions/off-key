@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pydantic import ValidationError
 
 from ..schemas.pipelines import (
+    MAX_DETECTORS,
     MAX_PIPELINE_EXECUTION_BYTES,
     IssueFix,
     PipelineComponent,
@@ -115,11 +116,26 @@ def _validate_identity(compilation: _Compilation) -> None:
         compilation.unresolved.update(
             node.id for node in definition.nodes if node.kind == "source"
         )
-    for kind in ("source", "detector", "policy", "output"):
+    for kind in ("source", "policy", "output"):
         if sum(node.kind == kind for node in definition.nodes) != 1:
             compilation.error(
                 "node_count", f"An executable design requires exactly one {kind} node"
             )
+    detectors = _detector_count(definition)
+    if detectors == 0:
+        compilation.error(
+            "node_count", "An executable design requires at least one detector node"
+        )
+    elif detectors > MAX_DETECTORS:
+        compilation.error(
+            "node_count",
+            f"A design can combine at most {MAX_DETECTORS} detectors; "
+            f"this one has {detectors}.",
+        )
+
+
+def _detector_count(definition: PipelineDefinition) -> int:
+    return sum(node.kind == "detector" for node in definition.nodes)
 
 
 # What to write where a step's text is missing or empty.
@@ -211,12 +227,17 @@ def _index_connections(compilation: _Compilation) -> None:
 
 def _validate_node_connections(compilation: _Compilation, node: PipelineNode) -> None:
     edges = compilation.incoming[node.id]
-    required = {"source": 0, "merge": 2}.get(node.kind, 1)
+    detectors = _detector_count(compilation.definition)
+    # A policy takes one connection from each detector.
+    required = {"source": 0, "merge": 2, "policy": max(detectors, 1)}.get(node.kind, 1)
     if len(edges) < required or (node.kind != "merge" and len(edges) != required):
         expected = "at least two" if node.kind == "merge" else str(required)
         compilation.error(
             "input_count",
-            f"{node.kind} requires {expected} incoming connection(s)",
+            f"policy requires one incoming connection from each of the {required} "
+            "detectors"
+            if node.kind == "policy" and required > 1
+            else f"{node.kind} requires {expected} incoming connection(s)",
             node.id,
         )
     if node.kind == "merge" and len({edge.order for edge in edges}) != len(edges):

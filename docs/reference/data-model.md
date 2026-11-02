@@ -88,6 +88,10 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - Static-baseline rows carry a conformal `p_value`; adaptive-stream rows carry an `anomaly_score`.
 - E-process and restarted-martingale fields preserve tracker evidence where the selected strategy produces it.
 - `tracker_results` holds additional tracker-specific results.
+- `detector_results` lists, for a design that combines detectors, each detector's
+  `detector_id`, `score` and `surprise`; `p_value` or `anomaly_score` holds the
+  combined value. It is empty for a single detector. Migration
+  `015_detector_evidence.sql` adds the column with an empty default.
 
 ### Monitoring workload intent
 

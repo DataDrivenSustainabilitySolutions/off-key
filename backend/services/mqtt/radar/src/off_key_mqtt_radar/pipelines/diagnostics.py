@@ -30,17 +30,20 @@ class PipelineDiagnostics:
         self.run_id = execution.run_id
         self.revision_id = execution.revision_id
         self.fingerprint = execution.fingerprint
-        self.model_id = next(
+        detectors = sorted(
             node.id for node in execution.definition.nodes if node.kind == "detector"
         )
+        self.model_id = detectors[0]
         self.source_id = next(
             node.id for node in execution.definition.nodes if node.kind == "source"
         )
-        self.model_input = next(
-            edge.source
+        # The node each detector reads.
+        self.model_inputs = {
+            edge.target: edge.source
             for edge in execution.definition.edges
-            if edge.target == self.model_id
-        )
+            if edge.target in detectors
+        }
+        self.model_input = self.model_inputs[self.model_id]
         self.nodes = {
             node.id: dict(
                 state="waiting",
@@ -88,9 +91,15 @@ class PipelineDiagnostics:
             raise ValueError("Diagnostics pass must be score or learn")
         self._pass = phase
 
-    def observe(self, event) -> None:
-        """Consume an Aberrant NodeObservation without retaining its full data."""
-        identifier = self.model_id if event.node_id == "$model" else event.node_id
+    def observe(self, event, model_id: str | None = None) -> None:
+        """Consume an Aberrant NodeObservation without retaining its full data.
+
+        The model is the detector whose graph sent the event, the first one by
+        default.
+        """
+        identifier = (
+            (model_id or self.model_id) if event.node_id == "$model" else event.node_id
+        )
         if identifier in self.external:
             return
         inputs = output = None
@@ -233,7 +242,18 @@ class PipelineDiagnostics:
                 "reason": self._bounded_text(message),
             }
 
-    def readiness(self, states, graph=None) -> None:
+    def readiness(
+        self,
+        states,
+        graph=None,
+        model_id: str | None = None,
+        owned: frozenset[str] | None = None,
+    ) -> None:
+        """Readiness of a graph's steps and of its detector, the first by default.
+
+        With several detectors, only the steps a graph owns are reported.
+        """
+        model_id = model_id or self.model_id
         intrinsic = (
             {
                 node.id: getattr(node.transformer, "readiness", None)
@@ -245,6 +265,8 @@ class PipelineDiagnostics:
         )
         for item in states:
             metrics = self.nodes.get(item.node_id)
+            if owned is not None and item.node_id not in owned:
+                continue
             if metrics is not None and item.node_id not in self.external:
                 self._readiness(
                     metrics,
@@ -256,14 +278,15 @@ class PipelineDiagnostics:
         if graph is not None:
             # Aberrant's node_states covers feature nodes. Its public graph
             # readiness and model_updates describe the terminal learner.
+            model_input = self.model_inputs[model_id]
             blocked = (
-                (self.model_input,)
-                if self.model_input != self.source_id
-                and not self.nodes[self.model_input]["ready"]
+                (model_input,)
+                if model_input != self.source_id
+                and not self.nodes[model_input]["ready"]
                 else ()
             )
             self._readiness(
-                self.nodes[self.model_id], graph.model_updates, graph.readiness, blocked
+                self.nodes[model_id], graph.model_updates, graph.readiness, blocked
             )
 
     def _readiness(

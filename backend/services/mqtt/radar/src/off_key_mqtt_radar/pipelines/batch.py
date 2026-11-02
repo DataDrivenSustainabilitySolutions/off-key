@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from time import perf_counter_ns
 
@@ -48,13 +49,21 @@ class BatchFeatureGraph:
         self.fitted = False
 
     def fit_transform(self, matrix: np.ndarray) -> np.ndarray:
+        return self.fit_transform_all(matrix)[self.plan.feature_output_id]
+
+    def transform(self, matrix: np.ndarray, observer=None) -> np.ndarray:
+        return self.transform_all(matrix, observer)[self.plan.feature_output_id]
+
+    def fit_transform_all(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
+        """Fit every learned step once and give each detector input's features."""
         if self.fitted:
             raise RuntimeError("Static preprocessing is already frozen")
         transformed = self._execute(matrix, fit=True)
         self.fitted = True
         return transformed
 
-    def transform(self, matrix: np.ndarray, observer=None) -> np.ndarray:
+    def transform_all(self, matrix: np.ndarray, observer=None) -> dict[str, np.ndarray]:
+        """The features of each node a detector reads, by node id."""
         if not self.fitted:
             raise RuntimeError("Static preprocessing has not been fitted")
         return self._execute(matrix, fit=False, observer=observer)
@@ -71,7 +80,9 @@ class BatchFeatureGraph:
             start += width
         return available
 
-    def _execute(self, matrix: np.ndarray, *, fit: bool, observer=None) -> np.ndarray:
+    def _execute(
+        self, matrix: np.ndarray, *, fit: bool, observer=None
+    ) -> dict[str, np.ndarray]:
         matrix = np.asarray(matrix, dtype=float)
         if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.input_columns):
             raise ValueError("Batch graph input width differs from its compiled schema")
@@ -83,8 +94,9 @@ class BatchFeatureGraph:
             for node in self.plan.learned_nodes
             for parent in self.plan.parents(node.id)
         )
-        output_id = self.plan.feature_output_id
-        remaining[output_id] += 1
+        # What the detectors read stays until the pass ends.
+        outputs = list(dict.fromkeys(self.plan.detector_inputs.values()))
+        remaining.update(outputs)
         for node in self.plan.learned_nodes:
             started = perf_counter_ns()
             parents = self.plan.parents(node.id)
@@ -106,7 +118,7 @@ class BatchFeatureGraph:
                 remaining[parent] -= 1
                 if remaining[parent] == 0:
                     del available[parent]
-        return available[output_id]
+        return {identifier: available[identifier] for identifier in outputs}
 
     def _execute_node(self, node, available, parents, names, fit):
         try:
@@ -182,3 +194,69 @@ class FittedStaticPipeline:
                 elapsed_ns=perf_counter_ns() - started,
             )
         return result
+
+
+class FusedStaticPipeline:
+    """Several frozen detectors, each on its own features, as one p-value.
+
+    Each detector scores its features; the rank fusion turns the scores into
+    one conformal p-value, with ties broken by the run's seeded generator,
+    which checkpoints keep.
+    """
+
+    def __init__(self, graph: BatchFeatureGraph, detectors: dict, fusion, seed):
+        self.graph = graph
+        self.detectors = detectors
+        self.fusion = fusion
+        self.rng = np.random.default_rng(seed)
+        self.observer = None
+        self.last_features: dict[str, dict[str, float]] | None = None
+        self.last_detectors: list[dict] | None = None
+
+    def __getstate__(self):
+        return {
+            **self.__dict__,
+            "observer": None,
+            "last_features": None,
+            "last_detectors": None,
+        }
+
+    def compute_p_values(self, matrix):
+        matrix = np.asarray(matrix, dtype=float)
+        if len(matrix) != 1:
+            raise ValueError("Combined detectors score one observation at a time")
+        plan = self.graph.plan
+        outputs = self.graph.transform_all(matrix, observer=self.observer)
+        features, scores, timings = {}, [], []
+        for identifier, conformal in self.detectors.items():
+            row = outputs[plan.detector_inputs[identifier]]
+            features[identifier] = dict(
+                zip(plan.detector_features(identifier), row[0], strict=True)
+            )
+            started = perf_counter_ns()
+            score = float(np.asarray(conformal.score_samples(row), dtype=float)[0])
+            timings.append(perf_counter_ns() - started)
+            if not math.isfinite(score):
+                # Scoring only reads the frozen detector, so the run goes on.
+                raise NonFiniteFeatures(
+                    f"Detector {identifier} returned a non-finite score",
+                    node_id=identifier,
+                )
+            scores.append(score)
+        surprises = self.fusion.surprises(scores)
+        p_value = self.fusion.p_value(scores, self.rng)
+        self.last_features = features
+        self.last_detectors = [
+            {"detector_id": identifier, "score": score, "surprise": surprise}
+            for identifier, score, surprise in zip(
+                self.detectors, scores, surprises, strict=True
+            )
+        ]
+        if self.observer is not None:
+            for identifier, surprise, elapsed in zip(
+                self.detectors, surprises, timings, strict=True
+            ):
+                self.observer.record(
+                    identifier, features[identifier], surprise, elapsed_ns=elapsed
+                )
+        return np.asarray([p_value], dtype=float)

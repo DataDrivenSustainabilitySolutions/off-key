@@ -303,6 +303,68 @@ Apply; warnings use the same shape, appear on the step and in the status chip, a
 do not. The inspector keeps the last checked features while an edit is checked, so
 feature choices do not jump between checks.
 
+A design may combine up to four detectors (`MAX_DETECTORS`), each with one
+input. The policy takes one connection from each, and its `fusion` setting,
+**Combine detectors** in the composer, says how their scores make one: `max`
+(**Strongest**, the default) or `mean` (**Average**).
+`PipelineValidation.detector_ids` orders the detectors by node ID, `detector_id`
+is the first of them and `detector_inputs` maps each to the node it reads; a
+policy with several inputs has no features of its own. `fusion` is left out of
+the normalized parameters at `max`, and with a single detector, so existing
+designs keep their fingerprints. The compiler reports a design without a
+detector, one with more than four and a detector the policy does not read.
+`derive_monitoring_config` describes the first detector.
+
+`fusion.RankFusion` combines detectors by rank, so detectors on different scales
+need no tuning. A detector's surprise for a score s is the share of its n
+calibration scores strictly below it, u = #{i : c_i < s} / n. Strongest combines
+the counts by their maximum and Average by their sum; both stay integers, so ties
+are exact, and `value()` maps a combined count back to [0, 1]. Counting strictly
+below keeps one detector's rule: with one detector, or the same detector twice,
+`combined > threshold_count(q)` holds exactly when the score exceeds the
+`method="higher"` quantile q of the calibration scores.
+
+The static strategy makes the combined count a conformal p-value. `p_value()`
+ranks the new observation among the calibration observations: on each detector
+a calibration observation counts the calibration scores below it, plus one when
+the new score is lower, and the new observation counts the calibration scores
+below its score. Without a change these n + 1 combined counts are exchangeable,
+so the new observation's rank among them, with ties broken by a seeded
+generator, is uniform on 1 to n + 1. The p-value, rank / (n + 1), takes the same
+values with the same law as a single detector's, so the martingale trackers and
+their thresholds work unchanged. A test draws 10,000 calibrations, with
+continuous and with tied scores, and checks that law with a Kolmogorov–Smirnov
+test. `FusedStaticPipeline` keeps a `ConformalDetector` per detector, fitted on
+that detector's training and calibration features; `BatchFeatureGraph` fits each
+shared step once and returns every detector's input (`fit_transform_all`). The
+tie-breaking generator is saved with the checkpoint.
+
+The adaptive strategy builds one Aberrant `GraphPipeline` per detector from the
+nodes it reads (`ExecutionPlan.reads`), so each detector learns its own copy of a
+shared step; the copies see the same observations and stay equal. Every detector
+scores an observation before any of them learns it. A failed score skips the
+observation for all of them, and so does a learning failure of the first
+detector, before anything has learned. A later detector that fails cleanly misses
+that one observation and counts an `error` rejection; `GraphStateUncertainError`
+still stops the run. Warm-up ends when every graph is ready and the slowest has
+made the configured updates. Calibration keeps each observation's scores; when it
+is full, `RankFusion` freezes them, the threshold count is the policy's quantile
+(`method="higher"`) of the calibration observations' combined counts, and an
+observation alarms when its combined count exceeds it. The anomaly score is the
+fused surprise. Diagnostics report a shared step once, under the first detector
+that reads it (`ExecutionPlan.owned`), and the model nodes per detector.
+
+A combined run's checkpoint holds `pipelines`, `detector_configs` and
+`detector_fingerprints` in detector order in place of `pipeline`, and a restore
+refuses any difference. Admission counts the rank fusion, five n × K arrays of
+doubles plus the lists an adaptive run collects, and each adaptive copy of a
+learned step's state. Preflight builds every detector and reports a failure on
+its node. Results carry each detector's `detector_id`, `score` and `surprise` in
+their context, and `processed_features` holds each detector's features under its
+ID. Evidence stores them as `detector_results` (migration 015), while `p_value`
+or `anomaly_score` holds the fused value. Runs with one detector write an empty
+list and keep their results, checkpoints and diagnostics.
+
 ## Activation and recovery
 
 Activation persists reservations before remote work. Claims cover the union of

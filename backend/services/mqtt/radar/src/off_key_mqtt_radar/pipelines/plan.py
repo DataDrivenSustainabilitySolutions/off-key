@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 
+from off_key_core.models.pipeline_parameters import fusion_mode
 from off_key_core.models.pipeline_prepare import StageSplit, stage_split
 from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
 from off_key_core.schemas.pipelines import PipelineExecutionConfig, PipelineValidation
@@ -57,6 +58,52 @@ class ExecutionPlan:
     @cached_property
     def detector_id(self) -> str:
         return self.compiled.detector_id
+
+    @cached_property
+    def detector_ids(self) -> list[str]:
+        """Every detector, in the order the run keeps them; most designs have one."""
+        return self.compiled.detector_ids
+
+    @cached_property
+    def detector_inputs(self) -> dict[str, str]:
+        """The node whose features each detector reads."""
+        return self.compiled.detector_inputs
+
+    @property
+    def fused(self) -> bool:
+        """Several detectors feed the policy, which combines them."""
+        return len(self.detector_ids) > 1
+
+    @cached_property
+    def fusion(self) -> str:
+        """How the policy combines detectors: max or mean."""
+        return fusion_mode(self.nodes[self.policy_id].params)
+
+    def detector_features(self, detector_id: str) -> list[str]:
+        """The features one detector scores, in their order."""
+        return self.names(self.detector_inputs[detector_id])
+
+    def reads(self, detector_id: str) -> frozenset[str]:
+        """The nodes whose features reach a detector, its input included."""
+        needed: set[str] = set()
+        pending = [self.detector_inputs[detector_id]]
+        while pending:
+            identifier = pending.pop()
+            if identifier not in needed:
+                needed.add(identifier)
+                pending.extend(self.parents(identifier))
+        return frozenset(needed)
+
+    def owned(self, detector_id: str) -> frozenset[str]:
+        """The nodes this detector's graph reports, as the first one to read them.
+
+        Adaptive detectors each learn their own copy of a step they share, so
+        only the first copy counts in the diagnostics.
+        """
+        earlier = self.detector_ids[: self.detector_ids.index(detector_id)]
+        return self.reads(detector_id).difference(
+            *(self.reads(identifier) for identifier in earlier)
+        )
 
     @cached_property
     def policy_id(self) -> str:

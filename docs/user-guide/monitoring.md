@@ -85,13 +85,27 @@ their anytime-valid interpretation. CUSUM and Shiryaev-Roberts thresholds are
 change-detection parameters and must be calibrated for the intended null stream;
 `1 / threshold` is not presented as their false-alarm probability.
 
+A design can combine up to four detectors, such as one for each group of
+readings. Each detector's score is ranked against its own calibration scores, so
+detectors on different scales need no tuning. The decision policy's **Combine
+detectors** setting decides how the ranks make one: **Strongest**, the default,
+follows the most surprised detector, so a change that one detector sees is
+enough; **Average** follows their mean, so a change has to show in several
+detectors, or strongly in one. The static strategy turns the combined rank into
+a p-value that behaves like a single detector's, so the martingale trackers and
+their thresholds keep their meaning. The adaptive strategy alarms when the
+combined rank exceeds the policy's quantile of the combined ranks it saw during
+calibration, and it starts calibrating once its slowest detector is ready.
+
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
-p-value or score, sensor set, aggregate alarm flag, and bounded `tracker_results`
-evidence for every configured martingale. Charts draw each selected alarm
-statistic on a logarithmic secondary axis with its threshold. Telemetry and
-evidence use the same payload event timestamp and share zoom and crosshair, so
-observations from one inference stay vertically aligned; receive time is used
-only when a publisher omits its event timestamp.
+p-value or score, sensor set, aggregate alarm flag, and bounded
+`tracker_results` evidence for every configured martingale. A design that
+combines detectors also records each detector's score and surprise beside the
+combined value. Charts draw each selected alarm statistic on a logarithmic
+secondary axis with its threshold. Telemetry and evidence use the same payload
+event timestamp and share zoom and crosshair, so observations from one inference
+stay vertically aligned; receive time is used only when a publisher omits its
+event timestamp.
 
 ## Reading ownership
 

@@ -18,6 +18,9 @@ NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output
 IssueSeverity = Literal["error", "warning"]
 PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
+# Detectors that can feed one policy, and how the policy combines them.
+MAX_DETECTORS = 4
+FusionMode = Literal["max", "mean"]
 
 
 class PipelineModel(BaseModel):
@@ -196,8 +199,22 @@ class PipelineValidation(PipelineModel):
         return self._node_id("source")
 
     @property
+    def detector_ids(self) -> list[str]:
+        """The detectors in a fixed order, by id; most designs have one."""
+        return sorted(
+            node.id for node in self.definition.nodes if node.kind == "detector"
+        )
+
+    @property
+    def detector_inputs(self) -> dict[str, str]:
+        """The node whose features each detector reads."""
+        incoming = self.incoming
+        return {identifier: incoming[identifier][0] for identifier in self.detector_ids}
+
+    @property
     def detector_id(self) -> str:
-        return self._node_id("detector")
+        """The first detector, which is the only one in most designs."""
+        return self.detector_ids[0]
 
     @property
     def policy_id(self) -> str:
@@ -209,6 +226,7 @@ class PipelineValidation(PipelineModel):
 
     @property
     def feature_output_id(self) -> str:
+        """The node whose features the first detector reads."""
         return self.incoming[self.detector_id][0]
 
 

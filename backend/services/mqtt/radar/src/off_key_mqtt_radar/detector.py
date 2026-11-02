@@ -24,12 +24,14 @@ from off_key_core.schemas.radar import StaticBaselineConfig
 from .alarm_calibration import resolve_tracker_thresholds
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
+from .fusion import RankFusion
 from .martingales import MartingaleAlarmController
 from .memory import process_rss_mb
 from .models import AnomalyResult
 from .pipelines.batch import (
     BatchFeatureGraph,
     FittedStaticPipeline,
+    FusedStaticPipeline,
     NonFiniteFeatures,
 )
 from .pipelines.execution import PipelineExecutionMixin
@@ -414,6 +416,10 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             1.0 / float(alarm_context["threshold"]),
         )
 
+        context = {"p_value": p_value, **alarm_context}
+        if self.plan.fused:
+            # Each detector's score and surprise, so an alarm names its driver.
+            context["detectors"] = self.conformal_detector.last_detectors
         result = self._build_result(
             data=data,
             processed_features=dict(zip(self._feature_order(), vector, strict=True)),
@@ -424,10 +430,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             charger_id=charger_id,
             start_time=start_time,
             phase="ready",
-            extra_context={
-                "p_value": p_value,
-                **alarm_context,
-            },
+            extra_context=context,
         )
 
         if is_anomaly:
@@ -520,10 +523,57 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
     def _fit_static_matrices(self, training_matrix, calibration_matrix):
         """Fit the graph, then the detector and calibration on its features."""
         graph = BatchFeatureGraph(self.plan)
+        if self.plan.fused:
+            return self._fit_fused(graph, training_matrix, calibration_matrix)
         fitted, policy = self._fit_baseline_matrices(
             graph.fit_transform(training_matrix), graph.transform(calibration_matrix)
         )
         return FittedStaticPipeline(graph, fitted), policy
+
+    def _fit_fused(self, graph, training_matrix, calibration_matrix):
+        """Fit every detector on its own features, then combine their calibrations.
+
+        The learned steps fit once, also when several detectors read them.
+        """
+        training = graph.fit_transform_all(training_matrix)
+        calibration = graph.transform_all(calibration_matrix)
+        detectors = {}
+        for identifier in self.plan.detector_ids:
+            source = self.plan.detector_inputs[identifier]
+            try:
+                detectors[identifier] = self._calibrated_detector(
+                    self.plan.nodes[identifier], training[source], calibration[source]
+                )
+            except Exception as error:
+                raise FatalExecutionError(str(error), node_id=identifier) from error
+        fusion = RankFusion(
+            np.column_stack([item.calibration_set for item in detectors.values()]),
+            self.plan.fusion,
+        )
+        # Fused p-values take the values one detector's do, so the thresholds
+        # resolve the same way.
+        resolved_thresholds = resolve_tracker_thresholds(
+            self.static_config.martingale_config,
+            calibration_size=len(calibration_matrix),
+            seed=self.static_config.seed,
+        )
+        return (
+            FusedStaticPipeline(graph, detectors, fusion, self.static_config.seed),
+            self._create_alarm_controller(resolved_thresholds),
+        )
+
+    def _calibrated_detector(self, node, training_matrix, calibration_matrix):
+        from nonconform import ConformalDetector, Split
+
+        detector = self._create_pyod_detector(node)
+        detector.fit(training_matrix)
+        conformal_detector = ConformalDetector(
+            detector=detector,
+            strategy=Split(n_calib=0.1),
+            score_polarity="auto",
+            seed=self.static_config.seed,
+        )
+        return conformal_detector.calibrate(calibration_matrix)
 
     def _fit_baseline_matrices(self, training_matrix, calibration_matrix):
         """Fit and calibrate with an already materialized numerical schema."""
@@ -556,9 +606,17 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             resolved_thresholds,
         )
 
-    def _create_pyod_detector(self) -> Any:
-        model_type = self.static_config.model_type
-        params = dict(self.static_config.model_params or {})
+    def _create_pyod_detector(self, node=None) -> Any:
+        """The first detector from the run's settings, or one node of the graph."""
+        if node is None:
+            model_type = self.static_config.model_type
+            params = dict(self.static_config.model_params or {})
+        else:
+            model_type = node.component.removeprefix("detector:")
+            # As the run's settings hold the first detector: without defaults.
+            params = validate_static_model_params(
+                model_type, node.params, include_defaults=False
+            )
         definition = get_static_model_definition(model_type)
         if (
             self.static_config.seed is not None
@@ -610,7 +668,8 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
     def _publish_fit_readiness(self):
         for node in self.plan.learned_nodes:
             self.diagnostics.nodes[node.id].update(state="ready", ready=True)
-        self.diagnostics.nodes[self.plan.detector_id].update(state="ready", ready=True)
+        for identifier in self.plan.detector_ids:
+            self.diagnostics.nodes[identifier].update(state="ready", ready=True)
 
     def _publish_training(self) -> None:
         if self.state != StaticConformalState.TRAINING or self._training_future is None:
@@ -765,6 +824,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         return {
             "strategy": "static_baseline",
             "state": self.state.value,
+            **self._fused_info(),
             "processed_count": self.processed_count,
             "anomaly_count": self.anomaly_count,
             "anomaly_rate": self.anomaly_count / max(self.processed_count, 1),

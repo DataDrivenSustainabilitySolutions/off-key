@@ -83,11 +83,30 @@ class PipelineExecutionMixin:
             f"{settings}:{config.pipeline.fingerprint}".encode()
         ).hexdigest()
 
-    def _failure_node(self, error: BaseException) -> str:
+    def _failure_node(
+        self, error: BaseException, detector_id: str | None = None
+    ) -> str:
         """Name the failing node; model-level errors belong to the detector."""
-        detector_id = self.plan.detector_id
+        detector_id = detector_id or self.plan.detector_id
         node = getattr(error, "node_id", None) or detector_id
         return detector_id if node == "$model" else node
+
+    def _fused_info(self) -> dict[str, Any]:
+        """Which detectors the policy combines, and how; nothing for one."""
+        if not self.plan.fused:
+            return {}
+        return {
+            "fusion": self.plan.fusion,
+            "detectors": [
+                {
+                    "detector_id": identifier,
+                    "model_type": self.plan.nodes[identifier].component.removeprefix(
+                        "detector:"
+                    ),
+                }
+                for identifier in self.plan.detector_ids
+            ],
+        }
 
     def _pipeline_failed(self) -> bool:
         return False

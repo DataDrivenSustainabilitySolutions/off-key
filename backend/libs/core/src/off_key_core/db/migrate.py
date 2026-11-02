@@ -96,6 +96,13 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             for column in inspect(connection).get_columns("monitoring_pipelines")
         }
         excluded_columns["monitoring_pipelines"] = {"is_template"} - columns
+    if "monitoring_evidence" in existing:
+        # Migration 015 adds each detector's results to the evidence.
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_evidence")
+        }
+        excluded_columns["monitoring_evidence"] = {"detector_results"} - columns
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")

@@ -48,6 +48,7 @@
       when:
         - persistence_flips | length > 0
         - item.key not in ['postgres', 'emqx-main', 'frontend']
+        - item.value.deploy.mode | default('replicated') != 'global'
       no_log: true
 
     - name: Resume runtime workers with their original replica counts

@@ -1,0 +1,135 @@
+# Observability overlay: container logs in Loki, read in Grafana at grafana.<domain>.
+#
+# Merged by stack_deploy when observability_enabled (production). Needs the Traefik and
+# oauth2-proxy overlays, so it is NOT valid on its own. See docs/operations/production.md
+# (Logs and Grafana).
+#
+# - Alloy runs on every node and ships that node's container logs, including the
+#   short-lived RADAR workers TACTIC creates, whose logs Docker deletes with the service.
+# - Loki keeps them for 30 days on a volume of the manager node.
+# - Grafana trusts the identity oauth2-proxy sends through Traefik's forwardAuth, so
+#   only members of the GitHub organisation reach it. It has no login form, no sign-up
+#   and no anonymous access. Its only network to Traefik is observability-network,
+#   which Traefik joins here; cloudflared and the public containers cannot reach it.
+#
+# SECURITY: Alloy reads the local Docker API through a read-only socket mount, as Docker
+# offers no narrower way to read a node's container logs. It publishes no port, runs
+# no listener beyond 127.0.0.1 and is only on observability-network, which is internal
+# (no route to the internet). Loki and Grafana do not mount the socket.
+
+services:
+
+  alloy:
+    image: "${ALLOY_IMAGE:-grafana/alloy:v1.21.3}"
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --disable-reporting
+    # The node's name, so every line says where it ran.
+    hostname: "{{.Node.Hostname}}"
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      # Read positions, so a restart neither repeats nor skips lines.
+      - alloy-data:/var/lib/alloy/data
+    networks:
+      - observability-network
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 256M
+      restart_policy:
+        condition: any
+
+  # No healthcheck: the image has no shell or HTTP client. Grafana's data source
+  # check and the Alloy push errors are the signal.
+  loki:
+    image: "${LOKI_IMAGE:-grafana/loki:3.7.9}"
+    command:
+      - -config.file=/etc/loki/config.yml
+    configs:
+      - source: loki_config
+        target: /etc/loki/config.yml
+    volumes:
+      - loki-data:/loki
+    networks:
+      - observability-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 1G
+      restart_policy:
+        condition: any
+
+  grafana:
+    image: "${GRAFANA_IMAGE:-grafana/grafana:13.2.5}"
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/stack.yml
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/stack.yml
+      - source: grafana_dashboard_logs
+        target: /etc/grafana/dashboards/logs.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - observability-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: any
+
+  traefik:
+    networks:
+      - observability-network
+
+volumes:
+  alloy-data:
+  loki-data:
+  grafana-data:
+
+networks:
+  observability-network:
+    driver: overlay
+    internal: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
+
+# One hash over every file: any edit rotates all of them together.
+configs:
+  alloy_config:
+    name: alloy_config_${OBSERVABILITY_CONFIG_HASH}
+    file: ./alloy.alloy
+  loki_config:
+    name: loki_config_${OBSERVABILITY_CONFIG_HASH}
+    file: ./loki.yml
+  grafana_datasources:
+    name: grafana_datasources_${OBSERVABILITY_CONFIG_HASH}
+    file: ./grafana-datasources.yml
+  grafana_dashboards:
+    name: grafana_dashboards_${OBSERVABILITY_CONFIG_HASH}
+    file: ./grafana-dashboards.yml
+  grafana_dashboard_logs:
+    name: grafana_dashboard_logs_${OBSERVABILITY_CONFIG_HASH}
+    file: ./grafana-dashboard-logs.json

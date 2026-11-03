@@ -38,6 +38,7 @@ broker_route_enabled:    false
 ingress_enabled:         false
 ingress_admin_enabled:   false
 landing_enabled:         false
+observability_enabled:   false
 # The demo holds no data worth protecting, so its first release bootstraps itself.
 release_bootstrap_new_stack: true
 release_public_urls:     ["https://demo.aberration.app"]

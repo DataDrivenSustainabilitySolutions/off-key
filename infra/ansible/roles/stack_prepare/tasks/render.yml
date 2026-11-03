@@ -61,7 +61,7 @@
   assert:
     that:
       - release.application_revision is match('^[0-9a-f]{40}$')
-      - release.images.keys() | sort == ['api', 'cloudflared', 'db_sync', 'emqx', 'frontend', 'gost', 'landing', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
+      - release.images.keys() | sort == ['alloy', 'api', 'cloudflared', 'db_sync', 'emqx', 'frontend', 'gost', 'grafana', 'landing', 'loki', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
       - release.images.values() | reject('match', '^.+@sha256:[0-9a-f]{64}$') | list | length == 0
       - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
     fail_msg: The resolved production release must contain the complete set of immutable image references.
@@ -257,6 +257,23 @@
     state: absent
   loop: [landing.html, landing.md, landing-llms.txt, landing-nginx.conf]
   when: not (landing_enabled | default(true) | bool)
+
+- name: Copy the log collection and Grafana configuration
+  copy:
+    src: "{{ stack_source_dir }}/{{ item }}"
+    dest: "{{ stack_dir }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop: "{{ stack_observability_files }}"
+  when: observability_active | bool
+
+- name: Remove the log collection and Grafana configuration when this installation has none
+  file:
+    path: "{{ stack_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ stack_observability_files }}"
+  when: not (observability_active | bool)
 
 - name: Render production Cloudflare Tunnel connector overlay
   template:

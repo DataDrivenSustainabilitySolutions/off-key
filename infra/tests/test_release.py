@@ -532,6 +532,25 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             swarm.check_services([], expected, {})
 
+    def test_convergence_accepts_a_node_agent_on_every_eligible_node(self):
+        image = "example/alloy@sha256:" + "d" * 64
+        service = {
+            "Spec": {
+                "Name": "off-key_alloy",
+                "Mode": {"Global": {}},
+                "TaskTemplate": {"ContainerSpec": {"Image": image}},
+            }
+        }
+        expected = {"off-key_alloy": {"image": image, "replicas": swarm.GLOBAL}}
+        swarm.check_services([service], expected, {"off-key_alloy": "3/3"})
+        for partial in ("2/3", "0/0"):
+            with self.assertRaisesRegex(ValueError, "node tasks running"):
+                swarm.check_services([service], expected, {"off-key_alloy": partial})
+        replicated = deepcopy(service)
+        replicated["Spec"]["Mode"] = {"Replicated": {"Replicas": 1}}
+        with self.assertRaisesRegex(ValueError, "node tasks running"):
+            swarm.check_services([replicated], expected, {"off-key_alloy": "1/1"})
+
     def test_convergence_requires_the_exact_service_image_and_replica_plan(self):
         images = {
             "api": "example/api@sha256:" + "a" * 64,

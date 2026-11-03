@@ -151,6 +151,38 @@ sender DNS. Save its key as `email_password` in the encrypted vault. First-admin
 invitation runs after readiness; `make -C infra invite-admin-prod` can resend it.
 Local Compose uses Mailpit. No production Mailpit service remains.
 
+## Logs and Grafana
+
+With `observability_enabled` (production), the observability overlay runs Alloy on
+every node, Loki and Grafana on the manager. Alloy ships each container's output to
+Loki, including the RADAR workers TACTIC creates, whose logs Docker would otherwise
+delete with the service. Loki keeps 30 days on the manager's `loki-data` volume.
+
+Grafana is at `https://grafana.aberration.app` behind the same oauth2-proxy gate as
+the broker and Traefik dashboards. It trusts the GitHub login oauth2-proxy returns
+to Traefik, signs members up as editors on first visit, and has no login form,
+sign-up or anonymous access. To publish it once, add the `grafana` public hostname
+to the existing tunnel in Cloudflare and route it to `http://traefik:80`, like the
+other hostnames. Never route it to Grafana directly: Grafana relies on Traefik to
+set the identity header.
+
+The provisioned **Aberration logs** dashboard filters by service and text and has a
+panel for pipeline lifecycle events (stage changes, calibration, crashes, failures).
+Services log JSON at INFO; every RADAR line carries its `service_id`, `run_id` and
+`revision_id`, so in Explore, for example:
+
+```logql
+{service=~".+"} | json | extra_service_id="<monitoring service id>"
+```
+
+A browser error from the API shows a reference such as `(reference 4f1c…)`. It is
+the request's correlation ID, so `{service=~".+"} |= "4f1c…"` finds every line of
+that request across the gateway and TACTIC.
+
+Alloy reads the local Docker API through a read-only socket mount, as Docker offers
+no narrower way to read a node's container logs. It publishes no port and is only
+on the internal `observability-network`, which has no route to the internet.
+
 ## Catalog and private observations
 
 Use authenticated **Sources** to import an `aberration-system` catalogue or edit

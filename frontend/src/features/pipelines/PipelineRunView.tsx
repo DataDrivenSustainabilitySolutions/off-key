@@ -13,6 +13,7 @@ import { nodeOptionLabeler } from "./model";
 import { arrangeGraph } from "./layout";
 import { useRunMetadata } from "./useRunMetadata";
 import { PipelineRunHistory } from "./PipelineRunHistory";
+import { PipelineRunTimeline } from "./PipelineRunTimeline";
 import { editFromRun } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
@@ -248,6 +249,13 @@ export default function PipelineRunView({
             policyId={view.definition.nodes.find((node) => node.kind === "policy")?.id}
             onSelect={select}
           />
+          {view.run && (
+            <PipelineRunTimeline
+              key={`timeline-${serviceId}`}
+              serviceId={serviceId}
+              failed={view.run.status === "failed"}
+            />
+          )}
           <PipelineRunHistory
             key={serviceId}
             initial={{

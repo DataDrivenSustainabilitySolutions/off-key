@@ -13,6 +13,7 @@ import type {
   PipelineListQuery,
   PipelineMetadataChange,
   PipelineRevisionView,
+  PipelineRunTimeline,
   PipelineServiceView,
   PipelineValidationReport,
   PipelineView,
@@ -91,6 +92,11 @@ export const pipelinesApi = {
       .then(normalizeService),
   history: (serviceId: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineHistoryPage>(`${monitor(serviceId)}/pipeline-history`, {
+      signal,
+      redirectOnUnauthorized: false,
+    }),
+  timeline: (serviceId: string, signal?: AbortSignal) =>
+    apiUtils.get<PipelineRunTimeline>(`${monitor(serviceId)}/pipeline-timeline`, {
       signal,
       redirectOnUnauthorized: false,
     }),

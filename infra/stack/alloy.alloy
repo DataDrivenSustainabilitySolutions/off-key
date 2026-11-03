@@ -1,0 +1,47 @@
+// Alloy runs once per node and ships that node's container logs to Loki.
+// Docker Swarm keeps a crashed task's container for a while, so its last
+// lines arrive even when TACTIC has already replaced the RADAR worker.
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+// Few, bounded labels; everything else stays in the JSON line.
+discovery.relabel "containers" {
+  targets = []
+
+  // Plain containers by name, Swarm tasks by their service.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.+)"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_stack_namespace"]
+    regex         = "(.+)"
+    target_label  = "stack"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.write.stack.receiver]
+}
+
+loki.write "stack" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+  // The task's hostname is the node's (see the overlay).
+  external_labels = {
+    node = constants.hostname,
+  }
+}

@@ -10,6 +10,7 @@ from off_key_core.db.models import (
     MonitoringService,
     PipelineRevision,
     PipelineRun,
+    PipelineRunEvent,
 )
 from off_key_core.models.pipeline_reports import (
     bounded_validation_report,
@@ -22,6 +23,7 @@ from off_key_core.models.pipelines import (
     validate_pipeline,
 )
 from off_key_core.schemas.pipelines import (
+    MAX_TIMELINE_EVENTS,
     PipelineCreate,
     PipelineDefinition,
     PipelineDraftSave,
@@ -32,6 +34,8 @@ from off_key_core.schemas.pipelines import (
     PipelinePublish,
     PipelineRevisionQuery,
     PipelineRevisionView,
+    PipelineRunEventView,
+    PipelineRunTimeline,
     PipelineRunView,
     PipelineServiceView,
     PipelineView,
@@ -284,6 +288,44 @@ class PipelineLibrary:
         ):
             raise NotFoundError("Monitoring service not found")
         return page
+
+    async def timeline(self, service_id: str) -> PipelineRunTimeline:
+        run = await self.session.scalar(
+            select(PipelineRun).where(PipelineRun.service_id == service_id)
+        )
+        if run is None:
+            raise NotFoundError("Monitoring run not found")
+        # The newest events, shown oldest first; one more row tells truncation.
+        rows = list(
+            await self.session.scalars(
+                select(PipelineRunEvent)
+                .where(PipelineRunEvent.run_id == run.id)
+                .order_by(
+                    PipelineRunEvent.occurred_at.desc(), PipelineRunEvent.id.desc()
+                )
+                .limit(MAX_TIMELINE_EVENTS + 1)
+            )
+        )
+        return PipelineRunTimeline(
+            run_id=run.id,
+            service_id=run.service_id,
+            status=run.status,
+            error=run.error,
+            created_at=run.created_at,
+            ended_at=run.ended_at,
+            final_status=run.final_status,
+            events=[
+                PipelineRunEventView(
+                    occurred_at=row.occurred_at,
+                    source=row.source,
+                    kind=row.kind,
+                    stage=row.stage,
+                    detail=row.detail or {},
+                )
+                for row in reversed(rows[:MAX_TIMELINE_EVENTS])
+            ],
+            truncated=len(rows) > MAX_TIMELINE_EVENTS,
+        )
 
     async def service_metadata(self, service_id, selected_node_id):
         _, definition, _ = await self._service_source(service_id)

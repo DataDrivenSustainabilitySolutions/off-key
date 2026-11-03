@@ -2,6 +2,7 @@
 {% for name, service in stack_compose_model.services.items() %}
 {% set deploy = service.deploy | default({}) %}
 {% set paused = service | combine({'deploy': deploy | combine({'replicas': 0})}) %}
-{% set _ = services.update({name: service if name in ['postgres', 'emqx-main'] else paused}) %}
+{# Node agents (global mode) hold no data and have no replica count to pause. #}
+{% set _ = services.update({name: service if name in ['postgres', 'emqx-main'] or deploy.mode | default('replicated') == 'global' else paused}) %}
 {% endfor %}
 {{ stack_compose_model | combine({'services': services}) | to_nice_json }}

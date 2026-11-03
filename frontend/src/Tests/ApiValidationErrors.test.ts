@@ -61,3 +61,37 @@ it("lets optional preview requests surface an expired session without forcing na
     await expect(apiUtils.get("/v1/system", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
   } finally { apiClient.defaults.adapter = original; }
 });
+
+it("names the server's reference on a server failure so it leads to its logs", async () => {
+  const original = apiClient.defaults.adapter;
+  apiClient.defaults.adapter = async (config) => {
+    throw new AxiosError("Bad gateway", "502", config, undefined, {
+      status: 502, statusText: "Bad Gateway", headers: { "x-correlation-id": "4f1c-9a" }, config,
+      data: { detail: "Monitoring service is unavailable" },
+    });
+  };
+  try {
+    await expect(apiClient.get("/v1/monitors/workspace")).rejects.toMatchObject({
+      status: 502,
+      reference: "4f1c-9a",
+      message: "Monitoring service is unavailable (reference 4f1c-9a)",
+    });
+  } finally { apiClient.defaults.adapter = original; }
+});
+
+it("keeps client errors free of references and ignores unsafe header values", async () => {
+  const original = apiClient.defaults.adapter;
+  let status = 409;
+  apiClient.defaults.adapter = async (config) => {
+    throw new AxiosError("Failed", String(status), config, undefined, {
+      status, statusText: "Failed", config,
+      headers: { "x-correlation-id": status === 409 ? "4f1c-9a" : "<script>" },
+      data: { detail: "Try again" },
+    });
+  };
+  try {
+    await expect(apiClient.get("/v1/system")).rejects.toMatchObject({ message: "Try again", reference: "4f1c-9a" });
+    status = 503;
+    await expect(apiClient.get("/v1/system")).rejects.toMatchObject({ message: "Try again", reference: undefined });
+  } finally { apiClient.defaults.adapter = original; }
+});

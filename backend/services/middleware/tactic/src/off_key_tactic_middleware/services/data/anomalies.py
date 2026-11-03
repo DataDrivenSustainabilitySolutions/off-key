@@ -31,9 +31,11 @@ class AnomalyService:
             telemetry_type=telemetry_type,
             limit=limit,
         )
-        logger.info(
-            f"Retrieved {len(rows)} anomalies for charger {charger_id} "
-            f"(telemetry_type={telemetry_type})"
+        logger.debug(
+            "event=tactic.anomalies_read charger_id=%s telemetry_type=%s count=%s",
+            charger_id,
+            telemetry_type,
+            len(rows),
         )
         return [
             {

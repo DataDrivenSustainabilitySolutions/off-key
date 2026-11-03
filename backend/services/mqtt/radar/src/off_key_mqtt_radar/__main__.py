@@ -9,10 +9,13 @@ import sys
 from pathlib import Path
 
 from off_key_core.config.bootstrap import start_service
-from off_key_core.config.logs import logger
+from off_key_core.config.logs import bind_log_context, logger
 
 from .config.config import get_radar_settings, load_configuration
-from .config.runtime import get_radar_runtime_file_settings
+from .config.runtime import (
+    get_radar_checkpoint_settings,
+    get_radar_runtime_file_settings,
+)
 from .service import get_radar_service
 
 
@@ -34,8 +37,14 @@ async def main():
             config_file,
         )
 
-    logger.info("event=radar.service_bootstrap_start")
     cfg = get_radar_settings().config
+    # Every later line names its run, so one filter finds a run's whole log.
+    bind_log_context(
+        service_id=get_radar_checkpoint_settings().SERVICE_ID,
+        run_id=cfg.pipeline.run_id,
+        revision_id=cfg.pipeline.revision_id,
+    )
+    logger.info("event=radar.service_bootstrap_start")
     logger.info(
         "event=radar.configuration_summary",
         extra={

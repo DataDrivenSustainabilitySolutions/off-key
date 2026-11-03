@@ -1,6 +1,6 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the detector fusion runtime that added migration 015, with the
+The reference is the run timeline commit that added migration 016, with the
 reviewed Aberrant 1.4.0 numerics. It is not an eligible production release and
 proves no pre-feature compatibility.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "a13839cafe0d9a810e7ea102e41027b7187989cd"
+COMPATIBLE_REVISION = "69f2148919a8e89fdd4f878a359193f8cde63ec9"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

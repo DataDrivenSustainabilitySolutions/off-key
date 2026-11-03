@@ -20,6 +20,7 @@ DEMO_ONLY = {
     "ingress_enabled",
     "ingress_admin_enabled",
     "landing_enabled",
+    "observability_enabled",
     "release_public_urls",
     "system_live_enabled",
     "system_live_allowed_hosts",
@@ -50,6 +51,9 @@ LEFT_OUT = {
     "landing",
     "traefik",
     "cloudflared",
+    "alloy",
+    "loki",
+    "grafana",
 }
 
 

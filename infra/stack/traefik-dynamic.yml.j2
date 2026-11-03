@@ -88,6 +88,15 @@ http:
       entryPoints: [web]
       middlewares: [oauth-errors, oauth-auth]
       service: api@internal
+{% if observability_active | default(false) | bool %}
+
+    # Logs in Grafana. Grafana trusts the user oauth-auth's response sets.
+    grafana:
+      rule: "Host(`grafana.{{ ingress_base_domain }}`)"
+      entryPoints: [web]
+      middlewares: [oauth-errors, oauth-auth]
+      service: grafana
+{% endif %}
 {% endif %}
 
   services:
@@ -124,6 +133,12 @@ http:
       loadBalancer:
         servers:
           - url: "http://{{ stack_name }}_oauth2-proxy:4180"
+{% if observability_active | default(false) | bool %}
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://{{ stack_name }}_grafana:3000"
+{% endif %}
 {% endif %}
 
   middlewares:

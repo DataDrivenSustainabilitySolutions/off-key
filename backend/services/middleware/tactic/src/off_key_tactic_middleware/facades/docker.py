@@ -14,6 +14,10 @@ from ..config.config import DockerConfig, get_tactic_settings
 SWARM_TASK_DONE = frozenset({"shutdown", "complete", "failed", "rejected", "remove"})
 SWARM_TASK_SHUTDOWN_DONE = SWARM_TASK_DONE | {"completed"}
 SWARM_TASK_STARTUP_FAILED = SWARM_TASK_DONE | {"orphaned"}
+# Ended tasks that did not exit cleanly; "shutdown" and "complete" are normal.
+SWARM_TASK_CRASHED = frozenset({"failed", "rejected", "orphaned"})
+# Docker reports a SIGKILL as exit code 137; the kernel's OOM killer sends one.
+SIGKILL_EXIT_CODE = 137
 
 
 def latest_task_status(tasks: Sequence[object]) -> dict | None:
@@ -24,6 +28,34 @@ def latest_task_status(tasks: Sequence[object]) -> dict | None:
     latest = max(task_items, key=lambda task: str(task.get("CreatedAt", "")))
     status = latest.get("Status")
     return status if isinstance(status, dict) else {}
+
+
+def crashed_tasks(tasks: Sequence[object]) -> list[dict[str, Any]]:
+    """Why each crashed task ended, newest first, as small JSON-safe facts."""
+    crashes = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        status = task.get("Status")
+        status = status if isinstance(status, dict) else {}
+        state = str(status.get("State", "")).strip().lower()
+        if state not in SWARM_TASK_CRASHED:
+            continue
+        container = status.get("ContainerStatus")
+        container = container if isinstance(container, dict) else {}
+        exit_code = container.get("ExitCode")
+        crash = {
+            "task_id": str(task.get("ID", "")),
+            "state": state,
+            "error": status.get("Err") or status.get("Message"),
+            "exit_code": exit_code,
+            "ended_at": status.get("Timestamp"),
+            "node_id": task.get("NodeID"),
+        }
+        if exit_code == SIGKILL_EXIT_CODE:
+            crash["hint"] = "Killed by SIGKILL, usually for exceeding its memory limit"
+        crashes.append(crash)
+    return sorted(crashes, key=lambda crash: str(crash["ended_at"] or ""), reverse=True)
 
 
 def workload_labels(workload: Any) -> dict[str, str]:
@@ -114,6 +146,22 @@ async def get_workload_status_and_labels(
     except Exception as exc:
         logger.debug("Error checking Docker status for %s: %s", workload_id, exc)
         return "error", {}
+
+
+async def get_workload_crashed_tasks(
+    async_docker: AsyncDocker, workload_id: str | None
+) -> list[dict[str, Any]]:
+    """Crashed tasks Swarm still remembers for a RADAR service, newest first."""
+    if not workload_id:
+        return []
+    try:
+        docker_service = await async_docker.run(
+            async_docker.client.services.get, workload_id
+        )
+        tasks = await async_docker.run(docker_service.tasks)
+    except docker.errors.NotFound:
+        return []
+    return crashed_tasks(tasks)
 
 
 async def get_workload_docker_status(

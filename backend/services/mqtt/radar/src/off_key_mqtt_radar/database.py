@@ -13,6 +13,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from off_key_core.db.run_events import INSERT_RUN_EVENT, run_event_parameters
 from off_key_core.schemas.radar import RadarOperationalStatus
 from sqlalchemy import (
     CursorResult,
@@ -263,6 +264,7 @@ class DatabaseWriter:
         *,
         diagnostics: dict | None = None,
         coverage: dict | None = None,
+        events: list[dict[str, Any]] | None = None,
     ) -> None:
         """Fence a failed generation while preserving its last signed snapshot.
 
@@ -293,6 +295,7 @@ class DatabaseWriter:
                         "error": error[:4000],
                         "run_id": execution.run_id,
                         "service_id": self._checkpoint_service_id,
+                        "status": payload,
                     },
                 ),
             )
@@ -301,6 +304,18 @@ class DatabaseWriter:
             await session.execute(
                 FAIL_SERVICE_STATUS,
                 {"status": payload, "service_id": self._checkpoint_service_id},
+            )
+            # The worker's unsent timeline, then the failure that ends it.
+            await self._insert_run_events(
+                session,
+                [
+                    *(events or []),
+                    {
+                        "kind": "run_failed",
+                        "stage": "failed",
+                        "detail": {"error": error},
+                    },
+                ],
             )
             await session.commit()
 
@@ -427,21 +442,31 @@ class DatabaseWriter:
                     self._in_flight = 0
                     self._queue_changed.notify_all()
 
-    async def write_heartbeat(self, metrics: dict[str, Any]):
-        """Publish the operational status from a health snapshot."""
-        if not self.config.db_write_enabled:
-            return
+    async def write_heartbeat(self, metrics: dict[str, Any]) -> bool:
+        """Publish the operational status from a health snapshot.
 
+        ``metrics["run_events"]`` rides in the same transaction once the status
+        is published. Returns whether those events are stored, so the caller
+        keeps them for the next heartbeat otherwise.
+        """
+        if not self.config.db_write_enabled:
+            return False
+
+        events = metrics.get("run_events") or []
         try:
             # Freeze the accepted old/pending token pair for this heartbeat.
             # Checkpoint I/O does not hold this lock, so a blocked evidence
             # transaction still permits an independent health commit.
             async with self._checkpoint_token_lock, self._session() as session:
                 await self._assert_checkpoint_ownership(session, lock=False)
-                await self._update_service_operational_status(
+                published = await self._update_service_operational_status(
                     session, metrics.get("operational_status")
                 )
+                stored = not events or (
+                    published and await self._insert_run_events(session, events)
+                )
                 await session.commit()
+                return stored
 
         except CheckpointOwnershipLost:
             self.total_errors += 1
@@ -455,18 +480,53 @@ class DatabaseWriter:
                 exc_info=True,
             )
             self.total_errors += 1
+        return False
+
+    def _run_event_rows(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        execution = self.config.pipeline
+        return [
+            run_event_parameters(
+                run_id=execution.run_id,
+                service_id=self.service_id,
+                source="radar",
+                kind=event["kind"],
+                stage=event.get("stage"),
+                detail=event.get("detail"),
+                occurred_at=event.get("occurred_at"),
+            )
+            for event in events
+        ]
+
+    async def _insert_run_events(
+        self, session: AsyncSession, events: list[dict[str, Any]]
+    ) -> bool:
+        """Store lifecycle events without risking the status they ride with."""
+        if self.config.pipeline is None or not self.service_id:
+            return True
+        try:
+            async with session.begin_nested():
+                await session.execute(INSERT_RUN_EVENT, self._run_event_rows(events))
+        except Exception as error:
+            logger.warning(
+                "event=radar.run_events_write_failed count=%s error=%s",
+                len(events),
+                error,
+            )
+            return False
+        return True
 
     async def _update_service_operational_status(
         self,
         session: AsyncSession,
         status: Any,
-    ) -> None:
+    ) -> bool:
+        """Publish the status; False when this worker may not publish it."""
         if not isinstance(status, dict):
-            return
+            return False
 
         service_id = self.service_id
         if not service_id:
-            return
+            return False
 
         normalized = RadarOperationalStatus(**status)
         updated_at = normalized.updated_at or datetime.now(UTC)
@@ -488,12 +548,13 @@ class DatabaseWriter:
         if self.managed_checkpoints and not await self._can_publish_pipeline_status(
             session, service_id
         ):
-            return
+            return False
         result = cast(
             CursorResult[Any], await session.execute(HEARTBEAT_UPDATE, parameters)
         )
         if self.managed_checkpoints and result.rowcount != 1:
             raise self._lose_checkpoint_ownership()
+        return True
 
     async def _can_publish_pipeline_status(self, session, service_id):
         # Serialize with fatal status publication before reading its Run. This
@@ -638,7 +699,8 @@ class DatabaseWriter:
                     )
                     await session.commit()
 
-                    logger.info(
+                    # Every flush; DEBUG keeps INFO to lifecycle facts.
+                    logger.debug(
                         "event=radar.db_batch_written "
                         "anomaly_count=%s evidence_count=%s batch_size=%s",
                         anomaly_count,

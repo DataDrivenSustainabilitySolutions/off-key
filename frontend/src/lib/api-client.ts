@@ -34,11 +34,36 @@ export interface ApiRequestOptions {
 }
 
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status?: number, readonly issues: readonly ApiIssue[] = []) {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly issues: readonly ApiIssue[] = [],
+    /** The server's correlation ID for this request; its logs carry the same ID. */
+    readonly reference?: string,
+  ) {
     super(message);
     this.name = 'ApiRequestError';
   }
 }
+
+// The gateway echoes one ID per request (LOG_CORRELATION_HEADER, by default
+// X-Correlation-ID) and logs it on every line it writes for that request.
+const CORRELATION_HEADER = 'x-correlation-id';
+const REFERENCE_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+const responseReference = (error: AxiosError): string | undefined => {
+  const value = error.response?.headers?.[CORRELATION_HEADER];
+  return typeof value === 'string' && REFERENCE_PATTERN.test(value) ? value : undefined;
+};
+
+/** A server failure names its reference, so a report leads to its log lines. */
+const serverError = (message: string, status: number, issues: readonly ApiIssue[], reference?: string) =>
+  new ApiRequestError(
+    status >= 500 && reference ? `${message} (reference ${reference})` : message,
+    status,
+    issues,
+    reference,
+  );
 
 const assertSameMember = (previousToken: string | null, nextToken: string | null) => {
   const previousId = previousToken ? getUserIdFromToken(previousToken) : null;
@@ -121,7 +146,7 @@ const createApiClient = (): AxiosInstance => {
         const message = Array.isArray(detail)
           ? detail.map(issue => `${issue.loc.filter(part => part !== 'body').join('.')}: ${issue.msg}`).join('; ')
           : detail;
-        return Promise.reject(new ApiRequestError(message, error.response.status, Array.isArray(detail) ? detail : []));
+        return Promise.reject(serverError(message, error.response.status, Array.isArray(detail) ? detail : [], responseReference(error)));
       }
 
       // Network errors
@@ -130,7 +155,7 @@ const createApiClient = (): AxiosInstance => {
       }
 
       // Generic error
-      return Promise.reject(new ApiRequestError(`Request failed with status ${error.response.status}`, error.response.status));
+      return Promise.reject(serverError(`Request failed with status ${error.response.status}`, error.response.status, [], responseReference(error)));
     }
   );
 

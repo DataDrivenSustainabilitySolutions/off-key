@@ -18,7 +18,9 @@ class FavoriteService:
     async def list_user_favorites(self, *, user_id: int) -> list[str]:
         favorites = await self._repository.list_by_user_id(user_id=user_id)
         charger_ids = [favorite.charger_id for favorite in favorites]
-        logger.info(f"Retrieved {len(charger_ids)} favorites for user {user_id}")
+        logger.debug(
+            "event=tactic.favorites_read user_id=%s count=%s", user_id, len(charger_ids)
+        )
         return charger_ids
 
     async def add_favorite(self, *, user_id: int, charger_id: str) -> dict[str, str]:
@@ -35,7 +37,9 @@ class FavoriteService:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to add favorite: {exc}") from exc
 
-        logger.info(f"Added favorite {charger_id} for user {user_id}")
+        logger.info(
+            "event=tactic.favorite_added user_id=%s charger_id=%s", user_id, charger_id
+        )
         return {"message": "Favorite added"}
 
     async def remove_favorite(self, *, user_id: int, charger_id: str) -> dict[str, str]:
@@ -50,5 +54,9 @@ class FavoriteService:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to remove favorite: {exc}") from exc
 
-        logger.info(f"Removed favorite {charger_id} for user {user_id}")
+        logger.info(
+            "event=tactic.favorite_removed user_id=%s charger_id=%s",
+            user_id,
+            charger_id,
+        )
         return {"message": "Favorite removed"}

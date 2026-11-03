@@ -8,19 +8,6 @@
     fail_msg: Set internal_api_secret to a new random secret of at least 32 characters in the environment vault.
   no_log: true
 
-- name: Require the public demo's viewer account
-  assert:
-    that:
-      - demo_viewer_email | default('') is match('^[^@\\s]+@[^@\\s]+$')
-      - demo_viewer_email | default('') != superuser_mail
-      - demo_viewer_password | default('') | length >= 16
-      - "'CHANGE_ME' not in demo_viewer_password | default('')"
-    fail_msg: >-
-      Set demo_viewer_email (not the administrator's address) and a random
-      demo_viewer_password of at least 16 characters in the demo vault.
-  when: demo_mode | default(false) | bool
-  no_log: true
-
 - name: Validate the Resend API key without exposing it
   set_fact:
     resend_api_key_valid: >-
@@ -74,7 +61,6 @@
     fail_msg: >-
       Set cloudflare_tunnel_token in the production vault to the eyJ... token
       for the existing production Cloudflare Tunnel, not the installation command.
-  when: ingress_enabled | default(true) | bool
 
 - name: Initialise deployment secrets
   set_fact:
@@ -124,7 +110,6 @@
   set_fact:
     deployment_secret_material: >-
       {{ deployment_secret_material | combine({'cloudflared_tunnel_token': cloudflare_tunnel_token | trim}) }}
-  when: ingress_enabled | default(true) | bool
   no_log: true
 
 - name: Define the broker route secret
@@ -190,6 +175,9 @@
     group: "{{ stack_file_group }}"
   loop:
     - docker-compose.swarm.yml
+    - docker-compose.traefik.yml
+    - docker-compose.oauth2.yml
+    - docker-compose.landing.yml
 
 - name: Copy optional stack overlays this installation uses
   copy:
@@ -240,7 +228,6 @@
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
   loop: [landing.html, landing.md, landing-llms.txt]
-  when: landing_enabled | default(true) | bool
 
 - name: Copy the landing page web server configuration
   copy:
@@ -249,14 +236,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: landing_enabled | default(true) | bool
-
-- name: Remove the landing page when this installation has none
-  file:
-    path: "{{ stack_dir }}/{{ item }}"
-    state: absent
-  loop: [landing.html, landing.md, landing-llms.txt, landing-nginx.conf]
-  when: not (landing_enabled | default(true) | bool)
 
 - name: Copy the log collection and Grafana configuration
   copy:
@@ -282,13 +261,6 @@
     mode: "0640"
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
-  when: ingress_enabled | default(true) | bool
-
-- name: Remove the Cloudflare Tunnel connector when production's Traefik serves this stack
-  file:
-    path: "{{ stack_dir }}/docker-compose.cloudflared.yml"
-    state: absent
-  when: not (ingress_enabled | default(true) | bool)
 
 - name: Render MQTT security and collection controller overlay
   template:

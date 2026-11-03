@@ -19,7 +19,7 @@ type SectionDefinition = {
   description: string;
   icon: LucideIcon;
   group: "Personal" | "Workspace";
-  /** Hidden from visitors of the public demo. */
+  /** Hidden from signed-out visitors. */
   membersOnly?: boolean;
   content: () => ReactNode;
 };
@@ -41,12 +41,12 @@ const SECTIONS: SectionDefinition[] = [
  */
 export function SettingsOverlay() {
   const { section, select, close } = useSettingsNavigation();
-  const { isAuthenticated, isGuest } = useAuth();
+  const { isAuthenticated } = useAuth();
   const catalogue = useOptionalCatalogue();
   const location = useLocation();
   const navigate = useNavigate();
   const saving = !!catalogue?.system.saving;
-  const sections = SECTIONS.filter(entry => !entry.membersOnly || (isAuthenticated && !isGuest));
+  const sections = SECTIONS.filter(entry => !entry.membersOnly || isAuthenticated);
   const current = sections.find(entry => entry.id === section);
   useOverlayDocumentTitle(current?.label);
   const dialog = useRef<HTMLDivElement>(null);

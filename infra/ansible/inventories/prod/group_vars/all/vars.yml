@@ -53,13 +53,6 @@ frontend_hostname:                    "dashboard.aberration.app"
 ingress_base_domain:                  "aberration.app"
 frontend_base_url:                    "https://dashboard.aberration.app"
 cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
-# The public read-only demo, a second stack on this cluster (inventories/demo).
-# Traefik routes demo_hostname to it over the shared demo network; the landing
-# page shows its Demo links only while demo_base_url is set. See
-# docs/operations/public-demo.md.
-demo_hostname:                        "demo.aberration.app"
-demo_stack_name:                      "off-key-demo"
-demo_base_url:                        "https://demo.aberration.app"
 # Public documentation, linked from the landing page's llms.txt and Markdown view.
 docs_base_url:                        "https://datadrivensustainabilitysolutions.github.io/off-key"
 

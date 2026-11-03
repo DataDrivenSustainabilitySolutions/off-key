@@ -1,6 +1,6 @@
 import type { PipelineRunEventView } from "@/types/pipelines.generated";
 
-export type TimelineTone = "neutral" | "positive" | "warning" | "danger";
+type TimelineTone = "neutral" | "positive" | "warning" | "danger";
 
 export interface TimelineEntry {
   key: string;
@@ -42,7 +42,7 @@ const count = (value: unknown): number | undefined =>
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 
-export function stageLabel(stage: string | null | undefined): string {
+function stageLabel(stage: string | null | undefined): string {
   return (stage && stages[stage]) || stage || "Unknown";
 }
 

@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { setTimeout as delay } from "node:timers/promises";
 import type { PipelineCatalog, PipelineView } from "../../src/types/pipelines.generated";
 import { accessToken } from "./auth";
 
@@ -53,9 +54,17 @@ export async function archivePipelines(
     if (lenient && !response.ok()) continue;
     expect(response.ok(), await response.text()).toBe(true);
     const design = (await response.json()) as PipelineView;
-    const archived = await request.patch(url, { headers, data: {
+    const archive = () => request.patch(url, { headers, data: {
       expected_version: design.version, name: design.name, description: design.description, archived: true,
     } });
+    let archived = await archive();
+    if (archived.status() === 429) {
+      // Pipeline writes share a one-minute member quota across journeys.
+      // A throttled write never reaches TACTIC, so the same archive is safe to retry.
+      await archived.dispose();
+      await delay(60_000);
+      archived = await archive();
+    }
     if (!lenient) expect(archived.ok(), await archived.text()).toBe(true);
   }
 }

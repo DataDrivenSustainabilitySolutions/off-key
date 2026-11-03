@@ -132,8 +132,7 @@ type CanvasReadout = {
   height: number;
   tintAlpha: number;
   tintBands: Array<{
-    left: number; right: number; top: number; bottom: number; gapPixels: number;
-    firstRegionRight: number; nextRegionLeft: number;
+    left: number; right: number; top: number; bottom: number; regions: number;
   }>;
   orange: PixelGlyph;
   topRed: PixelGlyph;
@@ -197,19 +196,15 @@ const readCanvas = (chart: Locator): Promise<CanvasReadout> => chart.evaluate((c
     for (let x = left; x <= right; x += 1) {
       if (!columns[x]) continue;
       const previous = regions[regions.length - 1];
-      if (previous && x - previous.last <= 3 * scaleX) previous.last = x;
+      // The overflow triangle at the last evaluation hides a few columns of the band;
+      // a reading without a score spans far more than this at every tested width.
+      if (previous && x - previous.last <= 10 * scaleX) previous.last = x;
       else regions.push({ first: x, last: x });
     }
-    const firstRegion = regions[0];
-    const nextRegion = regions[1];
-    if (!firstRegion || !nextRegion) throw new Error("Expected separate evaluated observation cells");
-    // The fixture's first blank cell is bounded by timestamps 30s and 90s.
-    // These clean internal edges establish shared time scale and alignment even
-    // when the overflow triangle covers the final alarm-region edge.
-    const gapColumn = Math.round((firstRegion.last + nextRegion.first) / 2);
+    // Each threshold holds until the next evaluation, so the band runs without a gap
+    // across readings that have no score, from the first evaluation to the last reading.
     return { left: left / scaleX, right: right / scaleX, top: row.first / scaleY,
-      bottom: row.last / scaleY, gapPixels: columns[gapColumn] ?? 0,
-      firstRegionRight: firstRegion.last / scaleX, nextRegionLeft: nextRegion.first / scaleX };
+      bottom: row.last / scaleY, regions: regions.length };
   });
   let tintAlpha = 0;
   for (let alpha = 1; alpha < histogram.length; alpha += 1) {
@@ -281,10 +276,10 @@ test.describe("Tandem anomaly chart regression", () => {
           expect(pixels.tintAlpha).toBe(theme === "light" ? 26 : 36);
           for (const band of pixels.tintBands) {
             expect(band.bottom - band.top).toBeGreaterThan(6);
-            expect(band.gapPixels).toBe(0);
+            expect(band.regions).toBe(1);
+            // Shared time scale: every band starts at the first evaluation. The right edge is not
+            // compared, because overflow triangles and score lines cover it by a few pixels.
             expect(Math.abs(band.left - pixels.tintBands[0]!.left)).toBeLessThanOrEqual(2);
-            expect(Math.abs(band.firstRegionRight - pixels.tintBands[0]!.firstRegionRight)).toBeLessThanOrEqual(2);
-            expect(Math.abs(band.nextRegionLeft - pixels.tintBands[0]!.nextRegionLeft)).toBeLessThanOrEqual(2);
           }
           if (mode !== "adaptive") expect(pixels.overflowPixels).toBeGreaterThan(10);
           const box = await chart.boundingBox();

@@ -35,6 +35,29 @@
           include_role:
             name: stack_deploy
             tasks_from: verify
+
+        # This happens after application maintenance is complete and release.json
+        # is recorded. An optional logging failure never reopens that release.
+        - name: Reconcile observability after the application is independently verified
+          block:
+            - name: Render the independently deployed observability component
+              include_role:
+                name: observability
+                tasks_from: render
+              when: observability_active | bool
+
+            - name: Apply the independent logging component
+              include_role:
+                name: observability
+              vars:
+                observability_action: "{{ 'deploy' if observability_active | bool else 'pause' }}"
+          rescue:
+            - name: Report an isolated observability failure
+              debug:
+                msg: >-
+                  The application release is verified and complete. Observability failed
+                  separately; inspect its services and use deploy-observability.yml to retry
+                  or pause it. Application images and schema have not been rolled back.
       always:
         - name: Remove temporary manager registry credentials
           command:

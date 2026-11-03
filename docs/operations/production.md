@@ -151,10 +151,11 @@ Local Compose uses Mailpit. No production Mailpit service remains.
 
 ## Logs and Grafana
 
-With `observability_enabled` (production), the observability overlay runs Alloy on
-every node, Loki and Grafana on the manager. Alloy ships each container's output to
-Loki, including the RADAR workers TACTIC creates, whose logs Docker would otherwise
-delete with the service. Loki keeps 30 days on the manager's `loki-data` volume.
+With `observability_enabled` (production), Alloy collects only Off-key logs on
+workers, including dynamic RADAR workers. Loki and Grafana run on the explicitly
+selected data worker. Loki keeps seven days on a bounded filesystem. See the
+[worker observability runbook](observability.md) for placement, capacity,
+independent deployment, verification and pause.
 
 Grafana is at `https://grafana.aberration.app` behind the same oauth2-proxy gate as
 the broker and Traefik dashboards. It trusts the GitHub login oauth2-proxy returns
@@ -177,9 +178,9 @@ A browser error from the API shows a reference such as `(reference 4f1c…)`. It
 the request's correlation ID, so `{service=~".+"} |= "4f1c…"` finds every line of
 that request across the gateway and TACTIC.
 
-Alloy reads the local Docker API through a read-only socket mount, as Docker offers
-no narrower way to read a node's container logs. It publishes no port and is only
-on the internal `observability-network`, which has no route to the internet.
+Alloy uses a per-node Unix proxy limited to the Docker discovery and log APIs.
+No monitoring service publishes a port; only Traefik connects Grafana's internal
+network to its existing authenticated route.
 
 ## Catalog and private observations
 

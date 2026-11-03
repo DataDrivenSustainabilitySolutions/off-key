@@ -1,0 +1,18 @@
+---
+- name: Validate the requested observability operation
+  assert:
+    that: observability_action in ['deploy', 'check', 'pause']
+
+- name: Pause only this stack's labelled observability services
+  command:
+    argv: [python3, '-', pause, "{{ stack_name }}"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_runtime.py') }}"
+  when: observability_action == 'pause'
+
+- name: Deploy observability independently of application maintenance
+  include_tasks: deploy.yml
+  when: observability_action == 'deploy'
+
+- name: Verify observability separately
+  include_tasks: verify.yml
+  when: observability_action in ['deploy', 'check']

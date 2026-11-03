@@ -40,9 +40,17 @@ def read_configuration(directory):
     swarm_config = yaml.safe_load(
         run("docker", "stack", "config", "-c", "-", input=compatible, env=env).stdout
     )
+    observation = stack / "observability-model.json"
+    if observation.exists():
+        run("docker", "stack", "config", "-c", str(observation))
     return {
         "config": config,
         "swarm_config": swarm_config,
+        "observability_config": json.loads(
+            (stack / "observability-model.json").read_text()
+        )
+        if (stack / "observability-model.json").exists()
+        else None,
         "deployment_secret_material": manifest["deployment_secret_material"],
         "deployment_secret_names": manifest["deployment_secret_names"],
         "routes": yaml.safe_load((stack / "traefik-dynamic.yml").read_text())["http"],
@@ -656,13 +664,17 @@ class DeploymentTests(unittest.TestCase):
             "X-Auth-Request-User",
             routes["middlewares"]["oauth-auth"]["forwardAuth"]["authResponseHeaders"],
         )
-        services = config["services"]
+        services = result["observability_config"]["services"]
         for name in ("alloy", "loki", "grafana"):
             self.assertEqual(set(services[name]["networks"]), {"observability-network"})
-        self.assertIn("observability-network", services["traefik"]["networks"])
+        self.assertIn(
+            "observability-network", config["services"]["traefik"]["networks"]
+        )
         self.assertTrue(config["networks"]["observability-network"]["internal"])
         for public in ("cloudflared", "frontend", "landing", "oauth2-proxy"):
-            self.assertNotIn("observability-network", services[public]["networks"])
+            self.assertNotIn(
+                "observability-network", config["services"][public]["networks"]
+            )
 
         grafana = services["grafana"]["environment"]
         self.assertEqual(grafana["GF_AUTH_PROXY_ENABLED"], "true")
@@ -683,7 +695,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(alloy["deploy"]["mode"], "global")
         socket = next(
             volume
-            for volume in alloy["volumes"]
+            for volume in services["alloy-docker"]["volumes"]
             if volume.get("target") == "/var/run/docker.sock"
         )
         self.assertTrue(socket["read_only"])
@@ -695,12 +707,12 @@ class DeploymentTests(unittest.TestCase):
             )
             self.assertEqual(
                 services[name]["deploy"]["placement"]["constraints"],
-                ["node.role == manager"],
+                ["node.role == worker", "node.hostname == DDSS-2"],
             )
         # Content-addressed config names rotate together with any edit.
         for item in services["grafana"]["configs"] + services["alloy"]["configs"]:
             self.assertRegex(
-                config["configs"][item["source"]]["name"],
+                result["observability_config"]["configs"][item["source"]]["name"],
                 rf"^{item['source']}_[0-9a-f]{{12}}$",
             )
 

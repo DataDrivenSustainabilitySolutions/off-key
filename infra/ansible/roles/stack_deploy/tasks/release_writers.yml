@@ -11,13 +11,19 @@
   register: release_writer_services
   changed_when: false
 
+- name: Identify the separately managed observability services
+  command:
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}", --filter, label=off-key.component=observability]
+  register: release_observability_services
+  changed_when: false
+
 - name: Find this stack's runtime workers
   include_tasks: stack_workers.yml
 
 - name: Select writers to quiesce
   set_fact:
     release_writers: >-
-      {{ ((release_writer_services.stdout_lines | difference(non_writers))
+      {{ ((release_writer_services.stdout_lines | difference(non_writers + release_observability_services.stdout_lines))
           + (stack_tactic_workers | map(attribute='Spec.Name') | list)) | unique | list }}
   vars:
     non_writers: >-

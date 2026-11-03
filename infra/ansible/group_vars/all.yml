@@ -27,9 +27,32 @@ stack_compose_files: >-
      + [stack_dir ~ '/docker-compose.environment.yml']
      + [stack_dir ~ '/docker-compose.cloudflared.yml']
      + [stack_dir ~ '/docker-compose.landing.yml']
-     + ([stack_dir ~ '/docker-compose.observability.yml'] if observability_active | bool else [])
+     + ([stack_dir ~ '/docker-compose.observability-routing.yml'] if observability_active | bool else [])
      + [stack_dir ~ '/docker-compose.mqtt-security.yml']
      + ([stack_dir ~ '/docker-compose.persistence.yml'] if persistence_any_enabled | bool else []) }}
+
+# Public Grafana settings shared by its independent renderer and operator path.
+observability_grafana_environment:
+  GF_AUTH_PROXY_ENABLED: 'true'
+  GF_AUTH_PROXY_HEADER_NAME: X-Auth-Request-User
+  GF_AUTH_PROXY_HEADER_PROPERTY: username
+  GF_AUTH_PROXY_HEADERS: Email:X-Auth-Request-Email
+  GF_AUTH_PROXY_AUTO_SIGN_UP: 'true'
+  GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+  GF_AUTH_DISABLE_SIGNOUT_MENU: 'true'
+  GF_AUTH_BASIC_ENABLED: 'false'
+  GF_AUTH_ANONYMOUS_ENABLED: 'false'
+  GF_USERS_ALLOW_SIGN_UP: 'false'
+  GF_USERS_AUTO_ASSIGN_ORG_ROLE: Editor
+  GF_SECURITY_ADMIN_USER: offkey_local_admin
+  GF_SECURITY_COOKIE_SECURE: 'true'
+  GF_SECURITY_DISABLE_GRAVATAR: 'true'
+  GF_SERVER_ROOT_URL: "https://grafana.{{ ingress_base_domain }}/"
+  GF_ANALYTICS_REPORTING_ENABLED: 'false'
+  GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+  GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+  GF_NEWS_NEWS_FEED_ENABLED: 'false'
+  GF_LOG_LEVEL: warn
 
 # NOTE: there is deliberately no static "stateful node" variable here. Volumes are node-local,
 # but which node runs a given service is discovered at run time from `docker service ps`

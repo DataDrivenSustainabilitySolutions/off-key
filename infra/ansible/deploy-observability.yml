@@ -1,0 +1,30 @@
+---
+- import_playbook: validate-inventory.yml
+
+- name: Operate observability without application deployment or database maintenance
+  hosts: swarm_manager[0]
+  gather_facts: false
+  vars_files:
+    - inventories/prod/group_vars/all/release.yml
+  tasks:
+    - name: Resolve the running RADAR template image for scoped log discovery
+      command:
+        argv: [docker, service, inspect, --format, '{% raw %}{{.Spec.TaskTemplate.ContainerSpec.Image}}{% endraw %}', "{{ stack_name }}_mqtt-radar"]
+      register: observability_running_radar
+      changed_when: false
+      when: observability_action | default('deploy') == 'deploy'
+
+    - name: Keep the running application's immutable worker image
+      set_fact:
+        observability_runtime_image: "{{ observability_running_radar.stdout | trim }}"
+      when: observability_action | default('deploy') == 'deploy'
+
+    - name: Render only the observability component
+      include_role:
+        name: observability
+        tasks_from: render
+      when: observability_action | default('deploy') == 'deploy'
+
+    - name: Apply the requested independent operation
+      include_role:
+        name: observability

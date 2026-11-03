@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "ansible>=10",        # ansible-core 2.17+; bundles community collections
     "cryptography>=42",   # ansible-vault AES256 encryption
+    "pydantic>=2.12,<3",  # validated observability placement and resource policy
 ]
 
 # No build-system block: uv treats this as an application project (no publish needed).

@@ -1,47 +1,75 @@
-// Alloy runs once per node and ships that node's container logs to Loki.
-// Docker Swarm keeps a crashed task's container for a while, so its last
-// lines arrive even when TACTIC has already replaced the RADAR worker.
-
-discovery.docker "containers" {
-  host             = "unix:///var/run/docker.sock"
-  refresh_interval = "5s"
+// Workers only. Discovery is scoped before targets or retained logs are read.
+discovery.docker "stack" {
+  host             = "unix:///run/offkey-docker/docker.sock"
+  refresh_interval = "15s"
+  filter {
+    name   = "label"
+    values = ["com.docker.stack.namespace=" + sys.env("OBSERVABILITY_STACK")]
+  }
 }
 
-// Few, bounded labels; everything else stays in the JSON line.
-discovery.relabel "containers" {
-  targets = []
-
-  // Plain containers by name, Swarm tasks by their service.
-  rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "/?(.+)"
-    target_label  = "service"
+// TACTIC's dynamic services have no stack namespace. Require both this stack's
+// private network and its immutable RADAR image, including for older releases.
+discovery.docker "radar" {
+  host             = "unix:///run/offkey-docker/docker.sock"
+  refresh_interval = "15s"
+  filter {
+    name   = "network"
+    values = [sys.env("OBSERVABILITY_STACK") + "_emqx-network"]
   }
+  filter {
+    name   = "ancestor"
+    values = [sys.env("OBSERVABILITY_RADAR_IMAGE")]
+  }
+}
+
+discovery.relabel "logs" {
+  targets = array.concat(discovery.docker.stack.targets, discovery.docker.radar.targets)
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_swarm_service_name"]
     regex         = "(.+)"
     target_label  = "service"
   }
+  // Run identifiers remain in JSON fields, not in Loki stream labels.
   rule {
-    source_labels = ["__meta_docker_container_label_com_docker_stack_namespace"]
-    regex         = "(.+)"
-    target_label  = "stack"
+    source_labels = ["service"]
+    regex         = "radar-[0-9a-fA-F-]+"
+    replacement   = "radar"
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["service"]
+    regex         = "radar-preflight-[0-9a-fA-F-]+"
+    replacement   = "radar-preflight"
+    target_label  = "service"
+  }
+  rule {
+    target_label = "stack"
+    replacement = sys.env("OBSERVABILITY_STACK")
+  }
+  // Do not recursively collect collector error traffic.
+  rule {
+    source_labels = ["__meta_docker_container_label_off_key_component"]
+    regex         = "observability"
+    action        = "drop"
   }
 }
 
-loki.source.docker "containers" {
-  host          = "unix:///var/run/docker.sock"
-  targets       = discovery.docker.containers.targets
-  relabel_rules = discovery.relabel.containers.rules
+loki.source.docker "logs" {
+  host          = "unix:///run/offkey-docker/docker.sock"
+  targets       = discovery.relabel.logs.output
   forward_to    = [loki.write.stack.receiver]
 }
 
 loki.write "stack" {
   endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+    url                = "http://loki:3100/loki/api/v1/push"
+    batch_size         = "256KiB"
+    batch_wait         = "1s"
+    remote_timeout     = "5s"
+    min_backoff_period = "500ms"
+    max_backoff_period = "10s"
+    max_backoff_retries = 30
   }
-  // The task's hostname is the node's (see the overlay).
-  external_labels = {
-    node = constants.hostname,
-  }
+  external_labels = {node = constants.hostname}
 }

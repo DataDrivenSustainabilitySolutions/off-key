@@ -5,6 +5,12 @@
   register: persistence_services
   changed_when: false
 
+- name: Identify observability services that never write application data
+  command:
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}", --filter, label=off-key.component=observability]
+  register: persistence_observability_services
+  changed_when: false
+
 - name: Find this stack's runtime RADAR workers
   include_role:
     name: stack_deploy
@@ -29,6 +35,7 @@
     writers: >-
       {{ persistence_service_specs.stdout | from_json
          | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
+         | rejectattr('Spec.Name', 'in', persistence_observability_services.stdout_lines)
          | selectattr('Spec.Mode.Replicated', 'defined') | list }}
   no_log: true
 

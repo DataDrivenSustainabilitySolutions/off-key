@@ -23,6 +23,12 @@
         name: stack_prepare
         tasks_from: render
 
+    - name: Render observability through its separate production renderer
+      include_role:
+        name: observability
+        tasks_from: render
+      when: observability_active | bool
+
     - name: Render the actual NFS export template
       template:
         src: ../ansible/roles/nfs_server/templates/broker-route.exports.j2

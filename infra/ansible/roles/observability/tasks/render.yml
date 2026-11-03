@@ -1,0 +1,69 @@
+---
+- name: Validate the independent observability policy
+  command:
+    argv: ["{{ ansible_playbook_python }}", "{{ playbook_dir }}/../scripts/observability_config.py"]
+    stdin: >-
+      {{ {'stack_name': stack_name, 'data_node': observability_data_node | default(''),
+          'storage_size_gib': observability_storage_size_gib | default(20)} | to_json }}
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: independent_observability_policy
+
+- name: Retain validated independent observability settings
+  set_fact:
+    observability_settings: "{{ (independent_observability_policy.stdout | from_json).settings }}"
+    observability_environment: "{{ (independent_observability_policy.stdout | from_json).environment }}"
+
+- name: Ensure the component directory exists
+  file:
+    path: "{{ stack_dir }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ stack_file_owner | default('root') }}"
+    group: "{{ stack_file_group | default('docker') }}"
+
+- name: Copy the independent component and its configuration
+  copy:
+    src: "{{ observability_source_dir }}/{{ item }}"
+    dest: "{{ stack_dir }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner | default('root') }}"
+    group: "{{ stack_file_group | default('docker') }}"
+  loop: "{{ ['docker-compose.observability.yml'] + observability_files }}"
+
+- name: Render non-secret component interpolation values
+  template:
+    src: environment.j2
+    dest: "{{ stack_dir }}/.env.observability"
+    mode: "0600"
+    owner: "{{ stack_file_owner | default('root') }}"
+    group: "{{ stack_file_group | default('docker') }}"
+
+- name: Render Grafana's shared authenticated environment
+  copy:
+    dest: "{{ stack_dir }}/docker-compose.observability-environment.yml"
+    content: "{{ {'services': {'grafana': {'environment': observability_grafana_environment}}} | to_nice_yaml }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner | default('root') }}"
+    group: "{{ stack_file_group | default('docker') }}"
+
+- name: Compile the independent component without any application credentials
+  shell: >-
+    set -euo pipefail;
+    docker compose --env-file {{ (stack_dir ~ '/.env.observability') | quote }}
+    -f {{ (stack_dir ~ '/docker-compose.observability.yml') | quote }}
+    -f {{ (stack_dir ~ '/docker-compose.observability-environment.yml') | quote }} config --format json
+    | python3 -c {{ lookup('file', role_path ~ '/../../../scripts/compile_stack.py') | quote }} observability
+  args:
+    executable: /bin/bash
+  changed_when: false
+  register: independent_observability_model
+
+- name: Save the independently deployable model
+  copy:
+    dest: "{{ stack_dir }}/observability-model.json"
+    content: "{{ independent_observability_model.stdout | from_json | to_nice_json }}"
+    mode: "0600"
+    owner: "{{ stack_file_owner | default('root') }}"
+    group: "{{ stack_file_group | default('docker') }}"

@@ -1,0 +1,55 @@
+---
+- name: Validate the selected data node before host changes
+  command:
+    argv: [python3, '-', preflight, "{{ stack_name }}", "{{ stack_dir }}/observability-model.json"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_runtime.py') }}"
+  changed_when: false
+
+- name: Check the storage host matches the selected Docker node
+  command: hostname
+  delegate_to: "{{ observability_storage_host }}"
+  register: observability_storage_hostname
+  changed_when: false
+  ignore_unreachable: true
+
+- name: Refuse a mismatched storage host
+  assert:
+    that:
+      - observability_storage_hostname.rc | default(1) == 0
+      - observability_storage_hostname.stdout | default('') | trim == observability_data_node
+    fail_msg: The observability storage worker is unreachable or does not match its Swarm node.
+
+- name: Require actual host memory headroom before starting observability
+  shell: >-
+    python3 -c 'from pathlib import Path; m=dict(line.split(":",1) for line in Path("/proc/meminfo").read_text().splitlines());
+    assert int(m["MemAvailable"].split()[0]) >= 3145728, "Less than 3 GiB available RAM on the data worker"'
+  delegate_to: "{{ observability_storage_host }}"
+  changed_when: false
+  register: observability_memory_check
+  ignore_unreachable: true
+
+- name: Require the independent worker capacity check to succeed
+  assert:
+    that: observability_memory_check.rc | default(1) == 0
+    fail_msg: Could not verify memory headroom on the observability worker.
+
+- name: Prepare only the bounded Off-key observability filesystem
+  command:
+    argv: [python3, '-', "{{ observability_settings | to_json }}"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_storage.py') }}"
+  delegate_to: "{{ observability_storage_host }}"
+  register: observability_storage_result
+  ignore_unreachable: true
+  changed_when: >-
+    (observability_storage_result.rc | default(1) == 0)
+    and (observability_storage_result.stdout | from_json).changed
+
+- name: Require the dedicated storage mount before submitting services
+  assert:
+    that: observability_storage_result.rc | default(1) == 0
+    fail_msg: Could not verify the bounded observability filesystem.
+
+- name: Submit only the independent observability model
+  command:
+    argv: [docker, stack, deploy, -c, "{{ stack_dir }}/observability-model.json", "{{ stack_name }}"]
+  changed_when: true

@@ -30,6 +30,7 @@ nav = [
     { "Deployment modes" = "operations/deployment-modes.md" },
     { "GitHub setup" = "operations/github-setup.md" },
     { "Production releases" = "operations/production.md" },
+    { "Worker observability" = "operations/observability.md" },
     { "Recovery" = "operations/recovery.md" },
     { "Collection operations" = "operations/system-collection.md" },
     { "RADAR capacity" = "operations/radar-capacity.md" },

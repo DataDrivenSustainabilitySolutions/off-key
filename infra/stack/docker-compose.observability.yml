@@ -1,77 +1,121 @@
-# Observability overlay: container logs in Loki, read in Grafana at grafana.<domain>.
-#
-# Merged by stack_deploy when observability_enabled (production). Needs the Traefik and
-# oauth2-proxy overlays, so it is NOT valid on its own. See docs/operations/production.md
-# (Logs and Grafana).
-#
-# - Alloy runs on every node and ships that node's container logs, including the
-#   short-lived RADAR workers TACTIC creates, whose logs Docker deletes with the service.
-# - Loki keeps them for 30 days on a volume of the manager node.
-# - Grafana trusts the identity oauth2-proxy sends through Traefik's forwardAuth, so
-#   only members of the GitHub organisation reach it. It has no login form, no sign-up
-#   and no anonymous access. Its only network to Traefik is observability-network,
-#   which Traefik joins here; cloudflared and the public containers cannot reach it.
-#
-# SECURITY: Alloy reads the local Docker API through a read-only socket mount, as Docker
-# offers no narrower way to read a node's container logs. It publishes no port, runs
-# no listener beyond 127.0.0.1 and is only on observability-network, which is internal
-# (no route to the internet). Loki and Grafana do not mount the socket.
-
+# Worker-only observability. Application deployment and this component converge separately.
 services:
+  alloy-docker:
+    labels: &component {off-key.component: observability}
+    image: "${SOCKET_PROXY_IMAGE:?pin the Docker API proxy image}"
+    entrypoint: [haproxy, -W, -db, -f, /etc/haproxy/observability.cfg]
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    configs:
+      - source: alloy_docker_config
+        target: /etc/haproxy/observability.cfg
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-docker-socket:/run/offkey-docker
+    networks: [observability-network]
+    logging: &bounded-logs
+      driver: json-file
+      options: {max-size: 5m, max-file: "3"}
+    deploy:
+      mode: global
+      labels: {off-key.component: observability}
+      placement:
+        constraints: [node.role == worker]
+      resources:
+        limits:
+          memory: ${ALLOY_DOCKER_MEMORY_LIMIT:-64M}
+          cpus: "${ALLOY_DOCKER_CPU_LIMIT:-0.25}"
+        reservations:
+          memory: ${ALLOY_DOCKER_MEMORY_RESERVATION:-16M}
+          cpus: "${ALLOY_DOCKER_CPU_RESERVATION:-0.05}"
+      restart_policy: &restart
+        condition: any
+        delay: 30s
+        max_attempts: 5
+        window: 120s
+      update_config: &update
+        order: stop-first
+        monitor: 30s
+        failure_action: pause
 
   alloy:
+    labels: *component
+    cap_drop: [ALL]
+    # UID 473 owns Alloy's data. Group 0 permits the dedicated proxy socket;
+    # this task has no capabilities and never mounts the host Docker socket.
+    user: "473:0"
     image: "${ALLOY_IMAGE:-grafana/alloy:v1.21.3}"
-    command:
-      - run
-      - /etc/alloy/config.alloy
-      - --storage.path=/var/lib/alloy/data
-      - --server.http.listen-addr=127.0.0.1:12345
-      - --disable-reporting
-    # The node's name, so every line says where it ran.
+    command: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy/data, --server.http.listen-addr=127.0.0.1:12345, --disable-reporting]
     hostname: "{{.Node.Hostname}}"
+    environment:
+      OBSERVABILITY_STACK: "${OBSERVABILITY_STACK:?name the application stack}"
+      OBSERVABILITY_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:?pin the runtime worker image}"
+      GOMEMLIMIT: 192MiB
+      GOMAXPROCS: "1"
     configs:
       - source: alloy_config
         target: /etc/alloy/config.alloy
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      # Read positions, so a restart neither repeats nor skips lines.
-      - alloy-data:/var/lib/alloy/data
-    networks:
-      - observability-network
+      - alloy-docker-socket:/run/offkey-docker:ro
+      - alloy-worker-data:/var/lib/alloy/data
+    networks: [observability-network]
+    logging: *bounded-logs
     deploy:
       mode: global
+      labels: {off-key.component: observability}
+      placement:
+        constraints: [node.role == worker]
       resources:
         limits:
-          memory: 256M
-      restart_policy:
-        condition: any
+          memory: ${ALLOY_MEMORY_LIMIT:-256M}
+          cpus: "${ALLOY_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${ALLOY_MEMORY_RESERVATION:-64M}
+          cpus: "${ALLOY_CPU_RESERVATION:-0.1}"
+      restart_policy: *restart
+      update_config: *update
 
-  # No healthcheck: the image has no shell or HTTP client. Grafana's data source
-  # check and the Alloy push errors are the signal.
   loki:
+    labels: *component
+    cap_drop: [ALL]
     image: "${LOKI_IMAGE:-grafana/loki:3.7.9}"
-    command:
-      - -config.file=/etc/loki/config.yml
+    user: "10001:10001"
+    command: [-config.file=/etc/loki/config.yml]
+    environment: {GOMEMLIMIT: 768MiB, GOMAXPROCS: "1"}
     configs:
       - source: loki_config
         target: /etc/loki/config.yml
-    volumes:
-      - loki-data:/loki
-    networks:
-      - observability-network
+    volumes: [loki-data:/loki]
+    networks: [observability-network]
+    logging: *bounded-logs
     deploy:
       replicas: 1
+      # This is a single stateful task. Resolve its address directly inside the
+      # overlay; there is no published port or load-balancing requirement.
+      endpoint_mode: dnsrr
+      labels: {off-key.component: observability}
       placement:
-        constraints:
-          - node.role == manager
+        constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]
       resources:
         limits:
-          memory: 1G
-      restart_policy:
-        condition: any
+          memory: ${LOKI_MEMORY_LIMIT:-1024M}
+          cpus: "${LOKI_CPU_LIMIT:-1}"
+        reservations:
+          memory: ${LOKI_MEMORY_RESERVATION:-512M}
+          cpus: "${LOKI_CPU_RESERVATION:-0.25}"
+      restart_policy: *restart
+      update_config: *update
 
   grafana:
+    labels: *component
+    cap_drop: [ALL]
     image: "${GRAFANA_IMAGE:-grafana/grafana:13.2.5}"
+    user: "472:0"
+    environment:
+      GOMEMLIMIT: 384MiB
+      GOMAXPROCS: "1"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
     configs:
       - source: grafana_datasources
         target: /etc/grafana/provisioning/datasources/stack.yml
@@ -79,57 +123,86 @@ services:
         target: /etc/grafana/provisioning/dashboards/stack.yml
       - source: grafana_dashboard_logs
         target: /etc/grafana/dashboards/logs.json
-    volumes:
-      - grafana-data:/var/lib/grafana
-    networks:
-      - observability-network
+    volumes: [grafana-data:/var/lib/grafana]
+    networks: [observability-network]
+    logging: *bounded-logs
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
-      interval: 15s
+      test: [CMD, wget, --quiet, --tries=1, --spider, http://127.0.0.1:3000/api/health]
+      interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 3
+      start_period: 90s
     deploy:
       replicas: 1
+      labels: {off-key.component: observability}
       placement:
-        constraints:
-          - node.role == manager
+        constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]
       resources:
         limits:
-          memory: 512M
-      restart_policy:
-        condition: any
+          memory: ${GRAFANA_MEMORY_LIMIT:-512M}
+          cpus: "${GRAFANA_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${GRAFANA_MEMORY_RESERVATION:-256M}
+          cpus: "${GRAFANA_CPU_RESERVATION:-0.1}"
+      restart_policy: *restart
+      update_config: *update
 
-  traefik:
-    networks:
-      - observability-network
+  log-canary:
+    image: "${SOCKET_PROXY_IMAGE:?pin the canary runtime image}"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - >-
+        while :; do printf '%s\n' '{"event":"observability_canary"}'; sleep 30; done
+    hostname: "{{.Node.Hostname}}"
+    labels: {off-key.component: canary}
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    networks: [observability-network]
+    logging: *bounded-logs
+    deploy:
+      mode: global
+      labels: *component
+      placement:
+        constraints: [node.role == worker]
+      resources:
+        limits: {memory: "${LOG_CANARY_MEMORY_LIMIT:-16M}", cpus: "${LOG_CANARY_CPU_LIMIT:-0.05}"}
+        reservations: {memory: "${LOG_CANARY_MEMORY_RESERVATION:-4M}", cpus: "${LOG_CANARY_CPU_RESERVATION:-0.01}"}
+      restart_policy: *restart
+      update_config: *update
 
 volumes:
-  alloy-data:
+  alloy-worker-data:
+  alloy-docker-socket:
   loki-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: "${OBSERVABILITY_DATA_ROOT:?prepare bounded storage}/loki"}
   grafana-data:
+    driver: local
+    driver_opts: {type: none, o: bind, device: "${OBSERVABILITY_DATA_ROOT:?prepare bounded storage}/grafana"}
 
 networks:
   observability-network:
     driver: overlay
     internal: true
-    driver_opts:
-      com.docker.network.driver.mtu: 1280
+    driver_opts: {com.docker.network.driver.mtu: "1280"}
 
-# One hash over every file: any edit rotates all of them together.
 configs:
+  alloy_docker_config:
+    name: alloy_docker_${ALLOY_DOCKER_CONFIG_HASH}
+    file: ./alloy-docker.cfg
   alloy_config:
-    name: alloy_config_${OBSERVABILITY_CONFIG_HASH}
+    name: alloy_config_${ALLOY_CONFIG_HASH}
     file: ./alloy.alloy
   loki_config:
-    name: loki_config_${OBSERVABILITY_CONFIG_HASH}
+    name: loki_config_${LOKI_CONFIG_HASH}
     file: ./loki.yml
   grafana_datasources:
-    name: grafana_datasources_${OBSERVABILITY_CONFIG_HASH}
+    name: grafana_datasources_${GRAFANA_DATASOURCES_HASH}
     file: ./grafana-datasources.yml
   grafana_dashboards:
-    name: grafana_dashboards_${OBSERVABILITY_CONFIG_HASH}
+    name: grafana_dashboards_${GRAFANA_DASHBOARDS_HASH}
     file: ./grafana-dashboards.yml
   grafana_dashboard_logs:
-    name: grafana_dashboard_logs_${OBSERVABILITY_CONFIG_HASH}
+    name: grafana_dashboard_logs_${GRAFANA_DASHBOARD_LOGS_HASH}
     file: ./grafana-dashboard-logs.json

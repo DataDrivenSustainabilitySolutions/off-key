@@ -28,3 +28,9 @@ restore-stack-prod:
 	$(ANSIBLE) -i $(INVENTORY) restore-stack-state.yml $(VAULT) $(if $(TS),-e restore_from=$(TS),) -e restore_services=$(SERVICES)
 backup-broker-route-prod:
 	$(ANSIBLE) -i $(INVENTORY) backup-broker-route-state.yml $(VAULT)
+deploy-observability-prod:
+	$(ANSIBLE) -i $(INVENTORY) deploy-observability.yml $(VAULT)
+check-observability-prod:
+	$(ANSIBLE) -i $(INVENTORY) deploy-observability.yml $(VAULT) -e observability_action=check
+pause-observability-prod:
+	$(ANSIBLE) -i $(INVENTORY) deploy-observability.yml $(VAULT) -e observability_action=pause

@@ -563,12 +563,40 @@ jobs:
         timeout-minutes: 3
         run: uv run --frozen --project infra python infra/tests/swarm_smoke.py cleanup --directory "$OFFKEY_REHEARSAL_DIR"
 
+  observability:
+    name: worker observability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-backend
+        with:
+          python-version: ""
+          sync: "false"
+          cache: "false"
+      - name: Install locked infrastructure tools
+        run: uv sync --frozen --project infra
+      - name: Rehearse worker placement, log delivery and failure isolation
+        run: >-
+          uv run --frozen --project infra python infra/tests/observability_smoke.py
+          --evidence "$RUNNER_TEMP/observability-evidence.json"
+      - name: Retain non-secret integration evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: observability-evidence
+          path: ${{ runner.temp }}/observability-evidence.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   # The one required status check. It needs every other job, so it passes only
   # when all of them pass; its name never changes.
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke]
+    needs: [backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -4,7 +4,7 @@
     set -euo pipefail;
     docker compose --env-file {{ (stack_dir ~ '/.env') | quote }}
     -f {{ stack_compose_files | map('quote') | join(' -f ') }} config --format json
-    | python3 -c {{ lookup('file', role_path ~ '/../../../scripts/compile_stack.py') | quote }}
+    | python3 -c {{ lookup('file', role_path ~ '/../../../scripts/compile_stack.py') | quote }} application
   args:
     executable: /bin/bash
   register: stack_config

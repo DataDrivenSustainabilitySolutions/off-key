@@ -533,6 +533,9 @@ elif args[:2] == ["service", "inspect"]:
     ]))
 elif args[:5] == ["service", "ls", "--quiet", "--filter", "label=managed_by=tactic"]:
     print("\n".join(workers))
+elif args[-2:] == ["--filter", "label=off-key.component=observability"]:
+    assert args[:6] == ["service", "ls", "--format", "{{.Name}}", "--filter", "label=com.docker.stack.namespace=off-key"], args
+    print("off-key_grafana\noff-key_alloy")
 else:
     assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
     assert args[5] == "label=com.docker.stack.namespace=off-key", args
@@ -540,6 +543,7 @@ else:
         "off-key_postgres", "off-key_emqx-main", "off-key_cloudflared",
         "off-key_traefik", "off-key_landing", "off-key_frontend", "off-key_api",
         "off-key_tactic", "off-key_db-sync", "off-key_mqtt-proxy", "off-key_retired",
+        "off-key_grafana", "off-key_alloy",
     ]))
 """
             )

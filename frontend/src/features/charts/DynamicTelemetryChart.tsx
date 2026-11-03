@@ -19,11 +19,12 @@ import {
   createAnomalyMarkers,
   filterAnomalies,
 } from "@/lib/anomaly-utils";
-import { filterServiceAnomalies } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { normalizeTelemetry } from "./telemetry-data";
 import { getChartDomain } from "./telemetry-thresholds";
 import { useChartColors } from "./use-chart-colors";
 import { useDetectorPanes } from "./use-detector-panes";
+import { buildDetectorInputSeries } from "./detector-inputs";
 import { DetectorNotices } from "./DetectorNotices";
 import {
   buildTelemetryChartModel,
@@ -251,6 +252,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     service: monitoringService,
     selectionKey: `${telemetryData.type}\u0000${monitoringService?.id ?? ""}`,
   });
+  // Only one service's inputs belong on the chart; without a service there is nothing to show.
+  const detectorInputs = useMemo(() => {
+    const first = filteredData[0]?.[0], last = filteredData[filteredData.length - 1]?.[0];
+    return monitoringService && first !== undefined && last !== undefined
+      ? buildDetectorInputSeries(serviceEvidence, row => getEvidenceTimeForSensor(row, telemetryData.type), [first, last]) : [];
+  }, [monitoringService, serviceEvidence, telemetryData.type, filteredData]);
   const chartModel = useMemo(() => {
     return buildTelemetryChartModel({
       telemetryName: displayName,
@@ -262,8 +269,10 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
       range: activeNavigationState.range,
       pendingTelemetryTimestamps,
       anomalyMarkers: createAnomalyMarkers(telemetryData.data, telemetryAnomalies),
+      detectorInputs,
     });
   }, [
+    detectorInputs,
     displayName,
     filteredData,
     telemetryAnomalies,
@@ -363,9 +372,11 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const hasAdaptivePane = chartModel.secondarySeries.some(
     (series) => series.pane === "adaptive",
   );
-  const paneCount = 1 + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
+  const paneCount = 1 + (chartModel.detectorInputs?.length ? 1 : 0) + (hasStaticPane ? 1 : 0) + (hasAdaptivePane ? 1 : 0);
   const chartHeightClass =
-    paneCount === 3
+    paneCount >= 4
+      ? "h-[842px]"
+      : paneCount === 3
       ? "h-[680px]"
       : paneCount === 2
         ? "h-[520px]"

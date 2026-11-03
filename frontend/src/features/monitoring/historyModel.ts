@@ -2,6 +2,7 @@ import type { TelemetryDataPoint } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import type { MonitoringChartModel } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
+import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
 import { buildSelectedDetectorSeries, collectMonitoringChartDetectors, type SelectedDetectorIds } from "@/features/charts/telemetry-detectors";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 
@@ -58,7 +59,8 @@ export function buildServiceHistoryModel({
     if (start !== undefined && (first === undefined || start < first)) first = start;
     if (end !== undefined && (last === undefined || end > last)) last = end;
   }
-  const model: MonitoringChartModel = { readings, secondarySeries, range: {},
+  const detectorInputs = buildDetectorInputSeries(rows, row => Date.parse(row.timestamp));
+  const model: MonitoringChartModel = { readings, detectorInputs, secondarySeries, range: {},
     extent: first === undefined || last === undefined ? undefined : [first, last] };
   return { model, detectors };
 }

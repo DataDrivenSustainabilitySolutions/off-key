@@ -62,6 +62,36 @@ def _normalize_detector_results(value: Any) -> list[dict[str, Any]]:
     ]
 
 
+MAX_STORED_INPUTS = 64
+"""The most features of one detector an evidence row keeps."""
+
+
+def _input_values(value: dict[Any, Any]) -> dict[str, float | None]:
+    return {
+        name[:120]: _optional_finite_float(number)
+        for name, number in list(value.items())[:MAX_STORED_INPUTS]
+        if isinstance(name, str)
+    }
+
+
+def _normalize_detector_inputs(value: Any) -> list[dict[str, Any]]:
+    """The features each detector scored, as it received them, bounded and JSON-safe.
+
+    One detector reports ``{feature: value}``; combined detectors report
+    ``{detector_id: {feature: value}}``. Both become a list of
+    ``{"detector_id", "inputs"}``, with no detector id for a single detector.
+    """
+    if not isinstance(value, dict) or not value:
+        return []
+    if all(isinstance(inputs, dict) for inputs in value.values()):
+        return [
+            {"detector_id": identifier[:100], "inputs": _input_values(inputs)}
+            for identifier, inputs in list(value.items())[:MAX_DETECTORS]
+            if isinstance(identifier, str)
+        ]
+    return [{"detector_id": None, "inputs": _input_values(value)}]
+
+
 def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
     """Return a bounded, JSON-safe projection of runtime tracker evidence."""
     if not isinstance(value, list):
@@ -398,6 +428,9 @@ class ResultProjector:
                     ),
                     "detector_results": _normalize_detector_results(
                         context.get("detectors")
+                    ),
+                    "detector_inputs": _normalize_detector_inputs(
+                        result.processed_features
                     ),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),

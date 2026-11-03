@@ -71,7 +71,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   // Both requests keep polling, so a failure clears itself once the service answers again.
   const problem = errors.length ? `${errors.join(" ")} Retrying automatically.` : "";
   const stage = service.operational_status.stage.replace(/_/g, " ");
-  const panes = model.readings.length + model.secondarySeries.length;
+  const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length)) + model.secondarySeries.length;
   const latest = model.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
   return <section className="ex-preview-history mn-history" aria-label="Monitoring history">

@@ -34,6 +34,13 @@ export function formatMonitoringObservationTooltip(
     lines.push(`${reading.name}: ${point ? `${formatValue(point[1])}${reading.unit ? ` ${reading.unit}` : ""}` : "input not loaded"}`);
     if (inputTime !== undefined && inputTime !== observation.timeMs) lines.push(`  Input time: ${formatTime(inputTime)} (${inputTime - observation.timeMs} ms)`);
   }
+  // The features the detector scored at this observation, such as phase deviations.
+  for (const entry of entries) {
+    if (typeof entry.seriesId !== "string" || !entry.seriesId.startsWith("input:") || !Array.isArray(entry.value)) continue;
+    const [time, value] = entry.value as unknown[];
+    if (time !== observation.timeMs || typeof value !== "number") continue;
+    lines.push(`${String(entry.seriesName)}: ${formatValue(value)}`);
+  }
   for (const entry of evaluated) {
     const result = entry.data!.observation!;
     if (result.timeMs !== observation.timeMs) continue;

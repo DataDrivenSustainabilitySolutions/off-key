@@ -50,7 +50,7 @@ Inputs → Rename → Gate → Aggregate → Formula for each → Select → PyO
 | Gate | Monitors only while the charger charges on at least two phases. |
 | Aggregate | Adds the mean of the three phases, `i_mean`. |
 | Formula, for each feature | Adds `L1_dev`, `L2_dev` and `L3_dev`: each phase over the mean, minus 1. |
-| Select features | Hands only the three deviations to the detector. |
+| Select features | Hands two of the deviations, `L1_dev` and `L2_dev`, to the detector. |
 | PyOD PCA | Learns how the deviations normally relate, and scores how far an observation strays from that. |
 
 ## Step by step
@@ -128,11 +128,16 @@ the formula.
 
 ### 6. Hand the deviations to the detector
 
-Insert **Select features** after the Formula and check `L1_dev`, `L2_dev` and
-`L3_dev`. The detector then sees only the balance between the phases, not the
-load.
+Insert **Select features** after the Formula and check `L1_dev` and `L2_dev`.
+The detector then sees only the balance between the phases, not the load.
 
-![Select features: L1_dev, L2_dev and L3_dev are checked, in that order.](../assets/phase-monitoring/select.png){ width="320" }
+Two are enough. The three deviations always add up to 0, so `L3_dev` is minus
+the sum of the other two and carries nothing new. Handing all three to a
+detector also makes it numerically unstable: their spread is exactly 0 in one
+direction, and PCA divides by that spread. A change in L3 still shows, because
+it moves the mean and with it `L1_dev` and `L2_dev`.
+
+![Select features: L1_dev and L2_dev are checked, in that order.](../assets/phase-monitoring/select.png){ width="320" }
 
 If the list stays empty and says the features *aren't known yet*, an earlier
 step has a problem, such as a Rename with nothing filled in. The message names
@@ -155,7 +160,7 @@ receives, with the reading it follows and the steps that change it. The Gate's
 condition sits above the rows, because it decides which observations reach all
 of them.
 
-![The Features view: L1_dev, L2_dev and L3_dev, each from its current reading through Rename features and Phase deviations, under the Gate condition.](../assets/phase-monitoring/features.png)
+![The Features view: L1_dev and L2_dev, each from its current reading through Rename features and Phase deviations, under the Gate condition.](../assets/phase-monitoring/features.png)
 
 The validation badge should read **Valid** with the one division warning from
 step 5. **Apply monitoring** starts the service.
@@ -170,14 +175,23 @@ several ordinary charging sessions at different currents. If the charger has a
 known fault at the time, wait until it is repaired, or the detector learns the
 fault as normal.
 
+## Reading the chart
+
+The chart of a running service shows the readings, then a **Detector inputs**
+pane with `L1_dev` and `L2_dev`, then the sequential evidence. The deviations
+show what the detector sees: they stay flat through load changes and step when
+the balance between the phases changes. The evidence pane shades the alarm zone
+above the threshold. Readings newer than the last scored one count as *awaiting
+score*. While the Gate holds readings back, for example between charging
+sessions, that count grows; it is not a backlog, and it resets once a reading is
+scored again.
+
 ## Variations
 
 - **Phase voltages.** Use the same steps with the three voltages and a Gate such
   as `min(V1, V2, V3) > 100` to skip outages.
 - **Adaptive stream.** With an adaptive strategy, **Aberrant
-  MovingMahalanobisDistance** on two of the deviations, such as `L1_dev` and `L2_dev`, works the
-  same way. Use two: the three deviations always add up to 0, so the third adds
-  nothing. An adaptive detector keeps learning, so it follows a slow drift
+  MovingMahalanobisDistance** on the same two deviations works the same way. An adaptive detector keeps learning, so it follows a slow drift
   instead of reporting it; use a Static baseline when slow faults matter.
 - **One number for the imbalance.** A Formula such as
   `max(abs(L1_dev), abs(L2_dev), abs(L3_dev))` gives the largest deviation as

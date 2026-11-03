@@ -260,8 +260,16 @@ interface MonitoringEvidence {
   tracker_results?: MartingaleTrackerResult[];
   /** Each detector's part when the policy combines several; empty for one detector. */
   detector_results?: MonitoringDetectorResult[];
+  /** The features each detector scored, after every step before it; empty in older rows. */
+  detector_inputs?: MonitoringDetectorInputs[];
   threshold: number;
   alarm: boolean;
+}
+
+/** The features one detector scored. The id is null when the service has one detector. */
+export interface MonitoringDetectorInputs {
+  detector_id: string | null;
+  inputs: Record<string, number | null>;
 }
 
 /** One detector's score, and its surprise against its own calibration scores. */
@@ -311,6 +319,7 @@ export type MonitoringChartEvidence = Pick<
   | 'restarted_martingale'
   | 'tracker_results'
   | 'detector_results'
+  | 'detector_inputs'
   | 'threshold'
   | 'alarm'
 > & {

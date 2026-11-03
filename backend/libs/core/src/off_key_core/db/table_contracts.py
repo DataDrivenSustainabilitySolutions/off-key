@@ -181,6 +181,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             default=list,
             server_default=text("'[]'"),
         ),
+        # The features each detector scored, after every step before it.
+        Column(
+            "detector_inputs",
+            JSON().with_variant(JSONB(), "postgresql"),
+            nullable=False,
+            default=list,
+            server_default=text("'[]'"),
+        ),
         Column("threshold", Float, nullable=False),
         Column("alarm", Boolean, nullable=False, default=False),
         Column(

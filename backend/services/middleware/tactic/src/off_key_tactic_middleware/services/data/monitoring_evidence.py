@@ -45,6 +45,7 @@ class MonitoringEvidenceService:
                 "log_restarted_martingale": row.log_restarted_martingale,
                 "tracker_results": getattr(row, "tracker_results", []),
                 "detector_results": getattr(row, "detector_results", None) or [],
+                "detector_inputs": getattr(row, "detector_inputs", None) or [],
                 "threshold": row.threshold,
                 "alarm": row.alarm,
             }
@@ -84,6 +85,7 @@ class MonitoringEvidenceService:
                 "restarted_martingale": row.restarted_martingale,
                 "tracker_results": getattr(row, "tracker_results", []),
                 "detector_results": getattr(row, "detector_results", None) or [],
+                "detector_inputs": getattr(row, "detector_inputs", None) or [],
                 "threshold": row.threshold,
                 "alarm": row.alarm,
                 "created": row.created or row.timestamp,

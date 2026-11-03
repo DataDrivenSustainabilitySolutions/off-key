@@ -22,6 +22,12 @@ const FALLBACK_COLORS: Record<ResolvedTheme, ChartThemeColors> = {
   },
 };
 
+/** Detector inputs: distinct from the reading colours, readable on either background. */
+const SERIES_PALETTES: Record<ResolvedTheme, readonly string[]> = {
+  light: ["#2f6db3", "#c0562e", "#7a4fb0", "#2e8a57", "#a0711a", "#a43f74", "#3f8590", "#6b6b6b"],
+  dark: ["#7fb0ea", "#f09a74", "#c0a2ef", "#7fcf9f", "#e2bb63", "#ec95c2", "#86c9d3", "#b5b5b5"],
+};
+
 const TOKEN_NAMES = {
   foreground: "--foreground",
   mutedForeground: "--muted-foreground",
@@ -58,6 +64,7 @@ export const resolveChartThemeColors = (
     popoverForeground: resolveColor("popoverForeground"),
     muted: resolveColor("muted"),
     primary: resolveColor("primary"),
+    seriesPalette: SERIES_PALETTES[resolvedTheme],
     alarmBoundary: resolvedTheme === "dark" ? "#f87171" : "#b91c1c",
     alarmFill: resolvedTheme === "dark"
       ? "rgba(248, 113, 113, 0.14)"

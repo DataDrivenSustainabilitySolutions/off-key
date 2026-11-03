@@ -66,6 +66,9 @@ APPLIED_CHECKSUMS = {
     "016_pipeline_run_events.sql": (
         "43a86fcf11a428b24cde3590cdfa86d311281883d5d43784a254df011a2b9fdd"
     ),
+    "017_detector_inputs.sql": (
+        "bb49f11f5966ec132584ed56689a17bef52a1edf13416308e753d1d8ef664cfb"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

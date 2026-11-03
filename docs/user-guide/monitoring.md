@@ -103,8 +103,14 @@ Every ready-phase inference is persisted in `monitoring_evidence`, including the
 p-value or score, sensor set, aggregate alarm flag, and bounded
 `tracker_results` evidence for every configured martingale. A design that
 combines detectors also records each detector's score and surprise beside the
-combined value. Charts draw each selected alarm statistic on a logarithmic
-secondary axis with its threshold. Telemetry and evidence use the same payload
+combined value, and every inference keeps the features its detectors scored.
+Charts draw each selected alarm statistic on a logarithmic secondary axis with
+its threshold, shaded above it from each evaluation to the next. Evidence more
+than four decades above the threshold is marked at the top edge instead of
+stretching the axis. The line joins consecutive evaluations and breaks only
+across a pause, such as one a Gate holds back. A **Detector inputs** pane under
+the readings plots the scored features, so derived values such as phase
+deviations sit beside the raw readings. Telemetry and evidence use the same payload
 event timestamp and share zoom and crosshair, so observations from one inference
 stay vertically aligned; receive time is used only when a publisher omits its
 event timestamp.

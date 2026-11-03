@@ -27,6 +27,7 @@ TACTIC_ACCESS = {
         "GET /redoc",
     },
     "service": {
+        "GET /api/v1/data/anomalies",
         "POST /api/v1/data/anomalies",
         "GET /api/v1/data/anomalies/count",
         "DELETE /api/v1/data/anomalies/{anomaly_id}",
@@ -149,6 +150,7 @@ GATEWAY_ACCESS = {
         "GET /v1/anomalies",
         "POST /v1/anomalies",
         "GET /v1/anomalies/count",
+        "GET /v1/anomalies/report",
         "DELETE /v1/anomalies/{anomaly_id}",
         "GET /v1/monitors",
         "GET /v1/monitors/all",

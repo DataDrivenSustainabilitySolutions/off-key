@@ -199,6 +199,7 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 | `POST` | `/favorites` | Add a favourite charger for the current member | Body: `charger_id` |
 | `DELETE` | `/favorites` | Remove a favourite charger of the current member | Body: `charger_id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
+| `GET` | `/anomalies/report` | List the Reporting history in one request | Newest 500 per entity for the first 100 catalogue entities |
 | `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
 | `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
 | `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
@@ -228,6 +229,7 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
 | `DELETE` | `/data/users/{user_id}/favorites/{charger_id}` | Remove a favourite |
+| `GET` | `/data/anomalies` | List bounded Reporting history for catalogue entities |
 | `GET` | `/data/anomalies/count` | Count anomalies |
 | `GET` | `/data/anomalies/{charger_id}` | List anomalies |
 | `POST` | `/data/anomalies` | Create an anomaly |

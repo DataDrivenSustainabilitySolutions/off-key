@@ -37,6 +37,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
         "/monitors/all",
         "/favorites?user_id=99",
         "/anomalies/count",
+        "/anomalies/report",
         "/system",
         "/members",
     )
@@ -130,6 +131,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
         for method, path in (
             ("DELETE", "/api/v1/members/19"),
             ("GET", "/api/v1/data/chargers"),
+            ("GET", "/api/v1/data/anomalies"),
             ("GET", "/api/v1/data/users/17/favorites"),
             ("POST", "/api/v1/data/auth/login"),
             ("GET", "/api/v1/system"),

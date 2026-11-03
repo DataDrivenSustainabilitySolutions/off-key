@@ -60,6 +60,7 @@ export const API_CONFIG = {
 
     // Anomalies
     ANOMALIES: {
+      REPORT: '/v1/anomalies/report',
       BY_CHARGER: (chargerId: string) =>
         `/v1/anomalies?charger_id=${chargerId}`,
       DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,

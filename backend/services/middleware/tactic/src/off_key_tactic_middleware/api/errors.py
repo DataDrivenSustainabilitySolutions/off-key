@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi import HTTPException, Request, Response
 from fastapi.routing import APIRoute
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from ..domain import (
     AuthenticationError,
@@ -43,5 +45,15 @@ class DomainErrorRoute(APIRoute):
                 return await handler(request)
             except DomainError as exc:
                 raise http_error(exc) from exc
+            except PoolTimeoutError as exc:
+                raise HTTPException(
+                    503, "The database is busy. Try again shortly."
+                ) from exc
+            except DBAPIError as exc:
+                if getattr(exc.orig, "sqlstate", None) != "53300":
+                    raise
+                raise HTTPException(
+                    503, "The database is busy. Try again shortly."
+                ) from exc
 
         return route_handler

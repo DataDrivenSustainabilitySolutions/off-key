@@ -41,6 +41,9 @@ class DatabaseSettings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_PORT: int = Field(ge=1, le=65535)
     POSTGRES_HOST: str
+    POSTGRES_ASYNC_POOL_SIZE: int = Field(default=10, ge=1)
+    POSTGRES_ASYNC_MAX_OVERFLOW: int = Field(default=20, ge=0)
+    POSTGRES_ASYNC_POOL_TIMEOUT_SECONDS: float = Field(default=30, gt=0)
 
     @property
     def database_url(self) -> str:

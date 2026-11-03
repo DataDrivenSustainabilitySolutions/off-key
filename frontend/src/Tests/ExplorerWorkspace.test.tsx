@@ -4,6 +4,7 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router-do
 import { ApplicationWorkspace } from "@/app/ApplicationWorkspace";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
+import { formatDay } from "@/lib/format-time";
 import MonitoringWorkspace from "@/pages/MonitoringWorkspace";
 import { SourcesWorkspace } from "@/features/catalogue/SourcesWorkspace";
 import Reporting from "@/pages/Anomalies";
@@ -682,16 +683,19 @@ describe("reporting", () => {
   ];
   function withReports(items = reports()) {
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
-      : endpoint === "/v1/chargers/available" ? [{ charger_id: "room-input" }]
-        : endpoint.startsWith("/v1/anomalies?charger_id=room-input") ? items : []);
+      : endpoint === "/v1/anomalies/report" ? items : []);
   }
 
   it("groups events by day under catalogue labels and narrows them with filters", async () => {
-    withReports(); mount("/anomalies");
+    const items = reports();
+    withReports(items); mount("/anomalies");
     const events = await screen.findByRole("region", { name: "Anomaly events" });
     await within(events).findByText("Temperature spike");
+    expect(vi.mocked(apiUtils.get).mock.calls.map(([endpoint]) => endpoint)
+      .filter(endpoint => endpoint.startsWith("/v1/anomalies") || endpoint.startsWith("/v1/chargers")))
+      .toEqual(["/v1/anomalies/report"]);
     const days = within(events).getAllByRole("rowgroup").map(group => group.querySelector(".rp-day th")?.textContent).filter(Boolean);
-    expect(days).toEqual(["Today", "Yesterday"]);
+    expect(days).toEqual(items.map(item => formatDay(item.timestamp)).reverse());
     // Recorded identities read as catalogue names, newest first.
     const rows = events.querySelectorAll(".rp-row");
     expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);

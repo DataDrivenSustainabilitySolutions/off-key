@@ -1,7 +1,6 @@
 /**
- * One display format for times across the application: recent times read
- * relative ("5 minutes ago"), older ones as a short absolute date, and the
- * exact time is offered on hover.
+ * Recent activity uses relative time and falls back to a short date after a
+ * day. Reading freshness uses elapsed time even for older observations.
  */
 
 const DAY_MS = 86_400_000;
@@ -9,6 +8,9 @@ const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeS
 const exactDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const timeOfDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const elapsedDays = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
+
+export type RelativeTimeMode = "recent" | "elapsed";
 
 export function parseTime(value: string | number | Date | null | undefined): Date | undefined {
   if (value === null || value === undefined || value === "") return undefined;
@@ -34,14 +36,17 @@ export const formatTimeOfDay = (value: string | number | Date) => {
   return date ? timeOfDay.format(date) : "";
 };
 
-/** "just now", "5 minutes ago", "3 hours ago"; a date after a day. */
-export function formatRelativeTime(value: string | number | Date, now = Date.now()) {
+/** Recent times use minutes and hours. Elapsed times include seconds and days. */
+export function formatRelativeTime(value: string | number | Date, now = Date.now(), mode: RelativeTimeMode = "recent") {
   const date = parseTime(value);
   if (!date) return "";
   const elapsed = now - date.getTime();
-  if (elapsed < -60_000 || elapsed >= DAY_MS) return dateTime.format(date);
-  const seconds = Math.round(elapsed / 1000);
-  if (seconds < 60) return "just now";
+  const showElapsed = mode === "elapsed";
+  if (elapsed < -60_000) return dateTime.format(date);
+  if (elapsed >= DAY_MS) return showElapsed
+    ? elapsedDays.format(-Math.floor(elapsed / DAY_MS), "day") : dateTime.format(date);
+  const seconds = showElapsed ? Math.floor(elapsed / 1000) : Math.round(elapsed / 1000);
+  if (seconds < 60) return showElapsed && seconds > 0 ? relative.format(-seconds, "second") : "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return relative.format(-minutes, "minute");
   return relative.format(-Math.floor(minutes / 60), "hour");

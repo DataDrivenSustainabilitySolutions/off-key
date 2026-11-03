@@ -58,20 +58,20 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   return <section className="mn-create" aria-label="Create monitoring service">
     <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current="New service" />
     <div className="mn-detail-header"><div><h1>Create service</h1></div></div>
-    <p className="ex-muted">Visual flow editing is disabled for this deployment.</p>
     <div className="mn-create-fields"><label className="mn-field">Name<input aria-label="Service name" maxLength={120} placeholder="e.g. Machine health" value={name} onChange={event => setName(event.target.value)} /></label>
       <div className="mn-field"><span>Inputs</span><MonitoringTargetPicker targets={targets} value={targetId} onChange={id => { setTargetId(id); }} /></div></div>
     {!targets.length && <p className="ex-muted">Add numeric readings to the catalogue to configure monitoring.</p>}
     {target && <>
-      <p className="ex-muted">{enabledInputs.length} recorded readings · <Link className="ex-collection-monitor" to={sourceHref(collectionIds, document, `${location.pathname}${location.search}`)}>Configure in Sources</Link></p>
+      <p className="ex-muted">{enabledInputs.length ? `${enabledInputs.length} ${enabledInputs.length === 1 ? "reading" : "readings"} with recording enabled.` : "Recording is off for these readings."}{" "}
+        <Link className="ex-collection-monitor" to={sourceHref(collectionIds, document, `${location.pathname}${location.search}`)}>{enabledInputs.length ? "Review recording in Sources" : "Turn on recording in Sources"}</Link></p>
       {enabledInputs.length ? <>
-        {!collectionReady && <p className="ex-muted">Waiting for collection to apply…</p>}
+        {!collectionReady && <p className="ex-muted" role="status">Waiting for recording settings to apply.</p>}
         <div className="mn-create-mode" aria-label="Monitoring strategy"><button aria-pressed={strategy === "adaptive_stream"} onClick={() => setStrategy("adaptive_stream")}>Adaptive stream</button>
           <button aria-pressed={strategy === "static_baseline"} onClick={() => setStrategy("static_baseline")}>Static baseline</button></div>
         {error && <p className="ex-preview-error" role="alert">{error}<button onClick={() => { setLoading(true); setRetry(value => value + 1); }}>Retry</button></p>}
         {strategy === "adaptive_stream" ? <AdaptiveMonitoringSetup key={`${target.id}:${initialReading ?? ""}`} {...props} adaptiveModels={availableModels} />
           : <StaticMonitoringSetup key={`${target.id}:${initialReading ?? ""}`} {...props} staticModels={availableModels} />}
-      </> : <p className="ex-muted">Enable collection for the readings this service will monitor.</p>}
+      </> : null}
     </>}
   </section>;
 }

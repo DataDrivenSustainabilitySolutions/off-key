@@ -13,11 +13,7 @@ export function AppearanceSettings() {
   const id = useId();
 
   return (
-    <fieldset className="app-settings-fieldset" aria-describedby={`${id}-help`}>
-      <legend>Theme</legend>
-      <p id={`${id}-help`} className="app-settings-help">
-        Choose a light or dark appearance, or match your device’s settings.
-      </p>
+    <fieldset className="app-settings-fieldset" aria-label="Theme">
       <div className="app-settings-themes">
         {themes.map(({ value, label, icon: Icon }) => (
           <label key={value} className="app-settings-theme">
@@ -37,7 +33,6 @@ export function AppearanceSettings() {
           </label>
         ))}
       </div>
-      <p className="app-settings-save-note">Changes apply immediately and are saved on this device.</p>
     </fieldset>
   );
 }

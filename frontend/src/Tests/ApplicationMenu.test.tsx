@@ -63,7 +63,7 @@ describe("shared application menu", () => {
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Preferences" }));
     expect(await screen.findByText("/anomalies?settings=preferences")).toBeTruthy();
-    expect(within(dialog).getByRole("heading", { name: "Preferences", level: 2 })).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Appearance", level: 2 })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
     expect(await screen.findByText("/anomalies")).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

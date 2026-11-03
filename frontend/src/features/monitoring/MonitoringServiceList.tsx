@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, Star } from "lucide-react";
 import type { ActiveService } from "@/types/monitoring";
 import { RelativeTime } from "@/components/RelativeTime";
-import { modelName, serviceName, serviceState, strategyName, type MonitoringIndex } from "@/domain/monitoring/serviceModel";
+import { serviceName, serviceState, type MonitoringIndex } from "@/domain/monitoring/serviceModel";
 
 type Props = {
   draftKey?: string; services: ActiveService[]; index: MonitoringIndex; ready: boolean; error: string;
@@ -57,8 +57,8 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
         })}
       </div><label className="mn-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search monitoring services" placeholder="Find a service…" value={query}
         onChange={event => { setQuery(event.target.value); scroll.current?.scrollTo?.(0, 0); }} /></label></div>
-      <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={5}>
-        <div className="mn-row mn-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Inputs</span><span role="columnheader">State</span><span role="columnheader">Last update</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
+      <div role="table" aria-label="Monitoring service list" aria-rowcount={shown.length + 1} aria-colcount={4}>
+        <div className="mn-row mn-table-head" role="row"><span role="columnheader">Service</span><span role="columnheader">Readings</span><span role="columnheader">Status</span><span role="columnheader" className="ex-sr-only">Favourite</span></div>
         <div className="mn-table-scroll" ref={scroll} onScroll={event => setOffset(event.currentTarget.scrollTop)} role="rowgroup" style={{ height: `min(${Math.max(76, virtual.getTotalSize())}px, max(320px, calc(100dvh - 260px)))` }}>
           <div className="mn-virtual-rows" style={{ height: virtual.getTotalSize() }}>
             {virtual.getVirtualItems().map(item => {
@@ -73,13 +73,12 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                 }} onClick={event => {
                   if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                   event.preventDefault(); onOpen(service.id);
-                }}>{row.name}</Link><small>{strategyName(service)}{service.model_type ? ` · ${modelName(service.model_type)}` : ""}</small>
+                }}>{row.name}</Link>
                   <small className="mn-mobile-scope" title={row.scope}>{row.scope}</small></div>
                 <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
-                  {progress && <small>{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</small>}</div>
-                <div role="cell" className="mn-service-time"><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" />
-                  <small>{service.operational_status.processed_message_count.toLocaleString()} processed</small></div>
+                  {progress && <small>{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples</small>}
+                  {service.operational_status.updated_at && <small className="mn-service-time">Reported <RelativeTime value={service.operational_status.updated_at} /></small>}</div>
                 <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Remove" : "Add"} ${row.name} ${favourites.has(service.id) ? "from" : "to"} favourites`}
                   onClick={() => onFavourite(service.id)}><Star size={15} aria-hidden="true" /></button></div>
               </div>;
@@ -87,7 +86,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
           </div>
           {!shown.length && <p className="mn-no-matches" role="status">No matching services.</p>}
         </div>
-      </div><p className="mn-result-count" role="status">{shown.length.toLocaleString()} {shown.length === 1 ? "service" : "services"}</p>
+      </div>
     </>}
   </section>;
 }

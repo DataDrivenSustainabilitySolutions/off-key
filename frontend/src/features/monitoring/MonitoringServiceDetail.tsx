@@ -74,7 +74,11 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <ActionMenu label="Service actions" actions={[{ label: "Copy service ID", icon: Copy, onSelect: () => void copyId() },
           ...(canEdit ? [{ label: removeLabel, icon: Trash2, destructive: true, separated: true, onSelect: () => { setDeleteError(""); setConfirm(true); } }] : [])]} />
       </div></div>
-    <dl className="mn-summary"><div><dt>State</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span></dd></div>
+    <dl className="mn-summary"><div><dt>Status</dt><dd><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
+      {progress && <>{" · "}{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples
+        <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>
+          <div style={{ width: `${Math.min(100, Math.max(0, progress.current / Math.max(1, progress.target) * 100))}%` }} />
+        </div></>}</dd></div>
       <div><dt>Inputs</dt><dd>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
       <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
@@ -87,9 +91,6 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
     <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
       {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
-        {progress && <section><h3>{state.label}</h3><p className="ex-muted">{progress.current.toLocaleString()} / {progress.target.toLocaleString()} samples</p>
-          <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>
-            <div style={{ width: `${Math.min(100, Math.max(0, progress.current / Math.max(1, progress.target) * 100))}%` }} /></div></section>}
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}
         {service.operational_status.detail && <p className="ex-muted">{service.operational_status.detail}</p>}
         {activity && <section className="mn-section"><h3>Monitoring activity</h3>
@@ -98,7 +99,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
             <div><dt>Last evidence saved</dt><dd><RelativeTime value={activity.last_persisted_at} fallback="Awaiting update" /></dd></div></dl>
           {activity.missing_sensors.length > 0 && <p className="ex-muted">Missing inputs: {describeInputs(activity.missing_sensors)}</p>}
           {activity.stale_sensors.length > 0 && <p className="ex-muted">Stale inputs: {describeInputs(activity.stale_sensors)}</p>}
-          <p className="ex-muted">Input freshness budget: {activity.freshness_seconds} seconds.</p>
+          <p className="ex-muted">Inputs count as stale after {activity.freshness_seconds} s.</p>
         </section>}
         <section className="mn-section"><h3>Coverage</h3>
           <p className="ex-muted">Delivery is best effort. Missing observations cannot be replayed.</p>
@@ -127,8 +128,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <dl className="mn-configuration"><div><dt>Strategy</dt><dd>{strategyName(service)}</dd></div><div><dt>Model</dt><dd title={service.model_type}>{service.model_type ? modelName(service.model_type) : "Not recorded"}</dd></div>
           {configuration?.monitoring.training_window_size !== undefined && <div><dt>Training samples</dt><dd>{formatSetting(configuration.monitoring.training_window_size)}</dd></div>}
           {configuration?.monitoring.calibration_window_size !== undefined && <div><dt>Calibration samples</dt><dd>{formatSetting(configuration.monitoring.calibration_window_size)}</dd></div>}
-          <div><dt>Notifications</dt><dd>Operator managed</dd></div>
-        </dl><p className="ex-muted">Email recipients are configured by the deployment.</p>
+          <div><dt>Email recipients</dt><dd>Managed by the operator</dd></div>
+        </dl>
         {configuration && Object.keys(configuration.monitoring).length > 0 && <details className="mn-section"><summary>Detector configuration</summary><pre className="mn-json">{JSON.stringify(configuration, null, 2)}</pre></details>}
         <section className="mn-section"><h3>Service</h3><dl className="mn-configuration"><div><dt>Created</dt><dd>{formatDateTime(service.created_at ?? "") || "Not recorded"}</dd></div>
           <div><dt>Service ID</dt><dd>{service.id}</dd></div></dl></section>

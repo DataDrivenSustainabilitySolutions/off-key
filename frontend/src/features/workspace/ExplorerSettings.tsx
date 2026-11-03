@@ -144,21 +144,12 @@ function ExplorerSettings({
         <section className="catalogue-settings-section catalogue-settings-files" aria-label="Import and export">
           <div className="catalogue-settings-section-heading">
             <h3>Import &amp; export</h3>
-            <p>Keep a copy of your setup or bring in another catalogue.</p>
           </div>
           <div className="catalogue-settings-file-actions">
-            <div className="catalogue-settings-file-row">
-              <Download size={19} aria-hidden="true" />
-              <div className="catalogue-settings-action-copy"><strong>Export a copy</strong><span>Download your current catalogue as JSON.</span></div>
-              <Button type="button" variant="outline" disabled={disabled} onClick={() => void exportFile()}>Export catalogue</Button>
-            </div>
-            <div className="catalogue-settings-file-row">
-              <Upload size={19} aria-hidden="true" />
-              <div className="catalogue-settings-action-copy"><strong>Import a catalogue</strong><span>Review a JSON file before replacing this catalogue.</span></div>
-              <Button type="button" variant="outline" disabled={!canEdit || disabled} onClick={() => fileInput.current?.click()}>Import file</Button>
-            </div>
+            <Button type="button" variant="outline" disabled={disabled} onClick={() => void exportFile()}><Download aria-hidden="true" />Export JSON</Button>
+            <Button type="button" variant="outline" disabled={!canEdit || disabled} onClick={() => fileInput.current?.click()}><Upload aria-hidden="true" />Import JSON</Button>
           </div>
-          <p className="catalogue-settings-hint">JSON files up to 1 MiB. Importing replaces the current catalogue.</p>
+          <p className="catalogue-settings-hint">Import limit is 1 MiB.</p>
           <input ref={fileInput} type="file" hidden disabled={!canEdit || disabled} accept=".json,application/json" aria-label="Catalogue file"
             onChange={event => {
               const file = event.target.files?.[0];

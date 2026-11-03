@@ -181,7 +181,7 @@ test.describe("visual pipeline real infrastructure", () => {
         await selected(page).selectOption("features_merge_1");
         await expect(page.getByRole("heading", { name: "Incoming connections · output order", exact: true })).toBeVisible();
         await openPipelineInput(page);
-        await page.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
+        await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
         await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
         await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
         for (const name of ["voltage", "current", "temperature"])
@@ -199,7 +199,7 @@ test.describe("visual pipeline real infrastructure", () => {
             activationIds.push(committed.id); serviceIds.push(committed.service_id);
             await route.fulfill({ status: 503, json: { detail: "Interrupted acknowledgement" } });
           });
-          await page.getByRole("button", { name: "Apply monitoring", exact: true }).click();
+          await page.getByRole("button", { name: "Start monitoring", exact: true }).click();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeVisible();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeEnabled();
           await page.unroute("**/v1/monitors/pipelines/apply");
@@ -211,7 +211,7 @@ test.describe("visual pipeline real infrastructure", () => {
             response.url().endsWith("/v1/monitors/pipelines/apply") &&
             response.request().method() === "POST",
         );
-        await page.getByRole("button", { name: committed ? "Recover start request" : "Apply monitoring", exact: true }).click();
+        await page.getByRole("button", { name: committed ? "Recover start request" : "Start monitoring", exact: true }).click();
         const response = await activationResponse;
         expect(response.ok(), await response.text()).toBeTruthy();
         const activation = (await response.json()) as PipelineActivationView;
@@ -414,7 +414,7 @@ test.describe("visual pipeline real infrastructure", () => {
           await expect(page.getByRole("region", { name: "Monitoring workbench", exact: true })).toBeVisible();
           await openPipelineSettings(page, "Service");
           await page.getByRole("spinbutton", { name: "Calibration observations", exact: true }).fill("9");
-          await expect(page.getByText(/Monitoring pauses briefly and learning starts again/)).toBeVisible();
+          await expect(page.getByText(/Monitoring pauses briefly and learning restarts\. History is kept\./)).toBeVisible();
           await openPipelineInput(page);
           for (const name of ["voltage", "current", "temperature"])
             await expect(page.getByRole("combobox", { name: `Reading for ${name}`, exact: true })).toHaveValue(`${deviceId}:${name}`);
@@ -424,7 +424,7 @@ test.describe("visual pipeline real infrastructure", () => {
               response.request().method() === "POST",
           );
           await page
-            .getByRole("button", { name: "Apply changes", exact: true })
+            .getByRole("button", { name: "Update monitoring", exact: true })
             .click();
           const replacementResult = await replacementResponse;
           expect(

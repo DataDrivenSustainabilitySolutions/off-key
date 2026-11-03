@@ -108,6 +108,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
     ? { ...compiledValidation, valid: false, issues: [...compiledValidation.issues, ...runtimeIssues] }
     : compiledValidation;
   const target = targets.find((item) => item.id === draft.targetId);
+  const inputsForTarget = target?.inputs ?? [];
+  const unrecorded = inputsForTarget.filter(input => input.binding.policy.mode === "off").map(input => input.stream.id);
+  const waitingForRecording = !props.collectionReady && (!unrecorded.length || unrecorded.length < inputsForTarget.length);
+  const recordingIds = !waitingForRecording && unrecorded.length ? unrecorded : inputsForTarget.map(input => input.stream.id);
+  const recordingHref = sourceHref(initialReading && recordingIds.includes(initialReading) ? [initialReading] : recordingIds,
+    catalogueDocument, `${location.pathname}${location.search}`);
   const slots = draft.document.definition.input_slots;
   const bindings = Object.fromEntries(slots.filter((slot) => draft.bindings?.[slot.id]).map((slot) => [slot.id, draft.bindings![slot.id]!]));
   const validateGraph = () => graph.validate((definition, selected) => pipelinesApi.validate(definition, undefined, selected));
@@ -187,7 +193,6 @@ export function PipelineCreate(props: PipelineSetupProps) {
         setDraft((previous) => ({ ...previous, targetId, bindings: matched?.bindings ?? suggestBindings(document.definition.input_slots, next) }));
       }} /></div>
     {draft.startingId ? <PipelineReadingPicker target={target} selected={Object.values(bindings)} disabled={!canAuthor || locked || checking} owned={owned}
-      recordingHref={(ids) => sourceHref(ids.includes(initialReading ?? "") ? [initialReading!] : ids, catalogueDocument, `${location.pathname}${location.search}`)}
       onChange={(selected) => {
         if (!target) return;
         picked.current = true;
@@ -196,12 +201,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
       }} />
       : <PipelineInputBindings slots={slots} target={target} bindings={draft.bindings ?? {}} disabled={!canAuthor || locked || checking} owned={owned}
         onChange={(bindings) => setDraft((previous) => ({ ...previous, bindings }))} onSlotsChange={changeInputs} />}
-    {attempted && !ready && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
+    {attempted && !ready && (!unrecorded.length || unrecorded.length < inputsForTarget.length) && <p className="pl-field-error" role="alert">{draft.startingId ? "Select at least one available reading to monitor."
       : "Choose a different, collected reading for each input. Readings already monitored by another service are unavailable."}</p>}
     <div className="pl-input-step-footer">
       <p className="pl-help">{target ? draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"} selected`
         : `${mapped} of ${slots.length} inputs mapped` : "Select an entity to choose its readings."}</p>
-      <Link to={sourceHref(target?.inputs.map((input) => input.stream.id) ?? [], catalogueDocument, `${location.pathname}${location.search}`)}>Configure readings in Sources</Link>
+      {target && props.collectionReady && !unrecorded.length && <Link to={recordingHref}>Review recording in Sources</Link>}
     </div>
   </div>;
   return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
@@ -236,7 +241,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
             existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
             onSave={async (details) => !!await session.save(details)} />
           <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-            <Play size={15} />{checking ? "Checking…" : replaceId ? "Apply changes" : "Apply monitoring"}</button>
+            <Play size={15} />{checking ? "Checking…" : replaceId ? "Update monitoring" : "Start monitoring"}</button>
         </>}
       </div>
     </header>
@@ -245,9 +250,15 @@ export function PipelineCreate(props: PipelineSetupProps) {
     {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
     {error && <p className="pl-error" role="alert">{error}</p>}
     <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
-    {!props.collectionReady && <p className="pl-warning" role="status">Enable collection in Sources and wait for it to connect before applying monitoring.</p>}
+    {waitingForRecording ? <p className="pl-warning" role="status">Waiting for recording settings to apply.
+      {target && <> <Link to={recordingHref}>Review recording in Sources</Link></>}
+    </p>
+      : unrecorded.length > 0 && <p className="pl-notice" role="status">
+        Recording is off for {unrecorded.length} {unrecorded.length === 1 ? "reading" : "readings"}.{" "}
+        <Link to={recordingHref}>Turn on recording in Sources</Link>
+      </p>}
     {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-    {replaceId && !locked && <p className="pl-warning">Applying changes replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning starts again. Its history is kept.</p>}
+    {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.</p>}
     <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       validationError={metadata.error} onRetryValidation={metadata.retry}

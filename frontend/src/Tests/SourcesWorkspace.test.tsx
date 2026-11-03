@@ -173,9 +173,9 @@ describe("dedicated Sources configuration", () => {
     for (const binding of Object.values(saved.runtime.bindings!)) binding.policy = { mode: "original", interval_seconds: 10 };
     mount("/sources?broker=broker");
     const choice = await screen.findByRole("radiogroup", { name: "Recording" });
-    expect(screen.getByText("2 of 2 recording · Every message")).toBeTruthy();
+    expect(screen.getByText("2 of 2 enabled · Every message")).toBeTruthy();
     fireEvent.change(within(choice).getByLabelText("Seconds between samples"), { target: { value: "60" } });
-    fireEvent.click(within(choice).getByRole("radio", { name: /Sampled/ }));
+    fireEvent.click(within(choice).getByRole("radio", { name: /At intervals/ }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
     expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{ scope, operation: "set",
       policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: true }] }), expect.anything());
@@ -213,7 +213,7 @@ describe("dedicated Sources configuration", () => {
   it("records and stops a broker from its overview row", async () => {
     mount();
     const overview = await screen.findByRole("region", { name: "Broker overview" });
-    expect(within(overview).getByText("Not recorded")).toBeTruthy();
+    expect(within(overview).getByText("Recording off")).toBeTruthy();
     fireEvent.click(within(overview).getByRole("button", { name: "Record Workshop broker" }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
     expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
@@ -252,15 +252,13 @@ describe("dedicated Sources configuration", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Check connections" }));
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
-    expect(await within(overview).findByRole("img", { name: /^Unreachable · Nothing accepts connections on this host and port\. · Checked at/ })).toBeTruthy();
+    expect(await within(overview).findByRole("img", { name: /^Unreachable · Checked at/ })).toBeTruthy();
     expect(within(overview).getByText("Recording")).toBeTruthy();
-    expect(within(overview).getByText("Not recorded")).toBeTruthy();
-    // A broker nobody records from but that could not be reached reads as unavailable, with the reason.
-    expect(within(overview).getByText("Not recorded · Unreachable")).toBeTruthy();
-    expect(within(overview).getByText("Nothing accepts connections on this host and port.")).toBeTruthy();
+    expect(within(overview).getAllByText("Recording off")).toHaveLength(2);
+    expect(within(overview).getAllByText("Nothing accepts connections on this host and port.")).toHaveLength(1);
     expect(within(overview).getByText("Used broker").closest(".source-broker")?.className).toContain("source-broker--positive");
     expect(within(overview).getByText("Workshop broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
-    expect(within(overview).getByText("Old broker").closest(".source-broker")?.className).toContain("source-broker--danger");
+    expect(within(overview).getByText("Old broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
     expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
   });
 
@@ -287,7 +285,7 @@ describe("dedicated Sources configuration", () => {
 
     await act(() => router.navigate("/sources?broker=broker"));
     expect((await screen.findAllByText(message)).length).toBeGreaterThan(0);
-    fireEvent.click(await screen.findByRole("button", { name: "Reconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Reconnect recording" }));
     await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "broker" }, undefined));
     await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
   });
@@ -308,10 +306,11 @@ describe("dedicated Sources configuration", () => {
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     expect(within(overview).getByText(message)).toBeTruthy();
     expect(within(overview).getByRole("button", { name: "Stop recording Used broker" })).toBeTruthy();
-    fireEvent.click(within(overview).getByRole("button", { name: "Reconnect Used broker" }));
+    fireEvent.click(within(overview).getByRole("button", { name: "Reconnect recording for Used broker" }));
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "used" }, undefined));
     fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
-    expect(await within(overview).findByText("Not recorded · Unreachable")).toBeTruthy();
+    expect(await within(overview).findByRole("img", { name: /^No response · Checked at/ })).toBeTruthy();
+    expect(within(overview).getByText("The broker did not answer within 15 seconds.")).toBeTruthy();
     expect(within(overview).getByRole("button", { name: "Record Workshop broker" })).toBeTruthy();
     expect(within(overview).queryByRole("button", { name: /^Connect/ })).toBeNull();
     expect(apiUtils.post).not.toHaveBeenCalledWith(expect.stringMatching(/\/leases$/), expect.anything(), expect.anything());

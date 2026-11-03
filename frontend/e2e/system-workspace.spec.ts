@@ -8,6 +8,7 @@ import { accessToken } from "./helpers/auth";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.setTimeout(300_000);
+test.use({ locale: "en-US" });
 
 test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }, testInfo) => {
   const entityId = randomUUID();
@@ -55,8 +56,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Import file", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Export catalogue", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import JSON", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export JSON", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${entityId} temperature`);
@@ -69,8 +70,8 @@ test("records only an opted-in reading and restores its history in the mobile wo
     // Choosing a rate saves it at once; there is no separate apply step.
     await collection.getByLabel("Seconds between samples", { exact: true }).fill("1");
     expect((await readSystem()).runtime.collection_revision).toBe(initial.runtime.collection_revision);
-    await collection.getByRole("radio", { name: /^Sampled/ }).check();
-    await expect(collection.getByText("1 of 1 recording · Every 1 s", { exact: true })).toBeVisible({ timeout: 120_000 });
+    await collection.getByRole("radio", { name: /^At intervals/ }).check();
+    await expect(collection.getByText("Every 1 s", { exact: true })).toBeVisible({ timeout: 120_000 });
     const applied = await readSystem();
     expect(keys.map(key => {
       const reading = applied.document.streams.find(item => item.topic === `tests/${localId}/${key}`)!;
@@ -80,7 +81,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(binding.entity_id).toMatch(/^entity-[a-f0-9]{64}$/);
     expect(binding.telemetry_key).toMatch(/^reading-[a-f0-9]{64}$/);
     await expectNoHorizontalScroll(page);
-    await expect(page.getByRole("button", { name: "Connect", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "View live", exact: true })).toHaveCount(0);
     await waitForCollectionReady(api, token!, applied, stream.connection_id);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "25", { qos: 1 });
@@ -109,7 +110,15 @@ test("records only an opted-in reading and restores its history in the mobile wo
     }).toBe(true);
     await page.goto(`/?reading=${encodeURIComponent(stream.id)}`);
     await expect(preview.locator(".ex-preview-value strong")).toHaveText("27");
+    await expect(preview.getByText("Reading preview", { exact: true })).toHaveCount(0);
+    await expect(preview.getByRole("status").filter({ hasText: "Recording" })).toHaveText("Recording");
+    await expect(preview.locator(".ex-preview-value time")).toHaveText(/^(just now|\d+ (seconds?|minutes?) ago)$/);
+    await expect(preview.getByRole("navigation", { name: "Catalogue ancestry" })).toBeHidden();
+    await preview.getByText("Source details", { exact: true }).click();
+    await expect(preview.getByRole("navigation", { name: "Catalogue ancestry" })).toBeVisible();
+    await preview.getByText("Source details", { exact: true }).click();
     await expect(preview.locator('.ex-preview-chart[role="img"]')).toBeVisible();
+    await expectNoHorizontalScroll(page);
     await page.getByRole("button", { name: "Zoom in", exact: true }).click();
     await expect(page.getByRole("button", { name: "Reset zoom", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Reset zoom", exact: true }).click();
@@ -117,7 +126,10 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const allHistory = page.getByRole("group", { name: "Chart time range", exact: true }).getByRole("button", { name: "All", exact: true });
     await allHistory.click();
     await expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
+    await expect(collection.getByRole("radio", { name: /^At intervals/ })).toBeChecked();
     const stored = await api.get(`/api/v1/telemetry/${binding.entity_id}/range?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });
+    expect(stored.ok(), await stored.text()).toBe(true);
     expect((await stored.json() as Array<{ value: number }>).some(point => point.value === 27)).toBe(true);
     const types = await api.get(`/api/v1/telemetry/${binding.entity_id}/type`, { headers });
     expect(await types.json()).toEqual([binding.telemetry_key]);
@@ -127,7 +139,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByRole("textbox", { name: "Service name", exact: true }).fill("Workspace monitor");
     await page.getByLabel("Warm-up samples", { exact: true }).fill("2");
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
-    await page.getByRole("link", { name: "Configure in Sources", exact: true }).click();
+    await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");

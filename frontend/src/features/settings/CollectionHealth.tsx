@@ -80,36 +80,37 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
   return (
     <>
       <SettingsRow label={<span className={`mn-state mn-state--${tone(title)} is-headline`} role="status">{title}</span>} detail={explanation} />
-      {data && !current && (
-        <p className="app-settings-group-note">Measurements below are from the last worker report.</p>
-      )}
-      {data && (
-        <dl className="app-settings-list">
-          {measurements.map(([label, value, time]) => (
-            <div key={label} className="app-settings-row">
-              <dt className="app-settings-row-copy app-settings-row-label">{label}</dt>
-              <dd className="app-settings-row-trailing tabular-nums" title={time ? formatExactDateTime(time) : undefined}>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      <div className="app-settings-group-note">
-        {data && (
-          <p>
-            Rates cover the last {data.window_seconds.toLocaleString()} seconds.
-            Incoming counts selected MQTT subscriptions, not all upstream broker
-            traffic. Accepted includes state and retained snapshots; snapshots
-            do not add numeric history. Latest samples normally fill their slots
-            while waiting for the next interval.
-          </p>
+      <details className="app-settings-technical">
+        <summary>Technical details</summary>
+        {data && !current && (
+          <p className="app-settings-group-note">Measurements below are from the last worker report.</p>
         )}
-        <p>
-          Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
-          rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
-          observations dropped at queue capacity ·{" "}
-          {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
-        </p>
-      </div>
+        {data && (
+          <dl className="app-settings-list">
+            {measurements.map(([label, value, time]) => (
+              <div key={label} className="app-settings-row">
+                <dt className="app-settings-row-copy app-settings-row-label">{label}</dt>
+                <dd className="app-settings-row-trailing tabular-nums" title={time ? formatExactDateTime(time) : undefined}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        <div className="app-settings-group-note">
+          {data && (
+            <p>
+              Rates cover the last {data.window_seconds.toLocaleString()} seconds.
+              Incoming counts selected MQTT subscriptions. Accepted includes state and
+              retained snapshots. Numeric history uses fresh messages. Samples wait for the next interval.
+            </p>
+          )}
+          <p>
+            Since worker start: {(snapshot.collection.records_written ?? 0).toLocaleString()} numeric
+            rows written · {(snapshot.collection.counters?.overload_dropped ?? 0).toLocaleString()}{" "}
+            observations dropped at queue capacity ·{" "}
+            {(snapshot.collection.counters?.invalid ?? 0).toLocaleString()} invalid observations rejected.
+          </p>
+        </div>
+      </details>
     </>
   );
 }

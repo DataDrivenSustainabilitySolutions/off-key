@@ -53,11 +53,10 @@ export function sourceHref(readingIds: string[], document?: SystemDocument, retu
 
 export function originLabel(runtime: SystemRuntime | undefined, id: string, document: SystemDocument) {
   const origin = runtime?.bindings?.[id]?.policy_origin;
-  if (origin?.needs_review) return "Needs review · not included";
-  if (!origin?.scope) return "Default setting";
-  if (!origin.inherited) return "Custom setting";
+  if (origin?.needs_review) return "needs review";
+  if (!origin?.scope || !origin.inherited) return;
   const source = origin.scope.kind === "broker" ? document.connections.find(item => item.id === origin.scope?.connection_id)?.label : origin.scope.topic_prefix;
-  return `Inherited from ${source ?? "parent"}`;
+  return `inherited from ${source ?? "parent"}`;
 }
 
 export function safeServiceReturn(value: string | null) {

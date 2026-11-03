@@ -163,7 +163,7 @@ of them.
 ![The Features view: L1_dev and L2_dev, each from its current reading through Rename features and Phase deviations, under the Gate condition.](../assets/phase-monitoring/features.png)
 
 The validation badge should read **Valid** with the one division warning from
-step 5. **Apply monitoring** starts the service.
+step 5. **Start monitoring** starts the service.
 
 ## Training period
 

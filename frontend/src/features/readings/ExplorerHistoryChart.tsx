@@ -125,9 +125,10 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const events = model.anomalyMarkers.filter((event) => !inspection
     || (event.timeMs >= inspection.startMs && event.timeMs <= inspection.endMs));
 
-  return <section className="ex-preview-history" aria-label="Live history">
+  const title = stream.value_type === "boolean" ? "State history" : "History";
+  return <section className="ex-preview-history" aria-label={title}>
     <div className="ex-preview-section-heading">
-      <h3>{stream.value_type === "boolean" ? "State history" : "Live history"}</h3>
+      <h3>{title}</h3>
       <div className="ex-history-tools" role="group" aria-label="Chart controls">
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={model.telemetry.data.length < 2} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>

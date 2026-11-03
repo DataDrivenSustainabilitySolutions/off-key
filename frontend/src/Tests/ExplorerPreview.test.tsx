@@ -83,6 +83,7 @@ function receive(telemetry: SystemLiveTelemetry, time: number, value: number, se
 
 describe("workspace chart navigation and monitoring", () => {
   it("shows and updates the latest persisted numeric value without a preview connection", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const { props } = fixture();
     const reading = system.streams[0]!;
     const historyCache = new ReadingHistoryCache("test-user");
@@ -93,11 +94,20 @@ describe("workspace chart navigation and monitoring", () => {
     const view = render(<ExplorerPreview {...props} historyCache={historyCache} />);
     expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("24 °C");
     expect(screen.queryByText("No value received yet")).toBeNull();
-    expect(screen.getByText(/Observed at/)).toBeTruthy();
+    const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+    const observed = screen.getByText(relative.format(-1, "second"), { selector: "time" });
+    expect(observed.getAttribute("datetime")).toBe(new Date(NOW - 1000).toISOString());
+    expect(observed.getAttribute("title")).toBeTruthy();
+    vi.mocked(Date.now).mockReturnValue(NOW + 119_000);
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(observed.textContent).toBe(relative.format(-2, "minute"));
+    vi.mocked(Date.now).mockReturnValue(NOW);
+    act(() => { vi.advanceTimersByTime(1000); });
     act(() => historyCache.update(key, entry => ({ ...entry, data: { ...entry.data,
       telemetry: [...entry.data.telemetry, { timestamp: new Date(NOW).toISOString(), value: 25 }],
     } })));
     expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("25 °C");
+    expect(observed.textContent).toBe("just now");
     view.rerender(<ExplorerPreview {...props} node={node("switch")} historyCache={historyCache} />);
     expect(view.container.querySelector(".ex-preview-value strong")?.textContent).toBe("—");
   });
@@ -282,6 +292,7 @@ describe("workspace chart navigation and monitoring", () => {
   });
 });
 afterEach(() => {
+  vi.useRealTimers();
   if (initialClipboard) Object.defineProperty(navigator, "clipboard", initialClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
@@ -352,6 +363,10 @@ describe("explorer selected-object preview", () => {
     expect(screen.getByRole("status").textContent).toContain("Unavailable");
     expect(screen.getByRole("alert").textContent).toBe("Broker unavailable.");
     expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 3_600_000, 20], [NOW - 3_590_000, 22]] }]);
+    view.rerender(<ExplorerPreview {...props} runtime={{ ...runtime, bindings: {
+      temperature: { ...binding, policy: { mode: "off", interval_seconds: 10 } },
+    } }} />);
+    expect(screen.getByRole("status").textContent).toBe("Recording off");
   });
 
   it("uses a step chart for booleans and leaves identifiers as readable text", () => {

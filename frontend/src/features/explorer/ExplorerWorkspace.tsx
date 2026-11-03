@@ -5,7 +5,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { rememberNavigation } from "@/lib/navigation-draft";
 import { SystemLiveControls } from "../catalogue/SystemLiveControls";
-import { collectionApplied, sourceHref } from "@/domain/system/collectionRules";
+import { collectionApplied } from "@/domain/system/collectionRules";
 import { MonitoringServiceList } from "../monitoring/MonitoringServiceList";
 import { monitoringNavigationKey, resetView } from "@/domain/monitoring/monitoringView";
 import { buildMonitoringIndex, serviceName, servicesForScope } from "@/domain/monitoring/serviceModel";
@@ -43,6 +43,7 @@ export function ExplorerWorkspace() {
   const selectedService = monitoring.services.find(service => service.id === requestedService);
   const favourites = useMemo(() => new Set((preferences.favourites ?? []).filter(item => item.kind === "service").map(item => item.id)), [preferences.favourites]);
   const preview = selected && (selected.entityKind === "stream" || params.has("entity") || params.get("inspect") === "source");
+  const readingDetail = selected?.entityKind === "stream" && !creating && !requestedService && !pipelineView;
   // Service detail and setup carry their own breadcrumb and heading.
   const ownHeading = !loadingCreation && !(selectionMissing && !pipelineView)
     && (pipelineView || creating && system.canEdit || !!requestedService && !!selectedService);
@@ -101,8 +102,11 @@ export function ExplorerWorkspace() {
         error={system.error} onRename={rename} onEdit={openEditor}
         runtime={system.snapshot?.runtime} collapseDefinition favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
-        collectionControls={<p className="ex-muted">Collection: {(streamIds ?? []).filter(id => system.snapshot?.runtime.bindings?.[id]?.policy.mode !== "off").length}
-          {" "}of {streamIds?.length ?? 0} enabled · <Link to={sourceHref(streamIds ?? [], document)}>Configure in Sources</Link></p>} />
+        collectionControls={selected.entityKind !== "stream" && !!streamIds?.length && <p className="ex-muted">
+          Recording enabled for {streamIds.filter(id => {
+            const policy = system.snapshot?.runtime.bindings?.[id]?.policy;
+            return policy && policy.mode !== "off";
+          }).length} of {streamIds.length} readings</p>} />
       </Suspense>}
       {isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
         index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}
@@ -114,6 +118,7 @@ export function ExplorerWorkspace() {
   return <main className="ex-main-content" aria-label="Monitoring workspace">
     {!ownHeading && <><div className="ex-workspace-heading"><h1>Monitoring</h1>
       <div className="ex-workspace-actions">
+        {readingDetail && <SourceScope compact />}
         {selected && !creating && !requestedService && <>
           {!preview && <><Link className="ex-collection-action" to={sectionHref("/sources")}>Configure in Sources</Link>
             <button className="ex-collection-action" onClick={() => changeView({ inspect: "source" })}><Info size={15} aria-hidden="true" />Inspect source</button></>}
@@ -125,7 +130,7 @@ export function ExplorerWorkspace() {
         </button>}
       </div>
     </div>
-    <SourceScope /></>}
+    {!readingDetail && <SourceScope />}</>}
     {system.status === "sign-in-required" && <p className="ex-banner">Sign in to load the catalogue. <Link to="/login">Sign in</Link></p>}
     {system.error && <p className="ex-banner ex-error" role="alert">{system.error}<button onClick={() => void system.refresh()}>Retry</button></p>}
     {renderView()}

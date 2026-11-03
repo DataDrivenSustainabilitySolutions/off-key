@@ -103,8 +103,9 @@ opens the editor on top of it.
 ## Readings and telemetry workflow
 
 1. Browse the MQTT catalogue or search for a reading.
-2. Select the reading in **Monitoring** to open its preview and recorded history.
-3. Use **Sources** to inspect or change its recording policy, then **Apply changes**.
+2. Select the reading in **Monitoring** to see its latest value, age and history.
+   Hover over the age for the exact timestamp or open **Source details** for the catalogue path.
+3. Switch to **Sources** to inspect or change the selected reading's recording policy.
 4. Open its monitoring service to review detector evidence and configuration.
 
 Existing entity detail links at `/details/:chargerId` show recorded readings with
@@ -118,7 +119,7 @@ background recording. A filled circle means a fresh message arrived in the last
 listening; hover or focus the row to see its description. Retained snapshots and
 stored history do not count as fresh traffic. Browsing alone starts no collection.
 
-The **Online topics only** filter icon beside **Back to catalogue** keeps filled-circle
+The **Recently active** filter icon beside **Back to catalogue** keeps filled-circle
 readings and the paths leading to them. It also filters search, collections and reading
 favourites, updates as traffic starts or becomes stale, and remembers your choice in
 this browser. Turn it off to show the full catalogue again. Filtering keeps the
@@ -129,8 +130,8 @@ current folder, search and source selection.
 
 Configure recording under **Sources**. Broker and topic policies can cover several
 readings; review the affected scope before applying changes. Including readings
-added later requires an explicit opt-in. Administrators can also use **Connect**
-to preview configured sources whose recording is off, and **Disconnect** to end
+added later requires an explicit opt-in. Administrators can also use **View live**
+to preview configured sources whose recording is off, and **Stop live view** to end
 that preview. Previewing does not enable background recording.
 
 ## Favourites workflow

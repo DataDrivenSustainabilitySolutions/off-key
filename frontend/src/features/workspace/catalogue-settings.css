@@ -36,10 +36,7 @@
 .catalogue-settings-select select:disabled { opacity: .5; }
 .catalogue-settings-select > svg { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--ex-muted); }
 .catalogue-settings-files { border-top: 1px solid var(--ex-line); padding-top: 22px; }
-.catalogue-settings-file-actions { display: grid; gap: 18px; }
-.catalogue-settings-file-row { display: flex; align-items: center; gap: 13px; min-width: 0; }
-.catalogue-settings-file-row > svg { flex-shrink: 0; color: var(--ex-muted); }
-.catalogue-settings-file-row > button { min-width: 128px; }
+.catalogue-settings-file-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .catalogue-settings .catalogue-settings-hint { margin: 12px 0 0; color: var(--ex-muted); font-size: 11px; line-height: 1.6; }
 .catalogue-settings-import { display: grid; gap: 12px; margin-top: 18px; padding: 16px; background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: 9px; }
 .catalogue-settings-import-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -59,8 +56,6 @@
   .catalogue-settings-content { gap: 22px; padding: 18px; }
   .catalogue-settings-create-grid { grid-template-columns: minmax(0,1fr); gap: 8px; }
   .catalogue-settings .catalogue-settings-create { min-height: 70px; padding: 12px; }
-  .catalogue-settings-file-row { display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px; }
-  .catalogue-settings-file-row > button { grid-column: 2; justify-self: start; min-width: 0; }
   .catalogue-settings-select select { min-height: 44px; }
   .catalogue-settings-import { padding: 13px; }
   .catalogue-settings-import-actions > button { width: 100%; white-space: normal; }

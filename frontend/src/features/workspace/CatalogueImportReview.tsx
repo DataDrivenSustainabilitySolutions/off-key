@@ -16,7 +16,7 @@ export function CatalogueImportReview({ name, fileName, summary, disabled, canEd
   return <section className="catalogue-settings-import" aria-label="Import preview">
     <div className="catalogue-settings-import-heading">
       <FileJson size={20} aria-hidden="true" />
-      <div><span className="catalogue-settings-eyebrow">Ready to import</span><h4>{name}</h4><span className="catalogue-settings-file-name">{fileName}</span></div>
+      <div><h4>{name}</h4><span className="catalogue-settings-file-name">{fileName}</span></div>
     </div>
     <p className="catalogue-settings-import-counts">{summary}</p>
     <p>This replaces your current catalogue. Live listening starts separately.</p>

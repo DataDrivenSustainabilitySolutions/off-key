@@ -167,6 +167,7 @@
 .ex-preview-chart { width: 100%; height: 280px; margin-top: 8px; }
 .ex-preview-chart--2 { height: 430px; }
 .ex-preview-chart--3 { height: 594px; }
+.ex-preview-chart--4 { height: 758px; }
 .ex-history-tools { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .ex-history-tools button:disabled { opacity: .4; cursor: default; }
 .ex-history-tools button:not(:disabled):hover { color: var(--ex-accent); background: var(--ex-hover); }

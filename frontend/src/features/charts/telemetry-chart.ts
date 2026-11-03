@@ -21,6 +21,7 @@ import {
   type SelectedDetectorIds,
 } from "./telemetry-detectors";
 import { getChartDomain } from "./telemetry-thresholds";
+import type { DetectorInputSeries } from "./detector-inputs";
 import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
 import {
   groupTelemetryEvents,
@@ -76,6 +77,8 @@ export const areChartNavigationStatesEqual = (
 
 export interface MonitoringChartModel {
   readings: MonitoringChartReading[];
+  /** The features the detectors scored, in their own pane under the readings. */
+  detectorInputs?: DetectorInputSeries[];
   secondarySeries: SecondaryChartSeries[];
   range: ChartTimeRange;
   extent?: [startMs: number, endMs: number];
@@ -85,6 +88,7 @@ export interface TelemetryChartModel {
   telemetry: TelemetryChartSeries;
   pendingTelemetry: TimeValue[];
   anomalyMarkers: TelemetryEventGroup[];
+  detectorInputs?: DetectorInputSeries[];
   secondarySeries: SecondaryChartSeries[];
   range: ChartTimeRange;
   extent?: [startMs: number, endMs: number];
@@ -98,6 +102,8 @@ export interface ChartThemeColors {
   popoverForeground: string;
   muted: string;
   primary: string;
+  /** Categorical colours for detector inputs. */
+  seriesPalette?: readonly string[];
   alarmBoundary?: string;
   alarmFill?: string;
 }
@@ -110,6 +116,7 @@ interface BuildTelemetryChartModelInput {
   detectors: readonly TelemetryChartDetector[];
   pendingTelemetryTimestamps?: readonly number[];
   anomalyMarkers: AnomalyMarker[];
+  detectorInputs?: DetectorInputSeries[];
   selectedDetectorIds?: SelectedDetectorIds;
   range?: ChartTimeRange;
 }
@@ -125,6 +132,9 @@ interface BuildTelemetryChartOptionInput {
   layout?: "standard" | "compact";
   valueType?: "number" | "boolean";
 }
+
+/** Distinct from the reading colours, in light and dark. */
+const DEFAULT_SERIES_PALETTE = ["#2f6db3", "#c0562e", "#7a4fb0", "#2e8a57", "#a0711a", "#a43f74", "#3f8590", "#6b6b6b"];
 
 const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const numberFormatters = new Map<string, Intl.NumberFormat>();
@@ -196,6 +206,7 @@ export const buildTelemetryChartModel = ({
   detectors,
   pendingTelemetryTimestamps = [],
   anomalyMarkers,
+  detectorInputs = [],
   selectedDetectorIds,
   range = {},
 }: BuildTelemetryChartModelInput): TelemetryChartModel => {
@@ -215,6 +226,7 @@ export const buildTelemetryChartModel = ({
     },
     pendingTelemetry: telemetry.filter(([time]) => pendingTimes.has(time)),
     anomalyMarkers: groupTelemetryEvents(anomalyMarkers),
+    detectorInputs,
     secondarySeries,
     range,
     extent: startMs !== undefined && endMs !== undefined ? [startMs, endMs] : undefined,
@@ -287,7 +299,8 @@ export const buildTelemetryChartOption = ({
 }: BuildTelemetryChartOptionInput): TelemetryChartOption => buildMonitoringChartOption({
   ...options,
   model: { readings: [{ ...model.telemetry, valueType, pendingTelemetry: model.pendingTelemetry,
-    anomalyMarkers: model.anomalyMarkers }], secondarySeries: model.secondarySeries, range: model.range, extent: model.extent },
+    anomalyMarkers: model.anomalyMarkers }], detectorInputs: model.detectorInputs, secondarySeries: model.secondarySeries,
+    range: model.range, extent: model.extent },
 });
 
 type BuildMonitoringChartOptionInput = Omit<BuildTelemetryChartOptionInput, "model" | "valueType" | "layout"> & {
@@ -309,8 +322,10 @@ export const buildMonitoringChartOption = ({
   const compact = layout !== "standard";
   const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
+  const detectorInputs = model.detectorInputs ?? [];
   const panes = [
     ...model.readings.map(reading => reading.id),
+    ...(detectorInputs.length ? ["inputs"] : []),
     ...(hasStaticPane ? ["static"] : []),
     ...(hasAdaptivePane ? ["adaptive"] : []),
   ] as const;
@@ -335,11 +350,9 @@ export const buildMonitoringChartOption = ({
           { left: 68, right: 40, top: 58, height: 185 },
           { left: 68, right: 40, top: 290, height: 135 },
         ]
-    : [
-        { left: 68, right: 40, top: 58, height: 180 },
-        { left: 68, right: 40, top: 288, height: 120 },
-        { left: 68, right: 40, top: 450, height: 120 },
-      ];
+    : panes.map((_, index) => index === 0
+        ? { left: 68, right: 40, top: 58, height: 180 }
+        : { left: 68, right: 40, top: 288 + (index - 1) * 162, height: 120 });
   const visibleSpan = viewport.mode === "absolute" ? viewport.endMs - viewport.startMs
     : domain ? domain[1] - domain[0] : Infinity;
   const axisLabel = {
@@ -443,6 +456,37 @@ export const buildMonitoringChartOption = ({
         }]
       : []);
 
+  const inputsPane = panes.indexOf("inputs");
+  const palette = colors.seriesPalette?.length ? colors.seriesPalette : DEFAULT_SERIES_PALETTE;
+  const inputSeries: LineSeriesOption[] = detectorInputs.map((series, index) => ({
+    id: series.id,
+    name: series.name,
+    type: "line",
+    xAxisIndex: inputsPane,
+    yAxisIndex: inputsPane,
+    data: series.data,
+    showSymbol: series.data.length === 1,
+    symbolSize: 4,
+    connectNulls: false,
+    lineStyle: { color: palette[index % palette.length], width: 1.5 },
+    itemStyle: { color: palette[index % palette.length] },
+    emphasis: { disabled: true },
+    animation: false,
+    ...(index === 0 && dayBreaks.length ? { markLine: dayBreakLine } : {}),
+  }));
+  const inputsLegend: LegendComponentOption | undefined = detectorInputs.length && compact ? {
+    id: "detector-inputs-legend",
+    type: "scroll",
+    data: detectorInputs.map(series => series.name),
+    top: Number(grid[inputsPane]?.top ?? 0) - 22,
+    right: monitoring ? 18 : 16,
+    width: "60%",
+    itemWidth: 14,
+    itemHeight: 8,
+    textStyle: { color: colors.foreground, fontSize: 11 },
+    pageTextStyle: { color: colors.mutedForeground },
+  } : undefined;
+
   const ruledPanes = new Set<number>();
   const secondarySeries: LineSeriesOption[] = model.secondarySeries.flatMap((series) => {
     const paneIndex = panes.indexOf(series.pane);
@@ -474,7 +518,7 @@ export const buildMonitoringChartOption = ({
     aria: { enabled: true, description: accessibleDescription },
     color: [...model.readings.map(reading => reading.color), colors.primary],
     grid: grid.map((pane) => ({ ...pane, outerBoundsMode: "none" })),
-    legend: compact ? { show: false } : {
+    legend: compact ? inputsLegend ?? { show: false } : {
       id: "telemetry-legend",
       type: "scroll",
       top: 10,
@@ -524,6 +568,25 @@ export const buildMonitoringChartOption = ({
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
       })),
+      ...(detectorInputs.length
+        ? [
+            {
+              id: "detector-input-values",
+              type: "value" as const,
+              scale: true,
+              boundaryGap: ["10%", "10%"] as [string, string],
+              ...(compact ? { splitNumber: 3 } : {}),
+              gridIndex: inputsPane,
+              name: "Detector inputs",
+              nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
+              axisLabel: { color: colors.mutedForeground, fontSize: 12,
+                formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
+              axisLine: { show: false },
+              axisTick: { show: false },
+              splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+            },
+          ]
+        : []),
       ...(hasStaticPane
         ? [
             {
@@ -615,6 +678,7 @@ export const buildMonitoringChartOption = ({
     series: [
       ...telemetrySeries,
       ...pendingTelemetrySeries,
+      ...inputSeries,
       ...secondarySeries,
     ],
   };

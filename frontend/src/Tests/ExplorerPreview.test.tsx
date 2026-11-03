@@ -264,12 +264,12 @@ describe("workspace chart navigation and monitoring", () => {
       expect.objectContaining({ id: "adaptive-score:monitor", data: [
         expect.objectContaining({ value: [NOW - 20_000, 1], observation: expect.objectContaining({ threshold: 2, sequenceNumber: 1 }) }),
         expect.objectContaining({ value: [NOW - 10_000, 3], observation: expect.objectContaining({ threshold: 2.5, sequenceNumber: 2 }) }),
-        { value: [NOW, null] },
       ],
         showSymbol: false, symbol: "none",
         markArea: expect.objectContaining({ itemStyle: expect.objectContaining({ borderWidth: 0 }), data: expect.arrayContaining([
-          [{ xAxis: NOW - 20_000, yAxis: 2 }, { xAxis: NOW - 15_000, yAxis: expect.any(Number) }],
-          [{ xAxis: NOW - 15_000, yAxis: 2.5 }, { xAxis: NOW - 5_000, yAxis: expect.any(Number) }],
+          // Each threshold holds until the next evaluation; the last runs to the newest reading.
+          [{ xAxis: NOW - 20_000, yAxis: 2 }, { xAxis: NOW - 10_000, yAxis: expect.any(Number) }],
+          [{ xAxis: NOW - 10_000, yAxis: 2.5 }, { xAxis: NOW, yAxis: expect.any(Number) }],
         ]) }) }),
       expect.objectContaining({ id: "pending-telemetry", data: [[NOW, 22]] }),
     ]));

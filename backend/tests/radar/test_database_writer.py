@@ -193,6 +193,7 @@ def test_build_evidence_record_preserves_static_inference_context(
     result = replace(
         sample_anomaly_result,
         is_anomaly=False,
+        processed_features={"L1_dev": 0.05, "L2_dev": float("nan")},
         context={
             "alignment": {
                 "aligned_vector": True,
@@ -248,6 +249,10 @@ def test_build_evidence_record_preserves_static_inference_context(
             "log_restarted_martingale": 3.74,
             "tracker_results": [],
             "detector_results": [],
+            # A value that is not finite is kept as unknown.
+            "detector_inputs": [
+                {"detector_id": None, "inputs": {"L1_dev": 0.05, "L2_dev": None}}
+            ],
             "threshold": 100.0,
             "alarm": False,
         }
@@ -853,3 +858,16 @@ async def test_flush_batch_requeues_snapshot_when_writing_or_retrying_fails(
 
     assert writer.write_queue == [anomaly]
     assert writer.total_errors == errors
+
+
+def test_evidence_keeps_each_combined_detectors_inputs():
+    from off_key_mqtt_radar.result_records import _normalize_detector_inputs
+
+    assert _normalize_detector_inputs(
+        {"pca": {"L1_dev": 0.01}, "iforest": {"L1": 16.0, "L2": 15.8}}
+    ) == [
+        {"detector_id": "pca", "inputs": {"L1_dev": 0.01}},
+        {"detector_id": "iforest", "inputs": {"L1": 16.0, "L2": 15.8}},
+    ]
+    assert _normalize_detector_inputs(None) == []
+    assert _normalize_detector_inputs({}) == []

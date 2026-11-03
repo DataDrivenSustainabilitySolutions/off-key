@@ -18,29 +18,31 @@ const expandCollapsedRange = (range: { fromMs?: number; toMs?: number }) =>
     ? { fromMs: range.fromMs - 500, toMs: range.fromMs + 500 }
     : range;
 
-/** A threshold describes the decision at a sampled observation, including isolated samples. */
+/** The alarm zone above each threshold, as a band in time. A threshold holds from the
+ * observation that reported it until the next one, so readings without a score, such as
+ * those a Gate holds back or that never completed an observation, leave no gap. An
+ * observation without a threshold (still warming up) ends the band; the last one runs to
+ * the end of the chart. Before the first threshold nothing is shaded: there is no alarm. */
 export const buildThresholdRegions = (
   thresholds: readonly DetectionTimeValue[],
   telemetryTimes: readonly number[],
   range: { fromMs?: number; toMs?: number } = {},
 ): ThresholdRegion[] => {
-  const times = [...new Set(telemetryTimes)].sort((left, right) => left - right);
   const visibleRange = expandCollapsedRange(range);
-  const byTime = new Map(thresholds);
+  const points = [...thresholds].sort((left, right) => left[0] - right[0]);
+  if (!points.length) return [];
+  const lastTime = Math.max(...telemetryTimes, points[points.length - 1]![0]);
+  const chartEnd = visibleRange.toMs ?? lastTime;
+  const lower = visibleRange.fromMs ?? Number.NEGATIVE_INFINITY;
+  const upper = visibleRange.toMs ?? Number.POSITIVE_INFINITY;
   const regions: ThresholdRegion[] = [];
-  times.forEach((time, index) => {
-    const threshold = byTime.get(time);
+  points.forEach(([time, threshold], index) => {
     if (threshold == null || !Number.isFinite(threshold)) return;
-    const previous = times[index - 1];
-    const next = times[index + 1];
-    const startMs = Math.max(
-      visibleRange.fromMs ?? Number.NEGATIVE_INFINITY,
-      previous === undefined ? (next === undefined ? time - 500 : time) : previous + (time - previous) / 2,
-    );
-    const endMs = Math.min(
-      visibleRange.toMs ?? Number.POSITIVE_INFINITY,
-      next === undefined ? (previous === undefined ? time + 500 : time) : time + (next - time) / 2,
-    );
+    const following = points[index + 1]?.[0] ?? Math.max(chartEnd, time);
+    // A lone last observation still gets a visible cell.
+    const [from, to] = following > time ? [time, following] : [time - 500, time + 500];
+    const startMs = Math.max(lower, from);
+    const endMs = Math.min(upper, to);
     if (endMs <= startMs) return;
     const last = regions[regions.length - 1];
     if (last && last.threshold === threshold && last.endMs === startMs) {

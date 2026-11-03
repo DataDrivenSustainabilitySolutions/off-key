@@ -155,6 +155,8 @@ class MonitoringEvidenceResponse(BaseModel):
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
     # Each detector's score and surprise when the policy combines several.
     detector_results: list[dict[str, object]] = Field(default_factory=list)
+    # The features each detector scored, after every step before it.
+    detector_inputs: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
 
@@ -173,6 +175,7 @@ class MonitoringChartEvidenceResponse(BaseModel):
     restarted_martingale: float | None = None
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
     detector_results: list[dict[str, object]] = Field(default_factory=list)
+    detector_inputs: list[dict[str, object]] = Field(default_factory=list)
     threshold: float
     alarm: bool
     created: datetime

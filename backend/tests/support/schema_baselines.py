@@ -20,6 +20,7 @@ EXPECTED_MIGRATIONS = (
     "013_pipeline_templates.sql",
     "014_drop_unread_schema.sql",
     "015_detector_evidence.sql",
+    "016_detector_inputs.sql",
 )
 
 

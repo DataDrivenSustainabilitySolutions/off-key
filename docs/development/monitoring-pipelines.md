@@ -391,7 +391,11 @@ its node. Results carry each detector's `detector_id`, `score` and `surprise` in
 their context, and `processed_features` holds each detector's features under its
 ID. Evidence stores them as `detector_results` (migration 015), while `p_value`
 or `anomaly_score` holds the fused value. Runs with one detector write an empty
-list and keep their results, checkpoints and diagnostics.
+list and keep their results, checkpoints and diagnostics. `detector_inputs`
+(migration 016) keeps the features each detector scored, after every step before
+it, so charts can plot derived features: one entry with a null `detector_id` for
+a single detector, or one per detector ID for a combined policy, at most 64
+features each.
 
 ## Activation and recovery
 

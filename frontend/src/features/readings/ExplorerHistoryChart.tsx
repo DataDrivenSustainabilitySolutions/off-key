@@ -9,7 +9,8 @@ import { DetectorNotices } from "@/features/charts/DetectorNotices";
 import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorPanes } from "@/features/charts/use-detector-panes";
 import { createAnomalyMarkers, filterAnomalies } from "@/lib/anomaly-utils";
-import { filterServiceAnomalies } from "@/lib/monitoring-chart";
+import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
 import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
@@ -67,13 +68,18 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const panes = useDetectorPanes({ telemetryType, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
     service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}` });
   const { detectors, selectedDetectorIds, pending } = panes;
+  const detectorInputs = useMemo(() => {
+    const first = telemetry[0]?.[0], last = telemetry[telemetry.length - 1]?.[0];
+    return service && first !== undefined && last !== undefined
+      ? buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, telemetryType), [first, last]) : [];
+  }, [service, evidence, telemetryType, telemetry]);
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
     telemetry, detectors, selectedDetectorIds,
-    pendingTelemetryTimestamps: pending,
+    pendingTelemetryTimestamps: pending, detectorInputs,
     anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, telemetryType, new Date(cutoff))),
   }), [telemetryType, stream.label, stream.unit, colors.primary, telemetry, detectors,
-    selectedDetectorIds, pending, history, anomalies, cutoff]);
+    selectedDetectorIds, pending, detectorInputs, history, anomalies, cutoff]);
   // Stable between renders, so the inspect callback below is too.
   const domain = useMemo(() => getChartDomain(model.extent), [model.extent]);
   const description = `${stream.label}. ${model.telemetry.data.length} received samples. Times in ${timeZone}.`
@@ -114,7 +120,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
       inspect(nextStart, nextStart + width);
     }
   };
-  const paneCount = 1 + Number(model.secondarySeries.some((item) => item.pane === "static"))
+  const paneCount = 1 + Number(Boolean(model.detectorInputs?.length)) + Number(model.secondarySeries.some((item) => item.pane === "static"))
     + Number(model.secondarySeries.some((item) => item.pane === "adaptive"));
   const events = model.anomalyMarkers.filter((event) => !inspection
     || (event.timeMs >= inspection.startMs && event.timeMs <= inspection.endMs));

@@ -138,6 +138,7 @@ async def test_chart_evidence_service_uses_compact_cursor_projection():
             "restarted_martingale": 4.0,
             "tracker_results": [],
             "detector_results": [],
+            "detector_inputs": [],
             "threshold": 100.0,
             "alarm": False,
             "created": now + timedelta(milliseconds=1),

@@ -92,6 +92,12 @@ Use this page when mapping API behaviour to persisted entities and relationships
   `detector_id`, `score` and `surprise`; `p_value` or `anomaly_score` holds the
   combined value. It is empty for a single detector. Migration
   `015_detector_evidence.sql` adds the column with an empty default.
+- `detector_inputs` lists the features each detector scored, after every step
+  before it, as `{"detector_id", "inputs": {feature: value}}`. A single
+  detector's entry has no `detector_id`. Values that are not finite are `null`,
+  and at most 64 features per detector are kept. Charts show them as **Detector
+  inputs**. Migration `016_detector_inputs.sql` adds the column with an empty
+  default, so earlier rows have none.
 
 ### Monitoring workload intent
 

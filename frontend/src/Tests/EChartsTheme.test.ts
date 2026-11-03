@@ -20,7 +20,7 @@ describe("canvas chart theme colors", () => {
     expect(dark.primary).toBe("#89BDAF");
     expect(color.parse(dark.muted)?.[3]).toBe(0.5);
     for (const colors of [light, dark]) {
-      for (const value of Object.values(colors)) expect(color.parse(value)).toBeDefined();
+      for (const value of Object.values(colors).flat()) expect(color.parse(value)).toBeDefined();
     }
   });
 });

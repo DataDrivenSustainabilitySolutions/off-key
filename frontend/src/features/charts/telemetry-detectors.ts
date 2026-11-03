@@ -5,6 +5,7 @@ import type {
   MonitoringDetectorResult,
 } from "@/types/monitoring";
 import { getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
+import { getPauseLimit } from "./telemetry-data";
 import {
   buildThresholdRegions,
   getDetectionValueBounds,
@@ -162,6 +163,9 @@ function collectChartDetectors(
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
+/** How far above the highest alarm threshold the evidence pane reaches: four decades. */
+const EVIDENCE_HEADROOM = 1e4;
+
 const getOverflowBoundary = (
   observation: DetectionObservation,
   pane: DetectionPane,
@@ -196,16 +200,27 @@ export const buildSelectedDetectorSeries = ({
     if (!latestObservation || !observations.some((observation) => isEvaluatedObservation(observation, pane))) return [];
 
     const overflow: DetectionOverflow[] = [];
+    // Evidence far above the alarm threshold says no more than "alarm", so the log pane
+    // stops a few decades above it and marks higher values at its top edge instead of
+    // stretching the axis until the threshold sits at the bottom.
+    const highest = Math.max(0, ...observations.flatMap((observation) =>
+      isEvaluatedObservation(observation, pane) && observation.threshold !== null && Number.isFinite(observation.threshold)
+        ? [observation.threshold] : []));
+    const ceiling = pane === "static" && highest > 0 ? highest * EVIDENCE_HEADROOM : Number.POSITIVE_INFINITY;
     const data: DetectionChartPoint[] = observations.map((observation) => {
-      const boundary = getOverflowBoundary(observation, pane);
+      const boundary = getOverflowBoundary(observation, pane)
+        ?? (observation.value !== null && observation.value > ceiling ? "upper" : undefined);
       if (boundary) overflow.push({ observation, boundary });
       return { value: [observation.timeMs, boundary ? null : observation.value], observation };
     });
-    const scoredTimes = new Set(observations.map(({ timeMs }) => timeMs));
-    for (const time of times) {
-      if (!scoredTimes.has(time)) data.push({ value: [time, null] });
+    // The line joins consecutive evaluations, so readings without a score in between, such as
+    // those an observation skipped while waiting for the other inputs, do not break it into dots.
+    // A pause, such as one a Gate holds back, does.
+    const pauseLimit = getPauseLimit(observations.map(({ timeMs }) => timeMs));
+    for (let index = data.length - 1; index > 0; index--) {
+      const before = data[index - 1]!.value[0], after = data[index]!.value[0];
+      if (after - before > pauseLimit) data.splice(index, 0, { value: [(before + after) / 2, null] });
     }
-    data.sort((left, right) => left.value[0] - right.value[0]);
     const thresholds: DetectionTimeValue[] = observations.map((observation) => [
       observation.timeMs,
       isEvaluatedObservation(observation, pane) ? observation.threshold : null,

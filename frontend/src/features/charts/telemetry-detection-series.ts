@@ -48,7 +48,7 @@ export const buildDetectionSeriesOption = (
           formatter: () => [
             series.name,
             `Time: ${formatTime(observation.timeMs)}`,
-            boundary === "upper" ? "Beyond numeric range" : "Evidence is below the logarithmic plotting range",
+            boundary === "upper" ? observation.value === null ? "Beyond numeric range" : "Above the plotted range" : "Evidence is below the logarithmic plotting range",
             observation.value !== null ? `Value: ${formatValue(observation.value)}` : observation.logValue === null ? (boundary === "upper" ? "Value: ∞" : "Value unavailable") : `Log evidence: ${formatValue(observation.logValue)}`,
             `Alarm threshold: ${observation.threshold !== null ? formatValue(observation.threshold) : "unavailable"}`,
             `Alarm: ${observation.alarmActive ? "active" : "inactive"}`,

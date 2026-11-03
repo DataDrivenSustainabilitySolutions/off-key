@@ -19,6 +19,18 @@ common:
       chunks_directory: /loki/chunks
       rules_directory: /loki/rules
 
+ingester:
+  wal:
+    dir: /loki/wal
+    replay_memory_ceiling: 256MB
+    disk_full_threshold: 0.85
+
+querier:
+  max_concurrent: 2
+
+frontend:
+  max_outstanding_per_tenant: 16
+
 schema_config:
   configs:
     - from: "2026-11-01"
@@ -30,12 +42,17 @@ schema_config:
         period: 24h
 
 limits_config:
-  retention_period: 720h
-  max_query_lookback: 720h
+  retention_period: 168h
+  max_query_lookback: 168h
   reject_old_samples: true
   reject_old_samples_max_age: 168h
-  ingestion_rate_mb: 4
-  ingestion_burst_size_mb: 8
+  ingestion_rate_mb: 0.05
+  ingestion_burst_size_mb: 1
+  max_query_parallelism: 2
+  max_query_series: 500
+  max_entries_limit_per_query: 2000
+  max_streams_per_user: 500
+  max_global_streams_per_user: 500
   # Labels are few (service, stack, node, level); JSON fields stay in the line.
   max_label_names_per_series: 8
 

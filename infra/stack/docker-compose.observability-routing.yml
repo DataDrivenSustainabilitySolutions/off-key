@@ -1,0 +1,9 @@
+# Only the existing ingress joins the independently deployed log network.
+services:
+  traefik:
+    networks: [observability-network]
+networks:
+  observability-network:
+    driver: overlay
+    internal: true
+    driver_opts: {com.docker.network.driver.mtu: "1280"}

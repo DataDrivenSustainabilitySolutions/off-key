@@ -1,0 +1,31 @@
+---
+- name: Require all monitoring tasks on workers with bounded resources
+  command:
+    argv: [python3, '-', topology, "{{ stack_name }}", "{{ stack_dir }}/observability-model.json"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_runtime.py') }}"
+  changed_when: false
+  register: observability_topology
+  retries: 30
+  delay: 5
+  until: observability_topology.rc == 0
+
+- name: Verify Loki, Grafana and fresh canary logs from every worker
+  command:
+    argv: [python3, '-', health, "{{ stack_name }}", "{{ (observability_topology.stdout | from_json).eligible_worker_names | to_json }}"]
+    stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_runtime.py') }}"
+  delegate_to: "{{ observability_storage_host }}"
+  changed_when: false
+  register: observability_health
+  ignore_unreachable: true
+  retries: 24
+  delay: 5
+  until: observability_health.rc | default(1) == 0
+
+- name: Require a reachable worker and successful fresh log delivery
+  assert:
+    that: observability_health.rc | default(1) == 0
+    fail_msg: Could not verify the worker's observability endpoints and fresh log delivery.
+
+- name: Report the independently verified observability state
+  debug:
+    msg: "{{ observability_health.stdout | from_json }}"

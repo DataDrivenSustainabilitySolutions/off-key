@@ -37,7 +37,9 @@ elif a[:2] == ['service', 'inspect']:
         sys.exit(1)
     print(json.dumps([spec(name) for name in names]))
 elif a[:2] == ['service', 'ls']:
-    if 'label=managed_by=tactic' in a:
+    if 'label=off-key.component=observability' in a:
+        pass  # This fixture has no observability services.
+    elif 'label=managed_by=tactic' in a:
         print('\n'.join(name for name in state['replicas'] if name.startswith('radar-')))
     elif '--quiet' in a:
         print('off-key_postgres\noff-key_api')

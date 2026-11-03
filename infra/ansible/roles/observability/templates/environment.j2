@@ -1,0 +1,11 @@
+{% for key, value in observability_environment | dictsort %}
+{{ key }}='{{ value }}'
+{% endfor %}
+LOKI_IMAGE='{{ release.images.loki }}'
+GRAFANA_IMAGE='{{ release.images.grafana }}'
+ALLOY_IMAGE='{{ release.images.alloy }}'
+SOCKET_PROXY_IMAGE='{{ release.images.socket_proxy }}'
+MQTT_RADAR_IMAGE='{{ observability_runtime_image | default(release.images.mqtt_radar) }}'
+{% for key, filename in observability_config_keys.items() %}
+{{ key }}='{{ (lookup('file', observability_source_dir ~ '/' ~ filename) | hash('sha1'))[:12] }}'
+{% endfor %}

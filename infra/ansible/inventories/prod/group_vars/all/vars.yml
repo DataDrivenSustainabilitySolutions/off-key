@@ -78,11 +78,11 @@ oauth2_cookie_secure: "true"     # prod is HTTPS (Cloudflare-terminated)
 oauth2_redirect_url:  "https://auth.aberration.app/oauth2/callback"
 
 # ── Logs and Grafana ──────────────────────────────────────────────────────────
-# Alloy ships every container's logs to Loki (30 days); Grafana shows them at
-# grafana.<ingress_base_domain> behind the oauth2 gate above. Publishing it needs the
-# grafana. public hostname in Cloudflare, routed to traefik:80 like the others.
-# See docs/operations/production.md (Logs and Grafana).
+# Only workers collect Off-key logs; the explicitly selected worker owns storage.
+# Grafana uses the oauth2 gate above. See docs/operations/observability.md.
 observability_enabled: true
+observability_data_node: DDSS-2
+observability_storage_size_gib: 20
 
 # ── Database ──────────────────────────────────────────────────────────────────
 

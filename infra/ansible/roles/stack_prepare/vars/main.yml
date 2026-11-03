@@ -175,29 +175,6 @@ service_environment:
     OAUTH2_PROXY_SET_XAUTHREQUEST: 'true'
     OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: 'true'
     OAUTH2_PROXY_UPSTREAMS: static://202
-  grafana:
-    # Identity comes only from oauth2-proxy through Traefik's forwardAuth.
-    GF_AUTH_PROXY_ENABLED: 'true'
-    GF_AUTH_PROXY_HEADER_NAME: X-Auth-Request-User
-    GF_AUTH_PROXY_HEADER_PROPERTY: username
-    GF_AUTH_PROXY_HEADERS: Email:X-Auth-Request-Email
-    GF_AUTH_PROXY_AUTO_SIGN_UP: 'true'
-    GF_AUTH_DISABLE_LOGIN_FORM: 'true'
-    GF_AUTH_DISABLE_SIGNOUT_MENU: 'true'
-    GF_AUTH_BASIC_ENABLED: 'false'
-    GF_AUTH_ANONYMOUS_ENABLED: 'false'
-    GF_USERS_ALLOW_SIGN_UP: 'false'
-    GF_USERS_AUTO_ASSIGN_ORG_ROLE: Editor
-    # Not a valid GitHub login, so no signed-in member becomes the local admin.
-    GF_SECURITY_ADMIN_USER: offkey_local_admin
-    GF_SECURITY_COOKIE_SECURE: 'true'
-    GF_SECURITY_DISABLE_GRAVATAR: 'true'
-    GF_SERVER_ROOT_URL: "https://grafana.{{ ingress_base_domain }}/"
-    GF_ANALYTICS_REPORTING_ENABLED: 'false'
-    GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
-    GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
-    GF_NEWS_NEWS_FEED_ENABLED: 'false'
-    GF_LOG_LEVEL: warn
 
 stack_interpolation_environment:
   STACK_NAME: "{{ stack_name }}"
@@ -225,10 +202,6 @@ stack_interpolation_environment:
   OAUTH2_IMAGE: "{{ release.images.oauth2 }}"
   CLOUDFLARED_IMAGE: "{{ release.images.cloudflared }}"
   LANDING_IMAGE: "{{ release.images.landing }}"
-  GRAFANA_IMAGE: "{{ release.images.grafana }}"
-  LOKI_IMAGE: "{{ release.images.loki }}"
-  ALLOY_IMAGE: "{{ release.images.alloy }}"
-  OBSERVABILITY_CONFIG_HASH: "{{ (query('file', *(stack_observability_files | map('regex_replace', '^', stack_source_dir ~ '/') | list)) | join('') | hash('sha1'))[:12] }}"
 
 stack_nfs_opts: rw,nfsvers=4,hard,timeo=150,retrans=3
 stack_nfs_spec: "{{ (broker_route_nfs_addr | default('')) ~ '|' ~ broker_route_state_dir ~ '|' ~ stack_nfs_opts }}"
@@ -241,7 +214,7 @@ stack_optional_overlays:
     enabled: "{{ ingress_admin_enabled | default(true) | bool }}"
   - file: docker-compose.landing.yml
     enabled: "{{ landing_enabled | default(true) | bool }}"
-  - file: docker-compose.observability.yml
+  - file: docker-compose.observability-routing.yml
     enabled: "{{ observability_active | bool }}"
   - file: docker-compose.broker-route.yml
     enabled: "{{ broker_route_enabled | bool }}"
@@ -253,16 +226,7 @@ stack_optional_overlays:
 # Services of left-out overlays receive no environment block.
 stack_omitted_services: >-
   {{ ([] if broker_route_enabled | bool else ['broker-route'])
-     + ([] if ingress_admin_enabled | default(true) | bool else ['oauth2-proxy'])
-     + ([] if observability_active | bool else ['grafana']) }}
-
-# Configuration the observability overlay ships as Swarm configs.
-stack_observability_files:
-  - alloy.alloy
-  - loki.yml
-  - grafana-datasources.yml
-  - grafana-dashboards.yml
-  - grafana-dashboard-logs.json
+     + ([] if ingress_admin_enabled | default(true) | bool else ['oauth2-proxy']) }}
 
 # Global Swarm config names; a second stack on the cluster gets its own.
 stack_config_prefix: "{{ '' if stack_name == 'off-key' else stack_name ~ '_' }}"

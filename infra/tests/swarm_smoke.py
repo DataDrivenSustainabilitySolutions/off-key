@@ -27,7 +27,7 @@ from rehearsal_releases import (
 from support import ROOT, render, run
 
 sys.path.insert(0, str(ROOT / "scripts"))
-from compile_stack import compile_stack
+from compile_stack import compile_stack, select_component
 from pin_release import APPLICATION_IMAGES, pin
 
 PROJECT = ROOT.parent
@@ -312,7 +312,10 @@ def prepare(directory):
     ]
     for file in files:
         args += ["-f", file]
-    model = compile_stack(json.loads(run(*args, "config", "--format", "json").stdout))
+    model = select_component(
+        compile_stack(json.loads(run(*args, "config", "--format", "json").stdout)),
+        "application",
+    )
     # Replace only external dependencies. Keep canonical application settings,
     # commands, placement, volumes, TLS and secret wiring from the production model.
     for name in ("cloudflared", "traefik", "oauth2-proxy", "landing"):

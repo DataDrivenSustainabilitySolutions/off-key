@@ -21,6 +21,8 @@ DEMO_ONLY = {
     "ingress_admin_enabled",
     "landing_enabled",
     "observability_enabled",
+    "observability_data_node",
+    "observability_storage_size_gib",
     "release_public_urls",
     "system_live_enabled",
     "system_live_allowed_hosts",

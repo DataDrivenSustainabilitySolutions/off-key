@@ -205,6 +205,16 @@ def run_rehearsal(evidence_path):
             report["docker_control_and_file_apis_denied"] = True
 
             manager("service", "scale", "--detach=true", f"{stack}_loki=0")
+
+            def loki_stopped():
+                assert not data(
+                    "ps",
+                    "-q",
+                    "--filter",
+                    f"label=com.docker.swarm.service.name={stack}_loki",
+                ).strip()
+
+            wait(loki_stopped, "the Loki task to actually stop")
             app_model = {
                 "services": {
                     name: {"image": fixture_image, "deploy": {"replicas": 1}}

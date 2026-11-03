@@ -34,6 +34,11 @@ class Docker:
                 raise RuntimeError(
                     "Non-secret lab stack rejected: " + result.stderr.strip()
                 )
+            if args[:2] == ("swarm", "init"):
+                # Join credentials are printed on stdout only, which stays private.
+                raise RuntimeError(
+                    "Disposable Swarm init rejected: " + result.stderr.strip()
+                )
             raise RuntimeError(
                 f"Docker {args[0]} operation failed ({result.returncode})"
             )
@@ -90,7 +95,6 @@ class Lab:
         self.outer(
             "network",
             "create",
-            "--internal",
             "--label",
             f"off-key.observability-test={self.identity}",
             self.network,
@@ -131,11 +135,18 @@ class Lab:
             environment = self.outer.environment | {
                 "DOCKER_HOST": f"tcp://{address}:2375"
             }
-            for key in ("DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"):
+            for key in ("DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_CONTEXT"):
                 environment.pop(key, None)
             engine = Docker(environment)
+
+            def identified_engine(engine=engine, name=name):
+                if engine("info", "--format", "{{.Name}}").strip() != name:
+                    raise RuntimeError(
+                        "Refusing to initialize an engine outside this lab"
+                    )
+
             wait(
-                lambda engine=engine: engine("info", "--format", "{{.ServerVersion}}"),
+                identified_engine,
                 f"{suffix} engine",
             )
             self.engines[suffix] = engine
@@ -147,6 +158,8 @@ class Lab:
             "swarm",
             "init",
             "--advertise-addr",
+            address,
+            "--data-path-addr",
             address,
             "--data-path-port",
             "4799",

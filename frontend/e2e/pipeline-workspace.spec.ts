@@ -414,7 +414,7 @@ test.describe("visual pipeline real infrastructure", () => {
           await expect(page.getByRole("region", { name: "Monitoring workbench", exact: true })).toBeVisible();
           await openPipelineSettings(page, "Service");
           await page.getByRole("spinbutton", { name: "Calibration observations", exact: true }).fill("9");
-          await expect(page.getByText(/Monitoring pauses briefly and learning starts again/)).toBeVisible();
+          await expect(page.getByText(/Monitoring pauses briefly and learning restarts\. History is kept\./)).toBeVisible();
           await openPipelineInput(page);
           for (const name of ["voltage", "current", "temperature"])
             await expect(page.getByRole("combobox", { name: `Reading for ${name}`, exact: true })).toHaveValue(`${deviceId}:${name}`);

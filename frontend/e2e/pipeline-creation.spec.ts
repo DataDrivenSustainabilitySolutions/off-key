@@ -132,11 +132,10 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await workbench.getByRole("button", { name: "Save template", exact: true }).click();
       const saveDialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
       await saveDialog.getByRole("textbox", { name: "Template name", exact: true }).fill(`Template ${deviceId}`);
-      const delivered = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === endpoint);
       await saveDialog.getByRole("button", { name: "Save template", exact: true }).click(); await saving;
       await saveDialog.getByRole("button", { name: "Close save template", exact: true }).click();
       await title.fill("Edited after submission");
-      await workbench.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
+      await workbench.getByRole("link", { name: "Turn on recording in Sources", exact: true }).click();
       const sources = page.getByRole("main", { name: "Sources workspace", exact: true }); await expect(sources).toBeVisible();
       if (acknowledgement === "after returning") {
         await sources.getByRole("link", { name: "Return to service setup", exact: true }).click();
@@ -145,6 +144,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
         await workbench.getByRole("combobox", { name: "Selected step", exact: true }).selectOption("input");
         await expect(title).toHaveValue("Edited after submission"); await title.fill("Edited after returning");
       }
+      const delivered = page.waitForResponse((response) => response.request().method() === "POST" && new URL(response.url()).pathname === endpoint);
       release(); expect((await delivered).ok()).toBe(true);
       if (acknowledgement === "while in Sources") {
         await expect(sources).toBeVisible();

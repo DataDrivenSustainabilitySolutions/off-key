@@ -19,15 +19,17 @@
   changed_when: false
   no_log: true
 
+# Node agents (global mode, the log shipper) hold no data and keep running.
 - name: Record the currently observed writer replica counts
   set_fact:
     persistence_observed_writer_replicas: >-
-      {{ dict((persistence_service_specs.stdout | from_json)
+      {{ dict(writers | map(attribute='Spec.Name')
+         | zip(writers | map(attribute='Spec.Mode.Replicated.Replicas'))) }}
+  vars:
+    writers: >-
+      {{ persistence_service_specs.stdout | from_json
          | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
-         | map(attribute='Spec.Name')
-         | zip((persistence_service_specs.stdout | from_json)
-         | rejectattr('Spec.Name', 'in', [stack_name ~ '_postgres', stack_name ~ '_emqx-main'])
-         | map(attribute='Spec.Mode.Replicated.Replicas'))) }}
+         | selectattr('Spec.Mode.Replicated', 'defined') | list }}
   no_log: true
 
 - name: Refuse unexpected running writers before retrying recovery

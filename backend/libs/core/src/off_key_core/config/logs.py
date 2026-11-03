@@ -51,11 +51,36 @@ class LogFormat(Enum):
     JSON = "json"
 
 
+# Identity every record of this process carries, such as a RADAR worker's run.
+_process_context: dict[str, str] = {}
+
+
+def bind_log_context(**fields: object) -> None:
+    """Stamp these fields on every later record of this process.
+
+    A ``None`` value unbinds its field. A field a call site passes through
+    ``extra=`` keeps the call site's value.
+    """
+    for key, value in fields.items():
+        if value is None:
+            _process_context.pop(key, None)
+        else:
+            _process_context[key] = str(value)
+
+
+def clear_log_context() -> None:
+    """Remove every field ``bind_log_context`` bound."""
+    _process_context.clear()
+
+
 class CorrelationFilter(logging.Filter):
-    """Add correlation ID to log records."""
+    """Add the correlation ID and the process's bound context to log records."""
 
     def filter(self, record):
         record.correlation_id = correlation_id.get() or "none"
+        for key, value in _process_context.items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
         return True
 
 
@@ -538,6 +563,8 @@ __all__ = [
     "CorrelationFilter",
     "LogFormat",
     "TruncatingFormatter",
+    "bind_log_context",
+    "clear_log_context",
     "get_correlation_id",
     "load_yaml_config",
     "log_performance",

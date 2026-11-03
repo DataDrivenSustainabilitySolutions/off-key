@@ -50,6 +50,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_pipeline_revisions` | `id` | Immutable compiled revisions of a pipeline |
 | `monitoring_pipeline_runs` | `id` | A revision bound to inputs and running as one monitoring service |
 | `monitoring_pipeline_activations` | `id` | Idempotent activation requests and their phase through preflight, start and heartbeat |
+| `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |
 | `radar_runtime_checkpoints` | `service_id` | Signed detector checkpoint for each running RADAR service |
 
 ## Relationship highlights
@@ -59,6 +60,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - `mqtt_topics.service_id → services.id`
 - `anomaly_identity.(charger_id, timestamp, telemetry_type, service_id) → anomalies` composite key
 - `monitoring_evidence.service_id` identifies the monitoring service that produced the inference record.
+- `monitoring_pipeline_run_events.run_id → monitoring_pipeline_runs.id`; a run also keeps `final_status`, the runtime status it ended with.
 
 ## Time-series characteristics
 
@@ -96,7 +98,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
   before it, as `{"detector_id", "inputs": {feature: value}}`. A single
   detector's entry has no `detector_id`. Values that are not finite are `null`,
   and at most 64 features per detector are kept. Charts show them as **Detector
-  inputs**. Migration `016_detector_inputs.sql` adds the column with an empty
+  inputs**. Migration `017_detector_inputs.sql` adds the column with an empty
   default, so earlier rows have none.
 
 ### Monitoring workload intent

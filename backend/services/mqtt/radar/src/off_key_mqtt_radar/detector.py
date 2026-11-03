@@ -330,6 +330,9 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         if collected >= self.static_config.training_window_size:
             self.state = StaticConformalState.CALIBRATING
             phase = "calibrating"
+            self.logger.info(
+                "event=radar.static_training_window_complete collected=%s", collected
+            )
         else:
             phase = "collecting"
         return self._non_inference_result(
@@ -354,6 +357,10 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             self.state = StaticConformalState.TRAINING
             self._submit_training()
             phase = "training_started"
+            self.logger.info(
+                "event=radar.static_training_started calibration_collected=%s",
+                calibration_collected,
+            )
         else:
             phase = "calibrating"
         return self._non_inference_result(

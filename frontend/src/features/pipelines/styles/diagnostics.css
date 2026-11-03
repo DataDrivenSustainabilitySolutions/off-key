@@ -124,3 +124,57 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
+
+/* A run's lifecycle, newest first; the tone marks what needs attention. */
+.pl-timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+.pl-timeline-head .pl-help {
+  margin: 0;
+}
+.pl-timeline-ended {
+  margin: 8px 0;
+  color: hsl(var(--destructive));
+}
+.pl-timeline-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-timeline-entry {
+  display: grid;
+  grid-template-columns: minmax(9.5rem, auto) minmax(0, 1fr);
+  gap: 12px;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid hsl(var(--border));
+}
+.pl-timeline-entry time {
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.pl-timeline-entry p {
+  margin: 2px 0 0;
+  color: hsl(var(--muted-foreground));
+  overflow-wrap: anywhere;
+}
+.pl-timeline-entry--positive {
+  border-left-color: hsl(var(--primary));
+}
+.pl-timeline-entry--warning {
+  border-left-color: hsl(var(--warning));
+}
+.pl-timeline-entry--danger {
+  border-left-color: hsl(var(--destructive));
+}
+@media (max-width: 640px) {
+  .pl-timeline-entry {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

@@ -5,6 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+# A node agent's expected replica count: one per eligible node.
+GLOBAL = "global"
+
 
 def check_services(services, expected, replicas):
     actual = {service["Spec"]["Name"]: service for service in services}
@@ -28,6 +31,11 @@ def check_services(services, expected, replicas):
         if update not in (None, "completed"):
             raise ValueError(f"{name}: update state {update}")
         running, desired = map(int, replicas[name].split("/"))
+        if target["replicas"] == GLOBAL:
+            # One task per eligible node; Swarm decides how many nodes that is.
+            if "Global" not in spec["Mode"] or desired == 0 or running != desired:
+                raise ValueError(f"{name}: {replicas[name]} node tasks running")
+            continue
         configured = spec["Mode"]["Replicated"]["Replicas"]
         if (
             running != target["replicas"]
@@ -68,7 +76,9 @@ def main():
     expected = {
         f"{sys.argv[1]}_{name}": {
             "image": service["image"],
-            "replicas": service.get("deploy", {}).get("replicas", 1),
+            "replicas": GLOBAL
+            if service.get("deploy", {}).get("mode") == GLOBAL
+            else service.get("deploy", {}).get("replicas", 1),
         }
         for name, service in model["services"].items()
     }

@@ -17,7 +17,11 @@ class TelemetryQueryService:
 
     async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
         types = await self._repository.list_types(charger_id=charger_id, limit=limit)
-        logger.info(f"Retrieved {len(types)} telemetry types for charger {charger_id}")
+        logger.debug(
+            "event=tactic.telemetry_types_read charger_id=%s count=%s",
+            charger_id,
+            len(types),
+        )
         return types
 
     async def get_telemetry_data(
@@ -40,9 +44,11 @@ class TelemetryQueryService:
             after_event_timestamp=after_event_timestamp,
         )
 
-        logger.info(
-            f"Retrieved {len(records)} telemetry records for "
-            f"{charger_id}/{telemetry_type}"
+        logger.debug(
+            "event=tactic.telemetry_read charger_id=%s telemetry_type=%s count=%s",
+            charger_id,
+            telemetry_type,
+            len(records),
         )
 
         formatted = [
@@ -102,8 +108,12 @@ class TelemetryQueryService:
             end=end,
             buckets=buckets,
         )
-        logger.info(
-            f"Retrieved {len(records)} range points for {charger_id}/{telemetry_type}"
+        logger.debug(
+            "event=tactic.telemetry_range_read charger_id=%s telemetry_type=%s "
+            "count=%s",
+            charger_id,
+            telemetry_type,
+            len(records),
         )
         return [
             {"timestamp": timestamp.isoformat(), "value": value}

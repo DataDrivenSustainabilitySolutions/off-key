@@ -392,7 +392,7 @@ their context, and `processed_features` holds each detector's features under its
 ID. Evidence stores them as `detector_results` (migration 015), while `p_value`
 or `anomaly_score` holds the fused value. Runs with one detector write an empty
 list and keep their results, checkpoints and diagnostics. `detector_inputs`
-(migration 016) keeps the features each detector scored, after every step before
+(migration 017) keeps the features each detector scored, after every step before
 it, so charts can plot derived features: one entry with a null `detector_id` for
 a single detector, or one per detector ID for a combined policy, at most 64
 features each.
@@ -605,14 +605,15 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`8f2af5405bee00f8bbcd75ba42bf9f53cdc582f4`, the detector inputs change that added
-migration 016 (`detector_inputs`). It shares the current migration ledger, the
-published ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery
-metadata, so an already-open new browser keeps its controls while the backend
-rolls back. The previous reference, `a13839ca`, added migration 015; it cannot be
-a reference any more, because releases before migration 016 refuse a database
-that has applied it. Rolling back past migration 016 means
-restoring a verified backup, as [recovery](../operations/recovery.md) describes.
+`69f2148919a8e89fdd4f878a359193f8cde63ec9`, the run timeline commit that added
+migration 016 (`monitoring_pipeline_run_events` and the runs' `final_status`). It
+shares the current migration ledger, the published ABERRANT 1.4.0 pin, frozen
+lock, generated catalog and field discovery metadata, so an already-open new
+browser keeps its controls while the backend rolls back. The previous reference,
+`a13839ca`, added migration 015; it cannot be a reference any more, because
+releases before migration 016 refuse a database that has applied it. Rolling back
+past migration 016 means restoring a verified backup, as
+[recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0
 is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
 catalog and locked Aberrant version must match the current source before it can

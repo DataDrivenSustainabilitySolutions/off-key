@@ -348,6 +348,14 @@ arrangement can be saved independently. The live inspector shows one coherent
 sampled observation, separates score and post-learning passes, and marks nodes
 that did not execute. Snapshot age is visible; fresh diagnostics do not imply
 persisted evidence is current. Static training appears as a batch summary.
+**Run timeline**, under a pipeline service, lists what its run went through,
+newest first: each setup step, when the worker started or resumed from saved
+state, each stage with the time spent in the previous one, the alarm threshold and
+training sizes once learning ends, coverage losses, crashes the cluster recorded
+(an out-of-memory kill is named as such) and how the run ended. A failed run opens
+it with the final error. The timeline and the run's last status stay after the
+service is removed. Runs started before this release have none.
+
 Configuration issues and sampled runtime state have separate badges. When the
 policy combines detectors, selecting it lists each detector's score and surprise
 for the sampled observation, and a selected detector shows its surprise beside
@@ -423,6 +431,7 @@ curl --fail http://localhost:8000/v1/anomalies/count
 | Service runs but evidence is empty | No MQTT data flow or warm-up/calibration is incomplete | Verify the topic stream and allow the initial window to complete |
 | Service disappears after a restart | Ephemeral lifecycle is configured | Use `TACTIC_RADAR_WORKLOAD_LIFECYCLE=persistent` only when persistence is required |
 | Model endpoint fails | TACTIC is unreachable | Check TACTIC `/ready` and its logs |
+| A pipeline service failed or keeps restarting | A node failed, the worker ran out of memory, or the database refused its writes | Open **Run timeline**; in production, search Grafana for its `service_id` (see [Production](../operations/production.md#logs-and-grafana)) |
 | Evidence exists but no anomalies appear | Current observations have not crossed the detector threshold | Inspect evidence before changing model parameters |
 
 ## Telemetry persistence during outages

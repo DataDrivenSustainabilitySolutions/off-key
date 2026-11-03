@@ -1,0 +1,10 @@
+# Dashboards shipped with the stack; edits in the UI are not kept.
+apiVersion: 1
+providers:
+  - name: aberration
+    folder: Aberration
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

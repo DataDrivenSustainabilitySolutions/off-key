@@ -182,7 +182,7 @@ Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
 | Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | Administrators infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
 | Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}`, `/pipelines/{id}/revisions/{revision_id}/metadata` | Publish and inspect immutable executable revisions |
 | Activations | `/pipelines/apply`, `/pipeline-activations`, `/pipeline-activations/{id}` | Apply a definition directly (HTTP 202), idempotent start/replacement, progress and cancellation |
-| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution and retained history; separately versioned layout |
+| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-timeline`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution, retained history and the run's lifecycle events; separately versioned layout |
 | Workspace | `/workspace?selected_service_id=...` | One member-scoped request for summaries and the selected bounded diagnostic snapshot |
 
 Use publication and activation for graph starts. The legacy `/start` endpoint

@@ -520,6 +520,37 @@ class PipelineHistoryPage(PipelineModel):
     next_service_id: str | None = None
 
 
+MAX_TIMELINE_EVENTS = 500
+
+
+class PipelineRunEventView(PipelineModel):
+    """One lifecycle event: a stage change, an activation phase, a crash."""
+
+    occurred_at: datetime
+    source: Literal["radar", "tactic"]
+    kind: str
+    stage: str | None = None
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelineRunTimeline(PipelineModel):
+    """What a run went through, oldest event first, and how it ended.
+
+    ``final_status`` is the runtime status the run ended with, kept after its
+    service row is purged. ``truncated`` means older events were left out.
+    """
+
+    run_id: str
+    service_id: str
+    status: str
+    error: str | None = None
+    created_at: datetime
+    ended_at: datetime | None = None
+    final_status: dict[str, Any] | None = None
+    events: list[PipelineRunEventView] = Field(max_length=MAX_TIMELINE_EVENTS)
+    truncated: bool = False
+
+
 class PipelineServiceView(PipelineModel):
     run: PipelineRunView | None
     history: list[PipelineRunSummary] = Field(max_length=100)

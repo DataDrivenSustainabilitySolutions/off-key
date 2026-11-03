@@ -96,9 +96,16 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             for column in inspect(connection).get_columns("monitoring_pipelines")
         }
         excluded_columns["monitoring_pipelines"] = {"is_template"} - columns
+    if "monitoring_pipeline_runs" in existing:
+        # Migration 016 keeps each run's last status after its service is gone.
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_pipeline_runs")
+        }
+        excluded_columns["monitoring_pipeline_runs"] = {"final_status"} - columns
     if "monitoring_evidence" in existing:
         # Migration 015 adds each detector's results to the evidence, and
-        # migration 016 the features each detector scored.
+        # migration 017 the features each detector scored.
         columns = {
             column["name"]
             for column in inspect(connection).get_columns("monitoring_evidence")

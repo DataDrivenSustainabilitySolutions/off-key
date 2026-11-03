@@ -63,7 +63,10 @@ APPLIED_CHECKSUMS = {
     "015_detector_evidence.sql": (
         "6d4f0ac47f069e8c61dc292b921f0bf3487a05dbdb06e63c7744ee5bb785fc99"
     ),
-    "016_detector_inputs.sql": (
+    "016_pipeline_run_events.sql": (
+        "43a86fcf11a428b24cde3590cdfa86d311281883d5d43784a254df011a2b9fdd"
+    ),
+    "017_detector_inputs.sql": (
         "bb49f11f5966ec132584ed56689a17bef52a1edf13416308e753d1d8ef664cfb"
     ),
 }
@@ -80,6 +83,7 @@ LEDGER_TABLES = {
         "monitoring_pipeline_runs",
         "monitoring_pipeline_activations",
     },
+    "016_pipeline_run_events.sql": {"monitoring_pipeline_run_events"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {"014_drop_unread_schema.sql": {"model_registry"}}

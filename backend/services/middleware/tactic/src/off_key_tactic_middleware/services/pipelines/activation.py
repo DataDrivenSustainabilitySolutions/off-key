@@ -27,6 +27,7 @@ from off_key_core.db.pipeline_claims import (
     monitor_claim_condition,
     pending_activations,
 )
+from off_key_core.db.run_events import run_event
 from off_key_core.models.pipelines import (
     compile_pipeline,
     derive_monitoring_config,
@@ -270,6 +271,18 @@ class PipelineActivations:
             updated_at=now,
         )
         self.session.add(row)
+        self.session.add(
+            run_event(
+                run_id,
+                "activation_phase",
+                stage="requested",
+                occurred_at=now,
+                detail={
+                    "revision_id": revision.id,
+                    "replaces_service_id": request.replace_service_id,
+                },
+            )
+        )
         await self.session.commit()
         return activation_view(row)
 
@@ -499,6 +512,7 @@ class PipelineActivations:
             seconds=get_tactic_settings().config.pipeline_preflight_timeout_seconds
             + 120
         )
+        started_phase, started_error = row.phase, row.error
         run = await self.session.get(PipelineRun, row.run_id, populate_existing=True)
         if run.ended_at is not None:
             row.cancel_requested = True
@@ -535,7 +549,22 @@ class PipelineActivations:
                 current.controller_token = None
                 current.lease_expires_at = None
                 current.updated_at = datetime.now(UTC)
+                self._record_progress(current, started_phase, started_error)
             await self.session.commit()
+
+    def _record_progress(self, row, started_phase, started_error):
+        """One run event per phase change or new error; retries add none."""
+        changed = row.phase != started_phase
+        if not changed and (row.error is None or row.error == started_error):
+            return
+        self.session.add(
+            run_event(
+                row.run_id,
+                "activation_phase" if changed else "activation_error",
+                stage=row.phase,
+                detail={"from": started_phase, "error": row.error},
+            )
+        )
 
     async def _record_controller_error(
         self, identifier, token, phase, error, *, reject=False
@@ -743,6 +772,9 @@ class PipelineActivations:
             run.status = "failed" if row.error else "cancelled"
             run.error = row.error
             run.ended_at = datetime.now(UTC)
+            service = await self.session.get(MonitoringService, row.service_id)
+            if service is not None and run.final_status is None:
+                run.final_status = service.operational_status
         await self.session.commit()
         row = await self._owned_row(row.id, token, "cancelling")
         service = await self.session.get(MonitoringService, row.service_id)

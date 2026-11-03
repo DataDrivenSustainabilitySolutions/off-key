@@ -120,6 +120,42 @@ def test_retired_schema_migration_keeps_the_telemetry_primary_key(
         }
 
 
+def test_run_timeline_migration_keeps_existing_runs(disposable_database):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        connection.execute(text("DROP TABLE monitoring_pipeline_run_events"))
+        connection.execute(
+            text("ALTER TABLE monitoring_pipeline_runs DROP COLUMN final_status")
+        )
+        rewind_ledger(connection, "016_pipeline_run_events.sql")
+        connection.execute(
+            insert(PipelineRun).values(
+                id="earlier",
+                service_id="earlier-service",
+                launch_config={},
+                layout={},
+                status="stopped",
+            )
+        )
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "016_pipeline_run_events.sql"
+        )
+        # Runs from before the timeline have no final status and no events.
+        assert connection.execute(
+            text(
+                "SELECT status, final_status FROM monitoring_pipeline_runs "
+                "WHERE id='earlier'"
+            )
+        ).one() == ("stopped", None)
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM monitoring_pipeline_run_events")
+            )
+            == 0
+        )
+
+
 def test_migrations_adopt_verified_baseline_preserve_data_and_repeat(
     disposable_database,
 ):

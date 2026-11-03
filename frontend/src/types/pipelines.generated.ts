@@ -395,6 +395,14 @@ export type PipelineRevisionView = {
   definition: PipelineDefinition;
 };
 
+export type PipelineRunEventView = {
+  occurred_at: string;
+  source: "radar" | "tactic";
+  kind: string;
+  stage?: string | null;
+  detail?: Record<string, unknown>;
+};
+
 export type PipelineRunSummary = {
   id: string;
   service_id: string;
@@ -404,6 +412,18 @@ export type PipelineRunSummary = {
   created_at: string;
   ended_at: string | null;
   error?: string | null;
+};
+
+export type PipelineRunTimeline = {
+  run_id: string;
+  service_id: string;
+  status: string;
+  error?: string | null;
+  created_at: string;
+  ended_at?: string | null;
+  final_status?: Record<string, unknown> | null;
+  events: Array<PipelineRunEventView>;
+  truncated?: boolean;
 };
 
 export type PipelineRunView = {

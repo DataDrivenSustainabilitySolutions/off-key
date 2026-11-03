@@ -9,15 +9,20 @@ import docker.errors
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_session_local
 from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.models import MonitoringService, PipelineRun
+from off_key_core.db.models import MonitoringService, PipelineRun, PipelineRunEvent
 from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
+from off_key_core.db.run_events import RUN_EVENT_LIMIT, run_event
 from off_key_core.schemas.radar import RadarOperationalStatus
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config.config import get_tactic_settings
-from ...facades.docker import AsyncDocker, get_workload_docker_status
+from ...facades.docker import (
+    AsyncDocker,
+    get_workload_crashed_tasks,
+    get_workload_docker_status,
+)
 from .monitor_intent import (
     complete_stop,
     mark_deleting,
@@ -175,6 +180,88 @@ class RadarStatusReconciliationService:
                 logger.exception(
                     "RADAR reconciliation deferred service_id=%s", snapshot.id
                 )
+        await self._record_crashes(session, snapshots, semaphore)
+
+    async def _record_crashes(self, session, snapshots, semaphore) -> None:
+        """Record why a running pipeline's Swarm tasks crashed, once per task.
+
+        A restarted worker heartbeats again, so without this a crash loop or an
+        out-of-memory kill shows only as a gap in its status.
+        """
+        watched = [
+            snapshot
+            for snapshot in snapshots
+            if snapshot.config_fingerprint
+            and snapshot.container_id
+            and snapshot.desired_state == "running"
+            and snapshot.stop_requested_at is None
+        ]
+
+        async def crashes(snapshot):
+            async with semaphore:
+                return await get_workload_crashed_tasks(
+                    self.async_docker, snapshot.container_id
+                )
+
+        found = await asyncio.gather(
+            *(crashes(item) for item in watched), return_exceptions=True
+        )
+        for snapshot, tasks in zip(watched, found, strict=True):
+            if isinstance(tasks, BaseException) or not tasks:
+                continue
+            try:
+                await self._record_service_crashes(session, snapshot.id, tasks)
+                await session.commit()
+            except (OperationalError, InterfaceError):
+                await session.rollback()
+                raise
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "RADAR crash record deferred service_id=%s", snapshot.id
+                )
+
+    @staticmethod
+    async def _record_service_crashes(session, service_id, tasks) -> None:
+        run_id = await session.scalar(
+            select(PipelineRun.id).where(PipelineRun.service_id == service_id)
+        )
+        if run_id is None:
+            return
+        recorded = await session.scalars(
+            select(PipelineRunEvent.detail)
+            .where(
+                PipelineRunEvent.run_id == run_id,
+                PipelineRunEvent.kind == "workload_crashed",
+            )
+            .order_by(PipelineRunEvent.id.desc())
+            .limit(100)
+        )
+        known = {detail.get("task_id") for detail in recorded if detail}
+        stored = await session.scalar(
+            select(func.count(PipelineRunEvent.id)).where(
+                PipelineRunEvent.run_id == run_id
+            )
+        )
+        room = max(RUN_EVENT_LIMIT - (stored or 0), 0)
+        # Swarm keeps a few tasks of history; record the oldest new one first.
+        for task in reversed(tasks[:10]):
+            if task["task_id"] in known:
+                continue
+            if room == 0:
+                break
+            room -= 1
+            session.add(run_event(run_id, "workload_crashed", detail=task))
+            logger.warning(
+                "event=tactic.radar_task_crashed service_id=%s run_id=%s "
+                "task_id=%s state=%s exit_code=%s error=%s",
+                service_id,
+                run_id,
+                task["task_id"],
+                task["state"],
+                task["exit_code"],
+                task["error"],
+            )
 
     async def _inspect(self, snapshot: _ServiceSnapshot) -> str:
         if (

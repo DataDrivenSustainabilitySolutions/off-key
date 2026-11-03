@@ -60,6 +60,7 @@ GUEST_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/v1/monitors/pipeline-activations/{activation_id}"),
         ("GET", "/v1/monitors/{service_id}/pipeline"),
         ("GET", "/v1/monitors/{service_id}/pipeline-history"),
+        ("GET", "/v1/monitors/{service_id}/pipeline-timeline"),
         ("GET", "/v1/monitors/{service_id}/pipeline-metadata"),
         ("GET", "/v1/monitors/{service_id}/pipeline-state"),
         ("GET", "/v1/system"),

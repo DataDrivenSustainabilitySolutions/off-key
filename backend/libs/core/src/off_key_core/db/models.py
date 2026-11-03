@@ -36,6 +36,9 @@ from .pipelines import (
 from .pipelines import (
     PipelineRun as PipelineRun,
 )
+from .pipelines import (
+    PipelineRunEvent as PipelineRunEvent,
+)
 from .remembered_sessions import RememberedSession as RememberedSession
 from .system import SystemCollectionConfiguration as SystemCollectionConfiguration
 from .system import SystemConfiguration as SystemConfiguration

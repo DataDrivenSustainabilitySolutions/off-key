@@ -642,6 +642,69 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertIn("default-src 'none'", headers["contentSecurityPolicy"])
 
+    def test_grafana_sits_behind_the_admin_gate_on_its_own_network(self):
+        result = self.results["prod"]
+        config, routes = result["config"], result["routes"]
+        router = routes["routers"]["grafana"]
+        self.assertEqual(router["rule"], "Host(`grafana.aberration.app`)")
+        self.assertEqual(router["middlewares"], ["oauth-errors", "oauth-auth"])
+        self.assertEqual(
+            routes["services"]["grafana"]["loadBalancer"]["servers"],
+            [{"url": "http://off-key_grafana:3000"}],
+        )
+        # Grafana trusts the user header only oauth-auth sets for Traefik.
+        self.assertIn(
+            "X-Auth-Request-User",
+            routes["middlewares"]["oauth-auth"]["forwardAuth"]["authResponseHeaders"],
+        )
+        services = config["services"]
+        for name in ("alloy", "loki", "grafana"):
+            self.assertEqual(set(services[name]["networks"]), {"observability-network"})
+        self.assertIn("observability-network", services["traefik"]["networks"])
+        self.assertTrue(config["networks"]["observability-network"]["internal"])
+        for public in ("cloudflared", "frontend", "landing", "oauth2-proxy"):
+            self.assertNotIn("observability-network", services[public]["networks"])
+
+        grafana = services["grafana"]["environment"]
+        self.assertEqual(grafana["GF_AUTH_PROXY_ENABLED"], "true")
+        self.assertEqual(grafana["GF_AUTH_PROXY_HEADER_NAME"], "X-Auth-Request-User")
+        for disabled in (
+            "GF_AUTH_BASIC_ENABLED",
+            "GF_AUTH_ANONYMOUS_ENABLED",
+            "GF_USERS_ALLOW_SIGN_UP",
+        ):
+            self.assertEqual(grafana[disabled], "false")
+        self.assertEqual(grafana["GF_AUTH_DISABLE_LOGIN_FORM"], "true")
+        self.assertEqual(
+            grafana["GF_SERVER_ROOT_URL"], "https://grafana.aberration.app/"
+        )
+        self.assertFalse(services["grafana"].get("secrets"))
+
+        alloy = services["alloy"]
+        self.assertEqual(alloy["deploy"]["mode"], "global")
+        socket = next(
+            volume
+            for volume in alloy["volumes"]
+            if volume.get("target") == "/var/run/docker.sock"
+        )
+        self.assertTrue(socket["read_only"])
+        self.assertFalse(alloy.get("ports"))
+        for name in ("loki", "grafana"):
+            self.assertNotIn(
+                "/var/run/docker.sock",
+                [volume.get("target") for volume in services[name].get("volumes", [])],
+            )
+            self.assertEqual(
+                services[name]["deploy"]["placement"]["constraints"],
+                ["node.role == manager"],
+            )
+        # Content-addressed config names rotate together with any edit.
+        for item in services["grafana"]["configs"] + services["alloy"]["configs"]:
+            self.assertRegex(
+                config["configs"][item["source"]]["name"],
+                rf"^{item['source']}_[0-9a-f]{{12}}$",
+            )
+
     def test_landing_page_publishes_llms_txt_and_markdown(self):
         result = self.results["prod"]
         llms, markdown = result["landing_llms"], result["landing_markdown"]

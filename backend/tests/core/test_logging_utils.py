@@ -212,3 +212,36 @@ def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch)
         service_logger.handlers = original_service_handlers
         service_logger.setLevel(original_service_level)
         service_logger.propagate = original_service_propagate
+
+
+def test_bound_process_context_names_every_record_until_cleared():
+    from off_key_core.config.logs import (
+        CorrelationFilter,
+        bind_log_context,
+        clear_log_context,
+    )
+
+    formatter = JsonFormatter()
+    log_filter = CorrelationFilter()
+    try:
+        bind_log_context(service_id="svc-1", run_id="run-1", revision_id=None)
+        record = _record()
+        assert log_filter.filter(record)
+        payload = json.loads(formatter.format(record))
+        assert payload["extra"] == {"service_id": "svc-1", "run_id": "run-1"}
+
+        # A call site's own value wins over the bound one.
+        record = _record(run_id="explicit")
+        log_filter.filter(record)
+        assert json.loads(formatter.format(record))["extra"]["run_id"] == "explicit"
+
+        bind_log_context(run_id=None)
+        record = _record()
+        log_filter.filter(record)
+        text = KeyValueFormatter("%(message)s").format(record)
+        assert text == "event=logging_test service_id=svc-1"
+    finally:
+        clear_log_context()
+    record = _record()
+    log_filter.filter(record)
+    assert "extra" not in json.loads(formatter.format(record))

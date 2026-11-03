@@ -32,18 +32,13 @@ from off_key_core.schemas.pipelines import (
 from ...facades.tactic import path_segment, tactic
 from ..access import current_member
 from ..errors import TacticErrorRoute
-from ..rate_limiter import client_ip, limiter
+from ..rate_limiter import limiter
 
 
 async def member_scope(
     request: Request, member: MemberProfile = Depends(current_member)
 ):
-    # Demo guests share one viewer member, so each visitor gets its own budget.
-    request.state.pipeline_member_id = (
-        f"guest:{client_ip(request)}"
-        if getattr(request.state, "demo_guest", False)
-        else str(member.id)
-    )
+    request.state.pipeline_member_id = str(member.id)
 
 
 def member_key(request: Request) -> str:

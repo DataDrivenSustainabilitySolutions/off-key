@@ -623,8 +623,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(json.loads(api_env["CORS_ALLOWED_ORIGINS"]), [dashboard])
         self.assertIn(f'href="{dashboard}/"', result["landing_html"])
         self.assertNotIn("{{", result["landing_html"])
-        # Production links the public demo from the landing page.
-        self.assertIn('href="https://demo.aberration.app/"', result["landing_html"])
+        self.assertNotIn("demo", result["landing_html"].lower())
 
         landing = config["services"]["landing"]
         self.assertEqual(set(landing["networks"]), {"public-network"})
@@ -725,7 +724,7 @@ class DeploymentTests(unittest.TestCase):
         for text in (llms, markdown):
             self.assertNotIn("{{", text)
             self.assertIn("https://dashboard.aberration.app/api/openapi.json", text)
-            self.assertIn("https://demo.aberration.app/api/v1/monitors", text)
+            self.assertNotIn("demo", text.lower())
         self.assertIn("(https://aberration.app/index.md)", llms)
         self.assertIn(
             "https://datadrivensustainabilitysolutions.github.io/off-key/llms.txt",
@@ -882,39 +881,17 @@ class DeploymentTests(unittest.TestCase):
                 with self.subTest(service=service, key=key):
                     self.assertRegex(code, rf"\b{re.escape(key)}\b")
 
-    def test_traefik_reaches_production_and_the_demo_by_stack_qualified_names(self):
+    def test_traefik_reaches_production_by_stack_qualified_names(self):
         result = self.results["prod"]
         urls = {
             name: service["loadBalancer"]["servers"][0]["url"]
             for name, service in result["routes"]["services"].items()
         }
-        self.assertEqual(urls["demo-frontend"], "http://off-key-demo_frontend:5173")
-        self.assertEqual(urls["demo-api"], "http://off-key-demo_api:8000")
-        for name, url in urls.items():
-            if not name.startswith("demo-"):
-                self.assertTrue(url.startswith("http://off-key_"), url)
-        routers = result["routes"]["routers"]
-        self.assertEqual(
-            routers["demo-frontend"]["rule"], "Host(`demo.aberration.app`)"
-        )
-        self.assertEqual(routers["demo-api"]["middlewares"], ["api-strip"])
+        for url in urls.values():
+            self.assertTrue(url.startswith("http://off-key_"), url)
         swarm = result["swarm_config"]
-        self.assertEqual(swarm["networks"]["demo-network"]["name"], "aberration-demo")
-        # Only Traefik of production joins the network the demo shares.
-        joined = [
-            name
-            for name, service in swarm["services"].items()
-            if "demo-network" in service.get("networks", {})
-        ]
-        self.assertEqual(joined, ["traefik"])
         configs = [config["name"] for config in swarm["configs"].values()]
         self.assertTrue(any(name.startswith("emqx_security_cfg_") for name in configs))
-
-    def test_production_has_no_public_demo_settings(self):
-        services = self.results["prod"]["swarm_config"]["services"]
-        for service in ("api", "tactic"):
-            demo = [key for key in services[service]["environment"] if "DEMO" in key]
-            self.assertEqual(demo, [], service)
 
     def test_explicitly_disabled_collection_is_preserved(self):
         config = self.results["prod-collection-disabled"]["config"]

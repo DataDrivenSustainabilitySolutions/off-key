@@ -72,7 +72,6 @@ docker network rm off-key_app-network off-key_emqx-network || true
 | Goal | Recommended mode |
 | --- | --- |
 | Day-to-day development | Local default |
-| Detection logic with real data | Local plus a [Digitraffic catalogue](public-demo.md#open-data-sources) |
 | Multi-node broker behaviour | Local plus cluster override |
 | Production and external broker ingress | Integrated production Swarm |
 

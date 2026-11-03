@@ -4,7 +4,7 @@
 # One singleton Tailscale node that joins the network a deployment's brokers
 # live on and offers a SOCKS5 proxy into it; TACTIC reaches the hosts that
 # SYSTEM_BROKER_ROUTES covers through that proxy. Installations whose brokers
-# are reachable directly, such as the public demo, leave it out. References the
+# are reachable directly leave it out. References the
 # base's overlay networks, so it is NOT valid on its own.
 
 services:

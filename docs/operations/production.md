@@ -36,9 +36,8 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    completed and `release.json` replaced. An interrupted release cannot be replaced
    by another SHA.
 9. Application setup follows the completed release: the first administrator
-   invitation and, on the demo, its viewer member and committed catalogue. It writes
-   like any client, so a failure fails the run without holding the release open; a
-   retry or the next deployment repeats it.
+   invitation. It writes like any client, so a failure fails the run without
+   holding the release open; a retry or the next deployment repeats it.
 
 Dispatch a tested release manually with `make deploy-prod REVISION=<full SHA>`.
 Use `BOOTSTRAP=true` only for the first integrated cutover. The automatic switch
@@ -56,9 +55,8 @@ or rollback of an older SHA reports the same way.
 
 Each release's full Ansible log is kept on its manager under
 `<stack_dir>/release-logs/`, readable by root only, newest 20 releases. A failed
-or refused release opens the issue **Production release needs attention** (or
-**Public demo release needs attention**) with those public lines and the retry
-step, and mentions whoever triggered it. Later failures comment on the same issue,
+or refused release opens the issue **Production release needs attention** with
+those public lines and the retry step, and mentions whoever triggered it. Later failures comment on the same issue,
 and the next completed release of that target closes it. Database backups, the broker
 route identity, recovery records and private inventories are not published as Actions
 artifacts. Investigate live failures through trusted SSH and the server-side
@@ -116,7 +114,7 @@ and each release pulls six new images onto the nodes. Neither place keeps them a
 
 - **Nodes:** after a release is verified and recorded, `deploy.yml` removes the
   application images on every node that neither the release nor any Swarm service
-  names, so the demo stack's and TACTIC's runtime RADAR images stay. It never runs a
+  names, so TACTIC's runtime RADAR images stay. It never runs a
   broad `docker image prune`: digest-pulled images look dangling, and runtime RADAR
   workers cannot pull a removed image again without registry credentials. Images that
   Swarm's task history still holds stay until that history rotates. A cleanup error is

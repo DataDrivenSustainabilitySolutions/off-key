@@ -61,22 +61,22 @@ class ReleaseAlertTests(unittest.TestCase):
     def test_a_completed_release_closes_only_its_own_targets_issue(self):
         github = FakeGitHub(
             [
+                {"number": 11, "title": "An unrelated issue"},
                 {"number": 12, "title": alert.TITLES["production"]},
-                {"number": 13, "title": alert.TITLES["demo"]},
             ]
         )
-        note = alert.alert("demo", None, True, SHA, RUN, gh=github)
-        self.assertEqual(note, "Closed the demo release issue #13.")
-        self.assertEqual(github.calls[-1][:3], ("issue", "close", "13"))
+        note = alert.alert("production", None, True, SHA, RUN, gh=github)
+        self.assertEqual(note, "Closed the production release issue #12.")
+        self.assertEqual(github.calls[-1][:3], ("issue", "close", "12"))
         github = FakeGitHub()
         self.assertIsNone(alert.alert("production", None, True, SHA, RUN, gh=github))
         self.assertEqual([call[:2] for call in github.calls], [("issue", "list")])
 
-    def test_demo_retries_name_demo_only_and_bots_are_not_mentioned(self):
+    def test_bots_are_not_mentioned(self):
         github = FakeGitHub()
         alert.alert(
-            "demo",
-            ["Demo release failed"],
+            "production",
+            ["Production release failed"],
             False,
             SHA,
             RUN,
@@ -84,8 +84,7 @@ class ReleaseAlertTests(unittest.TestCase):
             gh=github,
         )
         body = github.calls[-1][-1]
-        self.assertTrue(body.startswith("The demo release of"))
-        self.assertIn("**demo_only** checked", body)
+        self.assertTrue(body.startswith("The production release of"))
 
     def test_outcomes_report_each_target_and_a_silent_job_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -95,10 +94,14 @@ class ReleaseAlertTests(unittest.TestCase):
                 alert.outcomes(directory, job_failed=True), {"production": ([], False)}
             )
             (directory / "production.released").touch()
-            (directory / "demo.failed").write_text("Demo release failed\n")
+            self.assertEqual(
+                alert.outcomes(directory, job_failed=False),
+                {"production": (None, True)},
+            )
+            (directory / "production.failed").write_text("Production release failed\n")
             self.assertEqual(
                 alert.outcomes(directory, job_failed=True),
-                {"production": (None, True), "demo": (["Demo release failed"], False)},
+                {"production": (["Production release failed"], False)},
             )
         self.assertIn(
             "failed before Ansible reported",

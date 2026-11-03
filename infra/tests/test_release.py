@@ -445,12 +445,7 @@ class ReleaseTests(unittest.TestCase):
         )
         self.assertNotIn("bootstrap", json.dumps(release_steps))
         self.assertEqual(
-            [step["include_tasks"] for step in setup],
-            [
-                "bootstrap_admin.yml",
-                "bootstrap_demo_viewer.yml",
-                "bootstrap_demo_catalogue.yml",
-            ],
+            [step["include_tasks"] for step in setup], ["bootstrap_admin.yml"]
         )
 
     def test_pin_validates_revision_against_the_digest_not_the_tag(self):

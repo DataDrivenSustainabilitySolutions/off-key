@@ -16,10 +16,6 @@ on:
         description: Controlled first deployment; stop old writers and capture existing monitors
         default: false
         type: boolean
-      demo_only:
-        description: Deploy only the public demo stack (for example after accepting its admin invitation)
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -112,7 +108,6 @@ jobs:
           OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
           OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
           OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
-          OFFKEY_DEMO_VAULT: ${{ vars.DEMO_ENABLED == 'true' && secrets.OFFKEY_DEMO_VAULT || '' }}
         run: python3 infra/scripts/prepare_ci_secrets.py
       - name: Connect the ephemeral runner to the management tailnet
         if: steps.release.outputs.ready == 'true'
@@ -132,7 +127,6 @@ jobs:
         if: steps.release.outputs.ready == 'true'
         env:
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
-          DEMO_ONLY: ${{ inputs.demo_only || false }}
           ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
           # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
           # every task opens a new SSH session through the tailnet.
@@ -153,9 +147,7 @@ jobs:
             uv run --frozen ansible-playbook "$OFFKEY_RELEASE_TOOLS/retain-release-log.yml" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$OFFKEY_RELEASE_REVISION-production.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the manager.'
           }
           uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { failed "Production preflight failed; check private SSH/configuration and the setup guide." "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
-          if [ "$DEMO_ONLY" = true ]; then
-            echo 'Deploying only the public demo; production is unchanged.'
-          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
             uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
             python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
             keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
@@ -163,46 +155,10 @@ jobs:
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
           fi
-      - name: Deploy and verify the public demo stack after production
-        if: steps.release.outputs.ready == 'true' && vars.DEMO_ENABLED == 'true'
-        env:
-          DEMO_ONLY: ${{ inputs.demo_only || false }}
-          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
-          # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
-          # every task opens a new SSH session through the tailnet.
-          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
-          ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
-        run: |
-          set -euo pipefail
-          umask 077
-          cd infra/ansible
-          export ANSIBLE_CONFIG="$PWD/ansible.cfg"
-          readiness="$OFFKEY_DEPLOY_DIRECTORY/demo-readiness"
-          demo() {
-            uv run --frozen ansible-playbook -i inventories/demo/hosts.yml "$@" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json"
-          }
-          failed() {
-            { echo "$1"; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$2" --readiness "$readiness"; } | tee "$OFFKEY_RELEASE_OUTCOME/demo.failed"
-          }
-          keep() {
-            demo "$OFFKEY_RELEASE_TOOLS/retain-release-log.yml" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$OFFKEY_RELEASE_REVISION-demo.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the demo manager.'
-          }
-          demo deployment-needed.yml -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/demo-needed" > "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log" 2>&1 || { failed "Demo preflight failed; check OFFKEY_DEMO_VAULT." "$OFFKEY_DEPLOY_DIRECTORY/demo-preflight.log"; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/demo-needed")" = yes ]; then
-            demo deploy.yml -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/demo.log" 2>&1 || { failed "Demo release failed; production is unaffected. Retry with demo_only." "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/demo.log"; exit 1; }
-            python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
-            keep "$OFFKEY_DEPLOY_DIRECTORY/demo.log"
-            touch "$OFFKEY_RELEASE_OUTCOME/demo.released"
-            # Only the viewer outcome; the full log stays private.
-            grep -oE '(Demo viewer|The demo viewer|Accept the administrator invitation)[^"]*' "$OFFKEY_DEPLOY_DIRECTORY/demo.log" || true
-          else
-            echo 'No runtime changes since the last verified demo release; the demo is unchanged.'
-          fi
       - name: Remove all temporary production material
         if: always()
         run: |
           rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
-          rm -f infra/ansible/inventories/demo/hosts.yml infra/ansible/inventories/demo/group_vars/all/vault.yml
           rm -rf "$OFFKEY_DEPLOY_DIRECTORY"
       - name: Keep a failed release visible in an issue until a release completes
         if: always() && steps.release.outputs.ready == 'true'

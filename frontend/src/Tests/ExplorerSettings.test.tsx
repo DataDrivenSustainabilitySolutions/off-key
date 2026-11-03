@@ -101,7 +101,7 @@ describe("explorer settings catalogue files", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
     expect(props.onImport).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Replace saved catalogue" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Export catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
     expect(props.onExport.mock.calls).toEqual([[]]);
     expect(screen.queryByRole("button", { name: "Export workspace" })).toBeNull();
@@ -112,13 +112,13 @@ describe("explorer settings catalogue files", () => {
     let fail!: (error: Error) => void;
     const props = { ...common(), onExport: vi.fn(() => new Promise<void>((_resolve, reject) => { fail = reject; })) };
     render(<ExplorerSettings {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Export catalogue" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export catalogue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
     expect(props.onExport).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Import file" }).matches(":disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Import JSON" }).matches(":disabled")).toBe(true);
     await act(async () => fail(new Error("Export failed.")));
     expect(screen.getByRole("alert").textContent).toBe("Export failed.");
-    expect(screen.getByRole("button", { name: "Import file" }).matches(":disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Import JSON" }).matches(":disabled")).toBe(false);
   });
 
   it("offers structure edits separately and allows viewers to export", () => {
@@ -132,7 +132,7 @@ describe("explorer settings catalogue files", () => {
     rerender(<ExplorerSettings {...props} canEdit={false} />);
     expect(screen.getByRole("button", { name: "Add broker" }).matches(":disabled")).toBe(true);
     expect(screen.getByLabelText("Catalogue file").matches(":disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "Export catalogue" }).matches(":disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "Export JSON" }).matches(":disabled")).toBe(false);
     rerender(<ExplorerSettings {...props} document={createEmptySystem()} />);
     expect(screen.getByRole("button", { name: "Add reading" }).matches(":disabled")).toBe(true);
   });

@@ -25,7 +25,7 @@ function brokerStatus(source: { state: string; message?: string | null } | undef
   if (source?.state === "error" || source?.state === "blocked") return { label: "Unavailable", tone: "danger", reason: source.message ?? undefined };
   if (source?.state === "reconnecting") return { label: "Reconnecting…", tone: "warning" };
   if (source || enabled > 0) return { label: "Starting…", tone: "warning" };
-  return check ? { label: "Not recorded · Unreachable", tone: "danger", reason: check } : { label: "Not recorded", tone: "neutral" };
+  return { label: "Recording off", tone: "neutral", reason: check };
 }
 /** A recorded broker that is retrying or gave up can be retried now. */
 const canRetry = (state?: string) => state === "error" || state === "reconnecting";
@@ -72,8 +72,8 @@ export function SourcesWorkspace() {
     if (canRetry(state)) {
       const pending = !!reconnects[id]?.pending;
       return <><Button variant="outline" size="sm" disabled={pending} title="Retry the recording connection to this broker now"
-        aria-label={`Reconnect ${label}`} onClick={() => void retryBroker(id)}>
-        <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect"}</Button>{stop}</>;
+        aria-label={`Reconnect recording for ${label}`} onClick={() => void retryBroker(id)}>
+        <RotateCw size={14} />{pending ? "Reconnecting…" : "Reconnect recording"}</Button>{stop}</>;
     }
     if (recorded) return stop;
     return <Button variant="outline" size="sm" disabled={busy} title="Record every message from this broker, also while you are signed out"
@@ -111,7 +111,7 @@ export function SourcesWorkspace() {
       {safeReturn !== "/" && <Link to={safeReturn}>Return to service setup</Link>}
       {selectedBroker && system.canEdit && canRetry(selectedState) && <Button variant="outline" size="sm"
         disabled={!!reconnects[selectedBroker]?.pending} title="Retry the recording connection to this broker now"
-        onClick={() => void retryBroker(selectedBroker)}><RotateCw size={14} />{reconnects[selectedBroker]?.pending ? "Reconnecting…" : "Reconnect"}</Button>}
+        onClick={() => void retryBroker(selectedBroker)}><RotateCw size={14} />{reconnects[selectedBroker]?.pending ? "Reconnecting…" : "Reconnect recording"}</Button>}
       {selected && liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot}
         disabled={system.saving} preview />}
       {system.canEdit && !selected && idleBrokers.length > 0 && <Button variant="outline" disabled={brokerChecks.running}
@@ -146,8 +146,8 @@ export function SourcesWorkspace() {
         const node = index.nodes.get(index.objectKeys.get(item.id)![0]!)!;
         return <div key={item.id} className={`source-broker source-broker--${status.tone}`}>
           <button type="button" className="source-broker-open" onClick={() => { selectSource(node); browse(node.key); }}>
-            <strong>{item.label}{check && <BrokerCheckMark check={check} />}</strong></button>
-          <span>{readings} readings{enabled ? ` · ${enabled === readings ? "all" : enabled} recorded` : ""}</span>
+            <strong>{item.label}{check && <BrokerCheckMark check={check} visibleReason={reason} />}</strong></button>
+          <span>{readings} {readings === 1 ? "reading" : "readings"}{enabled > 0 && readings > 1 ? ` · ${enabled} enabled` : ""}</span>
           {reason && <span className="source-broker-reason">{reason}</span>}
           <div className="source-broker-status"><span className={`mn-state mn-state--${status.tone}`}>{status.label}</span>
             {rowActions(item.id, item.label)}</div>

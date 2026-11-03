@@ -187,7 +187,7 @@ describe("service-centred monitoring workspace", () => {
     const sidebar = within(screen.getByRole("navigation", { name: "System explorer" }));
     await sidebar.findByRole("button", { name: "humidity, preview" });
     const location = screen.getByTestId("location").textContent;
-    const toggle = sidebar.getByRole("button", { name: "Online topics only" });
+    const toggle = sidebar.getByRole("button", { name: "Recently active" });
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(sidebar.getByRole("button", { name: "temperature, preview" })).toBeTruthy();
@@ -212,7 +212,7 @@ describe("service-centred monitoring workspace", () => {
       ? { lease_id: "lease", telemetry: { sequence: 0, connections: [], streams: [] } } : {});
     mount("/?reading=temperature");
     await loaded();
-    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View live" }));
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/live/leases",
       expect.objectContaining({ stream_ids: ["humidity", "temperature"] }), expect.anything()));
   });
@@ -228,7 +228,7 @@ describe("service-centred monitoring workspace", () => {
     withServices([monitor]);
     mount("/?service=service-one");
     const details = await screen.findByRole("region", { name: "Monitoring service details" });
-    expect(within(details).getByText("Inputs stale")).toBeTruthy();
+    expect(within(details).getByText("No recent inputs")).toBeTruthy();
     expect(within(details).getByText("Stale inputs: Air temperature")).toBeTruthy();
     expect(within(details).getByText("Last inference")).toBeTruthy();
     expect(within(details).getByText("Last evidence saved")).toBeTruthy();
@@ -310,10 +310,10 @@ describe("service-centred monitoring workspace", () => {
     mount("/?create=monitoring&reading=temperature");
     const start = await screen.findByRole("button", { name: "Start adaptive monitoring" });
     expect((start as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Waiting for collection to apply…")).toBeTruthy();
+    expect(screen.getByText("Waiting for recording settings to apply.")).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
-    expect(screen.queryByText("Waiting for collection to apply…")).toBeNull();
+    expect(screen.queryByText("Waiting for recording settings to apply.")).toBeNull();
     expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
@@ -326,7 +326,7 @@ describe("service-centred monitoring workspace", () => {
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
-    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
     expect(vi.mocked(apiUtils.post).mock.calls.some(([endpoint]) => endpoint === "/v1/system/live/leases")).toBe(false);
   });
   it("shows monitors by default without starting telemetry or enabling collection, and keeps service selection in the URL", async () => {
@@ -337,7 +337,7 @@ describe("service-centred monitoring workspace", () => {
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors?container_name=monitor-service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
     expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
@@ -394,7 +394,7 @@ describe("service-centred monitoring workspace", () => {
     withServices([]); mount("/?create=monitoring&reading=temperature");
     const setup = await screen.findByRole("region", { name: "Create monitoring service" });
     expect(within(setup).getByRole("button", { name: "Choose monitoring inputs" }).textContent).toContain("Room station");
-    expect(within(setup).getByText("Enable collection for the readings this service will monitor.")).toBeTruthy();
+    expect(within(setup).getByRole("link", { name: "Turn on recording in Sources" })).toBeTruthy();
     expect(within(setup).queryByRole("button", { name: "Start monitoring" })).toBeNull();
     expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
   });
@@ -560,12 +560,12 @@ describe("hierarchical explorer workspace", () => {
     mount();
     expect(screen.getByText(/Sign in to load the catalogue/)).toBeTruthy();
     expect(apiUtils.get).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Add broker" })).toBeTruthy());
     expect((within(dialog).getByRole("button", { name: "Add broker" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((within(dialog).getByRole("button", { name: "Import file" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: "Import JSON" }) as HTMLButtonElement).disabled).toBe(true);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -576,7 +576,7 @@ describe("hierarchical explorer workspace", () => {
     expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
     expect(within(preview).queryByRole("button", { name: "Edit structure" })).toBeNull();
     expect(within(preview).queryByText("Personal groups")).toBeNull();
-    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "View live" }) as HTMLButtonElement).disabled).toBe(false);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -701,13 +701,14 @@ describe("reporting", () => {
     expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
     expect(rows[0]?.querySelector(".rp-entity")?.textContent).toBe("Room station");
     expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
+    expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
     expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
-    fireEvent.change(within(events).getByRole("combobox", { name: "Signal" }), { target: { value: "0.001" } });
+    fireEvent.change(within(events).getByRole("combobox", { name: "p-value" }), { target: { value: "0.001" } });
     expect(within(events).getByRole("status").textContent).toBe("1 event");
     expect(within(events).queryByText("Humidity drift")).toBeNull();
     fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "room-input\u0000humidity" } });
     expect(within(events).getByText("No events match these filters.", { exact: false })).toBeTruthy();
-    fireEvent.click(within(events).getAllByRole("button", { name: "Clear filters" })[0]!);
+    fireEvent.click(within(events).getByRole("button", { name: "Clear filters" }));
     expect(within(events).getByRole("status").textContent).toBe("2 events");
   });
 
@@ -720,7 +721,7 @@ describe("reporting", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Show only Room station", "Entity readings", "Copy event ID", "Delete anomaly"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID", "Delete anomaly"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete anomaly" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this anomaly?" });
     expect(apiUtils.delete).not.toHaveBeenCalled();

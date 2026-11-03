@@ -50,7 +50,7 @@ describe("integrated monitor creation", () => {
     mount(false);
     const start = await screen.findByRole("button", { name: "Start adaptive monitoring" });
     expect((start as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Waiting for collection to apply…")).toBeTruthy();
+    expect(screen.getByText("Waiting for recording settings to apply.")).toBeTruthy();
     fireEvent.click(start); expect(apiUtils.post).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ it("restores the entire service draft after a Sources detour", async () => {
   render(<RouterProvider router={router} />);
   fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Saved climate draft" } });
   fireEvent.change(await screen.findByLabelText("Warm-up samples"), { target: { value: "33" } });
-  fireEvent.click(screen.getByRole("link", { name: "Configure in Sources" }));
+  fireEvent.click(screen.getByRole("link", { name: "Review recording in Sources" }));
   fireEvent.click(await screen.findByRole("link", { name: "Return to service setup" }));
   await waitFor(() => expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).value).toBe("Saved climate draft"));
   expect((await screen.findByLabelText("Warm-up samples") as HTMLInputElement).value).toBe("33");

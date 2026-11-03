@@ -131,7 +131,7 @@ readings**, opens the **Input** step, and the strategy opens **Service
 settings**. A new service opens at its Input step, where **Readings from** picks
 the entity and **Readings to monitor** its readings; a saved template or a
 service being replaced opens at its graph. The main actions are **Load
-template**, **Save template** and **Apply monitoring**. Starting a service never
+template**, **Save template** and **Start monitoring**. Starting a service never
 requires saving a template.
 
 **Load template** offers the built-in static and adaptive starting flows plus
@@ -209,7 +209,7 @@ or with **Keep features** keeps every feature and adds the components. Added
 features follow the untouched ones, in the order of **Applies to**. The card lists
 the features a step uses, or the ones it adds. A chosen feature that no longer
 arrives stays listed as *not available here* until it is unchecked, and a suffix
-that repeats an existing name is refused; both stop **Apply monitoring**. One
+that repeats an existing name is refused; both stop **Start monitoring**. One
 scoped step computes the same values as a branch of **Select features**, the step
 and **Merge features**.
 
@@ -333,11 +333,11 @@ Unchecking readings in **Readings to monitor** changes the input slots and
 bindings together; a service accepts up to 100 readings. Each reading's feature
 is named after its label, such as `dc_voltage` for *DC Voltage*; a repeated label
 continues with `_2`, `_3` and so on. Saved templates keep their own input names.
-**Apply monitoring** opens the Input step when a reading is still missing. Every slot binds a
+**Start monitoring** opens the Input step when a reading is still missing. Every slot binds a
 distinct numeric reading on one entity. Labels are cosmetic; expected units
 require an exact match, and unknown units remain unknown.
 
-**Apply monitoring** validates the graph and starts the service through the same
+**Start monitoring** validates the graph and starts the service through the same
 preflight, reading claims, capacity checks and worker heartbeat as every other
 start. Progress stays visible across navigation and reload: **Recover start
 request** resumes an uncertain request, **Cancel start** stops it, and a failed

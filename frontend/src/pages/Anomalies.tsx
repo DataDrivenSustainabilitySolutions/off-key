@@ -35,7 +35,7 @@ import "./reporting.css";
 
 const ranges = [{ id: "any", label: "Any time", ms: Infinity }, { id: "24h", label: "Last 24 hours", ms: 86_400_000 },
   { id: "7d", label: "Last 7 days", ms: 7 * 86_400_000 }, { id: "30d", label: "Last 30 days", ms: 30 * 86_400_000 }];
-const signals = [{ id: "any", label: "Any signal", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
+const signals = [{ id: "any", label: "All results", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
 const readingKeys = (anomaly: Anomaly) => anomaly.sensor_set?.length ? anomaly.sensor_set
   : anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? [] : [anomaly.telemetry_type];
 const anomalyKey = (anomaly: Anomaly) => anomaly.anomaly_id
@@ -148,14 +148,14 @@ export default function AnomalyTable() {
             {scopedEntity && <Button variant="ghost" asChild>
               <Link to={withCatalogueSource(`/details/${encodeURIComponent(scopedEntity)}`, selected)}><Activity className="h-4 w-4" />Entity readings</Link>
             </Button>}
-            <Button
+            {!error && <Button
               variant="outline"
               onClick={fetchAllAnomalies}
               disabled={isLoading}
             >
               <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               Refresh
-            </Button>
+            </Button>}
           </>}
         />
 
@@ -164,16 +164,11 @@ export default function AnomalyTable() {
           <Button variant="link" className="h-auto px-0 sm:h-auto" onClick={() => void system.refresh()}>Retry catalogue</Button>
         </p>}
         <div className="rp-metrics">
-          <MetricCard
-            label="Anomalies"
-            value={metric(filtered.length)}
-            tone={filtered.length > 0 ? "warning" : "default"}
-          />
-          <MetricCard
+          {!scopedEntity && streamIds?.length !== 0 && <MetricCard
             label="Affected entities"
             value={metric(new Set(filtered.map(anomaly => anomaly.charger_id)).size)}
             tone="info"
-          />
+          />}
           <MetricCard
             label="Last anomaly"
             value={unknown ? "—" : filtered.length ? <RelativeTime value={filtered[0]!.timestamp} /> : "None"}
@@ -183,7 +178,7 @@ export default function AnomalyTable() {
         {error ? (
           <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
             <span>Anomalies could not be loaded: {error}</span>
-            <Button variant="outline" size="sm" onClick={fetchAllAnomalies} disabled={isLoading}>Try again</Button>
+            <Button variant="outline" size="sm" onClick={fetchAllAnomalies}>Retry</Button>
           </div>
         ) : null}
 
@@ -197,11 +192,11 @@ export default function AnomalyTable() {
             <select aria-label="Time range" value={range} onChange={event => setRange(event.target.value)}>
               {ranges.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
-            <select aria-label="Signal" value={signal} onChange={event => setSignal(event.target.value)}>
+            <select aria-label="p-value" value={signal} onChange={event => setSignal(event.target.value)}>
               {signals.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             {filtering && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}
-            <span className="rp-count" role="status">{isLoading ? "" : `${filtered.length.toLocaleString()} ${filtered.length === 1 ? "event" : "events"}`}</span>
+            <span className="rp-count" role="status">{unknown ? "" : `${filtered.length.toLocaleString()} ${filtered.length === 1 ? "event" : "events"}`}</span>
           </div>
           <table className="rp-table">
             <thead>
@@ -210,17 +205,15 @@ export default function AnomalyTable() {
                 <th scope="col">Time</th>
                 <th scope="col">Readings</th>
                 <th scope="col">Type</th>
-                <th scope="col"><span className="rp-signal-heading">Signal<HelpTooltip label="Signal">
-                  The detector's p-value: how likely a reading this extreme is under normal behaviour. Lower is more unusual.
-                  Red is 0.001 or below, orange 0.005 or below, yellow above that. Scores without a p-value are grey.
+                <th scope="col"><span className="rp-signal-heading">Detector result<HelpTooltip label="Detector result">
+                  Lower p-values indicate more unusual readings. Red means p ≤ 0.001, orange means p ≤ 0.005, and yellow means a higher p-value. Other detector scores are grey.
                 </HelpTooltip></span></th>
                 <th scope="col"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             {isLoading ? <tbody><tr className="rp-message"><td colSpan={6}>Loading anomalies…</td></tr></tbody>
-              : !days.length ? <tbody><tr className="rp-message"><td colSpan={6}>
-                {error ? "Anomalies could not be loaded." : filtering && scopedData.length ? <>No events match these filters. <Button variant="link" className="h-auto px-0 sm:h-auto" onClick={clearFilters}>Clear filters</Button></>
-                  : "No anomalies recorded."}
+              : !days.length ? !error && <tbody><tr className="rp-message"><td colSpan={6}>
+                {filtering && scopedData.length ? "No events match these filters." : "No anomalies recorded."}
               </td></tr></tbody>
               : days.map(day => <tbody key={day.key}>
                 <tr className="rp-day"><th colSpan={6} scope="rowgroup">{day.label}</th></tr>
@@ -240,11 +233,10 @@ export default function AnomalyTable() {
                     </div></td>
                     <td className="rp-type">{anomaly.anomaly_type}</td>
                     <td className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}
-                      title={getAnomalyValueLabel(anomaly.value_type)}>{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
+                      title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p" : "Score"}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
                     <td className="rp-actions">
                       <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
-                        ...(source && !scopedHere ? [{ label: `Show only ${entity}`, icon: Filter, onSelect: () => navigate(selectedSourceHref("/anomalies", source)) }] : []),
-                        { label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) },
+                        ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),
                         ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyId(anomaly.anomaly_id) }] : []),
                         ...(isAdmin ? [{ label: "Delete anomaly", icon: Trash2, destructive: true, separated: true, onSelect: () => void handleDelete(anomaly) }] : []),
                       ]} />

@@ -34,7 +34,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     }
     await expectNoHorizontalScroll(page);
     await page.screenshot({ path: testInfo.outputPath("creation-readings-mobile.png"), fullPage: true });
-    await workbench.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
+    await workbench.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
     await page.getByRole("link", { name: "Return to service setup", exact: true }).click();
     await page.reload();
     await expect(workbench.getByRole("checkbox", { name: "Monitor AC2", exact: true })).not.toBeChecked();
@@ -136,7 +136,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
       await saveDialog.getByRole("button", { name: "Save template", exact: true }).click(); await saving;
       await saveDialog.getByRole("button", { name: "Close save template", exact: true }).click();
       await title.fill("Edited after submission");
-      await workbench.getByRole("link", { name: "Configure readings in Sources", exact: true }).click();
+      await workbench.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
       const sources = page.getByRole("main", { name: "Sources workspace", exact: true }); await expect(sources).toBeVisible();
       if (acknowledgement === "after returning") {
         await sources.getByRole("link", { name: "Return to service setup", exact: true }).click();

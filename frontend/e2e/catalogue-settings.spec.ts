@@ -25,7 +25,7 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
     if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/v1/system") writes.push(request.url());
   });
   const downloadReady = page.waitForEvent("download");
-  await dialog.getByRole("button", { name: "Export catalogue", exact: true }).click();
+  await dialog.getByRole("button", { name: "Export JSON", exact: true }).click();
   const download = await downloadReady;
   expect(download.suggestedFilename()).toBe("aberration-system.json");
   const contents = await readFile((await download.path())!);
@@ -114,7 +114,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
       const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
       await expectDialogFits(dialog);
-      await dialog.getByRole("button", { name: "Import file", exact: true }).scrollIntoViewIfNeeded();
+      await dialog.getByRole("button", { name: "Import JSON", exact: true }).scrollIntoViewIfNeeded();
       await expect(dialog.getByRole("button", { name: "Close settings", exact: true })).toBeInViewport();
       await dialog.screenshot({ path: testInfo.outputPath(path === "/" ? "settings-mobile-monitoring.png" : "settings-mobile-sources.png") });
       await page.keyboard.press("Escape");

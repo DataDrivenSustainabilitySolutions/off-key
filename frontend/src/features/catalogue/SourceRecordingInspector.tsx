@@ -47,12 +47,16 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     if (!validInterval) { setIntervalText(String(saved)); return; }
     if (seconds !== saved) choose("sample");
   };
-  const applying = enabled > 0 && !(runtime?.collection?.status === "applied" && runtime.collection.revision === runtime.collection_revision);
-  const summary = enabled === 0 ? "Not recorded" : `${enabled} of ${ids.length} recording${uniform ? ` · ${policyLabel(uniform)}`
-    : " · Mixed rates"}${applying ? " · Starting…" : ""}`;
+  const summary = ids.length === 1
+    ? selected[0] && [policyLabel(selected[0].policy), originLabel(runtime, ids[0]!, document)].filter(Boolean).join(" · ")
+    : ids.length ? `${enabled} of ${ids.length} enabled${uniform ? ` · ${policyLabel(uniform)}` : enabled ? " · Mixed rates" : ""}` : "No readings";
+  const collection = runtime?.collection;
+  const collectionPending = (enabled > 0 || recording.canUndo(scope.connection_id)) &&
+    (collection?.status !== "applied" || collection.revision !== runtime?.collection_revision);
+  const collectionFailed = collection?.status === "error" || collection?.status === "disabled";
   const options: [Choice, string][] = [
     ...scope.kind === "broker" ? [] : [["inherit", "Same as above"] as [Choice, string]],
-    ["off", "Off"], ["original", "Every message"], ["sample", "Sampled"],
+    ["off", "Off"], ["original", "Every message"], ["sample", "At intervals"],
   ];
   // Readings opt in by following this scope when it records, or with their own rule when it does not.
   const parentRecords = choice === "original" || choice === "sample";
@@ -75,15 +79,17 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   };
   const streams = new Map(document.streams.map(stream => [stream.id, stream]));
   return <section className="source-recording" aria-label="Recording configuration">
-    <div className="ex-preview-section-heading"><h3>Recording</h3><span>{summary}</span></div>
-    {scope.kind === "reading" && ids.length === 1 && <p className="ex-muted">{originLabel(runtime, ids[0]!, document)}</p>}
+    <div className="ex-preview-section-heading"><h3>Recording</h3>{summary && <span>{summary}</span>}</div>
+    {!busy && collectionPending && <p className="ex-muted" role={collectionFailed ? "alert" : "status"}>
+      {collectionFailed ? "Recording settings could not be applied." : "Applying recording settings…"}
+    </p>}
     {canEdit && <>
       <div className="source-recording-choice" role="radiogroup" aria-label="Recording" aria-busy={busy}>
         {options.map(([value, label]) => <div key={value} className={`source-recording-option${choice === value ? " is-selected" : ""}`}>
           <label><input type="radio" name={`recording-${scopeKey(scope)}`} value={value} checked={choice === value}
             disabled={busy} onChange={() => choose(value)} />{label}</label>
           {/* The interval sits beside its option, not inside the label, so typing in it never picks an option. */}
-          {value === "sample" && <span className="source-recording-interval">every
+          {value === "sample" && <span className="source-recording-interval">
             <input aria-label="Seconds between samples" type="number" min={1} max={3600} value={interval} disabled={busy}
               onChange={event => setIntervalText(event.target.value)}
               onBlur={commitInterval} onKeyDown={event => { if (event.key === "Enter") commitInterval(); }} />s</span>}
@@ -106,10 +112,10 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       {excluded.length > 0 && !busy && <div className="source-pending"><span>{excluded.length} {excluded.length === 1 ? "reading was" : "readings were"} added after recording started and {excluded.length === 1 ? "isn't" : "aren't"} recorded.</span>
         <Button size="sm" variant="outline" onClick={() => void recording.save(excluded.map(reading_id =>
           ({ scope: { kind: "reading", connection_id: scope.connection_id, reading_id }, operation: "inherit" })))}>Record {excluded.length === 1 ? "it" : "them"} too</Button></div>}
-      {exceptions > 0 && scope.kind === "topic" && <p className="ex-muted">{exceptions === 1 ? "1 topic or reading below keeps its own setting." : `${exceptions} topics or readings below keep their own setting.`}</p>}
+      {exceptions > 0 && scope.kind === "topic" && <p className="ex-muted">{exceptions} {exceptions === 1 ? "override stays" : "overrides stay"} in place.</p>}
       {recording.problem && <p role="alert" className="ex-preview-error">{recording.problem}</p>}
       {recording.canUndo(scope.connection_id) && !busy && <Button variant="ghost" size="sm" onClick={recording.undo}>Undo</Button>}
-      <p className="ex-muted">Recording runs on the server and keeps going while you are signed out. Off keeps the stored history.</p>
+      <p className="ex-muted">Recording continues while you’re signed out. Turning it off keeps existing history.</p>
     </>}
   </section>;
 }

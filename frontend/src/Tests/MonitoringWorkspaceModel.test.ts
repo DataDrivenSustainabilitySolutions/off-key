@@ -24,8 +24,8 @@ function fixture(count = 2) {
 
 describe("monitoring workspace identity and scale", () => {
   it.each([
-    ["inputs_stalled", "Inputs stale"],
-    ["inference_stalled", "Inference stalled"],
+    ["inputs_stalled", "No recent inputs"],
+    ["inference_stalled", "No recent evaluations"],
     ["persistence_stalled", "Persistence delayed"],
   ] as const)("shows %s even while runtime heartbeats are current", (field, label) => {
     const service = monitor("one", "input");
@@ -82,7 +82,7 @@ describe("monitoring workspace identity and scale", () => {
   it("distinguishes learning, stale status, failures and stopped services without anomaly counts", () => {
     const service = monitor("one", "input", "collecting_training");
     expect(serviceState(service)).toMatchObject({ label: "Learning", category: "preparing" });
-    expect(serviceState({ ...service, operational_status: { ...service.operational_status, is_stale: true } })).toMatchObject({ label: "Status stale", category: "attention" });
+    expect(serviceState({ ...service, operational_status: { ...service.operational_status, is_stale: true } })).toMatchObject({ label: "No recent status", category: "attention" });
     expect(serviceState({ ...service, operational_status: { ...service.operational_status, stage: "operational", coverage: {
       delivery: "best_effort", has_gaps: true, received_message_count: 1100,
       dropped_message_count: 100, dropped_by_reason: { rate_limit: 100 }, possible_gap_count: 0,

@@ -48,6 +48,7 @@
 .workspace-source-scope > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-weight: 500; }
 .workspace-source-scope button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--ex-line); border-radius: 6px; color: var(--ex-muted); }
 .workspace-source-scope button:hover { background: var(--ex-hover); }
+.workspace-source-scope.is-compact { margin: 0; }
 .workspace-loading { padding: 40px 48px; color: var(--ex-muted); }
 .app-catalogue-shell .mn-sidebar-favourites { margin: 0 18px 20px; display: grid; gap: 4px; }
 .app-catalogue-shell .mn-sidebar-favourites > span { padding: 0 5px 6px; font-size: var(--text-caption); color: var(--ex-muted); }

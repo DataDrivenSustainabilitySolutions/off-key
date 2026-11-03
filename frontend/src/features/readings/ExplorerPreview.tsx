@@ -1,13 +1,13 @@
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star } from "lucide-react";
 import { InlineName } from "@/components/InlineName";
+import { RelativeTime } from "@/components/RelativeTime";
 import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { LiveStatus } from "@/types/system-live";
 import type { SystemDocument, SystemEntityKind, SystemRuntime } from "@/types/system";
 import { ExplorerHistoryChart } from "./ExplorerHistoryChart";
 import { readingHistoryKey, useReadingHistorySnapshot, type ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "@/domain/system/navigationIndex";
-import { formatExactDateTime } from "@/lib/format-time";
 
 type Props = {
   node: ExplorerNode;
@@ -102,8 +102,16 @@ export default function ExplorerPreview({
     : connection?.state ? connection.state[0]!.toUpperCase() + connection.state.slice(1)
     : phases[status.phase];
   const topicCount = useMemo(() => new Set(related.map((item) => JSON.stringify([item.connection_id, item.topic]))).size, [related]);
-  const title = node.entityKind === "stream" ? stream?.label ?? node.label : node.label;
-  const kind = node.entityKind === "stream" ? "Reading" : node.kind === "connection" ? "Broker"
+  const isReading = node.entityKind === "stream";
+  const ancestry = navigationTrail(index, node.key);
+  const parent = isReading ? ancestry.slice().reverse().find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection") : undefined;
+  const trail = <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
+    {ancestry.map((ancestor, position) => <span key={ancestor.key}>
+      {position > 0 && <span aria-hidden="true"> / </span>}{ancestor.label}
+    </span>)}
+  </nav>;
+  const title = isReading ? stream?.label ?? node.label : node.label;
+  const kind = isReading ? "Reading" : node.kind === "connection" ? "Broker"
     : node.kind === "device" ? "Entity" : node.kind === "topic" ? "Topic path" : "System";
   const icon = node.kind === "connection" ? <Box size={22} /> : node.kind === "device" ? <Cpu size={22} />
     : stream ? <Radio size={22} /> : <Folder size={22} />;
@@ -132,9 +140,15 @@ export default function ExplorerPreview({
   const label = connectionStatusOnly ? brokerLabel : recording ? recordProblem || runtime?.collection?.status === "disabled" ? "Unavailable"
     : runtime?.collection?.status !== "applied" ? "Applying…"
       : recordConnected ? "Recording" : sources.some(source => source.state === "reconnecting") ? "Reconnecting" : "Waiting"
-    : liveLabel;
+    : isReading && status.phase === "idle" && savedBinding?.policy.mode === "off" ? "Recording off" : liveLabel;
   const active = connectionStatusOnly ? label === "Connected" : recording ? label === "Recording" : connection?.state === "connected";
   const tone = active ? "positive" : label === "Unavailable" || label === "Unreachable" ? "danger" : label === "Reconnecting" ? "warning" : "neutral";
+  const showStatusDetail = connectionStatusOnly || !isReading || (!recording && status.phase !== "idle");
+  const statusDetail = connectionStatusOnly ? "Broker connection"
+    : recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history"
+      : status.phase === "idle" ? "No live connection"
+        : ["error", "blocked", "paused"].includes(status.phase) ? "Live connection inactive"
+          : status.dataSource === "simulated" ? "Simulated data · memory only" : "Live data · memory only";
   const brokerProblem = !connectionStatusOnly ? undefined : persistentConnection
     ? persistentConnection.state !== "connected" ? persistentConnection.message : undefined
     : label === "Unreachable" ? connectionCheck : undefined;
@@ -167,10 +181,10 @@ export default function ExplorerPreview({
   </>;
   return (
     <section className="ex-preview" aria-label={`${kind} preview`}>
-      <header className="ex-preview-header">
+      <header className={`ex-preview-header${isReading ? " ex-preview-header--reading" : ""}`}>
         <div className="ex-preview-identity">
           <span className="ex-preview-icon">{icon}</span>
-          <div><span className="ex-preview-kind">{kind} preview</span>
+          <div>{!isReading && <span className="ex-preview-kind">{kind} preview</span>}
             <Title className={`ex-preview-title${pageTitle ? " ex-preview-title--page" : ""}`}>
               {canEdit && node.entityKind && node.objectId ? <InlineName key={node.key} value={title}
                 onSave={(name) => onRename(node.entityKind!, node.objectId!, name)}
@@ -181,17 +195,10 @@ export default function ExplorerPreview({
         </div>
         <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
-      <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
-        {navigationTrail(index, node.key).map((ancestor, position) => <span key={ancestor.key}>
-          {position > 0 && <span aria-hidden="true"> / </span>}{ancestor.label}
-        </span>)}
-      </nav>
+      {isReading ? parent && <p className="ex-preview-parent">{parent.label}</p> : trail}
       <div className="ex-preview-status" role="status">
         <strong className={`mn-state mn-state--${tone}`}>{label}</strong>
-        <span>{connectionStatusOnly ? "Broker connection" : recording ? stream && stream.value_type !== "number" ? "Recorded state" : "Recorded history" : status.phase === "idle" ? "No live connection"
-          : ["error", "blocked", "paused"].includes(status.phase) ? "Live connection inactive"
-            : status.dataSource === "simulated" ? "Simulated data · memory only"
-              : "Live data · memory only"}</span>
+        {showStatusDetail && <span>{statusDetail}</span>}
       </div>
       {problem && <p className="ex-preview-error" role="alert">{problem}</p>}
       {collectionControls}
@@ -202,7 +209,7 @@ export default function ExplorerPreview({
             {latest != null && stream.unit && <small> {stream.unit}</small>}
           </strong>
           <span>{!useStoredSample && (useRecorded ? recorded.is_snapshot : snapshot?.retained) ? "Retained value"
-            : receivedAt ? `${useStoredSample ? "Observed" : "Received"} at ${formatExactDateTime(receivedAt)}` : "No value received yet"}</span>
+            : <RelativeTime value={receivedAt} mode="elapsed" fallback="No value received yet" />}</span>
         </div>
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
@@ -213,10 +220,10 @@ export default function ExplorerPreview({
         <div><strong>{number.format(topicCount)}</strong><span>MQTT topics</span></div>
         {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
       </div>}
-      {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Definition">
-        <details><summary>Definition</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{details}</details>
-      </section> : <section className="ex-preview-details" aria-label="Definition">
-        <div className="ex-preview-section-heading"><h3>Definition</h3>{edit}</div>{details}
+      {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Source details">
+        <details><summary>Source details</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{isReading && trail}{details}</details>
+      </section> : <section className="ex-preview-details" aria-label="Source details">
+        <div className="ex-preview-section-heading"><h3>Source details</h3>{edit}</div>{isReading && trail}{details}
       </section>}
     </section>
   );

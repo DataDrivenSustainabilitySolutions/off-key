@@ -164,7 +164,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await expect(page.getByRole("region", { name: "Reading preview", exact: true })).toBeVisible();
     const connected = page.waitForResponse(response => response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v1/system/live/leases");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("button", { name: "View live", exact: true }).click();
     const lease = await connected;
     expect(lease.ok(), await lease.text()).toBe(true);
     leaseId = (await lease.json() as { lease_id: string }).lease_id;
@@ -235,7 +235,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     expect(catalogueReads).toBe(readsBeforeNavigation);
     await expect(page.locator(".ex-preview-value strong")).toHaveText("42");
     expect(previewStarts).toBe(1); expect(previewStops).toBe(0);
-    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.getByRole("button", { name: "Stop live view", exact: true }).click();
     await expect.poll(() => previewStops).toBe(1);
     disconnected = true;
     await sidebarHandle!.dispose(); await listHandle!.dispose();
@@ -282,7 +282,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     await page.reload();
     const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
     const search = sidebar.getByRole("searchbox", { name: "Search catalogue", exact: true });
-    const toggle = sidebar.getByRole("button", { name: "Online topics only", exact: true });
+    const toggle = sidebar.getByRole("button", { name: "Recently active", exact: true });
     const root = sidebar.getByRole("button", { name: "Back to catalogue", exact: true });
     const active = sidebar.getByRole("button", { name: "North value 01, preview", exact: true });
     const quiet = sidebar.getByRole("button", { name: "North value 02, preview", exact: true });

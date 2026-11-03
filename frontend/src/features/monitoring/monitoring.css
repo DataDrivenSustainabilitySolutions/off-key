@@ -8,7 +8,7 @@
 .ex-shell .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
 .mn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ex-line); padding: 7px 10px; border-radius: 6px; color: var(--ex-muted); min-width: 180px; max-width: 260px; }
 .mn-search input { background: transparent; border: 0; color: var(--ex-ink); font: inherit; font-size: var(--text-caption); min-width: 0; width: 100%; outline-offset: 4px; }
-.mn-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1.15fr) minmax(140px,.8fr) minmax(105px,.6fr) 34px; gap: 18px; align-items: center; min-width: 0; }
+.mn-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1.15fr) minmax(140px,.8fr) 34px; gap: 18px; align-items: center; min-width: 0; }
 .mn-row > [role="cell"] { min-width: 0; }
 .mn-table-head { border-bottom: 1px solid var(--ex-line); padding: 10px 0; font-size: var(--text-caption); color: var(--ex-muted); }
 .mn-table-scroll { overflow: auto; min-height: 76px; scrollbar-width: thin; }
@@ -24,7 +24,7 @@
 .ex-shell .mn-favourite[aria-pressed="true"] { color: var(--ex-accent); }
 .mn-favourite[aria-pressed="true"] svg { fill: var(--ex-active); }
 .mn-mobile-scope { display: none !important; }
-.mn-result-count,.mn-loading { font-size: var(--text-caption); color: var(--ex-muted); margin: 15px 0 0; }
+.mn-loading { font-size: var(--text-caption); color: var(--ex-muted); margin: 15px 0 0; }
 .mn-empty { padding: 48px 0 24px; border-top: 1px solid var(--ex-line); }
 .mn-empty h2 { font-size: var(--text-title3); font-weight: 500; margin: 0 0 8px; }
 .mn-empty p,.mn-no-matches { color: var(--ex-muted); font-size: var(--text-body); }
@@ -113,7 +113,6 @@
 .mn-sidebar-favourites svg { flex-shrink: 0; color: var(--ex-muted); }
 @media(max-width:1120px) {
   .mn-row { grid-template-columns: minmax(0,1.25fr) minmax(0,1fr) minmax(115px,.8fr) 34px; gap: 12px; }
-  .mn-service-time,.mn-table-head > :nth-child(4) { display: none; }
 }
 @media(max-width:760px) {
   .mn-row { grid-template-columns: minmax(0,1fr) minmax(110px,.7fr) 30px; gap: 10px; }

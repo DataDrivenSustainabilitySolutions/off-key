@@ -182,7 +182,7 @@ describe("simple monitoring setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Redo graph change" }));
     view.unmount(); render(ui);
     expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
     const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
     expect(request.definition.input_slots).toEqual([{ id: "ac1", label: "AC1", unit: "A" }, { id: "ac3", label: "AC3", unit: "A" }]);
@@ -210,7 +210,7 @@ describe("simple monitoring setup", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
     expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     expect(screen.getByText("Select at least one available reading to monitor.")).toBeTruthy();
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Select all available" }));
@@ -226,7 +226,7 @@ describe("simple monitoring setup", () => {
   it("explains unrecorded readings and preselects the opening reading once it is recorded", () => {
     const unrecorded = { ...phases, inputs: phases.inputs.map((input) => ({ ...input, binding: { ...input.binding, policy: { ...input.binding.policy, mode: "off" as const } } })) };
     const view = render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[unrecorded]} initialReading="AC2" /></MemoryRouter>);
-    expect(screen.getByText(/None of these readings is recorded yet/)).toBeTruthy();
+    expect(screen.getByText(/Recording is off for/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Turn on recording in Sources" }).getAttribute("href")).toContain("reading=AC2");
     expect(phases.inputs.every((input) => (screen.getByRole("checkbox", { name: `Monitor ${input.stream.label}` }) as HTMLInputElement).disabled)).toBe(true);
     view.rerender(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} initialReading="AC2" /></MemoryRouter>);
@@ -247,7 +247,7 @@ describe("simple monitoring setup", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Add reading" }), { target: { value: "AC2" } });
     expect((screen.getByRole("combobox", { name: "Reading for AC2" }) as HTMLSelectElement).value).toBe("AC2");
     fireEvent.click(screen.getByRole("button", { name: "Undo graph change" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
     const request = vi.mocked(pipelinesApi.apply).mock.calls[0]![0];
     expect(request.definition.input_slots).toEqual([inputSlots[0], inputSlots[2]]);
@@ -262,7 +262,7 @@ describe("simple monitoring setup", () => {
     const ui = (replaceService?: ActiveService) => <MemoryRouter><PipelineCreate {...callbacks} initialDesign={pipeline()}
       sourceService={context} replaceService={replaceService} activationBlocked={replaceService ? undefined : "Previous service retired"} /></MemoryRouter>;
     const view = render(ui(old));
-    fireEvent.click(await screen.findByRole("button", { name: "Apply changes" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0].replace_service_id).toBe("old");
     view.rerender(ui());
@@ -295,7 +295,7 @@ describe("simple monitoring setup", () => {
     await inputStep();
     expect((screen.getByRole("combobox", { name: "Reading for Value" }) as HTMLSelectElement).value).toBe("current");
     expect(screen.queryByRole("button", { name: /Publish revision|Save draft|Start revision/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalled());
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toEqual(expect.objectContaining({ display_name: "Room health", definition, bindings: { value: "current" } }));
     expect(pipelinesApi.save).not.toHaveBeenCalled();
@@ -304,21 +304,21 @@ describe("simple monitoring setup", () => {
   it("focuses the missing name and retains the edited graph", async () => {
     mount();
     fireEvent.change(await screen.findByRole("textbox", { name: "Service name" }), { target: { value: "  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start monitoring" }));
     expect(screen.getByText("Enter a service name.")).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Service name" }));
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("opens the Input step when Apply finds a reading missing", async () => {
     mount({ targets: [{ ...target, inputs: [] }] });
-    fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
     expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
     expect(screen.getByText(/Choose a different, collected reading for each input/)).toBeTruthy();
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("blocks an invalid processing graph before reserving a start", async () => {
     vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
-    mount(); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    mount(); fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
     await screen.findByText("Resolve the highlighted processing issues before applying.");
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
@@ -332,7 +332,7 @@ describe("simple monitoring setup", () => {
       issues: [{ code: "invalid_value", message: "Choose a positive window", node_id: "detector", parameter_path: ["window"] }],
       created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
     mount({ catalog: described });
-    fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
     fireEvent.click(await screen.findByRole("button", { name: "Choose a positive window" }));
     const control = screen.getByRole("spinbutton", { name: "Window" }) as HTMLInputElement;
     expect(control.getAttribute("aria-invalid")).toBe("true");
@@ -343,8 +343,8 @@ describe("simple monitoring setup", () => {
     expect(control.value).toBe("9");
   });
   it("waits for collection before applying", async () => {
-    mount({ collectionReady: false }); fireEvent.click(await screen.findByRole("button", { name: "Apply monitoring" }));
-    expect(screen.getByText(/Enable collection in Sources/)).toBeTruthy(); expect(pipelinesApi.apply).not.toHaveBeenCalled();
+    mount({ collectionReady: false }); fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
+    expect(screen.getByText(/Waiting for recording settings to apply/)).toBeTruthy(); expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("saves a template under an independent name without starting a service", async () => {
     mount(); await saveDialog();
@@ -386,11 +386,11 @@ describe("simple monitoring setup", () => {
   it("fails closed when a historical revision cannot load", async () => {
     render(<MemoryRouter><PipelineEditor {...props()} revisionId="missing" /></MemoryRouter>);
     await screen.findByText(/Published revision not found/);
-    expect(screen.queryByRole("button", { name: "Apply monitoring" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start monitoring" })).toBeNull();
   });
   it("does not offer authoring when the operator disabled it", async () => {
     mount({ catalog: { ...catalog, authoring_enabled: false } });
     await screen.findByText("Monitoring configuration is disabled for this deployment.");
-    expect(screen.queryByRole("button", { name: "Apply monitoring" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start monitoring" })).toBeNull();
   });
 });

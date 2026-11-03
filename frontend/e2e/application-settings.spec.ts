@@ -109,6 +109,11 @@ test("shows real system diagnostics above the current page and keeps old links w
   await expect(dialog.getByText(`${size} ${gb ? "GB" : "MB"}`, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Collection diagnostics", exact: true })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Storage and retention", exact: true })).toBeVisible();
+  const technicalDetails = dialog.locator("details").filter({ hasText: "Technical details" });
+  await expect(technicalDetails).toHaveJSProperty("open", false);
+  await technicalDetails.locator("summary").click();
+  await expect(technicalDetails).toHaveJSProperty("open", true);
+  await expect(technicalDetails.getByText(/Since worker start/)).toBeVisible();
 
   const nextHealth = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/health");
   expect((await nextHealth).ok()).toBe(true);
@@ -118,7 +123,7 @@ test("shows real system diagnostics above the current page and keeps old links w
 
   // Switching sections replaces the address, so one Back returns to Reporting.
   await dialog.getByRole("button", { name: "Preferences", exact: true }).click();
-  await expect(dialog.getByRole("heading", { name: "Preferences", exact: true, level: 2 })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Appearance", exact: true, level: 2 })).toBeVisible();
   await expect(page).toHaveURL(/\/anomalies\?settings=preferences$/);
   await page.goBack();
   await expect(dialog).toHaveCount(0);

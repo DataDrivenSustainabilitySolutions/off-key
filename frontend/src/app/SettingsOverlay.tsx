@@ -16,6 +16,7 @@ const SystemStatusSettings = lazy(() => import("@/features/settings/SystemStatus
 type SectionDefinition = {
   id: SettingsSection;
   label: string;
+  heading?: string;
   description: string;
   icon: LucideIcon;
   group: "Personal" | "Workspace";
@@ -27,7 +28,7 @@ type SectionDefinition = {
 const SECTIONS: SectionDefinition[] = [
   { id: "account", label: "Account", description: "Your sign-in and who can access this organization.", icon: UserCircle,
     group: "Personal", membersOnly: true, content: () => <AccountSettings /> },
-  { id: "preferences", label: "Preferences", description: "Choose how Aberration looks on this device.", icon: SlidersHorizontal,
+  { id: "preferences", label: "Preferences", heading: "Appearance", description: "Saved on this device.", icon: SlidersHorizontal,
     group: "Personal", content: () => <AppearanceSettings /> },
   { id: "catalogue", label: "Catalogue", description: "Manage your sources and catalogue files.", icon: Database,
     group: "Workspace", content: () => <CatalogueSettings /> },
@@ -100,7 +101,7 @@ export function SettingsOverlay() {
         </aside>
         {current && <section key={current.id} className="app-settings-content" aria-labelledby="app-settings-heading">
           <header className="app-settings-heading">
-            <h2 id="app-settings-heading">{current.label}</h2>
+            <h2 id="app-settings-heading">{current.heading ?? current.label}</h2>
             <Dialog.Description>{current.description}</Dialog.Description>
           </header>
           <div className="app-settings-body">

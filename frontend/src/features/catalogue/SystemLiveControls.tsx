@@ -49,7 +49,7 @@ export function SystemLiveControls({
       {status.active || status.phase === "paused" ? (
         <button className="sp-live-toggle" title="Disconnect this view." onClick={() => telemetry.stop()}>
           <Square size={11} />
-          {preview ? "Stop preview" : "Disconnect"}
+          Stop live view
         </button>
       ) : (
         <button
@@ -66,7 +66,7 @@ export function SystemLiveControls({
           <Plug size={13} />
           {status.phase === "error" || status.phase === "blocked"
             ? "Retry"
-            : preview ? "Preview" : "Connect"}
+            : "View live"}
         </button>
       )}
       {(status.phase === "error" ||

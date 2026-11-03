@@ -91,6 +91,9 @@ services:
     logging: *bounded-logs
     deploy:
       replicas: 1
+      # This is a single stateful task. Resolve its address directly inside the
+      # overlay; there is no published port or load-balancing requirement.
+      endpoint_mode: dnsrr
       labels: {off-key.component: observability}
       placement:
         constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]

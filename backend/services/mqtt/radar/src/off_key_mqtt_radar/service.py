@@ -442,7 +442,10 @@ class RadarService:
             await self._fail_execution(error)
         except Exception as e:
             logger.error(
-                f"Error processing message from {message.topic}: {e}", exc_info=True
+                "event=radar.message_processing_failed topic=%s error=%s",
+                message.topic,
+                e,
+                exc_info=True,
             )
             if self._checkpoint_codec is not None:
                 self._fatal_error = e
@@ -472,10 +475,17 @@ class RadarService:
                     coverage = self.coverage.snapshot_json()
             except Exception:
                 logger.exception("event=radar.final_failure_diagnostics_failed")
-            await self._persist_execution_failure(error, diagnostics, coverage)
+            events = (
+                self.health_monitor.run_events.drain()
+                if self.health_monitor is not None
+                else []
+            )
+            await self._persist_execution_failure(error, diagnostics, coverage, events)
         self.shutdown_event.set()
 
-    async def _persist_execution_failure(self, error, diagnostics, coverage):
+    async def _persist_execution_failure(
+        self, error, diagnostics, coverage, events=None
+    ):
         # A transient outage must not turn a known fatal execution into an
         # ordinary Swarm restart before its durable admission fence is stored.
         # Explicit operator shutdown can still terminate this quarantined worker.
@@ -484,7 +494,10 @@ class RadarService:
             try:
                 async with asyncio.timeout(settings.RADAR_CHECKPOINT_TIMEOUT_SECONDS):
                     await self.database_writer.fail_pipeline_run(
-                        str(error), diagnostics=diagnostics, coverage=coverage
+                        str(error),
+                        diagnostics=diagnostics,
+                        coverage=coverage,
+                        events=events,
                     )
                 return
             except CheckpointOwnershipLost:

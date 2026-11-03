@@ -20,6 +20,7 @@ EXPECTED_MIGRATIONS = (
     "013_pipeline_templates.sql",
     "014_drop_unread_schema.sql",
     "015_detector_evidence.sql",
+    "016_pipeline_run_events.sql",
 )
 
 
@@ -49,6 +50,7 @@ def remove_pipeline_schema(connection):
     database, not the older release each adoption test intends to exercise.
     """
     for name in (
+        "monitoring_pipeline_run_events",
         "monitoring_pipeline_activations",
         "monitoring_pipeline_runs",
         "monitoring_pipeline_revisions",

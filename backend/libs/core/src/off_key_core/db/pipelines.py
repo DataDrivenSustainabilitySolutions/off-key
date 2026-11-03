@@ -5,9 +5,13 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Identity,
+    Index,
     Integer,
     Text,
     UniqueConstraint,
@@ -83,6 +87,38 @@ class PipelineRun(Base):
     )
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # The last runtime status when the run ended; the service row that held it
+    # is deleted by stop and retention purge.
+    final_status: Mapped[Any | None] = mapped_column(document(), nullable=True)
+
+
+class PipelineRunEvent(Base):
+    """One lifecycle event of a run, kept after its service row is purged."""
+
+    __tablename__ = "monitoring_pipeline_run_events"
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=False), primary_key=True
+    )
+    run_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("monitoring_pipeline_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('radar', 'tactic')", name="ck_pipeline_run_event_source"
+        ),
+        Index(
+            "ix_monitoring_pipeline_run_events_run_time", "run_id", "occurred_at", "id"
+        ),
     )
 
 

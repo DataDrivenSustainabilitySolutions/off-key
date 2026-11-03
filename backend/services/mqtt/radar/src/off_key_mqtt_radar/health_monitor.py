@@ -23,6 +23,7 @@ from off_key_core.schemas.radar import (
 
 from .activity import evaluate_activity
 from .models import HealthStatus
+from .run_events import RunEventRecorder
 
 
 class HealthMonitor:
@@ -67,6 +68,9 @@ class HealthMonitor:
         self._recovery_status: Callable[[], dict[str, Any]] | None = None
         self._publication_suspended = False
 
+        self.run_events = RunEventRecorder()
+        self._started_at_utc: datetime | None = None
+
         self._log_context = {"component": "health_monitor"}
         logging_settings = get_logging_settings()
         self._summary_interval_seconds = logging_settings.LOG_HEARTBEAT_INTERVAL_SECONDS
@@ -106,6 +110,7 @@ class HealthMonitor:
             shutdown_event: Event signaling service shutdown
         """
         self.start_time = datetime.now()
+        self._started_at_utc = datetime.now(UTC)
         self._shutdown_event = shutdown_event
         self._health_check_task = asyncio.create_task(self._monitor_loop())
         logger.info("Health monitor started", extra=self._log_context)
@@ -156,18 +161,32 @@ class HealthMonitor:
             # Log based on status
             if status.status in ["degraded", "failed"]:
                 logger.warning(
-                    f"Service health: {status.status}", extra=self._log_context
+                    "event=radar.health_degraded status=%s alerts=%s",
+                    status.status,
+                    ",".join(status.active_alerts),
+                    extra=self._log_context,
                 )
-                for alert in status.active_alerts:
-                    logger.warning(f"Active alert: {alert}", extra=self._log_context)
             else:
                 self._maybe_log_healthy_summary(status)
 
+            snapshot = self.build_metrics_snapshot(status)
+            detector_stats = (status.components.get("anomaly_detector") or {}).get(
+                "primary_service_stats"
+            ) or {}
+            self.run_events.observe(
+                snapshot.get("operational_status"),
+                detector_stats,
+                started_at=self._started_at_utc,
+            )
+
             # Write metrics if database writer is available
             if self._database_writer:
-                await self._database_writer.write_heartbeat(
-                    self.build_metrics_snapshot(status)
+                events = self.run_events.pending()
+                stored = await self._database_writer.write_heartbeat(
+                    {**snapshot, "run_events": events}
                 )
+                if stored:
+                    self.run_events.acknowledge(len(events))
 
         except Exception as e:
             logger.error(

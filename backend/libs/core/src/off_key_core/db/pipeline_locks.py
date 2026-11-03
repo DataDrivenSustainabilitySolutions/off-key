@@ -2,9 +2,10 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import case, select, update
+from sqlalchemy import case, func, select, update
 
-from .models import PipelineRun, RadarRuntimeCheckpoint
+from .models import MonitoringService, PipelineRun, RadarRuntimeCheckpoint
+from .run_events import run_event
 
 
 async def lock_execution_records(session, service_ids: list[str]) -> None:
@@ -38,7 +39,13 @@ async def complete_stopped_runs(session, service_ids: list[str]) -> None:
     """
     if not service_ids:
         return
-    await session.execute(
+    # The service row, and the last status it holds, is deleted after this.
+    last_status = (
+        select(MonitoringService.operational_status)
+        .where(MonitoringService.id == PipelineRun.service_id)
+        .scalar_subquery()
+    )
+    ended = await session.execute(
         update(PipelineRun)
         .where(PipelineRun.service_id.in_(service_ids), PipelineRun.ended_at.is_(None))
         .values(
@@ -47,5 +54,12 @@ async def complete_stopped_runs(session, service_ids: list[str]) -> None:
                 else_="stopped",
             ),
             ended_at=datetime.now(UTC),
+            final_status=func.coalesce(PipelineRun.final_status, last_status),
         )
+        .returning(PipelineRun.id, PipelineRun.status)
+        .execution_options(synchronize_session="fetch")
+    )
+    session.add_all(
+        run_event(run_id, "run_ended", stage=status, detail={"status": status})
+        for run_id, status in ended.all()
     )

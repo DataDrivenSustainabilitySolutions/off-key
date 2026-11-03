@@ -22,6 +22,7 @@ from off_key_core.schemas.pipelines import (
     PipelineRevisionPage,
     PipelineRevisionQuery,
     PipelineRevisionView,
+    PipelineRunTimeline,
     PipelineServiceView,
     PipelineValidateRequest,
     PipelineValidationReport,
@@ -268,6 +269,13 @@ async def service_history(
     library: PipelineLibrary = Depends(get_pipeline_library),
 ):
     return await invoke(library.history(service_id, query))
+
+
+@router.get("/{service_id}/pipeline-timeline", response_model=PipelineRunTimeline)
+async def service_timeline(
+    service_id: str, library: PipelineLibrary = Depends(get_pipeline_library)
+):
+    return await invoke(library.timeline(service_id))
 
 
 @router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)

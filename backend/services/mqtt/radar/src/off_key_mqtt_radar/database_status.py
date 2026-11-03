@@ -14,9 +14,10 @@ LOCK_SERVICE_ROW = text(
     "SELECT id FROM services WHERE id = :service_id FOR NO KEY UPDATE"
 )
 
+# The failure status also stays with the run, after its service row is purged.
 FAIL_PIPELINE_RUN = text(
     "UPDATE monitoring_pipeline_runs SET status = 'failed', "
-    "error = :error, ended_at = now() "
+    "error = :error, ended_at = now(), final_status = CAST(:status AS jsonb) "
     "WHERE id = :run_id AND service_id = :service_id"
 )
 

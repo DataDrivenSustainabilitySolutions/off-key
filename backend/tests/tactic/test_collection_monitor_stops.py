@@ -102,7 +102,16 @@ async def test_partial_pause_survives_rollback_and_reconciliation_finishes(stops
         snapshot = _ServiceSnapshot.capture(pending)
         observation = await reconciler._inspect(snapshot)
         await reconciler._apply_observation(
-            AsyncMock(get=AsyncMock(return_value=pending)), snapshot, observation
+            AsyncMock(
+                get=AsyncMock(return_value=pending),
+                # Ending the run reports which runs ended; none are recorded here.
+                execute=AsyncMock(
+                    return_value=MagicMock(all=MagicMock(return_value=[]))
+                ),
+                add_all=MagicMock(),
+            ),
+            snapshot,
+            observation,
         )
     reconciler._get_docker_status.assert_not_awaited()
     reconciler._remove_workload_if_present.assert_awaited_once_with("ctr-1")

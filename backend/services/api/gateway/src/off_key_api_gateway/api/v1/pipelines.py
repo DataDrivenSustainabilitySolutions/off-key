@@ -21,6 +21,7 @@ from off_key_core.schemas.pipelines import (
     PipelineRevisionPage,
     PipelineRevisionQuery,
     PipelineRevisionView,
+    PipelineRunTimeline,
     PipelineServiceView,
     PipelineValidateRequest,
     PipelineValidationReport,
@@ -268,6 +269,14 @@ async def service_history(
         "GET",
         f"/{path_segment(service_id)}/pipeline-history",
         params=query.model_dump(exclude_none=True),
+    )
+
+
+@router.get("/{service_id}/pipeline-timeline", response_model=PipelineRunTimeline)
+@read_limit
+async def service_timeline(request: Request, service_id: str):
+    return await forward(
+        request, "GET", f"/{path_segment(service_id)}/pipeline-timeline"
     )
 
 

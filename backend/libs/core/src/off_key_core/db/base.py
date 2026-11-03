@@ -35,8 +35,9 @@ def get_async_engine():
         db_settings.async_database_url,
         echo=runtime_settings.DEBUG,
         pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=db_settings.POSTGRES_ASYNC_POOL_SIZE,
+        max_overflow=db_settings.POSTGRES_ASYNC_MAX_OVERFLOW,
+        pool_timeout=db_settings.POSTGRES_ASYNC_POOL_TIMEOUT_SECONDS,
     )
 
 

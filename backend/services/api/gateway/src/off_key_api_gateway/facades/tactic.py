@@ -432,6 +432,9 @@ class Tactic:
             params=params,
         )
 
+    async def get_anomaly_report(self) -> list[dict[str, Any]]:
+        return await self.request(method="GET", endpoint="/api/v1/data/anomalies")
+
     async def get_anomaly_count(self, since: datetime | None = None) -> dict[str, int]:
         """Get total anomaly count, optionally filtered by timestamp."""
         params: dict[str, Any] = {}

@@ -37,6 +37,17 @@ class AnomalyService:
             telemetry_type,
             len(rows),
         )
+        return self._responses(rows)
+
+    async def list_report(self) -> list[dict[str, object]]:
+        # Preserve Reporting's existing page of entities and history per entity.
+        rows = await self._repository.list_report(
+            entity_limit=100, per_entity_limit=500
+        )
+        return self._responses(rows)
+
+    @staticmethod
+    def _responses(rows: list[tuple[str, Anomaly]]) -> list[dict[str, object]]:
         return [
             {
                 "anomaly_id": str(anomaly_id),

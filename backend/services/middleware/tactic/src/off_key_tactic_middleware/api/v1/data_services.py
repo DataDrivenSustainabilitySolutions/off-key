@@ -233,6 +233,11 @@ async def get_monitoring_chart_evidence(
     )
 
 
+@router.get("/anomalies", response_model=list[AnomalyResponse])
+async def get_anomaly_report(service: AnomalyService = Depends(get_anomaly_service)):
+    return await service.list_report()
+
+
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
 async def get_charger_anomalies(
     charger_id: str,

@@ -60,6 +60,10 @@ service_environment:
     RATE_LIMIT_LOG_LEVEL: "{{ rate_limit_log_level }}"
   tactic:
     <<: [*common, *database, *auth, *email]
+    # Keep TACTIC below the database's slot limit even during a request burst.
+    POSTGRES_ASYNC_POOL_SIZE: "8"
+    POSTGRES_ASYNC_MAX_OVERFLOW: "0"
+    POSTGRES_ASYNC_POOL_TIMEOUT_SECONDS: "5"
     ENVIRONMENT: "{{ app_environment }}"
     TACTIC_RADAR_IMAGE: "{{ mqtt_radar_image }}"
     FRONTEND_BASE_URL: "{{ frontend_base_url }}"

@@ -898,6 +898,14 @@ class DeploymentTests(unittest.TestCase):
                     expected,
                 )
 
+    def test_tactic_cannot_open_more_than_eight_database_connections(self):
+        tactic = self.results["prod"]["swarm_config"]["services"]["tactic"]
+        self.assertEqual(tactic["environment"]["POSTGRES_ASYNC_POOL_SIZE"], "8")
+        self.assertEqual(tactic["environment"]["POSTGRES_ASYNC_MAX_OVERFLOW"], "0")
+        self.assertEqual(
+            tactic["environment"]["POSTGRES_ASYNC_POOL_TIMEOUT_SECONDS"], "5"
+        )
+
     def test_invalid_nfs_addresses_fail_before_rendering(self):
         for addresses in ([], ["100.100.10.999"], ["100.100.10.2\n100.100.10.3"]):
             with (

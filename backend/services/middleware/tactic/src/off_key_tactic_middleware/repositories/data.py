@@ -14,9 +14,10 @@ from off_key_core.db.models import (
     User,
 )
 from off_key_core.schemas.user import normalize_email
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 # An anomaly row and its public identity share this natural key.
 _ANOMALY_IDENTITY_JOIN = and_(
@@ -25,6 +26,15 @@ _ANOMALY_IDENTITY_JOIN = and_(
     Anomaly.telemetry_type == AnomalyIdentity.telemetry_type,
     Anomaly.service_id == AnomalyIdentity.service_id,
 )
+
+
+def _anomaly_listing():
+    return (
+        select(AnomalyIdentity.anomaly_id, Anomaly)
+        .select_from(Anomaly)
+        .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
+        .order_by(Anomaly.timestamp.desc())
+    )
 
 
 class ChargerRepository:
@@ -229,15 +239,34 @@ class AnomalyRepository:
         telemetry_type: str | None,
         limit: int,
     ) -> list[tuple[str, Anomaly]]:
-        query = (
-            select(AnomalyIdentity.anomaly_id, Anomaly)
-            .join(Anomaly, _ANOMALY_IDENTITY_JOIN)
-            .where(Anomaly.charger_id == charger_id)
-        )
+        query = _anomaly_listing().where(Anomaly.charger_id == charger_id)
         if telemetry_type:
             query = query.where(Anomaly.telemetry_type == telemetry_type)
-        query = query.order_by(Anomaly.timestamp.desc()).limit(limit)
-        result = await self._session.execute(query)
+        result = await self._session.execute(query.limit(limit))
+        return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
+
+    async def list_report(
+        self, *, entity_limit: int, per_entity_limit: int
+    ) -> list[tuple[str, Anomaly]]:
+        """Read each catalogue entity's bounded history in one statement."""
+        entities = (
+            select(CollectionBinding.charger_id)
+            .order_by(CollectionBinding.charger_id)
+            .limit(entity_limit)
+            .subquery()
+        )
+        latest = (
+            _anomaly_listing()
+            .where(Anomaly.charger_id == entities.c.charger_id)
+            .correlate(entities)
+            .limit(per_entity_limit)
+            .lateral()
+        )
+        result = await self._session.execute(
+            select(latest.c.anomaly_id, aliased(Anomaly, latest))
+            .select_from(entities)
+            .join(latest, true())
+        )
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
 
     async def count_since(self, *, since: datetime | None = None) -> int:

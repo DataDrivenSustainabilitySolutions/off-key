@@ -26,6 +26,11 @@ async def get_anomaly_count(since: datetime | None = None):
     return await tactic.get_anomaly_count(since=since)
 
 
+@router.get("/report")
+async def get_anomaly_report():
+    return await tactic.get_anomaly_report()
+
+
 @router.get("")
 async def get_anomalies(
     charger_id: str,

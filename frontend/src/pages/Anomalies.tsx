@@ -21,8 +21,7 @@ import {
 import { formatAnomalySensorSet, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
 import {
   deleteAnomaly,
-  getAllChargers,
-  getAnomalies,
+  getAnomalyReport,
 } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
 import { dayKey, formatDay, formatExactDateTime, formatTimeOfDay } from "@/lib/format-time";
@@ -59,11 +58,7 @@ export default function AnomalyTable() {
     try {
       setIsLoading(true);
       setError(null);
-      const chargers = await getAllChargers();
-      const allAnomalies = await Promise.all(
-        chargers.map((charger) => getAnomalies(charger.charger_id))
-      );
-      setData(allAnomalies.flat());
+      setData(await getAnomalyReport());
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

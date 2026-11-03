@@ -163,6 +163,9 @@ export const getAllChargers = async (): Promise<Charger[]> => {
   return chargers.map(normalizeChargerLastSeen);
 };
 
+export const getAnomalyReport = (): Promise<Anomaly[]> =>
+  get<Anomaly[]>(API_CONFIG.ENDPOINTS.ANOMALIES.REPORT);
+
 export const getAnomalies = (
   chargerId: string,
   signal?: AbortSignal,

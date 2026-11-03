@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 
-from .. import demo
 from ..access import current_member, operational_access
 from . import (
     anomalies,
@@ -16,7 +15,6 @@ from . import (
 router = APIRouter()
 
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
-router.include_router(demo.router, prefix="/demo", tags=["demo"])
 protected = APIRouter(dependencies=[Depends(current_member)])
 
 protected.include_router(charger.router, prefix="/chargers", tags=["chargers"])

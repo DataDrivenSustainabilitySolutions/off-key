@@ -88,11 +88,8 @@ class CDTests(unittest.TestCase):
             original = Path.cwd()
             config = root / "infra/ansible/inventories/prod/group_vars/all"
             config.mkdir(parents=True)
-            demo = root / "infra/ansible/inventories/demo/group_vars/all"
-            demo.mkdir(parents=True)
             values = dict.fromkeys(secrets.FILES, "synthetic-value") | {
                 "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
-                "OFFKEY_DEMO_VAULT": "$ANSIBLE_VAULT;1.1;AES256\ndemo",
                 "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
                 "GITHUB_ACTOR": "fixture-owner",
                 "GH_TOKEN": "fixture-short-lived-token",
@@ -105,12 +102,6 @@ class CDTests(unittest.TestCase):
                     self.assertEqual(path.stat().st_mode & 0o777, 0o600)
                 self.assertEqual((root / "private").stat().st_mode & 0o777, 0o700)
                 self.assertTrue((config / "vault.yml").is_symlink())
-                self.assertIn("demo", (demo / "vault.yml").read_text())
-                # The demo runs on the production nodes.
-                self.assertEqual(
-                    (demo.parents[1] / "hosts.yml").resolve(),
-                    (root / "private/hosts.yml").resolve(),
-                )
                 self.assertEqual(
                     json.loads((root / "private/registry.json").read_text()),
                     {
@@ -125,8 +116,7 @@ class CDTests(unittest.TestCase):
         # A release refuses uncommitted infrastructure changes, so every file
         # the workflow writes into the checkout must be ignored by git.
         written = [
-            f"infra/ansible/inventories/{environment}/{name}"
-            for environment in ("prod", "demo")
+            f"infra/ansible/inventories/prod/{name}"
             for name in ("hosts.yml", "group_vars/all/vault.yml")
         ]
         result = subprocess.run(
@@ -238,7 +228,7 @@ class CDTests(unittest.TestCase):
             for step in workflow["jobs"]["deploy"]["steps"]
             if "deploy.yml" in step.get("run", "")
         ]
-        self.assertEqual(len(steps), 2)
+        self.assertEqual(len(steps), 1)
         for step in steps:
             with self.subTest(step=step["name"]):
                 # The variable replaces ansible.cfg's ssh_args entirely.
@@ -300,25 +290,17 @@ class CDTests(unittest.TestCase):
         )
         job = workflow["jobs"]["deploy"]
         self.assertEqual(job["permissions"]["issues"], "write")
-        releases = {
-            target: next(
-                step for step in job["steps"] if step.get("name", "").startswith(name)
-            )["run"]
-            for target, name in (
-                ("production", "Deploy only runtime changes"),
-                ("demo", "Deploy and verify the public demo"),
-            )
-        }
-        for target, script in releases.items():
-            with self.subTest(target=target):
-                self.assertIn(f'tee "$OFFKEY_RELEASE_OUTCOME/{target}.failed"', script)
-                self.assertIn(
-                    f'touch "$OFFKEY_RELEASE_OUTCOME/{target}.released"', script
-                )
-                self.assertIn('--readiness "$readiness"', script)
-                self.assertIn('-e "readiness_report_file=$readiness"', script)
-                # A release's private log is kept after success and after failure.
-                self.assertEqual(script.count('keep "$OFFKEY_DEPLOY_DIRECTORY/'), 2)
+        script = next(
+            step
+            for step in job["steps"]
+            if step.get("name", "").startswith("Deploy only runtime changes")
+        )["run"]
+        self.assertIn('tee "$OFFKEY_RELEASE_OUTCOME/production.failed"', script)
+        self.assertIn('touch "$OFFKEY_RELEASE_OUTCOME/production.released"', script)
+        self.assertIn('--readiness "$readiness"', script)
+        self.assertIn('-e "readiness_report_file=$readiness"', script)
+        # A release's private log is kept after success and after failure.
+        self.assertEqual(script.count('keep "$OFFKEY_DEPLOY_DIRECTORY/'), 2)
         alert = job["steps"][-1]
         self.assertEqual(
             alert["if"], "always() && steps.release.outputs.ready == 'true'"

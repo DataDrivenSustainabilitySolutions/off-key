@@ -66,43 +66,11 @@ authenticated API and the account's saved password; restarting or rebuilding
 preserves that account. Ordinary
 production builds keep email login and do not enable this local alias.
 
-## Public demo locally
-
-The public demo at demo.aberration.app also runs locally, with the same guest
-browsing, read-only viewer account, and Digitraffic catalogue:
-
-```sh
-make local-init LOCAL_ARGS=--demo
-make local-up
-make local-bootstrap-admin
-make local-demo
-```
-
-`--demo` works on a new or an existing configuration. On an existing one it sets
-only `DEMO_MODE`, the viewer account, a random viewer password, and adds the
-Digitraffic brokers to `SYSTEM_LIVE_ALLOWED_HOSTS`; everything else is kept.
-
-`local-demo` loads the committed catalogue from
-`infra/ansible/inventories/demo/catalogue.json` into an empty installation and
-starts sampling every reading each minute. An existing catalogue is kept. It then
-creates the viewer account, which needs the administrator to exist: accept the
-admin invitation in Mailpit first, then run `make local-demo` again. Both steps
-are safe to repeat. Open <http://127.0.0.1:5174> in a private window to browse as
-a visitor.
-
 ## Exercise MQTT locally
 
-Two sources deliver real MQTT messages through the normal broker and
-collector path:
-
-- **Live open data.** `dev/demo/digitraffic_catalogue.py` builds a catalogue
-  of Fintraffic road weather, traffic and ferry feeds; see
-  [Public demo](../operations/public-demo.md#open-data-sources). Allow
-  `tie.digitraffic.fi` and `meri.digitraffic.fi` in
-  `SYSTEM_LIVE_ALLOWED_HOSTS`, import the file in **Sources** and choose
-  **Connect** or a recording policy.
-- **Local synthetic brokers.** The [broker fixture](#mixed-topology-broker-fixture)
-  below runs six local brokers with 39 entities.
+The [broker fixture](#mixed-topology-broker-fixture) below delivers real MQTT
+messages through the normal broker and collector path: six local brokers with
+39 entities.
 
 Numbers and booleans produce charts; text and identifiers show their latest
 values.
@@ -312,7 +280,7 @@ so the local configuration determines this deployment.
 ## Compiled application
 
 Development and production builds use the same monitoring home and catalogue
-sidebar. No experiment flag or separate demo route is required.
+sidebar. No experiment flag or separate preview route is required.
 
 The tracked launcher and override are in `dev/local/`. They reuse the root
 Compose services and contain no machine-specific absolute paths or private

@@ -134,7 +134,7 @@ def entity_id(broker: Broker, entity: Entity) -> str:
 
 
 def topic(broker: Broker, entity: Entity) -> str:
-    return f"demo/{broker.name}/{entity.name}/telemetry"
+    return f"fixture/{broker.name}/{entity.name}/telemetry"
 
 
 def dense_channels(broker: Broker, entity: Entity) -> tuple[Channel, ...]:
@@ -188,7 +188,7 @@ def dense_channels(broker: Broker, entity: Entity) -> tuple[Channel, ...]:
 
 
 def channel_topic(broker: Broker, entity: Entity, channel: Channel) -> str:
-    return f"demo/{broker.name}/{entity.name}/{channel.path}"
+    return f"fixture/{broker.name}/{entity.name}/{channel.path}"
 
 
 def build_document() -> dict:

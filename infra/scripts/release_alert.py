@@ -15,7 +15,6 @@ from pathlib import Path
 
 TITLES = {
     "production": "Production release needs attention",
-    "demo": "Public demo release needs attention",
 }
 REFUSED = "Require recovery of a different interrupted release"
 RECOVERY = "docs/operations/recovery.md"
@@ -53,10 +52,9 @@ def failure_report(target: str, lines: list[str], revision: str, run_url: str) -
             "Retry the interrupted release first; its SHA is in the first report."
         )
     else:
-        option = " with **demo_only** checked" if target == "demo" else ""
         step = (
             "To retry, run **Deploy Production** on `main` with revision "
-            f"`{revision}`{option}. If the retry fails the same way, read the "
+            f"`{revision}`. If the retry fails the same way, read the "
             f"release log kept on the manager and follow [{RECOVERY}]({RECOVERY})."
         )
     return f"The {target} release of `{revision}` failed in {run_url}.\n\n```\n{report}\n```\n\n{step}"

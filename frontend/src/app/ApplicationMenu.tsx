@@ -19,13 +19,13 @@ const items = [
 
 /** Account actions; each entry opens the settings overlay above the current page. */
 export function ApplicationMenu({ trigger }: Props) {
-  const { isAuthenticated, isGuest, member, logout } = useAuth();
+  const { isAuthenticated, member, logout } = useAuth();
   const navigate = useNavigate();
   const settings = useSettingsNavigation();
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const openingSettings = useRef(false);
 
-  if (!isAuthenticated || isGuest) {
+  if (!isAuthenticated) {
     return <Button asChild size="sm"><Link to="/login"><LogIn className="size-4" />Log in</Link></Button>;
   }
 

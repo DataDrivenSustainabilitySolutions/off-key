@@ -84,7 +84,7 @@ def render(directory, environment, **overrides):
             "password": "fixture-route-password",
         },
     } | overrides
-    if environment in {"prod", "demo"}:
+    if environment == "prod":
         variables = {
             "emqx_ca_cert": (
                 "-----BEGIN CERTIFICATE-----\n"
@@ -106,11 +106,6 @@ def render(directory, environment, **overrides):
             "mqtt_radar_password": "radar-" + "r" * 32,
             "radar_checkpoint_secret": "checkpoint-" + "c" * 32,
             "email_password": "re_validation_only_not_a_real_key",
-        } | variables
-    if environment == "demo":
-        variables = {
-            "demo_viewer_email": "viewer@demo.example.com",
-            "demo_viewer_password": "validation-viewer-password",
         } | variables
     inputs = directory / "inputs.json"
     inputs.write_text(json.dumps(variables))

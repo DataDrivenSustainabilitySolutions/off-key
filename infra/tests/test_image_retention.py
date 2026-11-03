@@ -124,12 +124,13 @@ class NodeImagePruneTests(unittest.TestCase):
             f"{radar}:sha-0000002@sha256:{'2' * 64}",
             f"{api}:sha-0000002@sha256:{'b' * 64}",
         ]
-        demo_radar = f"{radar}:sha-0000001@sha256:{'1' * 64}"
-        keep = application + [demo_radar, "emqx/emqx:5.8.7@sha256:" + "e" * 64]
+        running_radar = f"{radar}:sha-0000001@sha256:{'1' * 64}"
+        keep = application + [running_radar, "emqx/emqx:5.8.7@sha256:" + "e" * 64]
         images = [
-            # Pulled by digest, so untagged: the current and demo RADAR images.
+            # Pulled by digest, so untagged: the current RADAR image and an older
+            # one a running monitor still uses.
             image("current", digests=[f"{radar}@sha256:{'2' * 64}"]),
-            image("demo", digests=[f"{radar}@sha256:{'1' * 64}"]),
+            image("running", digests=[f"{radar}@sha256:{'1' * 64}"]),
             image("old-radar", digests=[f"{radar}@sha256:{'0' * 64}"]),
             image("old-api", [f"{api}:sha-0000001"], [f"{api}@sha256:{'a' * 64}"]),
             image("emqx", digests=["emqx/emqx@sha256:" + "f" * 64]),

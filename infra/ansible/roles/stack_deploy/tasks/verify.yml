@@ -87,11 +87,3 @@
 # next deployment repeats the setup instead of having to recover a release.
 - name: Initialize administrator access after the release completes
   include_tasks: bootstrap_admin.yml
-
-- name: Keep the public demo's viewer member ready for guests
-  include_tasks: bootstrap_demo_viewer.yml
-  when: demo_mode | default(false) | bool
-
-- name: Give a new public demo its open data sources
-  include_tasks: bootstrap_demo_catalogue.yml
-  when: demo_mode | default(false) | bool

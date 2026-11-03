@@ -520,8 +520,8 @@ args = sys.argv[1:]
 workers = {
     "radar-worker": "network-id-off-key",
     "radar-preflight": "off-key_emqx-network",
-    # The public demo's worker runs on the same cluster and is not ours.
-    "radar-demo": "network-id-off-key-demo",
+    # Another stack's worker on the same cluster is not ours.
+    "radar-other": "network-id-other-stack",
 }
 if args[:3] == ["network", "inspect", "--format"]:
     assert args[-1] == "off-key_emqx-network", args
@@ -614,76 +614,66 @@ else:
                 ],
             )
 
-    def test_only_an_allowed_new_stack_bootstraps_without_the_operator_flag(self):
-        for allowed in (False, True):
-            with (
-                self.subTest(allowed=allowed),
-                tempfile.TemporaryDirectory() as directory,
-            ):
-                directory = Path(directory)
-                deployed = directory / "deployed"
-                docker = directory / "docker"
-                docker.write_text(
-                    f"#!{sys.executable}\n"
-                    + "import sys\n"
-                    + "args = sys.argv[1:]\n"
-                    + "if args[:2] == ['service', 'inspect']:\n"
-                    + "    sys.exit('Error: no such service: ' + args[2])\n"
-                    + "assert args[:2] == ['stack', 'deploy'], args\n"
-                    + f"open({str(deployed)!r}, 'w').write(' '.join(args))\n"
-                    # Stop here: the rest of the release needs a real cluster.
-                    + "sys.exit(1)\n"
+    def test_a_new_stack_needs_the_operator_bootstrap_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            deployed = directory / "deployed"
+            docker = directory / "docker"
+            docker.write_text(
+                f"#!{sys.executable}\n"
+                + "import sys\n"
+                + "args = sys.argv[1:]\n"
+                + "if args[:2] == ['service', 'inspect']:\n"
+                + "    sys.exit('Error: no such service: ' + args[2])\n"
+                + "assert args[:2] == ['stack', 'deploy'], args\n"
+                + f"open({str(deployed)!r}, 'w').write(' '.join(args))\n"
+                # Stop here: the rest of the release needs a real cluster.
+                + "sys.exit(1)\n"
+            )
+            docker.chmod(0o755)
+            playbook = directory / "maintenance.yml"
+            playbook.write_text(
+                yaml.safe_dump(
+                    [
+                        {
+                            "hosts": "localhost",
+                            "connection": "local",
+                            "become": False,
+                            "gather_facts": False,
+                            "vars": {
+                                "stack_name": "off-key",
+                                "stack_dir": str(directory),
+                                "stack_compose_model": {"services": {"postgres": {}}},
+                            },
+                            "tasks": [
+                                {
+                                    "include_tasks": str(
+                                        ROOT
+                                        / "ansible/roles/stack_deploy/tasks/maintenance.yml"
+                                    )
+                                }
+                            ],
+                        }
+                    ]
                 )
-                docker.chmod(0o755)
-                playbook = directory / "maintenance.yml"
-                playbook.write_text(
-                    yaml.safe_dump(
-                        [
-                            {
-                                "hosts": "localhost",
-                                "connection": "local",
-                                "become": False,
-                                "gather_facts": False,
-                                "vars": {
-                                    "stack_name": "off-key-demo",
-                                    "stack_dir": str(directory),
-                                    "stack_compose_model": {
-                                        "services": {"postgres": {}}
-                                    },
-                                    "release_bootstrap_new_stack": allowed,
-                                },
-                                "tasks": [
-                                    {
-                                        "include_tasks": str(
-                                            ROOT
-                                            / "ansible/roles/stack_deploy/tasks/maintenance.yml"
-                                        )
-                                    }
-                                ],
-                            }
-                        ]
-                    )
-                )
-                env = os.environ | {
-                    "PATH": str(directory) + os.pathsep + os.environ["PATH"],
-                    "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
-                }
-                result = ansible(
-                    "playbook",
-                    "-i",
-                    "localhost,",
-                    "-e",
-                    f"ansible_python_interpreter={sys.executable}",
-                    str(playbook),
-                    env=env,
-                    check=False,
-                )
-                self.assertNotEqual(result.returncode, 0)
-                if allowed:
-                    self.assertIn("database-bootstrap.json", deployed.read_text())
-                else:
-                    self.assertIn("requires a controlled BOOTSTRAP=true", result.stdout)
-                    self.assertFalse(deployed.exists())
+            )
+            env = os.environ | {
+                "PATH": str(directory) + os.pathsep + os.environ["PATH"],
+                "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            }
+            result = ansible(
+                "playbook",
+                "-i",
+                "localhost,",
+                "-e",
+                f"ansible_python_interpreter={sys.executable}",
+                str(playbook),
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("requires a controlled BOOTSTRAP=true", result.stdout)
+            self.assertFalse(deployed.exists())
 
     def test_playbook_syntax(self):
         # Populate the actual group names without loading any operator inventory.

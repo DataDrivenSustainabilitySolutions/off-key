@@ -118,7 +118,6 @@ GATEWAY_ACCESS = {
         "POST /v1/auth/register",
         "POST /v1/auth/reset-password",
         "GET /v1/auth/verify-email",
-        "GET /v1/demo",
     },
     "member": {
         "GET /v1/chargers/active",
@@ -256,5 +255,4 @@ def test_public_gateway_routes_are_documentation_health_or_sign_in(route):
         "/docs/oauth2-redirect",
         "/redoc",
         "/health",
-        "/v1/demo",
     } or (path.startswith("/v1/auth/"))

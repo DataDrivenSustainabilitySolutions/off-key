@@ -1,7 +1,7 @@
 ---
 # TACTIC-managed services that belong to this stack. Each stack's TACTIC attaches
 # its workers to that stack's own broker network, so the workers of a second stack
-# on the cluster, such as the public demo, are never counted as this stack's.
+# on the cluster are never counted as this stack's.
 - name: List TACTIC-managed services on the cluster
   command:
     argv: [docker, service, ls, --quiet, --filter, label=managed_by=tactic]

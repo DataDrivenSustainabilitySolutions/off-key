@@ -30,7 +30,7 @@ unless their environment is set.
 
 Backend tests live under `backend/tests/`, one folder per area: `core`,
 `database` (schema, migrations, DB sync), `gateway`, `tactic`, `radar`,
-`proxy`, `pipelines`, `simulator` (local broker fixtures), `demo` and `contracts` (cross-service, deployment
+`proxy`, `pipelines`, `simulator` (local broker fixtures) and `contracts` (cross-service, deployment
 and documentation contracts). Shared fakes and fixtures live in
 `backend/tests/support/`; test modules never import each other.
 

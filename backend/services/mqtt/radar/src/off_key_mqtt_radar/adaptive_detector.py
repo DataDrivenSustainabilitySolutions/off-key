@@ -355,6 +355,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             graph.readiness.ready for graph in self.pipelines
         ):
             self.state = AdaptiveStreamState.CALIBRATING
+            self.logger.info(
+                "event=radar.adaptive_warmup_complete warmup_count=%s "
+                "processed_count=%s",
+                self.warmup_count,
+                self.processed_count,
+            )
         return self._result(data, 0.0, False, "warmup", topic, charger_id, started)
 
     def _process_calibration(
@@ -384,6 +390,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 max(self.calibration_scores) - min(self.calibration_scores),
             )
             self.state = AdaptiveStreamState.OPERATIONAL
+            self._log_calibrated()
         return self._result(
             data, score, False, "calibration", topic, charger_id, started
         )
@@ -528,7 +535,17 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         if self.calibration_count >= self.adaptive_config.calibration_window_size:
             self._freeze_fusion()
             self.state = AdaptiveStreamState.OPERATIONAL
+            self._log_calibrated()
         return self._result(data, 0.0, False, "calibration", topic, charger_id, started)
+
+    def _log_calibrated(self) -> None:
+        self.logger.info(
+            "event=radar.adaptive_calibration_complete threshold=%s "
+            "calibration_count=%s processed_count=%s",
+            self.threshold,
+            self.calibration_count,
+            self.processed_count,
+        )
 
     def _freeze_fusion(self) -> None:
         """The threshold: the policy's quantile of the calibration observations'

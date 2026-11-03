@@ -25,7 +25,8 @@ docker_mtu: 1280
 
 app_environment:  production
 debug:        "False"
-log_level:    WARNING
+# INFO keeps lifecycle events (event=...); per-request reads log at DEBUG.
+log_level:    INFO
 
 # Pin runtime RADAR workloads to backend nodes so they land where the radar_image_seed
 # role pre-pulls the image (the runtime services.create path has no registry auth and
@@ -193,7 +194,7 @@ tactic_service_name:      tactic-middleware
 tactic_service_version:   "0.1.0"
 tactic_host:              "0.0.0.0"
 tactic_port:              "8001"
-tactic_log_level:         WARNING
+tactic_log_level:         INFO
 tactic_service_host:      tactic
 tactic_service_port:      "{{ tactic_port }}"
 tactic_docker_api_url:    "http://socket-proxy"
@@ -226,7 +227,7 @@ tactic_radar_default_db_write_enabled:      "true"
 tactic_radar_default_db_batch_size:         "50"
 tactic_radar_default_db_batch_timeout:      "2.0"
 tactic_radar_default_health_check_interval: "30.0"
-tactic_radar_default_log_level:             WARNING
+tactic_radar_default_log_level:             INFO
 tactic_radar_default_rate_limit_per_minute: "0"
 
 # ── Ports ─────────────────────────────────────────────────────────────────────

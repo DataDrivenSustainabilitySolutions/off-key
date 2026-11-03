@@ -24,7 +24,11 @@ class ChargerQueryService:
             limit=limit,
             active_only=active_only,
         )
-        logger.info(f"Retrieved {len(chargers)} chargers (active_only={active_only})")
+        logger.debug(
+            "event=tactic.chargers_read active_only=%s count=%s",
+            active_only,
+            len(chargers),
+        )
         return chargers
 
     async def list_active_charger_ids(

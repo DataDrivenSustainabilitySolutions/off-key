@@ -49,10 +49,6 @@ Never deploy with the example credentials; see
 
 The site is built from [`docs/`](docs/index.md); preview it locally with `zensical serve`.
 
-## License
-
-See [LICENSE](LICENSE).
-
 ---
 
 <p align="center">

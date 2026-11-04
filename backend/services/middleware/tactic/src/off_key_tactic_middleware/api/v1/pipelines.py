@@ -34,7 +34,6 @@ from ...config.config import get_tactic_settings
 from ...provider import (
     get_pipeline_activations,
     get_pipeline_library,
-    get_radar_orchestration_service,
 )
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.library import PipelineLibrary
@@ -242,15 +241,8 @@ async def cancel_activation(
 async def monitoring_workspace(
     selected_service_id: str | None = Query(default=None, max_length=100),
     library: PipelineLibrary = Depends(get_pipeline_library),
-    orchestration=Depends(get_radar_orchestration_service),
 ):
-    services = await orchestration.list_radar_services(include_docker_status=False)
-    return PipelineWorkspace(
-        services=services,
-        authoring_enabled=get_tactic_settings().config.pipeline_authoring_enabled,
-        selected_service_id=selected_service_id,
-        pipeline_state=await library.selected_state(selected_service_id),
-    )
+    return await library.workspace(selected_service_id)
 
 
 @router.get("/{service_id}/pipeline", response_model=PipelineServiceView)

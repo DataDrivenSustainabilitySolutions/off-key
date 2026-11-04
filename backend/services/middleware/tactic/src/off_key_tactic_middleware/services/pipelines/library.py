@@ -39,6 +39,7 @@ from off_key_core.schemas.pipelines import (
     PipelineRunView,
     PipelineServiceView,
     PipelineView,
+    PipelineWorkspace,
 )
 from off_key_core.schemas.radar import FormMonitorConfig
 from off_key_core.utils.json_budget import bounded_utf8_text
@@ -46,6 +47,7 @@ from sqlalchemy import select
 
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
+from ..orchestration.radar_queries import service_summary
 from .queries import list_designs, list_revisions, run_history
 
 
@@ -226,48 +228,51 @@ class PipelineLibrary:
             raise NotFoundError("Monitoring service not found")
         return (service.operational_status or {}).get("pipeline_state")
 
-    async def selected_state(self, service_id: str | None):
-        """The workspace's selected service state; a missing selection is None."""
-        if not service_id:
-            return None
-        service = await self.session.get(MonitoringService, service_id)
-        if service is None:
-            return None
-        return (service.operational_status or {}).get("pipeline_state")
+    async def workspace(self, selected_service_id: str | None) -> PipelineWorkspace:
+        services = (await self.session.scalars(select(MonitoringService))).all()
+        selected = next(
+            (item for item in services if item.id == selected_service_id), None
+        )
+        return PipelineWorkspace(
+            services=[service_summary(item) for item in services],
+            authoring_enabled=get_tactic_settings().config.pipeline_authoring_enabled,
+            selected_service_id=selected_service_id,
+            pipeline_state=(selected.operational_status or {}).get("pipeline_state")
+            if selected is not None
+            else None,
+        )
 
     async def _service_source(self, service_id):
-        run = await self.session.scalar(
-            select(PipelineRun).where(PipelineRun.service_id == service_id)
-        )
-        if run is not None:
-            config = run.launch_config
-        else:
+        source = (
+            await self.session.execute(
+                select(PipelineRun, PipelineRevision.pipeline_id)
+                .outerjoin(
+                    PipelineRevision, PipelineRevision.id == PipelineRun.revision_id
+                )
+                .where(PipelineRun.service_id == service_id)
+            )
+        ).one_or_none()
+        if source is None:
             service = await self.session.get(MonitoringService, service_id)
             if service is None:
                 raise NotFoundError("Monitoring service not found")
-            config = service.launch_config
+            run, pipeline_id, config = None, None, service.launch_config
+        else:
+            run, pipeline_id = source
+            config = run.launch_config
         execution = config.get("pipeline") if config else None
         if execution:
             definition = PipelineDefinition.model_validate(execution["definition"])
         else:
             definition = legacy_definition(config or {})
-        return run, definition, execution
+        return run, pipeline_id, definition, execution
 
     async def service(self, service_id: str, selected_node_id=None):
-        run, definition, execution = await self._service_source(service_id)
+        run, pipeline_id, definition, execution = await self._service_source(service_id)
         validation = bounded_validation_report(
             validate_pipeline(definition), selected_node_id
         )
         history = await run_history(self.session, service_id, PipelineHistoryQuery())
-        pipeline_id = (
-            await self.session.scalar(
-                select(PipelineRevision.pipeline_id).where(
-                    PipelineRevision.id == run.revision_id
-                )
-            )
-            if run and run.revision_id
-            else None
-        )
         return PipelineServiceView(
             run=run_view(run, pipeline_id) if run else None,
             history=history.items,
@@ -328,7 +333,7 @@ class PipelineLibrary:
         )
 
     async def service_metadata(self, service_id, selected_node_id):
-        _, definition, _ = await self._service_source(service_id)
+        _, _, definition, _ = await self._service_source(service_id)
         return focused_validation_report(
             validate_pipeline(definition), selected_node_id
         )

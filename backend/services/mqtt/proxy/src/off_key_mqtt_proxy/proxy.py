@@ -3,9 +3,12 @@
 import asyncio
 import signal
 import time
+from collections.abc import Callable, Coroutine, Iterable
 from contextlib import suppress
 from dataclasses import asdict
 from datetime import UTC, datetime
+from itertools import batched
+from typing import Any
 
 from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
@@ -32,6 +35,20 @@ from .collection_buffer import CollectionBuffer
 from .collection_diagnostics import CollectionDiagnostics
 from .config.config import get_mqtt_settings
 from .telemetry import DatabaseWriter
+
+_SUBSCRIPTION_BATCH_SIZE = 32
+
+
+async def _change_subscriptions(
+    topics: Iterable[str],
+    change: Callable[[str], Coroutine[Any, Any, bool]],
+    error: str,
+) -> None:
+    for batch in batched(topics, _SUBSCRIPTION_BATCH_SIZE):
+        async with asyncio.TaskGroup() as pending:
+            requests = [pending.create_task(change(topic)) for topic in batch]
+        if not all(request.result() for request in requests):
+            raise RuntimeError(error)
 
 
 class MQTTProxyService:
@@ -62,32 +79,34 @@ class MQTTProxyService:
         self.state = {"revision": snapshot.revision, "status": COLLECTION_APPLYING}
         await self._save_status(snapshot.revision)
         async with asyncio.timeout(self.config.graceful_shutdown_timeout):
-            await self.database_writer.drain()
-            await self.mqtt_client.drain_publishes()
+            async with asyncio.TaskGroup() as drains:
+                drains.create_task(self.database_writer.drain())
+                drains.create_task(self.mqtt_client.drain_publishes())
         # This is a cache, not history. Rebuild it from the selected bindings so
         # removed or remapped sensors cannot expose values from an earlier revision.
         async with self.session_factory() as session:
             await session.execute(delete(CollectionState))
             await session.commit()
         subscriptions = self.mqtt_client.subscription_manager
+        generation = subscriptions.generation
         desired = {
             s.ingress_topic for s in snapshot.catalog.streams(selected_only=True)
         }
-        for topic in subscriptions.get_all_topics() - desired:
-            if not await self.mqtt_client.unsubscribe(topic):
-                raise RuntimeError("Broker did not acknowledge a removed subscription")
-        try:
-            for topic in desired - subscriptions.get_subscriptions():
-                if not await self.mqtt_client.subscribe(topic, qos=0):
-                    raise RuntimeError(
-                        "Broker did not acknowledge a selected subscription"
-                    )
-        except BaseException:
-            self.buffer.pause()
-            raise
+        await _change_subscriptions(
+            subscriptions.get_all_topics() - desired,
+            self.mqtt_client.unsubscribe,
+            "Broker did not acknowledge a removed subscription",
+        )
+        await _change_subscriptions(
+            desired - subscriptions.get_subscriptions(),
+            self.mqtt_client.subscribe,
+            "Broker did not acknowledge a selected subscription",
+        )
+        if generation != subscriptions.generation:
+            raise RuntimeError("Broker reconnected while preparing collection")
         self._prepared_revision = snapshot.revision
         self._prepared_configuration = runtime_fingerprint(snapshot.catalog)
-        self._generation = subscriptions.generation
+        self._generation = generation
         self.state = {
             "revision": snapshot.revision,
             "status": COLLECTION_PREPARED,
@@ -131,11 +150,16 @@ class MQTTProxyService:
         ):
             self.buffer.configure(snapshot.catalog)
             # Re-request retained snapshots only after routes match this revision.
-            for stream in snapshot.catalog.streams(selected_only=True):
-                if not await self.mqtt_client.subscribe(stream.ingress_topic, qos=0):
-                    raise RuntimeError(
-                        "Broker did not acknowledge collection activation"
-                    )
+            await _change_subscriptions(
+                (
+                    stream.ingress_topic
+                    for stream in snapshot.catalog.streams(selected_only=True)
+                ),
+                self.mqtt_client.subscribe,
+                "Broker did not acknowledge collection activation",
+            )
+            if self._generation != self.mqtt_client.subscription_manager.generation:
+                raise RuntimeError("Broker reconnected while activating collection")
             self.revision = snapshot.revision
             self.state["status"] = COLLECTION_APPLIED
         await self._save_status(snapshot.revision)

@@ -52,16 +52,21 @@ async def test_new_policy_waits_for_database_and_publish_drain(proxy):
         revision=1, catalog=catalog(), ingress={}, collection={}
     )
     release = asyncio.Event()
-    proxy.database_writer.drain = AsyncMock(side_effect=lambda *_: release.wait())
+    publish_started = asyncio.Event()
 
-    async def drain(*_):
+    async def drain():
         await release.wait()
 
+    async def drain_publishes():
+        publish_started.set()
+
     proxy.database_writer.drain.side_effect = drain
+    proxy.mqtt_client.drain_publishes.side_effect = drain_publishes
     proxy.buffer.configure(snapshot.catalog, now=0)
     proxy.buffer.receive(message(snapshot.catalog, 1))
     task = asyncio.create_task(proxy._apply(snapshot))
-    await asyncio.sleep(0)
+    async with asyncio.timeout(1):
+        await publish_started.wait()
     assert proxy.state["status"] == "applying"
     assert not proxy.get_readiness_status()["ready"]
     assert proxy.buffer.take(now=100) == []

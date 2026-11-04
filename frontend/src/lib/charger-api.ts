@@ -75,8 +75,28 @@ export const getAllTelemetryData = async (
   // A loaded catalogue snapshot saves fetching /v1/system on every refresh.
   catalogue?: Pick<SystemSnapshot, "document" | "runtime">,
 ): Promise<TelemetryTypeData[]> => {
-  const [telemetryTypes, snapshot] = await Promise.all([
-    getTelemetryTypes(chargerId, signal),
+  const [telemetryData, snapshot] = await Promise.all([
+    getTelemetryTypes(chargerId, signal).then(types => Promise.all(
+      types.map(async (type) => {
+        try {
+          const data = await drainForward({
+            cursor: cursorByType?.get(type),
+            fetchPage: cursor => getTelemetryData(chargerId, type, signal, cursor),
+            cursorOf: getTelemetryCursor,
+            pageSize: TELEMETRY_PAGE_SIZE,
+          });
+          return { type, data };
+        } catch (error) {
+          clientLogger.warn({
+            event: "telemetry.type_load_failed",
+            message: "Failed to load data for telemetry type",
+            error,
+            context: { chargerId, telemetryType: type },
+          });
+          return null;
+        }
+      }),
+    )),
     catalogue ?? get<SystemSnapshot>("/v1/system", signal),
   ]);
   const definitions = new Map(
@@ -85,39 +105,17 @@ export const getAllTelemetryData = async (
       return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream] as const] : [];
     }),
   );
-  const telemetryData = await Promise.all(
-    telemetryTypes.map(async (type): Promise<TelemetryTypeData | null> => {
-      try {
-        const data = await drainForward({
-          cursor: cursorByType?.get(type),
-          fetchPage: cursor => getTelemetryData(chargerId, type, signal, cursor),
-          cursorOf: getTelemetryCursor,
-          pageSize: TELEMETRY_PAGE_SIZE,
-        });
-        const nextCursor = getTelemetryCursor(data);
-        const definition = definitions.get(type);
-        return {
-          type,
-          category: definition?.category ?? "Other",
-          ...(definition?.label && { label: definition.label }),
-          data: data.map(({ timestamp, value }) => ({ timestamp, value })),
-          ...(nextCursor && { cursor: nextCursor }),
-        };
-      } catch (error) {
-        clientLogger.warn({
-          event: "telemetry.type_load_failed",
-          message: "Failed to load data for telemetry type",
-          error,
-          context: { chargerId, telemetryType: type },
-        });
-        return null;
-      }
-    }),
-  );
-
-  return telemetryData.filter(
-    (item): item is TelemetryTypeData => item !== null,
-  );
+  return telemetryData.filter(series => series !== null).map(({ type, data }) => {
+    const definition = definitions.get(type);
+    const nextCursor = getTelemetryCursor(data);
+    return {
+      type,
+      category: definition?.category ?? "Other",
+      ...(definition?.label && { label: definition.label }),
+      data: data.map(({ timestamp, value }) => ({ timestamp, value })),
+      ...(nextCursor && { cursor: nextCursor }),
+    };
+  });
 };
 
 export const mergeTelemetryData = (

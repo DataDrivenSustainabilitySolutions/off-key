@@ -38,7 +38,10 @@ class SystemCollectionService:
 
     async def current(self, document):
         runtime = await read_collection_runtime(self.session)
-        previous = runtime.catalog
+        return runtime, self.project(document, runtime.catalog)
+
+    @staticmethod
+    def project(document, previous):
         bindings = build_bindings(document, previous.bindings)
         known = {stream.id for stream in document.streams}
         reading_ids = {(stream.connection_id, stream.id) for stream in document.streams}
@@ -81,19 +84,19 @@ class SystemCollectionService:
         )
         proposed.document.default_policy = CollectionPolicy()
         CollectionRuleResolver(proposed).materialize()
-        return runtime, proposed
+        return proposed
 
-    async def prepare(self, snapshot, change):
-        runtime, proposed = await self.current(snapshot.document)
+    async def prepare(self, document, catalogue_revision, runtime, change):
         revision = runtime.revision
         if (
-            snapshot.revision != change.expected_revision
+            catalogue_revision != change.expected_revision
             or revision != change.expected_collection_revision
         ):
             raise ConflictError(
                 "The catalogue or collection changed. "
                 "Reload before applying this change."
             )
+        proposed = self.project(document, runtime.catalog)
         if isinstance(change, SystemCollectionRuleChange):
             apply_rule_edits(proposed, change.rule_changes)
         else:
@@ -152,7 +155,7 @@ class SystemCollectionService:
                     "policy_origin": origin,
                 }
         preview = SystemCollectionPreview(
-            revision=snapshot.revision,
+            revision=catalogue_revision,
             collection_revision=revision,
             selected_readings=len(streams),
             sampled_rows_per_day_ceiling=sum(

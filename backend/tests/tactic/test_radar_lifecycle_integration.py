@@ -36,6 +36,9 @@ from off_key_tactic_middleware.services.orchestration.radar_environment import (
 from off_key_tactic_middleware.services.orchestration.radar_lifecycle import (
     RadarLifecycleController,
 )
+from off_key_tactic_middleware.services.orchestration.radar_queries import (
+    RadarServiceQueries,
+)
 from off_key_tactic_middleware.services.orchestration.radar_workloads import (
     RadarWorkloadManager,
 )
@@ -275,13 +278,26 @@ async def test_deleted_intent_fences_late_worker_and_orphan_cleanup(
 ):
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
-    service_id, _workload = await pending_monitor(sessions, workloads, owned)
+    service_id, workload = await pending_monitor(sessions, workloads, owned)
     other_id, other_workload = await pending_monitor(sessions, workloads, owned)
     await workloads.async_docker.run(
         other_workload.update,
         labels=other_workload.attrs["Spec"]["Labels"]
         | {"radar_controller_id": "other-deployment"},
     )
+    async with sessions.begin() as session:
+        for monitor_id, docker_service in (
+            (service_id, workload),
+            (other_id, other_workload),
+        ):
+            monitor = await session.get(MonitoringService, monitor_id)
+            monitor.container_id = docker_service.id
+    async with sessions() as session:
+        overview = await RadarServiceQueries(session, workloads).list(
+            include_docker_status=True
+        )
+        assert {item["id"] for item in overview} == {service_id, other_id}
+        assert all(item["model_type"] == "pyod_iforest" for item in overview)
     settings = RadarAdmissionSettings(SERVICE_ID=service_id, RADAR_LIFECYCLE_VERSION=1)
     await require_monitor_admission(settings=settings, session_factory=sessions)
     async with sessions.begin() as session:

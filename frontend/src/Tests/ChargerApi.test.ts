@@ -75,6 +75,31 @@ describe("charger API", () => {
     expect(mockGet).toHaveBeenCalledWith("/v1/system", { signal });
   });
 
+  it("starts loading points while catalogue metadata is still pending", async () => {
+    let resolveCatalogue!: (value: typeof catalogResponse) => void;
+    const catalogue = new Promise<typeof catalogResponse>(resolve => {
+      resolveCatalogue = resolve;
+    });
+    let markRequested!: () => void;
+    const requested = new Promise<void>(resolve => {
+      markRequested = resolve;
+    });
+    mockGet
+      .mockResolvedValueOnce(["systemVoltage"])
+      .mockReturnValueOnce(catalogue)
+      .mockImplementationOnce(async () => {
+        markRequested();
+        return [{ timestamp: "now", value: 230 }];
+      });
+
+    const result = getAllTelemetryData("charger-1");
+    await requested;
+    resolveCatalogue(catalogResponse);
+    await expect(result).resolves.toEqual([
+      { type: "systemVoltage", category: "Voltage", data: [{ timestamp: "now", value: 230 }] },
+    ]);
+  });
+
   it.each([
     ["charger-1", "systemCurrent"],
     ["missing-charger", "systemVoltage"],

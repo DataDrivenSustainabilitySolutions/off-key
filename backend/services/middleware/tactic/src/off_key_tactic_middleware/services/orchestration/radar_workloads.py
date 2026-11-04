@@ -263,14 +263,18 @@ class RadarWorkloadManager:
 
     async def list_managed_ids(self, *, controller_id: str | None = None) -> set[str]:
         """List every managed RADAR service ID."""
+        services = await self.list_managed(controller_id=controller_id)
+        return {service.id for service in services if service.id}
+
+    async def list_managed(self, *, controller_id: str | None = None) -> list[Any]:
+        """List managed Swarm services with their labels."""
         filters = self._managed_label_filters()
         if controller_id is not None:
             filters["label"].append(f"radar_controller_id={controller_id}")
-        docker_services = await self.async_docker.run(
+        return await self.async_docker.run(
             self.async_docker.client.services.list,
             filters=filters,
         )
-        return {service.id for service in docker_services if service.id}
 
     async def get_status_and_labels(
         self,

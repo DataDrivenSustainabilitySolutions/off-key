@@ -1,5 +1,6 @@
 """Recover persisted RADAR creation intent after request/process interruption."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -9,6 +10,7 @@ from off_key_core.schemas.radar import RadarOperationalStatus, RadarStartConfig
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...facades.docker import workload_labels
 from .radar_environment import build_radar_config_fingerprint, build_radar_environment
 from .radar_workloads import RadarWorkloadManager
 from .workload_identity import controller_id
@@ -146,26 +148,39 @@ class RadarLifecycleController:
 
     async def remove_orphans(self) -> None:
         """Retire delayed remote creations whose durable intent was deleted."""
-        for workload_id in await self.workloads.list_managed_ids(
-            controller_id=controller_id()
-        ):
-            try:
-                await self._remove_orphan(workload_id)
-            except Exception:
-                await self.session.rollback()
-                logger.exception(
-                    "RADAR orphan cleanup deferred workload_id=%s", workload_id
+        workloads = await self.workloads.list_managed(controller_id=controller_id())
+        # Unlabeled legacy workers are reconciled through their persisted Docker IDs.
+        candidates = {
+            workload.id: service_id
+            for workload in workloads
+            if workload.id
+            and (service_id := workload_labels(workload).get("radar_service_id"))
+        }
+        if not candidates:
+            return
+        running = set(
+            await self.session.scalars(
+                select(MonitoringService.id).where(
+                    MonitoringService.id.in_(set(candidates.values())),
+                    MonitoringService.desired_state == "running",
                 )
-
-    async def _remove_orphan(self, workload_id):
-        _, labels = await self.workloads.get_status_and_labels(workload_id)
-        service_id = labels.get("radar_service_id")
-        if not service_id:
-            return  # Existing workers are reconciled through their DB IDs.
-        service = await self.session.get(
-            MonitoringService, service_id, populate_existing=True
+            )
         )
-        remove = service is None or service.desired_state != "running"
         await self.session.commit()
-        if remove:
+        # Durable intents never transition back to running under the same ID.
+        orphans = [
+            workload_id
+            for workload_id, service_id in candidates.items()
+            if service_id not in running
+        ]
+        await asyncio.gather(
+            *(self._retire_orphan(workload_id) for workload_id in orphans)
+        )
+
+    async def _retire_orphan(self, workload_id: str) -> None:
+        try:
             await self.workloads.remove(workload_id)
+        except Exception:
+            logger.exception(
+                "RADAR orphan cleanup deferred workload_id=%s", workload_id
+            )

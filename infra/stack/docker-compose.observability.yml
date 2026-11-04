@@ -123,6 +123,8 @@ services:
         target: /etc/grafana/provisioning/dashboards/stack.yml
       - source: grafana_dashboard_logs
         target: /etc/grafana/dashboards/logs.json
+      - source: grafana_dashboard_overview
+        target: /etc/grafana/dashboards/overview.json
     volumes: [grafana-data:/var/lib/grafana]
     networks: [observability-network]
     logging: *bounded-logs
@@ -206,3 +208,6 @@ configs:
   grafana_dashboard_logs:
     name: grafana_dashboard_logs_${GRAFANA_DASHBOARD_LOGS_HASH}
     file: ./grafana-dashboard-logs.json
+  grafana_dashboard_overview:
+    name: grafana_dashboard_overview_${GRAFANA_DASHBOARD_OVERVIEW_HASH}
+    file: ./grafana-dashboard-overview.json

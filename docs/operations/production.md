@@ -165,6 +165,12 @@ to the existing tunnel in Cloudflare and route it to `http://traefik:80`, like t
 other hostnames. Never route it to Grafana directly: Grafana relies on Traefik to
 set the identity header.
 
+Start with **Aberration system overview** in the **Aberration** folder. It shows
+which workers are delivering logs, how many error lines and RADAR failure
+signals Loki saw, and which services are producing warnings and errors. Compare
+the worker count with the active Swarm workers. Use the detailed logs link to
+investigate a service or run.
+
 The provisioned **Aberration logs** dashboard filters by service and text and has a
 panel for pipeline lifecycle events (stage changes, calibration, crashes, failures).
 Services log JSON at INFO; every RADAR line carries its `service_id`, `run_id` and

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/types/system";
-import { setAppearance } from "./helpers/appearance";
+import { openCatalogueSettings, setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
@@ -74,7 +74,7 @@ test("returns to the catalogue root from collections, branches and search with a
     await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
     await expect(sidebar.getByRole("button", { name: snapshot.document.label, exact: true })).toHaveCount(0);
     await expect(root).toHaveAttribute("title", "Back to catalogue");
-    await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+    await openCatalogueSettings(page);
     await page.getByRole("button", { name: "Add collection", exact: true }).click();
     const collectionName = "Collection check " + fixture.broker.slice(-8);
     await page.getByRole("textbox", { name: "collection name", exact: true }).fill(collectionName);

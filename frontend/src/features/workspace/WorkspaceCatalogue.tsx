@@ -9,7 +9,7 @@ const subscribeNothing = () => () => {};
 
 export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   const { document, index, system, telemetry, previewStreamIds, selected, scopeKey, query, setQuery, positions,
-    preferences, setPreferences, browse, back, selectSource, openSettings } = useCatalogue();
+    preferences, setPreferences, browse, back, selectSource } = useCatalogue();
   const onlineOnly = preferences.onlineOnly ?? false;
   const now = useNow(1000, onlineOnly);
   const liveStatus = useSyncExternalStore(onlineOnly ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
@@ -39,7 +39,7 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
     ? navigationTrail(index, scopeKey).filter(node => node.kind === "topic").map(node => node.label).join("/")
     : current?.label) ?? document.label;
   return <ExplorerSidebar index={index} scopeKey={scopeKey} title={title} catalogueGroups={document.groups}
-    activity={activity} onlineOnly={onlineOnly} readingCount={visibleIndex.counts.readings}
+    activity={activity} onlineOnly={onlineOnly}
     onOnlineOnlyChange={value => { setPreferences(previous => ({ ...previous, onlineOnly: value })); }}
     rows={rows} query={query} resultsQuery={deferredQuery} selectedKey={selected?.key ?? null} positions={positions} loading={system.status === "loading"}
     onQuery={setQuery} onScope={browse} onBack={back} onBrowse={node => browse(node.key)}
@@ -50,5 +50,5 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
       const node = index.nodes.get(index.objectKeys.get(id)?.[0] ?? "");
       if (node) { selectSource(node); onDismiss?.(); }
     }}
-    onSettings={() => { openSettings(); onDismiss?.(); }} onDismiss={onDismiss} />;
+    onDismiss={onDismiss} />;
 }

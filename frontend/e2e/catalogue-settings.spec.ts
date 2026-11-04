@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import type { SystemSnapshot } from "../src/types/system";
-import { setAppearance } from "./helpers/appearance";
+import { openCatalogueSettings, setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 import { expectDialogFits } from "./helpers/layout";
 
 
 test("reviews a real catalogue export before replacement", async ({ page }) => {
   await page.goto("/sources");
-  await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+  await openCatalogueSettings(page);
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(page).toHaveURL(/\/sources\?settings=catalogue$/);
   await expect(dialog.getByRole("heading", { name: "Catalogue", exact: true, level: 2 })).toBeVisible();
@@ -47,13 +47,13 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   expect((await afterResponse.json() as SystemSnapshot).revision).toBe(before.revision);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Catalogue settings", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused();
 });
 
 test("saves a source from settings and supports both themes and mobile entry points", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.goto("/sources");
-  await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+  await openCatalogueSettings(page);
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
   const name = `Settings check ${randomUUID().slice(0, 8)}`;
@@ -79,7 +79,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     await page.reload();
     await expect(page.getByRole("button", { name: `${name}, preview`, exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+    await openCatalogueSettings(page);
     await page.getByRole("button", { name: "Add entity", exact: true }).click();
     await page.getByRole("textbox", { name: "device name", exact: true }).fill(`${name} asset`);
     const entityResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/system");
@@ -98,7 +98,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
 
     for (const theme of ["Dark", "Light"] as const) {
       await setAppearance(page, theme);
-      await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+      await openCatalogueSettings(page);
       const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
       await expectDialogFits(dialog);
@@ -109,8 +109,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     for (const path of ["/sources", "/"]) {
       await page.setViewportSize({ width: 320, height: 844 });
       await page.goto(path);
-      await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
-      await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+      await openCatalogueSettings(page);
       const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
       await expect(dialog.getByRole("heading", { name: "Manage sources", exact: true })).toBeVisible();
       await expectDialogFits(dialog);

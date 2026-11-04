@@ -96,7 +96,7 @@ function sidebarOptions(document = system()) {
     catalogueGroups: document.groups, query: "", selectedKey: null,
     positions: new Map<string, ListPosition>(), loading: false,
     onQuery: vi.fn(), onScope: vi.fn(), onOpen: vi.fn(), onBack: vi.fn(), onInspect: vi.fn(),
-    onSettings: vi.fn(), onCatalogue: vi.fn(), onDismiss: vi.fn(),
+    onCatalogue: vi.fn(), onDismiss: vi.fn(),
   };
 }
 
@@ -175,14 +175,15 @@ describe("explorer sidebar and catalogue list", () => {
     vi.useRealTimers();
   });
 
-  it("keeps the sidebar for MQTT navigation and catalogue settings", () => {
+  it("keeps the sidebar to MQTT navigation without a title or catalogue settings", () => {
     render(<ExplorerSidebar {...sidebarOptions()} />);
-    expect(screen.getByText("MQTT catalogue")).toBeTruthy();
+    expect(screen.queryByText("MQTT catalogue")).toBeNull();
     expect(screen.queryByRole("group", { name: "Workspaces" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Monitoring" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Sources" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Reporting" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Catalogue settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Catalogue settings" })).toBeNull();
+    expect(document.querySelector(".ex-sidebar-footer")).toBeNull();
   });
 
   it("counts brokers independently of the unassigned entity branch", () => {
@@ -388,8 +389,6 @@ describe("explorer sidebar and catalogue list", () => {
     expect(options.onScope).toHaveBeenLastCalledWith(broker.key);
     fireEvent.click(screen.getByRole("button", { name: "Back to catalogue" }));
     expect(options.onCatalogue).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
-    expect(options.onSettings).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
     expect(options.onDismiss).toHaveBeenCalledOnce();
   });

@@ -237,53 +237,46 @@ def reconcile_retention_policies(connection: Connection) -> None:
 
 async def read_storage_status(session: AsyncSession) -> StorageStatus:
     """Read policies from TimescaleDB, never infer them from process settings."""
-    rows = await session.execute(
+    result = await session.execute(
         text(
             """
-            SELECT CASE WHEN proc_name = :anomaly_proc THEN 'anomalies'
-                        ELSE hypertable_name END AS table_name,
-                   EXTRACT(EPOCH FROM CAST(config ->> 'drop_after' AS interval))
-                       / 86400 AS retention_days,
-                   scheduled
-            FROM timescaledb_information.jobs
-            WHERE (hypertable_schema = 'public' AND proc_name = 'policy_retention'
-                   AND hypertable_name = ANY(CAST(:tables AS text[])))
-               OR (proc_schema = 'public' AND proc_name = :anomaly_proc)
-            """
-        ),
-        {"tables": list(RETENTION_TABLES), "anomaly_proc": ANOMALY_RETENTION_PROC},
-    )
-    policies = {row["table_name"]: row for row in rows.mappings()}
-    cap = (
-        (
-            await session.execute(
-                text(
-                    """
-                    SELECT CAST(config ->> 'max_bytes' AS bigint) AS max_bytes,
-                           scheduled
-                    FROM timescaledb_information.jobs
-                    WHERE proc_schema = 'public' AND proc_name = :cap_proc
-                    ORDER BY job_id LIMIT 1
-                    """
-                ),
-                {"cap_proc": STORAGE_CAP_PROC},
+            WITH policies AS (
+                SELECT CASE WHEN proc_name = :anomaly_proc THEN 'anomalies'
+                            ELSE hypertable_name END AS table_name,
+                       EXTRACT(EPOCH FROM CAST(config ->> 'drop_after' AS interval))
+                           / 86400 AS retention_days,
+                       scheduled
+                FROM timescaledb_information.jobs
+                WHERE (hypertable_schema = 'public' AND proc_name = 'policy_retention'
+                       AND hypertable_name = ANY(CAST(:tables AS text[])))
+                   OR (proc_schema = 'public' AND proc_name = :anomaly_proc)
+            ), cap AS (
+                SELECT CAST(config ->> 'max_bytes' AS bigint) AS max_bytes,
+                       scheduled AS cap_scheduled
+                FROM timescaledb_information.jobs
+                WHERE proc_schema = 'public' AND proc_name = :cap_proc
+                ORDER BY job_id LIMIT 1
+            ), sizes AS (
+                SELECT pg_database_size(current_database()) AS database_size,
+                       COALESCE(sum(hypertable_size(to_regclass('public.' || name))), 0)
+                           AS capped_size
+                FROM unnest(CAST(:tables AS text[])) AS name
             )
-        )
-        .mappings()
-        .one_or_none()
-    )
-    size = await session.scalar(text("SELECT pg_database_size(current_database())"))
-    capped_size = await session.scalar(
-        text(
-            """
-            SELECT COALESCE(sum(hypertable_size(to_regclass('public.' || name))), 0)
-            FROM unnest(CAST(:tables AS text[])) AS name
+            SELECT sizes.*, cap.*, policies.*
+            FROM sizes LEFT JOIN cap ON true LEFT JOIN policies ON true
             """
         ),
-        {"tables": list(RETENTION_TABLES)},
+        {
+            "tables": list(RETENTION_TABLES),
+            "anomaly_proc": ANOMALY_RETENTION_PROC,
+            "cap_proc": STORAGE_CAP_PROC,
+        },
     )
+    rows = result.mappings().all()
+    sizes_and_cap = rows[0]
+    policies = {row["table_name"]: row for row in rows}
     return StorageStatus(
-        database_size_bytes=size,
+        database_size_bytes=sizes_and_cap["database_size"],
         retention_policies=[
             RetentionPolicyStatus(
                 table=table,
@@ -294,8 +287,8 @@ async def read_storage_status(session: AsyncSession) -> StorageStatus:
             else RetentionPolicyStatus(table=table)
             for table in (*RETENTION_TABLES, "anomalies")
         ],
-        storage_cap_bytes=None if cap is None else cap["max_bytes"],
-        storage_cap_scheduled=False if cap is None else cap["scheduled"],
-        capped_size_bytes=capped_size,
+        storage_cap_bytes=sizes_and_cap["max_bytes"],
+        storage_cap_scheduled=bool(sizes_and_cap["cap_scheduled"]),
+        capped_size_bytes=sizes_and_cap["capped_size"],
         checked_at=datetime.now(UTC),
     )

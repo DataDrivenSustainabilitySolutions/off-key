@@ -26,6 +26,12 @@ async def read_collection_runtime(session):
             SystemCollectionConfiguration.id == 1
         )
     )
+    return collection_runtime_from_row(row)
+
+
+def collection_runtime_from_row(
+    row: SystemCollectionConfiguration | None,
+) -> CollectionRuntimeSnapshot:
     if row is None:
         return CollectionRuntimeSnapshot(
             revision=0,

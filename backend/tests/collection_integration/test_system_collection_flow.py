@@ -15,7 +15,7 @@ from off_key_core.schemas.collection_rules import (
     CollectionRuleScope,
     SystemCollectionRuleChange,
 )
-from off_key_core.schemas.system import SystemChange, SystemDocument
+from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_mqtt_proxy import proxy as proxy_module
@@ -38,6 +38,73 @@ from . import environment as fixture
 
 pytestmark = fixture.pytestmark
 until = fixture.until
+
+
+@pytest.mark.asyncio
+async def test_live_scope_switches_topics_on_two_brokers():
+    settings = SystemLiveSettings(
+        SYSTEM_LIVE_ENABLED=True, SYSTEM_LIVE_ALLOWED_HOSTS=["127.0.0.1"]
+    )
+    viewer = SystemLiveService(settings)
+    ports = {"line-a": 28884, "line-b": 28885}
+    document = SystemDocument.model_validate(
+        {
+            "connections": [
+                {"id": key, "label": key, "host": "127.0.0.1", "port": port}
+                for key, port in ports.items()
+            ],
+            "streams": [
+                {
+                    "id": f"{key}-{scope}",
+                    "label": scope,
+                    "connection_id": key,
+                    "topic": f"live-scope/{scope}",
+                }
+                for key in ports
+                for scope in ("original", "updated")
+            ],
+        }
+    )
+    snapshot = SystemSnapshot(revision=1, document=document, storage_origin="saved")
+
+    async def connected():
+        states = viewer.snapshot(0)["connections"]
+        return len(states) == len(ports) and all(
+            item["state"] == "connected" for item in states
+        )
+
+    try:
+        lease = await viewer.acquire(
+            snapshot, 1, 1, [f"{key}-original" for key in ports]
+        )
+        await until(connected)
+        workers = viewer.connection_workers.copy()
+        selected = [f"{key}-updated" for key in ports]
+        await viewer.renew(snapshot, 1, lease["lease_id"], selected)
+        assert viewer.connection_workers == workers
+        await until(connected)
+
+        async def observed():
+            samples = viewer.snapshot(0)["samples"]
+            if {item["stream_id"] for item in samples} == set(selected):
+                return True
+            await asyncio.gather(
+                *(
+                    asyncio.to_thread(
+                        single,
+                        "live-scope/updated",
+                        "42",
+                        hostname="127.0.0.1",
+                        port=port,
+                    )
+                    for port in ports.values()
+                )
+            )
+            return False
+
+        await until(observed)
+    finally:
+        await viewer.stop()
 
 
 @pytest_asyncio.fixture

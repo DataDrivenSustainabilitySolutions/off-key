@@ -317,8 +317,26 @@ class SystemLiveService:
             self.cadences = {
                 key: value for key, value in self.cadences.items() if key in active
             }
-        for key, worker, topics in topic_updates:
-            await self._update_scope_worker(snapshot, key, worker, topics)
+        await self._update_scope_workers(snapshot, topic_updates)
+
+    async def _update_scope_workers(self, snapshot, topic_updates):
+        updates = asyncio.gather(
+            *(
+                self._update_scope_worker(snapshot, key, worker, topics)
+                for key, worker, topics in topic_updates
+            ),
+            return_exceptions=True,
+        )
+        try:
+            results = await asyncio.shield(updates)
+        except asyncio.CancelledError:
+            # Worker threads can still mutate subscriptions. Finish under
+            # the operations lock before a new scope can take effect.
+            await updates
+            raise
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
 
     async def _update_scope_worker(self, snapshot, key, worker, topics):
         if self.connection_workers.get(key) is not worker:

@@ -40,9 +40,6 @@ from off_key_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
 )
 from off_key_tactic_middleware.services.catalogue.system import SystemService
-from off_key_tactic_middleware.services.catalogue.system_collection import (
-    SystemCollectionService,
-)
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -228,9 +225,7 @@ async def test_collection_and_structure_changes_protect_active_monitor_inputs(se
         )
     )
     await session.flush()
-    proposed, preview = await SystemCollectionService(session).prepare(
-        snapshot, change(snapshot, "off")
-    )
+    preview = await SystemService(session).preview_collection(change(snapshot, "off"))
     assert preview.affected_monitors == [{"id": "monitor", "name": "monitor"}]
     with pytest.raises(ConflictError, match="running monitors"):
         await SystemService(session).apply_collection(
@@ -243,7 +238,7 @@ async def test_collection_and_structure_changes_protect_active_monitor_inputs(se
             SystemChange(expected_revision=snapshot.revision, document=draft),
             actor="test@example.com",
         )
-    assert proposed.streams(selected_only=True) == []
+    assert preview.selected_readings == 0
 
 
 def runtime_definition():

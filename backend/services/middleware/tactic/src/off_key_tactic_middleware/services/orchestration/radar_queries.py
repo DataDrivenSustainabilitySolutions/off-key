@@ -1,5 +1,6 @@
 """Read projections of monitoring services for the TACTIC API."""
 
+import asyncio
 from typing import Any
 
 from off_key_core.config.logs import logger
@@ -31,6 +32,37 @@ async def find_service(session, container_name, container_id):
     return result.scalars().first()
 
 
+def service_summary(
+    service: MonitoringService,
+    probe: tuple[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    configuration = service.launch_config or {}
+    monitoring = configuration.get("monitoring") or {}
+    docker_status, labels = probe if probe is not None else (None, {})
+    operational_status = derive_operational_status(service, docker_status)
+    # Large graph snapshots are returned only for the selected service.
+    operational_status.pop("pipeline_state", None)
+    summary = {
+        "id": service.id,
+        "container_id": service.container_id,
+        "container_name": service.container_name,
+        "display_name": configuration.get("display_name"),
+        "monitoring_strategy": (
+            labels.get("monitoring_strategy") if labels else monitoring.get("strategy")
+        ),
+        "model_type": (
+            labels.get("radar_model_type") if labels else monitoring.get("model_type")
+        ),
+        "mqtt_topics": service.mqtt_topic,
+        "status": service.status,
+        "operational_status": operational_status,
+        "created_at": service.created_at.isoformat() if service.created_at else None,
+    }
+    if probe is not None:
+        summary["docker_status"] = docker_status
+    return summary
+
+
 class RadarServiceQueries:
     def __init__(self, session, workloads):
         self.session = session
@@ -47,43 +79,20 @@ class RadarServiceQueries:
         result = await self.session.execute(query)
         services = result.scalars().all()
 
-        service_list = []
-        for service in services:
-            configuration = getattr(service, "launch_config", None) or {}
-            monitoring = configuration.get("monitoring") or {}
-            # Optionally check actual Docker state
-            docker_status, labels = (
-                await self.workloads.get_status_and_labels(service.container_id)
-                if include_docker_status
-                else (None, {})
+        if not include_docker_status:
+            return [service_summary(service) for service in services]
+
+        # AsyncDocker already bounds concurrent requests across callers.
+        probes = await asyncio.gather(
+            *(
+                self.workloads.get_status_and_labels(item.container_id)
+                for item in services
             )
-            service_dict = {
-                "id": service.id,
-                "container_id": service.container_id,
-                "container_name": service.container_name,
-                "display_name": configuration.get("display_name"),
-                "monitoring_strategy": monitoring.get("strategy"),
-                "model_type": monitoring.get("model_type"),
-                "mqtt_topics": service.mqtt_topic,
-                "status": service.status,
-                "operational_status": derive_operational_status(service, docker_status),
-                "created_at": (
-                    service.created_at.isoformat() if service.created_at else None
-                ),
-            }
-            if include_docker_status:
-                service_dict["docker_status"] = docker_status
-                if labels:
-                    service_dict["monitoring_strategy"] = labels.get(
-                        "monitoring_strategy"
-                    )
-                    service_dict["model_type"] = labels.get("radar_model_type")
-
-            # Large graph snapshots are returned only for the selected service.
-            service_dict["operational_status"].pop("pipeline_state", None)
-            service_list.append(service_dict)
-
-        return service_list
+        )
+        return [
+            service_summary(service, probe)
+            for service, probe in zip(services, probes, strict=True)
+        ]
 
     async def get(
         self, *, container_name: str | None = None, container_id: str | None = None

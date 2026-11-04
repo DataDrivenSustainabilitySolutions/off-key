@@ -42,12 +42,15 @@ class SubscriptionManager:
         future = self._loop.create_future()
         key = (operation, mid)
         self._acks[key] = future
+        generation = self.generation
         try:
-            return await asyncio.wait_for(future, timeout=10)
+            acknowledged = await asyncio.wait_for(future, timeout=10)
+            return acknowledged and generation == self.generation
         except TimeoutError:
             return False
         finally:
-            self._acks.pop(key, None)
+            if self._acks.get(key) is future:
+                self._acks.pop(key)
 
     async def subscribe(self, topic: str, qos: int | None = None) -> bool:
         self.pending_subscriptions.add(topic)

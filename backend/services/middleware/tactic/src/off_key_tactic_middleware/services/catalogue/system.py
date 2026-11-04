@@ -3,11 +3,18 @@
 from datetime import UTC, datetime
 
 from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.db.collection_runtime import (
+    collection_runtime_from_row,
+    read_collection_runtime,
+)
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import CollectionState
 from off_key_core.db.retention import read_storage_status
-from off_key_core.db.system import SystemConfiguration, SystemRevision
+from off_key_core.db.system import (
+    SystemCollectionConfiguration,
+    SystemConfiguration,
+    SystemRevision,
+)
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import (
@@ -18,7 +25,7 @@ from off_key_core.schemas.system import (
 )
 from off_key_core.schemas.system_collection import SystemCollectionChange
 from off_key_core.utils.collection_rules import CollectionRuleResolver
-from sqlalchemy import select, tuple_
+from sqlalchemy import literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError
@@ -29,21 +36,27 @@ class SystemService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def _read_catalogue(self):
+        singleton = select(literal(1).label("id")).subquery()
+        statement = (
+            select(SystemConfiguration, SystemCollectionConfiguration)
+            .select_from(singleton)
+            .outerjoin(SystemConfiguration, SystemConfiguration.id == singleton.c.id)
+            .outerjoin(
+                SystemCollectionConfiguration,
+                SystemCollectionConfiguration.id == singleton.c.id,
+            )
+        )
+        row, collection = (await self.session.execute(statement)).one()
+        return row, collection_runtime_from_row(collection)
+
     async def read(self) -> SystemSnapshot:
-        row = await self.session.scalar(
-            select(SystemConfiguration).where(SystemConfiguration.id == 1)
-        )
-        # Validated once: the snapshot below reuses the instance, and current()
-        # only reads it (it keeps a deep copy).
+        row, active = await self._read_catalogue()
         document = (
-            SystemDocument.model_validate(row.document)
-            if row is not None
-            else SystemDocument()
+            SystemDocument.model_validate(row.document) if row else SystemDocument()
         )
+        definition = SystemCollectionService.project(document, active.catalog)
         runtime = SystemRuntime()
-        active, definition = await SystemCollectionService(self.session).current(
-            document
-        )
         runtime.collection_revision = active.revision
         runtime.collection = active.collection
         runtime.ingress = active.ingress
@@ -136,10 +149,19 @@ class SystemService:
     async def preview_collection(
         self, change: SystemCollectionChange | SystemCollectionRuleChange
     ):
-        _, preview = await SystemCollectionService(self.session).prepare(
-            await self.read(), change
-        )
+        _, preview = await self._prepare_collection(change)
         return preview
+
+    async def _prepare_collection(
+        self, change: SystemCollectionChange | SystemCollectionRuleChange
+    ):
+        row, runtime = await self._read_catalogue()
+        return await SystemCollectionService(self.session).prepare(
+            SystemDocument.model_validate(row.document) if row else SystemDocument(),
+            row.revision if row else 0,
+            runtime,
+            change,
+        )
 
     async def save(self, change: SystemChange, *, actor: str) -> SystemSnapshot:
         # Existing maintenance gating and the same advisory lock serialize all
@@ -160,13 +182,12 @@ class SystemService:
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
         collection = SystemCollectionService(self.session)
-        snapshot = await self.read()
-        proposed, preview = await collection.prepare(snapshot, change)
+        proposed, preview = await self._prepare_collection(change)
         await collection.protect_monitors(
             preview.affected_monitors, change.pause_affected_monitors, proposed
         )
         await collection.persist(proposed, actor=actor)
-        revision = await self._locked_revision(snapshot.revision)
+        revision = await self._locked_revision(change.expected_revision)
         return await self._write_document(
             proposed.document, actor=actor, revision=revision
         )

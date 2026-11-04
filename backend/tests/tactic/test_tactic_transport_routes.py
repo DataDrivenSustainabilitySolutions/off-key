@@ -12,7 +12,6 @@ from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import pipelines as pipelines_api
 from off_key_tactic_middleware.api.v1 import system as system_api
-from off_key_tactic_middleware.provider import get_radar_orchestration_service
 
 
 def client(router, session, overrides=None):
@@ -53,18 +52,26 @@ def test_pipeline_state_returns_the_stored_state_or_a_404():
 
 
 def test_workspace_reports_the_selected_service_state_and_tolerates_unknowns():
-    session = service_session({"m1": monitor({"nodes": 3})})
-    orchestration = SimpleNamespace(list_radar_services=AsyncMock(return_value=[]))
-    overrides = {get_radar_orchestration_service: lambda: orchestration}
-    with client(pipelines_api.router, session, overrides) as http:
+    session = service_session({})
+    record = MonitoringService(
+        id="m1",
+        container_name="workload",
+        mqtt_topic=["telemetry/fixture/temperature"],
+        status=True,
+        operational_status={"pipeline_state": {"nodes": 3}},
+    )
+    session.scalars.return_value = SimpleNamespace(all=lambda: [record])
+    with client(pipelines_api.router, session) as http:
         selected = http.get("/monitors/workspace", params={"selected_service_id": "m1"})
         unknown = http.get("/monitors/workspace", params={"selected_service_id": "x"})
         none = http.get("/monitors/workspace")
     assert selected.json()["pipeline_state"] == {"nodes": 3}
     assert selected.json()["selected_service_id"] == "m1"
+    assert "pipeline_state" not in selected.json()["services"][0]["operational_status"]
     assert unknown.json()["pipeline_state"] is None
     assert none.json()["pipeline_state"] is None
-    orchestration.list_radar_services.assert_awaited_with(include_docker_status=False)
+    assert session.scalars.await_count == 3
+    session.get.assert_not_awaited()
 
 
 def test_system_revisions_are_newest_first_with_isoformat_times():

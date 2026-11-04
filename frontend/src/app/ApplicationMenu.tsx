@@ -1,5 +1,5 @@
 import { useRef, type ReactElement } from "react";
-import { Activity, LogIn, LogOut, SlidersHorizontal, UserCircle } from "lucide-react";
+import { Activity, Database, LogIn, LogOut, SlidersHorizontal, UserCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ type Props = {
 const items = [
   { section: "account", label: "Account", icon: UserCircle },
   { section: "preferences", label: "Preferences", icon: SlidersHorizontal },
+  { section: "catalogue", label: "Catalogue", icon: Database },
   { section: "status", label: "System status", icon: Activity },
 ] as const satisfies ReadonlyArray<{ section: SettingsSection; label: string; icon: typeof UserCircle }>;
 

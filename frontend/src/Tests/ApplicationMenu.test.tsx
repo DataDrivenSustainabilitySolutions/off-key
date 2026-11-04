@@ -27,9 +27,9 @@ describe("shared application menu", () => {
     expect(await screen.findByText("/login")).toBeTruthy();
   });
 
-  it.each(["/", "/sources", "/anomalies", "/details/entity-one"])("offers shared preferences and system status at %s", (path) => {
+  it.each(["/", "/sources", "/anomalies", "/details/entity-one"])("offers shared preferences, catalogue and system status at %s", (path) => {
     mount(path);
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Preferences", "System status", "Log out"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Account", "Preferences", "Catalogue", "System status", "Log out"]);
   });
 
   it("shows who is signed in on the menu trigger", () => {

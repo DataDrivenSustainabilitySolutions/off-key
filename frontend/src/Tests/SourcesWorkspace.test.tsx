@@ -41,6 +41,12 @@ beforeEach(() => {
     return saved;
   });
 });
+/** Catalogue settings open from the application menu. */
+async function openCatalogueSettings() {
+  fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Catalogue" }));
+}
+
 function mount(path = "/sources") {
   const router = createMemoryRouter([{ element: <ApplicationWorkspace />, children: [
     { path: "/sources", element: <SourcesWorkspace /> }, { path: "/", element: <h1>Monitoring home</h1> },
@@ -128,7 +134,7 @@ describe("dedicated Sources configuration", () => {
   it("opens an existing entity definition in Sources without creating or saving anything", async () => {
     mount();
     await screen.findByRole("heading", { name: "Sources" });
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     const chooser = await screen.findByLabelText("Edit entity");
     fireEvent.change(chooser, { target: { value: "room" } });
     const name = await screen.findByLabelText("device name");
@@ -143,7 +149,7 @@ describe("dedicated Sources configuration", () => {
     saved.can_edit = false;
     mount();
     await screen.findByRole("heading", { name: "Sources" });
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     expect((await screen.findByLabelText("Edit entity")).hasAttribute("disabled")).toBe(true);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });

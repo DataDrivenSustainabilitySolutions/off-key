@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, ListFilter, Search, Settings2, Star } from "lucide-react";
+import { ArrowLeft, ChevronDown, Folder, FolderRoot, Info, ListFilter, Search, Star } from "lucide-react";
 import { CatalogueToggle } from "./CatalogueToggle";
 import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerList";
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "@/domain/system/navigationIndex";
@@ -16,11 +16,10 @@ type Props = {
   onQuery: (value: string) => void; onScope: (key: string) => void;
   onBrowse?: (node: ExplorerNode) => void;
   onOpen: (node: ExplorerNode) => void; onBack: () => void; onInspect: () => void;
-  onSettings: () => void; onCatalogue?: () => void; onDismiss?: () => void;
+  onCatalogue?: () => void; onDismiss?: () => void;
   activity?: ReadingActivitySource;
   onlineOnly?: boolean;
   onOnlineOnlyChange?: (value: boolean) => void;
-  readingCount?: number;
   favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
   onFavourite?: (kind: "service" | "reading", id: string) => void;
 };
@@ -33,7 +32,6 @@ export function ExplorerSidebar(props: Props) {
   const current = index.nodes.get(scopeKey);
   const atRoot = scopeKey === index.rootKey && !query;
   const onlineOnly = props.onlineOnly ?? false;
-  const readingCount = props.readingCount ?? index.counts.readings;
   const brokers = rows.filter(row => row.node.kind === "connection").length;
   const viewKey = resultsQuery.trim() ? `search:${JSON.stringify([resultsQuery, onlineOnly])}`
     : `${scopeKey.startsWith("catalogue:") ? "catalogue" : "scope"}:${JSON.stringify([scopeKey, onlineOnly])}`;
@@ -56,10 +54,7 @@ export function ExplorerSidebar(props: Props) {
     else { props.onQuery(""); props.onScope(index.rootKey); }
   };
   return <nav id="system-explorer" className="ex-sidebar" aria-label="System explorer">
-    <div className="ex-sidebar-top">
-      <span className="workspace-catalogue-label">MQTT catalogue</span>
-      {props.onDismiss && <CatalogueToggle open className="catalogue-drawer-toggle" onClick={props.onDismiss} />}
-    </div>
+    {props.onDismiss && <CatalogueToggle open className="catalogue-drawer-toggle" onClick={props.onDismiss} />}
     <div className="ex-search"><Search size={15} aria-hidden="true" />
       <input ref={search} type="search" aria-label="Search catalogue" placeholder="Search catalogue" value={query} aria-keyshortcuts="Control+K Meta+K"
         onChange={(event) => props.onQuery(event.target.value)} onKeyDown={(event) => {
@@ -116,8 +111,5 @@ export function ExplorerSidebar(props: Props) {
         emptyMessage={onlineOnly ? "No active topics" : undefined}
         emptyAction={onlineOnly && props.onOnlineOnlyChange ? { label: "Show all topics", onClick: () => props.onOnlineOnlyChange?.(false) } : undefined} />}
     {query && rows.length === 100 && <p className="ex-search-hint">Refine your search to see more matches.</p>}
-    <div className="ex-sidebar-footer"><button onClick={props.onSettings}><Settings2 size={15} /><span>Catalogue settings</span></button>
-      <span>{readingCount.toLocaleString()} {onlineOnly ? "online " : ""}{readingCount === 1 ? "reading" : "readings"}</span>
-    </div>
   </nav>;
 }

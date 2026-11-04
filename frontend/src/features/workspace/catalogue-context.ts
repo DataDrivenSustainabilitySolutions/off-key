@@ -39,8 +39,6 @@ export type CatalogueContextValue = {
   setEditingLocked: Dispatch<SetStateAction<boolean>>;
   dialog: CatalogueDialog;
   dialogOrigin: RefObject<HTMLElement | null>;
-  /** Opens the settings overlay at the catalogue section. */
-  openSettings: () => void;
   openEditor: (kind: SystemEntityKind, id?: string) => void;
   closeDialog: () => void;
 };

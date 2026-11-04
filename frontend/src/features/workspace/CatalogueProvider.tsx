@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { navigationDraft, useNavigationDraft } from "@/lib/navigation-draft";
-import { settingsHref, settingsSectionOf, useSettingsNavigation } from "@/lib/settings-navigation";
+import { settingsHref, settingsSectionOf } from "@/lib/settings-navigation";
 import { useSystemDocument } from "@/domain/system/useSystemDocument";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import { scopeReadingIds, safeServiceReturn } from "@/domain/system/collectionRules";
@@ -57,7 +57,6 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     ? preferences.scopeKey : index.rootKey;
   const [editingLocked, setEditingLocked] = useState(false);
   const [dialog, setDialog] = useState<CatalogueDialog>(null);
-  const settings = useSettingsNavigation();
   const dialogOrigin = useRef<HTMLElement | null>(null);
   const initialReveal = useRef(false);
 
@@ -138,7 +137,6 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     selectSource, sectionHref,
     toggleFavourite: (kind, id) => setPreferences(previous => toggleExplorerFavourite(previous, kind, id)),
     editingLocked, setEditingLocked, dialog, dialogOrigin,
-    openSettings: () => settings.open("catalogue", window.document.activeElement as HTMLElement),
     openEditor, closeDialog: () => { if (!system.saving) setDialog(null); },
   }}>{children}</CatalogueContext.Provider>;
 }

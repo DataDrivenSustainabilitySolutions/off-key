@@ -13,7 +13,12 @@ export type ExplorerNode = {
   streamIds: string[];
   parentKey: string | null;
   children: string[];
+  /** Lower-cased ancestry followed by the node's own label and identifiers. */
   searchText: string;
+  /** Where the node's own part of `searchText` starts, after its ancestry. */
+  searchOwnStart?: number;
+  /** Lower-cased label as the explorer shows it, for ranking matches. */
+  searchLabel?: string;
 };
 
 export type NavigationIndex = {
@@ -188,6 +193,8 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     if (endpoint.streamIds.length === 1 && endpoint.children.length === 0) {
       endpoint.objectId = endpoint.streamIds[0]!;
       endpoint.entityKind = "stream";
+      // The explorer shows the reading's name here rather than its topic segment.
+      endpoint.searchLabel = streams.get(endpoint.objectId)!.label.toLocaleLowerCase();
       addObjectKey(endpoint.objectId, endpoint.key);
       continue;
     }
@@ -227,6 +234,8 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
       ? orderedNodes.get(contextKey)?.searchText ?? ""
       : node.parentKey ? orderedNodes.get(node.parentKey)?.searchText ?? "" : "";
     node.searchText = [ancestry, node.label, node.objectId ?? "", node.deviceId ?? "", node.connectionId ?? "", node.topic ?? "", ...(bindingSearch.get(node.key) ?? [])].join(" ").toLocaleLowerCase();
+    node.searchOwnStart = ancestry.length;
+    node.searchLabel ??= node.label.toLocaleLowerCase();
     orderedNodes.set(node.key, node);
     for (let position = node.children.length - 1; position >= 0; position -= 1) {
       stack.push(nodes.get(node.children[position]!)!);
@@ -284,22 +293,71 @@ export function navigationRows(index: NavigationIndex, key: string): NavigationR
   });
 }
 
+const wordCharacter = /[\p{L}\p{N}]/u;
+const isBoundary = (text: string, position: number) => position < 0 || position >= text.length || !wordCharacter.test(text[position]!);
+
+type SearchTerm = { text: string; numeric: boolean };
+
+/**
+ * How well one search term describes a node: its whole label, the start of the
+ * label, a whole word in it, the start or end of a word, anywhere in it, one of its
+ * own identifiers, or only an ancestor. Digits favour the end of a number, since
+ * long serial numbers differ in their last digits.
+ */
+function termScore(node: ExplorerNode, label: string, { text, numeric }: SearchTerm): number {
+  if (label === text) return 60;
+  let best = 0;
+  for (let position = label.indexOf(text); position >= 0 && best < 50; position = label.indexOf(text, position + 1)) {
+    const starts = isBoundary(label, position - 1);
+    const ends = isBoundary(label, position + text.length);
+    const score = position === 0 ? 50
+      : starts && ends ? 45
+        : starts ? (numeric ? 40 : 42)
+          : ends ? (numeric ? 42 : 35)
+            : 30;
+    if (score > best) best = score;
+  }
+  if (best) return best;
+  return node.searchText.includes(text, node.searchOwnStart ?? 0) ? 10 : 1;
+}
+
+type RankedNode = { node: ExplorerNode; score: number; selectable: boolean };
+// Better matches first; then entities before folders; then catalogue order, which
+// insertion keeps because a later node never outranks an equal earlier one.
+const outranks = (left: RankedNode, right: RankedNode) =>
+  left.score > right.score || (left.score === right.score && left.selectable && !right.selectable);
+
+/**
+ * Nodes matching every whitespace-separated term anywhere in their path, labels or
+ * identifiers, best matches first. Keeps only the best `limit` while scanning, so a
+ * broad query over a large catalogue costs one pass and no full sort.
+ */
 export function searchNavigation(index: NavigationIndex, query: string, limit = 100): ExplorerNode[] {
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const terms = words.map((text): SearchTerm => ({ text, numeric: /^\d+$/.test(text) }));
+  const phrase = words.join(" ");
   if (terms.length === 0 || !Number.isFinite(limit) || limit <= 0) return [];
   const maximum = Math.floor(limit);
   if (maximum === 0) return [];
-  const results: ExplorerNode[] = [];
-  // A deep path must not fill the result limit with its intermediate folders
-  // before its actual reading becomes discoverable.
-  for (const selectable of [true, false]) {
-    for (const node of index.nodes.values()) {
-      if (node.kind === "root" || node.kind === "unassigned" || Boolean(node.objectId) !== selectable) continue;
-      if (terms.every((term) => node.searchText.includes(term))) {
-        results.push(node);
-        if (results.length === maximum) return results;
-      }
+  const ranked: RankedNode[] = [];
+  for (const node of index.nodes.values()) {
+    if (node.kind === "root" || node.kind === "unassigned") continue;
+    if (!words.every((word) => node.searchText.includes(word))) continue;
+    const label = node.searchLabel ?? node.label.toLocaleLowerCase();
+    // A label that reads exactly like the whole query beats one matching each word.
+    let score = terms.length > 1 && label === phrase ? 100 : 0;
+    for (const term of terms) score += termScore(node, label, term);
+    const candidate = { node, score, selectable: Boolean(node.objectId) };
+    if (ranked.length === maximum && !outranks(candidate, ranked[maximum - 1]!)) continue;
+    let low = 0;
+    let high = ranked.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (outranks(candidate, ranked[middle]!)) high = middle;
+      else low = middle + 1;
     }
+    ranked.splice(low, 0, candidate);
+    if (ranked.length > maximum) ranked.pop();
   }
-  return results;
+  return ranked.map((entry) => entry.node);
 }

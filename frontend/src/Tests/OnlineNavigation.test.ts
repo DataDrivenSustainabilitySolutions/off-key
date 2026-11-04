@@ -61,7 +61,7 @@ describe("online catalogue navigation", () => {
     const source = activity(document, ["signal-119"]);
     expect(searchNavigation(index, "signal").some(node => node.objectId === "signal-119")).toBe(false);
     const online = onlineNavigationIndex(index, source, source.telemetry.getStatus(), now);
-    expect(searchNavigation(online, "signal")[0]?.objectId).toBe("signal-119");
+    expect(searchNavigation(online, "signal").map(node => node.objectId)).toContain("signal-119");
   });
 
   it("expires paths with their last filled circle and keeps the root navigable", () => {

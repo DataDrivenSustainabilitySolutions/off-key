@@ -81,11 +81,23 @@ RUN --mount=type=bind,source=scripts/check_radar_image.py,target=/tmp/check_rada
         && /app/bin/python /tmp/check_radar_image.py; \
     fi
 
+# Partition the already-verified venv, preserving every installed runtime file.
+# Source edits then replace only workspace packages in the final image; the much
+# larger third-party dependency layer keeps its digest and stays on each node.
+RUN --mount=type=bind,source=scripts/split_runtime_layers.py,target=/tmp/split_runtime_layers.py \
+    python /tmp/split_runtime_layers.py /app /code /application
+
 ########################################################################################################################
 FROM python:3.14-slim-bookworm
 
 # Optional: add the application virtualenv to search path.
 ENV PATH=/app/bin:$PATH
+
+# User creation is independent of release labels, so it stays cached across commits.
+RUN <<EOT
+groupadd -r app
+useradd -r -d /app -g app -N app
+EOT
 
 ARG SERVICE_NAME
 ARG IMAGE_VERSION=dev
@@ -98,15 +110,10 @@ LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabili
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${GIT_COMMIT}"
 
-# Create non-root user
-RUN <<EOT
-groupadd -r app
-useradd -r -d /app -g app -N app
-EOT
-
 # Copy the pre-built `/app` directory to the runtime container
 # Change the ownership to user app and group app in one step.
 COPY --from=builder --chown=app:app /app /app
+COPY --from=builder --chown=app:app /application /app
 
 USER app
 

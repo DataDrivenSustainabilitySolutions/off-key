@@ -6,6 +6,7 @@ proves no pre-feature compatibility.
 """
 
 import json
+import os
 import tarfile
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
@@ -68,6 +69,24 @@ def stop_registry():
             run("docker", "rm", "-f", REGISTRY)
 
 
+def build_cache_options(service, revision):
+    """The image matrix owns current caches; rollback has its own immutable scope."""
+    suffix = service.removeprefix("off-key-")
+    scopes = [f"docker-validate-{suffix}", f"docker-publish-{suffix}"]
+    options = []
+    if revision == COMPATIBLE_REVISION:
+        rollback = f"docker-rollback-{revision}-{suffix}"
+        scopes.insert(0, rollback)
+        # Failure to save an optional cache must not invalidate a real image build.
+        options += [
+            "--cache-to",
+            f"type=gha,version=2,scope={rollback},mode=max,ignore-error=true",
+        ]
+    for scope in scopes:
+        options += ["--cache-from", f"type=gha,version=2,scope={scope}"]
+    return options
+
+
 def build_local_images(release, revision, project):
     start_registry()
 
@@ -82,6 +101,9 @@ def build_local_images(release, revision, project):
             "-t",
             reference,
         ]
+        if os.getenv("OFFKEY_BUILD_CACHE") == "1":
+            args[1:2] = ["buildx", "build", "--load"]
+            args += build_cache_options(service, revision)
         if source is None:
             args += ["--target", "production", str(project / "frontend")]
         else:

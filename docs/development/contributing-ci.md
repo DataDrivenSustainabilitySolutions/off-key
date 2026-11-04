@@ -38,6 +38,25 @@ Shared steps live in `.github/actions/setup-backend` (Python, the pinned uv rele
 and the locked backend sync). Test lanes select their tests by pytest marker; see
 [Testing and debugging](testing-debugging.md#radar-production-integration).
 
+Validation builds, RADAR and local deployment-smoke builds read the validation
+cache and the publishing cache on main. BuildKit still checks the Dockerfile,
+build arguments and input files; a cache hit does not skip any test. The jobs keep
+their existing dependencies and isolated disposable environments. The compatible
+rollback release is still built from its separately reviewed source revision,
+with an additional cache scoped to that revision and service. Current-image cache
+writes remain owned by the image matrix, avoiding competing exports from lanes.
+
+`.github/actions/run-with-build-cache` gives CLI builds the cache runtime
+credentials GitHub supplies to JavaScript actions. They are inherited only by that
+command and its children, not written to `GITHUB_ENV` for subsequent test steps.
+Local rehearsals keep using ordinary Docker builds without GitHub credentials.
+
+Backend images retain the complete installed runtime but put workspace packages
+and third-party dependencies in separate layers. Source-only changes can reuse
+the larger dependency layer on registry pushes and node pulls. This reduces update
+traffic and repeated storage; the first installation remains approximately the
+same size.
+
 ## Local quality gate
 
 ```bash

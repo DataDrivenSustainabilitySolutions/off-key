@@ -194,6 +194,9 @@ jobs:
       - name: Set up the production Docker Engine
         uses: ./.github/actions/setup-docker-engine
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
       - name: Select the production database and current RADAR image
         run: |
           image="$(python3 .github/scripts/release_image.py postgres)"
@@ -201,13 +204,17 @@ jobs:
           echo "TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Build the current production RADAR Dockerfile
-        run: |
-          docker pull "$TEST_RADAR_DATABASE_IMAGE"
-          docker pull eclipse-mosquitto:2.0
-          docker build --file backend/Dockerfile --tag "$TEST_RADAR_SWARM_IMAGE" \
-            --build-arg SERVICE_NAME=off-key-mqtt-radar \
-            --build-arg SERVICE_ROOT=services/mqtt/radar \
-            --build-arg GIT_COMMIT="$GITHUB_SHA" backend
+        uses: ./.github/actions/run-with-build-cache
+        with:
+          run: |
+            docker pull "$TEST_RADAR_DATABASE_IMAGE"
+            docker pull eclipse-mosquitto:2.0
+            docker buildx build --load --file backend/Dockerfile --tag "$TEST_RADAR_SWARM_IMAGE" \
+              --cache-from type=gha,version=2,scope=docker-validate-mqtt-radar \
+              --cache-from type=gha,version=2,scope=docker-publish-mqtt-radar \
+              --build-arg SERVICE_NAME=off-key-mqtt-radar \
+              --build-arg SERVICE_ROOT=services/mqtt/radar \
+              --build-arg GIT_COMMIT="$GITHUB_SHA" backend
 
       - name: Start an isolated Swarm and disposable schema fixture
         run: |
@@ -301,6 +308,8 @@ jobs:
     with:
       publish: false
       cache-scope-prefix: docker-validate
+      # PR caches can read main; main cannot read a PR's merge-ref cache.
+      cache-fallback-scope-prefix: docker-publish
 
   # A main push publishes the images that deployment smoke then tests and that a
   # release deploys by digest.
@@ -386,10 +395,12 @@ jobs:
 
       - name: Prepare disposable production Swarm
         timeout-minutes: 35
-        run: |
-          set -euo pipefail
-          docker swarm init > /dev/null
-          uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
+        uses: ./.github/actions/run-with-build-cache
+        with:
+          run: |
+            set -euo pipefail
+            docker swarm init > /dev/null
+            uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
 
       - name: Run existing browser journeys against the production frontend
         if: matrix.lane == 'rehearsal'
@@ -434,7 +445,9 @@ jobs:
       - name: Build the reviewed compatible binary rollback reference
         if: matrix.lane == 'rehearsal'
         timeout-minutes: 25
-        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
+        uses: ./.github/actions/run-with-build-cache
+        with:
+          run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
 
       # Rehearsal lane: backup restoration and compatible binary rollback; pipelines lane: adaptive monitoring.
       - name: Verify this lane's deployment tests

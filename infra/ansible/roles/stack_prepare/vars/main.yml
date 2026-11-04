@@ -189,7 +189,6 @@ stack_interpolation_environment:
   BROKER_ROUTE_NFS_VOLUME_ID: "{{ (stack_nfs_spec | hash('sha256'))[:12] }}"
   POSTGRES_IMAGE: "{{ release.images.postgres }}"
   EMQX_IMAGE: "{{ release.images.emqx }}"
-  GOST_IMAGE: "{{ release.images.gost }}"
   SOCKET_PROXY_IMAGE: "{{ release.images.socket_proxy }}"
   TAILSCALE_IMAGE: "{{ release.images.tailscale }}"
   TRAEFIK_IMAGE: "{{ release.images.traefik }}"

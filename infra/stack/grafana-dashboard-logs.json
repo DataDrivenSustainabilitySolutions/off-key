@@ -1,18 +1,29 @@
 {
   "uid": "aberration-logs",
   "title": "Aberration logs",
+  "description": "Browse retained production worker container logs by service, worker, and detected severity. Search raw lines and inspect RADAR lifecycle events.",
   "tags": [
-    "aberration"
+    "aberration",
+    "operations"
   ],
   "timezone": "browser",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "time": {
-    "from": "now-6h",
+    "from": "now-1h",
     "to": "now"
   },
   "refresh": "",
+  "links": [
+    {
+      "type": "link",
+      "title": "System overview",
+      "url": "/d/aberration-system-overview/aberration-system-overview",
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -35,9 +46,80 @@
           "text": "All",
           "value": "$__all"
         },
-        "allValue": ".+",
+        "allValue": ".*",
         "refresh": 2,
         "sort": 1
+      },
+      {
+        "name": "node",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "node",
+          "type": 1,
+          "label": "node"
+        },
+        "definition": "label_values(node)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "severity",
+        "label": "Level",
+        "type": "custom",
+        "query": "All : .*, Warnings and errors : warn|warning|error|critical|fatal, Errors and above : error|critical|fatal, Warnings : warn|warning, Info : info, Debug and trace : debug|trace, Unclassified : unknown|^$",
+        "current": {
+          "text": "All",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": ".*",
+            "selected": true
+          },
+          {
+            "text": "Warnings and errors",
+            "value": "warn|warning|error|critical|fatal",
+            "selected": false
+          },
+          {
+            "text": "Errors and above",
+            "value": "error|critical|fatal",
+            "selected": false
+          },
+          {
+            "text": "Warnings",
+            "value": "warn|warning",
+            "selected": false
+          },
+          {
+            "text": "Info",
+            "value": "info",
+            "selected": false
+          },
+          {
+            "text": "Debug and trace",
+            "value": "debug|trace",
+            "selected": false
+          },
+          {
+            "text": "Unclassified",
+            "value": "unknown|^$",
+            "selected": false
+          }
+        ]
       },
       {
         "name": "search",
@@ -47,33 +129,257 @@
         "current": {
           "text": "",
           "value": ""
-        }
+        },
+        "description": "Case-insensitive literal search in the log panels. Paste a request reference, run ID, service ID, or message fragment."
       }
     ]
   },
   "panels": [
     {
+      "id": 5,
+      "type": "text",
+      "title": "Browse production logs",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Filter by **Service**, **Worker**, or **Level**. Use **Contains** to find a request reference, run ID, service ID, or message in the log panels. Expand a line to see its fields and full text.\n\nLoki retains seven days of worker container logs. **Unclassified** includes lines where Loki could not infer a level."
+      }
+    },
+    {
       "id": 1,
       "type": "timeseries",
-      "title": "Log lines by level",
+      "title": "Log volume by level",
+      "description": "Count of lines in each time bucket after the Service, Worker and Level filters. Text search applies to the log panels.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
-        "h": 7,
-        "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3,
+        "w": 12,
+        "h": 8
       },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (detected_level) (count_over_time({stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
+          "queryType": "range",
+          "legendFormat": "{{detected_level}}"
+        }
+      ],
+      "maxDataPoints": 180,
       "fieldConfig": {
         "defaults": {
+          "min": 0,
+          "decimals": 0,
           "custom": {
             "drawStyle": "bars",
             "stacking": {
               "mode": "normal"
             },
-            "fillOpacity": 80,
+            "fillOpacity": 65,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "light-blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "debug"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "info"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warn"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fatal"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "gray"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Log volume by service",
+      "description": "Count of lines per service in each time bucket. Use the Service filter to isolate a quieter source.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (count_over_time({stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
+          "queryType": "range",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 65,
             "lineWidth": 0
           }
         },
@@ -85,111 +391,25 @@
           "placement": "bottom"
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "multi",
+          "sort": "desc"
         }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum by (detected_level) (count_over_time({service=~\"$service\"} |~ \"(?i)$search\" [$__auto]))",
-          "legendFormat": "{{detected_level}}",
-          "queryType": "range"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "type": "logs",
-      "title": "Warnings and errors",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 7
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "sortOrder": "Descending",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "dedupStrategy": "none"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{service=~\"$service\"} | detected_level=~\"warn|error|critical|fatal\" |~ \"(?i)$search\"",
-          "queryType": "range"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "logs",
-      "title": "Pipeline lifecycle: stages, setup, crashes and failures",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 17
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "sortOrder": "Descending",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "dedupStrategy": "none"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{service=~\"$service\"} |~ \"event=(radar\\\\.(stage_changed|runtime_started|coverage_gap|adaptive_|static_|start_failed|execution_|final_|health_degraded|message_processing_failed|run_events_write_failed)|tactic\\\\.radar_task_crashed)\" |~ \"(?i)$search\"",
-          "queryType": "range"
-        }
-      ]
+      }
     },
     {
       "id": 4,
       "type": "logs",
-      "title": "All lines",
+      "title": "All matching log lines",
+      "description": "Original log lines across the selected scope. Scroll to fetch older results or narrow the filters to investigate an incident.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
-        "h": 14,
-        "w": 24,
         "x": 0,
-        "y": 27
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "sortOrder": "Descending",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "dedupStrategy": "none"
+        "y": 11,
+        "w": 24,
+        "h": 15
       },
       "targets": [
         {
@@ -198,10 +418,79 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"$service\"} |~ \"(?i)$search\"",
-          "queryType": "range"
+          "editorMode": "code",
+          "expr": "{stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
+          "queryType": "range",
+          "maxLines": 500,
+          "direction": "backward"
         }
-      ]
+      ],
+      "options": {
+        "displayedFields": [
+          "service",
+          "node",
+          "___LOG_LINE_BODY___"
+        ],
+        "showTime": true,
+        "showLevel": true,
+        "showControls": true,
+        "wrapLogMessage": false,
+        "unwrappedColumns": true,
+        "enableInfiniteScrolling": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "detailsMode": "sidebar",
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "RADAR pipeline lifecycle",
+      "description": "Stage changes, calibration, and selected failures from RADAR and TACTIC. Apply the same filters or search for a specific run ID.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} |= \"event=\" |~ \"event=(radar[.](stage_changed|runtime_started|coverage_gap|adaptive_[a-z_]+|static_[a-z_]+|service_start_failed|start_failed|execution_[a-z_]+|final_[a-z_]+|health_degraded|message_processing_failed|run_events_write_failed|fatal_error)|tactic[.]radar_task_crashed)\\\\b\" | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
+          "queryType": "range",
+          "maxLines": 200,
+          "direction": "backward"
+        }
+      ],
+      "options": {
+        "displayedFields": [
+          "service",
+          "node",
+          "___LOG_LINE_BODY___"
+        ],
+        "showTime": true,
+        "showLevel": true,
+        "showControls": true,
+        "wrapLogMessage": false,
+        "unwrappedColumns": true,
+        "enableInfiniteScrolling": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "detailsMode": "sidebar",
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false
+      }
     }
   ]
 }

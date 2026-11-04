@@ -171,10 +171,18 @@ signals Loki saw, and which services are producing warnings and errors. Compare
 the worker count with the active Swarm workers. Use the detailed logs link to
 investigate a service or run.
 
-The provisioned **Aberration logs** dashboard filters by service and text and has a
-panel for pipeline lifecycle events (stage changes, calibration, crashes, failures).
-Services log JSON at INFO; every RADAR line carries its `service_id`, `run_id` and
-`revision_id`, so in Explore, for example:
+Open **Aberration logs** to browse the last seven days of retained worker
+container logs. Filter by **Service**, **Worker** and **Level**. The two charts
+show the volume within those filters. **Contains** searches the original log
+lines in both log panels, ignoring case. It accepts message fragments, request
+references and RADAR IDs. Scroll the log panel to load older results, and
+expand a line to inspect its text and fields. **Unclassified** includes lines
+where Loki could not infer a level.
+
+The separate RADAR panel shows lifecycle events such as stage changes,
+calibration and failures. Application services log JSON at INFO. RADAR log
+records include `service_id`, `run_id` and `revision_id` for run-scoped
+investigation. In Explore, for example:
 
 ```logql
 {service=~".+"} | json | extra_service_id="<monitoring service id>"

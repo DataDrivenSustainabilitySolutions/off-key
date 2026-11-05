@@ -4,12 +4,25 @@ from datetime import datetime
 
 from off_key_core.config.logs import logger
 from off_key_core.db.models import Anomaly
+from off_key_core.schemas.reporting import (
+    MULTIVARIATE_TELEMETRY_TYPE,
+    AnomalyCursor,
+    AnomalyPage,
+    AnomalyQuery,
+    AnomalySummary,
+    ReadingCount,
+    ReadingLabel,
+    ReportedAnomaly,
+)
+from off_key_core.schemas.system import SystemSnapshot
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError, InfrastructureError, NotFoundError
 from ...repositories import AnomalyRepository
+from ...repositories.anomaly_filters import AnomalyFilters, ReadingScope
 from ...schemas import AnomalyCreateRequest
+from .reporting_scope import CatalogueLabels, reading_scope
 
 
 class AnomalyService:
@@ -39,12 +52,90 @@ class AnomalyService:
         )
         return self._responses(rows)
 
-    async def list_report(self) -> list[dict[str, object]]:
-        # Preserve Reporting's existing page of entities and history per entity.
-        rows = await self._repository.list_report(
-            entity_limit=100, per_entity_limit=500
+    async def query(
+        self, query: AnomalyQuery, catalogue: SystemSnapshot
+    ) -> AnomalyPage:
+        """One page of alarms for catalogue readings, labelled from the catalogue."""
+        bindings = catalogue.runtime.bindings
+        labels = CatalogueLabels(catalogue.document, bindings)
+        scope, unknown = (
+            (None, [])
+            if query.stream_ids is None
+            else reading_scope(bindings, query.stream_ids)
         )
-        return self._responses(rows)
+        if scope is not None and not scope.pairs:
+            return AnomalyPage(
+                items=[],
+                next=None,
+                summary=AnomalySummary(count=0, entities=0, latest=None),
+                readings=[],
+                unknown_stream_ids=unknown,
+            )
+        filters = self._filters(query, scope)
+        rows = await self._repository.page(
+            filters, before=query.before, limit=query.limit + 1
+        )
+        count, entities, latest = await self._repository.summarize(filters)
+        readings = [
+            ReadingCount(
+                charger_id=entity,
+                telemetry_key=key,
+                entity_label=labels.entity(entity),
+                label=labels.reading(entity, key),
+                count=total,
+            )
+            for entity, key, total in await self._repository.reading_counts(scope)
+        ]
+        readings.sort(key=lambda item: (item.entity_label, item.label, item.charger_id))
+        last = rows[query.limit - 1] if len(rows) > query.limit else None
+        return AnomalyPage(
+            items=[self._reported(row, labels) for row in rows[: query.limit]],
+            next=None
+            if last is None
+            else AnomalyCursor(timestamp=last[1].timestamp, anomaly_id=str(last[0])),
+            summary=AnomalySummary(count=count, entities=entities, latest=latest),
+            readings=readings,
+            unknown_stream_ids=unknown,
+        )
+
+    @staticmethod
+    def _filters(query: AnomalyQuery, scope: ReadingScope | None) -> AnomalyFilters:
+        reading = query.reading
+        return AnomalyFilters(
+            scope=scope,
+            reading=None
+            if reading is None
+            else ReadingScope(frozenset({(reading.charger_id, reading.telemetry_key)})),
+            service_id=query.service_id,
+            since=query.since,
+            until=query.until,
+            max_p_value=query.max_p_value,
+        )
+
+    @staticmethod
+    def _reported(row: tuple[str, Anomaly], labels: CatalogueLabels) -> ReportedAnomaly:
+        anomaly_id, anomaly = row
+        entity = anomaly.charger_id
+        multivariate = anomaly.telemetry_type == MULTIVARIATE_TELEMETRY_TYPE
+        keys = anomaly.sensor_set or ([] if multivariate else [anomaly.telemetry_type])
+        return ReportedAnomaly(
+            anomaly_id=str(anomaly_id),
+            charger_id=entity,
+            timestamp=anomaly.timestamp,
+            telemetry_type=anomaly.telemetry_type,
+            anomaly_type=anomaly.anomaly_type,
+            anomaly_value=anomaly.anomaly_value,
+            value_type=anomaly.value_type,
+            sensor_set=anomaly.sensor_set,
+            service_id=anomaly.service_id or None,
+            entity_label=labels.entity(entity),
+            telemetry_label=None
+            if multivariate
+            else labels.reading(entity, anomaly.telemetry_type),
+            readings=[
+                ReadingLabel(key=key, label=labels.reading(entity, key)) for key in keys
+            ],
+        )
 
     @staticmethod
     def _responses(rows: list[tuple[str, Anomaly]]) -> list[dict[str, object]]:

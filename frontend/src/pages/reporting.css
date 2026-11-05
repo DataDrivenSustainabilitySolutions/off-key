@@ -26,6 +26,7 @@ tbody:first-of-type .rp-day th { padding-top: 14px; }
 .rp-type { color: hsl(var(--muted-foreground)); }
 .rp-actions { width: 1%; padding-right: 0 !important; text-align: right; }
 .rp-message td { height: 96px; text-align: center; color: hsl(var(--muted-foreground)); }
+.rp-more { display: flex; justify-content: center; padding-top: 14px; }
 
 @media (max-width: 760px) {
   .rp-metrics { gap: 8px; }

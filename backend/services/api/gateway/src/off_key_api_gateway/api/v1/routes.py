@@ -32,6 +32,9 @@ protected.include_router(
     tags=["anomalies"],
     dependencies=[Depends(operational_access)],
 )
+protected.include_router(
+    anomalies.query_router, prefix="/anomalies", tags=["anomalies"]
+)
 protected.include_router(system.router, prefix="/system", tags=["system"])
 
 protected.include_router(members.router, prefix="/members", tags=["members"])

@@ -22,6 +22,7 @@ EXPECTED_MIGRATIONS = (
     "015_detector_evidence.sql",
     "016_pipeline_run_events.sql",
     "017_detector_inputs.sql",
+    "019_dojo_datasets.sql",
 )
 
 

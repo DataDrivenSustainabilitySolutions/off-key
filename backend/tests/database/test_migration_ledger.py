@@ -69,6 +69,9 @@ APPLIED_CHECKSUMS = {
     "017_detector_inputs.sql": (
         "bb49f11f5966ec132584ed56689a17bef52a1edf13416308e753d1d8ef664cfb"
     ),
+    "019_dojo_datasets.sql": (
+        "02d1e64607ae046c043cf2e0038e63cf2add1095a5d2d57cb6bd4200efb8bda2"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -84,6 +87,11 @@ LEDGER_TABLES = {
         "monitoring_pipeline_activations",
     },
     "016_pipeline_run_events.sql": {"monitoring_pipeline_run_events"},
+    "019_dojo_datasets.sql": {
+        "dojo_datasets",
+        "dojo_dataset_series",
+        "dojo_dataset_points",
+    },
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {"014_drop_unread_schema.sql": {"model_registry"}}

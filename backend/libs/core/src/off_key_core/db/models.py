@@ -24,6 +24,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from ..utils.enum import RoleEnum
 from .base import Base
+from .dojo import DojoDataset as DojoDataset
+from .dojo import DojoPoint as DojoPoint
+from .dojo import DojoSeries as DojoSeries
 from .pipelines import (
     MonitoringPipeline as MonitoringPipeline,
 )

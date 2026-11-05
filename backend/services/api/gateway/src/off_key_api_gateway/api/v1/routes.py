@@ -5,6 +5,7 @@ from . import (
     anomalies,
     auth,
     charger,
+    dojo,
     favorites,
     members,
     monitors,
@@ -35,4 +36,5 @@ protected.include_router(
 protected.include_router(system.router, prefix="/system", tags=["system"])
 
 protected.include_router(members.router, prefix="/members", tags=["members"])
+protected.include_router(dojo.router, prefix="/dojo", tags=["dojo"])
 router.include_router(protected)

@@ -24,7 +24,7 @@ from off_key_core.db.maintenance import DeploymentInProgressError
 from starlette.middleware.gzip import GZipMiddleware
 
 from .api.service_auth import require_gateway
-from .api.v1 import data_services, members, models, pipelines, radar, system
+from .api.v1 import data_services, dojo, members, models, pipelines, radar, system
 from .config.config import RadarWorkloadLifecycle, TacticConfig, get_tactic_settings
 from .config.system_live import get_system_live_settings
 from .facades.docker import AsyncDocker
@@ -230,6 +230,7 @@ def create_app() -> FastAPI:
     business.include_router(system.router, prefix="/api/v1")
 
     business.include_router(members.router, prefix="/api/v1")
+    business.include_router(dojo.router, prefix="/api/v1")
     app.include_router(business)
 
     @app.get("/health")

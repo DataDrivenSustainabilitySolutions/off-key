@@ -55,7 +55,7 @@ describe("integrated monitor creation", () => {
   });
 
   it("prevents a second active service from claiming an already owned generic input", async () => {
-    const service: ActiveService = { id: "owner", container_id: "workload", container_name: "Existing monitor", mqtt_topics: ["telemetry/room/temperature"], status: true,
+    const service: ActiveService = { id: "owner", container_id: "workload", container_name: "Existing monitor", mqtt_topics: ["telemetry/room/temperature"], stream_ids: ["temperature"], status: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     mount(true, [service], new Map([["temperature", new Set(["owner"])]]));
     const input = await screen.findByRole("checkbox", { name: /Room temperature/ });

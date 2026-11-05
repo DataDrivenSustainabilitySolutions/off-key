@@ -8,7 +8,6 @@ import {
   createDefaultStaticDraft,
   getModelDefaults,
 } from "../features/monitoring/setup/config";
-import { mqttFiltersOverlap } from "../lib/monitoring-services";
 import type { ModelDefinition } from "../types/monitoring";
 
 const modelDefinition: ModelDefinition = {
@@ -124,21 +123,6 @@ describe("monitoring configuration", () => {
     expect(
       result.request?.adaptive_stream_config.model_params.max_feature_cache_size,
     ).toBeNull();
-  });
-
-  it("detects MQTT wildcard ownership overlap", () => {
-    expect(
-      mqttFiltersOverlap(
-        "telemetry/+/#",
-        "telemetry/charger-1/L1",
-      ),
-    ).toBe(true);
-    expect(
-      mqttFiltersOverlap(
-        "telemetry/charger-2/L1",
-        "telemetry/charger-1/L1",
-      ),
-    ).toBe(false);
   });
 
   it("builds the complete static monitoring request", () => {

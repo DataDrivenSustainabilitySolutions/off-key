@@ -2,21 +2,19 @@ import { useCallback, useState } from "react";
 import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { apiUtils } from "@/lib/api-client";
-import { collectionDiagnosis, diagnosticsFresh } from "@/lib/collection-diagnostics";
 import { getErrorMessage } from "@/lib/errors";
 import { formatExactDateTime, formatRelativeTime } from "@/lib/format-time";
 import type { CollectionStatus } from "@/types/collection";
 
 const date = (value: string | null, now: number) =>
   value ? formatRelativeTime(value, now) : "None since worker start";
-const problems = new Set([
-  "Worker not reporting", "Disconnected", "Collection error", "Broker controller not reporting",
-  "Broker routes failed", "Broker disconnected", "Overloaded", "Invalid payloads",
-]);
-const idle = new Set(["Not configured", "Paused", "Ingress disabled"]);
-/** Diagnoses share the dot-and-label indicator used by services and brokers. */
-const tone = (title: string) => title === "Collecting" ? "positive"
-  : problems.has(title) ? "danger" : idle.has(title) ? "neutral" : "warning";
+/** The server diagnoses collection; the page only notices when answers stop arriving. */
+const STALE_AFTER_MS = 15000;
+const notRefreshing = {
+  tone: "danger",
+  title: "Status not refreshing",
+  explanation: "The latest status is more than 15 seconds old. Retrying automatically.",
+};
 const rate = (value: number | null) =>
   value === null ? "Measuring…" : `${value.toLocaleString()} /s`;
 const queueUsage = (size: number, capacity: number) =>
@@ -24,6 +22,7 @@ const queueUsage = (size: number, capacity: number) =>
 
 export function CollectionHealth() {
   const [snapshot, setSnapshot] = useState<CollectionStatus | null>(null);
+  const [receivedAt, setReceivedAt] = useState(0);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
   // Expire old reports even while a status request is still pending.
@@ -33,6 +32,7 @@ export function CollectionHealth() {
       const result = await apiUtils.get<CollectionStatus>("/v1/system/health");
       if (!signal.aborted) {
         setSnapshot(result);
+        setReceivedAt(Date.now());
         setError("");
       }
     } catch (reason) {
@@ -53,7 +53,7 @@ export function CollectionHealth() {
         </p>
       )}
       {snapshot ? (
-        <CollectionMeasurements snapshot={snapshot} now={now} />
+        <CollectionMeasurements snapshot={snapshot} now={now} stale={now - receivedAt > STALE_AFTER_MS} />
       ) : !error && (
         <p role="status" className="text-muted-foreground">Loading collection status…</p>
       )}
@@ -61,11 +61,14 @@ export function CollectionHealth() {
   );
 }
 
-function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus; now: number }) {
-  const [title, explanation] = collectionDiagnosis(snapshot, now);
+function CollectionMeasurements({ snapshot, now, stale }: {
+  snapshot: CollectionStatus;
+  now: number;
+  stale: boolean;
+}) {
+  const { tone, title, explanation } = stale ? notRefreshing : snapshot.diagnosis;
   const data = snapshot.collection.diagnostics;
-  const current = diagnosticsFresh(snapshot.collection, now) &&
-    snapshot.collection.revision === snapshot.revision;
+  const current = !stale && snapshot.diagnosis.measurements_current;
   const measurements = data ? [
     ["Incoming to application", rate(data.rates.received)],
     ["Accepted after sampling", rate(data.rates.accepted)],
@@ -79,7 +82,7 @@ function CollectionMeasurements({ snapshot, now }: { snapshot: CollectionStatus;
 
   return (
     <>
-      <SettingsRow label={<span className={`mn-state mn-state--${tone(title)} is-headline`} role="status">{title}</span>} detail={explanation} />
+      <SettingsRow label={<span className={`mn-state mn-state--${tone} is-headline`} role="status">{title}</span>} detail={explanation} />
       <details className="app-settings-technical">
         <summary>Technical details</summary>
         {data && !current && (

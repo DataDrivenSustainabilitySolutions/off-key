@@ -4,6 +4,8 @@ import { drainForward, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { clientLogger } from "@/lib/logger";
 import type {
   Anomaly,
+  AnomalyPage,
+  AnomalyQuery,
   Charger,
   TelemetryDataPoint,
   TelemetryCursor,
@@ -110,6 +112,7 @@ export const getAllTelemetryData = async (
     const nextCursor = getTelemetryCursor(data);
     return {
       type,
+      ...(definition && { streamId: definition.id }),
       category: definition?.category ?? "Other",
       ...(definition?.label && { label: definition.label }),
       data: data.map(({ timestamp, value }) => ({ timestamp, value })),
@@ -130,8 +133,9 @@ export const mergeTelemetryData = (
     if (!series) return existing;
     if (series.data.length === 0) {
       return series.category === existing.category && series.label === existing.label
+        && series.streamId === existing.streamId
         ? existing
-        : { ...existing, category: series.category, label: series.label };
+        : { ...existing, category: series.category, label: series.label, streamId: series.streamId };
     }
 
     const points = new Map(existing.data.map((point) => [point.timestamp, point]));
@@ -161,8 +165,9 @@ export const getAllChargers = async (): Promise<Charger[]> => {
   return chargers.map(normalizeChargerLastSeen);
 };
 
-export const getAnomalyReport = (): Promise<Anomaly[]> =>
-  get<Anomaly[]>(API_CONFIG.ENDPOINTS.ANOMALIES.REPORT);
+/** Reporting's alarms, scoped and filtered on the server. */
+export const queryAnomalies = (query: AnomalyQuery, signal?: AbortSignal): Promise<AnomalyPage> =>
+  apiUtils.post<AnomalyPage>(API_CONFIG.ENDPOINTS.ANOMALIES.QUERY, query, signal ? { signal } : undefined);
 
 export const getAnomalies = (
   chargerId: string,

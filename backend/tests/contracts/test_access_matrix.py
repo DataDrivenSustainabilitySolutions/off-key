@@ -28,9 +28,9 @@ TACTIC_ACCESS = {
         "GET /redoc",
     },
     "service": {
-        "GET /api/v1/data/anomalies",
         "POST /api/v1/data/anomalies",
         "GET /api/v1/data/anomalies/count",
+        "POST /api/v1/data/anomalies/query",
         "DELETE /api/v1/data/anomalies/{anomaly_id}",
         "GET /api/v1/data/anomalies/{charger_id}",
         "POST /api/v1/data/auth/login",
@@ -130,6 +130,7 @@ GATEWAY_ACCESS = {
         "GET /v1/auth/verify-email",
     },
     "member": {
+        "POST /v1/anomalies/query",
         "GET /v1/chargers/active",
         "GET /v1/chargers/active/id",
         "GET /v1/chargers/available",
@@ -195,7 +196,6 @@ GATEWAY_ACCESS = {
         "GET /v1/anomalies",
         "POST /v1/anomalies",
         "GET /v1/anomalies/count",
-        "GET /v1/anomalies/report",
         "DELETE /v1/anomalies/{anomaly_id}",
     },
     "manage_members": {

@@ -109,6 +109,7 @@ const operationalService: ActiveService = {
   container_id: "container-1",
   container_name: "radar-adaptive",
   mqtt_topics: ["telemetry/charger-1/voltage"],
+  stream_ids: ["voltage"],
   status: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {

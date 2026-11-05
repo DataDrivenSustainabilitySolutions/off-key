@@ -11,6 +11,7 @@ import Reporting from "@/pages/Anomalies";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
 import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/workspace/preferences";
 import { createEmptySystem } from "@/domain/system/systemDocument";
+import type { AnomalyPage, AnomalyQuery, ReportedAnomaly } from "@/types/charger";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemSnapshot } from "@/types/system";
 import { mqttConnection } from "./support/fixtures/system";
@@ -87,18 +88,21 @@ beforeAll(async () => {
   await import("@/features/pipelines/PipelineWorkspace");
 });
 
+const emptyReport: AnomalyPage = { items: [], next: null, summary: { count: 0, entities: 0, latest: null }, readings: [], unknown_stream_ids: [] };
+
 beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true; auth.isAdmin = false;
   clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
   vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
+  vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/anomalies/query" ? emptyReport : {});
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(callback, 0));
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
 });
 
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
-  mqtt_topics: ["telemetry/room-input/temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+  mqtt_topics: ["telemetry/room-input/temperature"], stream_ids: ["temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 /** The account's favourites on a fake server; call after `withServices`. */
 function favouritesServer() {
@@ -269,7 +273,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"] }]);
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]);
     const { router } = mount();
     await loaded();
     const sidebar = screen.getByRole("navigation", { name: "System explorer" });
@@ -358,7 +362,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"] }]); mount();
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
@@ -696,13 +700,27 @@ describe("hierarchical explorer workspace", () => {
 
 describe("reporting", () => {
   const yesterday = () => { const date = new Date(); date.setDate(date.getDate() - 1); date.setHours(12, 0, 0, 0); return date.toISOString(); };
-  const reports = () => [
-    { anomaly_id: "old", charger_id: "room-input", timestamp: yesterday(), telemetry_type: "humidity", anomaly_type: "Humidity drift", anomaly_value: 0.02, value_type: "tail_pvalue", sensor_set: ["humidity"] },
+  const labels: Record<string, string> = { temperature: "Air temperature", humidity: "Relative humidity" };
+  const reports = (): ReportedAnomaly[] => [
     { anomaly_id: "new", charger_id: "room-input", timestamp: new Date(Date.now() - 1000).toISOString(), telemetry_type: "temperature", anomaly_type: "Temperature spike", anomaly_value: 0.0005, value_type: "tail_pvalue", sensor_set: ["temperature"] },
-  ];
+    { anomaly_id: "old", charger_id: "room-input", timestamp: yesterday(), telemetry_type: "humidity", anomaly_type: "Humidity drift", anomaly_value: 0.02, value_type: "tail_pvalue", sensor_set: ["humidity"] },
+  ].map(item => ({ ...item, entity_label: "Room station", telemetry_label: labels[item.telemetry_type]!,
+    readings: item.sensor_set.map(key => ({ key, label: labels[key]! })) }) as ReportedAnomaly);
+  /** Stands in for the server: it applies the reading and p-value filters. */
+  const answer = (items: ReportedAnomaly[], query: AnomalyQuery): AnomalyPage => {
+    const matches = items.filter(item => (!query.reading || item.readings.some(reading => reading.key === query.reading!.telemetry_key))
+      && (query.max_p_value === undefined || item.anomaly_value <= query.max_p_value));
+    return {
+      items: matches, next: null, unknown_stream_ids: [],
+      summary: { count: matches.length, entities: new Set(matches.map(item => item.charger_id)).size, latest: matches[0]?.timestamp ?? null },
+      readings: items.flatMap(item => item.readings.map(reading => ({ charger_id: item.charger_id, telemetry_key: reading.key,
+        entity_label: item.entity_label, label: reading.label, count: 1 }))),
+    };
+  };
   function withReports(items = reports()) {
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
-      : endpoint === "/v1/anomalies/report" ? items : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
+    vi.mocked(apiUtils.post).mockImplementation(async (endpoint, query) =>
+      endpoint === "/v1/anomalies/query" ? answer(items, query as AnomalyQuery) : {});
   }
 
   it("groups events by day under catalogue labels and narrows them with filters", async () => {
@@ -711,10 +729,10 @@ describe("reporting", () => {
     const events = await screen.findByRole("region", { name: "Anomaly events" });
     await within(events).findByText("Temperature spike");
     expect(vi.mocked(apiUtils.get).mock.calls.map(([endpoint]) => endpoint)
-      .filter(endpoint => endpoint.startsWith("/v1/anomalies") || endpoint.startsWith("/v1/chargers")))
-      .toEqual(["/v1/anomalies/report"]);
+      .filter(endpoint => endpoint.startsWith("/v1/anomalies") || endpoint.startsWith("/v1/chargers"))).toEqual([]);
+    expect(vi.mocked(apiUtils.post).mock.lastCall?.slice(0, 2)).toEqual(["/v1/anomalies/query", { limit: 500 }]);
     const days = within(events).getAllByRole("rowgroup").map(group => group.querySelector(".rp-day th")?.textContent).filter(Boolean);
-    expect(days).toEqual(items.map(item => formatDay(item.timestamp)).reverse());
+    expect(days).toEqual(items.map(item => formatDay(item.timestamp)));
     // Recorded identities read as catalogue names, newest first.
     const rows = events.querySelectorAll(".rp-row");
     expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
@@ -723,12 +741,34 @@ describe("reporting", () => {
     expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
     expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
     fireEvent.change(within(events).getByRole("combobox", { name: "p-value" }), { target: { value: "0.001" } });
-    expect(within(events).getByRole("status").textContent).toBe("1 event");
+    await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("1 event"));
+    expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({ limit: 500, max_p_value: 0.001 });
     expect(within(events).queryByText("Humidity drift")).toBeNull();
     fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "room-input\u0000humidity" } });
-    expect(within(events).getByText("No events match these filters.", { exact: false })).toBeTruthy();
+    expect(await within(events).findByText("No events match these filters.", { exact: false })).toBeTruthy();
+    expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({
+      limit: 500, max_p_value: 0.001, reading: { charger_id: "room-input", telemetry_key: "humidity" } });
     fireEvent.click(within(events).getByRole("button", { name: "Clear filters" }));
-    expect(within(events).getByRole("status").textContent).toBe("2 events");
+    await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("2 events"));
+  });
+
+  it("loads older events with the cursor of the same query", async () => {
+    const [newest, older] = reports();
+    const cursor = { timestamp: newest!.timestamp, anomaly_id: newest!.anomaly_id };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
+    vi.mocked(apiUtils.post).mockImplementation(async (_endpoint, query) => {
+      const page = answer([newest!, older!], {});
+      return (query as AnomalyQuery).before
+        ? { ...page, items: [older!], next: null }
+        : { ...page, items: [newest!], next: cursor };
+    });
+    mount("/anomalies");
+    const more = await screen.findByRole("button", { name: "Load older events (1 more)" });
+    fireEvent.click(more);
+    expect(await screen.findByText("Humidity drift")).toBeTruthy();
+    expect(screen.getByText("Temperature spike")).toBeTruthy();
+    expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({ limit: 500, before: cursor });
+    expect(screen.queryByRole("button", { name: /Load older events/ })).toBeNull();
   });
 
   it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {

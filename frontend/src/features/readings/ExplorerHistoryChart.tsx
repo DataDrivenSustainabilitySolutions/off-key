@@ -11,7 +11,6 @@ import { useDetectorPanes } from "@/features/charts/use-detector-panes";
 import { createAnomalyMarkers, filterAnomalies } from "@/lib/anomaly-utils";
 import { filterServiceAnomalies, getEvidenceTimeForSensor } from "@/lib/monitoring-chart";
 import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
-import { buildSensorClaims } from "@/lib/monitoring-services";
 import { buildTelemetryChartModel, buildTelemetryChartOption, getLocalTimeZone } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
 import { getChartDomain } from "@/features/charts/telemetry-thresholds";
@@ -55,9 +54,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const cutoff = inspection?.windowStartMs ?? (range.spanMs === undefined ? 0 : latestTime - range.spanMs);
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
-  const service = useMemo(() => monitoring.binding ? buildSensorClaims(monitoring.binding.entityId, [telemetryType],
-    monitoring.services.filter((item) => item.status)).get(telemetryType) : undefined,
-  [monitoring.binding, monitoring.services, telemetryType]);
+  // The services already watch this reading; the first running one owns the chart.
+  const service = useMemo(() => monitoring.services.find((item) => item.status), [monitoring.services]);
   const evidence = useMemo(() => monitoring.evidence.filter((item) => item.sensor_set.includes(telemetryType)
     && (!service || item.service_id === service.id)), [monitoring.evidence, service, telemetryType]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, telemetryType),

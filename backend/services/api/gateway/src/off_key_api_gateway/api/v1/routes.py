@@ -34,6 +34,9 @@ protected.include_router(
     tags=["anomalies"],
     dependencies=[Depends(writes_require(Permission.manage_alarms))],
 )
+protected.include_router(
+    anomalies.query_router, prefix="/anomalies", tags=["anomalies"]
+)
 protected.include_router(system.router, prefix="/system", tags=["system"])
 
 protected.include_router(members.router, prefix="/members", tags=["members"])

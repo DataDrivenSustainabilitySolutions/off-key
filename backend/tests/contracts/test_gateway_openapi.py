@@ -53,6 +53,16 @@ def test_no_operation_asks_for_the_token_as_a_parameter(schema):
     assert leaked == []
 
 
+def test_collection_health_documents_its_diagnosis(schema):
+    """Agents read the verdict instead of re-deriving it from worker reports."""
+    response = schema["paths"]["/v1/system/health"]["get"]["responses"]["200"]
+    reference = response["content"]["application/json"]["schema"]["$ref"]
+    assert reference.endswith("/CollectionHealth")
+    diagnosis = schema["components"]["schemas"]["CollectionDiagnosis"]
+    assert "collecting" in diagnosis["properties"]["code"]["enum"]
+    assert set(diagnosis["required"]) >= {"code", "tone", "title", "explanation"}
+
+
 def test_the_api_prefix_is_named_as_the_server():
     """Deployments start the gateway with --root-path /api behind the proxy."""
     app = build_app(AppSettings(APP_NAME="off-key-test"))

@@ -7,7 +7,7 @@ from off_key_core.db.migrate import apply_migrations
 from off_key_core.db.models import (
     Charger,
     CollectionConfiguration,
-    Favorite,
+    MemberFavorite,
     MonitoringService,
     Telemetry,
     User,
@@ -15,7 +15,7 @@ from off_key_core.db.models import (
 from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, text
 
 from tests.support.collection import runtime_catalog
 from tests.support.legacy_catalogue import legacy_catalog
@@ -60,9 +60,6 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
             )
         )
         connection.execute(
-            insert(Favorite).values(favorite_id=1, user_id=1, charger_id=entity)
-        )
-        connection.execute(
             insert(CollectionConfiguration).values(
                 id=1,
                 revision=7,
@@ -90,6 +87,10 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         )
         remove_pipeline_schema(connection)
         restore_retired_schema(connection)
+        connection.execute(
+            text("INSERT INTO favorites (user_id, charger_id) VALUES (1, :entity)"),
+            {"entity": entity},
+        )
         rewind_ledger(connection, "005_generic_runtime.sql")
     with disposable_database.begin() as connection:
         apply_migrations(connection)
@@ -109,7 +110,9 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         assert binding.accepted_topic == f"telemetry/{entity}/temperature"
         assert runtime.streams()[0].policy.mode == "original"
         assert connection.scalar(select(User.hashed_password)) == "saved-hash"
-        assert connection.scalar(select(Favorite.charger_id)) == entity
+        assert connection.execute(
+            select(MemberFavorite.user_id, MemberFavorite.kind, MemberFavorite.item_id)
+        ).all() == [(1, "entity", entity)]
         assert (
             connection.scalar(select(Charger.manufacturer_name)) == "Saved manufacturer"
         )

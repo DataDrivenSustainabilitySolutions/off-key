@@ -9,7 +9,7 @@ const subscribeNothing = () => () => {};
 
 export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   const { document, index, system, telemetry, previewStreamIds, selected, scopeKey, query, setQuery, positions,
-    preferences, setPreferences, browse, back, selectSource } = useCatalogue();
+    preferences, setPreferences, favourites: starred, browse, back, selectSource } = useCatalogue();
   const onlineOnly = preferences.onlineOnly ?? false;
   const now = useNow(1000, onlineOnly);
   const liveStatus = useSyncExternalStore(onlineOnly ? telemetry.subscribeUpdates : subscribeNothing, telemetry.getStatus);
@@ -33,7 +33,7 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
     return navigationRows(visibleIndex, scopeKey).map(row => ({ ...row,
       detail: row.node.entityKind === "stream" ? labels.get(row.node.objectId ?? "") : undefined }));
   }, [index, visibleIndex, scopeKey, deferredQuery, group, labels]);
-  const favourites = (preferences.favourites ?? []).flatMap(item => item.kind === "reading" && labels.has(item.id) && visibleIndex.objectKeys.has(item.id)
+  const favourites = starred.flatMap(item => item.kind === "reading" && labels.has(item.id) && visibleIndex.objectKeys.has(item.id)
     ? [{ ...item, label: labels.get(item.id)! }] : []);
   const title = group?.label ?? (current?.kind === "topic"
     ? navigationTrail(index, scopeKey).filter(node => node.kind === "topic").map(node => node.label).join("/")

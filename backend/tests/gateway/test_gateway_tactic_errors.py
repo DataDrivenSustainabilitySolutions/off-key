@@ -54,6 +54,8 @@ ROUTES = [
     ("GET", "/v1/telemetry/c1/type", None),
     ("GET", "/v1/anomalies/count", None),
     ("GET", "/v1/favorites", None),
+    ("POST", "/v1/favorites", {"kind": "reading", "id": "r1"}),
+    ("DELETE", "/v1/favorites?kind=reading&id=r1", None),
     ("GET", "/v1/members", None),
     ("GET", "/v1/system", None),
     ("PATCH", "/v1/monitors/svc-1/label", {"display_name": "Pump"}),
@@ -111,21 +113,6 @@ async def test_downstream_failures_keep_status_and_detail(
 @pytest.mark.parametrize(
     "method,path,body,upstream,detail",
     [
-        (
-            "POST",
-            "/v1/favorites",
-            {"charger_id": "c1"},
-            400,
-            "Charger already favorited",
-        ),
-        (
-            "POST",
-            "/v1/favorites",
-            {"charger_id": "c1"},
-            409,
-            "Charger already favorited",
-        ),
-        ("DELETE", "/v1/favorites", {"charger_id": "c1"}, 404, "Favorite not found"),
         ("DELETE", "/v1/anomalies/a1", None, 404, "Anomaly not found"),
     ],
 )

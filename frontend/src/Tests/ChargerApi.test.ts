@@ -52,7 +52,7 @@ describe("charger API", () => {
     );
   });
 
-  it("loads categories from the matching charger's catalog sensors", async () => {
+  it("loads categories and reading ids from the matching charger's catalog sensors", async () => {
     const signal = new AbortController().signal;
     mockGet
       .mockResolvedValueOnce(["controllerCpuUsage", "systemVoltage"])
@@ -63,11 +63,13 @@ describe("charger API", () => {
     await expect(getAllTelemetryData("charger-1", signal)).resolves.toEqual([
       {
         type: "controllerCpuUsage",
+        streamId: "cpu",
         category: "Processor",
         data: [{ timestamp: "now", value: 70 }],
       },
       {
         type: "systemVoltage",
+        streamId: "voltage",
         category: "Voltage",
         data: [{ timestamp: "now", value: 230 }],
       },
@@ -96,7 +98,7 @@ describe("charger API", () => {
     await requested;
     resolveCatalogue(catalogResponse);
     await expect(result).resolves.toEqual([
-      { type: "systemVoltage", category: "Voltage", data: [{ timestamp: "now", value: 230 }] },
+      { type: "systemVoltage", streamId: "voltage", category: "Voltage", data: [{ timestamp: "now", value: 230 }] },
     ]);
   });
 

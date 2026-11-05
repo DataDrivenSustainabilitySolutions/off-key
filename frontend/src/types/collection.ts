@@ -15,7 +15,7 @@ export type CollectionDiagnostics = {
   database_capacity: number;
   database_retrying: boolean;
 };
-export type RuntimeState = {
+type RuntimeState = {
   selected_sensors?: number;
   diagnostics?: CollectionDiagnostics;
   revision?: number;
@@ -26,7 +26,21 @@ export type RuntimeState = {
   counters?: Record<string, number>;
   sources?: Record<string, { state: string; error?: string }>;
 };
-export type CollectionStatus = { revision: number; collection: RuntimeState; ingress: RuntimeState };
+/** The server's verdict: the first failing collection check, or `collecting`. */
+export type CollectionDiagnosis = {
+  code: string;
+  tone: "positive" | "warning" | "danger" | "neutral";
+  title: string;
+  explanation: string;
+  measurements_current: boolean;
+  checked_at: string;
+};
+export type CollectionStatus = {
+  revision: number;
+  collection: RuntimeState;
+  ingress: RuntimeState;
+  diagnosis: CollectionDiagnosis;
+};
 export type StorageStatus = {
   database_size_bytes: number;
   retention_policies: {

@@ -1,6 +1,7 @@
 """Forward saved system requests with member authorization preserved."""
 
 from fastapi import APIRouter, Depends, Path, Query, Response
+from off_key_core.schemas.collection_health import CollectionHealth
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import (
@@ -48,9 +49,14 @@ async def get_system(authorization: str = Depends(member_authorization)):
     return await system_request("GET", authorization)
 
 
-@router.get("/health")
+@router.get("/health", response_model=CollectionHealth)
 async def get_collection_health(authorization: str = Depends(member_authorization)):
-    """Raw state of the collector and broker workers, for System status."""
+    """Whether readings are being collected, and what to fix if not.
+
+    `diagnosis` names the first failing check (`code`, `tone`, `title`,
+    `explanation`) so a caller needs no rules of its own. The raw collector and
+    broker reports it was decided from are included for detail views.
+    """
     return await system_request("GET", authorization, "/health")
 
 

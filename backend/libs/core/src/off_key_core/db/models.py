@@ -303,22 +303,27 @@ class MqttTopic(Base):
     topic: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class Favorite(Base):
-    __tablename__ = "favorites"
+class MemberFavorite(Base):
+    """An entity, catalogue reading or monitor a member starred."""
 
-    favorite_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, unique=True, index=True, nullable=False
-    )
+    __tablename__ = "member_favorites"
 
-    charger_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("chargers.charger_id"), nullable=False, index=True
-    )
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=False, index=True
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Not a foreign key: readings and monitors live in documents and services
+    # that come and go, and a favorite stays until the member removes it.
+    item_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    # Composite index for user favorites lookup
-    __table_args__ = (Index("ix_favorite_user_charger", "user_id", "charger_id"),)
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('entity', 'reading', 'monitor')", name="ck_member_favorite_kind"
+        ),
+    )
 
 
 class Anomaly(Base):

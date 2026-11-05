@@ -5,8 +5,6 @@ import { API_CONFIG } from "@/lib/api-config";
 import { drainForward, EVIDENCE_PAGE_SIZE, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { getTelemetryCursor, getTelemetryData } from "@/lib/charger-api";
 import { INTERVALS } from "@/lib/constants";
-import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
-import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
 import type { Anomaly } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
@@ -110,14 +108,10 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const pollMonitoring = useCallback((signal: AbortSignal) => polls?.monitoring(signal), [polls]);
   usePollingLoop(pollTelemetry, { ...LOOP, enabled: !!polls, intervalMs: 2000 });
   usePollingLoop(pollMonitoring, { ...LOOP, enabled: !!polls, intervalMs: INTERVALS.DETAILS_UPDATE });
-  // The service list comes from the workspace's shared poll, filtered to this reading's topic.
+  // The service list comes from the workspace's shared poll; the server names the readings each monitor watches.
   const feed = useMonitoringServices(!!context?.binding, INTERVALS.DETAILS_UPDATE);
-  const acceptedTopic = savedBinding?.accepted_topic;
-  const services = useMemo(() => {
-    if (!context?.binding) return [];
-    const topic = acceptedTopic ?? buildDeviceTelemetryTopic(context.binding.entityId, context.binding.telemetryType);
-    return feed.services.filter(service => (service.mqtt_topics ?? []).some(filter => mqttFiltersOverlap(filter, topic)));
-  }, [context, acceptedTopic, feed.services]);
+  const services = useMemo(() => context?.binding ? feed.services.filter(service => service.stream_ids.includes(id)) : [],
+    [context, id, feed.services]);
   const history = context ? state : UNBOUND_HISTORY;
   return { ...history, services, error: history.error || (context?.binding && feed.error ? "Monitoring services could not be updated." : "") };
 }

@@ -95,7 +95,10 @@ OPENAPI_TAGS = [
         "name": "anomalies",
         "description": "Alarms raised by monitors, as shown in Reporting.",
     },
-    {"name": "favorites", "description": "Entities the signed-in member starred."},
+    {
+        "name": "favorites",
+        "description": "Entities, readings and monitors the signed-in member starred.",
+    },
     {
         "name": "dojo",
         "description": "The Dojo: datasets uploaded as CSV or copied from "

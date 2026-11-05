@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from off_key_core.db.models import User
+from off_key_core.schemas.collection_health import CollectionHealth
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import (
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/system", tags=["system"], route_class=DomainErrorRou
 router.include_router(live_router)
 
 
-@router.get("/health")
+@router.get("/health", response_model=CollectionHealth)
 async def collection_health(
     user: User = Depends(current_member),
     system: SystemService = Depends(get_system_service),

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import bcrypt
 from off_key_core.config.logs import log_security_event
 from off_key_core.db.locks import MEMBERSHIP_LOCK
-from off_key_core.db.models import Favorite, User
+from off_key_core.db.models import MemberFavorite, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
 from off_key_core.schemas.user import normalize_email
 from off_key_core.utils.enum import RoleEnum
@@ -170,7 +170,9 @@ class MemberService:
             raise NotFoundError("Member not found")
         if user.is_active:
             raise ConflictError("Disable this member before removing them")
-        await self.session.execute(delete(Favorite).where(Favorite.user_id == user_id))
+        await self.session.execute(
+            delete(MemberFavorite).where(MemberFavorite.user_id == user_id)
+        )
         # Remembered sessions are removed by their cascading foreign key.
         await self.session.delete(user)
         await self.session.commit()

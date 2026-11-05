@@ -114,7 +114,7 @@ Authorization: Bearer <token>
 | `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
 | `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | Administrator |
 | `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | Administrator |
-| `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
+| `GET` | `/system/health` | Collection `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
 | `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
 | `POST` | `/system/live/leases` | Start a bounded preview lease | Administrator |
@@ -125,6 +125,13 @@ Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
 replacement before saving; existing selections survive by stable reading ID.
 `/sources` and the provider-specific catalogue endpoints have been removed.
+
+`/system/health` decides the collection diagnosis on the server. The checks run
+in a fixed order (catalogue saved, collector report younger than 15 seconds,
+local MQTT connected, revisions applied, broker routes, broker connections,
+database, traffic) and the first that fails is returned as `diagnosis.code` with
+a title, tone and explanation. The web app shows that verdict unchanged; it only
+adds "Status not refreshing" when the endpoint itself stops answering.
 
 The `/system/live` session API starts explicitly bounded in-memory previews.
 Acquiring a lease requires an administrator; members can inspect an existing
@@ -147,6 +154,11 @@ MQTT paths and JSON Pointer payload bindings.
 | `GET` | `/monitors/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
 
 The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
+
+Every listed service, here and in `/monitors/workspace`, carries `stream_ids`:
+the catalogue readings whose accepted topic one of its `mqtt_topics` filters
+takes, wildcards included. Use it to answer "which monitors watch this reading"
+without MQTT rules of your own; a reading removed from the catalogue drops out.
 
 A monitor start body contains:
 
@@ -206,14 +218,27 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/favorites` | List a user's favourites | Current authenticated member |
-| `POST` | `/favorites` | Add a favourite charger for the current member | Body: `charger_id` |
-| `DELETE` | `/favorites` | Remove a favourite charger of the current member | Body: `charger_id` |
+| `GET` | `/favorites` | The current member's favourites, oldest first | Optional query: `kind` |
+| `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
+| `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
-| `GET` | `/anomalies/report` | List the Reporting history in one request | Newest 500 per entity for the first 100 catalogue entities |
+| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids`, optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
 | `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
 | `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
 | `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
+
+A favourite's `kind` is `entity` (a recorded `charger_id`), `reading` (a catalogue
+stream id) or `monitor` (a `service_id`). Ids are not checked against the
+catalogue, so a favourite stays until the member removes it. A member keeps at
+most 256; adding another answers 409.
+
+`POST /anomalies/query` is a read, so members may call it although other
+`POST` routes under `/anomalies` need an administrator. An alarm is in the
+`stream_ids` scope when one of its readings is: its `sensor_set`, otherwise its
+`telemetry_type`. A multivariate alarm recorded without a sensor set is only in
+scope when every reading of its entity is. `summary` and `readings` cover every
+match rather than the returned page; `readings` ignores the narrowing filters so
+it can feed a reading picker. Pages are newest first; pass `next` as `before`.
 
 ### Dojo
 
@@ -263,8 +288,8 @@ Health and readiness remain available without this service credential.
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
-| `DELETE` | `/data/users/{user_id}/favorites/{charger_id}` | Remove a favourite |
-| `GET` | `/data/anomalies` | List bounded Reporting history for catalogue entities |
+| `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
+| `POST` | `/data/anomalies/query` | Reporting query by catalogue reading |
 | `GET` | `/data/anomalies/count` | Count anomalies |
 | `GET` | `/data/anomalies/{charger_id}` | List anomalies |
 | `POST` | `/data/anomalies` | Create an anomaly |

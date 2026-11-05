@@ -8,16 +8,35 @@ from off_key_core.db.models import (
     AnomalyIdentity,
     Charger,
     CollectionBinding,
-    Favorite,
+    MemberFavorite,
     MonitoringEvidence,
     Telemetry,
     User,
 )
+from off_key_core.schemas.reporting import (
+    MULTIVARIATE_TELEMETRY_TYPE,
+    PROBABILITY_VALUE_TYPES,
+    AnomalyCursor,
+)
 from off_key_core.schemas.user import normalize_email
-from sqlalchemy import and_, func, or_, select, true
+from sqlalchemy import (
+    ColumnElement,
+    and_,
+    case,
+    delete,
+    distinct,
+    func,
+    not_,
+    or_,
+    select,
+    true,
+    tuple_,
+)
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+
+from .anomaly_filters import AnomalyFilters, ReadingScope
 
 # An anomaly row and its public identity share this natural key.
 _ANOMALY_IDENTITY_JOIN = and_(
@@ -35,6 +54,69 @@ def _anomaly_listing():
         .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
         .order_by(Anomaly.timestamp.desc())
     )
+
+
+def _has_sensor_set() -> ColumnElement[bool]:
+    # Rows written before sensor sets, and manual alarms, store SQL or JSON null.
+    return (
+        case(
+            (
+                func.json_typeof(Anomaly.sensor_set) == "array",
+                func.json_array_length(Anomaly.sensor_set),
+            ),
+            else_=0,
+        )
+        > 0
+    )
+
+
+def _reading_keys():
+    """The readings an alarm is about: its sensor set, else its telemetry type."""
+    return func.json_array_elements_text(
+        case(
+            (_has_sensor_set(), Anomaly.sensor_set),
+            else_=func.json_build_array(Anomaly.telemetry_type),
+        )
+    ).table_valued("value")
+
+
+def _in_scope(scope: ReadingScope) -> ColumnElement[bool]:
+    keys = _reading_keys()
+    touches = (
+        select(true())
+        .select_from(keys)
+        .where(tuple_(Anomaly.charger_id, keys.c.value).in_(sorted(scope.pairs)))
+        .exists()
+    )
+    if scope.whole_entities:
+        touches = or_(
+            touches,
+            and_(
+                Anomaly.telemetry_type == MULTIVARIATE_TELEMETRY_TYPE,
+                not_(_has_sensor_set()),
+                Anomaly.charger_id.in_(sorted(scope.whole_entities)),
+            ),
+        )
+    # The plain entity test lets the charger_id index narrow the scan first.
+    return and_(Anomaly.charger_id.in_(sorted(scope.entities)), touches)
+
+
+def _matching(filters: AnomalyFilters) -> list[ColumnElement[bool]]:
+    conditions = [
+        _in_scope(scope)
+        for scope in (filters.scope, filters.reading)
+        if scope is not None
+    ]
+    if filters.service_id is not None:
+        conditions.append(Anomaly.service_id == filters.service_id)
+    if filters.since is not None:
+        conditions.append(Anomaly.timestamp >= filters.since)
+    if filters.until is not None:
+        conditions.append(Anomaly.timestamp < filters.until)
+    if filters.max_p_value is not None:
+        conditions.append(Anomaly.value_type.in_(PROBABILITY_VALUE_TYPES))
+        conditions.append(Anomaly.anomaly_value <= filters.max_p_value)
+    return conditions
 
 
 class ChargerRepository:
@@ -199,31 +281,49 @@ class UserRepository:
 
 
 class FavoriteRepository:
-    """Persistence operations for favorites."""
+    """Persistence operations for member favorites."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_by_user_id(self, *, user_id: int) -> list[Favorite]:
-        result = await self._session.execute(
-            select(Favorite).where(Favorite.user_id == user_id)
+    async def list(
+        self, *, user_id: int, kind: str | None = None
+    ) -> list[MemberFavorite]:
+        query = select(MemberFavorite).where(MemberFavorite.user_id == user_id)
+        if kind is not None:
+            query = query.where(MemberFavorite.kind == kind)
+        query = query.order_by(
+            MemberFavorite.created_at, MemberFavorite.kind, MemberFavorite.item_id
         )
-        return list(result.scalars().all())
+        return list((await self._session.scalars(query)).all())
 
-    async def get(self, *, user_id: int, charger_id: str) -> Favorite | None:
-        result = await self._session.execute(
-            select(Favorite).where(
-                Favorite.user_id == user_id,
-                Favorite.charger_id == charger_id,
+    async def get(self, *, user_id: int, kind: str, item_id: str):
+        return await self._session.get(MemberFavorite, (user_id, kind, item_id))
+
+    async def count(self, *, user_id: int) -> int:
+        count = await self._session.scalar(
+            select(func.count())
+            .select_from(MemberFavorite)
+            .where(MemberFavorite.user_id == user_id)
+        )
+        return count or 0
+
+    async def add(self, *, user_id: int, kind: str, item_id: str) -> None:
+        # A concurrent add of the same favorite is not an error.
+        await self._session.execute(
+            insert(MemberFavorite)
+            .values(user_id=user_id, kind=kind, item_id=item_id)
+            .on_conflict_do_nothing()
+        )
+
+    async def remove(self, *, user_id: int, kind: str, item_id: str) -> None:
+        await self._session.execute(
+            delete(MemberFavorite).where(
+                MemberFavorite.user_id == user_id,
+                MemberFavorite.kind == kind,
+                MemberFavorite.item_id == item_id,
             )
         )
-        return result.scalars().first()
-
-    async def add(self, favorite: Favorite) -> None:
-        self._session.add(favorite)
-
-    async def delete(self, favorite: Favorite) -> None:
-        await self._session.delete(favorite)
 
 
 class AnomalyRepository:
@@ -245,29 +345,64 @@ class AnomalyRepository:
         result = await self._session.execute(query.limit(limit))
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
 
-    async def list_report(
-        self, *, entity_limit: int, per_entity_limit: int
+    async def page(
+        self,
+        filters: AnomalyFilters,
+        *,
+        before: AnomalyCursor | None,
+        limit: int,
     ) -> list[tuple[str, Anomaly]]:
-        """Read each catalogue entity's bounded history in one statement."""
-        entities = (
-            select(CollectionBinding.charger_id)
-            .order_by(CollectionBinding.charger_id)
-            .limit(entity_limit)
-            .subquery()
+        """Matching alarms, newest first, after a cursor."""
+        query = (
+            select(AnomalyIdentity.anomaly_id, Anomaly)
+            .select_from(Anomaly)
+            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
+            .where(*_matching(filters))
+            .order_by(Anomaly.timestamp.desc(), AnomalyIdentity.anomaly_id.desc())
+            .limit(limit)
         )
-        latest = (
-            _anomaly_listing()
-            .where(Anomaly.charger_id == entities.c.charger_id)
-            .correlate(entities)
-            .limit(per_entity_limit)
-            .lateral()
-        )
-        result = await self._session.execute(
-            select(latest.c.anomaly_id, aliased(Anomaly, latest))
-            .select_from(entities)
-            .join(latest, true())
-        )
+        if before is not None:
+            query = query.where(
+                tuple_(Anomaly.timestamp, AnomalyIdentity.anomaly_id)
+                < tuple_(before.timestamp, before.anomaly_id)
+            )
+        result = await self._session.execute(query)
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
+
+    async def summarize(
+        self, filters: AnomalyFilters
+    ) -> tuple[int, int, datetime | None]:
+        """Count, distinct entities and newest time of every matching alarm."""
+        result = await self._session.execute(
+            select(
+                func.count(),
+                func.count(distinct(Anomaly.charger_id)),
+                func.max(Anomaly.timestamp),
+            )
+            .select_from(Anomaly)
+            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
+            .where(*_matching(filters))
+        )
+        count, entities, latest = result.one()
+        return count, entities, latest
+
+    async def reading_counts(
+        self, scope: ReadingScope | None
+    ) -> list[tuple[str, str, int]]:
+        """Alarms per recorded reading in a scope, multivariate rows per sensor."""
+        keys = _reading_keys()
+        result = await self._session.execute(
+            select(Anomaly.charger_id, keys.c.value, func.count())
+            .select_from(Anomaly)
+            .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
+            .join(keys, true())
+            .where(
+                keys.c.value != MULTIVARIATE_TELEMETRY_TYPE,
+                *_matching(AnomalyFilters(scope=scope)),
+            )
+            .group_by(Anomaly.charger_id, keys.c.value)
+        )
+        return [(entity, key, count) for entity, key, count in result.all()]
 
     async def count_since(self, *, since: datetime | None = None) -> int:
         query = select(func.count()).select_from(Anomaly)

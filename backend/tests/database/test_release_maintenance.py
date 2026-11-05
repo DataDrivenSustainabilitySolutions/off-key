@@ -19,12 +19,14 @@ from off_key_core.db.migrate import (
     migration_status,
 )
 from off_key_core.db.models import (
+    Charger,
     CollectionConfiguration,
     DeploymentMaintenance,
     MonitoringEvidence,
     MonitoringService,
     PipelineRun,
     Telemetry,
+    User,
 )
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.services.accounts.members import MemberService
@@ -45,6 +47,7 @@ from tests.support.schema_baselines import (
     EXPECTED_MIGRATIONS,
     migrations_from,
     remove_pipeline_schema,
+    restore_entity_favorites,
     restore_retired_schema,
     rewind_ledger,
 )
@@ -118,6 +121,32 @@ def test_retired_schema_migration_keeps_the_telemetry_primary_key(
         assert "stateful_set_name" not in {
             column["name"] for column in schema.get_columns("services")
         }
+
+
+def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        connection.execute(
+            insert(User).values(id=1, email="a@example.test", hashed_password="h")
+        )
+        connection.execute(insert(Charger).values(charger_id="c1"))
+        restore_entity_favorites(connection)
+        # The former table allowed the same entity twice.
+        connection.execute(
+            text(
+                "INSERT INTO favorites (user_id, charger_id) "
+                "VALUES (1, 'c1'), (1, 'c1')"
+            )
+        )
+        rewind_ledger(connection, "018_member_favorites.sql")
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "018_member_favorites.sql"
+        )
+        assert "favorites" not in inspect(connection).get_table_names()
+        assert connection.execute(
+            text("SELECT user_id, kind, item_id FROM member_favorites")
+        ).all() == [(1, "entity", "c1")]
 
 
 def test_run_timeline_migration_keeps_existing_runs(disposable_database):

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Body, HTTPException, status
 from off_key_core.config.logs import logger
+from off_key_core.schemas.reporting import AnomalyPage, AnomalyQuery
 from off_key_core.utils.mail import send_anomaly_alert_email
 from pydantic import BaseModel
 
@@ -9,6 +10,20 @@ from ...facades.tactic import TacticError, tactic
 from ..errors import TacticErrorRoute
 
 router = APIRouter(route_class=TacticErrorRoute)
+# Reading alarms is open to every member, even though the query is a POST.
+query_router = APIRouter(route_class=TacticErrorRoute)
+
+
+@query_router.post("/query", response_model=AnomalyPage)
+async def query_anomalies(query: AnomalyQuery):
+    """Alarms of catalogue readings, newest first, with catalogue names.
+
+    Scope by `stream_ids` from `GET /v1/system` and narrow by one recorded
+    `reading`, `service_id`, `since`/`until` and `max_p_value`. `summary` and
+    `readings` describe every match, not just this page; pass `next` as
+    `before` for older alarms. Reporting in the web app uses this query.
+    """
+    return await tactic.query_anomalies(query.model_dump(mode="json"))
 
 
 class AnomalyCreatePayload(BaseModel):
@@ -25,16 +40,6 @@ class AnomalyCreatePayload(BaseModel):
 async def count_anomalies(since: datetime | None = None):
     """Number of alarms, all of them or those since a time."""
     return await tactic.get_anomaly_count(since=since)
-
-
-@router.get("/report")
-async def get_anomaly_report():
-    """Recent alarms for Reporting: up to 500 per entity for up to 100 entities.
-
-    There is no time or source filter yet; for one entity use
-    `GET /v1/anomalies?charger_id=`.
-    """
-    return await tactic.get_anomaly_report()
 
 
 @router.get("")

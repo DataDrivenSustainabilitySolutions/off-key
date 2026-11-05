@@ -26,7 +26,14 @@ beforeEach(() => {
   getStorage.mockResolvedValue(status);
   api.get.mockImplementation((url) => url === "/v1/system/storage"
     ? getStorage()
-    : Promise.resolve({ revision: 0, collection: {}, ingress: {} }));
+    : Promise.resolve({
+      revision: 0, collection: {}, ingress: {},
+      diagnosis: {
+        code: "not_configured", tone: "neutral", title: "Not configured",
+        explanation: "Add a catalog and select sensors to start collecting.",
+        measurements_current: false, checked_at: "2026-09-27T12:00:00Z",
+      },
+    }));
 });
 
 describe("system status, storage and retention", () => {

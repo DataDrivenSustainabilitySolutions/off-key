@@ -1,8 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { collectionDiagnosis } from "../lib/collection-diagnostics";
 import { CollectionHealth } from "../features/settings/CollectionHealth";
-import type { CollectionStatus, CollectionDiagnostics } from "../types/collection";
+import type { CollectionDiagnosis, CollectionDiagnostics, CollectionStatus } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
@@ -16,21 +15,36 @@ const metrics = (): CollectionDiagnostics => ({
   original_queue: 5, original_capacity: 10, sample_slots: 2,
   database_queue: 0, database_capacity: 1000, database_retrying: false,
 });
-const snapshot = (): CollectionStatus => ({
+const diagnosis = (title = "Collecting", tone: CollectionDiagnosis["tone"] = "positive"): CollectionDiagnosis => ({
+  code: title.toLowerCase().replace(/ /g, "_"), tone, title, explanation: `${title} explained`,
+  measurements_current: true, checked_at: new Date().toISOString(),
+});
+const snapshot = (verdict = diagnosis()): CollectionStatus => ({
   revision: 1,
   collection: { revision: 1, status: "applied", selected_sensors: 1, checked_at: new Date().toISOString(), diagnostics: metrics() },
   ingress: { revision: 1, status: "applied", checked_at: new Date().toISOString(), sources: { broker: { state: "connected" } } },
+  diagnosis: verdict,
 });
 
 describe("collection diagnostics", () => {
+  it("shows the server's verdict with its tone and explanation", async () => {
+    api.get.mockResolvedValue(snapshot(diagnosis("Broker disconnected", "danger")));
+    render(<CollectionHealth />);
+    const status = await screen.findByText("Broker disconnected");
+    expect(status.getAttribute("role")).toBe("status");
+    expect(status.className).toContain("mn-state--danger");
+    expect(screen.getByText("Broker disconnected explained")).toBeTruthy();
+  });
+
   it("expires status even when API responses stop arriving", async () => {
     vi.useFakeTimers();
     try {
       api.get.mockResolvedValueOnce(snapshot()).mockImplementation(() => new Promise(() => {}));
       await act(async () => { render(<CollectionHealth />); });
       expect(screen.getByRole("status").textContent).toBe("Collecting");
+      expect(screen.queryByText(/last worker report/)).toBeNull();
       await act(() => vi.advanceTimersByTimeAsync(18000));
-      expect(screen.getByRole("status").textContent).toBe("Worker not reporting");
+      expect(screen.getByRole("status").textContent).toBe("Status not refreshing");
       expect(screen.getByText(/last worker report/)).toBeTruthy();
       expect(api.get).toHaveBeenCalledTimes(2);
     } finally {
@@ -50,9 +64,7 @@ describe("collection diagnostics", () => {
       await act(() => vi.advanceTimersByTimeAsync(3000));
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByRole("status").textContent).toBe("Collecting");
-      const paused = snapshot();
-      paused.collection.selected_sensors = 0;
-      api.get.mockResolvedValueOnce(paused);
+      api.get.mockResolvedValueOnce(snapshot(diagnosis("Paused", "neutral")));
       await act(() => vi.advanceTimersByTimeAsync(3000));
       expect(screen.getByRole("status").textContent).toBe("Paused");
       expect(api.get).toHaveBeenCalledWith("/v1/system/health");
@@ -64,36 +76,8 @@ describe("collection diagnostics", () => {
       vi.useRealTimers();
     }
   });
-  it.each([
-    ["Collecting", () => {}],
-    ["Paused", (s: CollectionStatus) => { s.collection.selected_sensors = 0; }],
-    ["Disconnected", (s: CollectionStatus) => { s.collection.diagnostics!.mqtt_connected = false; }],
-    ["Broker disconnected", (s: CollectionStatus) => { s.ingress.sources!.broker!.state = "connecting"; }],
-    ["Connected but quiet", (s: CollectionStatus) => { s.collection.diagnostics!.rates.received = 0; }],
-    ["Invalid payloads", (s: CollectionStatus) => { s.collection.diagnostics!.rates.invalid = 1; }],
-    ["Overloaded", (s: CollectionStatus) => { s.collection.diagnostics!.rates.overload_dropped = 1; }],
-    ["Database retrying", (s: CollectionStatus) => { s.collection.diagnostics!.database_retrying = true; }],
-    ["Worker not reporting", (s: CollectionStatus) => { s.collection.checked_at = new Date(Date.now() - 60000).toISOString(); }],
-    ["Applying changes", (s: CollectionStatus) => { s.collection.revision = 0; }],
-  ])("explains %s", (expected, modify) => {
-    const value = snapshot();
-    modify(value);
-    expect(collectionDiagnosis(value)[0]).toBe(expected);
-  });
 
-  it.each([
-    ["disabled", "Ingress disabled"],
-    ["error", "Broker routes failed"],
-    ["stale", "Broker controller not reporting"],
-  ])("shows the ingress blocker while the collector is prepared: %s", (state, expected) => {
-    const value = snapshot();
-    value.collection.status = "prepared";
-    if (state === "stale") value.ingress.checked_at = new Date(0).toISOString();
-    else value.ingress.status = state;
-    expect(collectionDiagnosis(value)[0]).toBe(expected);
-  });
-
-  it("does not treat old errors as a current overload and shows measured queue use", async () => {
+  it("shows measured queue use and totals since worker start", async () => {
     const value = snapshot();
     value.collection.counters = { overload_dropped: 500, invalid: 20 };
     api.get.mockResolvedValue(value);

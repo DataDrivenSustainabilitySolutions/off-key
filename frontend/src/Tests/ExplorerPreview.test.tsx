@@ -64,10 +64,10 @@ beforeEach(() => {
   vi.mocked(useReadingMonitoring).mockReturnValue({ telemetry: [], evidence: [], anomalies: [], services: [], error: "" });
 });
 
-// The running monitor whose topic claims the temperature reading.
+// The running monitor that watches the temperature reading.
 const owner: ActiveService = {
   id: "selected", container_id: "test", container_name: "Selected monitor", status: true,
-  mqtt_topics: ["telemetry/entity-id/temperature"],
+  mqtt_topics: ["telemetry/entity-id/temperature"], stream_ids: ["temperature"],
   operational_status: { stage: "operational", message_count: 1, processed_message_count: 1, is_stale: false },
 };
 
@@ -250,7 +250,7 @@ describe("workspace chart navigation and monitoring", () => {
     const { props } = fixture();
     const service: ActiveService = {
       id: "monitor", container_id: "test", container_name: "Test monitor", status: true,
-      mqtt_topics: ["telemetry/entity-id/temperature"],
+      mqtt_topics: ["telemetry/entity-id/temperature"], stream_ids: ["temperature"],
       operational_status: { stage: "operational", message_count: 3, processed_message_count: 3, is_stale: false },
     };
     const history = {

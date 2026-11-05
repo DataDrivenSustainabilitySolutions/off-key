@@ -12,6 +12,7 @@ from urllib.parse import quote
 import aiohttp
 from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
+from off_key_core.schemas.favorites import FavoriteRef
 from off_key_core.schemas.radar import FormMonitorConfig
 
 from off_key_api_gateway.settings import get_service_endpoints_settings
@@ -398,28 +399,30 @@ class Tactic:
             json_data={"email": email, "password": password},
         )
 
-    async def get_user_favorites(self, user_id: int) -> list[str]:
-        """Get user favorites from TACTIC data service."""
+    async def list_favorites(
+        self, user_id: int, kind: str | None = None
+    ) -> list[dict[str, Any]]:
+        """A member's favorites, optionally of one kind."""
         return await self.request(
             method="GET",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
+            params={"kind": kind},
         )
 
-    async def add_user_favorite(self, user_id: int, charger_id: str) -> dict[str, str]:
-        """Add user favorite via TACTIC data service."""
+    async def add_favorite(self, user_id: int, ref: FavoriteRef) -> dict[str, Any]:
+        """Add a favorite; an existing one is returned unchanged."""
         return await self.request(
             method="POST",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
-            json_data={"charger_id": charger_id},
+            json_data=ref.model_dump(),
         )
 
-    async def remove_user_favorite(
-        self, user_id: int, charger_id: str
-    ) -> dict[str, str]:
-        """Remove user favorite via TACTIC data service."""
-        return await self.request(
+    async def remove_favorite(self, user_id: int, ref: FavoriteRef) -> None:
+        """Remove a favorite if the member has it."""
+        await self.request(
             method="DELETE",
-            endpoint=f"/api/v1/data/users/{user_id}/favorites/{path_segment(charger_id)}",
+            endpoint=f"/api/v1/data/users/{user_id}/favorites",
+            params=ref.model_dump(),
         )
 
     async def get_charger_anomalies(
@@ -438,8 +441,10 @@ class Tactic:
             params=params,
         )
 
-    async def get_anomaly_report(self) -> list[dict[str, Any]]:
-        return await self.request(method="GET", endpoint="/api/v1/data/anomalies")
+    async def query_anomalies(self, query: dict[str, Any]) -> dict[str, Any]:
+        return await self.request(
+            method="POST", endpoint="/api/v1/data/anomalies/query", json_data=query
+        )
 
     async def get_anomaly_count(self, since: datetime | None = None) -> dict[str, int]:
         """Get total anomaly count, optionally filtered by timestamp."""

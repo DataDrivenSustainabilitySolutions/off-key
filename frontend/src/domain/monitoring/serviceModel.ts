@@ -1,4 +1,3 @@
-import { mqttFiltersOverlap } from "@/lib/monitoring-services";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemReadingBinding, SystemRuntime, SystemStream } from "@/types/system";
 
@@ -39,11 +38,11 @@ export function serviceName(service: ActiveService, inputs: MonitoringInput[]): 
   return paths.length === 1 ? `${paths[0]} · ${strategyName(service)}` : service.container_name;
 }
 
-/** Match stable accepted inputs, independent of display names and upstream topic conventions. */
+/** Group catalogue readings by entity and by the monitors the server resolved for each. */
 export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRuntime | undefined, services: ActiveService[]): MonitoringIndex {
   const connections = new Map(document.connections.map(item => [item.id, item.label]));
   const devices = new Map(document.devices.map(item => [item.id, item.label]));
-  const accepted = new Map<string, MonitoringInput[]>();
+  const byId = new Map<string, MonitoringInput>();
   const targets = new Map<string, MonitoringTarget>();
   for (const stream of document.streams) {
     const binding = runtime?.bindings?.[stream.id];
@@ -52,22 +51,15 @@ export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRu
     const entity = stream.device_id ? devices.get(stream.device_id) : undefined;
     const path = entity && entity !== broker ? `${broker} / ${entity}` : broker;
     const input = { stream, binding, path };
-    const matches = accepted.get(binding.accepted_topic) ?? [];
-    matches.push(input); accepted.set(binding.accepted_topic, matches);
+    byId.set(stream.id, input);
     const target = targets.get(binding.entity_id) ?? { id: binding.entity_id, label: path, inputs: [] };
     target.inputs.push(input); targets.set(binding.entity_id, target);
   }
   const inputs = new Map<string, MonitoringInput[]>();
   const byStream = new Map<string, Set<string>>();
   for (const service of services) {
-    const found = new Map<string, MonitoringInput>();
-    for (const topic of service.mqtt_topics) {
-      const matches = topic.includes("+") || topic.includes("#")
-        ? [...accepted.entries()].filter(([concrete]) => mqttFiltersOverlap(topic, concrete)).flatMap(([, entries]) => entries)
-        : accepted.get(topic) ?? [];
-      for (const input of matches) found.set(input.stream.id, input);
-    }
-    const matched = [...found.values()]; inputs.set(service.id, matched);
+    const matched = service.stream_ids.flatMap(id => byId.get(id) ?? []);
+    inputs.set(service.id, matched);
     for (const { stream } of matched) {
       const ids = byStream.get(stream.id) ?? new Set<string>();
       ids.add(service.id); byStream.set(stream.id, ids);

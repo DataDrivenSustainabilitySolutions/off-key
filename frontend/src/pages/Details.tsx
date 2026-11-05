@@ -317,11 +317,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
       const leftCreated = Date.parse(left.created_at ?? "") || 0;
       return rightCreated - leftCreated;
     });
-    return buildSensorClaims(
-      chargerId,
-      allTelemetryData.map(({ type }) => type),
-      newestRelevantFirst,
-    );
+    return buildSensorClaims(allTelemetryData, newestRelevantFirst);
   }, [allTelemetryData, chargerId, monitoringServices]);
 
   const {

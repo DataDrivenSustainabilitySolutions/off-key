@@ -6,9 +6,11 @@ invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from off_key_core.schemas.favorites import Favorite, FavoriteKind, FavoriteRef
+from off_key_core.schemas.reporting import AnomalyPage, AnomalyQuery
 
 from ...domain import ValidationError
 from ...provider import (
@@ -16,6 +18,7 @@ from ...provider import (
     get_charger_query_service,
     get_favorite_service,
     get_monitoring_evidence_service,
+    get_system_service,
     get_telemetry_query_service,
     get_user_service,
 )
@@ -23,7 +26,6 @@ from ...schemas import (
     AnomalyCreateRequest,
     AnomalyResponse,
     ChargerResponse,
-    FavoriteMutationRequest,
     MonitoringChartEvidenceResponse,
     MonitoringEvidenceResponse,
     TelemetryDataPoint,
@@ -32,6 +34,7 @@ from ...schemas import (
     UserLoginRequest,
 )
 from ...services.accounts.users import UserService
+from ...services.catalogue.system import SystemService
 from ...services.data import (
     AnomalyService,
     ChargerQueryService,
@@ -143,30 +146,32 @@ async def authenticate_user(
     )
 
 
-@router.get("/users/{user_id}/favorites", response_model=list[str])
+@router.get("/users/{user_id}/favorites", response_model=list[Favorite])
 async def get_user_favorites(
     user_id: int,
+    kind: FavoriteKind | None = Query(None),
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    return await service.list_user_favorites(user_id=user_id)
+    return await service.list_favorites(user_id=user_id, kind=kind)
 
 
-@router.post("/users/{user_id}/favorites")
+@router.post("/users/{user_id}/favorites", response_model=Favorite)
 async def add_user_favorite(
     user_id: int,
-    payload: FavoriteMutationRequest,
+    ref: FavoriteRef,
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    return await service.add_favorite(user_id=user_id, charger_id=payload.charger_id)
+    return await service.add_favorite(user_id=user_id, ref=ref)
 
 
-@router.delete("/users/{user_id}/favorites/{charger_id}")
+@router.delete("/users/{user_id}/favorites", status_code=204, response_class=Response)
 async def remove_user_favorite(
     user_id: int,
-    charger_id: str,
+    ref: Annotated[FavoriteRef, Query()],
     service: FavoriteService = Depends(get_favorite_service),
 ):
-    return await service.remove_favorite(user_id=user_id, charger_id=charger_id)
+    await service.remove_favorite(user_id=user_id, ref=ref)
+    return Response(status_code=204)
 
 
 @router.get("/anomalies/count")
@@ -233,9 +238,13 @@ async def get_monitoring_chart_evidence(
     )
 
 
-@router.get("/anomalies", response_model=list[AnomalyResponse])
-async def get_anomaly_report(service: AnomalyService = Depends(get_anomaly_service)):
-    return await service.list_report()
+@router.post("/anomalies/query", response_model=AnomalyPage)
+async def query_anomalies(
+    query: AnomalyQuery,
+    service: AnomalyService = Depends(get_anomaly_service),
+    system: SystemService = Depends(get_system_service),
+):
+    return await service.query(query, await system.read())
 
 
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])

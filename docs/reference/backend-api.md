@@ -13,6 +13,17 @@ Use this page when integrating a client, validating endpoint contracts, or triag
 | API Gateway | `http://localhost:8000/v1` | `http://localhost:8000/docs` |
 | TACTIC | `http://localhost:8001/api/v1` | `http://localhost:8001/docs` |
 
+Deployed installations serve the gateway under `/api` on the dashboard host and
+start it with `--root-path /api`. Its schema at `/api/openapi.json` therefore
+names `/api` under `servers`, and the interactive schema opens at `/api/docs`.
+
+The gateway's OpenAPI document is written for clients that read it instead of
+this page, AI agents included. Every operation is named after its handler, has
+a description, and protected operations declare the `bearerAuth` scheme rather
+than an `Authorization` parameter. The document's introduction maps the web
+app's words (sources, readings, monitors, alarms) to the API's. Contract tests
+in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
+
 ## Authentication expectations
 
 | Endpoint group | Client behaviour | Current enforcement note |

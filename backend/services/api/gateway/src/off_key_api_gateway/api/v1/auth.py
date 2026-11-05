@@ -146,6 +146,7 @@ def auth_limit_key(request: Request) -> str:
 
 @router.post("/register")
 async def register():
+    """Retired: accounts are invitation-only, so this always answers 403."""
     raise HTTPException(
         403, "Accounts are invitation-only. Ask an administrator for access."
     )
@@ -157,6 +158,7 @@ async def register():
 async def accept_invitation(
     request: Request, invitation: AcceptInvitation = Depends(invitation_attempt)
 ):
+    """Choose a password with the token from an invitation email."""
     return await tactic.request(
         "POST",
         "/api/v1/members/accept-invitation",
@@ -170,6 +172,13 @@ async def accept_invitation(
 async def login(
     request: Request, response: Response, user: UserLogin = Depends(login_attempt)
 ):
+    """Exchange email and password for a bearer access token.
+
+    Send the token as `Authorization: Bearer <token>`. It expires after the
+    installation's token lifetime, 30 minutes unless configured otherwise;
+    sign in again then. `remember_me` is for browsers: it also sets a
+    session cookie that `/v1/auth/refresh` trades for new tokens.
+    """
     try:
         authenticated_user = await tactic.authenticate_user(
             email=user.email,
@@ -212,6 +221,10 @@ async def login(
 @router.post("/refresh", dependencies=[Depends(session_request)])
 @limiter.limit("60/minute")
 async def refresh_session(request: Request, response: Response):
+    """Browser only: trade the remembered-session cookie for a new access token.
+
+    Needs the header `X-Off-Key-Session: 1`.
+    """
     token = remembered_token(request)
     if token:
         try:
@@ -233,6 +246,10 @@ async def refresh_session(request: Request, response: Response):
 
 @router.post("/logout", dependencies=[Depends(session_request)])
 async def logout(request: Request, response: Response):
+    """Browser only: revoke the remembered-session cookie.
+
+    Needs the header `X-Off-Key-Session: 1`.
+    """
     try:
         await revoke_remembered_cookie(request)
     except TacticError:
@@ -248,6 +265,7 @@ async def logout(request: Request, response: Response):
 
 @router.get("/verify-email")
 async def verify_email():
+    """Retired: email verification links answer 410."""
     raise HTTPException(
         410, "This verification link is no longer supported. Request an invitation."
     )
@@ -269,6 +287,10 @@ async def forgot_password(
     background: BackgroundTasks,
     user: ForgotPasswordRequest = Depends(reset_email_attempt),
 ):
+    """Email a password-reset link if the address belongs to a member.
+
+    The answer is the same either way, so it reveals no accounts.
+    """
     result = await tactic.request(
         "POST",
         "/api/v1/members/request-password-reset",
@@ -288,6 +310,7 @@ async def forgot_password(
 async def reset_password(
     request: Request, reset: PasswordReset = Depends(reset_attempt)
 ):
+    """Set a new password with the token from a reset email."""
     return await tactic.request(
         "POST",
         "/api/v1/members/reset-password",

@@ -22,21 +22,28 @@ class AnomalyCreatePayload(BaseModel):
 
 
 @router.get("/count")
-async def get_anomaly_count(since: datetime | None = None):
+async def count_anomalies(since: datetime | None = None):
+    """Number of alarms, all of them or those since a time."""
     return await tactic.get_anomaly_count(since=since)
 
 
 @router.get("/report")
 async def get_anomaly_report():
+    """Recent alarms for Reporting: up to 500 per entity for up to 100 entities.
+
+    There is no time or source filter yet; for one entity use
+    `GET /v1/anomalies?charger_id=`.
+    """
     return await tactic.get_anomaly_report()
 
 
 @router.get("")
-async def get_anomalies(
+async def list_anomalies(
     charger_id: str,
     telemetry_type: str | None = None,
     limit: int = 500,
 ):
+    """Alarms of one entity, newest first, optionally for one telemetry type."""
     return await tactic.get_charger_anomalies(
         charger_id=charger_id,
         telemetry_type=telemetry_type,
@@ -55,6 +62,11 @@ async def create_anomaly(
     value_type: str | None = None,
     sensor_set: list[str] | None = None,
 ):
+    """Record an alarm by hand and email the configured alert recipients.
+
+    Monitors record their own alarms; this is for external detectors.
+    Administrators only.
+    """
     if payload is None:
         if (
             charger_id is None
@@ -121,6 +133,7 @@ async def create_anomaly(
 
 @router.delete("/{anomaly_id}")
 async def delete_anomaly(anomaly_id: str):
+    """Remove one alarm by its `anomaly_id`. Administrators only."""
     try:
         result = await tactic.delete_anomaly(anomaly_id=anomaly_id)
     except TacticError as e:

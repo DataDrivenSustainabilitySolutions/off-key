@@ -2,7 +2,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from off_key_api_gateway.api import access
 from off_key_api_gateway.api.v1 import system as gateway
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
@@ -11,6 +12,7 @@ from off_key_tactic_middleware.api.v1 import system as collection
 from off_key_tactic_middleware.services.catalogue import system as system_service
 
 from tests.support.env import set_auth_env
+from tests.support.gateway import gateway_app
 from tests.support.http import asgi_client
 from tests.support.tokens import access_token
 
@@ -60,11 +62,12 @@ async def test_gateway_forwards_storage_token_and_denies_anonymous_requests(
 ):
     request = AsyncMock(return_value={"database_size_bytes": 123})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    with pytest.raises(HTTPException) as denied:
-        await gateway.storage_status(None)
-    assert denied.value.status_code == 401
+    monkeypatch.setattr(access.tactic, "request", request)
+    async with asgi_client(gateway_app()) as client:
+        denied = await client.get("/v1/system/storage")
+    assert denied.status_code == 401
     request.assert_not_awaited()
-    assert await gateway.storage_status("Bearer access-token") == {
+    assert await gateway.get_storage_status("Bearer access-token") == {
         "database_size_bytes": 123
     }
     request.assert_awaited_once_with(

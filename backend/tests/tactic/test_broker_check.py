@@ -192,7 +192,7 @@ def test_only_administrators_check_saved_brokers(monkeypatch):
 async def test_gateway_forwards_the_check_with_the_member_token(monkeypatch):
     request = AsyncMock(return_value={})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.check_connection(
+    await gateway.check_broker_connection(
         SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
     )
     request.assert_awaited_with(
@@ -231,7 +231,7 @@ def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
 async def test_gateway_forwards_a_reconnect_with_the_member_token(monkeypatch):
     request = AsyncMock(return_value={})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.reconnect_connection(
+    await gateway.reconnect_broker(
         SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
     )
     request.assert_awaited_with(

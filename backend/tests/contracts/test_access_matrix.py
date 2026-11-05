@@ -258,3 +258,16 @@ def test_public_gateway_routes_are_documentation_health_or_sign_in(route):
         "/redoc",
         "/health",
     } or (path.startswith("/v1/auth/"))
+
+
+def test_gateway_openapi_marks_exactly_the_protected_routes_with_bearer():
+    """Agents and generated clients learn from the schema which calls need a token."""
+    schema = build_app(AppSettings(APP_NAME="off-key-test")).openapi()
+    scheme = schema["components"]["securitySchemes"]["bearerAuth"]
+    assert (scheme["type"], scheme["scheme"]) == ("http", "bearer")
+    for path, item in schema["paths"].items():
+        for method, operation in item.items():
+            route = f"{method.upper()} {path}"
+            public = route in GATEWAY_ACCESS["public"]
+            expected = None if public else [{"bearerAuth": []}]
+            assert operation.get("security") == expected, route

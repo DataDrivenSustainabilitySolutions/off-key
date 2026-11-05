@@ -10,17 +10,18 @@ router = APIRouter(route_class=TacticErrorRoute)
 
 
 @router.get("/{charger_id}/type")
-async def get_telemetry_types_from_id(
+async def list_telemetry_types(
     charger_id: str,
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of telemetry types to return"
     ),
 ):
+    """The telemetry types (reading keys) recorded for one entity."""
     return await tactic.get_telemetry_types(charger_id=charger_id, limit=limit)
 
 
 @router.get("/{charger_id}/data")
-async def get_telemetry(
+async def get_telemetry_data(
     charger_id: str,
     telemetry_type: str = Query(..., alias="type"),
     limit: int = 1000,  # Reduced default limit for better performance
@@ -29,6 +30,13 @@ async def get_telemetry(
     after_event_timestamp: datetime | None = Query(None),  # Cursor tie-breaker
     paginated: bool = False,  # Enable paginated response format
 ):
+    """Recorded values of one reading.
+
+    Without a cursor the newest values come first, and `after_timestamp` pages
+    further back in time. The live cursor `after_created` plus
+    `after_event_timestamp` returns values that arrived since, in arrival
+    order. `paginated` wraps the values together with the next cursor.
+    """
     if (after_created is None) != (after_event_timestamp is None):
         raise HTTPException(
             status_code=422,
@@ -67,7 +75,10 @@ async def get_telemetry_range(
     end: datetime | None = Query(None, description="Defaults to now"),
     buckets: int = Query(600, ge=10, le=2000, description="Time buckets to return"),
 ):
-    """Return each bucket's lowest and highest value, so spikes survive."""
+    """Lowest and highest value per time bucket, so short spikes survive.
+
+    Use it for charts and overviews of long periods.
+    """
     start = as_utc(start) if start is not None else None
     end = as_utc(end) if end is not None else None
     if start is not None and end is not None and start >= end:

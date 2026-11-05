@@ -10,8 +10,8 @@ router = APIRouter(route_class=TacticErrorRoute)
 
 
 @router.get("")
-async def get_favorites(user: MemberProfile = Depends(current_member)):
-    """Get user favorites via TACTIC data service."""
+async def list_favorites(user: MemberProfile = Depends(current_member)):
+    """Entity ids the signed-in member starred."""
     return await tactic.get_user_favorites(user_id=user.id)
 
 
@@ -19,7 +19,7 @@ async def get_favorites(user: MemberProfile = Depends(current_member)):
 async def add_favorite(
     fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
 ):
-    """Add user favorite via TACTIC data service."""
+    """Star an entity for the signed-in member. 409 if it is already starred."""
     try:
         return await tactic.add_user_favorite(
             user_id=user.id, charger_id=fav.charger_id
@@ -37,7 +37,7 @@ async def add_favorite(
 async def remove_favorite(
     fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
 ):
-    """Remove user favorite via TACTIC data service."""
+    """Remove a star from an entity. 404 if it was not starred."""
     try:
         return await tactic.remove_user_favorite(
             user_id=user.id, charger_id=fav.charger_id

@@ -96,8 +96,10 @@ services:
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+    # Clients reach the API under /api, which the proxy strips; the root path
+    # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
     command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--host", "0.0.0.0", "--port", "8000"]
+              "--host", "0.0.0.0", "--port", "8000", "--root-path", "/api"]
 
   tactic-middleware:
     build:

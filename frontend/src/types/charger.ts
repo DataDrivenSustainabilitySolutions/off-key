@@ -27,6 +27,8 @@ export interface TelemetryCursor {
 // Categorized telemetry data
 export interface TelemetryTypeData {
   type: string;
+  /** The catalogue reading this series records, while the catalogue still binds it. */
+  streamId?: string;
   label?: string;
   category: string;
   unit?: string;

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from off_key_core.db.collection import lock_collection_configuration
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
     MonitoringPipeline,
@@ -230,11 +231,12 @@ class PipelineLibrary:
 
     async def workspace(self, selected_service_id: str | None) -> PipelineWorkspace:
         services = (await self.session.scalars(select(MonitoringService))).all()
+        catalogue = (await read_collection_runtime(self.session)).catalog
         selected = next(
             (item for item in services if item.id == selected_service_id), None
         )
         return PipelineWorkspace(
-            services=[service_summary(item) for item in services],
+            services=[service_summary(item, catalogue) for item in services],
             authoring_enabled=get_tactic_settings().config.pipeline_authoring_enabled,
             selected_service_id=selected_service_id,
             pipeline_state=(selected.operational_status or {}).get("pipeline_state")

@@ -6,9 +6,18 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from ..utils.mqtt_topics import mqtt_topic_filters_overlap, validate_mqtt_topic_filter
 from .collection_policy import CollectionPolicy
 from .collection_rules import CollectionRule, legacy_rules
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
+
+
+def _valid_filter(topic: str) -> bool:
+    try:
+        validate_mqtt_topic_filter(topic, allow_root_wildcard=True)
+    except ValueError:
+        return False
+    return True
 
 
 def stable_key(kind: str, identity: str) -> str:
@@ -44,6 +53,18 @@ class SystemCollectionDefinition(SystemModel):
             value["rules"] = legacy_rules(document)
             value["registered_at"] = {stream.id: 0 for stream in document.streams}
         return value
+
+    def watched_by(self, topics: list[str] | None) -> list[str]:
+        """Catalogue readings whose accepted topic one of these filters takes."""
+        filters = [topic for topic in topics or [] if _valid_filter(topic)]
+        return sorted(
+            stream_id
+            for stream_id, binding in self.bindings.items()
+            if any(
+                mqtt_topic_filters_overlap(topic, binding.accepted_topic)
+                for topic in filters
+            )
+        )
 
     def streams(self, *, selected_only: bool = False) -> list:
         connections = {

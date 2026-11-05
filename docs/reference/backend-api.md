@@ -114,7 +114,7 @@ Authorization: Bearer <token>
 | `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
 | `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | Administrator |
 | `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | Administrator |
-| `GET` | `/system/health` | Matching ingress/collector revision and status | Member |
+| `GET` | `/system/health` | Collection `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
 | `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
 | `POST` | `/system/live/leases` | Start a bounded preview lease | Administrator |
@@ -125,6 +125,13 @@ Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
 replacement before saving; existing selections survive by stable reading ID.
 `/sources` and the provider-specific catalogue endpoints have been removed.
+
+`/system/health` decides the collection diagnosis on the server. The checks run
+in a fixed order (catalogue saved, collector report younger than 15 seconds,
+local MQTT connected, revisions applied, broker routes, broker connections,
+database, traffic) and the first that fails is returned as `diagnosis.code` with
+a title, tone and explanation. The web app shows that verdict unchanged; it only
+adds "Status not refreshing" when the endpoint itself stops answering.
 
 The `/system/live` session API starts explicitly bounded in-memory previews.
 Acquiring a lease requires an administrator; members can inspect an existing

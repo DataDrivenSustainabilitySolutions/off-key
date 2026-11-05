@@ -15,6 +15,7 @@ from off_key_core.db.system import (
     SystemConfiguration,
     SystemRevision,
 )
+from off_key_core.schemas.collection_health import CollectionHealth, diagnose_collection
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
 from off_key_core.schemas.system import (
@@ -92,13 +93,16 @@ class SystemService:
             runtime=runtime,
         )
 
-    async def health(self) -> dict:
+    async def health(self) -> CollectionHealth:
         snapshot = await read_collection_runtime(self.session)
-        return {
-            "revision": snapshot.revision,
-            "collection": snapshot.collection,
-            "ingress": snapshot.ingress,
-        }
+        return CollectionHealth(
+            revision=snapshot.revision,
+            collection=snapshot.collection,
+            ingress=snapshot.ingress,
+            diagnosis=diagnose_collection(
+                snapshot.revision, snapshot.collection, snapshot.ingress
+            ),
+        )
 
     async def storage(self) -> StorageStatus:
         return await read_storage_status(self.session)

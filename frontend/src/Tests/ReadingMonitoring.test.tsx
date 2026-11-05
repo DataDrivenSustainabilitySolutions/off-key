@@ -119,12 +119,12 @@ describe("selected-reading monitoring subscription", () => {
     await waitFor(() => expect(requests(true)).toHaveLength(1));
   });
 
-  it("filters the shared service list to the reading's accepted topic", async () => {
+  it("filters the shared service list to the monitors that watch the reading", async () => {
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
     vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/workspace")
       ? Promise.resolve({ services: [
-        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"] },
-        { id: "other", mqtt_topics: ["telemetry/other-entity/#"] },
+        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"], stream_ids: ["reading"] },
+        { id: "other", mqtt_topics: ["telemetry/canonical-entity/#"], stream_ids: ["elsewhere"] },
       ] }) : baseGet(endpoint, options));
     const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
     await waitFor(() => expect(hook.result.current.services.map(service => service.id)).toEqual(["match"]));

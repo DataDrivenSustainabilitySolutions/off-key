@@ -116,6 +116,8 @@ export interface ActiveService {
   container_name: string;
   display_name?: string | null;
   mqtt_topics: string[];
+  /** Catalogue readings the monitor watches, resolved by the server. */
+  stream_ids: string[];
   status: boolean;
   operational_status: OperationalStatus;
   docker_status?: string;

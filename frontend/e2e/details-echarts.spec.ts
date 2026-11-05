@@ -78,6 +78,7 @@ const ADAPTIVE_SERVICE = {
   container_id: "container-delayed",
   container_name: "radar-delayed",
   mqtt_topics: [`telemetry/${CHARGER_ID}/systemVoltage`],
+  stream_ids: ["systemVoltage"],
   status: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {

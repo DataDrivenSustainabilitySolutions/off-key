@@ -5,8 +5,8 @@ import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, OperationalStage } from "@/types/monitoring";
 
-const monitor = (id: string, topic: string, stage: OperationalStage = "operational"): ActiveService => ({
-  id, container_id: id, container_name: `worker-${id}`, mqtt_topics: [topic], status: true,
+const monitor = (id: string, streamIds: string[], stage: OperationalStage = "operational"): ActiveService => ({
+  id, container_id: id, container_name: `worker-${id}`, mqtt_topics: [`telemetry/${id}/#`], stream_ids: streamIds, status: true,
   monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage, message_count: 40, processed_message_count: 35, is_stale: false },
 });
@@ -28,7 +28,7 @@ describe("monitoring workspace identity and scale", () => {
     ["inference_stalled", "No recent evaluations"],
     ["persistence_stalled", "Persistence delayed"],
   ] as const)("shows %s even while runtime heartbeats are current", (field, label) => {
-    const service = monitor("one", "input");
+    const service = monitor("one", []);
     service.operational_status.activity = {
       freshness_seconds: 30, missing_sensors: [], stale_sensors: [],
       inputs_stalled: false, inference_stalled: false, persistence_stalled: false,
@@ -37,9 +37,9 @@ describe("monitoring workspace identity and scale", () => {
     expect(serviceState(service)).toMatchObject({ label, category: "attention" });
   });
 
-  it("maps inputs using accepted topics when broker labels repeat and upstream paths differ", () => {
+  it("maps inputs through the server's stream ids when broker labels repeat", () => {
     const { document, runtime } = fixture();
-    const services = [monitor("first", runtime.bindings!["reading-0"]!.accepted_topic), monitor("second", runtime.bindings!["reading-20"]!.accepted_topic)];
+    const services = [monitor("first", ["reading-0"]), monitor("second", ["reading-20"])];
     const index = buildMonitoringIndex(document, runtime, services);
     expect(index.targets).toHaveLength(2);
     expect(index.inputs.get("first")?.map(input => input.stream.id)).toEqual(["reading-0"]);
@@ -61,9 +61,10 @@ describe("monitoring workspace identity and scale", () => {
     expect(buildMonitoringIndex(document, undefined, []).targets).toEqual([]);
   });
 
-  it("resolves legacy wildcard inputs and leaves unmapped services visible globally", () => {
+  it("ignores ids the catalogue no longer has and leaves unmapped services visible globally", () => {
     const { document, runtime } = fixture();
-    const services = [monitor("legacy", "telemetry/internal-entity-0/#"), monitor("unmapped", "telemetry/absent/value")];
+    const watched = Array.from({ length: 20 }, (_, index) => `reading-${index}`);
+    const services = [monitor("legacy", [...watched, "removed"]), monitor("unmapped", [])];
     const index = buildMonitoringIndex(document, runtime, services);
     expect(index.inputs.get("legacy")).toHaveLength(20);
     expect(index.inputs.get("unmapped")).toEqual([]);
@@ -72,7 +73,7 @@ describe("monitoring workspace identity and scale", () => {
 
   it("indexes 20,000 catalogue inputs and 1,000 services without expanding charts or losing scope", () => {
     const { document, runtime } = fixture(1000);
-    const services = document.devices.map((device, index) => monitor(device.id, runtime.bindings![`reading-${index * 20}`]!.accepted_topic));
+    const services = document.devices.map((device, index) => monitor(device.id, [`reading-${index * 20}`]));
     const index = buildMonitoringIndex(document, runtime, services);
     expect(index.targets).toHaveLength(1000);
     expect(index.inputs.size).toBe(1000);
@@ -80,7 +81,7 @@ describe("monitoring workspace identity and scale", () => {
   });
 
   it("distinguishes learning, stale status, failures and stopped services without anomaly counts", () => {
-    const service = monitor("one", "input", "collecting_training");
+    const service = monitor("one", [], "collecting_training");
     expect(serviceState(service)).toMatchObject({ label: "Learning", category: "preparing" });
     expect(serviceState({ ...service, operational_status: { ...service.operational_status, is_stale: true } })).toMatchObject({ label: "No recent status", category: "attention" });
     expect(serviceState({ ...service, operational_status: { ...service.operational_status, stage: "operational", coverage: {

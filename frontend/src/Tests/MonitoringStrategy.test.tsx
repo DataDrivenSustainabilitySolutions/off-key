@@ -436,7 +436,7 @@ describe("monitoring setup forms", () => {
 
   it("disables sensors claimed by an overlapping active service", async () => {
     const existing: ActiveService = { id: "7", container_id: "workload", container_name: "radar-existing", status: true,
-      mqtt_topics: ["telemetry/charger-1/L1"],
+      mqtt_topics: ["telemetry/charger-1/L1"], stream_ids: ["stream-L1"],
       operational_status: { stage: "operational", is_stale: false, message_count: 1, processed_message_count: 1 } };
     await renderCreate({ services: [existing], byStream: new Map([["stream-L1", new Set(["7"])]]) });
 

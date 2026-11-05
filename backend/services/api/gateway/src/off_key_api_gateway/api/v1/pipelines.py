@@ -70,14 +70,25 @@ async def forward(request, method, path, body=None, params=None):
 @router.post("/pipelines/apply", response_model=PipelineActivationView, status_code=202)
 @write_limit
 async def apply_pipeline(request: Request, change: PipelineApplyRequest):
+    """Start or replace a monitor from a design in one step. Administrators only.
+
+    Saves the design, publishes a revision and activates it on the readings in
+    `bindings` (input slot id to catalogue stream id). `replace_service_id`
+    swaps out a running monitor. Repeating a request with the same
+    `idempotency_key` returns the first activation instead of starting another.
+    Answers 202: poll the activation until its `phase` settles.
+    """
     return await forward(request, "POST", "/pipelines/apply", change)
 
 
 @router.get("/workspace", response_model=PipelineWorkspace)
 @read_limit
-async def monitoring_workspace(
+async def get_monitoring_workspace(
     request: Request, selected_service_id: str | None = None
 ):
+    """What the Monitoring page loads: every monitor, whether designs may be
+    edited, and the live pipeline state of `selected_service_id`.
+    """
     return await forward(
         request,
         "GET",
@@ -88,7 +99,10 @@ async def monitoring_workspace(
 
 @router.get("/pipelines/catalog", response_model=PipelineCatalog)
 @read_limit
-async def pipeline_catalog(request: Request):
+async def get_pipeline_catalog(request: Request):
+    """The components a design may use, with descriptions and parameter schemas,
+    and the starting templates.
+    """
     return await forward(request, "GET", "/pipelines/catalog")
 
 
@@ -97,6 +111,7 @@ async def pipeline_catalog(request: Request):
 async def list_pipelines(
     request: Request, query: Annotated[PipelineListQuery, Query()]
 ):
+    """Saved designs, paged."""
     return await forward(
         request, "GET", "/pipelines", params=query.model_dump(exclude_none=True)
     )
@@ -105,18 +120,23 @@ async def list_pipelines(
 @router.post("/pipelines", response_model=PipelineView, status_code=201)
 @write_limit
 async def create_pipeline(request: Request, change: PipelineCreate):
+    """Save a new design as a draft. Administrators only."""
     return await forward(request, "POST", "/pipelines", change)
 
 
 @router.post("/pipelines/validate", response_model=PipelineValidationReport)
 @compile_limit
 async def validate_unsaved_design(request: Request, change: PipelineValidateRequest):
+    """Check a design without saving it: issues, and with `selected_node_id` the
+    fields available at that node.
+    """
     return await forward(request, "POST", "/pipelines/validate", change)
 
 
 @router.get("/pipelines/{pipeline_id}", response_model=PipelineView)
 @read_limit
 async def get_pipeline(request: Request, pipeline_id: str):
+    """One design with its draft graph, its `version` and its revisions."""
     return await forward(request, "GET", f"/pipelines/{path_segment(pipeline_id)}")
 
 
@@ -125,6 +145,10 @@ async def get_pipeline(request: Request, pipeline_id: str):
 async def update_pipeline(
     request: Request, pipeline_id: str, change: PipelineMetadataChange
 ):
+    """Rename, describe or archive a design. Administrators only.
+
+    Send the current `expected_version`; a stale one answers 409.
+    """
     return await forward(
         request, "PATCH", f"/pipelines/{path_segment(pipeline_id)}", change
     )
@@ -133,6 +157,10 @@ async def update_pipeline(
 @router.put("/pipelines/{pipeline_id}/draft", response_model=PipelineView)
 @write_limit
 async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSave):
+    """Replace a design's draft graph and layout. Administrators only.
+
+    Send the current `expected_version`; a stale one answers 409.
+    """
     return await forward(
         request, "PUT", f"/pipelines/{path_segment(pipeline_id)}/draft", change
     )
@@ -145,6 +173,7 @@ async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSa
 async def validate_pipeline(
     request: Request, pipeline_id: str, change: PipelineValidateRequest
 ):
+    """Check a graph against a saved design without saving it."""
     return await forward(
         request, "POST", f"/pipelines/{path_segment(pipeline_id)}/validate", change
     )
@@ -152,11 +181,12 @@ async def validate_pipeline(
 
 @router.get("/pipelines/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
 @read_limit
-async def list_revisions(
+async def list_pipeline_revisions(
     request: Request,
     pipeline_id: str,
     query: Annotated[PipelineRevisionQuery, Query()],
 ):
+    """Published revisions of a design, newest first, paged by `next_before`."""
     return await forward(
         request,
         "GET",
@@ -172,6 +202,10 @@ async def list_revisions(
 )
 @write_limit
 async def publish_revision(request: Request, pipeline_id: str, change: PipelinePublish):
+    """Freeze the current draft as a new revision that monitors can run.
+
+    Administrators only. Send the current `expected_version`.
+    """
     return await forward(
         request, "POST", f"/pipelines/{path_segment(pipeline_id)}/revisions", change
     )
@@ -183,6 +217,7 @@ async def publish_revision(request: Request, pipeline_id: str, change: PipelineP
 )
 @read_limit
 async def get_revision(request: Request, pipeline_id: str, revision_id: str):
+    """One published revision with its graph and fingerprint."""
     return await forward(
         request,
         "GET",
@@ -195,12 +230,15 @@ async def get_revision(request: Request, pipeline_id: str, revision_id: str):
     response_model=PipelineValidationReport,
 )
 @compile_limit
-async def revision_metadata(
+async def get_revision_metadata(
     request: Request,
     pipeline_id: str,
     revision_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
 ):
+    """Validation of a published revision, with the fields available at
+    `selected_node_id`.
+    """
     return await forward(
         request,
         "GET",
@@ -214,6 +252,13 @@ async def revision_metadata(
 )
 @write_limit
 async def activate_pipeline(request: Request, change: PipelineActivationRequest):
+    """Run a published revision as a monitor. Administrators only.
+
+    `bindings` maps each input slot to a catalogue stream id. Answers 202 with
+    an activation: poll it until its `phase` is `succeeded`, `failed` or
+    `cancelled`. Repeating a request with the same `idempotency_key` returns the
+    first activation instead of starting another.
+    """
     return await forward(request, "POST", "/pipeline-activations", change)
 
 
@@ -222,6 +267,7 @@ async def activate_pipeline(request: Request, change: PipelineActivationRequest)
 )
 @read_limit
 async def get_activation(request: Request, activation_id: str):
+    """Progress of an activation: its `phase`, the monitor it starts and any issues."""
     return await forward(
         request, "GET", f"/pipeline-activations/{path_segment(activation_id)}"
     )
@@ -232,6 +278,7 @@ async def get_activation(request: Request, activation_id: str):
 )
 @write_limit
 async def cancel_activation(request: Request, activation_id: str):
+    """Cancel an activation that has not finished. Administrators only."""
     return await forward(
         request, "DELETE", f"/pipeline-activations/{path_segment(activation_id)}"
     )
@@ -239,11 +286,14 @@ async def cancel_activation(request: Request, activation_id: str):
 
 @router.get("/{service_id}/pipeline", response_model=PipelineServiceView)
 @read_limit
-async def service_pipeline(
+async def get_service_pipeline(
     request: Request,
     service_id: str,
     selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
 ):
+    """The design a monitor runs, its current run, recent run history and
+    validation, optionally for `selected_node_id`.
+    """
     return await forward(
         request,
         "GET",
@@ -254,11 +304,14 @@ async def service_pipeline(
 
 @router.get("/{service_id}/pipeline-history", response_model=PipelineHistoryPage)
 @read_limit
-async def service_history(
+async def get_service_pipeline_history(
     request: Request,
     service_id: str,
     query: Annotated[PipelineHistoryQuery, Query()],
 ):
+    """Earlier runs this monitor replaced, most recent first, paged by
+    `next_service_id`.
+    """
     return await forward(
         request,
         "GET",
@@ -269,7 +322,8 @@ async def service_history(
 
 @router.get("/{service_id}/pipeline-timeline", response_model=PipelineRunTimeline)
 @read_limit
-async def service_timeline(request: Request, service_id: str):
+async def get_service_pipeline_timeline(request: Request, service_id: str):
+    """What a monitor's run went through, oldest event first, and how it ended."""
     return await forward(
         request, "GET", f"/{path_segment(service_id)}/pipeline-timeline"
     )
@@ -277,11 +331,14 @@ async def service_timeline(request: Request, service_id: str):
 
 @router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)
 @compile_limit
-async def service_metadata(
+async def get_service_pipeline_metadata(
     request: Request,
     service_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
 ):
+    """Validation of a monitor's design, with the fields available at
+    `selected_node_id`.
+    """
     return await forward(
         request,
         "GET",
@@ -292,7 +349,8 @@ async def service_metadata(
 
 @router.get("/{service_id}/pipeline-state")
 @read_limit
-async def pipeline_state(request: Request, service_id: str):
+async def get_pipeline_state(request: Request, service_id: str):
+    """The diagnostic snapshot a running monitor last reported for its nodes."""
     return await forward(request, "GET", f"/{path_segment(service_id)}/pipeline-state")
 
 
@@ -301,6 +359,10 @@ async def pipeline_state(request: Request, service_id: str):
 async def save_pipeline_layout(
     request: Request, service_id: str, layout: PipelineLayout
 ):
+    """Store where a monitor's nodes sit on the canvas; the graph is unchanged.
+
+    Administrators only.
+    """
     return await forward(
         request, "PUT", f"/{path_segment(service_id)}/pipeline-layout", layout
     )

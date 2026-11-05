@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from off_key_core.config.logs import logger
 from off_key_core.schemas.members import MemberInvitation, MemberProfile, MemberUpdate
 from off_key_core.utils.mail import send_invitation_email
 
 from ...facades.tactic import tactic
-from ..access import current_member, require_admin
+from ..access import current_member, member_authorization, require_admin
 from ..errors import TacticErrorRoute
 
 router = APIRouter(route_class=TacticErrorRoute)
@@ -20,19 +20,28 @@ async def member_request(method, path, authorization, body=None):
 
 
 @router.get("/me", response_model=MemberProfile)
-async def me(user: MemberProfile = Depends(current_member)):
+async def get_my_profile(user: MemberProfile = Depends(current_member)):
+    """The signed-in member: id, email, role and status."""
     return user
 
 
 @router.get(
     "", response_model=list[MemberProfile], dependencies=[Depends(require_admin)]
 )
-async def list_members(authorization: str = Header()):
+async def list_members(authorization: str = Depends(member_authorization)):
+    """Every member and pending invitation. Administrators only."""
     return await member_request("GET", "", authorization)
 
 
 @router.post("/invitations", dependencies=[Depends(require_admin)])
-async def invite(invitation: MemberInvitation, authorization: str = Header()):
+async def invite_member(
+    invitation: MemberInvitation, authorization: str = Depends(member_authorization)
+):
+    """Invite an email address with a role and send the invitation email.
+
+    The link expires after 48 hours; inviting a pending address again sends a new one.
+    Administrators only.
+    """
     result = await member_request(
         "POST",
         "/invitations",
@@ -53,8 +62,14 @@ async def invite(invitation: MemberInvitation, authorization: str = Header()):
     "/{user_id}", response_model=MemberProfile, dependencies=[Depends(require_admin)]
 )
 async def update_member(
-    user_id: int, change: MemberUpdate, authorization: str = Header()
+    user_id: int,
+    change: MemberUpdate,
+    authorization: str = Depends(member_authorization),
 ):
+    """Change a member's role or disable them. Administrators only.
+
+    The last active administrator cannot be demoted or disabled.
+    """
     return await member_request(
         "PUT",
         f"/{user_id}",
@@ -69,6 +84,12 @@ async def update_member(
     response_class=Response,
     dependencies=[Depends(require_admin)],
 )
-async def remove_member(user_id: int, authorization: str = Header()):
+async def remove_member(
+    user_id: int, authorization: str = Depends(member_authorization)
+):
+    """Delete a disabled member and their favorites. Administrators only.
+
+    Shared catalogue data, monitors and alarms are kept.
+    """
     await member_request("DELETE", f"/{user_id}", authorization)
     return Response(status_code=204)

@@ -640,14 +640,14 @@ def test_admin_route_starts_renews_and_releases_with_no_database_telemetry_write
 async def test_gateway_preserves_authorization_and_live_request_contract(monkeypatch):
     request = AsyncMock(return_value={"mode": "configured_only"})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.start_live(SystemLiveStart(expected_revision=7), "Bearer token")
+    await gateway.start_live_view(SystemLiveStart(expected_revision=7), "Bearer token")
     request.assert_awaited_with(
         "POST",
         "/api/v1/system/live/leases",
         json_data={"expected_revision": 7},
         headers={"Authorization": "Bearer token"},
     )
-    await gateway.get_live(12, "Bearer token")
+    await gateway.get_live_readings(12, "Bearer token")
     request.assert_awaited_with(
         "GET",
         "/api/v1/system/live?after_sequence=12",
@@ -655,9 +655,9 @@ async def test_gateway_preserves_authorization_and_live_request_contract(monkeyp
         headers={"Authorization": "Bearer token"},
     )
     lease_id = "b" * 32
-    await gateway.renew_live(lease_id, "Bearer token")
+    await gateway.renew_live_view(lease_id, "Bearer token")
     assert request.await_args.args == ("PUT", f"/api/v1/system/live/leases/{lease_id}")
-    await gateway.stop_live(lease_id, "Bearer token")
+    await gateway.stop_live_view(lease_id, "Bearer token")
     assert request.await_args.args == (
         "DELETE",
         f"/api/v1/system/live/leases/{lease_id}",

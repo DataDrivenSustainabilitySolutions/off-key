@@ -87,15 +87,11 @@ async def list_services(
     active_only: bool = False,
     include_docker_status: bool = False,
 ):
-    """
-    Lists all monitoring services.
+    """Every monitor with its state, strategy and the MQTT topics it reads.
 
-    Parameters:
-    - active_only: If true, only return active services
-    - include_docker_status: If true, check actual Docker container status
-      for each service. This is slower but provides accurate real-time status.
-      When enabled, each service will include a 'docker_status' field with
-      values like: 'running', 'complete', 'failed', 'not_found', 'error'.
+    `active_only` keeps running monitors. `include_docker_status` also asks
+    each container for its status (`running`, `complete`, `failed`,
+    `not_found`, `error`); slower, for diagnosis.
     """
     try:
         return await tactic.list_radar_services(
@@ -118,6 +114,11 @@ async def get_monitoring_evidence(
     telemetry_type: str | None = None,
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
+    """Per-observation detector evidence of one entity, newest first.
+
+    Scores, calibrated p-values and the accumulated evidence behind alarms,
+    optionally for one telemetry type.
+    """
     return await tactic.get_monitoring_evidence(
         charger_id=charger_id,
         telemetry_type=telemetry_type,
@@ -137,6 +138,11 @@ async def get_monitoring_chart_evidence(
     after_sequence_number: int | None = Query(default=None, ge=1),
     limit: int = Query(default=2000, ge=1, le=10000),
 ):
+    """Detector evidence of one entity for charts, optionally for one monitor.
+
+    Page with the four `after_*` cursor fields together, taken from the last
+    row of the previous page.
+    """
     cursor_values = (
         after_created,
         after_timestamp,
@@ -171,7 +177,11 @@ async def start_monitoring_service(
     request: Request,
     config: MonitoringServiceConfig,
 ):
-    """Start a form-configured monitor; TACTIC runs it as a pipeline."""
+    """Start a monitor from the form configuration. Administrators only.
+
+    TACTIC runs it as a pipeline. New clients should prefer
+    `POST /v1/monitors/pipelines/apply`.
+    """
     try:
         return await tactic.start_radar_service(config)
     except TacticError:
@@ -189,9 +199,7 @@ async def get_service_details(
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
 ):
-    """
-    Gets details for a specific monitoring service by container name or ID.
-    """
+    """One monitor by its container name or container id (exactly one of them)."""
     _require_one_container(container_name, container_id)
 
     try:
@@ -219,9 +227,7 @@ async def stop_monitoring_service(
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
 ):
-    """
-    Stops and removes a running monitoring service container via TACTIC.
-    """
+    """Stop a monitor's container by name or id. Administrators only."""
     _require_one_container(container_name, container_id)
 
     try:
@@ -259,14 +265,16 @@ async def stop_monitoring_service(
 async def rename_monitoring_service(
     request: Request, service_id: str, change: RadarServiceLabel
 ):
+    """Change the name a monitor is shown with. Administrators only."""
     return await tactic.rename_radar_service(service_id, change.display_name)
 
 
 @router.delete("/{service_id}")
 @shared_limit_execute
 async def delete_monitoring_service(request: Request, service_id: str):
-    """
-    Stops any backing workload and deletes a monitoring service record.
+    """Stop a monitor and delete it, releasing its readings. Administrators only.
+
+    Its alarms stay in Reporting.
     """
     try:
         response = await tactic.delete_radar_service(service_id)
@@ -294,25 +302,14 @@ async def delete_monitoring_service(request: Request, service_id: str):
 
 @router.get("/models", response_model=dict[str, Any])
 @shared_limit_fetch
-async def list_available_models_endpoint(
+async def list_detector_models(
     request: Request,
     response: Response,
     strategy: MonitoringStrategy | None = Query(default=None),
 ):
-    """
-    Lists all available anomaly detection models and their hyperparameters.
+    """Detector models with their family, cost and parameter JSON schema.
 
-    Returns information about each model including:
-    - description: What the model does
-    - family: Model family (forest, distance, svm, etc.)
-    - complexity: Computational complexity
-    - memory_usage: Expected memory footprint
-    - parameters: JSON schema for hyperparameters with defaults and constraints
-
-    Use this endpoint to discover available models and their configuration options
-    before starting a monitoring service.
-
-    Response is cacheable for 5 minutes since model definitions rarely change.
+    Filter by `strategy`. Cacheable for five minutes.
     """
     # Enable client-side caching - models rarely change
     response.headers["Cache-Control"] = "public, max-age=300"

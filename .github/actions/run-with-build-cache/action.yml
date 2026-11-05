@@ -1,0 +1,9 @@
+name: Run with the GitHub BuildKit cache
+description: Run a build command with the cache credentials available to JavaScript actions.
+inputs:
+  run:
+    description: Bash commands to execute with the GitHub cache runtime environment.
+    required: true
+runs:
+  using: node24
+  main: index.js

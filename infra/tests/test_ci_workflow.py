@@ -65,6 +65,28 @@ class CiWorkflowTests(unittest.TestCase):
         ]
         self.assertEqual(writers, ["publish"])
 
+    def test_build_cache_reuse_does_not_serialize_independent_test_jobs(self):
+        self.assertEqual(needs(self.jobs["radar"]), [])
+        self.assertEqual(needs(self.jobs["deployment-smoke"]), ["publish"])
+        self.assertEqual(
+            self.jobs["images"]["with"]["cache-fallback-scope-prefix"],
+            self.jobs["publish"]["with"]["cache-scope-prefix"],
+        )
+        cached = {
+            step["name"]
+            for job in self.jobs.values()
+            for step in job.get("steps", [])
+            if step.get("uses") == "./.github/actions/run-with-build-cache"
+        }
+        self.assertEqual(
+            cached,
+            {
+                "Build the current production RADAR Dockerfile",
+                "Prepare disposable production Swarm",
+                "Build the reviewed compatible binary rollback reference",
+            },
+        )
+
     def test_a_manual_run_cannot_cancel_the_releasing_push_run(self):
         group = workflow("ci.yml")["concurrency"]["group"]
         self.assertIn("${{ github.event_name }}", group)

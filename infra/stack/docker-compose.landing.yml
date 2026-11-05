@@ -2,7 +2,7 @@
 # no application build, credentials, or connection to the backend network is needed.
 services:
   landing:
-    image: "${LANDING_IMAGE:-nginx:1.30.5-alpine}"
+    image: "${LANDING_IMAGE:-nginx:1.30.5-alpine-slim}"
     configs:
       - source: landing_page
         target: /usr/share/nginx/html/index.html

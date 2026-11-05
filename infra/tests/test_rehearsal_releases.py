@@ -18,6 +18,67 @@ from rehearsal_releases import (
 
 
 class RehearsalReleaseTests(unittest.TestCase):
+    def test_current_builds_only_read_caches_and_rollback_writes_its_own_scope(self):
+        current = rehearsal_releases.build_cache_options(
+            "off-key-api-gateway", "a" * 40
+        )
+        self.assertNotIn("--cache-to", current)
+        self.assertIn("type=gha,version=2,scope=docker-validate-api-gateway", current)
+        self.assertIn("type=gha,version=2,scope=docker-publish-api-gateway", current)
+        rollback = rehearsal_releases.build_cache_options(
+            "off-key-api-gateway", rehearsal_releases.COMPATIBLE_REVISION
+        )
+        destination = rollback[rollback.index("--cache-to") + 1]
+        self.assertIn(
+            f"scope=docker-rollback-{rehearsal_releases.COMPATIBLE_REVISION}-api-gateway",
+            destination,
+        )
+        self.assertIn("mode=max", destination)
+        self.assertIn("ignore-error=true", destination)
+
+    def test_cached_and_local_builds_keep_the_same_production_inputs(self):
+        revision = "a" * 40
+        service = "off-key-api-gateway"
+        reference = f"localhost:5010/{service}:sha-{revision[:12]}"
+        digest = reference.rsplit(":", 1)[0] + "@sha256:" + "b" * 64
+        with (
+            patch.object(rehearsal_releases, "start_registry"),
+            patch.object(
+                rehearsal_releases, "BUILDS", {"api": (service, "services/api/gateway")}
+            ),
+            patch.object(
+                rehearsal_releases,
+                "run",
+                return_value=SimpleNamespace(stdout=json.dumps([digest])),
+            ) as docker,
+        ):
+            for cache in ("", "1"):
+                with (
+                    self.subTest(cache=cache),
+                    patch.dict(
+                        rehearsal_releases.os.environ, {"OFFKEY_BUILD_CACHE": cache}
+                    ),
+                ):
+                    docker.reset_mock()
+                    release = {"images": {}}
+                    rehearsal_releases.build_local_images(
+                        release, revision, Path("/source")
+                    )
+                    build = docker.call_args_list[0].args
+                    self.assertEqual(
+                        build[:2], ("docker", "buildx" if cache else "build")
+                    )
+                    self.assertEqual("--load" in build, bool(cache))
+                    for argument in (
+                        f"GIT_COMMIT={revision}",
+                        f"SERVICE_NAME={service}",
+                        "SERVICE_ROOT=services/api/gateway",
+                        reference,
+                    ):
+                        self.assertIn(argument, build)
+                    self.assertEqual(build[-1], "/source/backend")
+                    self.assertEqual(release["images"], {"api": digest})
+
     def test_reference_archive_refuses_missing_or_unreviewed_repository(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

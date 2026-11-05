@@ -19,117 +19,139 @@ import {
   isProbabilityAnomalyValue,
 } from "@/lib/anomaly-semantics";
 import { formatAnomalySensorSet, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
-import {
-  deleteAnomaly,
-  getAnomalyReport,
-} from "@/lib/charger-api";
+import { deleteAnomaly, queryAnomalies } from "@/lib/charger-api";
 import { getErrorMessage } from "@/lib/errors";
 import { dayKey, formatDay, formatExactDateTime, formatTimeOfDay } from "@/lib/format-time";
 import { useNavigationDraft } from "@/lib/navigation-draft";
-import type { Anomaly } from "@/types/charger";
+import type { AnomalyPage, AnomalyQuery, ReportedAnomaly } from "@/types/charger";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
 import { SourceScope } from "@/features/workspace/SourceScope";
-import { entitySource, filterSourceReports, reportLabels, selectedEntity } from "@/features/workspace/reporting-scope";
+import { entitySource, selectedEntity } from "@/features/workspace/reporting-scope";
 import { selectedSourceHref, withCatalogueSource } from "@/features/workspace/catalogue-navigation";
 import "./reporting.css";
 
 const ranges = [{ id: "any", label: "Any time", ms: Infinity }, { id: "24h", label: "Last 24 hours", ms: 86_400_000 },
   { id: "7d", label: "Last 7 days", ms: 7 * 86_400_000 }, { id: "30d", label: "Last 30 days", ms: 30 * 86_400_000 }];
 const signals = [{ id: "any", label: "All results", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
-const readingKeys = (anomaly: Anomaly) => anomaly.sensor_set?.length ? anomaly.sensor_set
-  : anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? [] : [anomaly.telemetry_type];
-const anomalyKey = (anomaly: Anomaly) => anomaly.anomaly_id
-  || `${anomaly.charger_id}-${anomaly.timestamp}-${anomaly.telemetry_type}-${anomaly.anomaly_type}`;
+const PAGE_SIZE = 500;
+const readingId = (chargerId: string, key: string) => `${chargerId}\u0000${key}`;
+/** The time window is relative to when the request is sent. */
+const withSince = (query: AnomalyQuery, range: string): AnomalyQuery => {
+  const window = ranges.find(item => item.id === range)?.ms ?? Infinity;
+  return window === Infinity ? query : { ...query, since: new Date(Date.now() - window).toISOString() };
+};
 
 export default function AnomalyTable() {
   const { isAdmin, userId } = useAuth();
   const navigate = useNavigate();
   const { streamIds, system, selected, index } = useCatalogue();
-  const [data, setData] = useState<Anomaly[]>([]);
+  const [result, setResult] = useState<{ query: AnomalyQuery; page: AnomalyPage } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [reading, setReading] = useNavigationDraft(`reporting:${userId}:reading`, "any");
   const [range, setRange] = useNavigationDraft(`reporting:${userId}:range`, "any");
   const [signal, setSignal] = useNavigationDraft(`reporting:${userId}:signal`, "any");
   const [confirm, confirmation] = useConfirm();
   const now = useNow();
 
-  const fetchAllAnomalies = useCallback(async () => {
+  const page = result?.page;
+  const readingOptions = useMemo(() => {
+    const readings = page?.readings ?? [];
+    const multipleEntities = new Set(readings.map(item => item.charger_id)).size > 1;
+    return readings.map(item => [readingId(item.charger_id, item.telemetry_key),
+      multipleEntities ? `${item.label} · ${item.entity_label}` : item.label] as const)
+      .sort((left, right) => left[1].localeCompare(right[1]));
+  }, [page]);
+  // A remembered reading outside the current scope reads as "All readings".
+  const activeReading = readingOptions.some(([id]) => id === reading) ? reading : "any";
+  const query = useMemo((): AnomalyQuery => {
+    const [chargerId, key] = activeReading.split("\u0000");
+    const maximum = signals.find(item => item.id === signal)?.max ?? Infinity;
+    return {
+      ...(streamIds ? { stream_ids: [...streamIds] } : {}),
+      ...(activeReading !== "any" ? { reading: { charger_id: chargerId!, telemetry_key: key! } } : {}),
+      ...(maximum !== Infinity ? { max_p_value: maximum } : {}),
+      limit: PAGE_SIZE,
+    };
+  }, [streamIds, activeReading, signal]);
+
+  const load = useCallback(async (abort?: AbortSignal) => {
+    const sent = withSince(query, range);
     try {
       setIsLoading(true);
       setError(null);
-      setData(await getAnomalyReport());
+      const answer = await queryAnomalies(sent, abort);
+      if (!abort?.aborted) setResult({ query: sent, page: answer });
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (!abort?.aborted) setError(getErrorMessage(err));
     } finally {
-      setIsLoading(false);
+      if (!abort?.aborted) setIsLoading(false);
     }
-  }, []);
+  }, [query, range]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
-      void fetchAllAnomalies();
+      void load(controller.signal);
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [fetchAllAnomalies]);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [load]);
+
+  const loadOlder = async () => {
+    if (!result?.page.next) return;
+    setLoadingOlder(true);
+    try {
+      const older = await queryAnomalies({ ...result.query, before: result.page.next });
+      setResult(current => current && current.query === result.query
+        ? { query: current.query, page: { ...older, items: [...current.page.items, ...older.items] } }
+        : current);
+    } catch (err) {
+      toast.error(`Older events could not be loaded: ${getErrorMessage(err)}`);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   const runtime = system.snapshot?.runtime;
-  const labels = useMemo(() => reportLabels(system.snapshot?.document, runtime), [system.snapshot, runtime]);
-  const scopedData = useMemo(() => filterSourceReports(data, streamIds, runtime), [data, streamIds, runtime]);
-  const readingOptions = useMemo(() => {
-    const options = new Map<string, string>();
-    const multipleEntities = new Set(scopedData.map(anomaly => anomaly.charger_id)).size > 1;
-    for (const anomaly of scopedData) for (const key of readingKeys(anomaly)) {
-      const label = labels.reading(anomaly.charger_id, key);
-      options.set(`${anomaly.charger_id}\u0000${key}`, multipleEntities ? `${label} · ${labels.entity(anomaly.charger_id)}` : label);
-    }
-    return [...options].sort((left, right) => left[1].localeCompare(right[1]));
-  }, [scopedData, labels]);
-  const activeReading = readingOptions.some(([id]) => id === reading) ? reading : "any";
-  const filtered = useMemo(() => {
-    const since = now - (ranges.find(item => item.id === range)?.ms ?? Infinity);
-    const maximum = signals.find(item => item.id === signal)?.max ?? Infinity;
-    const [entity, key] = activeReading.split("\u0000");
-    return scopedData.filter(anomaly => (activeReading === "any" || anomaly.charger_id === entity && readingKeys(anomaly).includes(key!))
-      && (range === "any" || Date.parse(anomaly.timestamp) >= since)
-      && (maximum === Infinity || isProbabilityAnomalyValue(anomaly.value_type) && anomaly.anomaly_value <= maximum))
-      .map(anomaly => ({ anomaly, time: Date.parse(anomaly.timestamp) }))
-      .sort((left, right) => right.time - left.time)
-      .map(({ anomaly }) => anomaly);
-  }, [scopedData, activeReading, range, signal, now]);
+  const items = useMemo(() => page?.items ?? [], [page]);
   // One catalogue scan per entity, not one per table row and render.
-  const sources = useMemo(() => new Map([...new Set(scopedData.map(anomaly => anomaly.charger_id))]
+  const sources = useMemo(() => new Map([...new Set(items.map(anomaly => anomaly.charger_id))]
     .map(id => [id, entitySource(index, system.snapshot?.document, runtime, id)] as const)),
-  [scopedData, index, system.snapshot?.document, runtime]);
+  [items, index, system.snapshot?.document, runtime]);
   const days = useMemo(() => {
-    const groups: Array<{ key: string; label: string; rows: Anomaly[] }> = [];
-    for (const anomaly of filtered) {
+    const groups: Array<{ key: string; label: string; rows: ReportedAnomaly[] }> = [];
+    for (const anomaly of items) {
       const key = dayKey(anomaly.timestamp);
       if (groups[groups.length - 1]?.key !== key) groups.push({ key, label: formatDay(anomaly.timestamp, now), rows: [] });
       groups[groups.length - 1]!.rows.push(anomaly);
     }
     return groups;
-  }, [filtered, now]);
+  }, [items, now]);
   const filtering = activeReading !== "any" || range !== "any" || signal !== "any";
   const clearFilters = () => { setReading("any"); setRange("any"); setSignal("any"); };
-  const unknown = isLoading || (!!error && !data.length);
+  const unknown = isLoading || (!!error && !page);
+  const count = page?.summary.count ?? 0;
   const metric = (value: number) => unknown ? "—" : value;
   const scopedEntity = selectedEntity(streamIds, runtime);
   useDocumentTitle(selected?.label, "Reporting");
 
-  const handleDelete = async (anomaly: Anomaly) => {
+  const handleDelete = async (anomaly: ReportedAnomaly) => {
     if (!anomaly.anomaly_id) {
       toast.error("This anomaly has no ID and cannot be deleted.");
       return;
     }
     if (!await confirm({ title: "Delete this anomaly?", confirmLabel: "Delete anomaly", destructive: true,
-      description: `${labels.entity(anomaly.charger_id)} at ${formatExactDateTime(anomaly.timestamp)}. This cannot be undone.` })) return;
+      description: `${anomaly.entity_label} at ${formatExactDateTime(anomaly.timestamp)}. This cannot be undone.` })) return;
     try {
       await deleteAnomaly(anomaly.anomaly_id);
 
       toast.success("Anomaly deleted");
-      await fetchAllAnomalies();
+      await load();
     } catch (err) {
       toast.error(`The anomaly could not be deleted: ${getErrorMessage(err)}`);
     }
@@ -150,7 +172,7 @@ export default function AnomalyTable() {
             </Button>}
             {!error && <Button
               variant="outline"
-              onClick={fetchAllAnomalies}
+              onClick={() => void load()}
               disabled={isLoading}
             >
               <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -166,19 +188,19 @@ export default function AnomalyTable() {
         <div className="rp-metrics">
           {!scopedEntity && streamIds?.length !== 0 && <MetricCard
             label="Affected entities"
-            value={metric(new Set(filtered.map(anomaly => anomaly.charger_id)).size)}
+            value={metric(page?.summary.entities ?? 0)}
             tone="info"
           />}
           <MetricCard
             label="Last anomaly"
-            value={unknown ? "—" : filtered.length ? <RelativeTime value={filtered[0]!.timestamp} /> : "None"}
+            value={unknown ? "—" : page?.summary.latest ? <RelativeTime value={page.summary.latest} /> : "None"}
           />
         </div>
 
         {error ? (
           <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
             <span>Anomalies could not be loaded: {error}</span>
-            <Button variant="outline" size="sm" onClick={fetchAllAnomalies}>Retry</Button>
+            <Button variant="outline" size="sm" onClick={() => void load()}>Retry</Button>
           </div>
         ) : null}
 
@@ -196,7 +218,7 @@ export default function AnomalyTable() {
               {signals.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             {filtering && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}
-            <span className="rp-count" role="status">{unknown ? "" : `${filtered.length.toLocaleString()} ${filtered.length === 1 ? "event" : "events"}`}</span>
+            <span className="rp-count" role="status">{unknown ? "" : `${count.toLocaleString()} ${count === 1 ? "event" : "events"}`}</span>
           </div>
           <table className="rp-table">
             <thead>
@@ -213,21 +235,21 @@ export default function AnomalyTable() {
             </thead>
             {isLoading ? <tbody><tr className="rp-message"><td colSpan={6}>Loading anomalies…</td></tr></tbody>
               : !days.length ? !error && <tbody><tr className="rp-message"><td colSpan={6}>
-                {filtering && scopedData.length ? "No events match these filters." : "No anomalies recorded."}
+                {filtering && readingOptions.length ? "No events match these filters." : "No anomalies recorded."}
               </td></tr></tbody>
               : days.map(day => <tbody key={day.key}>
                 <tr className="rp-day"><th colSpan={6} scope="rowgroup">{day.label}</th></tr>
                 {day.rows.map(anomaly => {
-                  const entity = labels.entity(anomaly.charger_id);
+                  const entity = anomaly.entity_label;
                   const source = sources.get(anomaly.charger_id);
                   const scopedHere = !!source && source.key === selected?.key;
-                  const sensors = formatAnomalySensorSet(anomaly.sensor_set?.map(key => labels.reading(anomaly.charger_id, key)));
-                  return <tr key={anomalyKey(anomaly)} className="rp-row">
+                  const sensors = formatAnomalySensorSet(anomaly.sensor_set?.length ? anomaly.readings.map(item => item.label) : anomaly.sensor_set);
+                  return <tr key={anomaly.anomaly_id} className="rp-row">
                     <td className="rp-entity">{source && !scopedHere
                       ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}</td>
                     <td className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
                     <td className="rp-readings"><div>
-                      <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : labels.reading(anomaly.charger_id, anomaly.telemetry_type)}</span>
+                      <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : anomaly.telemetry_label ?? anomaly.telemetry_type}</span>
                       {/* A single reading is already named by its badge. */}
                       {(anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (anomaly.sensor_set?.length ?? 0) > 1) && <span className="rp-sensors" title={sensors}>{sensors}</span>}
                     </div></td>
@@ -245,6 +267,11 @@ export default function AnomalyTable() {
                 })}
               </tbody>)}
           </table>
+          {page?.next && !isLoading && <div className="rp-more">
+            <Button variant="outline" size="sm" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              {loadingOlder ? "Loading older events…" : `Load older events (${(count - items.length).toLocaleString()} more)`}
+            </Button>
+          </div>}
         </section>
       </PageShell>
       {confirmation}

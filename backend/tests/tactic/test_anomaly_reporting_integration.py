@@ -1,26 +1,59 @@
-"""Reporting reads and pool backpressure against migrated TimescaleDB."""
+"""Reporting queries and pool backpressure against migrated TimescaleDB."""
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from off_key_core.db.base import get_async_engine, reset_db_runtime_caches
 from off_key_core.db.migrate import apply_migrations
+from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
 from off_key_tactic_middleware.main import create_app
+from off_key_tactic_middleware.services.catalogue.system import SystemService
 from sqlalchemy import event
 
 from tests.support.http import asgi_client
 
+CATALOGUE = SystemSnapshot(
+    revision=1,
+    storage_origin="saved",
+    document=SystemDocument(
+        connections=[{"id": "broker", "label": "Plant MQTT", "host": "broker"}],
+        devices=[{"id": "line", "label": "Line 1", "connection_id": "broker"}],
+        streams=[
+            {
+                "id": key,
+                "label": label,
+                "connection_id": "broker",
+                "device_id": "line",
+                "topic": f"line/{key}",
+            }
+            for key, label in (("temperature", "Temperature"), ("pressure", "Pressure"))
+        ]
+        + [
+            {
+                "id": "quiet-temperature",
+                "label": "Hall temperature",
+                "connection_id": "broker",
+                "topic": "hall/temperature",
+            }
+        ],
+    ),
+    runtime=SystemRuntime(
+        bindings={
+            "temperature": {"entity_id": "busy", "telemetry_key": "temperature"},
+            "pressure": {"entity_id": "busy", "telemetry_key": "pressure"},
+            "quiet-temperature": {"entity_id": "quiet", "telemetry_key": "temperature"},
+        }
+    ),
+)
+
 
 @pytest.mark.asyncio
-async def test_report_reads_bounded_catalogue_history_and_recovers_from_busy_pool(
+async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
     disposable_database, monkeypatch
 ):
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         connection.exec_driver_sql("""
-            INSERT INTO chargers (charger_id, online, mqtt_connected, mqtt_error_count)
-            VALUES ('busy', true, false, 0), ('quiet', false, false, 0),
-                   ('removed', false, false, 0);
-            INSERT INTO collection_bindings (charger_id, source_id, local_id)
-            VALUES ('busy', 'source', 'busy'), ('quiet', 'source', 'quiet');
             INSERT INTO anomalies
                 (charger_id, timestamp, telemetry_type, anomaly_type, anomaly_value)
             SELECT entity, now() - age * interval '1 second', 'temperature',
@@ -28,6 +61,22 @@ async def test_report_reads_bounded_catalogue_history_and_recovers_from_busy_poo
             FROM (VALUES ('busy', 501), ('quiet', 1), ('removed', 1))
                  AS inputs(entity, n)
             CROSS JOIN LATERAL generate_series(1, n) AS age;
+            -- A day old: older than every row above, but inside the 14-day
+            -- retention window, so the database's retention job cannot delete
+            -- them while the test runs.
+            INSERT INTO anomalies
+                (charger_id, timestamp, telemetry_type, service_id, anomaly_type,
+                 anomaly_value, value_type, sensor_set)
+            VALUES
+                ('busy', now() - interval '1 day', '__multivariate__', 'monitor-b',
+                 'ml_conformal_static_x', 0.0005, 'conformal_pvalue',
+                 '["temperature", "pressure"]'),
+                ('busy', now() - interval '1 day' + interval '1 second',
+                 '__multivariate__', 'monitor-c',
+                 'ml_tailprob_x', 0.002, 'tail_pvalue', NULL),
+                ('busy', now() - interval '1 day' + interval '2 seconds', 'pressure',
+                 'monitor-a',
+                 'ml_conformal_static_x', 0.02, 'conformal_pvalue', 'null');
         """)
 
     url = disposable_database.url
@@ -45,6 +94,10 @@ async def test_report_reads_bounded_catalogue_history_and_recovers_from_busy_poo
     }.items():
         monkeypatch.setenv(key, str(value))
 
+    async def catalogue(self):
+        return CATALOGUE
+
+    monkeypatch.setattr(SystemService, "read", catalogue)
     engine = get_async_engine()
     selects = []
 
@@ -54,27 +107,78 @@ async def test_report_reads_bounded_catalogue_history_and_recovers_from_busy_poo
             selects.append(statement)
 
     headers = {"X-Off-Key-Service-Key": secret}
-    path = "/api/v1/data/anomalies"
+    path = "/api/v1/data/anomalies/query"
+    line = ["temperature", "pressure"]
     try:
         async with asgi_client(create_app()) as client:
+
+            async def query(**body):
+                response = await client.post(path, headers=headers, json=body)
+                assert response.status_code == 200, response.text
+                return response.json()
+
             async with engine.connect():
-                unavailable = await client.get(path, headers=headers)
+                unavailable = await client.post(path, headers=headers, json={})
                 assert unavailable.status_code == 503
                 assert "Try again" in unavailable.json()["detail"]
 
-            response = await client.get(path, headers=headers)
-            assert response.status_code == 200
-            assert len(selects) == 1
-            rows = response.json()
-            assert {row["charger_id"] for row in rows} == {"busy", "quiet"}
-            assert {
-                row["anomaly_value"] for row in rows if row["charger_id"] == "busy"
-            } == set(range(1, 501))
-            assert len({row["anomaly_id"] for row in rows}) == len(rows) == 501
+            # One reading: its own alarms and multivariate alarms that used it,
+            # paged newest first without gaps or repeats.
+            seen, before = [], None
+            while True:
+                page = await query(stream_ids=["temperature"], before=before)
+                seen += page["items"]
+                before = page["next"]
+                if before is None:
+                    break
+            assert page["summary"]["count"] == len(seen) == 502
+            assert len({item["anomaly_id"] for item in seen}) == 502
+            assert [item["timestamp"] for item in seen] == sorted(
+                (item["timestamp"] for item in seen), reverse=True
+            )
+            assert seen[-1]["telemetry_type"] == "__multivariate__"
+            assert seen[-1]["readings"] == [
+                {"key": "temperature", "label": "Temperature"},
+                {"key": "pressure", "label": "Pressure"},
+            ]
+            assert seen[0]["entity_label"] == "Line 1"
+            assert seen[0]["telemetry_label"] == "Temperature"
 
-            quiet = await client.get(f"{path}/quiet", headers=headers)
-            assert quiet.status_code == 200
-            assert quiet.json() == [row for row in rows if row["charger_id"] == "quiet"]
+            # The whole entity also takes the multivariate alarm without a set.
+            whole = await query(stream_ids=line, limit=1)
+            assert whole["summary"] == {
+                "count": 504,
+                "entities": 1,
+                "latest": whole["items"][0]["timestamp"],
+            }
+            assert [
+                (item["telemetry_key"], item["label"], item["count"])
+                for item in whole["readings"]
+            ] == [("pressure", "Pressure", 2), ("temperature", "Temperature", 502)]
+
+            narrowed = {
+                "p-value": {"max_p_value": 0.001},
+                "monitor": {"service_id": "monitor-a"},
+                "reading": {
+                    "reading": {"charger_id": "busy", "telemetry_key": "pressure"}
+                },
+                "time": {"since": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
+            }
+            counts = {}
+            for name, body in narrowed.items():
+                result = await query(stream_ids=line, **body)
+                counts[name] = result["summary"]["count"]
+                assert result["readings"] == whole["readings"]
+            assert counts == {"p-value": 1, "monitor": 1, "reading": 2, "time": 501}
+
+            unknown = await query(stream_ids=["gone"])
+            assert unknown["items"] == [] and unknown["unknown_stream_ids"] == ["gone"]
+
+            selects.clear()
+            everything = await query(limit=1)
+            assert len(selects) == 3
+            assert everything["summary"]["entities"] == 3
+            assert everything["summary"]["count"] == 506
     finally:
         await engine.dispose()
         reset_db_runtime_caches()

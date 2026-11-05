@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from off_key_core.schemas.reporting import AnomalyPage, AnomalyQuery
 
 from ...domain import ValidationError
 from ...provider import (
@@ -16,6 +17,7 @@ from ...provider import (
     get_charger_query_service,
     get_favorite_service,
     get_monitoring_evidence_service,
+    get_system_service,
     get_telemetry_query_service,
     get_user_service,
 )
@@ -32,6 +34,7 @@ from ...schemas import (
     UserLoginRequest,
 )
 from ...services.accounts.users import UserService
+from ...services.catalogue.system import SystemService
 from ...services.data import (
     AnomalyService,
     ChargerQueryService,
@@ -233,9 +236,13 @@ async def get_monitoring_chart_evidence(
     )
 
 
-@router.get("/anomalies", response_model=list[AnomalyResponse])
-async def get_anomaly_report(service: AnomalyService = Depends(get_anomaly_service)):
-    return await service.list_report()
+@router.post("/anomalies/query", response_model=AnomalyPage)
+async def query_anomalies(
+    query: AnomalyQuery,
+    service: AnomalyService = Depends(get_anomaly_service),
+    system: SystemService = Depends(get_system_service),
+):
+    return await service.query(query, await system.read())
 
 
 @router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])

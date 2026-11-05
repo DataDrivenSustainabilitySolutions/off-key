@@ -55,6 +55,39 @@ export interface Anomaly {
   sensor_set?: string[] | null;
 }
 
+/** An alarm as Reporting answers it: with the catalogue's names. */
+export interface ReportedAnomaly extends Anomaly {
+  entity_label: string;
+  telemetry_label: string | null;
+  readings: { key: string; label: string }[];
+}
+
+interface AnomalyCursor {
+  timestamp: string;
+  anomaly_id: string;
+}
+
+export interface AnomalyQuery {
+  stream_ids?: string[];
+  reading?: { charger_id: string; telemetry_key: string };
+  service_id?: string;
+  since?: string;
+  until?: string;
+  max_p_value?: number;
+  limit?: number;
+  before?: AnomalyCursor;
+}
+
+export interface AnomalyPage {
+  items: ReportedAnomaly[];
+  next: AnomalyCursor | null;
+  /** Every match, not only this page. */
+  summary: { count: number; entities: number; latest: string | null };
+  /** Readings with alarms in the scope, before the narrowing filters. */
+  readings: { charger_id: string; telemetry_key: string; entity_label: string; label: string; count: number }[];
+  unknown_stream_ids: string[];
+}
+
 /**
  * Normalize charger last-seen timestamp.
  *

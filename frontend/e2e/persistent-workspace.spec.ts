@@ -390,11 +390,11 @@ test("filters real recorded reports by entity and reading across the shared navb
       anomalies.push((await response.json() as { anomaly_id: string }).anomaly_id);
     }
     const report = page.waitForResponse(response =>
-      new URL(response.url()).pathname === "/api/v1/anomalies/report");
+      new URL(response.url()).pathname === "/api/v1/anomalies/query");
     await page.goto("/anomalies");
     const response = await report;
     expect(response.ok(), await response.text()).toBe(true);
-    expect(await response.json()).toEqual(expect.arrayContaining(
+    expect((await response.json() as { items: unknown[] }).items).toEqual(expect.arrayContaining(
       anomalies.map(anomaly_id => expect.objectContaining({ anomaly_id })),
     ));
     const navigation = page.getByRole("navigation", { name: "Primary navigation", exact: true });

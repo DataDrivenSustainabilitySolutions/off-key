@@ -5,11 +5,11 @@ import asyncio
 import json
 import os
 
+from off_key_core.auth.permissions import ADMIN_ROLE
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.config.env import load_env
 from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.schemas.members import MemberInvitation
-from off_key_core.utils.enum import RoleEnum
 
 from .services.accounts.members import MemberService
 
@@ -52,7 +52,7 @@ async def main(*, send_email: bool = False, resend: bool = False) -> None:
                 )
                 return
             invitation = await service.invite(
-                MemberInvitation(email=email, role=RoleEnum.admin)
+                MemberInvitation(email=email, role=ADMIN_ROLE)
             )
         # The operator must deliver this one-time link to the configured mailbox owner.
         print(f"{origin}/register#token={invitation['token']}")

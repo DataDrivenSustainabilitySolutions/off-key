@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import APIRouter, FastAPI
+from off_key_core.auth.permissions import Permission
 from off_key_core.db.base import get_db_async
 from off_key_tactic_middleware.api import collection_auth
 from off_key_tactic_middleware.api.v1 import data_services, members, pipelines, system
@@ -78,7 +79,10 @@ def _app(error, nested, closed):
         {
             get_db_async: session,
             collection_auth.current_member: lambda: user,
-            collection_auth.require_admin: lambda: user,
+            **{
+                collection_auth.require_permission(permission): lambda: user
+                for permission in Permission
+            },
             get_user_service: lambda: SimpleNamespace(authenticate=fail),
             members.remembered_session_service: lambda: SimpleNamespace(refresh=fail),
         }

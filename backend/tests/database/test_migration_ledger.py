@@ -72,6 +72,9 @@ APPLIED_CHECKSUMS = {
     "018_member_favorites.sql": (
         "6bdac3306802ce962fb20a455856160de8e9d0d5868394cfd7668565d4c06273"
     ),
+    "020_member_roles.sql": (
+        "a3ed937fb41a2222653baf48f97251b7bcda383daf12ad265a703716cbc6dda0"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -88,6 +91,7 @@ LEDGER_TABLES = {
     },
     "016_pipeline_run_events.sql": {"monitoring_pipeline_run_events"},
     "018_member_favorites.sql": {"member_favorites"},
+    "020_member_roles.sql": {"member_roles"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {

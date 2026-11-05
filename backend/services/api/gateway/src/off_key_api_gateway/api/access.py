@@ -1,7 +1,9 @@
+from functools import cache
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from off_key_core.auth.permissions import Permission
 from off_key_core.schemas.members import MemberProfile
-from off_key_core.utils.enum import RoleEnum
 
 from ..facades.tactic import TacticError, tactic
 from .errors import raise_tactic_http_error
@@ -43,15 +45,34 @@ async def current_member(
     return MemberProfile.model_validate(result)
 
 
-async def require_admin(user: MemberProfile = Depends(current_member)) -> MemberProfile:
-    if user.role != RoleEnum.admin:
-        raise HTTPException(403, "Administrator access required")
-    return user
+def _refuse_without(permission: Permission, user: MemberProfile) -> None:
+    if permission not in user.permissions:
+        raise HTTPException(403, f"This needs the {permission} permission")
 
 
-async def operational_access(
-    request: Request,
-    user: MemberProfile = Depends(current_member),
-) -> None:
-    if request.method not in {"GET", "HEAD", "OPTIONS"} and user.role != RoleEnum.admin:
-        raise HTTPException(403, "Administrator access required")
+@cache
+def require_permission(permission: Permission):
+    """One dependency per permission, so access tests can tell them apart."""
+
+    async def holds_permission(
+        user: MemberProfile = Depends(current_member),
+    ) -> MemberProfile:
+        _refuse_without(permission, user)
+        return user
+
+    holds_permission.__name__ = f"require_{permission}"
+    return holds_permission
+
+
+@cache
+def writes_require(permission: Permission):
+    """Every member reads; changing anything needs ``permission``."""
+
+    async def reads_open_writes_checked(
+        request: Request, user: MemberProfile = Depends(current_member)
+    ) -> None:
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            _refuse_without(permission, user)
+
+    reads_open_writes_checked.__name__ = f"writes_require_{permission}"
+    return reads_open_writes_checked

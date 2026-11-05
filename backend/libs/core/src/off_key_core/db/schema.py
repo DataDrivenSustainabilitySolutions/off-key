@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 
+from ..auth.permissions import BUILT_IN_ROLES
 from .models import Base
 from .retention import reconcile_retention_policies
 
@@ -85,6 +86,16 @@ def bootstrap_schema(connection: Connection) -> None:
     for table in Base.metadata.sorted_tables:
         for index in table.indexes:
             index.create(connection, checkfirst=True)
+    # Members always need these two roles; migration 020 adds them to older
+    # databases and a fresh one gets them here.
+    for role, name in BUILT_IN_ROLES.items():
+        connection.execute(
+            text(
+                "INSERT INTO member_roles (id, name) VALUES (:id, :name) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": role, "name": name},
+        )
     connection.execute(
         text(
             """

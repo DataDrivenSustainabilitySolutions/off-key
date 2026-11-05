@@ -23,6 +23,7 @@ EXPECTED_MIGRATIONS = (
     "016_pipeline_run_events.sql",
     "017_detector_inputs.sql",
     "018_member_favorites.sql",
+    "020_member_roles.sql",
 )
 
 
@@ -62,9 +63,10 @@ def remove_pipeline_schema(connection):
 
 
 def restore_retired_schema(connection):
-    """Recreate schema every pre-014 database carries and migrations 014-018 drop."""
+    """Recreate schema every pre-014 database carries and migrations 014-020 drop."""
     connection.execute(text("CREATE TABLE model_registry (id serial PRIMARY KEY)"))
     restore_entity_favorites(connection)
+    restore_role_enum(connection)
     connection.execute(
         text("ALTER TABLE services ADD COLUMN stateful_set_name text UNIQUE")
     )
@@ -95,5 +97,17 @@ def restore_entity_favorites(connection):
             user_id integer NOT NULL REFERENCES users(id)
         );
         CREATE INDEX ix_favorite_user_charger ON favorites (user_id, charger_id)
+    """)
+    )
+
+
+def restore_role_enum(connection):
+    """Swap roles for the user/admin enum every pre-020 database has."""
+    connection.execute(
+        text("""
+        ALTER TABLE users DROP CONSTRAINT users_role_fkey;
+        DROP TABLE member_roles;
+        CREATE TYPE roleenum AS ENUM ('user', 'admin');
+        ALTER TABLE users ALTER COLUMN role TYPE roleenum USING role::roleenum
     """)
     )

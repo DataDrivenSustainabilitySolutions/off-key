@@ -64,7 +64,7 @@ async def get_storage_status(authorization: str = Depends(member_authorization))
 async def save_system(
     change: SystemChange, authorization: str = Depends(member_authorization)
 ):
-    """Replace the saved catalogue. Administrators only.
+    """Replace the saved catalogue. Needs `manage_sources`.
 
     Send the whole `document` with the `revision` you read as
     `expected_revision`; a stale revision answers 409. A change to readings
@@ -83,7 +83,7 @@ async def check_broker_connection(
 ):
     """Connect once to a saved broker and disconnect; nothing is subscribed.
 
-    Administrators only.
+    Needs `manage_sources`.
     """
     return await system_request(
         "POST", authorization, "/connections/check", scope.model_dump(mode="json")
@@ -97,7 +97,7 @@ async def reconnect_broker(
 ):
     """Retry a recorded broker now instead of waiting for its backoff.
 
-    Administrators only.
+    Needs `manage_sources`.
     """
     return await system_request(
         "POST", authorization, "/connections/reconnect", scope.model_dump(mode="json")
@@ -115,7 +115,7 @@ async def preview_collection(
     change: SystemCollectionChange | SystemCollectionRuleChange,
     authorization: str = Depends(member_authorization),
 ):
-    """Preview a recording change without applying it. Administrators only.
+    """Preview a recording change without applying it. Needs `manage_sources`.
 
     Answers how many readings would start, stop or change rate, the expected
     rows per day and the running monitors the change would affect.
@@ -140,7 +140,7 @@ async def apply_collection(
     change: SystemCollectionChange | SystemCollectionRuleChange,
     authorization: str = Depends(member_authorization),
 ):
-    """Change which readings are recorded. Administrators only.
+    """Change which readings are recorded. Needs `manage_sources`.
 
     Takes the same body as the preview; affected monitors answer 409 unless
     `pause_affected_monitors` is set. Answers with the saved catalogue.
@@ -157,7 +157,7 @@ async def get_live_readings(
 ):
     """Latest values from open live previews, after the given sequence number.
 
-    Administrators only.
+    Needs `manage_sources`.
     """
     return await system_request(
         "GET", authorization, f"/live?after_sequence={after_sequence}"
@@ -171,7 +171,7 @@ async def start_live_view(
     """Start a live preview of configured readings without recording them.
 
     The preview is a lease: renew it while it is needed, otherwise it ends on
-    its own. Nothing is stored. Administrators only.
+    its own. Nothing is stored. Needs `manage_sources`.
     """
     return await system_request(
         "POST",
@@ -187,7 +187,10 @@ async def renew_live_view(
     authorization: str = Depends(member_authorization),
     change: SystemLiveScope | None = None,
 ):
-    """Keep a live preview open, optionally with other readings. Administrators only."""
+    """Keep a live preview open, optionally with other readings.
+
+    Needs `manage_sources`.
+    """
     return await system_request(
         "PUT",
         authorization,
@@ -201,6 +204,6 @@ async def stop_live_view(
     lease_id: str = Path(pattern=r"^[0-9a-f]{32}$"),
     authorization: str = Depends(member_authorization),
 ):
-    """End a live preview. Administrators only."""
+    """End a live preview. Needs `manage_sources`."""
     await system_request("DELETE", authorization, f"/live/leases/{lease_id}")
     return Response(status_code=204)

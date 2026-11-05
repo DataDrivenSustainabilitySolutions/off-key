@@ -1,6 +1,7 @@
 """Authenticated access to domain-neutral saved system configuration."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import User
 from off_key_core.schemas.collection_rules import SystemCollectionRuleChange
 from off_key_core.schemas.storage import StorageStatus
@@ -13,17 +14,17 @@ from off_key_core.schemas.system_collection import (
     SystemCollectionChange,
     SystemCollectionScope,
 )
-from off_key_core.utils.enum import RoleEnum
 
 from ...provider import get_broker_check, get_system_ingress, get_system_service
 from ...services.catalogue.broker_check import BrokerCheck
 from ...services.catalogue.system import SystemService
 from ...services.catalogue.system_ingress import SystemIngress
-from ..collection_auth import current_member, require_admin
+from ..collection_auth import current_member, require_permission
 from ..errors import DomainErrorRoute
 from .system_live import router as live_router
 
 router = APIRouter(prefix="/system", tags=["system"], route_class=DomainErrorRoute)
+manage_sources = require_permission(Permission.manage_sources)
 router.include_router(live_router)
 
 
@@ -55,7 +56,7 @@ async def collection_status(
 @router.post("/collection/preview")
 async def preview_collection(
     change: SystemCollectionChange | SystemCollectionRuleChange,
-    user: User = Depends(require_admin),
+    user: User = Depends(manage_sources),
     system: SystemService = Depends(get_system_service),
 ):
     return await system.preview_collection(change)
@@ -64,7 +65,7 @@ async def preview_collection(
 @router.put("/collection")
 async def apply_collection(
     change: SystemCollectionChange | SystemCollectionRuleChange,
-    user: User = Depends(require_admin),
+    user: User = Depends(manage_sources),
     system: SystemService = Depends(get_system_service),
 ):
     snapshot = await system.apply_collection(change, actor=user.email)
@@ -74,7 +75,7 @@ async def apply_collection(
 @router.post("/connections/check", response_model=SystemConnectionCheck)
 async def check_connection(
     scope: SystemConnectionCheckScope,
-    user: User = Depends(require_admin),
+    user: User = Depends(manage_sources),
     system: SystemService = Depends(get_system_service),
     checker: BrokerCheck = Depends(get_broker_check),
 ):
@@ -96,7 +97,7 @@ async def check_connection(
 @router.post("/connections/reconnect")
 async def reconnect_connection(
     scope: SystemConnectionCheckScope,
-    user: User = Depends(require_admin),
+    user: User = Depends(manage_sources),
     ingress: SystemIngress = Depends(get_system_ingress),
 ):
     """Retry a recorded broker now instead of waiting for its backoff."""
@@ -111,14 +112,15 @@ async def get_system(
     system: SystemService = Depends(get_system_service),
 ):
     snapshot = await system.read()
-    return {**snapshot.model_dump(mode="json"), "can_edit": user.role == RoleEnum.admin}
+    can_edit = Permission.manage_sources in user.permissions
+    return {**snapshot.model_dump(mode="json"), "can_edit": can_edit}
 
 
 @router.put("")
 async def save_system(
     change: SystemChange,
     request: Request,
-    user: User = Depends(require_admin),
+    user: User = Depends(manage_sources),
     system: SystemService = Depends(get_system_service),
 ):
     snapshot = await system.save(change, actor=user.email)

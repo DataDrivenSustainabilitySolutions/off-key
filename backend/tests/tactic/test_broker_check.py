@@ -9,10 +9,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway
+from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemConnection, SystemConnectionCheckScope
-from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
@@ -140,7 +140,7 @@ async def test_blocked_definitions_never_open_a_socket():
     factory.assert_not_called()
 
 
-def _api(monkeypatch, *, role=RoleEnum.user):
+def _api(monkeypatch, *, role=MEMBER_ROLE):
     app = FastAPI()
     app.include_router(system_api.router)
     checker = BrokerCheck(SystemLiveSettings(SYSTEM_LIVE_ALLOWED_HOSTS=["broker"]))
@@ -167,7 +167,7 @@ def test_only_administrators_check_saved_brokers(monkeypatch):
     assert response.status_code == 403
     checker.check.assert_not_awaited()
 
-    app, checker = _api(monkeypatch, role=RoleEnum.admin)
+    app, checker = _api(monkeypatch, role=ADMIN_ROLE)
     with TestClient(app) as client:
         unknown = client.post(
             "/system/connections/check", json={"connection_id": "gone"}
@@ -214,7 +214,7 @@ def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
     assert denied.status_code == 403
     ingress.reconnect.assert_not_awaited()
 
-    app, _ = _api(monkeypatch, role=RoleEnum.admin)
+    app, _ = _api(monkeypatch, role=ADMIN_ROLE)
     app.state.system_ingress = ingress
     with TestClient(app) as client:
         idle = client.post(

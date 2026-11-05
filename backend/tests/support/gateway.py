@@ -6,16 +6,19 @@ from fastapi import FastAPI
 from off_key_api_gateway.api import access
 from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
 from off_key_api_gateway.api.v1 import routes
+from off_key_core.auth.permissions import role_permissions
 from off_key_core.schemas.members import MemberProfile
 from slowapi.errors import RateLimitExceeded
 
 
 def member_profile(role: str = "user", **fields) -> MemberProfile:
+    """A signed-in member; built-in roles carry their permissions."""
     return MemberProfile(
         **{
             "id": 17,
             "email": f"{role}@example.com",
             "role": role,
+            "permissions": role_permissions(role, ()),
             "is_active": True,
             "is_verified": True,
             "created_at": datetime.now(UTC),

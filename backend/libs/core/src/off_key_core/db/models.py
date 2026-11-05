@@ -8,7 +8,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -19,10 +18,15 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..utils.enum import RoleEnum
+from ..auth.permissions import (
+    MEMBER_ROLE,
+    ROLE_ID_PATTERN,
+    Permission,
+    role_permissions,
+)
 from .base import Base
 from .pipelines import (
     MonitoringPipeline as MonitoringPipeline,
@@ -73,14 +77,48 @@ class User(Base):
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    role: Mapped[RoleEnum] = mapped_column(
-        Enum(RoleEnum), default=RoleEnum.user, nullable=False
+    # The role's id; migration 020 turned the former user/admin enum into it.
+    role: Mapped[str] = mapped_column(
+        Text, ForeignKey("member_roles.id"), default=MEMBER_ROLE, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), nullable=False
+    )
+    # Loaded with every member, because every protected request checks it.
+    member_role: Mapped["MemberRole"] = relationship(lazy="selectin")
+
+    @property
+    def permissions(self) -> list[Permission]:
+        granted = self.member_role.permissions if self.member_role else ()
+        return role_permissions(self.role, granted)
+
+
+class MemberRole(Base):
+    """A named set of permissions. Each member holds exactly one role."""
+
+    __tablename__ = "member_roles"
+    __table_args__ = (
+        CheckConstraint(f"id ~ '{ROLE_ID_PATTERN}'", name="ck_member_role_id"),
+        Index("uq_member_roles_name_lower", text("lower(name)"), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    # Permission values; 'admin' holds every permission whatever is stored.
+    permissions: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 

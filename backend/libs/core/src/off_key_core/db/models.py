@@ -77,7 +77,7 @@ class User(Base):
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # The role's id; migration 020 turned the former user/admin enum into it.
+    # The role's id; migration 021 turned the former user/admin enum into it.
     role: Mapped[str] = mapped_column(
         Text, ForeignKey("member_roles.id"), default=MEMBER_ROLE, nullable=False
     )

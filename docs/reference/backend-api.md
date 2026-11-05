@@ -30,9 +30,9 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
 | Chargers and telemetry | Send the login bearer token | Active, verified membership required |
-| Monitors and anomalies | Send the login bearer token | Members read; administrators write |
+| Monitors and anomalies | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
-| Members | Send the login bearer token | Profile for self; administrators manage membership |
+| Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
 | Health and readiness | No token | Public operational probes in local deployments |
 
 !!! important
@@ -72,12 +72,25 @@ Content-Type: application/json
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
 | `GET` | `/members/me` | Current profile | Active member |
-| `GET` | `/members` | List organization members | Administrator |
-| `POST` | `/members/invitations` | Invite or resend; body `email`, `role` | Administrator |
-| `PUT` | `/members/{user_id}` | Set `role` and `is_active` | Administrator |
-| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member and personal favorites/sessions; 204 on success, 409 if active, 404 if missing | Administrator |
+| `GET` | `/members` | List organization members | `manage_members` |
+| `POST` | `/members/invitations` | Invite or resend; body `email`, `role` | `manage_members` |
+| `PUT` | `/members/{user_id}` | Set `role` and `is_active` | `manage_members` |
+| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member and personal favorites/sessions; 204 on success, 409 if active, 404 if missing | `manage_members` |
+| `GET` | `/permissions` | Every permission a role can grant, with a description | Active member |
+| `GET` | `/roles` | Roles with their permissions and how many members hold each | Active member |
+| `POST` | `/roles` | Create a role; body `name`, `permissions`; the id is derived from the name | `manage_members` |
+| `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions | `manage_members` |
+| `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 | `manage_members` |
 
-Roles are `admin` and `user` (member). Account and token lifecycle details are in
+Every active member can read everything. A role grants the write permissions:
+`manage_sources` (catalogue, collection and live preview), `manage_monitors`
+(monitors and pipelines), `manage_alarms` (creating and deleting alarms) and
+`manage_members` (members and roles). `GET /members/me` returns the member's
+`role` and the `permissions` it grants. Two roles are built in: `admin`
+(Administrator) always holds every permission and cannot be changed, and `user`
+(Member) is what an invitation gives unless it names another role. Neither can be
+deleted. A change that would leave no active member able to manage members is
+refused with 409. Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).
 
 ### Chargers and telemetry
@@ -107,19 +120,19 @@ Authorization: Bearer <token>
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
 | `GET` | `/system` | Saved generic document, revision, bindings and runtime | Member |
-| `PUT` | `/system` | Save structural changes at `expected_revision` | Administrator |
+| `PUT` | `/system` | Save structural changes at `expected_revision` | `manage_sources` |
 | `GET` | `/system/revisions` | Saved catalogue revisions | Member |
 | `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
-| `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | Administrator |
-| `PUT` | `/system/collection` | Apply confirmed opt-in policies | Administrator |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | Administrator |
-| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | Administrator |
+| `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | `manage_sources` |
+| `PUT` | `/system/collection` | Apply confirmed opt-in policies | `manage_sources` |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | `manage_sources` |
 | `GET` | `/system/health` | Collection `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
 | `GET` | `/system/storage` | Storage size and managed retention status | Member |
 | `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
-| `POST` | `/system/live/leases` | Start a bounded preview lease | Administrator |
-| `PUT` | `/system/live/leases/{lease_id}` | Renew a preview lease | Administrator |
-| `DELETE` | `/system/live/leases/{lease_id}` | Stop a preview lease; 204 | Administrator |
+| `POST` | `/system/live/leases` | Start a bounded preview lease | `manage_sources` |
+| `PUT` | `/system/live/leases/{lease_id}` | Renew a preview lease | `manage_sources` |
+| `DELETE` | `/system/live/leases/{lease_id}` | Stop a preview lease; 204 | `manage_sources` |
 
 Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
@@ -134,7 +147,7 @@ a title, tone and explanation. The web app shows that verdict unchanged; it only
 adds "Status not refreshing" when the endpoint itself stops answering.
 
 The `/system/live` session API starts explicitly bounded in-memory previews.
-Acquiring a lease requires an administrator; members can inspect an existing
+Acquiring a lease requires `manage_sources`; members can inspect an existing
 session. Preview does not enable persistent collection. Accepted detector topics
 use only `telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete
 MQTT paths and JSON Pointer payload bindings.
@@ -148,7 +161,7 @@ MQTT paths and JSON Pointer payload bindings.
 | `POST` | `/monitors/start` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
 | `DELETE` | `/monitors/stop` | Stop/remove a workload by container | Exactly one of `container_name`, `container_id` |
 | `DELETE` | `/monitors/{service_id}` | Delete a service record and backing workload | Path: `service_id` |
-| `PATCH` | `/monitors/{service_id}/label` | Rename a service; administrator only | Body: `display_name` |
+| `PATCH` | `/monitors/{service_id}/label` | Rename a service; needs `manage_monitors` | Body: `display_name` |
 | `GET` | `/monitors/models` | Discover available models | Optional `strategy` |
 | `GET` | `/monitors/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
 | `GET` | `/monitors/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
@@ -189,8 +202,8 @@ Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
 | Family | Paths | Purpose |
 | --- | --- | --- |
 | Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
-| Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; administrators create, rename, archive and save with `expected_version` |
-| Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | Administrators infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
+| Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; `manage_monitors` creates, renames, archives and saves with `expected_version` |
+| Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | With `manage_monitors`, infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
 | Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}`, `/pipelines/{id}/revisions/{revision_id}/metadata` | Publish and inspect immutable executable revisions |
 | Activations | `/pipelines/apply`, `/pipeline-activations`, `/pipeline-activations/{id}` | Apply a definition directly (HTTP 202), idempotent start/replacement, progress and cancellation |
 | Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-timeline`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution, retained history and the run's lifecycle events; separately versioned layout |
@@ -233,7 +246,7 @@ catalogue, so a favourite stays until the member removes it. A member keeps at
 most 256; adding another answers 409.
 
 `POST /anomalies/query` is a read, so members may call it although other
-`POST` routes under `/anomalies` need an administrator. An alarm is in the
+`POST` routes under `/anomalies` need `manage_alarms`. An alarm is in the
 `stream_ids` scope when one of its readings is: its `sensor_set`, otherwise its
 `telemetry_type`. A multivariate alarm recorded without a sensor set is only in
 scope when every reading of its entity is. `summary` and `readings` cover every
@@ -248,8 +261,8 @@ it can feed a reading picker. Pages are newest first; pass `next` as `before`.
 
 ## TACTIC API — `/api/v1`
 
-All business routes require `X-Off-Key-Service-Key`; collection and membership
-administration additionally validate the end-user bearer token. TACTIC is private.
+All business routes require `X-Off-Key-Service-Key`; collection, membership and
+role routes additionally validate the end-user bearer token and its permissions. TACTIC is private.
 Health and readiness remain available without this service credential.
 
 ### Data adapter

@@ -47,7 +47,8 @@ export async function installDetailsMockApi(page: Page, {
     switch (url.pathname.replace(/^\/api(?=\/v1\/)/u, "")) {
       case "/v1/members/me":
         return fulfillJson(route, {
-          id: 1, email: "charts@example.test", role: "admin", is_active: true,
+          id: 1, email: "charts@example.test", role: "admin",
+          permissions: ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"], is_active: true,
           is_verified: true, created_at: "2026-07-28T08:00:00.000Z",
         });
       case "/v1/favorites":

@@ -255,7 +255,7 @@ export function useSystemDocument({
       }
       if (!isAuthenticated || !current || !permission.current) {
         setError(
-          "Sign in as an administrator and load the saved system before making changes.",
+          "Changing the catalogue needs the Manage sources permission and the saved system.",
         );
         return false;
       }

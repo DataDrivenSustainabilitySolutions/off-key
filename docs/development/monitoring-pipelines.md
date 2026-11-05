@@ -93,7 +93,7 @@ does not affect the existing service until Apply. History remains immutable.
 Older library, revision and in-flight activation links remain supported.
 
 Unsaved graphs infer feature metadata with `POST /v1/monitors/pipelines/validate`,
-using the same typed, bounded compiler report, administrator authorization and
+using the same typed, bounded compiler report, `manage_monitors` authorization and
 gateway compilation rate budget as saved templates. This endpoint creates no rows.
 Creation and templates share the same graph controller and account-scoped setup
 session for bounded history, component insertion, arrangement and validation.

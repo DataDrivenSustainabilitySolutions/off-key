@@ -5,9 +5,18 @@ MQTT sources, telemetry, monitors, and anomalies. Favorites belong to the signed
 member. Use separate installations and separate credentials for separate
 organizations; this release does not provide tenant isolation inside one database.
 
-Administrators manage sources, monitors, anomalies, and members. Members can read
-the shared workspace and maintain their own favorites. **Account → Your access**
-shows your email and role. **Account → Members** supports email invitations,
+Every active member can read the shared workspace and maintain their own
+favorites. A role decides what a member can change. It bundles permissions:
+**Manage sources** (catalogue, brokers, recording and live views), **Manage
+monitors** (pipelines and monitors), **Manage alarms** (recording and deleting
+alarms) and **Manage members** (members and roles). Two roles are built in:
+Administrator always holds every permission, including ones a later release
+adds, and cannot be changed; Member holds none until it is edited. **Account →
+Roles** creates, edits and deletes further roles; a role cannot be deleted while
+a member holds it. Members holding a role get a change on their next request.
+Whoever can manage members can give any role, including their own, so grant it
+deliberately. **Account → Signed in** shows your email, role and what it lets
+you change. **Account → Members** supports email invitations with a role,
 resending pending invitations, role changes, and disabling or enabling accounts.
 Disabling preserves the account and its data and revokes access immediately.
 Once disabled, a member can be permanently removed after confirmation. Removal
@@ -15,7 +24,7 @@ deletes the account, personal favorites and remembered sessions; shared catalogu
 data, telemetry, monitors, reports and audit attribution remain. A removed member
 needs a new invitation to return. Previous sessions and account links stay invalid
 after reinvitation. The server rejects removal of active accounts and prevents
-disabling the last active, verified administrator. Concurrent access changes and
+any change that would leave no active, verified member who can manage members. Concurrent access changes and
 removal are serialized within the same membership transaction lock.
 
 ## Installation and upgrade

@@ -86,7 +86,7 @@ def bootstrap_schema(connection: Connection) -> None:
     for table in Base.metadata.sorted_tables:
         for index in table.indexes:
             index.create(connection, checkfirst=True)
-    # Members always need these two roles; migration 020 adds them to older
+    # Members always need these two roles; migration 021 adds them to older
     # databases and a fresh one gets them here.
     for role, name in BUILT_IN_ROLES.items():
         connection.execute(

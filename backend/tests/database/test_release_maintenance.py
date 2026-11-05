@@ -161,9 +161,9 @@ def test_member_roles_migration_keeps_every_members_access(disposable_database):
                     id=id, email=f"{role}@example.test", hashed_password="h", role=role
                 )
             )
-        rewind_ledger(connection, "020_member_roles.sql")
+        rewind_ledger(connection, "021_member_roles.sql")
     with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == ["020_member_roles.sql"]
+        assert apply_migrations(connection)["applied"] == ["021_member_roles.sql"]
         assert connection.execute(
             text("SELECT id, name, permissions FROM member_roles ORDER BY id")
         ).all() == [("admin", "Administrator", []), ("user", "Member", [])]

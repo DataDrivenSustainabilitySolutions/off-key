@@ -116,7 +116,7 @@ def pending_columns(
         } - columns
     retired_columns = dict(RETIRED_COLUMNS)
     if "users" in existing and "member_roles" not in existing:
-        # Migration 020 turns the former role enum into a member_roles
+        # Migration 021 turns the former role enum into a member_roles
         # reference, so neither shape of the column is checked before it runs.
         excluded_columns["users"] = {"role"}
         retired_columns["users"] = {"role"}

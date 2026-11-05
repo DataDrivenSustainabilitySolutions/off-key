@@ -16,7 +16,12 @@ import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemSnapshot } from "@/types/system";
 import { mqttConnection } from "./support/fixtures/system";
 
-const auth = vi.hoisted(() => ({ userId: 1 as number | null, isAuthenticated: true, isAdmin: false }));
+const everything = ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"];
+const auth = vi.hoisted(() => {
+  const auth = { userId: 1 as number | null, isAuthenticated: true, permissions: [] as string[],
+    can: (permission: string) => auth.permissions.includes(permission) };
+  return auth;
+});
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/features/charts/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
@@ -91,7 +96,7 @@ beforeAll(async () => {
 const emptyReport: AnomalyPage = { items: [], next: null, summary: { count: 0, entities: 0, latest: null }, readings: [], unknown_stream_ids: [] };
 
 beforeEach(() => {
-  auth.userId = 1; auth.isAuthenticated = true; auth.isAdmin = false;
+  auth.userId = 1; auth.isAuthenticated = true; auth.permissions = everything;
   clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
   vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
@@ -154,7 +159,10 @@ describe("service-centred monitoring workspace", () => {
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
       : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: /^Create$/ }));
+    // The role shows Create at once; it is enabled once the catalogue and monitors have loaded.
+    const create = await screen.findByRole("button", { name: /^Create$/ });
+    await waitFor(() => expect((create as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(create);
     const picker = await screen.findByRole("button", { name: "Choose monitoring inputs" });
     fireEvent.click(picker);
     const choices = within(await screen.findByRole("dialog", { name: "Choose monitoring inputs" }));
@@ -593,6 +601,7 @@ describe("hierarchical explorer workspace", () => {
   });
 
   it("lets read-only users inspect signals without structural controls", async () => {
+    auth.permissions = [];
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
@@ -600,7 +609,17 @@ describe("hierarchical explorer workspace", () => {
     expect(within(preview).queryByRole("button", { name: "Edit structure" })).toBeNull();
     expect(within(preview).queryByText("Personal groups")).toBeNull();
     expect((screen.getByRole("button", { name: "View live" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
     expect(apiUtils.put).not.toHaveBeenCalled();
+  });
+
+  it("offers monitor creation to a role that manages monitors but not sources", async () => {
+    auth.permissions = ["manage_monitors"];
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    mount();
+    const preview = await selectTemperature();
+    expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Create" })).toBeTruthy();
   });
 
   it("uses a mobile drawer, preserves its hierarchy when selecting a topic, and restores trigger focus", async () => {
@@ -771,8 +790,17 @@ describe("reporting", () => {
     expect(screen.queryByRole("button", { name: /Load older events/ })).toBeNull();
   });
 
+  it("leaves alarm deletion to roles that manage alarms", async () => {
+    auth.permissions = ["manage_monitors"];
+    withReports();
+    mount("/anomalies");
+    await screen.findByText("Temperature spike");
+    const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
+    fireEvent.keyDown(menu!, { key: "Enter" });
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID"]);
+  });
+
   it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {
-    auth.isAdmin = true;
     withReports();
     vi.mocked(apiUtils.delete).mockResolvedValue(undefined);
     mount("/anomalies");

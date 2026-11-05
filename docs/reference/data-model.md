@@ -18,6 +18,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | Entity | Primary key | Purpose |
 | --- | --- | --- |
 | `users` | `id` | Identity, credentials, role, and verification state |
+| `member_roles` | `id` | Named roles and the permissions each one grants |
 | `chargers` | `charger_id` | Charger inventory and MQTT/connection metadata |
 | `telemetry` | `(charger_id, timestamp, type)` | Observed time-series values by charger and sensor type |
 | `services` | `id` | Monitoring workload, topics, saved launch configuration, lifecycle, and operational stage |
@@ -55,6 +56,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 
 ## Relationship highlights
 
+- `users.role → member_roles.id`. `admin` (Administrator) and `user` (Member) are built in; `admin` always holds every permission, and a role cannot be deleted while a member holds it.
 - `member_favorites.user_id → users.id`, removed with the member. `item_id` is a `charger_id`, a catalogue stream id or a `service_id` by `kind`, and is not a foreign key.
 - `mqtt_topics.service_id → services.id`
 - `anomaly_identity.(charger_id, timestamp, telemetry_type, service_id) → anomalies` composite key

@@ -29,7 +29,7 @@ async def role_request(method, path, authorization, body=None):
 
 @router.get("/permissions", response_model=list[PermissionInfo])
 async def list_permissions():
-    """Every permission a role can grant. Every member can read everything."""
+    """Every permission a role can grant. Reads never need one."""
     return [
         PermissionInfo(id=permission, description=PERMISSION_DESCRIPTIONS[permission])
         for permission in Permission

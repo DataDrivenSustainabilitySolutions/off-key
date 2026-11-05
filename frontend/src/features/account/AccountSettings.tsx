@@ -8,16 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfirm } from "@/hooks/use-confirm";
 import { RemoveMemberDialog } from "@/features/account/RemoveMemberDialog";
+import { RoleSettings } from "@/features/account/RoleSettings";
+import { permissionSummary } from "@/features/account/permissions";
 import { getErrorMessage } from "@/lib/errors";
 import { memberInitials } from "@/lib/utils";
-import { getMembers, inviteMember, updateMember, type Member } from "@/lib/member-api";
+import { getMembers, getRoles, inviteMember, updateMember, type Member, type Role } from "@/lib/member-api";
 
 const selectClass = "app-settings-select";
 
 export default function AccountSettings() {
-  const { member, isAdmin, logout } = useAuth();
+  const { member, can, logout, retryAuthentication } = useAuth();
+  const manageMembers = can("manage_members");
   const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Member["role"]>("user");
   const [inviting, setInviting] = useState(false);
@@ -28,18 +32,39 @@ export default function AccountSettings() {
   const [removalTarget, setRemovalTarget] = useState<Member | null>(null);
   const removeTrigger = useRef<HTMLButtonElement | null>(null);
   const memberList = useRef<HTMLUListElement>(null);
-  const reload = async () => setMembers(await getMembers());
+  const reload = async () => {
+    const [members, roles] = await Promise.all([getMembers(), getRoles()]);
+    setMembers(members);
+    setRoles(roles);
+  };
+  const roleName = (id: string) => roles.find((entry) => entry.id === id)?.name ?? id;
+  // Keep a member's current role selectable before the role list arrives.
+  const roleOptions = (current: string) => [
+    ...roles.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>),
+    ...roles.some((entry) => entry.id === current) ? [] : [<option key={current} value={current}>{roleName(current)}</option>],
+  ];
 
   useEffect(() => {
-    if (!isAdmin) return;
     let active = true;
-    getMembers().then((members) => {
+    // Every member can read the roles; only member managers list the members.
+    getRoles().then((roles) => {
+      if (active) setRoles(roles);
+    }).catch((error) => {
+      if (active && manageMembers) setError(getErrorMessage(error));
+    });
+    if (manageMembers) getMembers().then((members) => {
       if (active) setMembers(members);
     }).catch((error) => {
       if (active) setError(getErrorMessage(error));
     });
     return () => { active = false; };
-  }, [isAdmin]);
+  }, [manageMembers]);
+
+  const rolesChanged = async (role?: Role) => {
+    await reload();
+    // A change to your own role changes what you may do now.
+    if (role?.id === member?.role) retryAuthentication();
+  };
 
   const invite = async (email: string, role: Member["role"]) => {
     setBusy(true);
@@ -77,16 +102,16 @@ export default function AccountSettings() {
 
   return (
     <>
-      <SettingsGroup title="Signed in" footer={isAdmin ? undefined : "Members can view organization data. An administrator manages access."}>
+      <SettingsGroup title="Signed in" footer={member && `Your role: view organization data${member.permissions.length ? `, ${permissionSummary(member.permissions).toLowerCase()}` : " only"}.`}>
         <SettingsRow leading={<span className="app-avatar app-settings-avatar" aria-hidden="true">{memberInitials(member?.email)}</span>}
-          label={<span className="break-all">{member?.email ?? "…"}</span>} detail={isAdmin ? "Administrator" : "Member"}>
+          label={<span className="break-all">{member?.email ?? "…"}</span>} detail={member ? roleName(member.role) : undefined}>
           <Button variant="outline" size="sm" onClick={() => { logout(); navigate("/login", { replace: true }); }}>
             <LogOut aria-hidden="true" />Log out
           </Button>
         </SettingsRow>
       </SettingsGroup>
-      {isAdmin && (
-        <SettingsGroup title="Members" help="Members can view organization data. Administrators also manage member access, collection, and monitoring. Keep at least one active administrator. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept."
+      {manageMembers && (
+        <SettingsGroup title="Members" help="Members can view organization data; their role decides what they can change. Keep at least one active member who can manage members. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept."
           actions={!inviting && <Button variant="outline" size="sm" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}
           footer={<>
             {error && <p role="alert" className="text-destructive">{error}</p>}
@@ -99,9 +124,8 @@ export default function AccountSettings() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="member-role">Role</Label>
-              <select id="member-role" className={selectClass} value={role} onChange={(event) => setRole(event.target.value as Member["role"])}>
-                <option value="user">Member</option>
-                <option value="admin">Administrator</option>
+              <select id="member-role" className={selectClass} value={role} onChange={(event) => setRole(event.target.value)}>
+                {roleOptions(role)}
               </select>
             </div>
             <div className="flex gap-2">
@@ -116,9 +140,8 @@ export default function AccountSettings() {
                   leading={<span className="app-avatar app-settings-avatar is-small" aria-hidden="true">{memberInitials(target.email)}</span>}
                   label={<span className="break-all">{target.email}</span>}
                   detail={<>{!target.is_active ? "Disabled" : target.is_verified ? "Active" : "Invitation pending"}{target.id === member?.id && " · You"}</>}>
-                  <select aria-label={`Role for ${target.email}`} className={selectClass} value={target.role} disabled={busy || target.id === member?.id} onChange={(event) => void change(target, { role: event.target.value as Member["role"] })}>
-                    <option value="user">Member</option>
-                    <option value="admin">Administrator</option>
+                  <select aria-label={`Role for ${target.email}`} className={selectClass} value={target.role} disabled={busy || target.id === member?.id} onChange={(event) => void change(target, { role: event.target.value })}>
+                    {roleOptions(target.role)}
                   </select>
                   {!target.is_verified && target.is_active && <Button variant="outline" size="sm" disabled={busy} onClick={() => void invite(target.email, target.role)}>Resend invitation</Button>}
                   <Button variant="outline" size="sm" disabled={busy || target.id === member?.id} onClick={async () => {
@@ -138,11 +161,13 @@ export default function AccountSettings() {
           </ul>
         </SettingsGroup>
       )}
+      {manageMembers && <RoleSettings roles={roles} onChanged={rolesChanged} />}
       {confirmation}
       {removalTarget && <RemoveMemberDialog member={removalTarget}
         onClose={() => setRemovalTarget(null)}
         onRemoved={() => {
           setMembers((current) => current.filter((entry) => entry.id !== removalTarget.id));
+          void getRoles().then(setRoles).catch(() => {});
           setNotice(`${removalTarget.email} has been removed.`);
           setRemovalTarget(null);
         }}

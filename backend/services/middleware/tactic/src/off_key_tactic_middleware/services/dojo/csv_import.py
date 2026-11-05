@@ -74,7 +74,7 @@ class _Layout:
     value_index: int | None = None
 
     def cells(self, row: list[str]) -> list[tuple[str, str]]:
-        if self.series_index is None:
+        if self.series_index is None or self.value_index is None:
             return [(name, _cell(row, index)) for name, index in self.value_columns]
         return [(_cell(row, self.series_index), _cell(row, self.value_index))]
 

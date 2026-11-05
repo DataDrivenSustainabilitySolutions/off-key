@@ -8,6 +8,7 @@ do not take the collection lock: a long import must not block catalogue edits.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 from uuid import uuid4
 
 from asyncpg.exceptions import UniqueViolationError
@@ -22,6 +23,7 @@ from off_key_core.schemas.dojo import (
     DatasetFromHistory,
     DatasetListPage,
     DatasetListQuery,
+    DatasetOrigin,
     DatasetPoint,
     DatasetPointsPage,
     DatasetPointsQuery,
@@ -376,8 +378,12 @@ class DojoDatasets:
         )
         filled = [item for item in series if item.point_count]
         dataset.point_count = sum(item.point_count for item in filled)
-        dataset.start_at = min(item.start_at for item in filled)
-        dataset.end_at = max(item.end_at for item in filled)
+        dataset.start_at = min(
+            (item.start_at for item in filled if item.start_at), default=None
+        )
+        dataset.end_at = max(
+            (item.end_at for item in filled if item.end_at), default=None
+        )
         await self.session.commit()
         return await self.get(dataset.id)
 
@@ -402,7 +408,7 @@ class DojoDatasets:
             id=row.id,
             name=row.name,
             description=row.description,
-            origin=row.origin,
+            origin=cast(DatasetOrigin, row.origin),
             point_count=row.point_count,
             series_count=series_count,
             start_at=row.start_at,

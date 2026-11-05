@@ -605,13 +605,13 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`8a90a9e3df3bb2095f5fddf7c7782310e38855e9`, the detector inputs merge that added
-migration 017 (`detector_inputs`). It shares the current migration ledger, the
+`458439135cafb57f8d89d063711cb77d43ffad48`, the Dojo datasets change that added
+migration 019 (`dojo_datasets`). It shares the current migration ledger, the
 published ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery
 metadata, so an already-open new browser keeps its controls while the backend
-rolls back. The previous reference, `69f2148`, added migration 016; it cannot be
-a reference any more, because releases before migration 017 refuse a database
-that has applied it. Rolling back past migration 017 means restoring a verified
+rolls back. The previous reference, `8a90a9e`, added migration 017; it cannot be
+a reference any more, because releases before migration 019 refuse a database
+that has applied it. Rolling back past migration 019 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

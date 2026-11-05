@@ -71,6 +71,11 @@ async function selectTemperature() {
   fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
   return screen.findByRole("region", { name: "Reading preview" });
 }
+/** Catalogue settings open from the application menu. */
+async function openCatalogueSettings() {
+  fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Catalogue" }));
+}
 function fileFor(document: SystemDocument) {
   const file = new File([], "system.json", { type: "application/json" });
   Object.defineProperty(file, "text", { value: async () => JSON.stringify(document) });
@@ -192,7 +197,6 @@ describe("service-centred monitoring workspace", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(sidebar.getByRole("button", { name: "temperature, preview" })).toBeTruthy();
     expect(sidebar.queryByRole("button", { name: "humidity, preview" })).toBeNull();
-    expect(sidebar.getByText("1 online reading")).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(location);
     await waitFor(() => expect(loadExplorerPreferences(1).onlineOnly).toBe(true));
     const search = sidebar.getByRole("searchbox", { name: "Search catalogue" });
@@ -456,7 +460,7 @@ describe("hierarchical explorer workspace", () => {
     }
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
-    for (const label of ["Account", "Preferences", "System status"]) {
+    for (const label of ["Account", "Preferences", "Catalogue", "System status"]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-haspopup")).toBe("dialog");
     }
     expect(screen.queryByRole("menuitem", { name: "Monitoring" })).toBeNull();
@@ -524,7 +528,7 @@ describe("hierarchical explorer workspace", () => {
     await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).not.toBe("personal:watch"));
     expect(apiUtils.put).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(dialog).queryByRole("button", { name: "Export workspace" })).toBeNull();
     const contents = JSON.stringify(fixture());
@@ -557,11 +561,11 @@ describe("hierarchical explorer workspace", () => {
 
   it("shows an honest signed-out state and does not fetch or enable catalogue changes", async () => {
     auth.userId = null; auth.isAuthenticated = false;
-    mount();
+    // Signed out, the application menu only offers sign-in; the catalogue section still opens by link.
+    mount("/?settings=catalogue");
     expect(screen.getByText(/Sign in to load the catalogue/)).toBeTruthy();
     expect(apiUtils.get).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Add broker" })).toBeTruthy());
     expect((within(dialog).getByRole("button", { name: "Add broker" }) as HTMLButtonElement).disabled).toBe(true);
@@ -644,7 +648,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("imports a reviewed definition with its selected revision and resets navigation after acknowledgement", async () => {
     mount(); await enterReadings();
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     const imported = { ...fixture(), label: "Imported building" };
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor(imported)] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
@@ -654,14 +658,14 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Imported building" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     const settings = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(settings).getByText("Imported building")).toBeTruthy();
   });
 
   it("keeps a conflicted import unsaved and rejects retry against its obsolete baseline", async () => {
     mount(); await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Catalogue settings" }));
+    await openCatalogueSettings();
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor({ ...fixture(), label: "My draft" })] } });
     vi.mocked(apiUtils.put).mockRejectedValueOnce(new ApiRequestError("Conflict", 409));
     vi.mocked(apiUtils.get).mockResolvedValue(snapshot({ ...fixture(), label: "Another editor's system" }, 8));

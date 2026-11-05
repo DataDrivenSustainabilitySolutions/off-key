@@ -42,7 +42,6 @@
 .app-primary-nav .app-workspace-link[aria-current="page"]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; background: hsl(var(--primary)); }
 .app-primary-nav .app-workspace-link:hover { background: hsl(var(--accent)); }
 .app-primary-nav .app-workspace-link:focus-visible { outline-offset: -4px; border-radius: 6px; }
-.workspace-catalogue-label { flex: 1; padding: 7px 9px; font-weight: 550; font-size: var(--text-caption); color: var(--ex-muted); }
 .workspace-source-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; font-size: var(--text-caption); }
 .workspace-source-scope > small { margin-right: -6px; color: var(--ex-muted); font-size: var(--text-caption); }
 .workspace-source-scope > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-weight: 500; }

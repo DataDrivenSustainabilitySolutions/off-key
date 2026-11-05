@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import type { SystemSnapshot } from "../src/types/system";
 import { addTestCharger, removeTestCharger, waitForCollectionReady } from "./helpers/collection";
-import { setAppearance } from "./helpers/appearance";
+import { openCatalogueSettings, setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
@@ -54,8 +54,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
-    await page.getByRole("button", { name: "Catalogue settings", exact: true }).click();
+    await openCatalogueSettings(page);
     await expect(page.getByRole("button", { name: "Import JSON", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export JSON", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();

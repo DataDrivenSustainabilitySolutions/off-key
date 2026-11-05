@@ -7,6 +7,13 @@ export async function openPreferences(page: Page) {
   return page.getByRole("dialog", { name: "Settings", exact: true });
 }
 
+/** Opens the catalogue section from the application menu and returns the settings overlay. */
+export async function openCatalogueSettings(page: Page) {
+  await page.getByRole("button", { name: "Application menu", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Catalogue", exact: true }).click();
+  return page.getByRole("dialog", { name: "Settings", exact: true });
+}
+
 export async function setAppearance(page: Page, theme: "Light" | "Dark" | "Follow system") {
   const settings = await openPreferences(page);
   await settings.getByRole("radio", { name: theme, exact: true }).check();

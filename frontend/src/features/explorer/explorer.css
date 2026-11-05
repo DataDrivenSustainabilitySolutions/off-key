@@ -29,8 +29,8 @@
 .ex-action-menu-content { min-width: 200px; z-index: 60; }
 .app-menu-item[data-variant="destructive"] { color: hsl(var(--destructive)); }
 .ex-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; background: var(--ex-side); border-right: 1px solid var(--ex-line); }
-.ex-sidebar-top { display: flex; align-items: flex-start; gap: 6px; flex-shrink: 0; margin: 12px 14px 16px; }
-.ex-search { margin: 0 18px 21px; min-width: 0; padding: 7px 9px; display: flex; align-items: center; gap: 8px; background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 7px; color: var(--ex-muted); }
+/* The right margin keeps the search clear of the catalogue's edge toggle. */
+.ex-search { margin: 18px 30px 21px 18px; min-width: 0; padding: 7px 9px; display: flex; align-items: center; gap: 8px; background: var(--ex-bg); border: 1px solid var(--ex-line); border-radius: 7px; color: var(--ex-muted); }
 .ex-search input { padding: 0; min-width: 0; width: 100%; font: inherit; color: var(--ex-ink); background: transparent; border: 0; outline: 0; }
 .ex-search:focus-within { border-color: var(--ex-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--ex-accent) 12%,transparent); }
 .ex-search input:focus-visible { outline: none; }
@@ -77,9 +77,6 @@
 .ex-list-empty > p { margin: 0; }
 .ex-list-empty .ex-empty-action { display: flex; align-items: center; min-height: 44px; width: fit-content; margin-top: 2px; padding: 0; color: var(--ex-ink); text-align: left; text-decoration: underline; text-underline-offset: 3px; }
 .ex-search-hint { padding: 8px 20px; margin: 0; color: var(--ex-muted); font-size: var(--text-caption); }
-.ex-sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--ex-line); padding: 13px 21px; }
-.ex-sidebar-footer button { display: flex; align-items: center; gap: 10px; font-size: var(--text-caption); }
-.ex-sidebar-footer > span { display: block; padding: 5px 0 0 25px; font-size: var(--text-caption); color: var(--ex-muted); }
 .ex-main { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .ex-main-content { width: 100%; max-width: 1320px; margin: 0 auto; padding: 40px 48px 48px; }
 .ex-workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -259,7 +256,7 @@
     align-items: center; justify-content: center; flex-shrink: 0;
   }
   .ex-workspace-link,.ex-sidebar-section > button,.ex-ancestor-trigger,
-  .ex-sidebar-footer button,.ex-popover button,.ex-preview-section-heading button,
+  .ex-popover button,.ex-preview-section-heading button,
   .ex-preview-section-heading select,
   .ex-dialog .sp-system-form-actions button,.ex-dialog .sp-system-remove button,
   .ex-shell .sp-live-toggle,.ex-workspace-empty button,.ex-banner button,
@@ -269,7 +266,6 @@
   .ex-dialog .sp-inline-name input { min-height: 44px; }
   .ex-dialog .sp-system-check { min-height: 44px; }
   .ex-dialog .sp-system-check input { min-height: auto; }
-  .ex-sidebar-footer button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .ex-preview,.ex-dialog-overlay,.ex-mobile-sidebar,.ex-list:not(.is-search) { animation: none; } }
 /* Collection controls share the inspector's spacing and semantic palette. */

@@ -230,6 +230,52 @@ describe("catalogue navigation index", () => {
     expect(object(index, "broker").streamIds).toHaveLength(4000);
   });
 
+  it("ranks an entity whose serial number ends with the typed digits before readings that only contain them", () => {
+    const serials = Array.from({ length: 40 }, (_, position) => `20251300000010002${String(position).padStart(2, "0")}`);
+    const index = buildNavigationIndex(fixture({
+      devices: serials.map((serial) => ({ id: serial, label: `Meter ${serial}`, kind: "sensor", connection_id: "broker" })),
+      streams: serials.flatMap((serial) => ["temperature", "humidity"].map((key) => stream(`${serial}-${key}`, `meter/${serial}/${key}`, { device_id: serial }))),
+    }));
+    // The device earlier in the catalogue carries 219 only inside its readings' IDs.
+    const decoy = buildNavigationIndex(fixture({
+      devices: [{ id: "a", label: "Meter 1", kind: "sensor", connection_id: "broker" }, { id: "b", label: "Meter 2025130000001000219", kind: "sensor", connection_id: "broker" }],
+      streams: [stream("port-2190", "meter/1/port2190", { device_id: "a" }), stream("b-power", "meter/b/power", { device_id: "b" })],
+    }));
+    expect(searchNavigation(index, "219")[0]!.label).toBe("Meter 2025130000001000219");
+    // Its own topic folder and readings follow before anything from the other boxes.
+    expect(searchNavigation(index, "219").slice(0, 4).every((node) => node.searchText.includes("2025130000001000219"))).toBe(true);
+    expect(searchNavigation(index, "219").map((node) => node.objectId)).toEqual(expect.arrayContaining(["2025130000001000219-temperature", "2025130000001000219-humidity"]));
+    expect(searchNavigation(decoy, "219")[0]!.objectId).toBe("b");
+    expect(searchNavigation(decoy, "meter 219")[0]!.objectId).toBe("b");
+    expect(searchNavigation(index, "Meter 2025130000001000207")[0]!.objectId).toBe("2025130000001000207");
+  });
+
+  it("orders matches by whole label, label start, number end, number start, anywhere, identifiers, then ancestry", () => {
+    const labels = ["xx219xx", "Meter 219000", "219", "Box 0219", "219 rack", "Other"];
+    const index = buildNavigationIndex(fixture({
+      devices: labels.map((label, position) => ({ id: `d-${position}`, label, kind: "sensor", connection_id: "broker" })),
+      streams: [stream("s-219", "plain/value", { label: "Plain", device_id: "d-5" }), stream("child", "plain/child", { label: "Child", device_id: "d-2" })],
+    }));
+    expect(searchNavigation(index, "219").map((node) => node.label)).toEqual([
+      "219", "219 rack", "Box 0219", "Meter 219000", "xx219xx",
+      // "value" matches by its reading ID; "child" and its folder only by their entity.
+      "value", "child", "plain",
+    ]);
+  });
+
+  it("keeps the best match of a broad query even when it comes last in a large catalogue", () => {
+    const index = buildNavigationIndex(fixture({
+      connections: [connection(), connection("late", "Zulu broker")],
+      streams: [
+        ...Array.from({ length: 4000 }, (_, position) => stream(`signal-${position}`, `metrics/value${position}`)),
+        stream("exact", "late/value", { connection_id: "late", label: "value" }),
+      ],
+    }));
+    const results = searchNavigation(index, "value", 3);
+    expect(results[0]!.objectId).toBe("exact");
+    expect(results.map((node) => node.objectId)).toEqual(["exact", "signal-0", "signal-1"]);
+  });
+
   it("keeps malformed parent cycles reachable rather than recursing indefinitely", () => {
     const index = buildNavigationIndex(fixture({ devices: [
       { id: "a", label: "A", kind: "sensor", connection_id: "broker", parent_id: "b" },

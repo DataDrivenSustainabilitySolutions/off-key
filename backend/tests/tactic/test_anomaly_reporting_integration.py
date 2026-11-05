@@ -1,5 +1,7 @@
 """Reporting queries and pool backpressure against migrated TimescaleDB."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from off_key_core.db.base import get_async_engine, reset_db_runtime_caches
 from off_key_core.db.migrate import apply_migrations
@@ -59,16 +61,21 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
             FROM (VALUES ('busy', 501), ('quiet', 1), ('removed', 1))
                  AS inputs(entity, n)
             CROSS JOIN LATERAL generate_series(1, n) AS age;
+            -- A day old: older than every row above, but inside the 14-day
+            -- retention window, so the database's retention job cannot delete
+            -- them while the test runs.
             INSERT INTO anomalies
                 (charger_id, timestamp, telemetry_type, service_id, anomaly_type,
                  anomaly_value, value_type, sensor_set)
             VALUES
-                ('busy', '2026-01-01T00:00:00Z', '__multivariate__', 'monitor-b',
+                ('busy', now() - interval '1 day', '__multivariate__', 'monitor-b',
                  'ml_conformal_static_x', 0.0005, 'conformal_pvalue',
                  '["temperature", "pressure"]'),
-                ('busy', '2026-01-01T00:00:01Z', '__multivariate__', 'monitor-c',
+                ('busy', now() - interval '1 day' + interval '1 second',
+                 '__multivariate__', 'monitor-c',
                  'ml_tailprob_x', 0.002, 'tail_pvalue', NULL),
-                ('busy', '2026-01-01T00:00:02Z', 'pressure', 'monitor-a',
+                ('busy', now() - interval '1 day' + interval '2 seconds', 'pressure',
+                 'monitor-a',
                  'ml_conformal_static_x', 0.02, 'conformal_pvalue', 'null');
         """)
 
@@ -155,7 +162,7 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
                 "reading": {
                     "reading": {"charger_id": "busy", "telemetry_key": "pressure"}
                 },
-                "time": {"since": "2026-06-01T00:00:00Z"},
+                "time": {"since": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
             }
             counts = {}
             for name, body in narrowed.items():

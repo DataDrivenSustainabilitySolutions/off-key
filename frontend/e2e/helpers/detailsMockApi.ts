@@ -50,6 +50,8 @@ export async function installDetailsMockApi(page: Page, {
           id: 1, email: "charts@example.test", role: "admin", is_active: true,
           is_verified: true, created_at: "2026-07-28T08:00:00.000Z",
         });
+      case "/v1/favorites":
+        return fulfillJson(route, []);
       case "/v1/system":
         return fulfillJson(route, {
           document: { streams: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },

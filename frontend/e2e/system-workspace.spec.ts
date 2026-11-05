@@ -156,7 +156,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await serviceName.fill("Saved workspace monitor");
     await serviceName.press("Enter");
     await expect(page.getByRole("button", { name: "Rename service", exact: true })).toHaveText("Saved workspace monitor");
+    // The star shows at once; reload only after the account has saved it.
+    const favouriteSaved = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/v1/favorites")
+      && response.request().method() === "POST");
     await page.getByRole("button", { name: "Add service to favourites", exact: true }).click();
+    const favourite = await favouriteSaved;
+    expect(favourite.ok(), await favourite.text()).toBeTruthy();
     await page.reload();
     await expect(page.getByRole("button", { name: "Remove service from favourites", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 1000 });

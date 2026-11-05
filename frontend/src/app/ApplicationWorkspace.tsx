@@ -26,7 +26,7 @@ const subscribeMobile = (listener: () => void) => {
 const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
 
 function WorkspaceFrame() {
-  const { preferences, setPreferences, sectionHref, dialog, stored } = useCatalogue();
+  const { preferences, setPreferences, sectionHref, dialog, stored, favouritesError } = useCatalogue();
   const { pathname, search } = useLocation();
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -60,6 +60,7 @@ function WorkspaceFrame() {
           : setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))} />
       <div ref={main} className="ex-main app-catalogue-main">
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
+        {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}
         <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
       </div>
     </div>

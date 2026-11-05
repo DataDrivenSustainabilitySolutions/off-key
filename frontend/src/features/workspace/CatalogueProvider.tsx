@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { navigationDraft, useNavigationDraft } from "@/lib/navigation-draft";
@@ -9,7 +9,8 @@ import { scopeReadingIds, safeServiceReturn } from "@/domain/system/collectionRu
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
-import { loadExplorerPreferences, saveExplorerPreferences, toggleExplorerFavourite } from "./preferences";
+import { loadExplorerPreferences, saveExplorerPreferences } from "./preferences";
+import { useFavourites } from "./favourites";
 import type { ListPosition } from "./ExplorerList";
 import { CatalogueContext, type CatalogueContextValue, type CatalogueDialog } from "./catalogue-context";
 import { catalogueSelection, hasCatalogueSelection, isWorkspacePath, selectedSourceHref, withCatalogueSource } from "./catalogue-navigation";
@@ -50,6 +51,12 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     || document.groups.some(group => rawPreferences.scopeKey === `catalogue:${group.id}`)
     ? rawPreferences : { ...rawPreferences, scopeKey: index.rootKey }, [rawPreferences, system.document, index, document.groups]);
   const [stored, setStored] = useState(true);
+  const dropLegacyFavourites = useCallback(() => setPreferences(previous => {
+    const next = { ...previous };
+    delete next.favourites;
+    return next;
+  }), []);
+  const favourites = useFavourites(isAuthenticated ? userId ?? null : null, rawPreferences.favourites, dropLegacyFavourites);
   const [query, setQuery] = useNavigationDraft(`catalogue:${userId}:query`, "");
   const [positions] = useNavigationDraft(`catalogue:${userId}:positions`, () => new Map<string, ListPosition>());
   const browseHistory = useRef<string[]>([]);
@@ -135,7 +142,7 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     query, setQuery, positions, browse,
     back: () => query ? setQuery("") : browse(browseHistory.current.pop() ?? index.nodes.get(scopeKey)?.parentKey ?? index.rootKey, false),
     selectSource, sectionHref,
-    toggleFavourite: (kind, id) => setPreferences(previous => toggleExplorerFavourite(previous, kind, id)),
+    favourites: favourites.favourites, toggleFavourite: favourites.toggle, favouritesError: favourites.error,
     editingLocked, setEditingLocked, dialog, dialogOrigin,
     openEditor, closeDialog: () => { if (!system.saving) setDialog(null); },
   }}>{children}</CatalogueContext.Provider>;

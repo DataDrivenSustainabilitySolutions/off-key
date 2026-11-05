@@ -1,4 +1,5 @@
 import { constrainSidebarWidth } from "./sidebarSizing";
+import type { LegacyFavourite } from "./favourites";
 
 export interface ExplorerPreferences {
   version: 1;
@@ -6,7 +7,8 @@ export interface ExplorerPreferences {
   sidebarOpen: boolean;
   sidebarWidth?: number;
   onlineOnly?: boolean;
-  favourites?: Array<{ kind: "service" | "reading"; id: string }>;
+  /** Favourites an earlier version kept here; they move to the account once. */
+  favourites?: LegacyFavourite[];
 }
 
 export const MAX_EXPLORER_PREFERENCE_BYTES = 1_048_576;
@@ -44,7 +46,7 @@ function validatedPreferences(value: unknown): ExplorerPreferences | undefined {
     ...(typeof value.sidebarWidth === "number" && Number.isFinite(value.sidebarWidth)
       ? { sidebarWidth: constrainSidebarWidth(value.sidebarWidth) } : {}),
     ...(Array.isArray(value.favourites) && value.favourites.length <= 256 ? {
-      favourites: value.favourites.filter((item): item is { kind: "service" | "reading"; id: string } => isRecord(item)
+      favourites: value.favourites.filter((item): item is LegacyFavourite => isRecord(item)
         && (item.kind === "service" || item.kind === "reading") && isId(item.id))
         .filter((item, index, items) => items.findIndex(other => other.kind === item.kind && other.id === item.id) === index)
         .map(item => ({ kind: item.kind, id: item.id })),
@@ -54,14 +56,6 @@ function validatedPreferences(value: unknown): ExplorerPreferences | undefined {
 
 function storageKey(account: string | number | null): string {
   return `aberration:explorer:v1:${account ?? "local"}`;
-}
-
-export function toggleExplorerFavourite(prefs: ExplorerPreferences, kind: "service" | "reading", id: string): ExplorerPreferences {
-  if (!isId(id)) return prefs;
-  const favourites = prefs.favourites ?? [];
-  const included = favourites.some(item => item.kind === kind && item.id === id);
-  if (!included && favourites.length >= 256) return prefs;
-  return { ...prefs, favourites: included ? favourites.filter(item => item.kind !== kind || item.id !== id) : [...favourites, { kind, id }] };
 }
 
 function fitsByteLimit(contents: string): boolean {

@@ -218,14 +218,19 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/favorites` | List a user's favourites | Current authenticated member |
-| `POST` | `/favorites` | Add a favourite charger for the current member | Body: `charger_id` |
-| `DELETE` | `/favorites` | Remove a favourite charger of the current member | Body: `charger_id` |
+| `GET` | `/favorites` | The current member's favourites, oldest first | Optional query: `kind` |
+| `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
+| `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
 | `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids`, optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
 | `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
 | `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
 | `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
+
+A favourite's `kind` is `entity` (a recorded `charger_id`), `reading` (a catalogue
+stream id) or `monitor` (a `service_id`). Ids are not checked against the
+catalogue, so a favourite stays until the member removes it. A member keeps at
+most 256; adding another answers 409.
 
 `POST /anomalies/query` is a read, so members may call it although other
 `POST` routes under `/anomalies` need an administrator. An alarm is in the
@@ -259,7 +264,7 @@ Health and readiness remain available without this service credential.
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
-| `DELETE` | `/data/users/{user_id}/favorites/{charger_id}` | Remove a favourite |
+| `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
 | `POST` | `/data/anomalies/query` | Reporting query by catalogue reading |
 | `GET` | `/data/anomalies/count` | Count anomalies |
 | `GET` | `/data/anomalies/{charger_id}` | List anomalies |

@@ -8,7 +8,7 @@ from off_key_core.db.models import (
     AnomalyIdentity,
     Charger,
     CollectionBinding,
-    Favorite,
+    MemberFavorite,
     MonitoringEvidence,
     Telemetry,
     User,
@@ -23,6 +23,7 @@ from sqlalchemy import (
     ColumnElement,
     and_,
     case,
+    delete,
     distinct,
     func,
     not_,
@@ -31,6 +32,7 @@ from sqlalchemy import (
     true,
     tuple_,
 )
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -279,31 +281,49 @@ class UserRepository:
 
 
 class FavoriteRepository:
-    """Persistence operations for favorites."""
+    """Persistence operations for member favorites."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_by_user_id(self, *, user_id: int) -> list[Favorite]:
-        result = await self._session.execute(
-            select(Favorite).where(Favorite.user_id == user_id)
+    async def list(
+        self, *, user_id: int, kind: str | None = None
+    ) -> list[MemberFavorite]:
+        query = select(MemberFavorite).where(MemberFavorite.user_id == user_id)
+        if kind is not None:
+            query = query.where(MemberFavorite.kind == kind)
+        query = query.order_by(
+            MemberFavorite.created_at, MemberFavorite.kind, MemberFavorite.item_id
         )
-        return list(result.scalars().all())
+        return list((await self._session.scalars(query)).all())
 
-    async def get(self, *, user_id: int, charger_id: str) -> Favorite | None:
-        result = await self._session.execute(
-            select(Favorite).where(
-                Favorite.user_id == user_id,
-                Favorite.charger_id == charger_id,
+    async def get(self, *, user_id: int, kind: str, item_id: str):
+        return await self._session.get(MemberFavorite, (user_id, kind, item_id))
+
+    async def count(self, *, user_id: int) -> int:
+        count = await self._session.scalar(
+            select(func.count())
+            .select_from(MemberFavorite)
+            .where(MemberFavorite.user_id == user_id)
+        )
+        return count or 0
+
+    async def add(self, *, user_id: int, kind: str, item_id: str) -> None:
+        # A concurrent add of the same favorite is not an error.
+        await self._session.execute(
+            insert(MemberFavorite)
+            .values(user_id=user_id, kind=kind, item_id=item_id)
+            .on_conflict_do_nothing()
+        )
+
+    async def remove(self, *, user_id: int, kind: str, item_id: str) -> None:
+        await self._session.execute(
+            delete(MemberFavorite).where(
+                MemberFavorite.user_id == user_id,
+                MemberFavorite.kind == kind,
+                MemberFavorite.item_id == item_id,
             )
         )
-        return result.scalars().first()
-
-    async def add(self, favorite: Favorite) -> None:
-        self._session.add(favorite)
-
-    async def delete(self, favorite: Favorite) -> None:
-        await self._session.delete(favorite)
 
 
 class AnomalyRepository:

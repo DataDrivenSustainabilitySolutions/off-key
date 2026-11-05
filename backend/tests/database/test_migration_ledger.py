@@ -69,6 +69,9 @@ APPLIED_CHECKSUMS = {
     "017_detector_inputs.sql": (
         "bb49f11f5966ec132584ed56689a17bef52a1edf13416308e753d1d8ef664cfb"
     ),
+    "018_member_favorites.sql": (
+        "6bdac3306802ce962fb20a455856160de8e9d0d5868394cfd7668565d4c06273"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -84,9 +87,13 @@ LEDGER_TABLES = {
         "monitoring_pipeline_activations",
     },
     "016_pipeline_run_events.sql": {"monitoring_pipeline_run_events"},
+    "018_member_favorites.sql": {"member_favorites"},
 }
 # Pre-ledger tables a later migration dropped.
-RETIRED_TABLES = {"014_drop_unread_schema.sql": {"model_registry"}}
+RETIRED_TABLES = {
+    "014_drop_unread_schema.sql": {"model_registry"},
+    "018_member_favorites.sql": {"favorites"},
+}
 
 
 def test_released_migrations_keep_their_applied_checksums():

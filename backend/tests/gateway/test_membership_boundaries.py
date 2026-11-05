@@ -9,6 +9,7 @@ from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.api.v1 import auth, favorites, monitors
 from off_key_api_gateway.facades.tactic import TacticError
 from off_key_core.config.service_auth import get_service_auth_settings
+from off_key_core.schemas.favorites import FavoriteRef
 from off_key_core.schemas.members import AcceptInvitation
 from off_key_tactic_middleware.main import create_app
 from pydantic import ValidationError
@@ -55,24 +56,22 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
 @pytest.mark.asyncio
 async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkeypatch):
     gateway.dependency_overrides[access.current_member] = lambda: PROFILE
-    get = AsyncMock(return_value=["charger-1"])
-    add = AsyncMock(return_value={"message": "Added"})
-    monkeypatch.setattr(favorites.tactic, "get_user_favorites", get)
-    monkeypatch.setattr(favorites.tactic, "add_user_favorite", add)
+    entity = {"kind": "entity", "id": "charger-1"}
+    stored = entity | {"created_at": "2026-11-05T00:00:00Z"}
+    get = AsyncMock(return_value=[stored])
+    add = AsyncMock(return_value=stored)
+    monkeypatch.setattr(favorites.tactic, "list_favorites", get)
+    monkeypatch.setattr(favorites.tactic, "add_favorite", add)
     async with asgi_client(gateway) as client:
         response = await client.get("/v1/favorites?user_id=99")
-        assert response.json() == ["charger-1"]
-        get.assert_awaited_once_with(user_id=17)
+        assert response.json() == [stored]
+        get.assert_awaited_once_with(user_id=17, kind=None)
         assert (
-            await client.post(
-                "/v1/favorites", json={"charger_id": "charger-1", "user_id": 99}
-            )
+            await client.post("/v1/favorites", json=entity | {"user_id": 99})
         ).status_code == 422
         add.assert_not_awaited()
-        assert (
-            await client.post("/v1/favorites", json={"charger_id": "charger-1"})
-        ).status_code == 200
-        add.assert_awaited_once_with(user_id=17, charger_id="charger-1")
+        assert (await client.post("/v1/favorites", json=entity)).status_code == 200
+        add.assert_awaited_once_with(user_id=17, ref=FavoriteRef(**entity))
         for method, path in (
             ("DELETE", "/members/19"),
             ("POST", "/monitors/start"),
@@ -248,36 +247,23 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     monkeypatch.setattr(favorites, "tactic", facade)
     monkeypatch.setattr(anomalies, "tactic", facade)
     async with asgi_client(gateway) as client:
-        for identifier in (
-            "../../99/favorites/charger-1",
-            "../../../anomalies/1",
-            "../../../../orchestration/radar/services/victim",
-            "%2e%2e/%2e%2e/99/favorites/charger-1",
-            "..",
-            ".",
-        ):
-            response = await client.request(
-                "DELETE", "/v1/favorites", json={"charger_id": identifier}
-            )
-            assert response.status_code == 422
         assert (
             await client.get(
                 "/v1/anomalies", params={"charger_id": "../users/99/favorites"}
             )
         ).status_code == 422
         assert not captured
-        assert (
-            await client.request(
-                "DELETE", "/v1/favorites", json={"charger_id": "charger-1"}
+        # Favorite ids travel as query values, so no id reaches the path.
+        for identifier in (
+            "../../99/favorites/charger-1",
+            "%2e%2e/%2e%2e/99/favorites/charger-1",
+            "..",
+        ):
+            response = await client.request(
+                "DELETE", "/v1/favorites", params={"kind": "entity", "id": identifier}
             )
-        ).status_code == 200
-        assert captured[-1][0] == "/api/v1/data/users/17/favorites/charger-1"
-        assert (
-            await client.request(
-                "DELETE", "/v1/favorites", json={"charger_id": "%2e%2e%2f99"}
-            )
-        ).status_code == 200
-        assert captured[-1][0] == "/api/v1/data/users/17/favorites/%252e%252e%252f99"
+            assert response.status_code == 204
+            assert captured[-1][0] == "/api/v1/data/users/17/favorites"
     await facade.request(
         "GET", "/api/v1/members/me", headers={"Authorization": "Bearer user"}
     )

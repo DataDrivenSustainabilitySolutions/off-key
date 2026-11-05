@@ -104,6 +104,19 @@ beforeEach(() => {
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
   mqtt_topics: ["telemetry/room-input/temperature"], stream_ids: ["temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
+/** The account's favourites on a fake server; call after `withServices`. */
+function favouritesServer() {
+  const items: Array<{ kind: string; id: string }> = [];
+  const get = vi.mocked(apiUtils.get).getMockImplementation()!;
+  vi.mocked(apiUtils.get).mockImplementation(async (endpoint, options) => endpoint === "/v1/favorites" ? [...items] : get(endpoint, options));
+  vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => { if (endpoint === "/v1/favorites") items.push(body as { kind: string; id: string }); return body; });
+  vi.mocked(apiUtils.delete).mockImplementation(async endpoint => {
+    const params = new URLSearchParams(endpoint.split("?")[1]);
+    items.splice(items.findIndex(item => item.kind === params.get("kind") && item.id === params.get("id")), 1);
+    return undefined;
+  });
+  return items;
+}
 function withServices(services: ActiveService[]) {
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
     : endpoint.startsWith("/v1/monitors/workspace") ? { services: [...services], authoring_enabled: false } : endpoint.startsWith("/v1/monitors?") ? { configuration: { monitoring: {}, performance_config: {} } } : []);
@@ -375,12 +388,14 @@ describe("service-centred monitoring workspace", () => {
     expect(filters.getByRole("button", { name: "Attention 1" }).querySelector(".mn-filter-count.is-alert")).toBeTruthy();
   });
 
-  it("persists service favourites and quietly saves display names without changing workload identifiers", async () => {
+  it("saves service favourites to the account and quietly saves display names without changing workload identifiers", async () => {
     const saved = [service()]; withServices(saved);
+    const starred = favouritesServer();
     vi.mocked(apiUtils.patch).mockImplementation(async (_path, payload) => { saved[0] = { ...saved[0]!, ...(payload as { display_name: string }) }; return {}; });
     const view = mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add Room climate to favourites" }));
-    await waitFor(() => expect(loadExplorerPreferences(1).favourites).toEqual([{ kind: "service", id: "service-one" }]));
+    await waitFor(() => expect(starred).toEqual([{ kind: "monitor", id: "service-one" }]));
+    expect(loadExplorerPreferences(1).favourites).toBeUndefined();
     fireEvent.click(screen.getByRole("button", { name: "Favourites 1" }));
     fireEvent.click(screen.getByRole("link", { name: "Room climate" }));
     const details = await screen.findByRole("region", { name: "Monitoring service details" });
@@ -394,7 +409,7 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.container_name).toBe("monitor-service-one");
     view.unmount(); mount();
     expect(await screen.findByRole("link", { name: "Climate monitor" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Favourites 1" }).getAttribute("aria-pressed")).toBe("true");
+    expect((await screen.findByRole("button", { name: "Favourites 1" })).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("region", { name: "Favourites" })).toBeNull();
   });
 

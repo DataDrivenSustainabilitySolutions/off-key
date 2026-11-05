@@ -4,7 +4,6 @@ import {
   loadExplorerPreferences,
   MAX_EXPLORER_PREFERENCE_BYTES,
   saveExplorerPreferences,
-  toggleExplorerFavourite,
   type ExplorerPreferences,
 } from "@/features/workspace/preferences";
 
@@ -16,13 +15,11 @@ const preferences = (): ExplorerPreferences => ({
   sidebarOpen: false,
 });
 describe("explorer preference persistence", () => {
-  it("persists service and reading favourites by stable identity without altering another account", () => {
-    const saved = toggleExplorerFavourite(toggleExplorerFavourite(preferences(), "service", "same-id"), "reading", "same-id");
+  it("reads favourites an earlier version kept, per account, so they can move to the server", () => {
+    const saved = { ...preferences(), favourites: [{ kind: "service" as const, id: "same-id" }, { kind: "reading" as const, id: "same-id" }] };
     expect(saveExplorerPreferences("alice", saved)).toBe(true);
     expect(loadExplorerPreferences("alice")).toEqual(saved);
     expect(loadExplorerPreferences("bob").favourites).toBeUndefined();
-    const removed = toggleExplorerFavourite(saved, "service", "same-id");
-    expect(removed.favourites).toEqual([{ kind: "reading", id: "same-id" }]);
   });
 
   it("discards malformed favourite entries and copies only validated identities", () => {
@@ -31,7 +28,6 @@ describe("explorer preference persistence", () => {
       { kind: "reading", id: "__proto__" }, { kind: "camera", id: "invalid" }, null,
     ] }));
     expect(loadExplorerPreferences("alice")).toEqual({ ...preferences(), favourites: [{ kind: "service", id: "valid" }] });
-    expect(toggleExplorerFavourite(preferences(), "reading", "bad\nidentity")).toEqual(preferences());
   });
 
   it("persists sidebar width per account without replacing existing navigation", () => {

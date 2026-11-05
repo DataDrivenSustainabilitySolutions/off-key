@@ -42,7 +42,7 @@ TACTIC_ACCESS = {
         "GET /api/v1/data/telemetry/{charger_id}/types",
         "GET /api/v1/data/users/{user_id}/favorites",
         "POST /api/v1/data/users/{user_id}/favorites",
-        "DELETE /api/v1/data/users/{user_id}/favorites/{charger_id}",
+        "DELETE /api/v1/data/users/{user_id}/favorites",
         "POST /api/v1/members/accept-invitation",
         "POST /api/v1/members/request-password-reset",
         "POST /api/v1/members/reset-password",

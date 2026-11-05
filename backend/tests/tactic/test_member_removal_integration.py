@@ -8,7 +8,7 @@ import pytest_asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from off_key_core.db.base import get_db_async
-from off_key_core.db.models import Charger, Favorite, RememberedSession, User
+from off_key_core.db.models import Charger, MemberFavorite, RememberedSession, User
 from off_key_core.schemas.members import MemberInvitation, MemberUpdate
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1.members import router
@@ -36,7 +36,7 @@ async def removal_database(member_database, monkeypatch):
     engine, sessions = member_database
     async with engine.begin() as connection:
         await connection.run_sync(Charger.__table__.create)
-        await connection.run_sync(Favorite.__table__.create)
+        await connection.run_sync(MemberFavorite.__table__.create)
     return sessions
 
 
@@ -80,7 +80,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         session.add(Charger(charger_id="shared-reading"))
         await session.flush()
         session.add_all(
-            Favorite(user_id=owner, charger_id="shared-reading")
+            MemberFavorite(user_id=owner, kind="reading", item_id="shared-reading")
             for owner in (admin_id, user_id)
         )
         await session.commit()
@@ -102,7 +102,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
 
     async with sessions() as session:
         assert await session.get(User, user_id) is None
-        assert list(await session.scalars(select(Favorite.user_id))) == [admin_id]
+        assert list(await session.scalars(select(MemberFavorite.user_id))) == [admin_id]
         assert await session.get(Charger, "shared-reading") is not None
         assert (
             await session.get(
@@ -128,7 +128,7 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
             select(User).where(User.email == invitation["email"])
         )
         assert replacement.id != user_id and replacement.is_active
-        assert list(await session.scalars(select(Favorite.user_id))) == [admin_id]
+        assert list(await session.scalars(select(MemberFavorite.user_id))) == [admin_id]
 
     async with sessions() as session:
         credential = HTTPAuthorizationCredentials(

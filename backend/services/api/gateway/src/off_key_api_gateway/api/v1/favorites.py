@@ -1,51 +1,40 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from off_key_core.schemas.favorites import FavoriteCreate
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Response
+from off_key_core.schemas.favorites import Favorite, FavoriteKind, FavoriteRef
 from off_key_core.schemas.members import MemberProfile
 
-from ...facades.tactic import TacticError, tactic
+from ...facades.tactic import tactic
 from ..access import current_member
 from ..errors import TacticErrorRoute
 
 router = APIRouter(route_class=TacticErrorRoute)
 
 
-@router.get("")
-async def list_favorites(user: MemberProfile = Depends(current_member)):
-    """Entity ids the signed-in member starred."""
-    return await tactic.get_user_favorites(user_id=user.id)
-
-
-@router.post("")
-async def add_favorite(
-    fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
+@router.get("", response_model=list[Favorite])
+async def list_favorites(
+    kind: FavoriteKind | None = Query(None, description="Only favorites of this kind"),
+    user: MemberProfile = Depends(current_member),
 ):
-    """Star an entity for the signed-in member. 409 if it is already starred."""
-    try:
-        return await tactic.add_user_favorite(
-            user_id=user.id, charger_id=fav.charger_id
-        )
-    except TacticError as e:
-        if e.status in (status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Charger already favorited",
-            ) from e
-        raise
+    """The signed-in member's favorites, oldest first."""
+    return await tactic.list_favorites(user_id=user.id, kind=kind)
 
 
-@router.delete("")
+@router.post("", response_model=Favorite)
+async def add_favorite(ref: FavoriteRef, user: MemberProfile = Depends(current_member)):
+    """Star an entity, reading or monitor for the signed-in member.
+
+    Adding a favorite the member already has returns it unchanged. 409 when the
+    member already keeps the maximum of 256.
+    """
+    return await tactic.add_favorite(user_id=user.id, ref=ref)
+
+
+@router.delete("", status_code=204, response_class=Response)
 async def remove_favorite(
-    fav: FavoriteCreate, user: MemberProfile = Depends(current_member)
+    ref: Annotated[FavoriteRef, Query()],
+    user: MemberProfile = Depends(current_member),
 ):
-    """Remove a star from an entity. 404 if it was not starred."""
-    try:
-        return await tactic.remove_user_favorite(
-            user_id=user.id, charger_id=fav.charger_id
-        )
-    except TacticError as e:
-        if e.status == status.HTTP_404_NOT_FOUND:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Favorite not found",
-            ) from e
-        raise
+    """Remove a favorite. Removing one the member does not have also answers 204."""
+    await tactic.remove_favorite(user_id=user.id, ref=ref)
+    return Response(status_code=204)

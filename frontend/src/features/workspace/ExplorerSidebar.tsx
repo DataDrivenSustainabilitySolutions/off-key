@@ -6,6 +6,7 @@ import { ExplorerList, type ExplorerRow, type ListPosition } from "./ExplorerLis
 import { navigationTrail, type ExplorerNode, type NavigationIndex } from "@/domain/system/navigationIndex";
 import type { SystemGroup } from "@/types/system";
 import type { ReadingActivitySource } from "@/domain/system/readingActivity";
+import type { Favourite, FavouriteKind } from "./favourites";
 
 const shortcutLabel = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘K" : "Ctrl K";
 
@@ -20,8 +21,8 @@ type Props = {
   activity?: ReadingActivitySource;
   onlineOnly?: boolean;
   onOnlineOnlyChange?: (value: boolean) => void;
-  favourites?: Array<{ kind: "service" | "reading"; id: string; label: string }>;
-  onFavourite?: (kind: "service" | "reading", id: string) => void;
+  favourites?: Array<Favourite & { label: string }>;
+  onFavourite?: (kind: FavouriteKind, id: string) => void;
 };
 
 export function ExplorerSidebar(props: Props) {

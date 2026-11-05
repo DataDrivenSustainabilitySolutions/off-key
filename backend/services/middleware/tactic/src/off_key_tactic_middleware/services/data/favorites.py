@@ -1,62 +1,62 @@
-"""Use cases for favorite charger operations."""
+"""Use cases for the favorites each member keeps."""
 
 from off_key_core.config.logs import logger
-from off_key_core.db.models import Favorite
+from off_key_core.schemas.favorites import (
+    MAX_FAVORITES,
+    Favorite,
+    FavoriteKind,
+    FavoriteRef,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...domain import ConflictError, InfrastructureError, NotFoundError
+from ...domain import ConflictError, InfrastructureError
 from ...repositories import FavoriteRepository
 
 
+def _favorite(row) -> Favorite:
+    return Favorite(kind=row.kind, id=row.item_id, created_at=row.created_at)
+
+
 class FavoriteService:
-    """Application-level favorite management use cases."""
+    """Add, list and remove favorites. Adding and removing are idempotent."""
 
     def __init__(self, session: AsyncSession, repository: FavoriteRepository):
         self._session = session
         self._repository = repository
 
-    async def list_user_favorites(self, *, user_id: int) -> list[str]:
-        favorites = await self._repository.list_by_user_id(user_id=user_id)
-        charger_ids = [favorite.charger_id for favorite in favorites]
-        logger.debug(
-            "event=tactic.favorites_read user_id=%s count=%s", user_id, len(charger_ids)
-        )
-        return charger_ids
+    async def list_favorites(
+        self, *, user_id: int, kind: FavoriteKind | None = None
+    ) -> list[Favorite]:
+        rows = await self._repository.list(user_id=user_id, kind=kind)
+        return [_favorite(row) for row in rows]
 
-    async def add_favorite(self, *, user_id: int, charger_id: str) -> dict[str, str]:
-        existing = await self._repository.get(user_id=user_id, charger_id=charger_id)
+    async def add_favorite(self, *, user_id: int, ref: FavoriteRef) -> Favorite:
+        key = {"user_id": user_id, "kind": ref.kind, "item_id": ref.id}
+        existing = await self._repository.get(**key)
         if existing is not None:
-            raise ConflictError("Charger already favorited")
-
-        favorite = Favorite(user_id=user_id, charger_id=charger_id)
-
+            return _favorite(existing)
+        if await self._repository.count(user_id=user_id) >= MAX_FAVORITES:
+            raise ConflictError(
+                f"A member keeps at most {MAX_FAVORITES} favorites. Remove one first."
+            )
         try:
-            await self._repository.add(favorite)
+            await self._repository.add(**key)
             await self._session.commit()
         except Exception as exc:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to add favorite: {exc}") from exc
+        logger.info("event=tactic.favorite_added user_id=%s kind=%s", user_id, ref.kind)
+        return _favorite(await self._repository.get(**key))
 
-        logger.info(
-            "event=tactic.favorite_added user_id=%s charger_id=%s", user_id, charger_id
-        )
-        return {"message": "Favorite added"}
-
-    async def remove_favorite(self, *, user_id: int, charger_id: str) -> dict[str, str]:
-        favorite = await self._repository.get(user_id=user_id, charger_id=charger_id)
-        if favorite is None:
-            raise NotFoundError("Favorite not found")
-
+    async def remove_favorite(self, *, user_id: int, ref: FavoriteRef) -> None:
         try:
-            await self._repository.delete(favorite)
+            await self._repository.remove(
+                user_id=user_id, kind=ref.kind, item_id=ref.id
+            )
             await self._session.commit()
         except Exception as exc:
             await self._session.rollback()
             raise InfrastructureError(f"Failed to remove favorite: {exc}") from exc
-
         logger.info(
-            "event=tactic.favorite_removed user_id=%s charger_id=%s",
-            user_id,
-            charger_id,
+            "event=tactic.favorite_removed user_id=%s kind=%s", user_id, ref.kind
         )
-        return {"message": "Favorite removed"}

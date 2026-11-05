@@ -25,7 +25,7 @@ export function ExplorerWorkspace() {
   const { userId, isAuthenticated } = useAuth();
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    preferences, toggleFavourite, openEditor, sectionHref } = useCatalogue();
+    favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
   const requestedService = params.get("service");
   const requestedReading = params.get("reading") ?? undefined;
   const initialTarget = params.get("target")
@@ -41,7 +41,7 @@ export function ExplorerWorkspace() {
   const scopedServices = useMemo(() => servicesForScope(monitoring.services, monitoringIndex, streamIds),
     [monitoring.services, monitoringIndex, streamIds]);
   const selectedService = monitoring.services.find(service => service.id === requestedService);
-  const favourites = useMemo(() => new Set((preferences.favourites ?? []).filter(item => item.kind === "service").map(item => item.id)), [preferences.favourites]);
+  const favourites = useMemo(() => new Set(starred.filter(item => item.kind === "monitor").map(item => item.id)), [starred]);
   const preview = selected && (selected.entityKind === "stream" || params.has("entity") || params.get("inspect") === "source");
   const readingDetail = selected?.entityKind === "stream" && !creating && !requestedService && !pipelineView;
   // Service detail and setup carry their own breadcrumb and heading.
@@ -88,7 +88,7 @@ export function ExplorerWorkspace() {
     if (requestedService && selectedService) return <Suspense fallback={<p className="ex-muted" role="status">Opening service…</p>}>
       <ServiceDetail key={selectedService.id} service={selectedService} inputs={monitoringIndex.inputs.get(selectedService.id) ?? []}
         document={document} historyCache={history} canEdit={system.canEdit} favourite={favourites.has(selectedService.id)}
-        pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("service", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
+        pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("monitor", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
         onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
     </Suspense>;
     // A retained run outlives its service row.
@@ -100,7 +100,7 @@ export function ExplorerWorkspace() {
       {preview && <Suspense fallback={<p className="ex-muted" role="status">Opening preview…</p>}><Preview key={selected.key} node={{ ...selected, streamIds: streamIds ?? [] }}
         index={index} document={document} telemetry={telemetry} historyCache={history} canEdit={system.canEdit} saving={system.saving}
         error={system.error} onRename={rename} onEdit={openEditor}
-        runtime={system.snapshot?.runtime} collapseDefinition favourite={(preferences.favourites ?? []).some(item => item.kind === "reading" && item.id === selected.objectId)}
+        runtime={system.snapshot?.runtime} collapseDefinition favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
         collectionControls={selected.entityKind !== "stream" && !!streamIds?.length && <p className="ex-muted">
           Recording enabled for {streamIds.filter(id => {
@@ -111,7 +111,7 @@ export function ExplorerWorkspace() {
       {isAuthenticated && <MonitoringServiceList draftKey={`monitoring:${userId}:services`} services={scopedServices}
         index={monitoringIndex} ready={monitoring.ready} error={monitoring.error} favourites={favourites}
         serviceHref={id => withCatalogueSource(`/?service=${encodeURIComponent(id)}`, selected)}
-        onFavourite={id => toggleFavourite("service", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />}
+        onFavourite={id => toggleFavourite("monitor", id)} onOpen={openService} onRetry={() => void monitoring.reload()} />}
     </>;
   };
 

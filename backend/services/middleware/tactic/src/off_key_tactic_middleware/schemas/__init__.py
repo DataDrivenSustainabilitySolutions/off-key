@@ -90,17 +90,6 @@ class UserLoginRequest(BaseModel):
 
 
 # =============================================================================
-# Favorite Schemas
-# =============================================================================
-
-
-class FavoriteMutationRequest(BaseModel):
-    """Request schema for adding a favorite for a specific user."""
-
-    charger_id: str
-
-
-# =============================================================================
 # Anomaly Schemas
 # =============================================================================
 
@@ -189,7 +178,6 @@ __all__ = [
     "AnomalyCreateRequest",
     "AnomalyResponse",
     "ChargerResponse",
-    "FavoriteMutationRequest",
     "MonitoringChartEvidenceResponse",
     "MonitoringEvidenceResponse",
     "TelemetryCursorResponse",

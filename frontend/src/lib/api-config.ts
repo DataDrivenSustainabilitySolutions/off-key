@@ -66,6 +66,9 @@ export const API_CONFIG = {
       DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
     },
 
+    // The signed-in member's favourites
+    FAVORITES: '/v1/favorites',
+
     // Monitoring Services
     MONITORING: {
       START: '/v1/monitors/start',

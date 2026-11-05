@@ -22,6 +22,7 @@ EXPECTED_MIGRATIONS = (
     "015_detector_evidence.sql",
     "016_pipeline_run_events.sql",
     "017_detector_inputs.sql",
+    "018_member_favorites.sql",
 )
 
 
@@ -61,8 +62,9 @@ def remove_pipeline_schema(connection):
 
 
 def restore_retired_schema(connection):
-    """Recreate schema every pre-014 database carries and migration 014 drops."""
+    """Recreate schema every pre-014 database carries and migrations 014-018 drop."""
     connection.execute(text("CREATE TABLE model_registry (id serial PRIMARY KEY)"))
+    restore_entity_favorites(connection)
     connection.execute(
         text("ALTER TABLE services ADD COLUMN stateful_set_name text UNIQUE")
     )
@@ -79,4 +81,19 @@ def restore_retired_schema(connection):
             f"ALTER TABLE telemetry RENAME CONSTRAINT {primary_key} "
             "TO uq_telemetry_entry"
         )
+    )
+
+
+def restore_entity_favorites(connection):
+    """Swap member favorites for the entity-only table every pre-018 database has."""
+    connection.execute(text("DROP TABLE member_favorites"))
+    connection.execute(
+        text("""
+        CREATE TABLE favorites (
+            favorite_id serial PRIMARY KEY,
+            charger_id text NOT NULL REFERENCES chargers(charger_id),
+            user_id integer NOT NULL REFERENCES users(id)
+        );
+        CREATE INDEX ix_favorite_user_charger ON favorites (user_id, charger_id)
+    """)
     )

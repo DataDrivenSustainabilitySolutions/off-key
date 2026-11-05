@@ -5,6 +5,7 @@ import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
 import type { ExplorerPreferences } from "./preferences";
+import type { Favourite, FavouriteKind } from "./favourites";
 import type { ListPosition } from "./ExplorerList";
 
 export type CatalogueDialog = { kind: "editor"; entityKind: SystemEntityKind; id?: string; key: number } | null;
@@ -34,7 +35,11 @@ export type CatalogueContextValue = {
   back: () => void;
   selectSource: (node?: ExplorerNode | null) => void;
   sectionHref: (path: string) => string;
-  toggleFavourite: (kind: "service" | "reading", id: string) => void;
+  /** The signed-in member's favourites, from the server. */
+  favourites: Favourite[];
+  toggleFavourite: (kind: FavouriteKind, id: string) => void;
+  /** Why favourites could not be loaded or saved, if they could not. */
+  favouritesError: string;
   editingLocked: boolean;
   setEditingLocked: Dispatch<SetStateAction<boolean>>;
   dialog: CatalogueDialog;

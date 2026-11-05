@@ -140,7 +140,8 @@ that preview. Previewing does not enable background recording.
 2. Select **Favourites** in the Monitoring service filters to show starred services.
 3. Starred readings appear as source shortcuts in the catalogue sidebar.
 
-These service and reading favourites are saved per account in this browser.
+Favourites belong to your account and follow you to every browser. Agents and
+scripts read and change the same list through `/v1/favorites`.
 
 ## Services workflow
 

@@ -96,10 +96,14 @@ async def test_tls_against_a_plain_listener_is_a_tls_error():
 
 
 async def test_a_silent_tls_handshake_times_out_with_a_tls_hint():
-    async with mqtt_broker() as (_broker, port):
-        result = await _checker().check(_connection(port, tls=True))
-    assert result.status == "timeout"
-    assert "TLS" in result.message
+    # A real MQTT broker is not silent here: it parses the ClientHello as a
+    # CONNECT, and a few random hellos decode completely and are rejected.
+    async with withholding_server("connack") as peer:
+        result = await _checker().check(_connection(peer.port, tls=True))
+        assert result.status == "timeout"
+        assert "TLS" in result.message
+        assert peer.connections == 1
+        await wait_until(lambda: not peer.writers, 5)
 
 
 @pytest.mark.parametrize(

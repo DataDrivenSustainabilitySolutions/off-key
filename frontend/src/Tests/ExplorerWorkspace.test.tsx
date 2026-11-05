@@ -98,7 +98,7 @@ beforeEach(() => {
 });
 
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
-  mqtt_topics: ["telemetry/room-input/temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+  mqtt_topics: ["telemetry/room-input/temperature"], stream_ids: ["temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 function withServices(services: ActiveService[]) {
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
@@ -256,7 +256,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"] }]);
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]);
     const { router } = mount();
     await loaded();
     const sidebar = screen.getByRole("navigation", { name: "System explorer" });
@@ -345,7 +345,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"] }]); mount();
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();

@@ -110,6 +110,7 @@ export const getAllTelemetryData = async (
     const nextCursor = getTelemetryCursor(data);
     return {
       type,
+      ...(definition && { streamId: definition.id }),
       category: definition?.category ?? "Other",
       ...(definition?.label && { label: definition.label }),
       data: data.map(({ timestamp, value }) => ({ timestamp, value })),
@@ -130,8 +131,9 @@ export const mergeTelemetryData = (
     if (!series) return existing;
     if (series.data.length === 0) {
       return series.category === existing.category && series.label === existing.label
+        && series.streamId === existing.streamId
         ? existing
-        : { ...existing, category: series.category, label: series.label };
+        : { ...existing, category: series.category, label: series.label, streamId: series.streamId };
     }
 
     const points = new Map(existing.data.map((point) => [point.timestamp, point]));

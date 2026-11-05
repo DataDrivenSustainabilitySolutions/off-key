@@ -255,7 +255,7 @@ describe("simple monitoring setup", () => {
   });
 
   it("tracks a replacement after its predecessor disappears from the active service list", async () => {
-    const old: ActiveService = { id: "old", display_name: "Existing health", container_id: "worker", container_name: "worker", mqtt_topics: [], status: true,
+    const old: ActiveService = { id: "old", display_name: "Existing health", container_id: "worker", container_name: "worker", mqtt_topics: [], stream_ids: [], status: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     const callbacks = props();
     const context = { id: "old", replace: true };

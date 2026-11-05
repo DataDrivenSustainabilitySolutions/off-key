@@ -148,6 +148,11 @@ MQTT paths and JSON Pointer payload bindings.
 
 The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
 
+Every listed service, here and in `/monitors/workspace`, carries `stream_ids`:
+the catalogue readings whose accepted topic one of its `mqtt_topics` filters
+takes, wildcards included. Use it to answer "which monitors watch this reading"
+without MQTT rules of your own; a reading removed from the catalogue drops out.
+
 A monitor start body contains:
 
 - required `container_name` and `mqtt_topics`

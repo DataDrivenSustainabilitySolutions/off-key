@@ -4,7 +4,9 @@ import asyncio
 from typing import Any
 
 from off_key_core.config.logs import logger
+from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import MonitoringService
+from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import select
 
 from .radar_status import derive_operational_status
@@ -34,6 +36,7 @@ async def find_service(session, container_name, container_id):
 
 def service_summary(
     service: MonitoringService,
+    catalogue: SystemCollectionDefinition,
     probe: tuple[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     configuration = service.launch_config or {}
@@ -54,6 +57,8 @@ def service_summary(
             labels.get("radar_model_type") if labels else monitoring.get("model_type")
         ),
         "mqtt_topics": service.mqtt_topic,
+        # Catalogue readings the monitor watches, so callers need no MQTT rules.
+        "stream_ids": catalogue.watched_by(service.mqtt_topic),
         "status": service.status,
         "operational_status": operational_status,
         "created_at": service.created_at.isoformat() if service.created_at else None,
@@ -78,9 +83,10 @@ class RadarServiceQueries:
 
         result = await self.session.execute(query)
         services = result.scalars().all()
+        catalogue = (await read_collection_runtime(self.session)).catalog
 
         if not include_docker_status:
-            return [service_summary(service) for service in services]
+            return [service_summary(service, catalogue) for service in services]
 
         # AsyncDocker already bounds concurrent requests across callers.
         probes = await asyncio.gather(
@@ -90,7 +96,7 @@ class RadarServiceQueries:
             )
         )
         return [
-            service_summary(service, probe)
+            service_summary(service, catalogue, probe)
             for service, probe in zip(services, probes, strict=True)
         ]
 

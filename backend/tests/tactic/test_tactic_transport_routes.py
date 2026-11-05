@@ -61,6 +61,7 @@ def test_workspace_reports_the_selected_service_state_and_tolerates_unknowns():
         operational_status={"pipeline_state": {"nodes": 3}},
     )
     session.scalars.return_value = SimpleNamespace(all=lambda: [record])
+    session.scalar.return_value = None  # nothing saved yet: no catalogue readings
     with client(pipelines_api.router, session) as http:
         selected = http.get("/monitors/workspace", params={"selected_service_id": "m1"})
         unknown = http.get("/monitors/workspace", params={"selected_service_id": "x"})
@@ -68,6 +69,7 @@ def test_workspace_reports_the_selected_service_state_and_tolerates_unknowns():
     assert selected.json()["pipeline_state"] == {"nodes": 3}
     assert selected.json()["selected_service_id"] == "m1"
     assert "pipeline_state" not in selected.json()["services"][0]["operational_status"]
+    assert selected.json()["services"][0]["stream_ids"] == []
     assert unknown.json()["pipeline_state"] is None
     assert none.json()["pipeline_state"] is None
     assert session.scalars.await_count == 3

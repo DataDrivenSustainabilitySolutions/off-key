@@ -22,7 +22,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 
-
 # Lifecycle values the database accepts; migration 023 installs the checks.
 RUN_STATUSES = ("reserved", "starting", "running", "stopped", "failed", "cancelled")
 ACTIVATION_PHASES = (

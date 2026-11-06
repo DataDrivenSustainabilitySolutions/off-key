@@ -60,7 +60,6 @@ from .table_contracts import (
     radar_runtime_checkpoints_table,
 )
 
-
 # Migration 023 adds this check; databases adopted before it lack it.
 DESIRED_STATE_CHECK = "ck_services_desired_state"
 

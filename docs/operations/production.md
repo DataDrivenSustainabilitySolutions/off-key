@@ -138,7 +138,11 @@ operator may still use an independently stored recovery registry credential.
 Cloudflare's existing tunnel routes HTTPS hostnames to Traefik. Configure public
 routes/DNS in Cloudflare, matching the committed production hostname settings.
 The tunnel token is a versioned Swarm secret. oauth2-proxy limits the broker and
-Traefik dashboards to the configured GitHub organization/user allowlist.
+Traefik dashboards to the configured GitHub organization/user allowlist. It checks
+organization membership only at sign-in, so its `SameSite=Lax` session lasts 12
+hours (`oauth2_cookie_expire`) and is re-validated against GitHub hourly
+(`oauth2_cookie_refresh`). Someone removed from the organization keeps access for
+at most that long; rotate `oauth2_cookie_secret` to end every session at once.
 
 EMQX clients use TLS and separate least-privilege users, with credentials mounted as
 versioned Swarm secrets. Generate/validate certificate material using

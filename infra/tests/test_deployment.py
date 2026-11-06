@@ -425,6 +425,14 @@ class DeploymentTests(unittest.TestCase):
                     )
                 self.assertFalse((Path(directory) / "stack").exists())
 
+    def test_operator_sessions_are_short_lived_and_same_site(self):
+        environment = self.results["prod"]["config"]["services"]["oauth2-proxy"][
+            "environment"
+        ]
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_EXPIRE"], "12h")
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_REFRESH"], "1h")
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_SAMESITE"], "lax")
+
     def test_production_requires_a_dedicated_emqx_node_cookie(self):
         for cookie in (
             "",

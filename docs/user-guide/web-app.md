@@ -198,7 +198,7 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
 | Login failed or unauthorized | Invalid credentials, expired session, or unverified account | Verify the account and sign in again |
 | No brokers configured yet | The catalogue has no brokers | Add a broker in Sources or import a catalogue |
 | Telemetry request failed | API or database latency/outage | Check API Gateway, TACTIC, and database health |
-| Monitoring start failed | Invalid configuration, unavailable topic, or orchestration failure | Retry with defaults and inspect TACTIC logs |
+| Monitoring start failed | Invalid configuration, a reading that is not recorded as a number, readings of different devices, or orchestration failure | Record the readings under **Sources**, retry with defaults and inspect TACTIC logs |
 
 ## Related pages
 

@@ -33,6 +33,7 @@ import type {
   MonitoringEvidenceCursor,
 } from "@/types/monitoring";
 import { buildSensorClaims } from "@/lib/monitoring-services";
+import { monitoringTargetId } from "@/domain/monitoring/serviceModel";
 import { useLinkedChartNavigation } from "@/features/charts/use-linked-chart-navigation";
 import {
   getMonitoringEvidenceCursor,
@@ -344,11 +345,7 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
   const label = sourceLabel(snapshot?.document, source)
     ?? `${source.kind === "device" ? "Device" : "Broker"} ${source.id}`;
   const sourcesHref = selectedSourceHref("/sources", catalogue && sourceNode(catalogue.index, source));
-  // Monitor setup still targets the recorded entity of these readings.
-  const monitoringTarget = useMemo(() => {
-    const [first] = sourceReadings(snapshot?.document, source).readings;
-    return first && snapshot?.runtime.bindings?.[first.id]?.entity_id;
-  }, [snapshot, source]);
+  const monitoringTarget = monitoringTargetId(source);
   useDocumentTitle(label, "Reporting");
 
   return (
@@ -366,7 +363,7 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
                 hasTelemetry={latestTelemetryTimestamp !== undefined}
               />
               <Button asChild>
-                <Link to={`/?create=monitoring${monitoringTarget ? `&target=${encodeURIComponent(monitoringTarget)}` : ""}`}>
+                <Link to={`/?create=monitoring&target=${encodeURIComponent(monitoringTarget)}`}>
                   <Activity className="h-4 w-4" />
                   Set up monitoring
                 </Link>

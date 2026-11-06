@@ -504,9 +504,10 @@ class HealthMonitor:
         if activity is None:
             return None
         if activity.inputs_stalled:
+            # The activity names the inputs; their recorded keys stay inside.
             if activity.stale_sensors:
-                return "Stale monitored inputs: " + ", ".join(activity.stale_sensors)
-            return "Missing monitored inputs: " + ", ".join(activity.missing_sensors)
+                return "Monitored inputs are stale"
+            return "Monitored inputs are missing"
         if activity.inference_stalled:
             return "No successful inference within the configured freshness budget"
         if activity.persistence_stalled:

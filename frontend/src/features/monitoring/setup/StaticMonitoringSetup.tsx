@@ -3,7 +3,6 @@ import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
-import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import {
@@ -38,46 +37,38 @@ import {
 
 interface StaticMonitoringSetupProps {
   draftKey?: string;
-  chargerId: string;
-  sensorTypes: string[];
-  claimsBySensor: Map<string, ActiveService>;
+  /** Recorded catalogue readings of one device or broker. */
+  readingIds: string[];
+  claimsByReading: Map<string, ActiveService>;
   staticModels: Record<string, ModelDefinition>;
   loadingModels: boolean;
   onStarted: (serviceId?: string) => Promise<void>;
   displayName?: string;
   initialReading?: string;
-  sensorLabels?: Map<string, string>;
-  sensorTopics?: Map<string, string>;
+  readingLabels?: Map<string, string>;
 }
 
 export function StaticMonitoringSetup({
   draftKey,
-  chargerId,
-  sensorTypes,
-  claimsBySensor,
+  readingIds,
+  claimsByReading,
   staticModels,
   loadingModels,
   onStarted,
-  initialReading, sensorLabels, sensorTopics, displayName,
+  initialReading, readingLabels, displayName,
 }: StaticMonitoringSetupProps) {
   const [draft, setDraft] = useNavigationDraft(draftKey && `${draftKey}:parameters`, createDefaultStaticDraft);
-  const [selectedSensors, setSelectedSensors] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
+  const [selectedReadings, setSelectedReadings] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [starting, setStarting] = useState(false);
 
-  const availableSelectedSensors = useMemo(
+  const chosenReadings = useMemo(
     () =>
-      sensorTypes.filter(
-        (sensor) =>
-          !claimsBySensor.has(sensor) && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading)),
+      readingIds.filter(
+        (reading) =>
+          !claimsByReading.has(reading) && (selectedReadings[reading] ?? (!initialReading || reading === initialReading)),
       ),
-    [claimsBySensor, selectedSensors, sensorTypes, initialReading],
-  );
-  const effectiveTopics = useMemo(
-    () => availableSelectedSensors.map(
-      (sensor) => sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
-    ),
-    [availableSelectedSensors, chargerId, sensorTopics],
+    [claimsByReading, selectedReadings, readingIds, initialReading],
   );
   const modelDefinition = staticModels[draft.modelType];
   const modelFields = modelDefinition?.fields ?? [];
@@ -101,13 +92,12 @@ export function StaticMonitoringSetup({
   };
 
   const submit = async () => {
-    if (!chargerId || !draft.modelType) return;
+    if (!draft.modelType) return;
     const validation = buildStaticMonitoringRequest({
-      chargerId,
-      topics: effectiveTopics,
+      readingIds: chosenReadings,
       draft,
       modelDefinition,
-      displayName: displayName || `radar-${chargerId}-${Date.now()}`,
+      displayName: displayName || "Static monitor",
     });
     if (!validation.request) {
       setFieldErrors(validation.errors);
@@ -151,13 +141,13 @@ export function StaticMonitoringSetup({
               icon={RadioTower}
             >
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {sensorTypes.map((sensor) => {
-                  const owner = claimsBySensor.get(sensor);
+                {readingIds.map((reading) => {
+                  const owner = claimsByReading.get(reading);
                   const checked =
-                    !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
+                    !owner && (selectedReadings[reading] ?? (!initialReading || reading === initialReading));
                   return (
                     <label
-                      key={sensor}
+                      key={reading}
                       className={cn(
                         "flex min-w-0 items-start gap-3 rounded-md border p-3 transition-colors",
                         owner
@@ -173,32 +163,32 @@ export function StaticMonitoringSetup({
                         checked={checked}
                         disabled={Boolean(owner)}
                         onChange={(event) =>
-                          setSelectedSensors((current) => ({
+                          setSelectedReadings((current) => ({
                             ...current,
-                            [sensor]: event.target.checked,
+                            [reading]: event.target.checked,
                           }))
                         }
                       />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium">
-                          {sensorLabels?.get(sensor) ?? humanize(sensor)}
+                          {readingLabels?.get(reading) ?? reading}
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {owner
-                            ? `Assigned to ${owner.display_name ?? owner.id}`
-                            : sensorLabels?.has(sensor) ? "" : sensor}
-                        </span>
+                        {owner && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            Assigned to {owner.display_name ?? owner.id}
+                          </span>
+                        )}
                       </span>
                     </label>
                   );
                 })}
-                {!sensorTypes.length && (
+                {!readingIds.length && (
                   <p className="col-span-full rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                     No recorded readings.
                   </p>
                 )}
               </div>
-              <FieldError field="topics" errors={fieldErrors} />
+              <FieldError field="readings" errors={fieldErrors} />
             </ConfigSection>
 
             <ConfigSection
@@ -301,15 +291,15 @@ export function StaticMonitoringSetup({
               </div>
               <dl className="mt-4 divide-y divide-border/60 text-sm">
                 <div className="flex justify-between gap-4 py-3 first:pt-0">
-                  <dt className="text-muted-foreground">Selected streams</dt>
+                  <dt className="text-muted-foreground">Selected readings</dt>
                   <dd className="font-medium tabular-nums">
-                    {effectiveTopics.length}
+                    {chosenReadings.length}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-3">
                   <dt className="text-muted-foreground">Already assigned</dt>
                   <dd className="font-medium tabular-nums">
-                    {claimsBySensor.size}
+                    {claimsByReading.size}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 py-3 last:pb-0">

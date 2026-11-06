@@ -22,7 +22,7 @@ function fixture(): SystemSnapshot {
   const document = { ...createEmptySystem(), label: "Workshop", brokers: [mqttConnection({ id: "broker", label: "Workshop broker", host: "localhost" })],
     devices: [{ id: "room", label: "Room station", kind: "sensor" }], readings: ["temperature", "power"].map(id => ({ id, label: id, topic: `building/floor1/${id}`, device_id: "room", broker_id: "broker", value_type: "number" as const, category: "Environment" })) };
   return { document, revision: 3, can_edit: true, storage_origin: "saved", runtime: { mode: "configured_only", message: "", collection_revision: 4, collection: { status: "applied", revision: 4 }, collection_rules: [],
-    bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { entity_id: "entity", telemetry_key: stream.id, accepted_topic: `telemetry/entity/${stream.id}`, broker_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };
+    bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { broker_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };
 }
 let saved: SystemSnapshot;
 beforeAll(async () => {

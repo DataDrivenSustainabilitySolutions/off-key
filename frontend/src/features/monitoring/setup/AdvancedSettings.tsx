@@ -14,7 +14,6 @@ import { useId, useState } from "react";
 import { MIN_BETTING_TOLERANCE, MIN_READING_FRESHNESS_SECONDS, createDefaultMartingaleTracker } from "./config";
 import type {
   FieldErrors,
-  SensorKeyStrategy,
   StaticDraft,
 } from "./config";
 import {
@@ -40,11 +39,6 @@ const thresholdHelp = (statistic: MartingaleAlarmStatistic): string =>
 const supportsAutomaticThreshold = (
   statistic: MartingaleAlarmStatistic,
 ): boolean => statistic === "cusum" || statistic === "shiryaev_roberts";
-
-const normalizeSensorKeyStrategy = (value: string): SensorKeyStrategy => {
-  if (value === "top_level" || value === "leaf") return value;
-  return "full_hierarchy";
-};
 
 const normalizeBettingFunction = (value: string): MartingaleBettingFunction => {
   if (value === "simple_mixture" || value === "simple_jumper") return value;
@@ -591,30 +585,6 @@ export function AdvancedSettings({
                 }}
               />
               <FieldError field="sensorFreshness" errors={fieldErrors} />
-            </div>
-            <div>
-              <SettingLabel
-                label="Reading identity"
-                help="Controls feature names derived from MQTT topics. Full hierarchy avoids collisions; top level or leaf can intentionally group shallower topic segments."
-                htmlFor="advanced-sensor-identity"
-              />
-              <select
-                id="advanced-sensor-identity"
-                className={cn(CONTROL_CLASS, "mt-2")}
-                value={draft.sensorKeyStrategy}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    sensorKeyStrategy: normalizeSensorKeyStrategy(
-                      event.target.value,
-                    ),
-                  }))
-                }
-              >
-                <option value="full_hierarchy">Full hierarchy</option>
-                <option value="top_level">Top level</option>
-                <option value="leaf">Leaf</option>
-              </select>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import { ingressOptions } from "./helpers/mqtt";
 
-import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingId } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureTarget, fixtureReadingId } from "./helpers/collection";
 import { zoomChart } from "./helpers/chart";
 import { accessToken } from "./helpers/auth";
 
@@ -65,7 +65,6 @@ test.describe("adaptive monitoring production lifecycle", () => {
     playwright,
   }) => {
     const deviceId = randomUUID();
-    const chargerId = fixtureEntityId(deviceId);
     const l1Reading = fixtureReadingId(deviceId, "L1"), l2Reading = fixtureReadingId(deviceId, "L2");
     let serviceId: string | undefined;
     let authToken: string | null = null;
@@ -79,7 +78,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
     try {
       const activePublisher = await connectAsync(
         process.env.MQTT_INGRESS_URL ?? "mqtt://127.0.0.1:1883",
-        { ...ingressOptions(), clientId: `playwright-${chargerId}` },
+        { ...ingressOptions(), clientId: `playwright-${deviceId}` },
       );
       publisher = activePublisher;
       await page.goto("/");
@@ -146,7 +145,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
           { timeout: 120_000, intervals: [1_000, 2_000, 3_000] },
         )
         .toEqual(expectedReadings);
-      await page.goto(`/?create=monitoring&target=${encodeURIComponent(chargerId)}`);
+      await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
 
       await expect(page.getByText("L1", { exact: true }).first()).toBeVisible({
         timeout: 30_000,
@@ -362,7 +361,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
           headers: { Authorization: `Bearer ${authToken}` },
         });
       }
-      if (authToken) await removeTestCharger(api, authToken, chargerId);
+      if (authToken) await removeTestCharger(api, authToken, deviceId);
       await api.dispose();
     }
   });

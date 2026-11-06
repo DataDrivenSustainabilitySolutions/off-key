@@ -28,7 +28,7 @@ type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: L
 export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache }: Props) {
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
-  const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}` : undefined;
+  const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding)}` : undefined;
   const [rangeId, setRangeId] = useNavigationDraft<RangePresetId>(viewKey && `${viewKey}:range`, "1h");
   const range = rangePreset(rangeId);
   const now = useNow(5000);

@@ -68,7 +68,7 @@ beforeEach(() => {
 // The running monitor that watches the temperature reading.
 const owner: ActiveService = {
   id: "selected", display_name: "Selected monitor", active: true,
-  mqtt_topics: ["telemetry/entity-id/temperature"], reading_ids: ["temperature"],
+  reading_ids: ["temperature"],
   operational_status: { stage: "operational", message_count: 1, processed_message_count: 1, is_stale: false },
 };
 
@@ -247,7 +247,7 @@ describe("workspace chart navigation and monitoring", () => {
     const { props } = fixture();
     const service: ActiveService = {
       id: "monitor", display_name: "Test monitor", active: true,
-      mqtt_topics: ["telemetry/entity-id/temperature"], reading_ids: ["temperature"],
+      reading_ids: ["temperature"],
       operational_status: { stage: "operational", message_count: 3, processed_message_count: 3, is_stale: false },
     };
     const history = {
@@ -345,8 +345,7 @@ describe("explorer selected-object preview", () => {
 
   it("opens old recorded history with honest background status without a temporary live connection", () => {
     const { props } = fixture();
-    const binding = { entity_id: "room", broker_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature",
-      policy: { mode: "sample" as const, interval_seconds: 10 } };
+    const binding = { broker_id: "broker", policy: { mode: "sample" as const, interval_seconds: 10 } };
     const runtime: SystemRuntime = { mode: "collection", message: "", bindings: { temperature: binding },
       collection: { status: "applied" }, ingress: { sources: { broker: { state: "connected" } } } };
     const historical = [{ timestamp: new Date(NOW - 3_600_000).toISOString(), value: 20 },

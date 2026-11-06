@@ -12,7 +12,7 @@ import aiohttp
 from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.schemas.favorites import FavoriteRef
-from off_key_core.schemas.radar import FormMonitorConfig
+from off_key_core.schemas.radar import MonitorSetup
 
 from off_key_api_gateway.settings import get_service_endpoints_settings
 
@@ -196,15 +196,12 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
-    async def start_radar_service(self, config: FormMonitorConfig) -> dict[str, Any]:
-        """Forward a setup-form configuration to TACTIC; never MQTT overrides."""
-        unset = {"mqtt_config"} | (
-            {"display_name"} if config.display_name is None else set()
-        )
+    async def start_radar_service(self, setup: MonitorSetup) -> dict[str, Any]:
+        """Forward a monitor set up on catalogue readings to TACTIC."""
         return await self.request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
-            json_data=config.model_dump(mode="json", exclude=unset),
+            json_data=setup.model_dump(mode="json"),
         )
 
     async def stop_radar_service(self, service_id: str) -> dict[str, Any]:

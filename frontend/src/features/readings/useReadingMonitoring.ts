@@ -91,12 +91,13 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const cache = sharedCache ?? localCache;
   const { id, topic, payload_pointer, value_type } = stream;
   const host = connection?.host, port = connection?.port, transport = connection?.transport, tls = connection?.tls;
-  const entityId = savedBinding?.entity_id, telemetryType = savedBinding?.telemetry_key;
+  const recorded = savedBinding !== undefined, recordedDevice = savedBinding?.device_id;
   const context = useMemo(() => host && port && transport && tls !== undefined ? {
     // Only a recorded reading has history to poll.
-    binding: entityId && telemetryType ? { readingId: id } : undefined,
-    key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type }, entityId, telemetryType)!,
-  } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, entityId, telemetryType]);
+    binding: recorded ? { readingId: id } : undefined,
+    key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type },
+      recorded ? { device_id: recordedDevice } : undefined)!,
+  } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, recorded, recordedDevice]);
   const state = useReadingHistorySnapshot(cache, context?.key);
 
   const polls = useMemo(() => context?.binding && new ReadingPolls(cache, context.key, context.binding), [cache, context]);

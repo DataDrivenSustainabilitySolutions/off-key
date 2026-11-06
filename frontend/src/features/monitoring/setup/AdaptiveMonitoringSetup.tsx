@@ -2,7 +2,6 @@ import { useNavigationDraft } from "@/lib/navigation-draft";
 import { SectionPanel } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
-import { buildDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 import { cn } from "@/lib/utils";
 import type { ActiveService, ModelDefinition } from "@/types/monitoring";
 import { BrainCircuit, Gauge, RadioTower, Send, SlidersHorizontal } from "lucide-react";
@@ -24,42 +23,40 @@ import { startFormMonitor } from "./startMonitor";
 
 interface Props {
   draftKey?: string;
-  chargerId: string;
-  sensorTypes: string[];
-  claimsBySensor: Map<string, ActiveService>;
+  /** Recorded catalogue readings of one device or broker. */
+  readingIds: string[];
+  claimsByReading: Map<string, ActiveService>;
   adaptiveModels: Record<string, ModelDefinition>;
   loadingModels: boolean;
   onStarted: (serviceId?: string) => Promise<void>;
   displayName?: string;
   initialReading?: string;
-  sensorLabels?: Map<string, string>;
-  sensorTopics?: Map<string, string>;
+  readingLabels?: Map<string, string>;
 }
 
 export function AdaptiveMonitoringSetup({
   draftKey,
-  chargerId,
-  sensorTypes,
-  claimsBySensor,
+  readingIds,
+  claimsByReading,
   adaptiveModels,
   loadingModels,
   onStarted,
-  initialReading, sensorLabels, sensorTopics, displayName,
+  initialReading, readingLabels, displayName,
 }: Props) {
   const [draft, setDraft] = useNavigationDraft(draftKey && `${draftKey}:parameters`, createDefaultAdaptiveDraft);
-  const [selectedSensors, setSelectedSensors] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
+  const [selectedReadings, setSelectedReadings] = useNavigationDraft<Record<string, boolean>>(draftKey && `${draftKey}:readings`, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [starting, setStarting] = useState(false);
-  const availableSensors = useMemo(
-    () => sensorTypes.filter((sensor) => !claimsBySensor.has(sensor)),
-    [claimsBySensor, sensorTypes],
+  const availableReadings = useMemo(
+    () => readingIds.filter((reading) => !claimsByReading.has(reading)),
+    [claimsByReading, readingIds],
   );
-  const activeSensors = useMemo(
-    () => availableSensors.filter((sensor) => selectedSensors[sensor] ?? (!initialReading || sensor === initialReading)),
-    [availableSensors, selectedSensors, initialReading],
+  const chosenReadings = useMemo(
+    () => availableReadings.filter((reading) => selectedReadings[reading] ?? (!initialReading || reading === initialReading)),
+    [availableReadings, selectedReadings, initialReading],
   );
   const effectiveFeatureCount = draft.projection === "none"
-    ? activeSensors.length
+    ? chosenReadings.length
     : Number(draft.projectionComponents) || 0;
   const compatibleModels = useMemo(
     () => Object.fromEntries(Object.entries(adaptiveModels).filter(([, definition]) => {
@@ -90,15 +87,11 @@ export function AdaptiveMonitoringSetup({
   }, []);
 
   const submit = async () => {
-    const topics = activeSensors.map((sensor) =>
-      sensorTopics?.get(sensor) ?? buildDeviceTelemetryTopic(chargerId, sensor),
-    );
     const validation = buildAdaptiveMonitoringRequest({
-      chargerId,
-      topics,
+      readingIds: chosenReadings,
       draft,
       modelDefinition,
-      displayName: displayName || `radar-adaptive-${chargerId}-${Date.now()}`,
+      displayName: displayName || "Adaptive monitor",
     });
     if (!validation.request) {
       setFieldErrors(validation.errors);
@@ -128,22 +121,22 @@ export function AdaptiveMonitoringSetup({
         <div className="space-y-5">
           <ConfigSection title="Readings" help="A reading can belong to one active monitor." icon={RadioTower}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {sensorTypes.map((sensor) => {
-                const owner = claimsBySensor.get(sensor);
-                const checked = !owner && (selectedSensors[sensor] ?? (!initialReading || sensor === initialReading));
+              {readingIds.map((reading) => {
+                const owner = claimsByReading.get(reading);
+                const checked = !owner && (selectedReadings[reading] ?? (!initialReading || reading === initialReading));
                 return (
-                  <label key={sensor} className={cn("flex min-w-0 items-center gap-3 rounded-md border p-3 text-sm", owner && "opacity-50")}>
+                  <label key={reading} className={cn("flex min-w-0 items-center gap-3 rounded-md border p-3 text-sm", owner && "opacity-50")}>
                     <input type="checkbox" checked={checked} disabled={Boolean(owner)} onChange={(event) => {
-                      setSelectedSensors((current) => ({ ...current, [sensor]: event.target.checked }));
-                      clearError("topics");
+                      setSelectedReadings((current) => ({ ...current, [reading]: event.target.checked }));
+                      clearError("readings");
                     }} />
-                    <span className="min-w-0"><span className="block truncate font-medium">{sensorLabels?.get(sensor) ?? sensor}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.display_name ?? owner.id}</span>}</span>
+                    <span className="min-w-0"><span className="block truncate font-medium">{readingLabels?.get(reading) ?? reading}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.display_name ?? owner.id}</span>}</span>
                   </label>
                 );
               })}
             </div>
-            {!sensorTypes.length && <p className={HELP_CLASS}>No recorded readings.</p>}
-            <FieldError field="topics" errors={fieldErrors} />
+            {!readingIds.length && <p className={HELP_CLASS}>No recorded readings.</p>}
+            <FieldError field="readings" errors={fieldErrors} />
           </ConfigSection>
 
           <div className="grid gap-5 xl:grid-cols-2">

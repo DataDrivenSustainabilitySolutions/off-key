@@ -2,7 +2,15 @@ import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemReadingBinding, SystemRuntime, SystemStream } from "@/types/system";
 
 export type MonitoringInput = { stream: SystemStream; binding: SystemReadingBinding; path: string };
+/** The readings one monitor may watch: a device's, or a broker's readings without a device. */
 export type MonitoringTarget = { id: string; label: string; inputs: MonitoringInput[] };
+
+/** A target's id, `device:<id>` or `broker:<id>`, as setup links carry it. */
+export const monitoringTargetId = (source: { kind: "device" | "broker"; id: string }) => `${source.kind}:${source.id}`;
+
+/** The target a catalogue reading belongs to. */
+export const readingTargetId = (stream: Pick<SystemStream, "device_id" | "broker_id">) =>
+  monitoringTargetId(stream.device_id ? { kind: "device", id: stream.device_id } : { kind: "broker", id: stream.broker_id });
 export type ServiceState = { label: string; tone: "neutral" | "positive" | "warning" | "danger"; category: "monitoring" | "preparing" | "stopped" | "attention" };
 export type MonitoringIndex = {
   targets: MonitoringTarget[];
@@ -38,7 +46,7 @@ export function serviceName(service: ActiveService, inputs: MonitoringInput[]): 
   return paths.length === 1 ? `${paths[0]} · ${strategyName(service)}` : service.display_name ?? service.id;
 }
 
-/** Group catalogue readings by entity and by the monitors the server resolved for each. */
+/** Group catalogue readings by device or broker and by the monitors the server resolved for each. */
 export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRuntime | undefined, services: ActiveService[]): MonitoringIndex {
   const connections = new Map(document.brokers.map(item => [item.id, item.label]));
   const devices = new Map(document.devices.map(item => [item.id, item.label]));
@@ -52,8 +60,9 @@ export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRu
     const path = entity && entity !== broker ? `${broker} / ${entity}` : broker;
     const input = { stream, binding, path };
     byId.set(stream.id, input);
-    const target = targets.get(binding.entity_id) ?? { id: binding.entity_id, label: path, inputs: [] };
-    target.inputs.push(input); targets.set(binding.entity_id, target);
+    const id = readingTargetId(stream);
+    const target = targets.get(id) ?? { id, label: path, inputs: [] };
+    target.inputs.push(input); targets.set(id, target);
   }
   const inputs = new Map<string, MonitoringInput[]>();
   const byStream = new Map<string, Set<string>>();

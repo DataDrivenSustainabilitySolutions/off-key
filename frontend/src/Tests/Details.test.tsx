@@ -212,8 +212,7 @@ describe("<Details />", () => {
         { id: "rain", label: "Rain", broker_id: "broker", topic: "weather/rain", value_type: "number", category: "Environment" },
       ],
     };
-    const runtime = { bindings: { temperature: { broker_id: "broker", entity_id: "123", telemetry_key: "temperature",
-      accepted_topic: "telemetry/123/temperature", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
+    const runtime = { bindings: { temperature: { broker_id: "broker", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
     const index = buildNavigationIndex(document);
     return { document, index, value: { system: { snapshot: { document, runtime } }, index } as unknown as CatalogueContextValue };
   };
@@ -238,8 +237,8 @@ describe("<Details />", () => {
     expect(mockLoadAnomalies).toHaveBeenCalledWith({ deviceId: "station" }, expect.any(AbortSignal));
     const evidence = mockApiGet.mock.calls.map(([endpoint]) => String(endpoint)).find(endpoint => endpoint.startsWith("/v1/evidence/chart?"));
     expect(new URL(evidence!, "http://app.test").searchParams.get("device_id")).toBe("station");
-    // Monitor setup still targets the recorded identity of the device's readings.
-    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=123");
+    // Monitor setup opens on the device's readings.
+    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=device%3Astation");
   });
 
   it("shows a broker's readings without a device, named one by one", async () => {
@@ -248,6 +247,7 @@ describe("<Details />", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Building broker" })).toBeTruthy();
     const broker = index.nodes.get(index.objectKeys.get("broker")!.find(key => index.nodes.get(key)?.kind === "connection")!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(broker.key)}`);
+    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=broker%3Abroker");
     expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(document.readings.slice(1), expect.any(AbortSignal), undefined);
     expect(mockLoadAnomalies).toHaveBeenCalledWith({ readingIds: ["wind", "rain"] }, expect.any(AbortSignal));
     const evidence = mockApiGet.mock.calls.map(([endpoint]) => String(endpoint)).find(endpoint => endpoint.startsWith("/v1/evidence/chart?"));
@@ -267,7 +267,7 @@ describe("<Details />", () => {
     renderDetails();
     expect(await screen.findByRole("heading", { level: 1, name: "Device 123" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe("/sources");
-    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring");
+    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=device%3A123");
   });
 
   it("preserves chart anomaly references across telemetry refreshes", async () => {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 
-import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingId } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureReadingId } from "./helpers/collection";
 import { accessToken } from "./helpers/auth";
 
 const telemetry = [
@@ -19,7 +19,6 @@ test.describe("device topic ingress", () => {
     playwright,
   }) => {
     const deviceId = randomUUID();
-    const chargerId = fixtureEntityId(deviceId);
     let publisher: MqttClient | undefined;
     let authToken: string | null = null;
     const api = await playwright.request.newContext({
@@ -102,7 +101,7 @@ test.describe("device topic ingress", () => {
       }
     } finally {
       await publisher?.endAsync();
-      if (authToken) await removeTestCharger(api, authToken, chargerId);
+      if (authToken) await removeTestCharger(api, authToken, deviceId);
       await api.dispose();
     }
   });

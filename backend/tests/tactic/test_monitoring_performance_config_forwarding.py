@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from off_key_api_gateway.api.v1.monitors import (
-    MonitorCreate,
     TacticError,
     create_monitor,
     delete_monitor,
     stop_monitor,
 )
+from off_key_core.schemas.radar import MonitorSetup
 from off_key_core.schemas.radar import (
     PerformanceConfig as GatewayPerformanceConfig,
 )
@@ -45,28 +45,27 @@ def _build_request() -> Request:
 
 @pytest.mark.asyncio
 async def test_gateway_start_monitor_forwards_static_performance_config():
-    config = MonitorCreate(
+    setup = MonitorSetup(
         display_name="radar-charger-1",
-        mqtt_topics=[
-            "telemetry/charger-1/sine",
-            "telemetry/charger-1/cosine",
-        ],
-        model_type="pyod_iforest",
-        model_params={"n_estimators": 128},
-        performance_config=GatewayPerformanceConfig(
-            sensor_key_strategy="leaf",
-            sensor_freshness_seconds=25.0,
-            observation_max_age_seconds=45.0,
-            observation_future_tolerance_seconds=2.0,
-            alignment_max_skew_seconds=3.0,
-        ),
+        reading_ids=["sine", "cosine"],
+        monitoring={
+            "strategy": "static_baseline",
+            "model_type": "pyod_iforest",
+            "model_params": {"n_estimators": 128},
+        },
+        performance_config={
+            "sensor_freshness_seconds": 25.0,
+            "observation_max_age_seconds": 45.0,
+            "observation_future_tolerance_seconds": 2.0,
+            "alignment_max_skew_seconds": 3.0,
+        },
     )
     expected = {
         "service_id": "svc-1",
         "activation_id": "activation-1",
         "container_name": "pipeline-svc-1",
         "status": "requested",
-        "mqtt_topics": config.mqtt_topics,
+        "reading_ids": ["sine", "cosine"],
     }
 
     mock_start = AsyncMock(return_value=expected)
@@ -75,16 +74,14 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         mock_start,
     ):
         response = await inspect.unwrap(create_monitor)(
-            request=_build_request(), monitor=config
+            request=_build_request(), monitor=setup
         )
 
     assert response == expected
-    # The display name also names the container, which the API never shows.
-    assert mock_start.await_args.args[0].container_name == "radar-charger-1"
     forwarded = mock_start.await_args.args[0].model_dump()
+    assert forwarded["reading_ids"] == ["sine", "cosine"]
     assert forwarded["monitoring"]["strategy"] == "static_baseline"
     assert forwarded["performance_config"] == {
-        "sensor_key_strategy": "leaf",
         "sensor_freshness_seconds": 25.0,
         "observation_max_age_seconds": 45.0,
         "observation_future_tolerance_seconds": 2.0,
@@ -106,76 +103,72 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
             "simulation_count": 5000,
         },
     }
+    # The form TACTIC derives keeps the display name and full feature names.
+    form = setup.form(["telemetry/charger-1/sine", "telemetry/charger-1/cosine"])
+    assert form.container_name == form.display_name == "radar-charger-1"
+    assert form.performance_config.sensor_key_strategy == "full_hierarchy"
+    assert form.performance_config.sensor_freshness_seconds == 25.0
 
 
-def test_gateway_monitoring_config_rejects_root_wildcard_topic():
-    with pytest.raises(ValueError, match="Root wildcard"):
-        MonitorCreate(
-            display_name="radar-charger-1",
-            mqtt_topics=["#"],
-        )
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"reading_ids": []},
+        {"reading_ids": ["L1", "L1"]},
+        {"reading_ids": ["L 1"]},
+        {"mqtt_topics": ["telemetry/c1/L1"]},
+        {"performance_config": {"sensor_key_strategy": "leaf"}},
+        {"strategy": "adaptive_stream"},
+    ],
+)
+def test_gateway_monitor_setup_names_readings_only(change):
+    with pytest.raises(ValidationError):
+        MonitorSetup(**{"display_name": "radar", "reading_ids": ["L1"]} | change)
 
 
-def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
-    base = dict(display_name="radar", mqtt_topics=["telemetry/c1/sine"])
-    config = MonitorCreate(
-        **base,
-        strategy="adaptive_stream",
-        adaptive_stream_config={"training_window_size": 1200},
+def test_gateway_accepts_adaptive_strategy():
+    config = MonitorSetup(
+        display_name="radar",
+        reading_ids=["L1"],
+        monitoring={"strategy": "adaptive_stream", "training_window_size": 1200},
     )
     assert config.monitoring.strategy == "adaptive_stream"
     assert config.monitoring.training_window_size == 1200
-    with pytest.raises(ValueError, match="adaptive_stream_config"):
-        MonitorCreate(**base, adaptive_stream_config={})
-    with pytest.raises(ValueError, match="model_type conflicts"):
-        MonitorCreate(
-            **base,
-            strategy="adaptive_stream",
-            model_type="aberrant_knn",
-            adaptive_stream_config={"model_type": "aberrant_online_isolation_forest"},
-        )
 
 
-def test_gateway_rejects_incompatible_adaptive_feature_count():
+def test_setup_rejects_incompatible_adaptive_feature_count():
+    setup = MonitorSetup(
+        display_name="radar",
+        reading_ids=["L1", "L2"],
+        monitoring={
+            "strategy": "adaptive_stream",
+            "model_type": "aberrant_moving_average",
+        },
+    )
     with pytest.raises(ValueError, match="exactly one feature"):
-        MonitorCreate(
-            display_name="radar",
-            mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
-            strategy="adaptive_stream",
-            model_type="aberrant_moving_average",
-        )
+        setup.form(["telemetry/c1/L1", "telemetry/c1/L2"])
     with pytest.raises(ValidationError, match="alignment_mode"):
         GatewayPerformanceConfig(alignment_mode="strict_barrier")
 
 
-def test_gateway_rejects_sensor_key_collisions_before_launch():
-    with pytest.raises(ValueError, match="collapses multiple MQTT topics"):
-        MonitorCreate(
-            display_name="radar",
-            mqtt_topics=[
-                "telemetry/c1/phase/L1",
-                "telemetry/c1/phase/L2",
-            ],
-            strategy="adaptive_stream",
-            performance_config={"sensor_key_strategy": "top_level"},
-        )
-
-
 def test_gateway_resolves_strategy_specific_default_model():
-    config = MonitorCreate(
+    config = MonitorSetup(
         display_name="radar",
-        mqtt_topics=["telemetry/c1/L1"],
-        strategy="adaptive_stream",
+        reading_ids=["L1"],
+        monitoring={"strategy": "adaptive_stream"},
     )
     assert config.monitoring.model_type == "aberrant_online_isolation_forest"
 
 
 def test_gateway_resolves_default_static_baseline_config():
-    config = MonitorCreate(
+    config = MonitorSetup(
         display_name="radar-charger-1",
-        mqtt_topics=["telemetry/charger-1/sine"],
-        model_type="pyod_iforest",
-        model_params={"n_estimators": 128},
+        reading_ids=["sine"],
+        monitoring={
+            "strategy": "static_baseline",
+            "model_type": "pyod_iforest",
+            "model_params": {"n_estimators": 128},
+        },
     )
 
     resolved = config.monitoring.model_dump()

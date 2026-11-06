@@ -42,8 +42,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const progress = service.operational_status.progress;
   const coverage = service.operational_status.coverage;
   const activity = service.operational_status.activity;
-  const inputNames = new Map(inputs.map(input => [input.binding.telemetry_key, input.stream.label]));
-  const describeInputs = (sensors: string[]) => sensors.map(sensor => inputNames.get(sensor) ?? sensor).join(", ");
+  const inputNames = new Map(inputs.map(input => [input.stream.id, input.stream.label]));
+  const describeInputs = (readingIds: string[]) => readingIds.map(id => inputNames.get(id) ?? id).join(", ");
   const removeLabel = service.active ? "Stop and remove service" : "Remove service";
   useEffect(() => {
     const controller = new AbortController();
@@ -79,7 +79,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <div className="mn-progress" role="progressbar" aria-label="Monitoring preparation" aria-valuemin={0} aria-valuemax={progress.target} aria-valuenow={Math.min(progress.current, progress.target)}>
           <div style={{ width: `${Math.min(100, Math.max(0, progress.current / Math.max(1, progress.target) * 100))}%` }} />
         </div></>}</dd></div>
-      <div><dt>Inputs</dt><dd>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</dd></div>
+      <div><dt>Inputs</dt><dd>{service.reading_ids.length} {service.reading_ids.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
       <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
     <div className="mn-tabs" role="tablist" aria-label="Service details">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
@@ -97,8 +97,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
           <dl className="mn-configuration"><div><dt>Last valid input</dt><dd><RelativeTime value={activity.last_input_at} fallback="Awaiting update" /></dd></div>
             <div><dt>Last inference</dt><dd><RelativeTime value={activity.last_inference_at} fallback="Awaiting update" /></dd></div>
             <div><dt>Last evidence saved</dt><dd><RelativeTime value={activity.last_persisted_at} fallback="Awaiting update" /></dd></div></dl>
-          {activity.missing_sensors.length > 0 && <p className="ex-muted">Missing inputs: {describeInputs(activity.missing_sensors)}</p>}
-          {activity.stale_sensors.length > 0 && <p className="ex-muted">Stale inputs: {describeInputs(activity.stale_sensors)}</p>}
+          {activity.missing_reading_ids.length > 0 && <p className="ex-muted">Missing inputs: {describeInputs(activity.missing_reading_ids)}</p>}
+          {activity.stale_reading_ids.length > 0 && <p className="ex-muted">Stale inputs: {describeInputs(activity.stale_reading_ids)}</p>}
           <p className="ex-muted">Inputs count as stale after {activity.freshness_seconds} s.</p>
         </section>}
         <section className="mn-section"><h3>Coverage</h3>
@@ -116,7 +116,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         <section className="mn-section"><h3>Monitored readings</h3><ul className="mn-input-list">
           {inputs.map(input => <li key={input.stream.id}><span>{input.stream.label}<small>{input.path}{input.stream.unit ? ` · ${input.stream.unit}` : ""}</small></span>
             <button onClick={() => chooseTab("evidence", input.stream.id)}>Inspect</button></li>)}
-          {!inputs.length && service.mqtt_topics.map(topic => <li key={topic}><span>{topic}</span></li>)}
+          {!inputs.length && service.reading_ids.map(id => <li key={id}><span>{id}</span></li>)}
         </ul></section>
       </>}
       {tab === "evidence" && (inputs.length ? <MonitoringHistory key={`${service.id}:${params.get("stream") ?? "all"}`}

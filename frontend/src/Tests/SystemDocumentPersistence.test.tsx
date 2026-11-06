@@ -45,8 +45,7 @@ const runtimeSnapshot = (status = "applied", revision = 1): SystemSnapshot => ({
   runtime: {
     mode: "collection", message: "Recording", collection_revision: 2, collection: { revision: 2, status },
     bindings: Object.fromEntries(["temperature", "humidity"].map((id, position) => [id, {
-      broker_id: position ? "other" : "broker", entity_id: "device", telemetry_key: id,
-      accepted_topic: `telemetry/device/${id}`, policy: { mode: "sample", interval_seconds: 10 },
+      broker_id: position ? "other" : "broker", policy: { mode: "sample", interval_seconds: 10 },
     }])),
     ingress: { sources: { broker: { state: "connected" }, other: { state: "connected" } } },
     latest_readings: { humidity: { value: 40, received_at: "2026-10-13T09:00:00Z", is_snapshot: false } },

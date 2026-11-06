@@ -48,7 +48,7 @@ export function useServiceHistory(
   const cache = sharedCache ?? localCache;
   // Stable scalar request identities avoid restarting polls on service heartbeats.
   const requests = JSON.stringify(inputs.flatMap(({ stream, binding }) => {
-    const key = readingHistoryKey(connections.find(item => item.id === stream.broker_id), stream, binding.entity_id, binding.telemetry_key);
+    const key = readingHistoryKey(connections.find(item => item.id === stream.broker_id), stream, binding);
     return key ? [{ id: stream.id, key }] : [];
   }));
   const readings = JSON.stringify([...new Set(allInputs.map(input => input.stream.id))].sort());

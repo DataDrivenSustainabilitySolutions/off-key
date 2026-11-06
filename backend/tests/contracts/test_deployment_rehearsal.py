@@ -37,11 +37,29 @@ pytestmark = [
 # While the rollback reference (COMPATIBLE_REVISION in
 # infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
 # its answers under the current field names. The reference carries the current
-# REST paths and fields, so nothing is rewritten; add a rewrite when the API
-# changes and the reference does not move with it.
+# REST paths, but it still shows how readings are recorded (topics, entities,
+# ingress keys) and names a run's catalogue revision and brokers the old way, so
+# its answers drop those recording fields and rename the rest.
 COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
 COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
-COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {}
+COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {
+    "system_revision": "catalogue_revision",
+    "source_id": "broker_id",
+    "source_label": "broker_label",
+    "entity_label": "device_label",
+}
+COMPATIBLE_RELEASE_DROPPED = frozenset(
+    {
+        "accepted_topic",
+        "collection_fingerprint",
+        "collection_generation",
+        "entity_id",
+        "input_key",
+        "mqtt_topics",
+        "system_schema_version",
+        "telemetry_key",
+    }
+)
 
 
 def current_field_names(value):
@@ -51,6 +69,7 @@ def current_field_names(value):
         return {
             COMPATIBLE_RELEASE_FIELDS.get(key, key): current_field_names(item)
             for key, item in value.items()
+            if key not in COMPATIBLE_RELEASE_DROPPED
         }
     return value
 
@@ -313,9 +332,11 @@ def create_saved_graph(client, entity):
         item["slot_id"]: item["reading_id"]
         for item in view["run"]["execution"]["bindings"]
     } == dict(zip(("processed", "raw"), entity.reading_ids, strict=True))
-    assert {
-        item["accepted_topic"] for item in view["run"]["execution"]["bindings"]
-    } == set(entity.accepted_topics)
+    # How TACTIC records a bound reading stays inside; the run names readings only.
+    assert all(
+        set(item) <= {"slot_id", "reading_id", "unit"}
+        for item in view["run"]["execution"]["bindings"]
+    )
     # A per-run arrangement is independent from the published design layout.
     changed_layout = deepcopy(view["layout"])
     changed_layout["nodes"]["joined"]["x"] += 83
@@ -484,8 +505,11 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 "/v1/monitors",
                 json={
                     "display_name": "Saved monitoring service",
-                    "mqtt_topics": list(entity.accepted_topics),
-                    "model_type": "pyod_iforest",
+                    "reading_ids": list(entity.reading_ids),
+                    "monitoring": {
+                        "strategy": "static_baseline",
+                        "model_type": "pyod_iforest",
+                    },
                 },
             )
             started.raise_for_status()

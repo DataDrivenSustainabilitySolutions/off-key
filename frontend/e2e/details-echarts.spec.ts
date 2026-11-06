@@ -79,7 +79,6 @@ const adaptiveEvidence = (timestamp: string, sequence: number) =>
 const ADAPTIVE_SERVICE = {
   id: "adaptive-delayed",
   display_name: "radar-delayed",
-  mqtt_topics: [`telemetry/${DEVICE_ID}/systemVoltage`],
   reading_ids: ["systemVoltage"],
   active: true,
   monitoring_strategy: "adaptive_stream",

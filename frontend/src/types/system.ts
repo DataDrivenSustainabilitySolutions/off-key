@@ -77,10 +77,8 @@ export type SystemRuntime = {
   latest_readings?: Record<string, { value: number | boolean | string; received_at: string; is_snapshot: boolean }>;
 };
 export type SystemReadingBinding = {
-  entity_id: string;
   broker_id?: string;
-  telemetry_key: string;
-  accepted_topic: string;
+  device_id?: string | null;
   policy: CollectionPolicy;
   policy_origin?: PolicyOrigin;
 };

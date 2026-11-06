@@ -208,32 +208,40 @@ tuple `after_created`, `after_timestamp`, `after_monitor_id`, and
 `after_sequence_number`; if one is supplied, all four are required.
 
 Every listed monitor, here and in `/monitors/overview`, carries `reading_ids`:
-the catalogue readings whose accepted topic one of its `mqtt_topics` filters
-takes, wildcards included. Use it to answer "which monitors watch this reading"
-without MQTT rules of your own; a reading removed from the catalogue drops out.
-`active` is true while the monitor should run and false once it is stopped.
+the catalogue readings it watches. Use it to answer "which monitors watch this
+reading"; a reading removed from the catalogue drops out. A monitor's
+`operational_status` names its inputs by reading id as well. How a reading is
+recorded (its topic and ingress key) stays inside the backend. `active` is true
+while the monitor should run and false once it is stopped.
 
 A monitor start body contains:
 
-- required `display_name` and `mqtt_topics`
+- required `display_name` and `reading_ids`: up to 100 distinct numeric readings
+  that are recorded, all of one device or all of one broker without a device
 - `monitoring`: the strategy configuration, including `strategy`
   (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
   the strategy's training, calibration, and alarm settings
-- optional `performance_config` for sensor alignment
+- optional `performance_config`: `sensor_freshness_seconds`,
+  `observation_max_age_seconds`, `observation_future_tolerance_seconds` and
+  `alignment_max_skew_seconds`
 
-Omitting `monitoring` selects the default static baseline. The former top-level
-`strategy`, `model_type`, `model_params`, `static_baseline_config`, and
-`adaptive_stream_config` fields remain accepted at API ingress and are converted
-to `monitoring`. Mixing the two formats, conflicting model fields, and malformed
-configuration return HTTP 422. The gateway forwards only the canonical format to
-TACTIC.
+Omitting `monitoring` selects the default static baseline. Other fields,
+including the former top-level `mqtt_topics`, `strategy`, `model_type` and
+`model_params`, and malformed configuration return HTTP 422.
 
-TACTIC converts the configuration into its equivalent graph, binds each topic to
-its selected numeric catalogue reading and submits a pipeline activation, even
-while the visual workbench is disabled. The HTTP 202 response carries
-`monitor_id`, `activation_id`, `phase` and `mqtt_topics`. Poll
-`/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
-`failed` or `cancelled`. Topics without a selected numeric reading return HTTP 422.
+TACTIC converts the configuration into its equivalent graph, binds one input
+per reading and submits a pipeline activation, even while the visual workbench
+is disabled. The graph's inputs carry the readings' catalogue labels. The HTTP
+202 response carries `monitor_id`, `activation_id`, `phase` and `reading_ids`.
+Poll `/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
+`failed` or `cancelled`. A reading that is unknown, not numeric, not recorded or
+of another device returns HTTP 422.
+
+A run view (`/monitors/{monitor_id}/pipeline`) names its bound inputs by
+`slot_id`, `reading_id` and `unit`. Its `binding_metadata` keeps the
+`catalogue_revision` and `collection_revision` the run was bound against and,
+per reading, the catalogue `label`, `unit`, `device_id`, `device_label`,
+`broker_id`, `broker_label` and `collection_policy` at that time.
 
 Use `/detectors` as the source for valid model names and parameter schemas.
 

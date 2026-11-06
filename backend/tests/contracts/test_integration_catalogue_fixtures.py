@@ -7,7 +7,7 @@ import pytest
 
 from tests.support.integration_catalogue import RecordedEntity, remove_recorded_entity
 
-ENTITY = RecordedEntity("owned", "owned", ("owned",), {}, "owned", {}, {}, ())
+ENTITY = RecordedEntity("owned", "owned", ("owned",), {}, {})
 
 
 def test_cleanup_refreshes_revision_and_preserves_unrelated_changes(monkeypatch):

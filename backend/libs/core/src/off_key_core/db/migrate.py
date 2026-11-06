@@ -10,7 +10,7 @@ from sqlalchemy.engine import Connection
 
 from .base import get_engine
 from .locks import MIGRATION_LOCK
-from .models import Base
+from .models import DESIRED_STATE_CHECK, Base
 from .schema import bootstrap_schema, validate_existing_schema
 
 LEDGER = "off_key_schema_migrations"
@@ -137,6 +137,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             connection,
             excluded_columns=excluded_columns,
             retired_columns=retired_columns,
+            excluded_constraints={DESIRED_STATE_CHECK},
         )
         adopted = [
             "001_membership.sql",
@@ -157,6 +158,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         excluded_columns=excluded_columns
         | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
         retired_columns=retired_columns,
+        excluded_constraints={DESIRED_STATE_CHECK},
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

@@ -468,6 +468,9 @@ class PipelineActivationView(PipelineModel):
     service_id: str
     run_id: str
     predecessor_service_id: str | None
+    # Set once a replacement starts retiring its predecessor; from then on
+    # cancelling would leave neither monitor running, so it is refused.
+    retirement_started: bool = False
     error: str | None
     issues: list[PipelineIssue] = Field(default_factory=list, max_length=64)
     created_at: datetime

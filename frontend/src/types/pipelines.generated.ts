@@ -171,6 +171,7 @@ export type PipelineActivationView = {
   service_id: string;
   run_id: string;
   predecessor_service_id: string | null;
+  retirement_started?: boolean;
   error: string | null;
   issues?: Array<PipelineIssue>;
   created_at: string;

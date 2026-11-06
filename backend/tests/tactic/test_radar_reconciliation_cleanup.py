@@ -304,3 +304,80 @@ async def test_lost_database_connection_still_aborts_the_pass():
     with pytest.raises(OperationalError):
         await reconciliation._reconcile_with_session(session)
     assert second.status is False
+
+
+def _managed(stage: str):
+    service = _service(
+        service_id="managed",
+        status=True,
+        desired_state="running",
+        stage=stage,
+        updated_at=datetime.now(UTC) - timedelta(minutes=5),
+    )
+    service.config_fingerprint = "fingerprint"
+    service.lifecycle_version = 3
+    return service
+
+
+@pytest.mark.asyncio
+async def test_first_terminal_observation_of_a_managed_worker_only_records_it():
+    service = _managed("operational")
+    reconciliation = _reconciler(retention_hours=24, docker_statuses=["failed"])
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
+    session.get.return_value = service
+
+    await reconciliation._reconcile_with_session(session)
+
+    assert service.desired_state == "running"
+    assert service.stop_requested_at is None
+    assert service.operational_stage == "failed"
+    session.scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("docker_status", ["failed", "complete", "not_found"])
+async def test_a_worker_swarm_stopped_restarting_fails_its_run_and_stops(
+    docker_status,
+):
+    """The stage a previous pass persisted shows no restart happened since."""
+    service = _managed("failed")
+    run = SimpleNamespace(
+        id="run", status="running", ended_at=None, error=None, final_status=None
+    )
+    reconciliation = _reconciler(retention_hours=24, docker_statuses=[docker_status])
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
+    session.get.return_value = service
+    session.scalar = AsyncMock(return_value=run)
+
+    await reconciliation._reconcile_with_session(session)
+
+    assert run.status == "failed" and run.ended_at is not None
+    assert docker_status in run.error
+    assert service.desired_state == "stopped"
+    assert service.stop_requested_at is not None
+    assert service.lifecycle_version == 4
+    reconciliation_module.lock_execution_records.assert_awaited_once()
+    (event,) = [call.args[0] for call in session.add.call_args_list]
+    assert event.kind == "run_failed"
+
+
+@pytest.mark.asyncio
+async def test_a_heartbeat_between_passes_defers_the_verdict():
+    service = _managed("failed")
+    later = datetime.now(UTC)
+    reconciliation = _reconciler(retention_hours=24, docker_statuses=["failed"])
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=scalars_result(all=[service]))
+
+    async def get(*_args, **_kwargs):
+        service.operational_updated_at = later
+        return service
+
+    session.get = get
+    await reconciliation._reconcile_with_session(session)
+
+    assert service.desired_state == "running"
+    session.scalar.assert_not_awaited()

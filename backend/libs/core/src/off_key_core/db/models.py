@@ -61,6 +61,10 @@ from .table_contracts import (
 )
 
 
+# Migration 023 adds this check; databases adopted before it lack it.
+DESIRED_STATE_CHECK = "ck_services_desired_state"
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (Index("uq_users_email_lower", text("lower(email)"), unique=True),)
@@ -306,6 +310,12 @@ class MonitoringService(Base):
     )
     config_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
     collection_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        CheckConstraint(
+            "desired_state IN ('running', 'stopped', 'deleted')",
+            name=DESIRED_STATE_CHECK,
+        ),
+    )
 
 
 class RadarRuntimeCheckpoint(Base):

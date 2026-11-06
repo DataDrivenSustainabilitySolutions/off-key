@@ -25,7 +25,7 @@ from ...facades.docker import (
 )
 from .monitor_intent import (
     complete_stop,
-    mark_deleting,
+    next_lifecycle_version,
     purge_service_rows,
     request_stop_values,
 )
@@ -38,6 +38,10 @@ from .radar_status import (
 from .radar_workloads import RadarWorkloadManager
 from .time_utils import coerce_utc
 
+# Stages a terminal Docker observation persists; seen again on the next pass,
+# with no heartbeat in between, they mean Swarm stopped restarting the worker.
+ABANDONED_STAGES = frozenset({"failed", "stopped"})
+
 
 @dataclass(frozen=True, slots=True)
 class _ServiceSnapshot:
@@ -49,6 +53,7 @@ class _ServiceSnapshot:
     stop_requested_at: datetime | None
     config_fingerprint: str | None
     operational_updated_at: datetime | None
+    operational_stage: str | None = None
 
     @classmethod
     def capture(cls, service: MonitoringService) -> "_ServiceSnapshot":
@@ -61,6 +66,7 @@ class _ServiceSnapshot:
             service.stop_requested_at,
             getattr(service, "config_fingerprint", None),
             service.operational_updated_at,
+            getattr(service, "operational_stage", None),
         )
 
     def matches(self, service: MonitoringService) -> bool:
@@ -282,7 +288,12 @@ class RadarStatusReconciliationService:
     async def _apply_observation(
         self, session: AsyncSession, snapshot: _ServiceSnapshot, observation: str
     ) -> None:
-        if observation == "stop_confirmed":
+        terminal = observation in TERMINAL_WORKLOAD_STATES
+        if observation == "stop_confirmed" or (
+            terminal and snapshot.config_fingerprint
+        ):
+            # A terminal managed worker may fail its run below; keep the
+            # checkpoint, run, service lock order that worker fatal writes use.
             await lock_execution_records(session, [snapshot.id])
         service = await session.get(
             MonitoringService, snapshot.id, with_for_update=True, populate_existing=True
@@ -295,14 +306,70 @@ class RadarStatusReconciliationService:
             if not service.status:
                 service.status = True
                 self._mark_revived(service)
-        elif observation in TERMINAL_WORKLOAD_STATES:
+        elif terminal:
             # A heartbeat arriving after the Docker snapshot is newer evidence.
             if service.operational_updated_at == snapshot.operational_updated_at:
-                self._apply_terminal(service, observation)
+                if self._is_abandoned(snapshot):
+                    await self._fail_abandoned(session, service, observation)
+                else:
+                    self._apply_terminal(service, observation)
         elif observation in UNVERIFIED_WORKLOAD_STATES:
             logger.warning(
                 "RADAR workload status unverifiable service_id=%s", service.id
             )
+
+    @staticmethod
+    def _is_abandoned(snapshot: _ServiceSnapshot) -> bool:
+        """Whether Swarm has given up on a managed worker that should run.
+
+        The first terminal observation only records the Docker state. When the
+        next pass still finds the worker terminal, with no heartbeat in between,
+        Swarm is not restarting it: its restart attempts are spent, it exited
+        cleanly, or its service is gone. Without this the row would keep its
+        readings and capacity forever.
+        """
+        return bool(
+            snapshot.config_fingerprint
+            and snapshot.desired_state == "running"
+            and snapshot.stop_requested_at is None
+            and (snapshot.operational_stage or "").strip().lower() in ABANDONED_STAGES
+        )
+
+    async def _fail_abandoned(
+        self, session: AsyncSession, service: MonitoringService, observation: str
+    ) -> None:
+        """End the run as failed and request the stop that releases its claim."""
+        now = datetime.now(UTC)
+        error = (
+            f"The worker stopped and is not being restarted (Docker: {observation}). "
+            "Start the monitor again once the cause is fixed."
+        )
+        apply_terminal_operational_status(service, observation)
+        run = await session.scalar(
+            select(PipelineRun).where(PipelineRun.service_id == service.id)
+        )
+        if run is not None and run.ended_at is None and run.status != "failed":
+            run.status = "failed"
+            run.error = error
+            run.ended_at = now
+            run.final_status = run.final_status or service.operational_status
+            session.add(
+                run_event(
+                    run.id,
+                    "run_failed",
+                    stage="failed",
+                    occurred_at=now,
+                    detail={"error": error, "docker_status": observation},
+                )
+            )
+        service.desired_state = "stopped"
+        service.stop_requested_at = now
+        service.lifecycle_version = next_lifecycle_version(service)
+        logger.warning(
+            "event=tactic.radar_worker_abandoned service_id=%s docker_status=%s",
+            service.id,
+            observation,
+        )
 
     async def _apply_stopped(
         self, session: AsyncSession, service: MonitoringService
@@ -316,19 +383,11 @@ class RadarStatusReconciliationService:
             await purge_service_rows(session, [service.id])
 
     def _apply_terminal(self, service: MonitoringService, docker_status: str) -> None:
-        if getattr(service, "desired_state", "running") == "running":
-            # Legacy rows have no config fingerprint but their Swarm tasks can
-            # also restart. Desired intent owns the claim, including rows whose
-            # derived status was cleared by an older controller.
-            service.status = True
-            apply_terminal_operational_status(service, docker_status)
-        elif self._is_purge_due(service):
-            # Hold the claim until a later unlocked inspection confirms shutdown.
-            mark_deleting(service, hold_claim=True)
-            return
-        elif service.status:
-            service.status = False
-            apply_terminal_operational_status(service, docker_status)
+        # Only rows that want to run reach here: every other row is inspected
+        # as a stop. Desired intent owns the claim, including legacy rows whose
+        # derived status was cleared by an older controller.
+        service.status = True
+        apply_terminal_operational_status(service, docker_status)
 
     def _is_purge_due(self, service: MonitoringService) -> bool:
         if service.status:

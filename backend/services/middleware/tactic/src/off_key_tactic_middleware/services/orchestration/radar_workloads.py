@@ -279,6 +279,13 @@ class RadarWorkloadManager:
     async def get_status_and_labels(
         self,
         workload_id: str | None,
+        *,
+        probe: bool = False,
     ) -> tuple[str, dict[str, str]]:
-        """Return normalized status and labels for a service."""
-        return await get_workload_status_and_labels(self.async_docker, workload_id)
+        """Return normalized status and labels for a service.
+
+        `probe` marks a bulk listing, which shares a smaller pool of Docker slots.
+        """
+        return await get_workload_status_and_labels(
+            self.async_docker, workload_id, probe=probe
+        )

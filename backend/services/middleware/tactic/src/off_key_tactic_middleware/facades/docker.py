@@ -86,6 +86,11 @@ class AsyncDocker:
                 client if client is not None else DockerClient(base_url=config.base_url)
             )
             self.semaphore = asyncio.Semaphore(config.max_concurrent_calls)
+            # Bulk status probes, which any monitor reader can start, use at
+            # most half of the slots so creating and removing workloads goes on.
+            self.probe_semaphore = asyncio.Semaphore(
+                max(1, config.max_concurrent_calls // 2)
+            )
             logger.info(
                 f"Docker client initialized successfully |"
                 f" URL: {config.base_url} | "
@@ -112,6 +117,11 @@ class AsyncDocker:
             logger.error(f"Docker operation failed: {func_name} | Error: {e!s}")
             raise
 
+    async def run_probe(self, func: Callable, *args, **kwargs) -> Any:
+        """Run a read-only status probe within the probes' share of the slots."""
+        async with self.probe_semaphore:
+            return await self.run(func, *args, **kwargs)
+
     def close(self) -> None:
         """Close the underlying Docker client and release resources."""
         if self.client:
@@ -123,7 +133,7 @@ class AsyncDocker:
 
 
 async def get_workload_status_and_labels(
-    async_docker: AsyncDocker, workload_id: str | None
+    async_docker: AsyncDocker, workload_id: str | None, *, probe: bool = False
 ) -> tuple[str, dict[str, str]]:
     """Return the newest task state and the labels of a RADAR Swarm service.
 
@@ -132,11 +142,10 @@ async def get_workload_status_and_labels(
     """
     if not workload_id:
         return "no_container_id", {}
+    run = async_docker.run_probe if probe else async_docker.run
     try:
-        docker_service = await async_docker.run(
-            async_docker.client.services.get, workload_id
-        )
-        tasks = await async_docker.run(docker_service.tasks)
+        docker_service = await run(async_docker.client.services.get, workload_id)
+        tasks = await run(docker_service.tasks)
         labels = workload_labels(docker_service)
         return _extract_latest_workload_state(tasks), {
             str(key): str(value) for key, value in labels.items()

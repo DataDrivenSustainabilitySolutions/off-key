@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "@/lib/errors";
@@ -12,7 +12,7 @@ import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
-import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary } from "@/domain/monitoring/monitoringView";
+import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary, suggestedBindings } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {
@@ -41,6 +41,7 @@ export default function PipelineWorkspace({
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const id = params.get("pipeline");
+  const suggested = useMemo(() => suggestedBindings(params), [params]);
   const creating = params.get("create") === "monitoring";
   const contextReading = !initialTarget || index.targets.find((target) => target.id === initialTarget)
     ?.inputs.some((input) => input.stream.id === initialReading) ? initialReading : undefined;
@@ -147,6 +148,7 @@ export default function PipelineWorkspace({
             : undefined)
         }
         initialReading={contextReading}
+        initialBindings={suggested}
         collectionReady={collectionReady}
         revisionId={params.get("revision") ?? undefined}
         activationId={params.get("activation") ?? undefined}

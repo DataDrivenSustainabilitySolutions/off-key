@@ -28,6 +28,8 @@ from off_key_core.schemas.dojo import (
     RunListPage,
     RunListQuery,
     RunMetrics,
+    RunPromote,
+    RunPromotion,
     RunResultsPage,
     RunResultsQuery,
     RunView,
@@ -40,6 +42,7 @@ from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 
 use_dojo = require_permission(Permission.use_dojo)
+manage_monitors = require_permission(Permission.manage_monitors)
 
 
 async def member_scope(request: Request, member: MemberProfile = Depends(use_dojo)):
@@ -389,6 +392,34 @@ async def cancel_dojo_run(
     return await tactic.request(
         "POST",
         f"/api/v1/dojo/runs/{path_segment(run_id)}/cancel",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post(
+    "/runs/{run_id}/promote",
+    response_model=RunPromotion,
+    status_code=201,
+    dependencies=[Depends(manage_monitors)],
+)
+@write_limit
+async def promote_dojo_run(
+    request: Request,
+    run_id: str,
+    promotion: RunPromote,
+    authorization: str = Depends(member_authorization),
+):
+    """Save the run's design as a new template in the pipeline library.
+
+    Needs `manage_monitors` as well as `use_dojo`. `bindings` lists each
+    input slot with the series it was bound to and, for a series copied from
+    recorded history, its catalogue `reading_id`: the live input to suggest
+    when the template starts a monitor. Uploaded series have none.
+    """
+    return await tactic.request(
+        "POST",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}/promote",
+        json_data=promotion.model_dump(mode="json"),
         headers={"Authorization": authorization},
     )
 

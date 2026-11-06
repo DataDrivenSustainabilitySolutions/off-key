@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bindingsReady, predecessorSource, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings,
+  suggestedTarget,
 } from "@/features/pipelines/bindings";
 import type { PipelineServiceView } from "@/features/pipelines/contracts";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
@@ -17,6 +18,14 @@ describe("reading selection", () => {
     expect(suggestBindings([{ id: "one", label: "Current", unit: "A" }, { id: "two", label: "Other", unit: "A" }], target))
       .toEqual({ one: "a", two: "b" });
     expect(suggestBindings([{ id: "one", label: "Other", unit: "A" }], target)).toEqual({});
+  });
+  it("prefers suggested readings when they fit the slot, and starts on the target that holds most of them", () => {
+    const slots = [{ id: "one", label: "Other", unit: "A" }, { id: "two", label: "Volts", unit: "V" }];
+    expect(suggestBindings(slots, target, { one: "b", two: "a" })).toEqual({ one: "b" });
+    const other = { id: "other", inputs: [target.inputs[0]] } as MonitoringTarget;
+    const main = { ...target, id: "main" } as MonitoringTarget;
+    expect(suggestedTarget([other, main], { one: "a", two: "b" })).toBe("main");
+    expect(suggestedTarget([other, main], { one: "gone" })).toBeUndefined();
   });
   it("rejects missing, duplicate, incompatible, disabled and already monitored readings", () => {
     const slots = [{ id: "one", label: "Current", unit: "A" }, { id: "two", label: "Backup current", unit: "A" }];

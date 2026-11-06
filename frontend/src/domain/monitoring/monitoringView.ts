@@ -6,7 +6,7 @@
 
 /** Keys that describe the open view; a reset clears them all. */
 const VIEW_KEYS = ["entity", "reading", "broker", "topic", "service", "create", "target", "tab", "stream",
-  "inspect", "pipeline", "view", "revision", "activation", "replace", "from"] as const;
+  "inspect", "pipeline", "view", "revision", "activation", "replace", "from", "bind"] as const;
 
 /** Remembered monitoring URL, restored when navigating back to the workspace. */
 export const monitoringNavigationKey = (userId: string | number | null | undefined) => `monitoring:${userId}:url`;
@@ -29,6 +29,7 @@ export const resetView = (params: URLSearchParams, sourceKey?: string, view?: Re
 /** Open a pipeline; from the template library this leaves service creation. */
 export const openPipeline = (params: URLSearchParams, pipelineId: string, targetId?: string) =>
   edit(params, next => {
+    if (params.get("pipeline") !== pipelineId) next.delete("bind");
     next.set("pipeline", pipelineId);
     if (params.get("view") === "pipelines") next.delete("create");
     if (targetId) next.set("target", targetId);
@@ -37,14 +38,14 @@ export const openPipeline = (params: URLSearchParams, pipelineId: string, target
 
 export const createPipeline = (params: URLSearchParams) =>
   edit(params, next => {
-    drop(next, ["pipeline", "revision", "activation", "view", "replace", "from"]);
+    drop(next, ["pipeline", "revision", "activation", "view", "replace", "from", "bind"]);
     next.set("create", "monitoring");
   });
 
 /** The template library keeps `from` and `create` so setup can resume. */
 export const showLibrary = (params: URLSearchParams) =>
   edit(params, next => {
-    drop(next, ["pipeline", "revision", "activation", "replace"]);
+    drop(next, ["pipeline", "revision", "activation", "replace", "bind"]);
     next.set("view", "pipelines");
   });
 
@@ -75,3 +76,20 @@ export const chooseTab = (params: URLSearchParams, tab: string, streamId?: strin
     if (streamId) next.set("stream", streamId);
     else if (tab !== "evidence") next.delete("stream");
   });
+
+/**
+ * Inputs suggested for a template, carried as `bind=<slot id>:<reading id>`.
+ * Slot ids never contain a colon, so the first one separates the two.
+ */
+export const suggestedBindings = (params: URLSearchParams): Record<string, string> =>
+  Object.fromEntries(params.getAll("bind").flatMap(value => {
+    const split = value.indexOf(":");
+    return split > 0 && split < value.length - 1 ? [[value.slice(0, split), value.slice(split + 1)]] : [];
+  }));
+
+/** Open a template in Monitoring with suggested readings for its input slots. */
+export const templateHref = (pipelineId: string, bindings: Record<string, string> = {}) => {
+  const next = new URLSearchParams({ pipeline: pipelineId });
+  Object.entries(bindings).forEach(([slot, reading]) => next.append("bind", `${slot}:${reading}`));
+  return `/?${next}`;
+};

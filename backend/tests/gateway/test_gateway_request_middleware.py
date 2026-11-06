@@ -97,3 +97,37 @@ async def test_security_log_flags_probing_paths_and_auth_failures(log, url, even
     for call in log.warning.call_args_list:
         assert "127.0.0.1" not in call.args
         assert "127.0.0.x" in call.args
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+async def test_security_log_reports_repeats_once_per_window(log):
+    clock = _Clock()
+    app = FastAPI()
+
+    @app.get("/{path:path}")
+    async def deny(path: str):
+        raise HTTPException(status_code=401)
+
+    app.add_middleware(
+        middleware.RequestLoggingMiddleware,
+        security_events=middleware.SecurityEventThrottle(window=60, clock=clock),
+    )
+    async with asgi_client(app) as client:
+        for _ in range(5):
+            await client.get("/items")
+        assert log.warning.call_count == 1
+        assert log.warning.call_args.args[-1] == 0
+
+        clock.now = 61
+        await client.get("/items")
+
+    assert log.warning.call_count == 2
+    # The next line reports the four left out in the previous window.
+    assert log.warning.call_args.args[-1] == 4

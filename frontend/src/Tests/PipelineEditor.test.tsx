@@ -121,10 +121,11 @@ const pipeline = () =>
   });
 const props = () => ({
   id: "design",
+  initialBindings: undefined as Record<string, string> | undefined,
   catalog,
   canEdit: true,
   targets: [target],
-  initialTarget: "room",
+  initialTarget: "room" as string | undefined,
   services: [],
   byStream: new Map<string, Set<string>>(),
   collectionReady: true,
@@ -300,6 +301,13 @@ describe("simple monitoring setup", () => {
     expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0]).toEqual(expect.objectContaining({ display_name: "Room health", definition, bindings: { value: "current" } }));
     expect(pipelinesApi.save).not.toHaveBeenCalled();
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
+  });
+  it("starts on the readings a Dojo run suggested for each slot", async () => {
+    const pump: MonitoringTarget = { id: "pump", label: "Pump", inputs: ["main", "spare"].map((id) => ({
+      ...target.inputs[0]!, stream: { ...target.inputs[0]!.stream, id, label: id } })) };
+    mount({ initialTarget: undefined, targets: [target, pump], initialBindings: { value: "spare" } });
+    await inputStep();
+    expect((screen.getByRole("combobox", { name: "Reading for Value" }) as HTMLSelectElement).value).toBe("spare");
   });
   it("focuses the missing name and retains the edited graph", async () => {
     mount();

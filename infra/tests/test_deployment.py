@@ -261,6 +261,7 @@ class DeploymentTests(unittest.TestCase):
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
+            "EMQX_NODE__COOKIE": {"emqx-main"},
         }
         for case, result in self.results.items():
             services = result["config"]["services"]
@@ -423,6 +424,23 @@ class DeploymentTests(unittest.TestCase):
                         inputs["email_password"], result.stdout + result.stderr
                     )
                 self.assertFalse((Path(directory) / "stack").exists())
+
+    def test_production_requires_a_dedicated_emqx_node_cookie(self):
+        for cookie in (
+            "",
+            "short-cookie",
+            "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX",
+            "cookie with spaces " + "x" * 32,
+        ):
+            with (
+                self.subTest(cookie=cookie),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                result, _ = render(Path(directory), "prod", emqx_node_cookie=cookie)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((Path(directory) / "stack").exists())
+                if cookie:
+                    self.assertNotIn(cookie, result.stdout + result.stderr)
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():
@@ -801,6 +819,11 @@ class DeploymentTests(unittest.TestCase):
                 "emqx_server_key.pem",
                 "emqx_auth_users.json",
             },
+        )
+        # Erlang distribution never falls back to the image's default cookie.
+        self.assertEqual(
+            broker["environment"]["EMQX_NODE__COOKIE"],
+            self.results["prod"]["inputs"]["emqx_node_cookie"],
         )
         rendered = json.dumps(config)
         self.assertNotIn(

@@ -156,6 +156,9 @@ service_environment:
     EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
     EMQX_DASHBOARD__DEFAULT_USERNAME: "{{ emqx_dashboard_username }}"
     EMQX_DASHBOARD__DEFAULT_PASSWORD: "{{ emqx_dashboard_password }}"
+    # Authenticates Erlang distribution (`emqx ctl`, clustering). Without it the
+    # image falls back to its built-in default cookie, which every overlay peer knows.
+    EMQX_NODE__COOKIE: "{{ emqx_node_cookie }}"
   oauth2-proxy:
     OAUTH2_PROXY_PROVIDER: github
     OAUTH2_PROXY_CLIENT_ID: "{{ oauth2_client_id }}"

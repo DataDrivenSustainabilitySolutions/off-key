@@ -605,13 +605,13 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`252bd0e2980282a6d29e4f3d7443b7c505590f07`, the member favourites head that
-carries migration 018 (`member_favorites`). It shares the current migration
-ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog and
-field discovery metadata, so an already-open new browser keeps its controls while the backend
-rolls back. The previous reference, `8a90a9e`, added migration 017; it cannot be
-a reference any more, because releases before migration 018 refuse a database
-that has applied it. Rolling back past migration 018 means restoring a verified
+`c3f16c4e256a5d22f0867007dd92235389cc15a7`, the Dojo datasets head that carries
+migrations 018 (`member_favorites`) and 019 (`dojo_datasets`). It shares the
+current migration ledger, the published ABERRANT 1.4.0 pin, frozen lock,
+generated catalog and field discovery metadata, so an already-open new browser
+keeps its controls while the backend rolls back. The previous reference,
+`252bd0e`, carried migration 018; it cannot be a reference any more, because
+releases before migration 019 refuse a database that has applied it. Rolling back past migration 019 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

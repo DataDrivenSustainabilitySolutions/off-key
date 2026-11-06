@@ -53,6 +53,14 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_pipeline_run_events` | `id` | A run's lifecycle events (setup phases, stage changes, data gaps, worker crashes, end), kept after its service is purged |
 | `radar_runtime_checkpoints` | `service_id` | Signed detector checkpoint for each running RADAR service |
 
+### Dojo
+
+| Entity | Primary key | Purpose |
+| --- | --- | --- |
+| `dojo_datasets` | `id` | A frozen dataset: name, origin (`csv` or `history`), provenance, size and time span |
+| `dojo_dataset_series` | `id` | One named series of a dataset, with its unit and, for copies, the catalogue reading it came from |
+| `dojo_dataset_points` | `(series_id, timestamp)` | The values; independent of `telemetry`, so retention never removes them |
+
 ## Relationship highlights
 
 - `member_favorites.user_id → users.id`, removed with the member. `item_id` is a `charger_id`, a catalogue stream id or a `service_id` by `kind`, and is not a foreign key.
@@ -60,6 +68,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - `anomaly_identity.(charger_id, timestamp, telemetry_type, service_id) → anomalies` composite key
 - `monitoring_evidence.service_id` identifies the monitoring service that produced the inference record.
 - `monitoring_pipeline_run_events.run_id → monitoring_pipeline_runs.id`; a run also keeps `final_status`, the runtime status it ended with.
+- `dojo_dataset_series.dataset_id → dojo_datasets.id`, deleted with the dataset. `dojo_dataset_points.series_id` names its series without a foreign key, which would slow large imports; the Dojo service deletes points with their dataset. `dojo_datasets.created_by → users.id` is cleared when the member is removed.
 
 ## Time-series characteristics
 

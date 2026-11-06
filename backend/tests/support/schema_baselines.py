@@ -23,6 +23,7 @@ EXPECTED_MIGRATIONS = (
     "016_pipeline_run_events.sql",
     "017_detector_inputs.sql",
     "018_member_favorites.sql",
+    "019_dojo_datasets.sql",
 )
 
 

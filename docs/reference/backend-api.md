@@ -240,6 +240,30 @@ scope when every reading of its entity is. `summary` and `readings` cover every
 match rather than the returned page; `readings` ignores the narrowing filters so
 it can feed a reading picker. Pages are newest first; pass `next` as `before`.
 
+### Dojo
+
+Datasets for comparing detection approaches offline, apart from live
+monitoring. A dataset is a frozen copy: retention and catalogue edits never
+change it. Administrators only until members get a dedicated Dojo permission.
+
+| Method | Path | Purpose | Key inputs |
+| --- | --- | --- | --- |
+| `GET` | `/dojo/datasets` | List datasets, newest first | `limit`, `offset` |
+| `POST` | `/dojo/datasets/csv` | Create a dataset from a CSV request body (`text/csv`, at most 100 MB) | Query: `name`, `layout` (`wide` or `long`), optional `timestamp_column`, `series_column`, `value_column`, `delimiter`, `filename`, `description` |
+| `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `start`, `end` |
+| `GET` | `/dojo/datasets/{dataset_id}` | One dataset with its series | Path: `dataset_id` |
+| `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
+| `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
+| `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
+
+A wide CSV has one timestamp column (the first unless `timestamp_column`
+names another) and one series per remaining column; a long CSV has one value
+per row in `series`, `timestamp` and `value` columns. Timestamps are ISO 8601
+or Unix epoch seconds or milliseconds, UTC without a zone. The delimiter is
+detected from the header; with `;` or tab a decimal comma is accepted. A
+dataset holds at most 64 series and 5,000,000 values, and two values for the
+same series and instant are rejected.
+
 ### Gateway health
 
 | Method | Path | Purpose |
@@ -272,6 +296,18 @@ Health and readiness remain available without this service credential.
 | `DELETE` | `/data/anomalies/{anomaly_id}` | Delete an anomaly |
 | `GET` | `/data/monitoring-evidence/{charger_id}` | List monitoring evidence |
 | `GET` | `/data/monitoring-evidence/{charger_id}/chart` | Load chart evidence with a stable cursor |
+
+### Dojo datasets
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/dojo/datasets` | List datasets |
+| `POST` | `/dojo/datasets/csv` | Import a CSV body |
+| `POST` | `/dojo/datasets/history` | Copy recorded readings |
+| `GET` | `/dojo/datasets/{dataset_id}` | Read a dataset |
+| `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset |
+| `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
+| `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
 
 ### RADAR orchestration
 

@@ -140,7 +140,9 @@ def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
         )
         rewind_ledger(connection, "018_member_favorites.sql")
     with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == ["018_member_favorites.sql"]
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "018_member_favorites.sql"
+        )
         assert "favorites" not in inspect(connection).get_table_names()
         assert connection.execute(
             text("SELECT user_id, kind, item_id FROM member_favorites")

@@ -5,7 +5,9 @@ import type { SystemSnapshot } from "../../src/types/system";
 
 const stableKey = (kind: string, identity: string) => `${kind}-${createHash("sha256").update(identity).digest("hex")}`;
 export const fixtureEntityId = (deviceId: string) => stableKey("entity", deviceId);
-export const fixtureReadingKey = (deviceId: string, key: string) => stableKey("reading", `${deviceId}:${key.replaceAll("/", ":")}`);
+/** The catalogue reading `addTestCharger` creates for one key. */
+export const fixtureReadingId = (deviceId: string, key: string) => `${deviceId}:${key.replaceAll("/", ":")}`;
+export const fixtureReadingKey = (deviceId: string, key: string) => stableKey("reading", fixtureReadingId(deviceId, key));
 
 /** Configuration application and upstream SUBACK are separate readiness boundaries. */
 export const waitForCollectionReady = async (
@@ -41,7 +43,7 @@ export const addTestCharger = async (
     document.brokers.push(connection);
   }
   document.devices.push({ id: deviceId, label: `Entity ${deviceId}`, broker_id: connection.id, kind: "device" });
-  const streamIds = keys.map(key => `${deviceId}:${key.replaceAll("/", ":")}`);
+  const streamIds = keys.map(key => fixtureReadingId(deviceId, key));
   document.readings.push(...keys.map((key, index) => ({
     id: streamIds[index]!, label: key, category: "Test", value_type: "number" as const,
     broker_id: connection!.id, device_id: deviceId, topic: `tests/${localId}/${key}`,

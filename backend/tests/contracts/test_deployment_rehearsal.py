@@ -121,13 +121,20 @@ class RehearsalClient(httpx.Client):
         )
 
 
+def get_measurements(client, entity, key="temperature"):
+    # The rollback reference names a reading by its recorded entity and key.
+    if client.compatible:
+        return client.get(
+            f"/v1/telemetry/{entity.entity_id}/data",
+            params={"type": entity.keys[key]},
+        )
+    return client.get(f"/v1/readings/{entity.readings[key]}/measurements")
+
+
 def wait_for_measurement(client, entity, value):
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        response = client.get(
-            f"/v1/telemetry/{entity.entity_id}/data",
-            params={"type": entity.keys["temperature"]},
-        )
+        response = get_measurements(client, entity)
         response.raise_for_status()
         points = response.json()
         if any(point["value"] == value for point in points):
@@ -579,13 +586,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     current["runtime"]["collection_revision"]
                     == snapshot["runtime"]["collection_revision"]
                 )
-                assert (
-                    client.get(
-                        f"/v1/telemetry/{entity.entity_id}/data",
-                        params={"type": entity.keys["temperature"]},
-                    ).json()
-                    == saved_data
-                )
+                assert get_measurements(client, entity).json() == saved_data
                 monitors = client.get("/v1/monitors", params={"active": "true"})
                 monitors.raise_for_status()
                 workers = [

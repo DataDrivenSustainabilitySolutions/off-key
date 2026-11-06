@@ -1,13 +1,11 @@
 """SQLAlchemy repositories for TACTIC data-service use cases."""
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 
-from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import (
     Anomaly,
     AnomalyIdentity,
-    Charger,
-    CollectionBinding,
     MemberFavorite,
     MonitoringEvidence,
     Telemetry,
@@ -21,10 +19,12 @@ from off_key_core.schemas.reporting import (
 from off_key_core.schemas.user import normalize_email
 from sqlalchemy import (
     ColumnElement,
+    Text,
     and_,
     case,
     delete,
     distinct,
+    false,
     func,
     not_,
     or_,
@@ -32,7 +32,7 @@ from sqlalchemy import (
     true,
     tuple_,
 )
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,51 +119,11 @@ def _matching(filters: AnomalyFilters) -> list[ColumnElement[bool]]:
     return conditions
 
 
-class ChargerRepository:
-    """Persistence operations for chargers."""
-
-    def __init__(self, session: AsyncSession):
-        self._session = session
-
-    async def list_chargers(
-        self,
-        *,
-        skip: int,
-        limit: int,
-        active_only: bool,
-    ) -> list[Charger]:
-        query = select(Charger).join(CollectionBinding)
-        if active_only:
-            query = query.where(Charger.online.is_(True))
-        query = query.offset(skip).limit(limit)
-        result = await self._session.execute(query)
-        return list(result.scalars().all())
-
-    async def list_active_charger_ids(self, *, skip: int, limit: int) -> list[str]:
-        query = (
-            select(Charger.charger_id)
-            .join(CollectionBinding)
-            .where(Charger.online.is_(True))
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await self._session.execute(query)
-        return list(result.scalars().all())
-
-
 class TelemetryRepository:
     """Persistence operations for telemetry."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
-
-    async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
-        snapshot = await read_collection_runtime(self._session)
-        return sorted(
-            stream.key
-            for stream in snapshot.catalog.streams(selected_only=True)
-            if stream.charger_id == charger_id and stream.value_type == "number"
-        )[:limit]
 
     async def list_data(
         self,
@@ -458,32 +418,46 @@ class AnomalyRepository:
         await self._session.delete(anomaly)
 
 
+# Recorded keys by entity; None stands for every key of that entity.
+EvidenceScope = Mapping[str, frozenset[str] | None]
+
+
+def _evidence_scope(scope: EvidenceScope) -> ColumnElement[bool]:
+    """Evidence of these entities that covers at least one of their keys."""
+    clauses = [
+        MonitoringEvidence.charger_id == entity
+        if keys is None
+        else and_(
+            MonitoringEvidence.charger_id == entity,
+            MonitoringEvidence.sensor_set.op("?|")(array(sorted(keys), type_=Text)),
+        )
+        for entity, keys in scope.items()
+    ]
+    return or_(*clauses) if clauses else false()
+
+
 class MonitoringEvidenceRepository:
     """Read-only persistence operations for static monitoring evidence."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_by_charger(
-        self,
-        *,
-        charger_id: str,
-        telemetry_type: str | None,
-        limit: int,
+    async def list_by_scope(
+        self, *, scope: EvidenceScope, limit: int
     ) -> list[MonitoringEvidence]:
-        query = select(MonitoringEvidence).where(
-            MonitoringEvidence.charger_id == charger_id
+        query = (
+            select(MonitoringEvidence)
+            .where(_evidence_scope(scope))
+            .order_by(MonitoringEvidence.timestamp.desc())
+            .limit(limit)
         )
-        if telemetry_type:
-            query = query.where(MonitoringEvidence.sensor_set.op("?")(telemetry_type))
-        query = query.order_by(MonitoringEvidence.timestamp.desc()).limit(limit)
         result = await self._session.execute(query)
         return list(result.scalars().all())
 
-    async def list_chart_by_charger(
+    async def list_chart(
         self,
         *,
-        charger_id: str,
+        scope: EvidenceScope,
         after_created: datetime | None,
         after_timestamp: datetime | None,
         after_service_id: str | None,
@@ -496,6 +470,7 @@ class MonitoringEvidenceRepository:
                 str,
                 datetime,
                 int,
+                str,
                 list[str],
                 dict[str, str],
                 str,
@@ -515,6 +490,7 @@ class MonitoringEvidenceRepository:
             MonitoringEvidence.service_id,
             MonitoringEvidence.timestamp,
             MonitoringEvidence.sequence_number,
+            MonitoringEvidence.charger_id,
             MonitoringEvidence.sensor_set,
             MonitoringEvidence.input_timestamps,
             MonitoringEvidence.strategy,
@@ -527,7 +503,7 @@ class MonitoringEvidenceRepository:
             MonitoringEvidence.threshold,
             MonitoringEvidence.alarm,
             MonitoringEvidence.created,
-        ).where(MonitoringEvidence.charger_id == charger_id)
+        ).where(_evidence_scope(scope))
 
         if service_id is not None:
             query = query.where(MonitoringEvidence.service_id == service_id)

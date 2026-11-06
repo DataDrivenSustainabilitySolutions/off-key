@@ -2,7 +2,6 @@
 
 from .data import (
     AnomalyRepository,
-    ChargerRepository,
     FavoriteRepository,
     MonitoringEvidenceRepository,
     TelemetryRepository,
@@ -11,7 +10,6 @@ from .data import (
 
 __all__ = [
     "AnomalyRepository",
-    "ChargerRepository",
     "FavoriteRepository",
     "MonitoringEvidenceRepository",
     "TelemetryRepository",

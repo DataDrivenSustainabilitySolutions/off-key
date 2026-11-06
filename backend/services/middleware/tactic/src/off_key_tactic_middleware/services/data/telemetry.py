@@ -15,15 +15,6 @@ class TelemetryQueryService:
     def __init__(self, repository: TelemetryRepository):
         self._repository = repository
 
-    async def list_types(self, *, charger_id: str, limit: int) -> list[str]:
-        types = await self._repository.list_types(charger_id=charger_id, limit=limit)
-        logger.debug(
-            "event=tactic.telemetry_types_read charger_id=%s count=%s",
-            charger_id,
-            len(types),
-        )
-        return types
-
     async def get_telemetry_data(
         self,
         *,

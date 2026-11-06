@@ -35,8 +35,8 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
     remote = AsyncMock(side_effect=TacticError("Invalid token", status=401))
     monkeypatch.setattr(access.tactic, "request", remote)
     paths = (
-        "/chargers/available",
-        "/telemetry/example/type",
+        "/devices",
+        "/readings/example/measurements",
         "/monitors",
         "/favorites?user_id=99",
         "/anomalies/count",
@@ -199,7 +199,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
         assert (await client.get("/health")).status_code == 200
         for method, path in (
             ("DELETE", "/api/v1/members/19"),
-            ("GET", "/api/v1/data/chargers"),
+            ("GET", "/api/v1/data/devices"),
             ("POST", "/api/v1/data/anomalies/query"),
             ("GET", "/api/v1/data/users/17/favorites"),
             ("POST", "/api/v1/data/auth/login"),

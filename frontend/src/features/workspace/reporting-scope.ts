@@ -21,6 +21,24 @@ export function reportLabels(document: SystemDocument | undefined, runtime?: Sys
 }
 
 /** The catalogue node that stands for a recorded entity, so that reports can be scoped to it. */
+/**
+ * The catalogue readings recorded under one entity, how to ask for their
+ * evidence, and the reading behind each recorded key the entity's alarms name.
+ */
+export function entityReadings(document: SystemDocument | undefined, runtime: SystemRuntime | undefined, entityId: string) {
+  const readings = (document?.readings ?? []).filter(stream => runtime?.bindings?.[stream.id]?.entity_id === entityId);
+  const readingByKey = new Map(readings.flatMap(stream => {
+    const key = runtime?.bindings?.[stream.id]?.telemetry_key;
+    return key ? [[key, stream.id] as const] : [];
+  }));
+  // An entity is one device's readings, or the readings of a broker that have no device.
+  const deviceId = readings[0]?.device_id;
+  const evidenceScope: { deviceId: string } | { readingIds: string[] } = deviceId && readings.every(stream => stream.device_id === deviceId)
+    ? { deviceId }
+    : { readingIds: readings.map(stream => stream.id) };
+  return { readings, readingByKey, evidenceScope };
+}
+
 export function entitySource(index: NavigationIndex, document: SystemDocument | undefined, runtime: SystemRuntime | undefined, entityId: string): ExplorerNode | undefined {
   for (const stream of document?.readings ?? []) {
     if (runtime?.bindings?.[stream.id]?.entity_id !== entityId) continue;

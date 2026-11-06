@@ -83,11 +83,8 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             observations = {}
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
-                for key, telemetry_key in entity.keys.items():
-                    response = client.get(
-                        f"/v1/telemetry/{entity.entity_id}/data",
-                        params={"type": telemetry_key},
-                    )
+                for key, reading_id in entity.readings.items():
+                    response = client.get(f"/v1/readings/{reading_id}/measurements")
                     response.raise_for_status()
                     observations[key] = {
                         row["value"]: datetime.fromisoformat(row["timestamp"])
@@ -105,7 +102,7 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 )
             cycles = [
                 {
-                    entity.keys[key]: observations[key][value]
+                    entity.readings[key]: observations[key][value]
                     for key, value in values.items()
                 }
                 for values in published_values
@@ -113,13 +110,13 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 response = client.get(
-                    "/v1/evidence", params={"charger_id": entity.entity_id}
+                    "/v1/evidence", params={"reading_id": entity.reading_ids[0]}
                 )
                 response.raise_for_status()
                 evidence = [
                     row
                     for row in response.json()
-                    if row.get("service_id") == monitor_id
+                    if row.get("monitor_id") == monitor_id
                     and row.get("strategy") == "adaptive_stream"
                 ]
                 seen = []
@@ -129,7 +126,7 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                         and row["threshold"] is not None
                     )
                     assert row["p_value"] is None
-                    assert set(row["input_timestamps"]) == set(entity.keys.values())
+                    assert set(row["input_timestamps"]) == set(entity.reading_ids)
                     inputs = {
                         key: datetime.fromisoformat(value)
                         for key, value in row["input_timestamps"].items()

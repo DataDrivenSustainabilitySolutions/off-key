@@ -306,7 +306,7 @@ test.describe("visual pipeline real infrastructure", () => {
           body: JSON.stringify(runtime, null, 2),
           contentType: "application/json",
         });
-        await inspectMonitoringHistory({ page, api, headers, serviceId, entityId, strategy, testInfo });
+        await inspectMonitoringHistory({ page, api, headers, serviceId, deviceId, strategy, testInfo });
         const raw = runtime.observation?.passes.score.features_select_2;
         expect(raw?.output).toBeTruthy();
         if (raw && typeof raw.output === "object")

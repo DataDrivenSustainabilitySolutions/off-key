@@ -14,11 +14,11 @@ vi.mock("@/lib/api-client", async original => ({ ...await original<typeof import
 const connection = mqttConnection({ id: "broker", label: "Broker", host: "example.test" });
 const inputs: MonitoringInput[] = ["temperature", "humidity"].map(id => ({
   stream: { id, label: id, broker_id: "broker", topic: id, category: "Other", value_type: "number" },
-  binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } }, path: "Station",
+  binding: { entity_id: "entity", telemetry_key: `key-${id}`, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } }, path: "Station",
 }));
 const timestamp = "2026-10-21T12:00:00.000Z";
-const evidence: MonitoringChartEvidence = { service_id: "forest", timestamp, created: timestamp, sequence_number: 1,
-  sensor_set: ["temperature", "humidity"], input_timestamps: { temperature: timestamp, humidity: timestamp },
+const evidence: MonitoringChartEvidence = { monitor_id: "forest", timestamp, created: timestamp, sequence_number: 1,
+  reading_ids: ["temperature", "humidity"], input_timestamps: { temperature: timestamp, humidity: timestamp },
   strategy: "adaptive_stream", anomaly_score: 0.7, restarted_martingale: null, threshold: 0.6, alarm: true };
 
 beforeEach(() => {
@@ -27,12 +27,14 @@ beforeEach(() => {
 });
 
 describe("service history polling", () => {
-  it("fetches each input but only one service-scoped evidence page for their shared entity", async () => {
+  it("fetches each input by reading but only one monitor-scoped evidence page for all of them", async () => {
     const { result, rerender } = renderHook(({ selected }) => useServiceHistory("forest", selected, inputs, [connection]), { initialProps: { selected: inputs } });
     await waitFor(() => expect(result.current.monitoring.evidence).toEqual([evidence]));
-    expect(getTelemetryData).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(getTelemetryData).mock.calls.map(([readingId]) => readingId)).toEqual(["temperature", "humidity"]);
     expect(apiUtils.get).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(apiUtils.get).mock.calls[0]![0]).toContain("service_id=forest");
+    const query = new URL(vi.mocked(apiUtils.get).mock.calls[0]![0], "http://app.test").searchParams;
+    expect(query.getAll("reading_id")).toEqual(["humidity", "temperature"]);
+    expect(query.get("monitor_id")).toBe("forest");
     expect([...result.current.histories.values()].every(item => item.telemetry.length === 1)).toBe(true);
     rerender({ selected: inputs.map(input => ({ ...input })) });
     await act(async () => { await Promise.resolve(); });
@@ -45,7 +47,7 @@ describe("service history polling", () => {
     await waitFor(() => expect(result.current.monitoring.evidence).toEqual([evidence]));
     rerender({ selected: [inputs[0]!] });
     await waitFor(() => expect(result.current.histories.size).toBe(1));
-    expect(result.current.monitoring.evidence[0]!.sensor_set).toEqual(["temperature", "humidity"]);
+    expect(result.current.monitoring.evidence[0]!.reading_ids).toEqual(["temperature", "humidity"]);
     expect(result.current.monitoring.evidence[0]!.anomaly_score).toBe(0.7);
   });
 
@@ -56,7 +58,7 @@ describe("service history polling", () => {
     vi.mocked(apiUtils.get).mockReturnValue(new Promise(resolve => { completeEvidence = resolve; }));
     const cache = new ReadingHistoryCache("member-one");
     const { unmount } = renderHook(() => useServiceHistory("forest", [inputs[0]!], inputs, [connection], cache));
-    const signal = vi.mocked(getTelemetryData).mock.calls[0]![2]!;
+    const signal = vi.mocked(getTelemetryData).mock.calls[0]![1]!;
     unmount();
     expect(signal.aborted).toBe(true);
     await act(async () => { completeReadings([{ timestamp, value: 99 }]); completeEvidence([evidence]); });

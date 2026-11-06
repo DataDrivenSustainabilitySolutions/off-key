@@ -22,7 +22,7 @@ export function buildServiceHistoryModel({
   selectedDetectorIds?: SelectedDetectorIds;
   operational?: boolean;
 }) {
-  const rows = evidence.filter(item => item.service_id === serviceId);
+  const rows = evidence.filter(item => item.monitor_id === serviceId);
   const detectors = collectMonitoringChartDetectors(rows).map(detector => ({ ...detector,
     name: detector.pane === "adaptive" && allInputs.length > 1 ? "Joint anomaly score" : detector.name,
   }));
@@ -30,20 +30,20 @@ export function buildServiceHistoryModel({
   const secondarySeries = buildSelectedDetectorSeries({ detectors, telemetryTimes: times, selectedDetectorIds });
   const palette = dark ? DARK_READING_COLORS : READING_COLORS;
   const readings = inputs.map(input => {
-    const { stream, binding } = input;
+    const { stream } = input;
     const data = normalizeTelemetry(histories.get(stream.id) ?? []);
     // One parse per evidence row yields both the latest scored time and the alarm times.
     let lastScore: number | undefined;
     const alarmTimes = new Set<number>();
     for (const row of rows) {
-      const time = Date.parse(row.input_timestamps[binding.telemetry_key] ?? "");
+      const time = Date.parse(row.input_timestamps[stream.id] ?? "");
       if (!Number.isFinite(time)) continue;
       if (lastScore === undefined || time > lastScore) lastScore = time;
       if (row.alarm) alarmTimes.add(time);
     }
     const index = allInputs.findIndex(item => item.stream.id === stream.id);
     const duplicate = inputs.some(other => other.stream.id !== stream.id && other.stream.label === stream.label);
-    return { id: `reading:${stream.id}`, inputKey: binding.telemetry_key,
+    return { id: `reading:${stream.id}`, inputKey: stream.id,
       name: duplicate ? `${input.path} / ${stream.label}` : stream.label,
       unit: stream.unit, color: palette[index % palette.length]!, data,
       pendingTelemetry: !operational || lastScore === undefined ? [] : data.filter(([time]) => time > lastScore),

@@ -6,13 +6,11 @@ import type {
   Anomaly,
   AnomalyPage,
   AnomalyQuery,
-  Charger,
   TelemetryDataPoint,
   TelemetryCursor,
   TelemetryTypeData,
 } from "@/types/charger";
-import { normalizeChargerLastSeen } from "@/types/charger";
-import type { SystemSnapshot } from "@/types/system";
+import type { SystemStream } from "@/types/system";
 
 type TelemetryApiPoint = TelemetryDataPoint & { created?: string };
 
@@ -41,84 +39,56 @@ const get = <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
 
 /** Stored history downsampled to each bucket's extremes; no startMs means all of it. */
 export const getTelemetryRange = (
-  chargerId: string,
-  telemetryType: string,
+  readingId: string,
   range: { startMs?: number; endMs?: number; buckets?: number },
   signal?: AbortSignal,
 ): Promise<TelemetryDataPoint[]> =>
-  get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.TELEMETRY.RANGE(chargerId, telemetryType, range), signal);
+  get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.READINGS.BUCKETS(readingId, range), signal);
 
-export const getTelemetryTypes = (
-  chargerId: string,
-  signal?: AbortSignal,
-): Promise<string[]> =>
-  get<string[]>(API_CONFIG.ENDPOINTS.TELEMETRY.TYPES(chargerId), signal);
-
+/** Recorded values of one catalogue reading; a cursor returns those that arrived since. */
 export const getTelemetryData = (
-  chargerId: string,
-  telemetryType: string,
+  readingId: string,
   signal?: AbortSignal,
   cursor?: TelemetryCursor,
 ): Promise<TelemetryApiPoint[]> =>
   get<TelemetryApiPoint[]>(
-    API_CONFIG.ENDPOINTS.TELEMETRY.DATA(
-      chargerId,
-      telemetryType,
-      TELEMETRY_PAGE_SIZE,
-      cursor,
-    ),
+    API_CONFIG.ENDPOINTS.READINGS.MEASUREMENTS(readingId, TELEMETRY_PAGE_SIZE, cursor),
     signal,
   );
 
+/** The recorded values of each catalogue reading, one series per reading id. */
 export const getAllTelemetryData = async (
-  chargerId: string,
+  readings: readonly Pick<SystemStream, "id" | "label" | "category">[],
   signal?: AbortSignal,
-  cursorByType?: ReadonlyMap<string, TelemetryCursor>,
-  // A loaded catalogue snapshot saves fetching /v1/catalogue on every refresh.
-  catalogue?: Pick<SystemSnapshot, "document" | "runtime">,
+  cursorByReading?: ReadonlyMap<string, TelemetryCursor>,
 ): Promise<TelemetryTypeData[]> => {
-  const [telemetryData, snapshot] = await Promise.all([
-    getTelemetryTypes(chargerId, signal).then(types => Promise.all(
-      types.map(async (type) => {
-        try {
-          const data = await drainForward({
-            cursor: cursorByType?.get(type),
-            fetchPage: cursor => getTelemetryData(chargerId, type, signal, cursor),
-            cursorOf: getTelemetryCursor,
-            pageSize: TELEMETRY_PAGE_SIZE,
-          });
-          return { type, data };
-        } catch (error) {
-          clientLogger.warn({
-            event: "telemetry.type_load_failed",
-            message: "Failed to load data for telemetry type",
-            error,
-            context: { chargerId, telemetryType: type },
-          });
-          return null;
-        }
-      }),
-    )),
-    catalogue ?? get<SystemSnapshot>("/v1/catalogue", signal),
-  ]);
-  const definitions = new Map(
-    snapshot.document.readings.flatMap(stream => {
-      const binding = snapshot.runtime.bindings?.[stream.id];
-      return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream] as const] : [];
-    }),
-  );
-  return telemetryData.filter(series => series !== null).map(({ type, data }) => {
-    const definition = definitions.get(type);
-    const nextCursor = getTelemetryCursor(data);
-    return {
-      type,
-      ...(definition && { streamId: definition.id }),
-      category: definition?.category ?? "Other",
-      ...(definition?.label && { label: definition.label }),
-      data: data.map(({ timestamp, value }) => ({ timestamp, value })),
-      ...(nextCursor && { cursor: nextCursor }),
-    };
-  });
+  const series = await Promise.all(readings.map(async (reading) => {
+    try {
+      const data = await drainForward({
+        cursor: cursorByReading?.get(reading.id),
+        fetchPage: cursor => getTelemetryData(reading.id, signal, cursor),
+        cursorOf: getTelemetryCursor,
+        pageSize: TELEMETRY_PAGE_SIZE,
+      });
+      const nextCursor = getTelemetryCursor(data);
+      return {
+        type: reading.id,
+        category: reading.category || "Other",
+        ...(reading.label && { label: reading.label }),
+        data: data.map(({ timestamp, value }) => ({ timestamp, value })),
+        ...(nextCursor && { cursor: nextCursor }),
+      };
+    } catch (error) {
+      clientLogger.warn({
+        event: "telemetry.reading_load_failed",
+        message: "Failed to load the values of a reading",
+        error,
+        context: { readingId: reading.id },
+      });
+      return null;
+    }
+  }));
+  return series.filter(item => item !== null);
 };
 
 export const mergeTelemetryData = (
@@ -133,9 +103,8 @@ export const mergeTelemetryData = (
     if (!series) return existing;
     if (series.data.length === 0) {
       return series.category === existing.category && series.label === existing.label
-        && series.streamId === existing.streamId
         ? existing
-        : { ...existing, category: series.category, label: series.label, streamId: series.streamId };
+        : { ...existing, category: series.category, label: series.label };
     }
 
     const points = new Map(existing.data.map((point) => [point.timestamp, point]));
@@ -156,13 +125,6 @@ export const mergeTelemetryData = (
     merged.every((series, index) => series === current[index])
     ? current
     : merged;
-};
-
-export const getAllChargers = async (): Promise<Charger[]> => {
-  const chargers = await apiUtils.get<Charger[]>(
-    API_CONFIG.ENDPOINTS.CHARGERS.AVAILABLE,
-  );
-  return chargers.map(normalizeChargerLastSeen);
 };
 
 /** Reporting's alarms, scoped and filtered on the server. */

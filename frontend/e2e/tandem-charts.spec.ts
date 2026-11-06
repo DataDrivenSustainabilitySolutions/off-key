@@ -44,11 +44,11 @@ const tracker = (
 
 const staticEvidence = [0, 120, 180, 240].map((seconds, index) => ({
   strategy: "static_baseline",
-  service_id: "static-service",
+  monitor_id: "static-service",
   timestamp: timestamp(seconds),
   created: timestamp(seconds + 30),
   sequence_number: index + 1,
-  sensor_set: [SENSOR],
+  reading_ids: [SENSOR],
   input_timestamps: { [SENSOR]: timestamp(seconds) },
   restarted_martingale: index === 3 ? null : [1, 0.1, 10][index],
   restarted_martingale_is_infinite: index === 3,
@@ -63,11 +63,11 @@ const staticEvidence = [0, 120, 180, 240].map((seconds, index) => ({
 
 const adaptiveRow = (serviceId: string, seconds: number, sequence: number) => ({
   strategy: "adaptive_stream",
-  service_id: serviceId,
+  monitor_id: serviceId,
   timestamp: timestamp(seconds),
   created: timestamp(seconds + 30),
   sequence_number: sequence,
-  sensor_set: [SENSOR],
+  reading_ids: [SENSOR],
   input_timestamps: { [SENSOR]: timestamp(seconds) },
   anomaly_score: serviceId === "adaptive-a" ? [-2, 1, 7][sequence - 1] : sequence + 1,
   restarted_martingale: null,
@@ -384,7 +384,7 @@ test.describe("Tandem anomaly chart regression", () => {
       { timestamp: timestamp(7), created: timestamp(7), value: 230 },
       { timestamp: timestamp(3_604), created: timestamp(3_604), value: 231 },
     ];
-    await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, (route) =>
+    await page.route(`**/v1/readings/${SENSOR}/measurements*`, (route) =>
       fulfillJson(route, new URL(route.request().url()).searchParams.has("after_created") ? [] : points),
     );
     await page.route("**/v1/evidence/chart?*", (route) => fulfillJson(route, []));

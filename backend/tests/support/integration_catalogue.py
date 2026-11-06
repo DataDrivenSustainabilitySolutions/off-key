@@ -13,6 +13,7 @@ class RecordedEntity:
     broker_id: str
     device_id: str
     reading_ids: tuple[str, ...]
+    readings: dict[str, str]
     entity_id: str
     keys: dict[str, str]
     topics: dict[str, str]
@@ -106,6 +107,7 @@ def add_recorded_entity(
         broker_id=broker_id,
         device_id=device_id,
         reading_ids=reading_ids,
+        readings=dict(zip(keys, reading_ids, strict=True)),
         entity_id=bindings[reading_ids[0]]["entity_id"],
         topics=topics,
         keys={

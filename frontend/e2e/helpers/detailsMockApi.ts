@@ -44,7 +44,13 @@ export async function installDetailsMockApi(page: Page, {
     const url = new URL(route.request().url());
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const incremental = url.searchParams.has("after_created");
-    switch (url.pathname.replace(/^\/api(?=\/v1\/)/u, "")) {
+    const path = url.pathname.replace(/^\/api(?=\/v1\/)/u, "");
+    // Every catalogue reading serves the same recorded values.
+    const reading = /^\/v1\/readings\/([^/]+)\/measurements$/u.exec(path)?.[1];
+    if (reading && sensors.includes(decodeURIComponent(reading))) {
+      return fulfillJson(route, !incremental ? telemetry : released.telemetry ? laterTelemetry : []);
+    }
+    switch (path) {
       case "/v1/me":
         return fulfillJson(route, {
           id: 1, email: "charts@example.test", role: "admin",
@@ -58,10 +64,6 @@ export async function installDetailsMockApi(page: Page, {
           document: { readings: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },
           runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: chargerId, telemetry_key: key }])) },
         });
-      case `/v1/telemetry/${chargerId}/type`:
-        return fulfillJson(route, sensors);
-      case `/v1/telemetry/${chargerId}/data`:
-        return fulfillJson(route, !incremental ? telemetry : released.telemetry ? laterTelemetry : []);
       case "/v1/anomalies":
         return fulfillJson(route, anomalies);
       case "/v1/monitors":
@@ -82,8 +84,8 @@ export async function installDetailsMockApi(page: Page, {
     await response;
   };
   return {
-    publish: () => release(["telemetry", "evidence"], `/telemetry/${chargerId}/data`),
-    publishTelemetry: () => release(["telemetry"], `/telemetry/${chargerId}/data`),
+    publish: () => release(["telemetry", "evidence"], "/measurements"),
+    publishTelemetry: () => release(["telemetry"], "/measurements"),
     releaseEvidence: () => release(["evidence"], "/v1/evidence/chart"),
   };
 }

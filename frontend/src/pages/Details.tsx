@@ -41,7 +41,9 @@ import {
 import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
 import { selectedSourceHref } from "@/features/workspace/catalogue-navigation";
-import { entitySource, reportLabels } from "@/features/workspace/reporting-scope";
+import { entityReadings, entitySource, reportLabels } from "@/features/workspace/reporting-scope";
+import { alarmsByReading } from "@/lib/anomaly-utils";
+import type { SystemSnapshot } from "@/types/system";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
@@ -139,36 +141,35 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     const cursors = cursorRef.current;
     const first = !cursors.telemetryLoaded && !cursors.evidenceLoaded;
     if (first) setIsLoadingTelemetry(true);
-    const loadEvidence = () =>
-      drainForward({
+    // A loaded catalogue saves fetching it on every refresh.
+    const loadedCatalogue = snapshotRef.current;
+    const scope = Promise.resolve(
+      loadedCatalogue ?? apiUtils.get<SystemSnapshot>("/v1/catalogue", { signal }),
+    ).then(catalogue => entityReadings(catalogue.document, catalogue.runtime, chargerId));
+    const loadEvidence = async () => {
+      const { evidenceScope } = await scope;
+      if ("readingIds" in evidenceScope && evidenceScope.readingIds.length === 0) return [];
+      return drainForward({
         cursor: cursors.evidenceCursor,
         fetchPage: cursor =>
           apiUtils.get<MonitoringChartEvidence[]>(
-            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(evidenceScope, cursor),
             { signal },
           ),
         cursorOf: getMonitoringEvidenceCursor,
         pageSize: EVIDENCE_PAGE_SIZE,
       });
+    };
 
-    const loadedCatalogue = snapshotRef.current;
     const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
       await Promise.allSettled([
-        loadedCatalogue
-          ? getAllTelemetryData(
-              chargerId,
-              signal,
-              cursors.telemetryLoaded ? cursors.telemetryCursors : undefined,
-              loadedCatalogue,
-            )
-          : cursors.telemetryLoaded
-          ? getAllTelemetryData(
-              chargerId,
-              signal,
-              cursors.telemetryCursors,
-            )
-          : getAllTelemetryData(chargerId, signal),
-        getAnomalies(chargerId, signal),
+        scope.then(({ readings }) => getAllTelemetryData(
+          readings,
+          signal,
+          cursors.telemetryLoaded ? cursors.telemetryCursors : undefined,
+        )),
+        Promise.all([scope, getAnomalies(chargerId, signal)])
+          .then(([{ readingByKey }, anomalies]) => alarmsByReading(anomalies, readingByKey)),
         loadEvidence(),
         apiUtils.get<ActiveService[]>(
           API_CONFIG.ENDPOINTS.MONITORING.LIST,
@@ -300,10 +301,10 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const evidenceByTelemetry = useMemo(() => {
     const grouped = new Map<string, MonitoringChartEvidence[]>();
     monitoringEvidence.forEach((item) => {
-      item.sensor_set.forEach((sensor) => {
-        const sensorEvidence = grouped.get(sensor) ?? [];
-        sensorEvidence.push(item);
-        grouped.set(sensor, sensorEvidence);
+      item.reading_ids.forEach((readingId) => {
+        const readingEvidence = grouped.get(readingId) ?? [];
+        readingEvidence.push(item);
+        grouped.set(readingId, readingEvidence);
       });
     });
     return grouped;

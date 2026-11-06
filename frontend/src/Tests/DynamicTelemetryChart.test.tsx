@@ -119,7 +119,7 @@ const operationalService: ActiveService = {
 };
 
 const scoreEvidence = (timestamp: string, sequenceNumber: number): MonitoringChartEvidence => chartEvidence({
-  service_id: operationalService.id, timestamp, sequence_number: sequenceNumber, sensor_set: ["voltage"],
+  monitor_id: operationalService.id, timestamp, sequence_number: sequenceNumber, reading_ids: ["voltage"],
   input_timestamps: { voltage: timestamp }, strategy: "adaptive_stream", anomaly_score: sequenceNumber, threshold: 5,
 });
 
@@ -262,7 +262,7 @@ describe("DynamicTelemetryChart", () => {
   it("never substitutes historical evidence for the active monitoring service", async () => {
     const historicalEvidence = {
       ...scoreEvidence("2026-07-27T10:00:00Z", 1),
-      service_id: "service-historical",
+      monitor_id: "service-historical",
     };
     const { rerender } = render(
       <ThemeProvider defaultTheme="light">
@@ -374,10 +374,10 @@ describe("DynamicTelemetryChart", () => {
           telemetryData={multiPaneTelemetry}
           evidence={[
             {
-              service_id: "service-static",
+              monitor_id: "service-static",
               timestamp: "2026-07-27T10:00:00Z",
               sequence_number: 1,
-              sensor_set: ["voltage"],
+              reading_ids: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:00:00Z" },
               strategy: "static_baseline",
               restarted_martingale: 10,
@@ -386,10 +386,10 @@ describe("DynamicTelemetryChart", () => {
               created: "2026-07-27T10:00:00Z",
             },
             {
-              service_id: "service-adaptive",
+              monitor_id: "service-adaptive",
               timestamp: "2026-07-27T10:02:00Z",
               sequence_number: 1,
-              sensor_set: ["voltage"],
+              reading_ids: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:02:00Z" },
               strategy: "adaptive_stream",
               restarted_martingale: null,

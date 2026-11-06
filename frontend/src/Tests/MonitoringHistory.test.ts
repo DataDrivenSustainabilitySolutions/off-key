@@ -14,7 +14,7 @@ const second = "2026-10-21T10:00:00.075Z";
 const later = "2026-10-21T10:00:01.000Z";
 const input = (id: string, unit: string): MonitoringInput => ({
   stream: { id, label: id, broker_id: "broker", topic: id, category: "Other", value_type: "number", unit },
-  binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } },
+  binding: { entity_id: "entity", telemetry_key: `key-${id}`, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } },
   path: "Room station",
 });
 const inputs = [input("temperature", "°C"), input("humidity", "%")];
@@ -23,8 +23,8 @@ const histories = new Map([
   ["humidity", [{ timestamp: second, value: 55 }]],
 ]);
 const row: MonitoringChartEvidence = {
-  service_id: "forest", timestamp: second, created: later, sequence_number: 101,
-  sensor_set: ["temperature", "humidity"], input_timestamps: { temperature: first, humidity: second },
+  monitor_id: "forest", timestamp: second, created: later, sequence_number: 101,
+  reading_ids: ["temperature", "humidity"], input_timestamps: { temperature: first, humidity: second },
   strategy: "adaptive_stream", model_type: "aberrant_online_isolation_forest",
   anomaly_score: 0.61, threshold: 0.6, alarm: true, restarted_martingale: null,
 };
@@ -113,7 +113,7 @@ describe("joint monitoring history", () => {
   });
 
   it("keeps inputs usable without detector evidence and excludes another service's decisions", () => {
-    const { model } = build([{ ...row, service_id: "retired", anomaly_score: 100 }]);
+    const { model } = build([{ ...row, monitor_id: "retired", anomaly_score: 100 }]);
     expect(model.readings[0]!.data).toHaveLength(2);
     expect(model.secondarySeries).toEqual([]);
     expect(model.readings.every(reading => reading.alarmTimes!.length === 0)).toBe(true);

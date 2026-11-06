@@ -111,9 +111,12 @@ describe("<Details />", () => {
     renderDetails();
 
     await waitFor(() => {
+      // Without a loaded catalogue the page reads it once per refresh.
+      expect(mockApiGet).toHaveBeenCalledWith("/v1/catalogue", { signal: expect.any(AbortSignal) });
       expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(
-        "123",
+        [],
         expect.any(AbortSignal),
+        undefined,
       );
       expect(mockLoadAnomalies).toHaveBeenCalledWith(
         "123",
@@ -223,8 +226,12 @@ describe("<Details />", () => {
     const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
     expect(window.document.title).toBe("Room station · Reporting · Aberration");
-    // Reading labels come from the provider's snapshot instead of another /v1/catalogue request.
-    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith("123", expect.any(AbortSignal), undefined, { document, runtime });
+    // The entity's readings come from the provider's snapshot instead of another /v1/catalogue request.
+    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(document.readings, expect.any(AbortSignal), undefined);
+    expect(mockApiGet).not.toHaveBeenCalledWith("/v1/catalogue", expect.anything());
+    // Every reading of the entity belongs to one device, so evidence is asked for by that device.
+    const evidence = mockApiGet.mock.calls.map(([endpoint]) => String(endpoint)).find(endpoint => endpoint.startsWith("/v1/evidence/chart?"));
+    expect(new URL(evidence!, "http://app.test").searchParams.get("device_id")).toBe("station");
   });
 
   it("falls back to the recorded identity without a catalogue", async () => {
@@ -354,7 +361,7 @@ describe("<Details />", () => {
     expect(
       await screen.findByText(/readings could not be loaded/i),
     ).toBeTruthy();
-    expect(mockLoadAllTelemetryTypes).toHaveBeenLastCalledWith(
+    expect(mockLoadAnomalies).toHaveBeenLastCalledWith(
       "456", expect.any(AbortSignal),
     );
 

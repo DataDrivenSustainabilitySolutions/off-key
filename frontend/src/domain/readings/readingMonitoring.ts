@@ -1,6 +1,10 @@
 import type { TelemetryDataPoint } from "@/types/charger";
 
-export type ReadingMonitoringBinding = { entityId: string; telemetryType: string };
+/**
+ * A catalogue reading that records. Its alarms still name the recorded entity
+ * and key, so those travel with it.
+ */
+export type ReadingMonitoringBinding = { readingId: string; entityId: string; telemetryType: string };
 
 export function mergeReadingHistory(
   current: readonly TelemetryDataPoint[],

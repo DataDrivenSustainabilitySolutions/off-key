@@ -21,6 +21,22 @@ export interface AnomalyMarker {
   value?: number;
 }
 
+/**
+ * Alarms still name the recorded keys of one entity's readings. Naming the
+ * catalogue reading instead lets charts match alarms and evidence by one id.
+ */
+export const alarmsByReading = (
+  anomalies: readonly Anomaly[],
+  readingByKey: ReadonlyMap<string, string>,
+): Anomaly[] =>
+  anomalies.map((anomaly) => ({
+    ...anomaly,
+    telemetry_type: readingByKey.get(anomaly.telemetry_type) ?? anomaly.telemetry_type,
+    ...(anomaly.sensor_set && {
+      sensor_set: anomaly.sensor_set.map((key) => readingByKey.get(key) ?? key),
+    }),
+  }));
+
 export const formatAnomalySensorSet = (
   sensorSet: Anomaly["sensor_set"]
 ): string => {

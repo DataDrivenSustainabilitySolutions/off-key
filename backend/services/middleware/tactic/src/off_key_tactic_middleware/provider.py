@@ -15,10 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repositories import (
     AnomalyRepository,
-    ChargerRepository,
     FavoriteRepository,
-    MonitoringEvidenceRepository,
-    TelemetryRepository,
     UserRepository,
 )
 from .services.accounts.members import MemberService
@@ -30,10 +27,8 @@ from .services.catalogue.system_ingress import SystemIngress
 from .services.catalogue.system_live import SystemLiveService
 from .services.data import (
     AnomalyService,
-    ChargerQueryService,
+    CatalogueDataService,
     FavoriteService,
-    MonitoringEvidenceService,
-    TelemetryQueryService,
 )
 from .services.dojo.datasets import DojoDatasets
 from .services.dojo.labels import DojoLabels
@@ -60,20 +55,6 @@ def get_radar_orchestration_service(
     return RadarOrchestrationService(session)
 
 
-def get_charger_query_service(
-    session: AsyncSession = Depends(get_db_async),
-) -> ChargerQueryService:
-    """Dependency provider for charger data query use cases."""
-    return ChargerQueryService(ChargerRepository(session))
-
-
-def get_telemetry_query_service(
-    session: AsyncSession = Depends(get_db_async),
-) -> TelemetryQueryService:
-    """Dependency provider for telemetry data query use cases."""
-    return TelemetryQueryService(TelemetryRepository(session))
-
-
 def get_user_service(
     session: AsyncSession = Depends(get_db_async),
 ) -> UserService:
@@ -95,11 +76,12 @@ def get_anomaly_service(
     return AnomalyService(session, AnomalyRepository(session))
 
 
-def get_monitoring_evidence_service(
+async def get_catalogue_data_service(
     session: AsyncSession = Depends(get_db_async),
-) -> MonitoringEvidenceService:
-    """Dependency provider for monitoring-evidence queries."""
-    return MonitoringEvidenceService(MonitoringEvidenceRepository(session))
+) -> CatalogueDataService:
+    """Devices, measurements and evidence by catalogue id, resolved against the
+    saved catalogue of this request."""
+    return CatalogueDataService(session, await SystemService(session).read())
 
 
 def get_system_service(session: AsyncSession = Depends(get_db_async)) -> SystemService:

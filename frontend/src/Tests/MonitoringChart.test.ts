@@ -34,7 +34,7 @@ const evidence = (
   martingale: number | null,
   sequenceNumber = 1,
 ): MonitoringChartEvidence =>
-  chartEvidence({ service_id: serviceId, timestamp, sequence_number: sequenceNumber, restarted_martingale: martingale });
+  chartEvidence({ monitor_id: serviceId, timestamp, sequence_number: sequenceNumber, restarted_martingale: martingale });
 
 const adaptiveEvidence = (
   serviceId: string,
@@ -42,7 +42,7 @@ const adaptiveEvidence = (
   score: number | null,
   threshold = 2,
 ): MonitoringChartEvidence => chartEvidence({
-  service_id: serviceId, timestamp, strategy: "adaptive_stream", model_type: "aberrant_online_isolation_forest",
+  monitor_id: serviceId, timestamp, strategy: "adaptive_stream", model_type: "aberrant_online_isolation_forest",
   anomaly_score: score, threshold, alarm: score !== null && score > threshold,
 });
 
@@ -585,7 +585,7 @@ describe("telemetry ECharts option", () => {
     const l1Time = "2026-01-01T00:00:00Z";
     const l2Time = "2026-01-01T00:00:01Z";
     const row = adaptiveEvidence("adaptive-a", l2Time, 2.5);
-    row.sensor_set = ["L1", "L2"];
+    row.reading_ids = ["L1", "L2"];
     row.input_timestamps = { L1: l1Time, L2: l2Time };
 
     const l1Model = buildModel({
@@ -631,7 +631,7 @@ describe("telemetry ECharts option", () => {
   it("does not fall back when the current sensor input reference is missing", () => {
     const timestamp = "2026-01-01T00:00:00Z";
     const row = adaptiveEvidence("adaptive-a", timestamp, 2.5);
-    row.sensor_set = ["L1", "L2"];
+    row.reading_ids = ["L1", "L2"];
     row.input_timestamps = { L2: timestamp };
 
     const model = buildModel({ evidence: [row] });
@@ -853,7 +853,7 @@ describe("monitoring polling utilities", () => {
     expect(getMonitoringEvidenceCursor([olderEvent, newerEvent])).toEqual({
       created: olderEvent.created,
       timestamp: olderEvent.timestamp,
-      service_id: olderEvent.service_id,
+      monitor_id: olderEvent.monitor_id,
       sequence_number: olderEvent.sequence_number,
     });
   });
@@ -867,7 +867,7 @@ describe("monitoring polling utilities", () => {
       expect(getMonitoringEvidenceCursor([invalid, valid])).toEqual({
         created: valid.created,
         timestamp: valid.timestamp,
-        service_id: valid.service_id,
+        monitor_id: valid.monitor_id,
         sequence_number: valid.sequence_number,
       });
     },

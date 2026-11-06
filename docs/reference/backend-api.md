@@ -29,7 +29,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Endpoint group | Client behaviour | Current enforcement note |
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
-| Chargers and telemetry | Send the login bearer token | Active, verified membership required |
+| Devices and measurements | Send the login bearer token | Active, verified membership required |
 | Monitors and anomalies | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
@@ -95,25 +95,27 @@ deleted. A change that would leave no active member able to manage members is
 refused with 409. Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).
 
-### Chargers and telemetry
+### Devices and measurements
+
+Devices and readings are named by their catalogue ids, `devices[].id` and
+`readings[].id` of `GET /v1/catalogue`. The installation resolves where their
+values are stored.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/chargers/available` | List chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active` | List active chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active/id` | List active charger identifiers | Query: `skip`, `limit` |
-| `GET` | `/telemetry/{charger_id}/type` | List telemetry types | Query: `limit` |
-| `GET` | `/telemetry/{charger_id}/data` | Fetch telemetry points | Query: `type`, `limit`, cursor fields, `paginated` |
-| `GET` | `/telemetry/{charger_id}/range` | Fetch a downsampled range: each time bucket's lowest and highest value | Query: `type`, `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
+| `GET` | `/devices` | Catalogue devices with their `reading_ids`, `online` and `last_seen` | Query: optional `active` |
+| `GET` | `/devices/{device_id}/readings` | The catalogue readings of one device | Path: `device_id` |
+| `GET` | `/readings/{reading_id}/measurements` | Recorded values of one reading | Query: `limit`, cursor fields, `paginated` |
+| `GET` | `/readings/{reading_id}/measurements/buckets` | A downsampled range: each time bucket's lowest and highest value | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
 
-Telemetry cursors:
+Measurement cursors:
 
 - Use `after_timestamp` for historical event-time pagination.
 - Use `after_created` and `after_event_timestamp` together for live ingestion-order pagination.
 - Do not mix historical and live cursor forms.
 
 ```http
-GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
+GET /v1/readings/stream:cpu-usage/measurements?limit=200
 Authorization: Bearer <token>
 ```
 
@@ -197,10 +199,13 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
 | `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
 | `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
-| `GET` | `/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
-| `GET` | `/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
+| `GET` | `/evidence` | Inference evidence of the observations that covered one reading | `reading_id`, `limit` |
+| `GET` | `/evidence/chart` | Incrementally load chart evidence | `device_id`, or `reading_id` repeated for up to 200 readings, optional `monitor_id`, optional complete cursor, `limit` |
 
-The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
+Evidence rows name their `monitor_id` and the `reading_ids` they covered;
+`input_timestamps` is keyed by reading id. The chart cursor is the complete
+tuple `after_created`, `after_timestamp`, `after_monitor_id`, and
+`after_sequence_number`; if one is supplied, all four are required.
 
 Every listed monitor, here and in `/monitors/overview`, carries `reading_ids`:
 the catalogue readings whose accepted topic one of its `mqtt_topics` filters
@@ -355,11 +360,12 @@ Health and readiness remain available without this service credential.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/data/chargers` | Charger listing |
-| `GET` | `/data/chargers/active/ids` | Active charger IDs |
-| `GET` | `/data/telemetry/{charger_id}/types` | Telemetry type list |
-| `GET` | `/data/telemetry/{charger_id}` | Telemetry points |
-| `GET` | `/data/telemetry/{charger_id}/range` | Downsampled telemetry range |
+| `GET` | `/data/devices` | Catalogue devices with recording status |
+| `GET` | `/data/devices/{device_id}/readings` | Catalogue readings of one device |
+| `GET` | `/data/readings/{stream_id}/measurements` | Measurements of a catalogue reading |
+| `GET` | `/data/readings/{stream_id}/measurements/buckets` | Downsampled measurements of a catalogue reading |
+| `GET` | `/data/evidence` | Evidence of a catalogue reading |
+| `GET` | `/data/evidence/chart` | Chart evidence of a catalogue device or of catalogue readings |
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
@@ -369,8 +375,6 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/anomalies/{charger_id}` | List anomalies |
 | `POST` | `/data/anomalies` | Create an anomaly |
 | `DELETE` | `/data/anomalies/{anomaly_id}` | Delete an anomaly |
-| `GET` | `/data/monitoring-evidence/{charger_id}` | List monitoring evidence |
-| `GET` | `/data/monitoring-evidence/{charger_id}/chart` | Load chart evidence with a stable cursor |
 
 ### Dojo
 
@@ -438,7 +442,6 @@ FastAPI validation errors and Gateway-propagated TACTIC errors use a `detail` fi
 
 ## Compatibility notes
 
-- The current active-ID Gateway route is singular: `/chargers/active/id`.
 - The Gateway API family remains `/favorites`. The dashboard's Favorites filter uses `/?state=favorites`; the old `/favourites` frontend route redirects there.
 - Removed sync and preprocessor-discovery routes must not be used by new clients.
 

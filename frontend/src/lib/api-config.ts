@@ -23,38 +23,32 @@ export const API_CONFIG = {
       PASSWORD_RESET_CONFIRM: '/v1/auth/password-reset/confirm',
     },
 
-    // Chargers
-    CHARGERS: {
-      AVAILABLE: '/v1/chargers/available',
-    },
-
-    // Telemetry
-    TELEMETRY: {
-      TYPES: (chargerId: string) => `/v1/telemetry/${chargerId}/type`,
-      DATA: (
-        chargerId: string,
-        telemetryType: string,
+    // Recorded values of catalogue readings
+    READINGS: {
+      MEASUREMENTS: (
+        readingId: string,
         limit?: number,
         cursor?: { created: string; timestamp: string },
       ) => {
-        const params = new URLSearchParams({ type: telemetryType });
+        const params = new URLSearchParams();
         if (limit) params.append('limit', limit.toString());
         if (cursor) {
           params.append('after_created', cursor.created);
           params.append('after_event_timestamp', cursor.timestamp);
         }
-        return `/v1/telemetry/${chargerId}/data?${params.toString()}`;
+        const query = params.toString();
+        return `/v1/readings/${encodeURIComponent(readingId)}/measurements${query ? `?${query}` : ''}`;
       },
-      RANGE: (
-        chargerId: string,
-        telemetryType: string,
+      BUCKETS: (
+        readingId: string,
         { startMs, endMs, buckets }: { startMs?: number; endMs?: number; buckets?: number },
       ) => {
-        const params = new URLSearchParams({ type: telemetryType });
+        const params = new URLSearchParams();
         if (startMs !== undefined) params.append('start', new Date(startMs).toISOString());
         if (endMs !== undefined) params.append('end', new Date(endMs).toISOString());
         if (buckets) params.append('buckets', buckets.toString());
-        return `/v1/telemetry/${encodeURIComponent(chargerId)}/range?${params.toString()}`;
+        const query = params.toString();
+        return `/v1/readings/${encodeURIComponent(readingId)}/measurements/buckets${query ? `?${query}` : ''}`;
       },
     },
 
@@ -75,25 +69,26 @@ export const API_CONFIG = {
       OVERVIEW: '/v1/monitors/overview',
       ITEM: (monitorId: string) => `/v1/monitors/${encodeURIComponent(monitorId)}`,
       DETECTORS: '/v1/detectors',
+      /** Evidence of every reading of a device, or of the named readings. */
       CHART_EVIDENCE: (
-        chargerId: string,
+        scope: { deviceId: string } | { readingIds: readonly string[] },
         cursor?: {
           created: string;
           timestamp: string;
-          service_id: string;
+          monitor_id: string;
           sequence_number: number;
         },
-        serviceId?: string,
+        monitorId?: string,
       ) => {
-        const params = new URLSearchParams({
-          charger_id: chargerId,
-          limit: EVIDENCE_PAGE_SIZE.toString(),
-        });
-        if (serviceId) params.set('service_id', serviceId);
+        const params = new URLSearchParams();
+        if ('deviceId' in scope) params.set('device_id', scope.deviceId);
+        else scope.readingIds.forEach(readingId => params.append('reading_id', readingId));
+        params.set('limit', EVIDENCE_PAGE_SIZE.toString());
+        if (monitorId) params.set('monitor_id', monitorId);
         if (cursor) {
           params.set('after_created', cursor.created);
           params.set('after_timestamp', cursor.timestamp);
-          params.set('after_service_id', cursor.service_id);
+          params.set('after_monitor_id', cursor.monitor_id);
           params.set('after_sequence_number', cursor.sequence_number.toString());
         }
         return `/v1/evidence/chart?${params.toString()}`;

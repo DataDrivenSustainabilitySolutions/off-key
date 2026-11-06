@@ -238,12 +238,15 @@ export type MonitoringStartRequest =
 // Compatibility name retained for existing static-lane consumers.
 export type AnomalyDetectionRequest = StaticAnomalyDetectionRequest;
 
+/** One monitor observation, naming its readings by catalogue id. */
 interface MonitoringEvidence {
-  service_id: string;
+  monitor_id: string;
   timestamp: string;
   sequence_number: number;
-  charger_id: string;
-  sensor_set: string[];
+  device_id: string | null;
+  /** The catalogue readings the observation covered. */
+  reading_ids: string[];
+  /** The time of each reading's value the observation scored, by reading id. */
   input_timestamps: Record<string, string>;
   strategy: MonitoringStrategy;
   model_type: string | null;
@@ -309,10 +312,10 @@ export interface MartingaleTrackerResult {
 
 export type MonitoringChartEvidence = Pick<
   MonitoringEvidence,
-  | 'service_id'
+  | 'monitor_id'
   | 'timestamp'
   | 'sequence_number'
-  | 'sensor_set'
+  | 'reading_ids'
   | 'input_timestamps'
   | 'restarted_martingale'
   | 'tracker_results'
@@ -329,7 +332,7 @@ export type MonitoringChartEvidence = Pick<
 
 export type MonitoringEvidenceCursor = Pick<
   MonitoringChartEvidence,
-  'created' | 'timestamp' | 'service_id' | 'sequence_number'
+  'created' | 'timestamp' | 'monitor_id' | 'sequence_number'
 >;
 
 // Model parameters (cleaned for API submission)

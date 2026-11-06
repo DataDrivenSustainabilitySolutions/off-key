@@ -1,17 +1,6 @@
 /**
- * Shared charger and telemetry types
+ * Shared measurement and alarm types
  */
-
-// Base charger data from API
-export interface Charger {
-  charger_id: string;
-  charger_name: string | null;
-  last_seen: string;
-  mqtt_last_message?: string | null;
-  online: boolean;
-  state: string;
-  created: string;
-}
 
 // Telemetry data point (CPU usage, thermal, etc.)
 export interface TelemetryDataPoint {
@@ -26,9 +15,8 @@ export interface TelemetryCursor {
 
 // Categorized telemetry data
 export interface TelemetryTypeData {
+  /** The catalogue reading this series draws. */
   type: string;
-  /** The catalogue reading this series records, while the catalogue still binds it. */
-  streamId?: string;
   label?: string;
   category: string;
   unit?: string;
@@ -86,18 +74,4 @@ export interface AnomalyPage {
   /** Readings with alarms in the scope, before the narrowing filters. */
   readings: { charger_id: string; telemetry_key: string; entity_label: string; label: string; count: number }[];
   unknown_stream_ids: string[];
-}
-
-/**
- * Normalize charger last-seen timestamp.
- *
- * The API may return mqtt_last_message (live MQTT timestamp) alongside
- * last_seen (DB write time). mqtt_last_message is fresher when present.
- * Three contexts previously duplicated this inline; they all delegate here.
- */
-export function normalizeChargerLastSeen(charger: Charger): Charger {
-  return {
-    ...charger,
-    last_seen: charger.mqtt_last_message ?? charger.last_seen ?? "",
-  };
 }

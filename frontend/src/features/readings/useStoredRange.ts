@@ -27,35 +27,35 @@ type Loaded = { key: string; points: TelemetryDataPoint[] };
  * so zooming in recovers detail the overview's buckets summarised.
  */
 export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined, inspected?: Window) {
-  const entityId = binding?.entityId, telemetryType = binding?.telemetryType;
-  const overviewKey = entityId && telemetryType ? JSON.stringify([entityId, telemetryType, spanMs ?? "all"]) : undefined;
+  const readingId = binding?.readingId;
+  const overviewKey = readingId ? JSON.stringify([readingId, spanMs ?? "all"]) : undefined;
   const [overview, setOverview] = useState<Loaded>();
   const [detail, setDetail] = useState<Loaded & Window>();
 
   const loadOverview = useCallback(async (signal: AbortSignal) => {
-    if (!overviewKey || !entityId || !telemetryType) return;
+    if (!overviewKey || !readingId) return;
     try {
-      const points = await getTelemetryRange(entityId, telemetryType,
+      const points = await getTelemetryRange(readingId,
         { startMs: spanMs === undefined ? undefined : Date.now() - spanMs, buckets: RANGE_BUCKETS }, signal);
       if (!signal.aborted) setOverview({ key: overviewKey, points });
     } catch {
       // Live and recently collected values still draw; the next refresh retries.
     }
-  }, [overviewKey, entityId, telemetryType, spanMs]);
+  }, [overviewKey, readingId, spanMs]);
   usePollingLoop(loadOverview, { enabled: !!overviewKey, intervalMs: OVERVIEW_REFRESH_MS, schedule: "after-completion",
     pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
 
   const startMs = inspected?.startMs, endMs = inspected?.endMs;
   useEffect(() => {
-    if (!overviewKey || !entityId || !telemetryType || startMs === undefined || endMs === undefined) return;
+    if (!overviewKey || !readingId || startMs === undefined || endMs === undefined) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      getTelemetryRange(entityId, telemetryType, { startMs, endMs, buckets: RANGE_BUCKETS }, controller.signal)
+      getTelemetryRange(readingId, { startMs, endMs, buckets: RANGE_BUCKETS }, controller.signal)
         .then((points) => { if (!controller.signal.aborted) setDetail({ key: overviewKey, startMs, endMs, points }); })
         .catch(() => {});
     }, DETAIL_DELAY_MS);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [overviewKey, entityId, telemetryType, startMs, endMs]);
+  }, [overviewKey, readingId, startMs, endMs]);
 
   return useMemo(() => {
     const base = overview && overview.key === overviewKey ? overview.points : [];

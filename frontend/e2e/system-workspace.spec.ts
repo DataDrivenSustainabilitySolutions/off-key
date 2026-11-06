@@ -84,10 +84,15 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await waitForCollectionReady(api, token!, applied, stream.broker_id);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "25", { qos: 1 });
-    await expect.poll(async () => {
-      const response = await api.get(`/api/v1/telemetry/${binding.entity_id}/type`, { headers });
-      return response.ok() ? response.json() : [];
-    }).toEqual([binding.telemetry_key]);
+    const measured = async (readingId: string) => {
+      const response = await api.get(`/api/v1/readings/${encodeURIComponent(readingId)}/measurements`, { headers });
+      expect(response.ok(), await response.text()).toBe(true);
+      return await response.json() as Array<{ value: number }>;
+    };
+    // Only the opted-in reading records; the others stay off.
+    const unrecorded = keys.slice(1).map(key => applied.document.readings.find(item => item.topic === `tests/${localId}/${key}`)!.id);
+    await expect.poll(async () => (await measured(stream.id)).length).toBeGreaterThan(0);
+    for (const readingId of unrecorded) expect(await measured(readingId)).toEqual([]);
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "26", { qos: 1 });
     await expect.poll(async () => {
       const response = await api.post("/api/v1/recording/status", { headers, data: { reading_ids: [stream.id] } });
@@ -103,10 +108,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     // Background collection continues after the page has been left.
     await page.goto("/anomalies");
     await publisher.publishAsync(`tests/${localId}/temperature`, "27", { qos: 1 });
-    await expect.poll(async () => {
-      const response = await api.get(`/api/v1/telemetry/${binding.entity_id}/data?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });
-      return (await response.json() as Array<{ value: number }>).some(point => point.value === 27);
-    }).toBe(true);
+    await expect.poll(async () => (await measured(stream.id)).some(point => point.value === 27)).toBe(true);
     await page.goto(`/?reading=${encodeURIComponent(stream.id)}`);
     await expect(preview.locator(".ex-preview-value strong")).toHaveText("27");
     await expect(preview.getByText("Reading preview", { exact: true })).toHaveCount(0);
@@ -127,11 +129,10 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(allHistory).toHaveAttribute("aria-pressed", "true");
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(collection.getByRole("radio", { name: /^At intervals/ })).toBeChecked();
-    const stored = await api.get(`/api/v1/telemetry/${binding.entity_id}/range?type=${encodeURIComponent(binding.telemetry_key)}`, { headers });
+    const stored = await api.get(`/api/v1/readings/${encodeURIComponent(stream.id)}/measurements/buckets`, { headers });
     expect(stored.ok(), await stored.text()).toBe(true);
     expect((await stored.json() as Array<{ value: number }>).some(point => point.value === 27)).toBe(true);
-    const types = await api.get(`/api/v1/telemetry/${binding.entity_id}/type`, { headers });
-    expect(await types.json()).toEqual([binding.telemetry_key]);
+    for (const readingId of unrecorded) expect(await measured(readingId)).toEqual([]);
 
     await page.goto(`/?create=monitoring&reading=${encodeURIComponent(stream.id)}`);
     await expect(page.getByRole("region", { name: "Create monitoring service", exact: true })).toBeVisible();
@@ -192,9 +193,9 @@ test("records only an opted-in reading and restores its history in the mobile wo
       await page.waitForTimeout(1100);
     }
     await expect.poll(async () => {
-      const response = await api.get(`/api/v1/evidence?charger_id=${binding.entity_id}`, { headers });
-      const evidence = await response.json() as Array<{ service_id: string; anomaly_score: number | null; threshold: number | null }>;
-      return evidence.some(row => row.service_id === serviceId && row.anomaly_score !== null && row.threshold !== null);
+      const response = await api.get(`/api/v1/evidence?reading_id=${encodeURIComponent(stream.id)}`, { headers });
+      const evidence = await response.json() as Array<{ monitor_id: string; anomaly_score: number | null; threshold: number | null }>;
+      return evidence.some(row => row.monitor_id === serviceId && row.anomaly_score !== null && row.threshold !== null);
     }).toBe(true);
     await page.getByRole("tab", { name: "Evidence", exact: true }).click();
     const monitoringHistory = page.getByRole("region", { name: "Monitoring history", exact: true });

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import { ingressOptions } from "./helpers/mqtt";
 
-import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingId } from "./helpers/collection";
 import { zoomChart } from "./helpers/chart";
 import { accessToken } from "./helpers/auth";
 
@@ -49,7 +49,7 @@ const publishCycle = async (
 };
 
 interface ChartEvidence {
-  service_id: string;
+  monitor_id: string;
   timestamp: string;
   strategy: string;
   anomaly_score: number | null;
@@ -66,7 +66,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
   }) => {
     const deviceId = randomUUID();
     const chargerId = fixtureEntityId(deviceId);
-    const l1Key = fixtureReadingKey(deviceId, "L1"), l2Key = fixtureReadingKey(deviceId, "L2");
+    const l1Reading = fixtureReadingId(deviceId, "L1"), l2Reading = fixtureReadingId(deviceId, "L2");
     let serviceId: string | undefined;
     let authToken: string | null = null;
     let publisher: MqttClient | undefined;
@@ -97,7 +97,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       if (!inputs.L1 || !inputs.L2)
         throw new Error("Missing catalog test topics");
       const topics = { L1: inputs.L1, L2: inputs.L2 };
-      const expectedTelemetryTypes = [l1Key, l2Key].sort();
+      const expectedReadings = [l1Reading, l2Reading].sort();
       await publishCycle(activePublisher, topics, 0);
       const readJson = async <T>(path: string) => {
         const response = await api.get(path, {
@@ -105,29 +105,33 @@ test.describe("adaptive monitoring production lifecycle", () => {
         });
         return (await response.json()) as T;
       };
-      const readTelemetryTypes = async () =>
-        (await readJson<string[]>(`/api/v1/telemetry/${chargerId}/type`)).sort();
-      const hasTelemetryAt = async (key: string, timestamp: string) =>
+      const measurementsPath = (readingId: string) =>
+        `/v1/readings/${encodeURIComponent(readingId)}/measurements`;
+      const readRecordedReadings = async () =>
+        (await Promise.all(expectedReadings.map(async (readingId) =>
+          (await readJson<unknown[]>(`/api${measurementsPath(readingId)}?limit=1`)).length > 0
+            ? [readingId] : []))).flat();
+      const hasTelemetryAt = async (readingId: string, timestamp: string) =>
         (
           await readJson<Array<{ timestamp: string }>>(
-            `/api/v1/telemetry/${chargerId}/data?type=${encodeURIComponent(key)}&limit=1000`,
+            `/api${measurementsPath(readingId)}?limit=1000`,
           )
         ).some((row) => Date.parse(row.timestamp) === Date.parse(timestamp));
       const readServiceEvidence = async () =>
         (
           await readJson<ChartEvidence[]>(
-            `/api/v1/evidence/chart?charger_id=${chargerId}&limit=2000`,
+            `/api/v1/evidence/chart?device_id=${encodeURIComponent(deviceId)}&limit=2000`,
           )
-        ).filter((row) => row.service_id === serviceId);
-      const hasExpectedTelemetryTypes = (types: string[]) =>
-        types.length === expectedTelemetryTypes.length &&
-        expectedTelemetryTypes.every((type, index) => types[index] === type);
+        ).filter((row) => row.monitor_id === serviceId);
+      const hasExpectedReadings = (readings: string[]) =>
+        readings.length === expectedReadings.length &&
+        expectedReadings.every((reading, index) => readings[index] === reading);
       let retryPublishIndex = 0;
       await expect
         .poll(
           async () => {
-            const types = await readTelemetryTypes();
-            if (!hasExpectedTelemetryTypes(types) && retryPublishIndex < 5) {
+            const readings = await readRecordedReadings();
+            if (!hasExpectedReadings(readings) && retryPublishIndex < 5) {
               eventTimeCursor = Math.max(Date.now(), eventTimeCursor + 100);
               retryPublishIndex += 1;
               await publishCycle(
@@ -137,11 +141,11 @@ test.describe("adaptive monitoring production lifecycle", () => {
                 eventTimeCursor,
               );
             }
-            return types;
+            return readings;
           },
           { timeout: 120_000, intervals: [1_000, 2_000, 3_000] },
         )
-        .toEqual(expectedTelemetryTypes);
+        .toEqual(expectedReadings);
       await page.goto(`/?create=monitoring&target=${encodeURIComponent(chargerId)}`);
 
       await expect(page.getByText("L1", { exact: true }).first()).toBeVisible({
@@ -228,9 +232,9 @@ test.describe("adaptive monitoring production lifecycle", () => {
                 row.strategy === "adaptive_stream" &&
                 Number.isFinite(row.anomaly_score) &&
                 Number.isFinite(row.threshold) &&
-                Date.parse(row.input_timestamps[l1Key]!) ===
+                Date.parse(row.input_timestamps[l1Reading]!) ===
                   Date.parse(lastPublishedCycle.L1) &&
-                Date.parse(row.input_timestamps[l2Key]!) ===
+                Date.parse(row.input_timestamps[l2Reading]!) ===
                   Date.parse(lastPublishedCycle.L2),
             );
           },
@@ -239,16 +243,16 @@ test.describe("adaptive monitoring production lifecycle", () => {
         .toBe(true);
 
       for (const row of operationalEvidence) {
-        expect(Object.keys(row.input_timestamps).sort()).toEqual(expectedTelemetryTypes);
+        expect(Object.keys(row.input_timestamps).sort()).toEqual(expectedReadings);
         const normalizedInputs = {
-          L1: new Date(row.input_timestamps[l1Key]!).toISOString(),
-          L2: new Date(row.input_timestamps[l2Key]!).toISOString(),
+          L1: new Date(row.input_timestamps[l1Reading]!).toISOString(),
+          L2: new Date(row.input_timestamps[l2Reading]!).toISOString(),
         };
         expect(publishedCycles).toContainEqual(normalizedInputs);
         expect(Date.parse(row.timestamp)).toBe(
           Math.max(
-            Date.parse(row.input_timestamps[l1Key]!),
-            Date.parse(row.input_timestamps[l2Key]!),
+            Date.parse(row.input_timestamps[l1Reading]!),
+            Date.parse(row.input_timestamps[l2Reading]!),
           ),
         );
       }
@@ -277,14 +281,13 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const pendingL1 = new Date(eventTimeCursor).toISOString();
       await publish(activePublisher, topics.L1, 123, pendingL1);
       await expect
-        .poll(() => hasTelemetryAt(l1Key, pendingL1), { timeout: 60_000 })
+        .poll(() => hasTelemetryAt(l1Reading, pendingL1), { timeout: 60_000 })
         .toBe(true);
 
       const telemetryRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
-          url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
-          url.searchParams.get("type") === l1Key &&
+          url.pathname.endsWith(measurementsPath(l1Reading)) &&
           url.searchParams.has("after_created")
         );
       });
@@ -302,8 +305,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
           async () => {
             delayedEvidence = (await readServiceEvidence()).find(
               (row) =>
-                Date.parse(row.input_timestamps[l1Key]!) === Date.parse(pendingL1) &&
-                Date.parse(row.input_timestamps[l2Key]!) === Date.parse(pendingL2),
+                Date.parse(row.input_timestamps[l1Reading]!) === Date.parse(pendingL1) &&
+                Date.parse(row.input_timestamps[l2Reading]!) === Date.parse(pendingL2),
             );
             return delayedEvidence !== undefined;
           },
@@ -315,7 +318,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       );
 
       await expect
-        .poll(() => hasTelemetryAt(l2Key, pendingL2), { timeout: 120_000 })
+        .poll(() => hasTelemetryAt(l2Reading, pendingL2), { timeout: 120_000 })
         .toBe(true);
 
       const evidenceRefresh = page.waitForResponse((response) => {
@@ -328,8 +331,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const l2TelemetryRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
-          url.pathname.includes(`/v1/telemetry/${chargerId}/data`) &&
-          url.searchParams.get("type") === l2Key &&
+          url.pathname.endsWith(measurementsPath(l2Reading)) &&
           url.searchParams.has("after_created")
         );
       });

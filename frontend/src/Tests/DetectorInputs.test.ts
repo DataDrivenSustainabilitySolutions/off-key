@@ -12,7 +12,7 @@ import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 const start = Date.parse("2026-11-03T08:00:00Z");
 const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
 const row = (seconds: number, inputs: MonitoringDetectorInputs[] | undefined, sequence = seconds): MonitoringChartEvidence =>
-  chartEvidence({ service_id: "phases", timestamp: at(seconds), sequence_number: sequence, sensor_set: ["L1"],
+  chartEvidence({ monitor_id: "phases", timestamp: at(seconds), sequence_number: sequence, reading_ids: ["L1"],
     strategy: "static_baseline", tracker_results: [trackerResult()], detector_inputs: inputs });
 const flat = (l1: number | null, l2: number | null): MonitoringDetectorInputs[] =>
   [{ detector_id: null, inputs: { L1_dev: l1, L2_dev: l2 } }];

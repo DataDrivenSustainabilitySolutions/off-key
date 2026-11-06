@@ -53,30 +53,31 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   // timestamps remain unchanged; the window follows arrivals as they resume.
   const cutoff = inspection?.windowStartMs ?? (range.spanMs === undefined ? 0 : latestTime - range.spanMs);
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
-  const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
+  // Evidence and alarms name the catalogue reading the chart draws.
+  const readingId = stream.id;
   // The services already watch this reading; the first running one owns the chart.
   const service = useMemo(() => monitoring.services.find((item) => item.active), [monitoring.services]);
-  const evidence = useMemo(() => monitoring.evidence.filter((item) => item.sensor_set.includes(telemetryType)
-    && (!service || item.service_id === service.id)), [monitoring.evidence, service, telemetryType]);
-  const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, telemetryType),
-    [service?.id, monitoring.anomalies, evidence, telemetryType]);
+  const evidence = useMemo(() => monitoring.evidence.filter((item) => item.reading_ids.includes(readingId)
+    && (!service || item.monitor_id === service.id)), [monitoring.evidence, service, readingId]);
+  const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, readingId),
+    [service?.id, monitoring.anomalies, evidence, readingId]);
   const telemetryTimes = useMemo(() => normalizedHistory.map(([time]) => time), [normalizedHistory]);
   const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => Date.parse(point.timestamp))
     .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
-  const panes = useDetectorPanes({ telemetryType, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
+  const panes = useDetectorPanes({ telemetryType: readingId, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
     service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}` });
   const { detectors, selectedDetectorIds, pending } = panes;
   const detectorInputs = useMemo(() => {
     const first = telemetry[0]?.[0], last = telemetry[telemetry.length - 1]?.[0];
     return service && first !== undefined && last !== undefined
-      ? buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, telemetryType), [first, last]) : [];
-  }, [service, evidence, telemetryType, telemetry]);
+      ? buildDetectorInputSeries(evidence, row => getEvidenceTimeForSensor(row, readingId), [first, last]) : [];
+  }, [service, evidence, readingId, telemetry]);
   const model = useMemo(() => buildTelemetryChartModel({
     telemetryName: stream.label, telemetryUnit: stream.unit, telemetryColor: colors.primary,
     telemetry, detectors, selectedDetectorIds,
     pendingTelemetryTimestamps: pending, detectorInputs,
-    anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, telemetryType, new Date(cutoff))),
-  }), [telemetryType, stream.label, stream.unit, colors.primary, telemetry, detectors,
+    anomalyMarkers: createAnomalyMarkers(history, filterAnomalies(anomalies, readingId, new Date(cutoff))),
+  }), [readingId, stream.label, stream.unit, colors.primary, telemetry, detectors,
     selectedDetectorIds, pending, detectorInputs, history, anomalies, cutoff]);
   // Stable between renders, so the inspect callback below is too.
   const domain = useMemo(() => getChartDomain(model.extent), [model.extent]);
@@ -141,7 +142,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
     {service && <p className="ex-history-monitoring" role="status">{panes.awaitingFirstScore
       ? "Awaiting first score" : `Monitoring: ${service.operational_status.stage.replace(/_/g, " ")}`}
       {pending.length > 0 && ` · ${pending.length} awaiting score`}</p>}
-    {evidence.some(row => row.sensor_set.length > 1) && <p className="ex-history-monitoring">Detector results describe the joint inputs; they do not attribute an alarm to this reading.</p>}
+    {evidence.some(row => row.reading_ids.length > 1) && <p className="ex-history-monitoring">Detector results describe the joint inputs; they do not attribute an alarm to this reading.</p>}
     {panes.showDetectorControls
       && <div className="ex-history-detectors"><TelemetryDetectorControls detectors={panes.controlCatalog} selected={selectedDetectorIds}
         unavailableIds={panes.unavailableIds} onSelect={panes.onSelect} /></div>}

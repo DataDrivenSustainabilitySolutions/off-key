@@ -50,10 +50,12 @@ permission of the member's role, which `GET /v1/me` lists.
 
 - *Sources* are the `brokers`, `devices` and `readings` in the `document` of
   `GET /v1/catalogue`; `PUT /v1/recording` chooses which readings are recorded.
-- A *reading* is recorded under `charger_id` (its entity) plus `telemetry_type`
-  (its key), which telemetry, evidence and alarms use. `GET /v1/catalogue`
-  maps each reading id to that pair as `entity_id` and `telemetry_key` in
-  `runtime.bindings`.
+- Devices and readings are named by their catalogue ids: `GET /v1/devices`
+  lists devices, `GET /v1/readings/{reading_id}/measurements` returns recorded
+  values, and evidence takes a `device_id` or `reading_id`.
+- Alarms still name a reading by its recorded `charger_id` and
+  `telemetry_type`; `runtime.bindings` of `GET /v1/catalogue` maps each reading
+  id to that pair as `entity_id` and `telemetry_key`.
 - A *monitor* (`monitor_id`) watches readings; a design it can run is a
   pipeline under `/v1/pipelines`.
 - An *alarm* in Reporting is an anomaly under `/v1/anomalies`.
@@ -88,13 +90,9 @@ OPENAPI_TAGS = [
         "recording them.",
     },
     {
-        "name": "chargers",
-        "description": "Recorded entities, the `charger_id` that telemetry, "
-        "evidence and alarms are keyed by.",
-    },
-    {
-        "name": "telemetry",
-        "description": "Recorded values of one entity, by telemetry type.",
+        "name": "devices",
+        "description": "Catalogue devices, whether they are sending data, and "
+        "the recorded measurements of each reading.",
     },
     {
         "name": "monitors",

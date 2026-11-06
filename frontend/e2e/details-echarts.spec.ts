@@ -52,7 +52,7 @@ const evidence = (
   timestamp,
   created: new Date(Date.parse(timestamp) + 30_000).toISOString(),
   sequence_number: sequence,
-  sensor_set: ["systemVoltage"],
+  reading_ids: ["systemVoltage"],
   input_timestamps: { systemVoltage: timestamp },
   alarm: false,
   ...scores,
@@ -60,7 +60,7 @@ const evidence = (
 const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
   evidence(timestamp, index + 1, {
     strategy: "static_baseline",
-    service_id: "radar-service-e2e",
+    monitor_id: "radar-service-e2e",
     restarted_martingale: 10 ** -index,
     threshold: 100,
   }),
@@ -68,7 +68,7 @@ const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
 const adaptiveEvidence = (timestamp: string, sequence: number) =>
   evidence(timestamp, sequence, {
     strategy: "adaptive_stream",
-    service_id: "adaptive-delayed",
+    monitor_id: "adaptive-delayed",
     anomaly_score: sequence,
     restarted_martingale: null,
     threshold: 5,

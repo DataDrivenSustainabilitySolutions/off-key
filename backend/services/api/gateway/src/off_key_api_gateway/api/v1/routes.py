@@ -6,7 +6,7 @@ from . import (
     anomalies,
     auth,
     catalogue,
-    charger,
+    devices,
     dojo,
     evidence,
     favorites,
@@ -14,7 +14,6 @@ from . import (
     monitors,
     pipelines,
     roles,
-    telemetry,
 )
 
 router = APIRouter()
@@ -22,8 +21,8 @@ router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 protected = APIRouter(dependencies=[Depends(current_member)])
 
-protected.include_router(charger.router, prefix="/chargers", tags=["chargers"])
-protected.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
+protected.include_router(devices.router, prefix="/devices", tags=["devices"])
+protected.include_router(devices.readings_router, prefix="/readings", tags=["devices"])
 manage_monitors = writes_require(Permission.manage_monitors)
 protected.include_router(
     monitors.router,

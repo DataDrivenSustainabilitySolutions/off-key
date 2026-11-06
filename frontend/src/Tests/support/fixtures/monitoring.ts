@@ -12,11 +12,11 @@ export const trackerResult = (overrides: Partial<MartingaleTrackerResult> = {}):
   };
 };
 
-/** One evidence row; callers pass the service, time and every value they assert on. */
+/** One evidence row; callers pass the monitor, time and every value they assert on. */
 export const chartEvidence = (
-  overrides: Partial<MonitoringChartEvidence> & Pick<MonitoringChartEvidence, "service_id" | "timestamp">,
+  overrides: Partial<MonitoringChartEvidence> & Pick<MonitoringChartEvidence, "monitor_id" | "timestamp">,
 ): MonitoringChartEvidence => ({
-  sequence_number: 1, sensor_set: ["L1"], input_timestamps: { L1: overrides.timestamp },
+  sequence_number: 1, reading_ids: ["L1"], input_timestamps: { L1: overrides.timestamp },
   restarted_martingale: null, threshold: 100, alarm: false, created: overrides.timestamp,
   ...overrides,
 });

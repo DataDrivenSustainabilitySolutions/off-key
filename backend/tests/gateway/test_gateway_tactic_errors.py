@@ -50,8 +50,8 @@ def test_raise_tactic_http_error_defaults_to_bad_gateway():
 
 
 ROUTES = [
-    ("GET", "/v1/chargers/available", None),
-    ("GET", "/v1/telemetry/c1/type", None),
+    ("GET", "/v1/devices", None),
+    ("GET", "/v1/readings/r1/measurements", None),
     ("GET", "/v1/anomalies/count", None),
     ("GET", "/v1/favorites", None),
     ("POST", "/v1/favorites", {"kind": "reading", "id": "r1"}),

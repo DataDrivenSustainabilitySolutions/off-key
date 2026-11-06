@@ -132,3 +132,26 @@ async def test_run_creation_is_forwarded_as_json(monkeypatch):
     assert (method, endpoint) == ("POST", "/api/v1/dojo/runs")
     assert kwargs["json_data"]["bindings"] == body["bindings"]
     assert kwargs["json_data"]["alignment"] == RunAlignment().model_dump()
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_forwards_each_run_id(monkeypatch):
+    recorded = []
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint, kwargs))
+        return {"dataset_id": "d1", "labels": [], "runs": []}
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.get(
+            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r2", headers=TOKEN
+        )
+        refused = await client.get(
+            "/v1/dojo/datasets/d1/comparison?run_ids=r1&run_ids=r1", headers=TOKEN
+        )
+    assert response.status_code == 200, response.text
+    [(method, endpoint, kwargs)] = recorded
+    assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/comparison")
+    assert kwargs["params"] == {"run_ids": ["r1", "r2"]}
+    assert refused.status_code == 422

@@ -13,7 +13,8 @@
   ],
   "ignore": [
     "src/components/ui/**",
-    "src/types/pipelines.generated.ts"
+    "src/types/pipelines.generated.ts",
+    "src/types/dojo.generated.ts"
   ],
   "ignoreDependencies": [
     "tailwindcss",

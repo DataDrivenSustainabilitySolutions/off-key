@@ -29,6 +29,7 @@ from ..auth.permissions import (
 )
 from .base import Base
 from .dojo import DojoDataset as DojoDataset
+from .dojo import DojoLabel as DojoLabel
 from .dojo import DojoPoint as DojoPoint
 from .dojo import DojoRun as DojoRun
 from .dojo import DojoRunResult as DojoRunResult

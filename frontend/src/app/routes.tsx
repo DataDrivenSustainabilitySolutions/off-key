@@ -9,6 +9,7 @@ export function createAppRoutes() {
   const ApplicationWorkspace = lazy(() => import("./ApplicationWorkspace").then(module => ({ default: module.ApplicationWorkspace })));
   const Anomalies = lazy(() => import("@/pages/Anomalies"));
   const Details = lazy(() => import("@/pages/Details"));
+  const Dojo = lazy(() => import("@/pages/Dojo"));
   const DataSources = lazy(() => import("@/pages/SystemCatalogue"));
   const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
   const Login = lazy(() => import("@/pages/Login"));
@@ -42,6 +43,7 @@ export function createAppRoutes() {
           <Route path="/system/status" element={<SettingsRedirect section="status" />} />
           <Route path="/account/settings" element={<SettingsRedirect section="status" />} />
           <Route path="/anomalies" element={<Anomalies />} />
+          <Route path="/dojo" element={<Dojo />} />
         </Route>
       </Route>
 

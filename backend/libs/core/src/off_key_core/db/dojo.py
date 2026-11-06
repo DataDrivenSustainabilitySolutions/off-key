@@ -103,6 +103,34 @@ class DojoPoint(Base):
     )
 
 
+class DojoLabel(Base):
+    """A time interval on a dataset that marks a known problem.
+
+    Labels of one dataset never overlap, so each alarm belongs to at most one.
+    Run metrics read the current labels, so editing a label re-scores every
+    finished run on the dataset without replaying it.
+    """
+
+    __tablename__ = "dojo_dataset_labels"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint("end_at > start_at", name="ck_dojo_label_interval"),
+        Index("ix_dojo_labels_dataset", "dataset_id", "start_at"),
+    )
+
+
 class DojoRun(Base):
     """One detection design replayed over one dataset by the Dojo worker.
 

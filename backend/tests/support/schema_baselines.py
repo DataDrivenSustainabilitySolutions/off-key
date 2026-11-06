@@ -26,6 +26,7 @@ EXPECTED_MIGRATIONS = (
     "019_dojo_datasets.sql",
     "020_dojo_runs.sql",
     "021_member_roles.sql",
+    "022_dojo_labels.sql",
 )
 
 

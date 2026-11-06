@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
  * for it; everything else points upward and is reported.
  *
  *   app → pages → features/explorer (the '/' screen)
- *     → features/{catalogue, monitoring} → features/pipelines → features/workspace
+ *     → features/{catalogue, monitoring, dojo} → features/pipelines → features/workspace
  *     → features/{readings, account, settings} → features/charts → domain → shared
  *
  * shared is lib/, hooks/, components/, types/ and auth/: generic building blocks
@@ -24,6 +24,7 @@ const ALLOWED = {
   'features/pipelines': [...SHARED, 'domain', 'features/charts', 'features/workspace'],
   'features/monitoring': [...SHARED, 'domain', 'features/charts', 'features/readings', 'features/workspace', 'features/pipelines'],
   'features/catalogue': [...SHARED, 'domain', 'features/charts', 'features/readings', 'features/workspace'],
+  'features/dojo': [...SHARED, 'domain', 'features/charts', 'features/workspace', 'features/pipelines'],
 }
 const SCREENS = Object.keys(ALLOWED).filter(layer => layer.startsWith('features/'))
 ALLOWED['features/explorer'] = [...SHARED, 'domain', ...SCREENS]

@@ -38,7 +38,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => c
 // One entity with three recorded readings, each accepted on its canonical topic.
 const target: MonitoringTarget = { id: "charger-1", label: "Site / Charger", inputs: ["L1", "L2", "L3"].map(key => ({
   path: "Site / Charger",
-  stream: { id: `stream-${key}`, label: key, topic: `site/charger-1/${key}`, value_type: "number", category: "Power", connection_id: "broker" },
+  stream: { id: `stream-${key}`, label: key, topic: `site/charger-1/${key}`, value_type: "number", category: "Power", broker_id: "broker" },
   binding: { entity_id: "charger-1", telemetry_key: key, accepted_topic: `telemetry/charger-1/${key}`, policy: { mode: "sample", interval_seconds: 10 } },
 })) };
 

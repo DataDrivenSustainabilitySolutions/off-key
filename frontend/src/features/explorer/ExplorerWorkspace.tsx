@@ -50,7 +50,7 @@ export function ExplorerWorkspace() {
     && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
   useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
     : creating ? "New service" : pipelineView ? "Templates" : selected && (selected.entityKind === "stream"
-      ? document.streams.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
+      ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
   useEffect(() => {
     rememberNavigation(monitoringNavigationKey(userId), `/${params.size ? `?${params}` : ""}`);
   }, [userId, params]);

@@ -10,17 +10,17 @@ import { mqttConnection } from "./support/fixtures/system";
 
 const now = Date.parse("2026-10-13T12:00:00Z");
 const time = (age = 0) => new Date(now - age).toISOString();
-const document = { ...createEmptySystem(), connections: [mqttConnection({ id: "broker", label: "Broker", host: "localhost" })],
-  streams: [{ id: "temperature", label: "Temperature", connection_id: "broker", topic: "room/temperature", value_type: "number" as const, category: "Environment" }] };
+const document = { ...createEmptySystem(), brokers: [mqttConnection({ id: "broker", label: "Broker", host: "localhost" })],
+  readings: [{ id: "temperature", label: "Temperature", broker_id: "broker", topic: "room/temperature", value_type: "number" as const, category: "Environment" }] };
 const index = buildNavigationIndex(document);
 const node = index.nodes.get(index.objectKeys.get("temperature")![0]!)!;
-const liveStatus: LiveStatus = { phase: "live", active: true, observing: false, message: "", dataSource: "broker", connections: [{ connection_id: "broker", state: "connected", message: null,
+const liveStatus: LiveStatus = { phase: "live", active: true, observing: false, message: "", dataSource: "broker", connections: [{ broker_id: "broker", state: "connected", message: null,
   received_messages: 1, fresh_count: 1, retained_count: 0, fresh_received_at: time(), rate_hz: 1 }] };
 
 function recording(): ReadingActivitySource {
   const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 7, collection: { status: "applied" },
     ingress: { revision: 7, status: "applied", sources: { broker: { state: "connected" } }, readings: { temperature: { fresh_received_at: time() } } },
-    bindings: { temperature: { entity_id: "room", connection_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature", policy: { mode: "sample", interval_seconds: 3600 } } },
+    bindings: { temperature: { entity_id: "room", broker_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature", policy: { mode: "sample", interval_seconds: 3600 } } },
     latest_readings: { temperature: { value: 20, received_at: time(3_000_000), is_snapshot: false } } };
   return { runtime, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
 }
@@ -100,7 +100,7 @@ describe("topic activity", () => {
     const status = structuredClone(liveStatus);
     if (state === "stopped") status.active = false;
     if (state === "paused") status.phase = "paused";
-    if (state === "wrong-broker") status.connections[0]!.connection_id = "other";
+    if (state === "wrong-broker") status.connections[0]!.broker_id = "other";
     if (state === "outside-scope") source.liveStreamIds = [];
     expect(readingActivity(node, source, status, now)).toEqual({ receiving: false, label: "Not listening" });
   });

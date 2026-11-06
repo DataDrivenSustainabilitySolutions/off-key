@@ -207,11 +207,11 @@ describe("<Details />", () => {
 
   it("is titled by the catalogue entity behind the recorded identity and links to it in Sources", async () => {
     const document: SystemDocument = { ...createEmptySystem(),
-      connections: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.test" })],
-      devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
-      streams: [{ id: "temperature", label: "Air temperature", connection_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
+      brokers: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.test" })],
+      devices: [{ id: "station", label: "Room station", kind: "sensor", broker_id: "broker" }],
+      readings: [{ id: "temperature", label: "Air temperature", broker_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
     };
-    const runtime = { bindings: { temperature: { connection_id: "broker", entity_id: "123", telemetry_key: "temperature",
+    const runtime = { bindings: { temperature: { broker_id: "broker", entity_id: "123", telemetry_key: "temperature",
       accepted_topic: "telemetry/123/temperature", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
     const index = buildNavigationIndex(document);
     const catalogue = { system: { snapshot: { document, runtime } }, index } as unknown as CatalogueContextValue;
@@ -223,7 +223,7 @@ describe("<Details />", () => {
     const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
     expect(window.document.title).toBe("Room station · Reporting · Aberration");
-    // Reading labels come from the provider's snapshot instead of another /v1/system request.
+    // Reading labels come from the provider's snapshot instead of another /v1/catalogue request.
     expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith("123", expect.any(AbortSignal), undefined, { document, runtime });
   });
 

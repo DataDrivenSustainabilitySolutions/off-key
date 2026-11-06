@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import system as gateway
+from off_key_api_gateway.api.v1 import catalogue as gateway
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
@@ -640,14 +640,14 @@ def test_admin_route_starts_renews_and_releases_with_no_database_telemetry_write
 async def test_gateway_preserves_authorization_and_live_request_contract(monkeypatch):
     request = AsyncMock(return_value={"mode": "configured_only"})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.start_live_view(SystemLiveStart(expected_revision=7), "Bearer token")
+    await gateway.open_live_view(SystemLiveStart(expected_revision=7), "Bearer token")
     request.assert_awaited_with(
         "POST",
         "/api/v1/system/live/leases",
         json_data={"expected_revision": 7},
         headers={"Authorization": "Bearer token"},
     )
-    await gateway.get_live_readings(12, "Bearer token")
+    await gateway.list_live_measurements(12, "Bearer token")
     request.assert_awaited_with(
         "GET",
         "/api/v1/system/live?after_sequence=12",
@@ -657,7 +657,7 @@ async def test_gateway_preserves_authorization_and_live_request_contract(monkeyp
     lease_id = "b" * 32
     await gateway.renew_live_view(lease_id, "Bearer token")
     assert request.await_args.args == ("PUT", f"/api/v1/system/live/leases/{lease_id}")
-    await gateway.stop_live_view(lease_id, "Bearer token")
+    await gateway.close_live_view(lease_id, "Bearer token")
     assert request.await_args.args == (
         "DELETE",
         f"/api/v1/system/live/leases/{lease_id}",

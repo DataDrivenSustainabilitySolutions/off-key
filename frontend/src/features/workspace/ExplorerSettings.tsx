@@ -21,9 +21,9 @@ type Candidate = { document: SystemDocument; revision: number; fileName: string 
 const itemCount = (count: number, singular: string) =>
   count.toLocaleString() + " " + (count === 1 ? singular : singular === "entity" ? "entities" : singular + "s");
 const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
-  itemCount(document.connections.length, "broker"),
+  itemCount(document.brokers.length, "broker"),
   itemCount(document.devices.length, "entity"),
-  itemCount(document.streams.length, "reading"),
+  itemCount(document.readings.length, "reading"),
   ...(includeGroups ? [itemCount(document.groups.length, "collection")] : []),
 ].join(" · ");
 const creationActions = [
@@ -120,14 +120,14 @@ function ExplorerSettings({
           <div className="catalogue-settings-create-grid">
             {creationActions.map(({ kind, label, description, icon: Icon }) => (
               <button key={kind} type="button" className="catalogue-settings-create" aria-label={label}
-                disabled={!canEdit || disabled || (kind === "stream" && !document.connections.length)} onClick={() => onCreate(kind)}>
+                disabled={!canEdit || disabled || (kind === "stream" && !document.brokers.length)} onClick={() => onCreate(kind)}>
                 <span className="catalogue-settings-action-icon"><Icon size={18} aria-hidden="true" /></span>
                 <span className="catalogue-settings-action-copy"><strong>{label}</strong><span>{description}</span></span>
                 <Plus size={14} className="catalogue-settings-action-plus" aria-hidden="true" />
               </button>
             ))}
           </div>
-          {!document.connections.length && <p className="catalogue-settings-hint">Add a broker before registering readings.</p>}
+          {!document.brokers.length && <p className="catalogue-settings-hint">Add a broker before registering readings.</p>}
           {onEdit && document.devices.length > 0 && <div className="catalogue-settings-entity">
             <label htmlFor={entitySelectId}>Edit an existing entity</label>
             <div className="catalogue-settings-select">

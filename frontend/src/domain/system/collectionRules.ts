@@ -3,14 +3,14 @@ import type { ExplorerNode, NavigationIndex } from "./navigationIndex";
 import type { RuleScope, SystemDocument, SystemRuntime } from "@/types/system";
 
 export type { RuleScope, CollectionRule, RuleEdit, RuleChange } from "@/types/system";
-export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.connection_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
+export const scopeKey = (scope: RuleScope) => JSON.stringify([scope.kind, scope.broker_id, scope.topic_prefix ?? null, scope.reading_id ?? null]);
 export const policyLabel = (policy?: CollectionPolicy) => !policy || policy.mode === "off" ? "Off" : policy.mode === "original" ? "Every message" : `Every ${policy.interval_seconds} s`;
 
 export function scopeForNode(node?: ExplorerNode): RuleScope | undefined {
   if (!node?.connectionId) return;
-  if (node.entityKind === "stream") return { kind: "reading", connection_id: node.connectionId, reading_id: node.objectId };
-  if (node.kind === "connection") return { kind: "broker", connection_id: node.connectionId };
-  if (node.kind === "topic") return { kind: "topic", connection_id: node.connectionId, topic_prefix: node.topic };
+  if (node.entityKind === "stream") return { kind: "reading", broker_id: node.connectionId, reading_id: node.objectId };
+  if (node.kind === "connection") return { kind: "broker", broker_id: node.connectionId };
+  if (node.kind === "topic") return { kind: "topic", broker_id: node.connectionId, topic_prefix: node.topic };
 }
 
 export function scopeReadingIds(index: NavigationIndex, node: ExplorerNode): string[] {
@@ -36,16 +36,16 @@ export const topicWithinPrefix = (topic: string, prefix: string) => topic === pr
 export function recordingScopeReadingIds(document: SystemDocument, node: ExplorerNode): string[] {
   const scope = scopeForNode(node);
   if (!scope) return [];
-  return document.streams.filter(stream => stream.connection_id === scope.connection_id
+  return document.readings.filter(stream => stream.broker_id === scope.broker_id
     && (scope.kind === "broker" || scope.kind === "reading" && stream.id === scope.reading_id
       || scope.kind === "topic" && topicWithinPrefix(stream.topic, scope.topic_prefix ?? "")))
     .map(stream => stream.id);
 }
 
 export function sourceHref(readingIds: string[], document?: SystemDocument, returnTo?: string) {
-  const first = document?.streams.find(stream => readingIds.includes(stream.id));
+  const first = document?.readings.find(stream => readingIds.includes(stream.id));
   const query = new URLSearchParams();
-  if (first) query.set("broker", first.connection_id);
+  if (first) query.set("broker", first.broker_id);
   if (readingIds.length === 1) query.set("reading", readingIds[0]!);
   if (returnTo?.startsWith("/?")) query.set("returnTo", returnTo);
   return `/sources${query.size ? `?${query}` : ""}`;
@@ -55,7 +55,7 @@ export function originLabel(runtime: SystemRuntime | undefined, id: string, docu
   const origin = runtime?.bindings?.[id]?.policy_origin;
   if (origin?.needs_review) return "needs review";
   if (!origin?.scope || !origin.inherited) return;
-  const source = origin.scope.kind === "broker" ? document.connections.find(item => item.id === origin.scope?.connection_id)?.label : origin.scope.topic_prefix;
+  const source = origin.scope.kind === "broker" ? document.brokers.find(item => item.id === origin.scope?.broker_id)?.label : origin.scope.topic_prefix;
   return `inherited from ${source ?? "parent"}`;
 }
 

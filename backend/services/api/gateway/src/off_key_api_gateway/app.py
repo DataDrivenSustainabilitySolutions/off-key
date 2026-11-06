@@ -48,11 +48,11 @@ permission of the member's role, which `GET /v1/me` lists.
 
 **Vocabulary.** The web app and this API name the same things differently:
 
-- *Sources* are the brokers (`connections`), `devices` and readings
-  (`streams`) in the `document` of `GET /v1/system`.
+- *Sources* are the `brokers`, `devices` and `readings` in the `document` of
+  `GET /v1/catalogue`; `PUT /v1/recording` chooses which readings are recorded.
 - A *reading* is recorded under `charger_id` (its entity) plus `telemetry_type`
-  (its key), which telemetry, evidence and alarms use. `GET /v1/system` maps
-  each stream id to that pair as `entity_id` and `telemetry_key` in
+  (its key), which telemetry, evidence and alarms use. `GET /v1/catalogue`
+  maps each reading id to that pair as `entity_id` and `telemetry_key` in
   `runtime.bindings`.
 - A *monitor* (`monitor_id`) watches readings; a design it can run is a
   pipeline under `/v1/pipelines`.
@@ -73,9 +73,19 @@ OPENAPI_TAGS = [
         "These calls need no token.",
     },
     {
-        "name": "system",
+        "name": "catalogue",
         "description": "Sources: the saved catalogue of brokers, devices and "
-        "readings, what is recorded, collection health and live preview.",
+        "readings, its revisions, and broker checks.",
+    },
+    {
+        "name": "recording",
+        "description": "Which readings are recorded and how often, whether "
+        "recording is healthy, and how much storage it uses.",
+    },
+    {
+        "name": "live",
+        "description": "Live views of configured readings, watched without "
+        "recording them.",
     },
     {
         "name": "chargers",

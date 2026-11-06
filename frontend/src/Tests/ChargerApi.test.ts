@@ -23,7 +23,7 @@ const mockGet = vi.mocked(apiUtils.get);
 const mockDelete = vi.mocked(apiUtils.delete);
 
 const catalogResponse = {
-  document: { streams: [
+  document: { readings: [
     { id: "other-voltage", category: "Electrical" },
     { id: "cpu", category: "Processor" },
     { id: "voltage", category: "Voltage" },
@@ -74,7 +74,7 @@ describe("charger API", () => {
         data: [{ timestamp: "now", value: 230 }],
       },
     ]);
-    expect(mockGet).toHaveBeenCalledWith("/v1/system", { signal });
+    expect(mockGet).toHaveBeenCalledWith("/v1/catalogue", { signal });
   });
 
   it("starts loading points while catalogue metadata is still pending", async () => {

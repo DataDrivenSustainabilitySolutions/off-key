@@ -13,7 +13,7 @@ const first = "2026-10-21T10:00:00.000Z";
 const second = "2026-10-21T10:00:00.075Z";
 const later = "2026-10-21T10:00:01.000Z";
 const input = (id: string, unit: string): MonitoringInput => ({
-  stream: { id, label: id, connection_id: "broker", topic: id, category: "Other", value_type: "number", unit },
+  stream: { id, label: id, broker_id: "broker", topic: id, category: "Other", value_type: "number", unit },
   binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } },
   path: "Room station",
 });

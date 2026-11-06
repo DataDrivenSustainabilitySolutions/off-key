@@ -57,7 +57,7 @@ ROUTES = [
     ("POST", "/v1/favorites", {"kind": "reading", "id": "r1"}),
     ("DELETE", "/v1/favorites?kind=reading&id=r1", None),
     ("GET", "/v1/members", None),
-    ("GET", "/v1/system", None),
+    ("GET", "/v1/catalogue", None),
     ("PATCH", "/v1/monitors/svc-1", {"display_name": "Pump"}),
     ("GET", "/v1/pipelines/p1", None),
     ("GET", "/v1/monitors", None),

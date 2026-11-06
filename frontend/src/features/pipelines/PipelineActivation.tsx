@@ -349,7 +349,7 @@ export function PipelineActivation({
                   previousBindings[slot.id] !== bindings[slot.id] && (
                     <small>
                       Binding changed from{" "}
-                      {document.streams.find(
+                      {document.readings.find(
                         (input) => input.id === previousBindings[slot.id],
                       )?.label ?? previousBindings[slot.id]}
                     </small>

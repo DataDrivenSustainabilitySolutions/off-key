@@ -17,12 +17,12 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   await expect(dialog.getByRole("heading", { name: "Import & export", exact: true })).toBeVisible();
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
-  const beforeResponse = await page.request.get("/api/v1/system", { headers });
+  const beforeResponse = await page.request.get("/api/v1/catalogue", { headers });
   expect(beforeResponse.ok(), await beforeResponse.text()).toBeTruthy();
   const before = await beforeResponse.json() as SystemSnapshot;
   const writes: string[] = [];
   page.on("request", request => {
-    if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/v1/system") writes.push(request.url());
+    if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/v1/catalogue") writes.push(request.url());
   });
   const downloadReady = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Export JSON", exact: true }).click();
@@ -42,7 +42,7 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   await preview.getByRole("button", { name: "Cancel import", exact: true }).click();
   await expect(preview).toHaveCount(0);
   expect(writes).toEqual([]);
-  const afterResponse = await page.request.get("/api/v1/system", { headers });
+  const afterResponse = await page.request.get("/api/v1/catalogue", { headers });
   expect(afterResponse.ok()).toBeTruthy();
   expect((await afterResponse.json() as SystemSnapshot).revision).toBe(before.revision);
   await page.keyboard.press("Escape");
@@ -63,12 +63,12 @@ test("saves a source from settings and supports both themes and mobile entry poi
     await page.getByRole("button", { name: "Add broker", exact: true }).click();
     await page.getByRole("textbox", { name: "connection name", exact: true }).fill(name);
     await page.getByRole("textbox", { name: "Broker host", exact: true }).fill("source-broker");
-    const savedResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/system");
+    const savedResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/catalogue");
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
     const saved = await savedResponse;
     expect(saved.ok(), await saved.text()).toBeTruthy();
     const snapshot = await saved.json() as SystemSnapshot;
-    createdId = snapshot.document.connections.find(item => item.label === name)?.id;
+    createdId = snapshot.document.brokers.find(item => item.label === name)?.id;
     expect(createdId).toBeTruthy();
     // The editor closes back onto the settings overlay, which then closes to the page.
     const editor = page.getByRole("dialog", { name: "Edit catalogue", exact: true });
@@ -82,7 +82,7 @@ test("saves a source from settings and supports both themes and mobile entry poi
     await openCatalogueSettings(page);
     await page.getByRole("button", { name: "Add entity", exact: true }).click();
     await page.getByRole("textbox", { name: "device name", exact: true }).fill(`${name} asset`);
-    const entityResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/system");
+    const entityResponse = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/catalogue");
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
     const entitySaved = await entityResponse;
     expect(entitySaved.ok(), await entitySaved.text()).toBeTruthy();
@@ -121,12 +121,12 @@ test("saves a source from settings and supports both themes and mobile entry poi
     }
   } finally {
     if (createdId) {
-      const response = await page.request.get("/api/v1/system", { headers });
+      const response = await page.request.get("/api/v1/catalogue", { headers });
       expect(response.ok()).toBeTruthy();
       const current = await response.json() as SystemSnapshot;
       current.document.devices = current.document.devices.filter(item => item.id !== createdEntityId);
-      current.document.connections = current.document.connections.filter(item => item.id !== createdId);
-      const cleanup = await page.request.put("/api/v1/system", { headers, data: { expected_revision: current.revision, document: current.document } });
+      current.document.brokers = current.document.brokers.filter(item => item.id !== createdId);
+      const cleanup = await page.request.put("/api/v1/catalogue", { headers, data: { expected_revision: current.revision, document: current.document } });
       expect(cleanup.ok(), await cleanup.text()).toBeTruthy();
     }
   }

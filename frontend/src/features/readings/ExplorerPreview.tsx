@@ -72,28 +72,28 @@ export default function ExplorerPreview({
   collapseDefinition = false,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
-  const streamsById = useMemo(() => new Map(document.streams.map((stream) => [stream.id, stream])), [document.streams]);
-  const brokersById = useMemo(() => new Map(document.connections.map((broker) => [broker.id, broker])), [document.connections]);
+  const streamsById = useMemo(() => new Map(document.readings.map((stream) => [stream.id, stream])), [document.readings]);
+  const brokersById = useMemo(() => new Map(document.brokers.map((broker) => [broker.id, broker])), [document.brokers]);
   const entitiesById = useMemo(() => new Map(document.devices.map((entity) => [entity.id, entity])), [document.devices]);
   const related = useMemo(() => node.streamIds.flatMap((id) => streamsById.get(id) ?? []), [node.streamIds, streamsById]);
   const broker = node.kind === "connection" ? brokersById.get(node.objectId ?? "") : undefined;
   const entity = node.kind === "device" ? entitiesById.get(node.objectId ?? "") : undefined;
   const entityBrokers = useMemo(() => {
     if (!entity) return [];
-    const ids = new Set(related.map((item) => item.connection_id));
-    if (entity.connection_id) ids.add(entity.connection_id);
+    const ids = new Set(related.map((item) => item.broker_id));
+    if (entity.broker_id) ids.add(entity.broker_id);
     return [...ids].flatMap((id) => brokersById.get(id)?.label ?? []);
   }, [entity, related, brokersById]);
   const stream = node.entityKind === "stream" && node.objectId
     ? streamsById.get(node.objectId)
     : node.kind === "topic" && related.length === 1 ? related[0] : undefined;
-  const readingConnection = stream ? brokersById.get(stream.connection_id) : undefined;
+  const readingConnection = stream ? brokersById.get(stream.broker_id) : undefined;
   const savedBinding = stream ? runtime?.bindings?.[stream.id] : undefined;
   const history = useReadingHistorySnapshot(historyCache, readingHistoryKey(readingConnection, stream, savedBinding?.entity_id, savedBinding?.telemetry_key));
   const lastSample = stream?.value_type === "number" ? history.telemetry[history.telemetry.length - 1] : undefined;
   const snapshotId = node.objectId ?? stream?.id;
   const snapshot = snapshotId ? telemetry.getSnapshot(snapshotId) : undefined;
-  const connection = status.connections.find((entry) => entry.connection_id === node.connectionId);
+  const connection = status.connections.find((entry) => entry.broker_id === node.connectionId);
   const liveLabel = status.phase === "idle" ? "Disconnected"
     : ["error", "blocked", "paused"].includes(status.phase) ? phases[status.phase]
     : connection?.state === "connected" ? "Connected"
@@ -101,7 +101,7 @@ export default function ExplorerPreview({
     : connection?.state === "stopped" ? "Disconnected"
     : connection?.state ? connection.state[0]!.toUpperCase() + connection.state.slice(1)
     : phases[status.phase];
-  const topicCount = useMemo(() => new Set(related.map((item) => JSON.stringify([item.connection_id, item.topic]))).size, [related]);
+  const topicCount = useMemo(() => new Set(related.map((item) => JSON.stringify([item.broker_id, item.topic]))).size, [related]);
   const isReading = node.entityKind === "stream";
   const ancestry = navigationTrail(index, node.key);
   const parent = isReading ? ancestry.slice().reverse().find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection") : undefined;
@@ -128,7 +128,7 @@ export default function ExplorerPreview({
     const policy = runtime?.bindings?.[reading.id]?.policy;
     return policy && policy.mode !== "off";
   });
-  const sourceIds = new Set(related.flatMap(reading => runtime?.bindings?.[reading.id]?.connection_id ?? []));
+  const sourceIds = new Set(related.flatMap(reading => runtime?.bindings?.[reading.id]?.broker_id ?? []));
   const sources = [...sourceIds].flatMap(id => runtime?.ingress?.sources?.[id] ?? []);
   const recordProblem = sources.find(source => ["error", "blocked"].includes(source.state));
   const recordConnected = sources.length === sourceIds.size && sources.length > 0 && sources.every(source => source.state === "connected");

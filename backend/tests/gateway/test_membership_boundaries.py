@@ -40,7 +40,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
         "/monitors",
         "/favorites?user_id=99",
         "/anomalies/count",
-        "/system",
+        "/catalogue",
         "/members",
     )
     async with asgi_client(gateway) as client:

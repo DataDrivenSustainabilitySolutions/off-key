@@ -120,7 +120,7 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
         </ul></section>
       </>}
       {tab === "evidence" && (inputs.length ? <MonitoringHistory key={`${service.id}:${params.get("stream") ?? "all"}`}
-        service={service} inputs={inputs} connections={document.connections} historyCache={historyCache}
+        service={service} inputs={inputs} connections={document.brokers} historyCache={historyCache}
         initialReading={inputs.some(input => input.stream.id === params.get("stream")) ? params.get("stream")! : undefined} />
         : <p className="ex-muted">These service inputs are not available in the current catalogue.</p>)}
       {tab === "configuration" && <>

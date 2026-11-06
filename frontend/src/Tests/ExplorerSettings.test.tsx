@@ -6,14 +6,14 @@ import type { SystemDocument } from "@/types/system";
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem("Weather system"),
-  connections: [{
+  brokers: [{
     id: "broker:weather", label: "Weather broker", protocol: "mqtt",
     host: "weather.example.test", port: 1883, transport: "tcp", tls: false,
   }],
-  devices: [{ id: "device:roof", label: "Roof", kind: "sensor", connection_id: "broker:weather" }],
-  streams: [{
+  devices: [{ id: "device:roof", label: "Roof", kind: "sensor", broker_id: "broker:weather" }],
+  readings: [{
     id: "stream:temperature", label: "Temperature", topic: "roof/temperature",
-    connection_id: "broker:weather", device_id: "device:roof", value_type: "number", category: "Weather", unit: "°C",
+    broker_id: "broker:weather", device_id: "device:roof", value_type: "number", category: "Weather", unit: "°C",
   }],
 });
 const common = () => ({
@@ -53,7 +53,7 @@ describe("explorer settings catalogue files", () => {
     ["broken json", "valid JSON"],
     [JSON.stringify({ format: "aberration-explorer-workspace", schema_version: 1, system: fixture() }), "unsupported field"],
     [JSON.stringify({ format: "aberration-workspace", schema_version: 1, system: fixture() }), "unsupported field"],
-    [JSON.stringify({ ...fixture(), streams: [{ ...fixture().streams[0]!, connection_id: "missing" }] }), "connection does not exist"],
+    [JSON.stringify({ ...fixture(), readings: [{ ...fixture().readings[0]!, broker_id: "missing" }] }), "broker does not exist"],
   ])("rejects invalid input before any database mutation", async (contents, message) => {
     const props = common();
     render(<ExplorerSettings {...props} />);

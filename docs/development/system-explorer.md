@@ -36,7 +36,7 @@ Notification recipients remain deployment-managed. The existing anomaly email en
 
 ## Catalogue
 
-Catalogue names and structural changes use the existing revisioned `/v1/system` database API and permission checks. Enter or leaving an inline name field saves; Escape cancels. A rejected or conflicting save is never presented as successful.
+Catalogue names and structural changes use the revisioned `/v1/catalogue` API and its permission checks. Enter or leaving an inline name field saves; Escape cancels. A rejected or conflicting save is never presented as successful.
 
 Shared groups remain part of the saved system definition and are labelled **Collections** in the sidebar, settings and structure editor. Their dropdown preserves the saved names and membership counts and opens each collection in the same sidebar. There is no personal grouping: no membership editor, personal scopes, color overlays, or workspace export. Personal groups saved by older versions are dropped on the next save, and a previously selected personal scope falls back to the catalogue. Ordinary navigation and sidebar visibility still persist per account.
 

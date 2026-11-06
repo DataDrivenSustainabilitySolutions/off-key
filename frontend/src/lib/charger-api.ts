@@ -74,7 +74,7 @@ export const getAllTelemetryData = async (
   chargerId: string,
   signal?: AbortSignal,
   cursorByType?: ReadonlyMap<string, TelemetryCursor>,
-  // A loaded catalogue snapshot saves fetching /v1/system on every refresh.
+  // A loaded catalogue snapshot saves fetching /v1/catalogue on every refresh.
   catalogue?: Pick<SystemSnapshot, "document" | "runtime">,
 ): Promise<TelemetryTypeData[]> => {
   const [telemetryData, snapshot] = await Promise.all([
@@ -99,10 +99,10 @@ export const getAllTelemetryData = async (
         }
       }),
     )),
-    catalogue ?? get<SystemSnapshot>("/v1/system", signal),
+    catalogue ?? get<SystemSnapshot>("/v1/catalogue", signal),
   ]);
   const definitions = new Map(
-    snapshot.document.streams.flatMap(stream => {
+    snapshot.document.readings.flatMap(stream => {
       const binding = snapshot.runtime.bindings?.[stream.id];
       return binding?.entity_id === chargerId ? [[binding.telemetry_key, stream] as const] : [];
     }),

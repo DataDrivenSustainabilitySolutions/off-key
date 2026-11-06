@@ -13,7 +13,7 @@ vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() 
 const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => catalogue }));
 const target: MonitoringTarget = { id: "room", label: "Building / Room", inputs: [
-  { path: "Building / Room", stream: { id: "temperature", label: "Room temperature", topic: "upstream/custom/path", value_type: "number", category: "Environment", connection_id: "broker" },
+  { path: "Building / Room", stream: { id: "temperature", label: "Room temperature", topic: "upstream/custom/path", value_type: "number", category: "Environment", broker_id: "broker" },
     binding: { entity_id: "room", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature", policy: { mode: "sample", interval_seconds: 10 } } },
 ] };
 const models = {

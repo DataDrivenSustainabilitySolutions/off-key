@@ -53,9 +53,9 @@ export async function installDetailsMockApi(page: Page, {
         });
       case "/v1/favorites":
         return fulfillJson(route, []);
-      case "/v1/system":
+      case "/v1/catalogue":
         return fulfillJson(route, {
-          document: { streams: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },
+          document: { readings: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },
           runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: chargerId, telemetry_key: key }])) },
         });
       case `/v1/telemetry/${chargerId}/type`:

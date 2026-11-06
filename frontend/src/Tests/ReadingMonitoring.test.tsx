@@ -9,7 +9,7 @@ import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
 const connection: SystemConnection = mqttConnection({ id: "broker", label: "Building", host: "broker.test" });
-const stream: SystemStream = { id: "reading", label: "Temperature", connection_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
+const stream: SystemStream = { id: "reading", label: "Temperature", broker_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
 const savedBinding = { entity_id: "canonical-entity", telemetry_key: "temperature/air", accepted_topic: "telemetry/canonical-entity/temperature/air", policy: { mode: "original" as const, interval_seconds: 10 } };
 const time = "2026-10-10T12:00:00Z";
 const points = [{ timestamp: time, created: time, value: 22 }];
@@ -90,7 +90,7 @@ describe("selected-reading monitoring subscription", () => {
     expect(telemetryRequests).toHaveLength(1);
     expect(telemetryRequests[0]![0]).toContain("type=temperature%2Fair");
     hook.rerender({ reading: { ...stream, label: "Renamed on the fly" } });
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/system")).toHaveLength(0);
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/catalogue")).toHaveLength(0);
     hook.unmount();
     expect(vi.mocked(apiUtils.get).mock.calls[0]![1]?.signal?.aborted).toBe(true);
   });

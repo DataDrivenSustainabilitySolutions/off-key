@@ -19,10 +19,10 @@ vi.mock("@tanstack/react-virtual", () => ({ useVirtualizer: ({ count }: { count:
   getVirtualItems: () => Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 72, size: 72 })), measureElement: vi.fn(), scrollToOffset: vi.fn(), scrollToIndex: vi.fn() }) }));
 
 function fixture(): SystemSnapshot {
-  const document = { ...createEmptySystem(), label: "Workshop", connections: [mqttConnection({ id: "broker", label: "Workshop broker", host: "localhost" })],
-    devices: [{ id: "room", label: "Room station", kind: "sensor" }], streams: ["temperature", "power"].map(id => ({ id, label: id, topic: `building/floor1/${id}`, device_id: "room", connection_id: "broker", value_type: "number" as const, category: "Environment" })) };
+  const document = { ...createEmptySystem(), label: "Workshop", brokers: [mqttConnection({ id: "broker", label: "Workshop broker", host: "localhost" })],
+    devices: [{ id: "room", label: "Room station", kind: "sensor" }], readings: ["temperature", "power"].map(id => ({ id, label: id, topic: `building/floor1/${id}`, device_id: "room", broker_id: "broker", value_type: "number" as const, category: "Environment" })) };
   return { document, revision: 3, can_edit: true, storage_origin: "saved", runtime: { mode: "configured_only", message: "", collection_revision: 4, collection: { status: "applied", revision: 4 }, collection_rules: [],
-    bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: "entity", telemetry_key: stream.id, accepted_topic: `telemetry/entity/${stream.id}`, connection_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };
+    bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { entity_id: "entity", telemetry_key: stream.id, accepted_topic: `telemetry/entity/${stream.id}`, broker_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) } };
 }
 let saved: SystemSnapshot;
 beforeAll(async () => {
@@ -34,10 +34,10 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(callback, 0));
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => clearTimeout(handle));
-  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : []);
+  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved : []);
   vi.mocked(apiUtils.post).mockResolvedValue({ revision: 3, collection_revision: 4, selected_readings: 2, sampled_rows_per_day_ceiling: 0, original_rate_readings: 2, affected_monitors: [], changed_readings: 2, starting_readings: 2, stopping_readings: 0, rate_changed_readings: 0 });
   vi.mocked(apiUtils.put).mockImplementation(async () => {
-    saved = { ...saved, revision: 4, runtime: { ...saved.runtime, collection_revision: 5, collection_rules: [{ scope: { kind: "broker", connection_id: "broker" }, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1 }] } };
+    saved = { ...saved, revision: 4, runtime: { ...saved.runtime, collection_revision: 5, collection_rules: [{ scope: { kind: "broker", broker_id: "broker" }, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1 }] } };
     return saved;
   });
 });
@@ -58,15 +58,15 @@ function mount(path = "/sources") {
 describe("dedicated Sources configuration", () => {
   it("polls the shared catalogue across brokers and expires a superseded recording revision", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    saved.document.connections.push({ ...saved.document.connections[0]!, id: "remote", label: "Remote broker" });
-    saved.document.streams.push({ ...saved.document.streams[0]!, id: "remote-value", label: "Remote reading", connection_id: "remote" });
+    saved.document.brokers.push({ ...saved.document.brokers[0]!, id: "remote", label: "Remote broker" });
+    saved.document.readings.push({ ...saved.document.readings[0]!, id: "remote-value", label: "Remote reading", broker_id: "remote" });
     saved.runtime.mode = "collection";
-    saved.runtime.bindings!["remote-value"] = { ...saved.runtime.bindings!.temperature!, connection_id: "remote", policy: { mode: "original", interval_seconds: 10 } };
+    saved.runtime.bindings!["remote-value"] = { ...saved.runtime.bindings!.temperature!, broker_id: "remote", policy: { mode: "original", interval_seconds: 10 } };
     saved.runtime.ingress = { revision: 4, status: "applied", sources: { remote: { state: "connected" } },
       readings: { "remote-value": { fresh_received_at: new Date().toISOString() } } };
     let collectionRevision = 4;
     vi.mocked(apiUtils.post).mockImplementation(async endpoint => {
-      expect(endpoint).toBe("/v1/system/collection/status");
+      expect(endpoint).toBe("/v1/recording/status");
       return { revision: saved.revision, runtime: { ...saved.runtime, collection_revision: collectionRevision,
         bindings: saved.runtime.bindings,
         ingress: { revision: collectionRevision, status: "applied",
@@ -79,7 +79,7 @@ describe("dedicated Sources configuration", () => {
     const row = await screen.findByRole("button", { name: "Remote reading, preview" });
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "power", "remote-value"] }, expect.anything());
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: ["temperature", "power", "remote-value"] }, expect.anything());
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
     collectionRevision = 5;
     await act(async () => { vi.advanceTimersByTime(5000); });
@@ -163,18 +163,18 @@ describe("dedicated Sources configuration", () => {
     // The picked option shows as selected while it saves.
     expect((within(choice).getByRole("radio", { name: "Every message" }) as HTMLInputElement).checked).toBe(true);
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
-    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ pause_affected_monitors: false,
-      rule_changes: [{ scope: { kind: "broker", connection_id: "broker" }, operation: "set",
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ pause_affected_monitors: false,
+      rule_changes: [{ scope: { kind: "broker", broker_id: "broker" }, operation: "set",
         policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }] }), expect.anything());
     expect(screen.queryByRole("button", { name: "Apply changes" })).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
-    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ expected_collection_revision: 5,
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/recording", expect.objectContaining({ expected_collection_revision: 5,
       rule_changes: [expect.objectContaining({ operation: "restore", restore_rule: null })] }), expect.anything());
   });
 
   it("switches the rate of a recording broker without any extra step", async () => {
-    const scope = { kind: "broker" as const, connection_id: "broker" };
+    const scope = { kind: "broker" as const, broker_id: "broker" };
     saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1 }];
     for (const binding of Object.values(saved.runtime.bindings!)) binding.policy = { mode: "original", interval_seconds: 10 };
     mount("/sources?broker=broker");
@@ -183,37 +183,37 @@ describe("dedicated Sources configuration", () => {
     fireEvent.change(within(choice).getByLabelText("Seconds between samples"), { target: { value: "60" } });
     fireEvent.click(within(choice).getByRole("radio", { name: /At intervals/ }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
-    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{ scope, operation: "set",
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{ scope, operation: "set",
       policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: true }] }), expect.anything());
   });
 
   it("opts single readings in and out of a broker's recording", async () => {
-    const scope = { kind: "broker" as const, connection_id: "broker" };
+    const scope = { kind: "broker" as const, broker_id: "broker" };
     saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1 }];
     saved.runtime.bindings!.temperature!.policy = { mode: "original", interval_seconds: 10 };
     mount("/sources?broker=broker");
     const readings = await screen.findByRole("group", { name: /Readings/ });
     fireEvent.click(within(readings).getByRole("checkbox", { name: /temperature/ }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
-    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
-      scope: { kind: "reading", connection_id: "broker", reading_id: "temperature" }, operation: "set", policy: { mode: "off", interval_seconds: 10 } }] }), expect.anything());
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "reading", broker_id: "broker", reading_id: "temperature" }, operation: "set", policy: { mode: "off", interval_seconds: 10 } }] }), expect.anything());
     fireEvent.click(await within(screen.getByRole("group", { name: /Readings/ })).findByRole("checkbox", { name: /power/ }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
     // A broker that records takes the reading back at its own rate.
-    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
-      scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "reading", broker_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
   });
 
   it("records readings added after recording started with one click", async () => {
-    const scope = { kind: "broker" as const, connection_id: "broker" };
+    const scope = { kind: "broker" as const, broker_id: "broker" };
     saved.runtime.collection_rules = [{ scope, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: false, admitted_before: 1 }];
     saved.runtime.bindings!.temperature!.policy = { mode: "original", interval_seconds: 10 };
     saved.runtime.bindings!.power!.policy_origin = { scope, inherited: true, needs_review: true };
     mount("/sources?broker=broker");
     fireEvent.click(await screen.findByRole("button", { name: "Record it too" }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
-    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [
-      { scope: { kind: "reading", connection_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [
+      { scope: { kind: "reading", broker_id: "broker", reading_id: "power" }, operation: "inherit" }] }), expect.anything());
   });
 
   it("records and stops a broker from its overview row", async () => {
@@ -222,16 +222,16 @@ describe("dedicated Sources configuration", () => {
     expect(within(overview).getByText("Recording off")).toBeTruthy();
     fireEvent.click(within(overview).getByRole("button", { name: "Record Workshop broker" }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
-    expect(apiUtils.put).toHaveBeenCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [{
-      scope: { kind: "broker", connection_id: "broker" }, operation: "set", policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }] }), expect.anything());
+    expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{
+      scope: { kind: "broker", broker_id: "broker" }, operation: "set", policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true }] }), expect.anything());
     saved = { ...saved, runtime: { ...saved.runtime, ingress: { revision: 5, status: "applied", sources: { broker: { state: "connected" } } } } };
-    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/system/collection/status"
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/recording/status"
       ? { revision: saved.revision, runtime: saved.runtime }
       : { revision: 4, collection_revision: 5, selected_readings: 0, sampled_rows_per_day_ceiling: 0, original_rate_readings: 0, affected_monitors: [], changed_readings: 2, starting_readings: 0, stopping_readings: 2, rate_changed_readings: 0 });
     fireEvent.click(await within(overview).findByRole("button", { name: "Stop recording Workshop broker" }, { timeout: 7000 }));
     await waitFor(() => expect(apiUtils.put).toHaveBeenCalledTimes(2));
-    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/system/collection", expect.objectContaining({ rule_changes: [
-      { scope: { kind: "broker", connection_id: "broker" }, operation: "inherit" }] }), expect.anything());
+    expect(apiUtils.put).toHaveBeenLastCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [
+      { scope: { kind: "broker", broker_id: "broker" }, operation: "inherit" }] }), expect.anything());
   }, 15000);
 
   it("members inspect acknowledged policies without recording write controls", async () => {
@@ -244,15 +244,15 @@ describe("dedicated Sources configuration", () => {
   });
 
   it("checks only idle brokers and marks each name with the result", async () => {
-    saved.document.connections.push({ ...saved.document.connections[0]!, id: "old", label: "Old broker" },
-      { ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.document.brokers.push({ ...saved.document.brokers[0]!, id: "old", label: "Old broker" },
+      { ...saved.document.brokers[0]!, id: "used", label: "Used broker" });
     saved.runtime.ingress = { revision: 4, status: "applied", sources: { used: { state: "connected" } } };
     const now = new Date().toISOString();
     vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
-      expect(endpoint).toBe("/v1/system/connections/check");
-      const id = (body as { connection_id: string }).connection_id;
-      return id === "broker" ? { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now }
-        : { connection_id: id, status: "unreachable", message: "Nothing accepts connections on this host and port.", latency_ms: null, checked_at: now };
+      expect(endpoint).toBe("/v1/brokers/check");
+      const id = (body as { broker_id: string }).broker_id;
+      return id === "broker" ? { broker_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now }
+        : { broker_id: id, status: "unreachable", message: "Nothing accepts connections on this host and port.", latency_ms: null, checked_at: now };
     });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Check connections" }));
@@ -265,21 +265,22 @@ describe("dedicated Sources configuration", () => {
     expect(within(overview).getByText("Used broker").closest(".source-broker")?.className).toContain("source-broker--positive");
     expect(within(overview).getByText("Workshop broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
     expect(within(overview).getByText("Old broker").closest(".source-broker")?.className).toContain("source-broker--neutral");
-    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }, { connection_id: "old" }]);
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ broker_id: "broker" }, { broker_id: "old" }]);
   });
 
   it("lets a broker that could not reconnect be checked and retried", async () => {
     const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
-    saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" });
+    saved.document.brokers.push({ ...saved.document.brokers[0]!, id: "used", label: "Used broker" });
     saved.runtime.ingress = { revision: 4, status: "applied", sources: { broker: { state: "error", message }, used: { state: "reconnecting" } } };
     const now = new Date().toISOString();
     vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
-      const id = (body as { connection_id: string }).connection_id;
-      if (endpoint === "/v1/system/connections/reconnect") {
+      const reconnect = /^\/v1\/brokers\/([^/]+)\/reconnect$/.exec(endpoint);
+      const id = reconnect ? decodeURIComponent(reconnect[1]!) : (body as { broker_id: string }).broker_id;
+      if (reconnect) {
         saved = { ...saved, runtime: { ...saved.runtime, ingress: { ...saved.runtime.ingress!, sources: { ...saved.runtime.ingress!.sources, [id]: { state: "connecting" } } } } };
-        return { connection_id: id };
+        return { broker_id: id };
       }
-      return { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
+      return { broker_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
     });
     const router = mount();
     const overview = await screen.findByRole("region", { name: "Broker overview" });
@@ -287,33 +288,34 @@ describe("dedicated Sources configuration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
     expect(await within(overview).findByRole("img", { name: /^Reachable · Checked at/ })).toBeTruthy();
     // A broker still retrying reports its own state and is not checked.
-    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ connection_id: "broker" }]);
+    expect(vi.mocked(apiUtils.post).mock.calls.map(([, body]) => body)).toEqual([{ broker_id: "broker" }]);
 
     await act(() => router.navigate("/sources?broker=broker"));
     expect((await screen.findAllByText(message)).length).toBeGreaterThan(0);
     fireEvent.click(await screen.findByRole("button", { name: "Reconnect recording" }));
-    await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "broker" }, undefined));
+    await waitFor(() => expect(vi.mocked(apiUtils.post)).toHaveBeenCalledWith("/v1/brokers/broker/reconnect", undefined, undefined));
     await waitFor(() => expect(screen.queryByRole("button", { name: /^Reconnect/ })).toBeNull());
   });
 
   it("offers Reconnect and Stop on failed recordings and Record on the others, never a live connection", async () => {
     const message = "Could not reach the broker within 60 seconds, so recording from it is paused.";
-    saved.document.connections.push({ ...saved.document.connections[0]!, id: "used", label: "Used broker" },
-      { ...saved.document.connections[0]!, id: "down", label: "Down broker" });
+    saved.document.brokers.push({ ...saved.document.brokers[0]!, id: "used", label: "Used broker" },
+      { ...saved.document.brokers[0]!, id: "down", label: "Down broker" });
     saved.runtime.ingress = { revision: 4, status: "applied", sources: { used: { state: "error", message } } };
     const now = new Date().toISOString();
     vi.mocked(apiUtils.post).mockImplementation(async (endpoint, body) => {
-      const id = (body as { connection_id: string }).connection_id;
-      if (endpoint === "/v1/system/connections/reconnect") return { connection_id: id };
-      return id === "down" ? { connection_id: id, status: "timeout", message: "The broker did not answer within 15 seconds.", latency_ms: null, checked_at: now }
-        : { connection_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
+      const reconnect = /^\/v1\/brokers\/([^/]+)\/reconnect$/.exec(endpoint);
+      const id = reconnect ? decodeURIComponent(reconnect[1]!) : (body as { broker_id: string }).broker_id;
+      if (reconnect) return { broker_id: id };
+      return id === "down" ? { broker_id: id, status: "timeout", message: "The broker did not answer within 15 seconds.", latency_ms: null, checked_at: now }
+        : { broker_id: id, status: "reachable", message: null, latency_ms: 12, checked_at: now };
     });
     const router = mount();
     const overview = await screen.findByRole("region", { name: "Broker overview" });
     expect(within(overview).getByText(message)).toBeTruthy();
     expect(within(overview).getByRole("button", { name: "Stop recording Used broker" })).toBeTruthy();
     fireEvent.click(within(overview).getByRole("button", { name: "Reconnect recording for Used broker" }));
-    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/connections/reconnect", { connection_id: "used" }, undefined));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/brokers/used/reconnect", undefined, undefined));
     fireEvent.click(screen.getByRole("button", { name: "Check connections" }));
     expect(await within(overview).findByRole("img", { name: /^No response · Checked at/ })).toBeTruthy();
     expect(within(overview).getByText("The broker did not answer within 15 seconds.")).toBeTruthy();
@@ -335,13 +337,13 @@ describe("dedicated Sources configuration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sources" }));
     await screen.findByRole("region", { name: "Broker overview" });
     expect(screen.queryByRole("button", { name: "Check connections" })).toBeNull();
-    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/connections/check", expect.anything());
+    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/brokers/check", expect.anything());
   });
 
   it("keeps entities in the shared hierarchy while topic recording rules cover the entire broker", () => {
     const document = fixture().document;
     document.devices.push({ id: "other", label: "Other station", kind: "sensor" });
-    document.streams.push({ ...document.streams[0]!, id: "field", device_id: "other", payload_pointer: "/other" });
+    document.readings.push({ ...document.readings[0]!, id: "field", device_id: "other", payload_pointer: "/other" });
     const index = buildNavigationIndex(document);
     const branch = [...index.nodes.values()].find(node => node.topic === "building/floor1" && node.kind === "topic" && node.deviceId === "room")!;
     expect(scopeReadingIds(index, branch).sort()).toEqual(["power", "temperature"]);

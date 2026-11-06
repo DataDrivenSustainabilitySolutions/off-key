@@ -32,21 +32,21 @@ const lastChartProps = () => {
 };
 const system: SystemDocument = {
   ...createEmptySystem(), label: "Test system",
-  connections: [mqttConnection({ id: "broker", label: "North building", host: "broker.test" })],
-  devices: [{ id: "device", label: "Room sensor", kind: "sensor", connection_id: "broker" }],
-  streams: [
+  brokers: [mqttConnection({ id: "broker", label: "North building", host: "broker.test" })],
+  devices: [{ id: "device", label: "Room sensor", kind: "sensor", broker_id: "broker" }],
+  readings: [
     { id: "temperature", label: "Air temperature", topic: "site/room/temperature", value_type: "number", unit: "°C" },
     { id: "switch", label: "Window state", topic: "site/room/window", value_type: "boolean" },
     { id: "identifier", label: "Meter identity", topic: "site/room/identity", value_type: "identifier" },
-  ].map((stream) => ({ ...stream, value_type: stream.value_type as "number" | "boolean" | "identifier", connection_id: "broker", device_id: "device", category: "Environment" })),
+  ].map((stream) => ({ ...stream, value_type: stream.value_type as "number" | "boolean" | "identifier", broker_id: "broker", device_id: "device", category: "Environment" })),
 };
 const index = buildNavigationIndex(system);
 const node = (id: string) => index.nodes.get(index.objectKeys.get(id)![0]!)!;
 const batch = (id = "temperature", value: LiveValue = 22): LiveBatch => ({
   mode: "live", revision: 3, sequence: 1, reset: false,
-  connections: [{ connection_id: "broker", state: "connected", message: "Connected", received_messages: 1, fresh_count: 1, retained_count: 0, fresh_received_at: new Date(NOW).toISOString(), rate_hz: 1 }],
-  streams: [{ stream_id: id, value, received_at: new Date(NOW).toISOString(), is_retained: false, received_count: 1, fresh_count: 1, retained_count: 0, decode_errors: 0, fresh_received_at: new Date(NOW).toISOString(), rate_hz: 1, sequence: 1 }],
-  samples: value === null ? [] : [{ sequence: 1, stream_id: id, received_at: new Date(NOW).toISOString(), value, is_retained: false }],
+  brokers: [{ broker_id: "broker", state: "connected", message: "Connected", received_messages: 1, fresh_count: 1, retained_count: 0, fresh_received_at: new Date(NOW).toISOString(), rate_hz: 1 }],
+  readings: [{ reading_id: id, value, received_at: new Date(NOW).toISOString(), is_retained: false, received_count: 1, fresh_count: 1, retained_count: 0, decode_errors: 0, fresh_received_at: new Date(NOW).toISOString(), rate_hz: 1, sequence: 1 }],
+  samples: value === null ? [] : [{ sequence: 1, reading_id: id, received_at: new Date(NOW).toISOString(), value, is_retained: false }],
   limits: { max_samples: 8192, history_seconds: 7200, sample_interval_seconds: 1, lease_seconds: 45 },
 });
 function fixture(selected: ExplorerNode = node("temperature")) {
@@ -76,8 +76,8 @@ function receive(telemetry: SystemLiveTelemetry, time: number, value: number, se
   next.sequence = sequence;
   next.samples[0]!.sequence = sequence;
   next.samples[0]!.received_at = new Date(time).toISOString();
-  next.streams[0]!.sequence = sequence;
-  next.streams[0]!.received_at = new Date(time).toISOString();
+  next.readings[0]!.sequence = sequence;
+  next.readings[0]!.received_at = new Date(time).toISOString();
   telemetry.accept(next, false);
 }
 
@@ -85,9 +85,9 @@ describe("workspace chart navigation and monitoring", () => {
   it("shows and updates the latest persisted numeric value without a preview connection", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const { props } = fixture();
-    const reading = system.streams[0]!;
+    const reading = system.readings[0]!;
     const historyCache = new ReadingHistoryCache("test-user");
-    const key = readingHistoryKey(system.connections[0], reading)!;
+    const key = readingHistoryKey(system.brokers[0], reading)!;
     historyCache.update(key, () => ({ data: { ...EMPTY_READING_HISTORY, loading: false,
       telemetry: [{ timestamp: new Date(NOW - 1000).toISOString(), value: 24 }],
     } }));
@@ -178,11 +178,11 @@ describe("workspace chart navigation and monitoring", () => {
     receive(telemetry, NOW, 22, 2);
     const view = render(<ExplorerPreview {...props} />);
     act(() => lastChartProps().onViewportChange?.(NOW - 20_000, NOW - 10_000));
-    const renamed = { ...system, streams: system.streams.map((stream) => stream.id === "temperature"
+    const renamed = { ...system, readings: system.readings.map((stream) => stream.id === "temperature"
       ? { ...stream, label: "New name" } : stream) };
     view.rerender(<ExplorerPreview {...props} document={renamed} />);
     expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(false);
-    const changedInput = { ...renamed, streams: renamed.streams.map((stream) => stream.id === "temperature"
+    const changedInput = { ...renamed, readings: renamed.readings.map((stream) => stream.id === "temperature"
       ? { ...stream, topic: "site/other/temperature" } : stream) };
     view.rerender(<ExplorerPreview {...props} document={changedInput} />);
     expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
@@ -198,7 +198,7 @@ describe("workspace chart navigation and monitoring", () => {
       anomalies: [time, otherTime].map((timestamp, index) => ({ anomaly_id: `event-${index}`, charger_id: "entity-id", telemetry_type: "temperature", timestamp,
         anomaly_type: "ml_tailprob_univariate", anomaly_value: .01, value_type: "tail_pvalue" })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
+    render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const option = lastChartProps().option;
     const series = option.series as Array<{ id?: string; markPoint?: { data: unknown[] } }>;
     expect(series[0]).toMatchObject({ data: [[NOW - 1000, 21], [NOW, 22]] });
@@ -214,7 +214,7 @@ describe("workspace chart navigation and monitoring", () => {
     vi.mocked(useStoredRange).mockReturnValue(stored);
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
       telemetry: [{ timestamp: new Date(NOW - 60_000).toISOString(), value: 99 }, { timestamp: new Date(NOW).toISOString(), value: 12 }] });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
+    render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const binding = { entityId: "entity-id", telemetryType: "temperature" };
     expect(useStoredRange).toHaveBeenLastCalledWith(binding, 3_600_000, undefined);
     fireEvent.click(screen.getByRole("button", { name: "All" }));
@@ -238,7 +238,7 @@ describe("workspace chart navigation and monitoring", () => {
         value_type: "tail_pvalue",
       })),
     });
-    render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);
+    render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const series = lastChartProps().option.series as Array<{ markPoint?: { data: unknown[] } }>;
     expect(series[0]?.markPoint?.data).toHaveLength(1);
     expect(series[0]?.markPoint?.data).toEqual(expect.arrayContaining([
@@ -337,8 +337,8 @@ describe("explorer selected-object preview", () => {
     act(() => {
       const next = batch("temperature", 26);
       next.sequence = 2;
-      next.streams[0]!.sequence = 2;
-      next.streams[0]!.fresh_count = 2;
+      next.readings[0]!.sequence = 2;
+      next.readings[0]!.fresh_count = 2;
       next.samples[0]!.sequence = 2;
       telemetry.accept(next, false);
     });
@@ -348,7 +348,7 @@ describe("explorer selected-object preview", () => {
 
   it("opens old recorded history with honest background status without a temporary live connection", () => {
     const { props } = fixture();
-    const binding = { entity_id: "room", connection_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature",
+    const binding = { entity_id: "room", broker_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature",
       policy: { mode: "sample" as const, interval_seconds: 10 } };
     const runtime: SystemRuntime = { mode: "collection", message: "", bindings: { temperature: binding },
       collection: { status: "applied" }, ingress: { sources: { broker: { state: "connected" } } } };
@@ -385,9 +385,9 @@ describe("explorer selected-object preview", () => {
   it("shows a selected broker's blocked reason and real catalogue counts", () => {
     const { telemetry, props } = fixture(node("broker"));
     const unavailable = batch();
-    unavailable.connections[0]!.state = "blocked";
-    unavailable.connections[0]!.message = "Broker access is not configured.";
-    unavailable.streams = [];
+    unavailable.brokers[0]!.state = "blocked";
+    unavailable.brokers[0]!.message = "Broker access is not configured.";
+    unavailable.readings = [];
     unavailable.samples = [];
     telemetry.accept(unavailable, false);
     render(<ExplorerPreview {...props} />);
@@ -400,9 +400,9 @@ describe("explorer selected-object preview", () => {
   it("replaces a stale reconnecting broker badge when its attempt times out", async () => {
     vi.useFakeTimers();
     const pending = batch();
-    pending.connections[0]!.state = "reconnecting";
-    pending.connections[0]!.message = "Retrying the broker connection.";
-    const lease = { lease_id: "test-lease", expires_in_seconds: 45, telemetry: pending };
+    pending.brokers[0]!.state = "reconnecting";
+    pending.brokers[0]!.message = "Retrying the broker connection.";
+    const lease = { view_id: "test-lease", expires_in_seconds: 45, measurements: pending };
     const api = {
       create: vi.fn().mockResolvedValue(lease),
       renew: vi.fn().mockResolvedValue(lease),

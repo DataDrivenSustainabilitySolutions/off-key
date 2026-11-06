@@ -21,7 +21,7 @@ export function MonitoringTargetPicker({ targets, value, disabled, onChange, rec
   const activity = useMemo(() => ({ telemetry, liveStreamIds: previewStreamIds, runtime: system.snapshot?.runtime }), [telemetry, previewStreamIds, system.snapshot?.runtime]);
   const searchRows = useMemo(() => targets.map(target => ({ target, search: `${target.label} ${target.inputs.map(input => input.stream.label).join(" ")}`.toLocaleLowerCase() })), [targets]);
   const filtered = useMemo(() => searchRows.filter(row => row.search.includes(deferred.toLocaleLowerCase())
-    && (!receivingOnly || row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.connection_id }, activity, liveStatus, now).receiving)))
+    && (!receivingOnly || row.target.inputs.some(input => readingActivity({ streamIds: [input.stream.id], connectionId: input.stream.broker_id }, activity, liveStatus, now).receiving)))
     .map(row => row.target), [searchRows, deferred, activity, liveStatus, now, receivingOnly]);
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library

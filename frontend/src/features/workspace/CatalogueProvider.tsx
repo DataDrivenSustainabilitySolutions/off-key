@@ -35,15 +35,15 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   const selectionMissing = !!system.document && selectionRequested && !selected;
   const streamIds = useMemo(() => selected ? [...new Set(scopeReadingIds(index, selected))]
     : selectionRequested ? [] : undefined, [index, selected, selectionRequested]);
-  const streamsById = useMemo(() => new Map(document.streams.map(stream => [stream.id, stream])), [document.streams]);
+  const streamsById = useMemo(() => new Map(document.readings.map(stream => [stream.id, stream])), [document.readings]);
   const liveStreamIds = useMemo(() => (streamIds ?? []).filter(id => liveOnly(streamsById.get(id), system.snapshot?.runtime)),
     [streamIds, streamsById, system.snapshot?.runtime]);
   // The live preview covers every broker of the selection, so choosing one topic
   // keeps its sibling topics streaming and shown as receiving.
   const previewStreamIds = useMemo(() => {
-    const brokers = new Set((streamIds ?? []).flatMap(id => streamsById.get(id)?.connection_id ?? []));
-    return document.streams.filter(stream => brokers.has(stream.connection_id) && liveOnly(stream, system.snapshot?.runtime)).map(stream => stream.id);
-  }, [streamIds, streamsById, document.streams, system.snapshot?.runtime]);
+    const brokers = new Set((streamIds ?? []).flatMap(id => streamsById.get(id)?.broker_id ?? []));
+    return document.readings.filter(stream => brokers.has(stream.broker_id) && liveOnly(stream, system.snapshot?.runtime)).map(stream => stream.id);
+  }, [streamIds, streamsById, document.readings, system.snapshot?.runtime]);
   const [telemetry] = useState(() => new SystemLiveTelemetry());
   const history = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(userId)), [userId]);
   const [rawPreferences, setPreferences] = useState(() => loadExplorerPreferences(userId ?? null));

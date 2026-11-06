@@ -9,6 +9,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .collection_policy import CollectionPolicy
+from .public_names import public
 
 EntityId = Annotated[
     str, Field(min_length=1, max_length=280, pattern=r"^[A-Za-z0-9_:./-]+$")
@@ -88,19 +89,19 @@ class SystemConnection(NamedEntity):
             or "#" in self.websocket_path
         ):
             raise ValueError(
-                "WebSocket paths must start with / and belong to a WebSocket connection"
+                "WebSocket paths must start with / and belong to a WebSocket broker"
             )
         return self
 
 
 class SystemConnectionCheckScope(SystemModel):
-    connection_id: EntityId
+    connection_id: EntityId = Field(**public("broker_id", "connection_id"))
 
 
 class SystemConnectionCheck(SystemModel):
     """Outcome of one on-demand CONNECT to a saved broker; nothing is subscribed."""
 
-    connection_id: EntityId
+    connection_id: EntityId = Field(**public("broker_id", "connection_id"))
     status: Literal[
         "reachable",
         "auth_rejected",
@@ -116,7 +117,9 @@ class SystemConnectionCheck(SystemModel):
 
 
 class SystemDevice(NamedEntity):
-    connection_id: EntityId | None = None
+    connection_id: EntityId | None = Field(
+        default=None, **public("broker_id", "connection_id")
+    )
     parent_id: EntityId | None = None
     kind: str = Field(default="device", min_length=1, max_length=60)
 
@@ -129,7 +132,7 @@ class SystemDevice(NamedEntity):
 
 
 class SystemStream(NamedEntity):
-    connection_id: EntityId
+    connection_id: EntityId = Field(**public("broker_id", "connection_id"))
     device_id: EntityId | None = None
     topic: str = Field(min_length=1, max_length=512)
     payload_pointer: str | None = Field(default=None, max_length=512)
@@ -185,9 +188,14 @@ class SystemDocument(SystemModel):
     format: Literal["aberration-system"] = "aberration-system"
     label: str = Field(default="My system", min_length=1, max_length=120)
     default_policy: CollectionPolicy = Field(default_factory=CollectionPolicy)
-    connections: list[SystemConnection] = Field(default_factory=list, max_length=128)
+    # The API calls connections brokers and streams readings.
+    connections: list[SystemConnection] = Field(
+        default_factory=list, max_length=128, **public("brokers", "connections")
+    )
     devices: list[SystemDevice] = Field(default_factory=list, max_length=2048)
-    streams: list[SystemStream] = Field(default_factory=list, max_length=4096)
+    streams: list[SystemStream] = Field(
+        default_factory=list, max_length=4096, **public("readings", "streams")
+    )
     groups: list[SystemGroup] = Field(default_factory=list, max_length=128)
 
     @field_validator("label")
@@ -211,7 +219,7 @@ class SystemDocument(SystemModel):
                 device.connection_id is not None
                 and device.connection_id not in connections
             ):
-                raise ValueError("Device connection does not exist")
+                raise ValueError("Device broker does not exist")
             if device.parent_id is not None and device.parent_id not in devices:
                 raise ValueError("Parent device does not exist")
         self._validate_device_parents(devices)
@@ -231,8 +239,8 @@ class SystemDocument(SystemModel):
             proposed = set(group.member_ids)
             if len(group.member_ids) != len(proposed) or not proposed <= members:
                 raise ValueError(
-                    "Group members must be unique existing connections, "
-                    "devices, or streams"
+                    "Group members must be unique existing brokers, "
+                    "devices, or readings"
                 )
             if assigned.intersection(proposed):
                 raise ValueError("Each entity may belong to at most one spatial group")
@@ -243,9 +251,9 @@ class SystemDocument(SystemModel):
     ) -> None:
         for stream in self.streams:
             if stream.connection_id not in connections:
-                raise ValueError("Stream connection does not exist")
+                raise ValueError("Reading broker does not exist")
             if stream.device_id is not None and stream.device_id not in devices:
-                raise ValueError("Stream device does not exist")
+                raise ValueError("Reading device does not exist")
 
     @staticmethod
     def _validate_device_parents(devices: dict[str, SystemDevice]) -> None:

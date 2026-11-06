@@ -137,7 +137,7 @@ const props = () => ({
 
 
 const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
-  { path: "Room", stream: { id: "current", label: "Current", unit: "A", category: "Electrical", value_type: "number", topic: "fixture/current", connection_id: "broker" },
+  { path: "Room", stream: { id: "current", label: "Current", unit: "A", category: "Electrical", value_type: "number", topic: "fixture/current", broker_id: "broker" },
     binding: { entity_id: "room", telemetry_key: "current", accepted_topic: "telemetry/room/current", policy: { mode: "original", interval_seconds: 10 } } },
 ] };
 const telemetry = new SystemLiveTelemetry();

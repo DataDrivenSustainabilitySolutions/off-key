@@ -176,8 +176,8 @@ export function useSystemDocument({
     const readings = current.runtime.ingress?.revision === value.runtime.ingress?.revision
       ? { ...current.runtime.ingress?.readings } : {};
     if (connectionId) {
-      for (const stream of current.document.streams) {
-        if (stream.connection_id === connectionId) delete readings[stream.id];
+      for (const stream of current.document.readings) {
+        if (stream.broker_id === connectionId) delete readings[stream.id];
       }
     }
     const runtime = { ...current.runtime, ...value.runtime,
@@ -224,7 +224,7 @@ export function useSystemDocument({
     signal.addEventListener("abort", () => controller.abort());
     runtimeController.current = controller;
     let changedRevision = false;
-    const streamIds = current.document.streams.filter(stream => !runtimeConnectionId || stream.connection_id === runtimeConnectionId).map(stream => stream.id);
+    const streamIds = current.document.readings.filter(stream => !runtimeConnectionId || stream.broker_id === runtimeConnectionId).map(stream => stream.id);
     try {
       const next = await systemApi.collectionStatus(streamIds, { signal: controller.signal, redirectOnUnauthorized: false });
       if (controller.signal.aborted || context !== generation.current || busy.current) return;

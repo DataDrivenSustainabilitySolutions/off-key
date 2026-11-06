@@ -40,22 +40,21 @@ describe("monitoring configuration", () => {
     };
 
     const result = buildAdaptiveMonitoringRequest({
-      chargerId: "charger-1",
-      topics: [
-        "telemetry/charger-1/L1",
-        "telemetry/charger-1/L2",
-      ],
+      readingIds: ["L1", "L2"],
       draft,
       modelDefinition: definition,
-      containerName: "radar-adaptive-test",
+      displayName: "radar-adaptive-test",
     });
 
     expect(result.errors).toEqual({});
-    expect(result.request).toMatchObject({
-      strategy: "adaptive_stream",
-      model_type: "aberrant_gadget_svm",
-      model_params: { graph: { "0": [1], "1": [0] }, threshold: 0 },
-      adaptive_stream_config: {
+    expect(result.request).toEqual({
+      display_name: "radar-adaptive-test",
+      reading_ids: ["L1", "L2"],
+      performance_config: { sensor_freshness_seconds: 30 },
+      monitoring: {
+        strategy: "adaptive_stream",
+        model_type: "aberrant_gadget_svm",
+        model_params: { graph: { "0": [1], "1": [0] }, threshold: 0 },
         training_window_size: 1200,
         calibration_window_size: 360,
         threshold_config: { mode: "calibrated_quantile", quantile: 1 },
@@ -72,11 +71,10 @@ describe("monitoring configuration", () => {
     draft.projection = "incremental_pca";
     draft.projectionComponents = "2";
     const result = buildAdaptiveMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft,
       modelDefinition: undefined,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(result.request).toBeUndefined();
@@ -85,11 +83,10 @@ describe("monitoring configuration", () => {
 
   it("requires the two warm-up samples the backend requires", () => {
     const build = (trainingWindow: string) => buildAdaptiveMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft: { ...createDefaultAdaptiveDraft(), trainingWindow },
       modelDefinition: undefined,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(build("1").errors.trainingWindow).toBe("Warm-up samples must be at least 2.");
@@ -101,8 +98,7 @@ describe("monitoring configuration", () => {
     draft.modelType = "aberrant_x_stream";
     draft.modelParams = { max_feature_cache_size: null };
     const result = buildAdaptiveMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft,
       modelDefinition: {
         strategy: "adaptive_stream",
@@ -115,27 +111,25 @@ describe("monitoring configuration", () => {
           },
         },
       },
-      containerName: "radar-adaptive-null",
+      displayName: "radar-adaptive-null",
     });
 
     expect(result.errors).toEqual({});
-    expect(result.request?.model_params.max_feature_cache_size).toBeNull();
-    expect(
-      result.request?.adaptive_stream_config.model_params.max_feature_cache_size,
-    ).toBeNull();
+    expect(result.request?.monitoring.model_params.max_feature_cache_size).toBeNull();
   });
 
   it("builds the complete static monitoring request", () => {
     const result = buildStaticMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft: createDefaultStaticDraft(),
       modelDefinition,
-      containerName: "radar-charger-1-test",
+      displayName: "radar-charger-1-test",
     });
 
     expect(result.errors).toEqual({});
-    expect(result.request?.static_baseline_config).toMatchObject({
+    expect(result.request).toMatchObject({ display_name: "radar-charger-1-test", reading_ids: ["L1"] });
+    expect(result.request?.monitoring).toMatchObject({
+      strategy: "static_baseline",
       training_window_size: 1200,
       calibration_window_size: 360,
       martingale_config: {
@@ -179,16 +173,15 @@ describe("monitoring configuration", () => {
     ];
 
     const result = buildStaticMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft,
       modelDefinition,
-      containerName: "radar-charger-1-ensemble",
+      displayName: "radar-charger-1-ensemble",
     });
 
     expect(result.errors).toEqual({});
     expect(
-      result.request?.static_baseline_config.martingale_config.trackers,
+      result.request?.monitoring.martingale_config.trackers,
     ).toMatchObject([
       { tracker_id: "primary", betting_function: "power" },
       {
@@ -209,30 +202,23 @@ describe("monitoring configuration", () => {
     ]);
   });
 
-  it("rejects wildcard, cross-charger, and invalid numeric drafts", () => {
-    const wildcard = buildStaticMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/+/#"],
+  it("requires a reading and rejects invalid numeric drafts", () => {
+    const none = buildStaticMonitoringRequest({
+      readingIds: [],
       draft: createDefaultStaticDraft(),
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
-    expect(wildcard.request).toBeUndefined();
-    expect(wildcard.errors.topics).toMatch(/without MQTT wildcards/);
+    expect(none.request).toBeUndefined();
+    expect(none.errors.readings).toBe("Select at least one available reading.");
 
-    const invalidDraft = {
-      ...createDefaultStaticDraft(),
-      trainingWindow: "1.5",
-    };
     const invalid = buildStaticMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-2/L1"],
-      draft: invalidDraft,
+      readingIds: ["L1"],
+      draft: { ...createDefaultStaticDraft(), trainingWindow: "1.5" },
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
     expect(invalid.request).toBeUndefined();
-    expect(invalid.errors.topics).toMatch(/belong to entity charger-1/);
     expect(invalid.errors.trainingWindow).toBe(
       "Training samples must be an integer.",
     );
@@ -250,11 +236,10 @@ describe("monitoring configuration", () => {
     }];
 
     const result = buildStaticMonitoringRequest({
-      chargerId: "charger-1",
-      topics: ["telemetry/charger-1/L1"],
+      readingIds: ["L1"],
       draft,
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(result.request).toBeUndefined();

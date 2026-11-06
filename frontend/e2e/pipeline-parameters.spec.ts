@@ -11,7 +11,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await page.setViewportSize(viewport);
     await openPipelineWorkspace(page);
     const headers = { Authorization: `Bearer ${await accessToken(page)}` };
-    const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+    const response = await page.request.get("/api/v1/pipeline-components", { headers });
     expect(response.ok()).toBe(true);
     const catalog = await response.json() as PipelineCatalog;
     const definition = structuredClone(catalog.templates.find(item =>
@@ -19,12 +19,12 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     const detector = definition.nodes!.find(node => node.kind === "detector")!;
     detector.component = "detector:aberrant_knn";
     detector.params = { k: 0, similarity_engine: { id: "faiss", params: { window_size: 0, warm_up: 0 } } };
-    const created = await page.request.post("/api/v1/monitors/pipelines", {
+    const created = await page.request.post("/api/v1/pipelines", {
       headers, data: { name: `Parameter controls ${randomUUID()}`, definition },
     });
     expect(created.ok(), await created.text()).toBe(true);
     const design = await created.json() as PipelineView;
-    const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+    const endpoint = `/api/v1/pipelines/${design.id}`;
     try {
       await page.goto(`/?view=pipelines&pipeline=${design.id}`);
       await openPipelineSettings(page, "Component");

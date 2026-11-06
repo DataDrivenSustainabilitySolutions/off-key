@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import system as gateway_system
+from off_key_api_gateway.api.v1 import catalogue as gateway_system
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
@@ -106,7 +106,7 @@ CONFORMANCE = json.loads(
 
 def conformance_document(case: dict) -> dict:
     data = deepcopy(CONFORMANCE["base"])
-    data["connections"][0].update(case.get("connection", {}))
+    data["brokers"][0].update(case.get("connection", {}))
     if "group" in case:
         data["groups"].append(case["group"])
     return data
@@ -398,7 +398,7 @@ async def test_gateway_forwards_revision_document_and_authorization(monkeypatch)
     request = AsyncMock(return_value={"revision": 1})
     monkeypatch.setattr(gateway_system.tactic, "request", request)
     change = SystemChange(expected_revision=0, document=document())
-    result = await gateway_system.save_system(change, "Bearer test-token")
+    result = await gateway_system.save_catalogue(change, "Bearer test-token")
     assert result == {"revision": 1}
     request.assert_awaited_once_with(
         "PUT",

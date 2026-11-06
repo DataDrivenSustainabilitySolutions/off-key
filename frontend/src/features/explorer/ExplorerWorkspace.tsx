@@ -8,7 +8,7 @@ import { SystemLiveControls } from "../catalogue/SystemLiveControls";
 import { collectionApplied } from "@/domain/system/collectionRules";
 import { MonitoringServiceList } from "../monitoring/MonitoringServiceList";
 import { monitoringNavigationKey, resetView } from "@/domain/monitoring/monitoringView";
-import { buildMonitoringIndex, serviceName, servicesForScope } from "@/domain/monitoring/serviceModel";
+import { buildMonitoringIndex, readingTargetId, serviceName, servicesForScope } from "@/domain/monitoring/serviceModel";
 import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
@@ -29,8 +29,8 @@ export function ExplorerWorkspace() {
     favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
   const requestedService = params.get("service");
   const requestedReading = params.get("reading") ?? undefined;
-  const initialTarget = params.get("target")
-    ?? (requestedReading ? system.snapshot?.runtime.bindings?.[requestedReading]?.entity_id : undefined);
+  const requestedStream = requestedReading ? document.readings.find(stream => stream.id === requestedReading) : undefined;
+  const initialTarget = params.get("target") ?? (requestedStream && readingTargetId(requestedStream));
   const creating = params.get("create") === "monitoring";
   const monitoring = useMonitoringServices(isAuthenticated, requestedService ? 5_000 : 20_000, requestedService ?? params.get("replace") ?? undefined);
   const pipelineView = !!params.get("pipeline") || params.get("view") === "pipelines" || creating && monitoring.authoringEnabled;
@@ -50,7 +50,7 @@ export function ExplorerWorkspace() {
     && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
   useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
     : creating ? "New service" : pipelineView ? "Templates" : selected && (selected.entityKind === "stream"
-      ? document.streams.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
+      ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
   useEffect(() => {
     rememberNavigation(monitoringNavigationKey(userId), `/${params.size ? `?${params}` : ""}`);
   }, [userId, params]);
@@ -60,7 +60,8 @@ export function ExplorerWorkspace() {
   const closeView = () => changeView();
   const createService = () => {
     const inputs = streamIds ?? [];
-    const targets = [...new Set(inputs.flatMap(id => system.snapshot?.runtime.bindings?.[id]?.entity_id ?? []))];
+    const chosen = new Set(inputs);
+    const targets = [...new Set(document.readings.filter(stream => chosen.has(stream.id)).map(readingTargetId))];
     changeView({ create: "monitoring", ...(selected?.entityKind === "stream" ? { reading: selected.objectId }
       : inputs.length === 1 ? { reading: inputs[0] } : targets.length === 1 ? { target: targets[0] } : {}) });
   };
@@ -72,7 +73,7 @@ export function ExplorerWorkspace() {
     if (loadingCreation) return <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
-    if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>;
+    if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found."}</p>;
     if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
       initialTarget={initialTarget} initialReading={requestedReading}
       onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;

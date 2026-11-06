@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { accessToken } from "./helpers/auth";
-import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, fixtureTarget, removeTestCharger } from "./helpers/collection";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test("setup controls retain typed values and display real API field errors on desktop and mobile", async ({ page, playwright }, testInfo) => {
   test.setTimeout(300_000);
   const device = randomUUID();
-  const entity = fixtureEntityId(device);
   const api = await playwright.request.newContext({
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173", timeout: 210_000,
   });
@@ -17,7 +16,7 @@ test("setup controls retain typed values and display real API field errors on de
     await page.goto("/");
     token = await accessToken(page);
     await addTestCharger(api, token!, device, device, ["L1", "L2"]);
-    await page.goto(`/?create=monitoring&target=${encodeURIComponent(entity)}`);
+    await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(device))}`);
     await page.getByRole("button", { name: "Adaptive stream", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Configure adaptive monitoring", exact: true })).toBeVisible();
     const model = page.getByRole("combobox", { name: "Model", exact: true });
@@ -42,7 +41,7 @@ test("setup controls retain typed values and display real API field errors on de
       await page.getByLabel("Warm-up samples", { exact: true }).fill("8");
       await page.getByLabel("Calibration samples", { exact: true }).fill("2");
       const rejected = page.waitForResponse(response => response.request().method() === "POST"
-        && new URL(response.url()).pathname.endsWith("/monitors/start"));
+        && new URL(response.url()).pathname.endsWith("/v1/monitors"));
       await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
       const response = await rejected;
       expect(response.status(), await response.text()).toBe(422);
@@ -56,19 +55,19 @@ test("setup controls retain typed values and display real API field errors on de
     }
     await page.getByRole("spinbutton", { name: "Warm Up", exact: true }).fill("5");
     const accepted = page.waitForResponse(response => response.request().method() === "POST"
-      && new URL(response.url()).pathname.endsWith("/monitors/start"));
+      && new URL(response.url()).pathname.endsWith("/v1/monitors"));
     await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
     const response = await accepted;
     expect(response.ok(), await response.text()).toBe(true);
     const request = response.request().postDataJSON();
-    expect(request.adaptive_stream_config.model_params.similarity_engine.params).toEqual({ window_size: 8, warm_up: 5 });
-    serviceId = (await response.json() as { service_id: string }).service_id;
+    expect(request.monitoring.model_params.similarity_engine.params).toEqual({ window_size: 8, warm_up: 5 });
+    serviceId = (await response.json() as { monitor_id: string }).monitor_id;
     await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
   } finally {
     if (serviceId && token) await api.delete(`/api/v1/monitors/${serviceId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (token) await removeTestCharger(api, token, entity);
+    if (token) await removeTestCharger(api, token, device);
     await api.dispose();
   }
 });

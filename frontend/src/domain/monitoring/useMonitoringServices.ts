@@ -16,11 +16,11 @@ export function useWorkspacePoll(enabled: boolean, refreshInterval: number, sele
   const [workspace, setWorkspace] = useState<PipelineWorkspace>();
   const load = useCallback(async (signal: AbortSignal) => {
     try {
-      const query = selectedServiceId ? `?selected_service_id=${encodeURIComponent(selectedServiceId)}` : "";
-      const next = await apiUtils.get<PipelineWorkspace>(`/v1/monitors/workspace${query}`,
+      const query = selectedServiceId ? `?selected_monitor_id=${encodeURIComponent(selectedServiceId)}` : "";
+      const next = await apiUtils.get<PipelineWorkspace>(`${API_CONFIG.ENDPOINTS.MONITORING.OVERVIEW}${query}`,
         { signal, redirectOnUnauthorized: false });
-      if (!Array.isArray(next.services)) throw new Error("The monitoring service list could not be read.");
-      if (!signal.aborted) { setServices(next.services as unknown as ActiveService[]); setWorkspace(next); setReady(true); setError(""); }
+      if (!Array.isArray(next.monitors)) throw new Error("The monitoring service list could not be read.");
+      if (!signal.aborted) { setServices(next.monitors as unknown as ActiveService[]); setWorkspace(next); setReady(true); setError(""); }
     } catch (reason) {
       if (!signal.aborted) setError(getErrorMessage(reason));
     }
@@ -44,7 +44,7 @@ export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000
   }, [register, enabled, id, refreshInterval, selectedServiceId]);
   const { setServices, abort, reload, workspace } = source;
   const rename = useCallback(async (serviceId: string, display_name: string) => {
-    await apiUtils.patch(`${API_CONFIG.ENDPOINTS.MONITORING.DELETE(serviceId)}/label`, { display_name });
+    await apiUtils.patch(API_CONFIG.ENDPOINTS.MONITORING.ITEM(serviceId), { display_name });
     abort();
     setServices(previous => previous.map(service => service.id === serviceId ? { ...service, display_name } : service));
     void reload();
@@ -55,7 +55,7 @@ export function useMonitoringServices(enabled: boolean, refreshInterval = 20_000
   }, [abort, setServices]);
   return { services: source.services, ready: source.ready, error: source.error, reload, rename, remove,
     authoringEnabled: workspace?.authoring_enabled ?? false,
-    pipelineState: workspace?.selected_service_id === selectedServiceId
+    pipelineState: workspace?.selected_monitor_id === selectedServiceId
       // The workspace serves stored status JSON, so it stays untyped on the wire.
       ? workspace?.pipeline_state as PipelineRuntimeState | null | undefined : undefined };
 }

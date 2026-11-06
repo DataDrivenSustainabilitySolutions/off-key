@@ -38,6 +38,7 @@ from .pipelines import (
     PipelineExecutionConfig,
     PipelineStrategy,
 )
+from .system import EntityId
 
 __all__ = [
     "AdaptivePreprocessingStep",
@@ -50,6 +51,8 @@ __all__ = [
     "LegacyMonitoringConfig",
     "ManualAlarmThresholdConfig",
     "MartingaleTrackerConfig",
+    "MonitorSetup",
+    "MonitorTiming",
     "MonitoringConfig",
     "MonitoringStrategy",
     "PerformanceConfig",
@@ -176,12 +179,11 @@ class RadarOperationalStatus(BaseModel):
     pipeline_state: dict[str, Any] | None = None
 
 
-class PerformanceConfig(BaseModel):
-    """Performance options for RADAR workloads."""
+class MonitorTiming(BaseModel):
+    """How fresh and how closely aligned a monitor's readings must be."""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    sensor_key_strategy: str = "full_hierarchy"
     sensor_freshness_seconds: float = Field(default=30.0, gt=0.0, allow_inf_nan=False)
     observation_max_age_seconds: float = Field(
         default=30.0, gt=0.0, allow_inf_nan=False
@@ -190,6 +192,16 @@ class PerformanceConfig(BaseModel):
         default=5.0, ge=0.0, allow_inf_nan=False
     )
     alignment_max_skew_seconds: float = Field(default=5.0, ge=0.0, allow_inf_nan=False)
+
+
+class PerformanceConfig(MonitorTiming):
+    """Performance options for RADAR workloads.
+
+    ``sensor_key_strategy`` names the detector features after the recorded
+    topics; a monitor set up by reading id keeps the default.
+    """
+
+    sensor_key_strategy: str = "full_hierarchy"
 
     @field_validator("sensor_key_strategy")
     @classmethod
@@ -807,6 +819,50 @@ class FormMonitorConfig(_MonitorLaunch):
         if isinstance(self.monitoring, AdaptiveStreamConfig):
             self.monitoring.validate_feature_schema(self.sensor_keys())
         return self
+
+
+class MonitorSetup(BaseModel):
+    """A monitor set up with the forms: the readings to watch and how.
+
+    The readings belong to one device, or to one broker without a device.
+    TACTIC turns the setup into an equivalent bound pipeline.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=1, max_length=120, strict=True)
+    reading_ids: list[EntityId] = Field(min_length=1, max_length=100)
+    monitoring: MonitoringConfig = Field(default_factory=StaticBaselineConfig)
+    performance_config: MonitorTiming = Field(default_factory=MonitorTiming)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        return validate_service_name(value)
+
+    @field_validator("reading_ids")
+    @classmethod
+    def distinct_readings(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("Name each reading once")
+        return value
+
+    @field_validator("performance_config", mode="before")
+    @classmethod
+    def default_timing(cls, value: Any) -> Any:
+        return {} if value is None else value
+
+    def form(self, topics: list[str]) -> FormMonitorConfig:
+        """The form configuration of these readings' recorded topics."""
+        return FormMonitorConfig(
+            container_name=self.display_name,
+            display_name=self.display_name,
+            mqtt_topics=topics,
+            monitoring=self.monitoring,
+            performance_config=PerformanceConfig(
+                **self.performance_config.model_dump()
+            ),
+        )
 
 
 class RadarStartConfig(_MonitorLaunch):

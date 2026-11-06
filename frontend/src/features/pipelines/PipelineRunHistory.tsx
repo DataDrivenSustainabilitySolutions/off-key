@@ -9,11 +9,11 @@ export function PipelineRunHistory({ initial }: { initial: PipelineHistoryPage }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const loadOlder = async () => {
-    if (!page.next_service_id || busy) return;
+    if (!page.next_monitor_id || busy) return;
     setBusy(true);
     setError("");
     try {
-      const next = await pipelinesApi.history(page.next_service_id);
+      const next = await pipelinesApi.history(page.next_monitor_id);
       const seen = new Set(page.items.map((run) => run.id));
       const items = [
         ...page.items,
@@ -21,9 +21,9 @@ export function PipelineRunHistory({ initial }: { initial: PipelineHistoryPage }
       ];
       setPage({
         items,
-        next_service_id: items.some((run) => run.service_id === next.next_service_id)
+        next_monitor_id: items.some((run) => run.monitor_id === next.next_monitor_id)
           ? null
-          : next.next_service_id,
+          : next.next_monitor_id,
       });
     } catch (reason) {
       setError(getErrorMessage(reason));
@@ -34,13 +34,13 @@ export function PipelineRunHistory({ initial }: { initial: PipelineHistoryPage }
   return (
     <details className="pl-history">
       <summary>
-        Linked monitoring history ({page.items.length}{page.next_service_id ? "+" : ""})
+        Linked monitoring history ({page.items.length}{page.next_monitor_id ? "+" : ""})
       </summary>
       <ul>
         {page.items.map((run) => (
           <li key={run.id}>
             <Link
-              to={`/?service=${encodeURIComponent(run.service_id)}&tab=pipeline`}
+              to={`/?service=${encodeURIComponent(run.monitor_id)}&tab=pipeline`}
             >
               {run.id}
             </Link>{" "}
@@ -51,7 +51,7 @@ export function PipelineRunHistory({ initial }: { initial: PipelineHistoryPage }
       {error && (
         <p role="alert" className="pl-error">{error}</p>
       )}
-      {page.next_service_id && (
+      {page.next_monitor_id && (
         <button disabled={busy} onClick={() => void loadOlder()}>
           Load older monitoring history
         </button>

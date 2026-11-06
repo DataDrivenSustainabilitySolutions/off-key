@@ -5,12 +5,13 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .collection_policy import CollectionPolicy
+from .public_names import public
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
 
 class CollectionRuleScope(SystemModel):
     kind: Literal["broker", "topic", "reading"]
-    connection_id: EntityId
+    connection_id: EntityId = Field(**public("broker_id", "connection_id"))
     topic_prefix: str | None = None
     reading_id: EntityId | None = None
 

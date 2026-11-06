@@ -1,3 +1,4 @@
+import type { Alarm } from "@/types/charger";
 import type { MartingaleTrackerResult, MonitoringChartEvidence } from "@/types/monitoring";
 
 /** A static-baseline tracker that has tested once and stays below its threshold. */
@@ -12,11 +13,22 @@ export const trackerResult = (overrides: Partial<MartingaleTrackerResult> = {}):
   };
 };
 
-/** One evidence row; callers pass the service, time and every value they assert on. */
+/** One evidence row; callers pass the monitor, time and every value they assert on. */
 export const chartEvidence = (
-  overrides: Partial<MonitoringChartEvidence> & Pick<MonitoringChartEvidence, "service_id" | "timestamp">,
+  overrides: Partial<MonitoringChartEvidence> & Pick<MonitoringChartEvidence, "monitor_id" | "timestamp">,
 ): MonitoringChartEvidence => ({
-  sequence_number: 1, sensor_set: ["L1"], input_timestamps: { L1: overrides.timestamp },
+  sequence_number: 1, reading_ids: ["L1"], input_timestamps: { L1: overrides.timestamp },
   restarted_martingale: null, threshold: 100, alarm: false, created: overrides.timestamp,
   ...overrides,
 });
+
+/** A univariate alarm on reading L1 of device charger-1; callers pass what they assert on. */
+export const alarm = (overrides: Partial<Alarm> = {}): Alarm => {
+  const readingIds = overrides.reading_ids ?? ["L1"];
+  return {
+    alarm_id: "alarm-1", timestamp: "2026-05-19T08:00:00.000Z", device_id: "charger-1", device_label: "Charger 1",
+    reading_ids: readingIds, reading_labels: Object.fromEntries(readingIds.map(id => [id, id])),
+    multivariate: false, alarm_type: "ml_tailprob_univariate", value: 0.004, value_type: "tail_pvalue", monitor_id: null,
+    ...overrides,
+  };
+};

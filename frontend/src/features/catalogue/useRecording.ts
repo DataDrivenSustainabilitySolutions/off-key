@@ -17,7 +17,7 @@ export function useRecording(snapshot: SystemSnapshot | null,
 
   const save = async (edits: RuleEdit[], pause = false): Promise<boolean> => {
     if (!snapshot || saving || !edits.length) return false;
-    const broker = edits[0]!.scope.connection_id;
+    const broker = edits[0]!.scope.broker_id;
     const change: RuleChange = {
       expected_revision: snapshot.revision,
       expected_collection_revision: snapshot.runtime.collection_revision ?? 0,
@@ -54,7 +54,7 @@ export function useRecording(snapshot: SystemSnapshot | null,
       setProblem("The configuration changed since then, so the last change can no longer be undone.");
       return;
     }
-    const mine = (rules: CollectionRule[]) => new Map(rules.filter(rule => rule.scope.connection_id === undo.broker)
+    const mine = (rules: CollectionRule[]) => new Map(rules.filter(rule => rule.scope.broker_id === undo.broker)
       .map(rule => [scopeKey(rule.scope), rule]));
     const before = mine(undo.previous);
     const after = mine(snapshot.runtime.collection_rules ?? []);

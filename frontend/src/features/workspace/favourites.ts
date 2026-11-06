@@ -3,8 +3,8 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { clientLogger } from "@/lib/logger";
 
-/** A recorded entity (`charger_id`), a catalogue reading (stream id) or a monitor (`service_id`). */
-export type FavouriteKind = "entity" | "reading" | "monitor";
+/** A catalogue device, a catalogue reading or a monitor, each by its id. */
+export type FavouriteKind = "device" | "reading" | "monitor";
 export type Favourite = { kind: FavouriteKind; id: string };
 /** Favourites earlier versions kept in this browser, where a monitor was a "service". */
 export type LegacyFavourite = { kind: "service" | "reading"; id: string };

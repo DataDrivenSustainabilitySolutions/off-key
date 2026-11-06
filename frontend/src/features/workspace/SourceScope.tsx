@@ -8,7 +8,7 @@ export function SourceScope({ compact = false }: { compact?: boolean }) {
   return <div className={`workspace-source-scope${compact ? " is-compact" : ""}`} aria-label="Selected source">
     {!compact && <><small>Showing</small>
     <span title={selected ? navigationTrail(index, selected.key).slice(1).map(node => node.label).join(" / ") : undefined}>
-      {selected?.entityKind === "stream" ? document.streams.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected?.label ?? "Source not found"}
+      {selected?.entityKind === "stream" ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected?.label ?? "Source not found"}
     </span></>}
     <button type="button" onClick={() => selectSource(null)}>Show all sources<X size={13} aria-hidden="true" /></button>
   </div>;

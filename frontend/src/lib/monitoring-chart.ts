@@ -2,26 +2,26 @@ import type {
   MonitoringChartEvidence,
   MonitoringEvidenceCursor,
 } from '@/types/monitoring';
-import type { Anomaly } from '@/types/charger';
+import type { Alarm } from '@/types/charger';
 
 /** Keep alarm markers in the same monitor scope as the displayed detector result. */
 export function filterServiceAnomalies(
-  anomalies: readonly Anomaly[],
+  anomalies: readonly Alarm[],
   evidence: readonly MonitoringChartEvidence[],
   serviceId: string | undefined,
-  sensor: string,
-): Anomaly[] {
+  readingId: string,
+): Alarm[] {
   if (!serviceId) return [...anomalies];
-  const times = new Set(evidence.filter(row => row.service_id === serviceId && row.alarm)
-    .flatMap(row => [Date.parse(row.timestamp), getEvidenceTimeForSensor(row, sensor)]));
-  return anomalies.filter(item => item.service_id ? item.service_id === serviceId : times.has(Date.parse(item.timestamp)));
+  const times = new Set(evidence.filter(row => row.monitor_id === serviceId && row.alarm)
+    .flatMap(row => [Date.parse(row.timestamp), getEvidenceTimeForSensor(row, readingId)]));
+  return anomalies.filter(item => item.monitor_id ? item.monitor_id === serviceId : times.has(Date.parse(item.timestamp)));
 }
 
 export const getEvidenceTimeForSensor = (
   evidence: MonitoringChartEvidence,
-  sensor: string,
+  readingId: string,
 ): number | undefined => {
-  const timestamp = evidence.input_timestamps[sensor];
+  const timestamp = evidence.input_timestamps[readingId];
   if (!timestamp) return undefined;
   const time = Date.parse(timestamp);
   return Number.isFinite(time) ? time : undefined;
@@ -37,16 +37,16 @@ export const getMonitoringEvidenceCursor = (
     const cursor = {
       created: item.created,
       timestamp: item.timestamp,
-      service_id: item.service_id,
+      monitor_id: item.monitor_id,
       sequence_number: item.sequence_number,
     };
     if (!latest) return cursor;
     const comparisons = [
       createdTime - Date.parse(latest.created),
       eventTime - Date.parse(latest.timestamp),
-      cursor.service_id === latest.service_id
+      cursor.monitor_id === latest.monitor_id
         ? 0
-        : cursor.service_id > latest.service_id ? 1 : -1,
+        : cursor.monitor_id > latest.monitor_id ? 1 : -1,
       cursor.sequence_number - latest.sequence_number,
     ];
     return (comparisons.find((comparison) => comparison !== 0) ?? 0) > 0
@@ -64,7 +64,7 @@ export function mergeMonitoringChartEvidence(
   const rows = new Map<string, MonitoringChartEvidence>();
   [...current, ...incoming].forEach((item) => {
     rows.set(
-      `${item.timestamp}\u0000${item.service_id}\u0000${item.sequence_number}`,
+      `${item.timestamp}\u0000${item.monitor_id}\u0000${item.sequence_number}`,
       item
     );
   });
@@ -73,7 +73,7 @@ export function mergeMonitoringChartEvidence(
     .map((item) => ({ item, time: Date.parse(item.timestamp) }))
     .sort((left, right) =>
       left.time - right.time ||
-      left.item.service_id.localeCompare(right.item.service_id) ||
+      left.item.monitor_id.localeCompare(right.item.monitor_id) ||
       left.item.sequence_number - right.item.sequence_number
     )
     .slice(-limit)

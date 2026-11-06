@@ -1,5 +1,6 @@
 """Verify release locking, retries and migration transactions in isolated databases."""
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -28,6 +29,7 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
+from off_key_core.schemas.system_collection import stable_key
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.services.accounts.members import MemberService
 from off_key_tactic_middleware.services.catalogue.system_ingress import (
@@ -125,20 +127,45 @@ def test_retired_schema_migration_keeps_the_telemetry_primary_key(
         }
 
 
+def save_catalogue(connection, *device_ids: str, bindings=None) -> None:
+    """A saved catalogue with these devices and collection bindings, as
+    migrations read them."""
+    connection.execute(
+        text(
+            "INSERT INTO system_configuration (id, revision, document, updated_by) "
+            "VALUES (1, 1, CAST(:document AS jsonb), 'test') "
+            "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document"
+        ),
+        {"document": json.dumps({"devices": [{"id": id} for id in device_ids]})},
+    )
+    connection.execute(
+        text(
+            "INSERT INTO system_collection_configuration (id, revision, document, "
+            "ingress_status, collection_status, updated_by) "
+            "VALUES (1, 1, CAST(:document AS jsonb), '{}', '{}', 'test') "
+            "ON CONFLICT (id) DO UPDATE SET document = EXCLUDED.document"
+        ),
+        {"document": json.dumps({"bindings": bindings or {}})},
+    )
+
+
 def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
+    entity = stable_key("entity", "pump")
     with disposable_database.begin() as connection:
         apply_migrations(connection)
         connection.execute(
             insert(User).values(id=1, email="a@example.test", hashed_password="h")
         )
-        connection.execute(insert(Charger).values(charger_id="c1"))
+        connection.execute(insert(Charger).values(charger_id=entity))
+        save_catalogue(connection, "pump")
         restore_entity_favorites(connection)
         # The former table allowed the same entity twice.
         connection.execute(
             text(
                 "INSERT INTO favorites (user_id, charger_id) "
-                "VALUES (1, 'c1'), (1, 'c1')"
-            )
+                "VALUES (1, :entity), (1, :entity)"
+            ),
+            {"entity": entity},
         )
         rewind_ledger(connection, "018_member_favorites.sql")
     with disposable_database.begin() as connection:
@@ -146,9 +173,72 @@ def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
             "018_member_favorites.sql"
         )
         assert "favorites" not in inspect(connection).get_table_names()
+        # Migration 023 then names the device behind the entity.
         assert connection.execute(
             text("SELECT user_id, kind, item_id FROM member_favorites")
-        ).all() == [(1, "entity", "c1")]
+        ).all() == [(1, "device", "pump")]
+
+
+def test_device_favorites_migration_names_catalogue_devices(disposable_database):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        connection.execute(
+            insert(User).values(id=1, email="a@example.test", hashed_password="h")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE member_favorites DROP CONSTRAINT ck_member_favorite_kind;"
+                "ALTER TABLE member_favorites ADD CONSTRAINT ck_member_favorite_kind "
+                "CHECK (kind IN ('entity', 'reading', 'monitor'))"
+            )
+        )
+        # An upgraded installation keeps recording the fan under its charger id.
+        save_catalogue(
+            connection,
+            "pump",
+            "fan",
+            bindings={
+                "fan:speed": {"entity_id": "charger-7", "device_id": "fan"},
+                "outside": {"entity_id": stable_key("entity", "broker")},
+            },
+        )
+        for kind, item_id in (
+            ("entity", stable_key("entity", "pump")),
+            ("entity", "charger-7"),
+            # A broker's readings without a device, and an entity of no device.
+            ("entity", stable_key("entity", "broker")),
+            ("entity", "charger-9"),
+            ("reading", "pump:flow"),
+            ("monitor", "m1"),
+        ):
+            connection.execute(
+                text(
+                    "INSERT INTO member_favorites (user_id, kind, item_id) "
+                    "VALUES (1, :kind, :item_id)"
+                ),
+                {"kind": kind, "item_id": item_id},
+            )
+        rewind_ledger(connection, "023_device_favorites.sql")
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == [
+            "023_device_favorites.sql",
+            "024_lifecycle_states.sql",
+        ]
+        assert connection.execute(
+            text("SELECT kind, item_id FROM member_favorites ORDER BY kind, item_id")
+        ).all() == [
+            ("device", "fan"),
+            ("device", "pump"),
+            ("monitor", "m1"),
+            ("reading", "pump:flow"),
+        ]
+        with pytest.raises(IntegrityError), connection.begin_nested():
+            connection.execute(
+                text(
+                    "INSERT INTO member_favorites (user_id, kind, item_id) "
+                    "VALUES (1, 'entity', 'x')"
+                )
+            )
 
 
 def test_member_roles_migration_keeps_every_members_access(disposable_database):

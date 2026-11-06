@@ -67,7 +67,7 @@ describe("collection diagnostics", () => {
       api.get.mockResolvedValueOnce(snapshot(diagnosis("Paused", "neutral")));
       await act(() => vi.advanceTimersByTimeAsync(3000));
       expect(screen.getByRole("status").textContent).toBe("Paused");
-      expect(api.get).toHaveBeenCalledWith("/v1/system/health");
+      expect(api.get).toHaveBeenCalledWith("/v1/recording/health");
       expect(api.get).toHaveBeenCalledTimes(3);
       view.unmount();
       await act(() => vi.advanceTimersByTimeAsync(6000));

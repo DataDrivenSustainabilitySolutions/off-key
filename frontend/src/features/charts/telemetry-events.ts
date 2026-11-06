@@ -2,7 +2,8 @@ import type { MarkPointComponentOption } from "echarts/components";
 
 import { formatAnomalyValue, getAnomalyValueLabel } from "@/lib/anomaly-semantics";
 import {
-  MULTIVARIATE_TELEMETRY_TYPE,
+  formatAlarmReadings,
+  isAlarmContext,
   type AnomalyMarker,
   type AnomalySample,
 } from "@/lib/anomaly-utils";
@@ -83,9 +84,9 @@ export const formatTelemetryEventTooltip = (
   ];
   group.events.forEach(({ anomaly }) => {
     lines.push(
-      `Event ${anomaly.anomaly_id}: ${anomaly.anomaly_type.replace(/_/gu, " ")}`,
-      `${getAnomalyValueLabel(anomaly.value_type)}: ${formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}`,
-      `Sensors: ${anomaly.sensor_set?.join(", ") || (anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "not recorded" : anomaly.telemetry_type)}`,
+      `Event ${anomaly.alarm_id}: ${anomaly.alarm_type.replace(/_/gu, " ")}`,
+      `${getAnomalyValueLabel(anomaly.value_type)}: ${formatAnomalyValue(anomaly.value, anomaly.value_type)}`,
+      `Readings: ${formatAlarmReadings(anomaly)}`,
     );
   });
   if (group.sample) {
@@ -99,9 +100,7 @@ export const formatTelemetryEventTooltip = (
     if (sampleEdge) {
       lines.push(`Contextual sample is ${sampleEdge === "upper" ? "above" : "below"} the displayed telemetry range.`);
     }
-    if (group.events.some(({ anomaly }) =>
-      anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (anomaly.sensor_set?.length ?? 0) > 1,
-    )) {
+    if (group.events.some(({ anomaly }) => isAlarmContext(anomaly))) {
       lines.push("Nearby sensor context; exact detector input is not recorded with the event.");
     }
   } else {

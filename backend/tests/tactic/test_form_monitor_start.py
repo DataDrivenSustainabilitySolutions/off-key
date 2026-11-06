@@ -3,7 +3,11 @@
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.schemas.radar import FormMonitorConfig, PerformanceConfig
+from off_key_core.schemas.radar import (
+    FormMonitorConfig,
+    MonitorSetup,
+    PerformanceConfig,
+)
 from off_key_tactic_middleware.domain import ConflictError, ValidationError
 from off_key_tactic_middleware.services.pipelines import forms
 
@@ -11,8 +15,9 @@ from off_key_tactic_middleware.services.pipelines import forms
 def stream(topic, reading_id, value_type="number"):
     return SimpleNamespace(
         accepted_topic=topic,
+        charger_id=topic.split("/")[1],
         value_type=value_type,
-        definition=SimpleNamespace(id=reading_id),
+        definition=SimpleNamespace(id=reading_id, label=f"Phase {topic[-1]}"),
     )
 
 
@@ -39,6 +44,7 @@ def submitted(monkeypatch):
             stream("telemetry/c1/L1", "reading-l1"),
             stream("telemetry/c1/L2", "reading-l2"),
             stream("telemetry/c1/state", "reading-state", value_type="string"),
+            stream("telemetry/c2/L1", "other-l1"),
         ]
         return SimpleNamespace(
             catalog=SimpleNamespace(streams=lambda selected_only: streams)
@@ -60,13 +66,28 @@ def form(**changes):
     )
 
 
+def setup(**changes):
+    return MonitorSetup.model_validate(
+        {
+            "display_name": "Pump",
+            "reading_ids": ["reading-l2", "reading-l1"],
+            "performance_config": {"sensor_freshness_seconds": 12},
+            **changes,
+        }
+    )
+
+
 @pytest.mark.asyncio
-async def test_form_binds_slots_in_sensor_key_order_and_keeps_performance(submitted):
-    activation = await forms.start_form_monitor(None, form(display_name="Pump"))
+async def test_setup_binds_slots_in_sensor_key_order_and_keeps_performance(submitted):
+    activation = await forms.start_form_monitor(None, setup())
 
     assert activation.service_id == "service"
     [(request, performance)] = submitted
-    assert [slot.label for slot in request.definition.input_slots] == ["L1", "L2"]
+    # Slots follow the sensor keys and show the catalogue labels.
+    assert [slot.label for slot in request.definition.input_slots] == [
+        "Phase 1",
+        "Phase 2",
+    ]
     assert request.bindings == {"input_1": "reading-l1", "input_2": "reading-l2"}
     assert request.display_name == "Pump"
     assert request.idempotency_key.startswith("form-")
@@ -74,22 +95,33 @@ async def test_form_binds_slots_in_sensor_key_order_and_keeps_performance(submit
 
 
 @pytest.mark.asyncio
-async def test_form_without_display_name_uses_its_container_name(submitted):
-    await forms.start_form_monitor(None, form())
+@pytest.mark.parametrize("readings", [["reading-l1", "reading-l9"], ["reading-state"]])
+async def test_setup_rejects_readings_not_recorded_as_numbers(submitted, readings):
+    with pytest.raises(ValidationError, match="Record these readings") as error:
+        await forms.start_form_monitor(None, setup(reading_ids=readings))
 
-    assert submitted[0][0].display_name == "radar-c1-1"
+    assert "telemetry/" not in str(error.value)
+    assert submitted == []
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "topics", [["telemetry/c1/L1", "telemetry/c1/L9"], ["telemetry/c1/state"]]
-)
-async def test_form_rejects_topics_without_a_selected_numeric_reading(
-    submitted, topics
-):
-    with pytest.raises(ValidationError, match="Select these topics"):
-        await forms.start_form_monitor(None, form(mqtt_topics=topics))
+async def test_setup_rejects_readings_of_two_devices(submitted):
+    with pytest.raises(ValidationError, match="one device"):
+        await forms.start_form_monitor(
+            None, setup(reading_ids=["reading-l1", "other-l1"])
+        )
 
+    assert submitted == []
+
+
+@pytest.mark.asyncio
+async def test_setup_reports_an_unsupported_feature_count_without_topics(submitted):
+    adaptive = {"strategy": "adaptive_stream", "model_type": "aberrant_moving_average"}
+
+    with pytest.raises(ValidationError, match="exactly one feature") as error:
+        await forms.start_form_monitor(None, setup(monitoring=adaptive))
+
+    assert "telemetry/" not in str(error.value)
     assert submitted == []
 
 

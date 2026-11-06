@@ -47,7 +47,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   const nodes = new Map<string, ExplorerNode>();
   const objectKeys = new Map<string, string[]>();
   const devices = new Map(document.devices.map((device) => [device.id, device]));
-  const connections = new Set(document.connections.map((connection) => connection.id));
+  const connections = new Set(document.brokers.map((connection) => connection.id));
   const deviceContexts = new Map<string, Set<string | null>>();
   const topicIdentities = new Set<string>();
   const bindingSearch = new Map<string, string[]>();
@@ -72,7 +72,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   ): ExplorerNode => ({ key, kind, label, parentKey, children: [], streamIds: [], searchText: "" });
   const ensureUnassigned = () => {
     if (!nodes.has(unassignedKey)) {
-      addNode(emptyNode(unassignedKey, "unassigned", "Unassigned entities", rootKey));
+      addNode(emptyNode(unassignedKey, "unassigned", "Unassigned devices", rootKey));
     }
     return unassignedKey;
   };
@@ -83,7 +83,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   };
 
   addNode(emptyNode(rootKey, "root", document.label || "Aberration", null));
-  for (const connection of document.connections) {
+  for (const connection of document.brokers) {
     addNode({
       ...emptyNode(identity("connection", connection.id), "connection", connection.label, rootKey),
       objectId: connection.id,
@@ -92,13 +92,13 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     });
   }
   for (const device of document.devices) {
-    if (device.connection_id && connections.has(device.connection_id)) {
-      addContext(device.id, device.connection_id);
+    if (device.broker_id && connections.has(device.broker_id)) {
+      addContext(device.id, device.broker_id);
     }
   }
-  for (const stream of document.streams) {
+  for (const stream of document.readings) {
     if (stream.device_id && devices.has(stream.device_id)) {
-      addContext(stream.device_id, connections.has(stream.connection_id) ? stream.connection_id : null);
+      addContext(stream.device_id, connections.has(stream.broker_id) ? stream.broker_id : null);
     }
   }
   for (const device of document.devices) {
@@ -150,8 +150,8 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     if (node.kind === "device" && node.parentKey) nodes.get(node.parentKey)!.children.push(node.key);
   }
 
-  for (const stream of document.streams) {
-    const connectionId = connections.has(stream.connection_id) ? stream.connection_id : null;
+  for (const stream of document.readings) {
+    const connectionId = connections.has(stream.broker_id) ? stream.broker_id : null;
     const contextKey = stream.device_id && devices.has(stream.device_id)
       ? identity("device", connectionId, stream.device_id)
       : connectionId === null ? ensureUnassigned() : identity("connection", connectionId);
@@ -159,7 +159,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     const connectionKey = connectionId === null ? ensureUnassigned() : identity("connection", connectionId);
     nodes.get(connectionKey)!.streamIds.push(stream.id);
     if (contextKey !== connectionKey) nodes.get(contextKey)!.streamIds.push(stream.id);
-    topicIdentities.add(identity(stream.connection_id, stream.topic));
+    topicIdentities.add(identity(stream.broker_id, stream.topic));
     let parentKey = contextKey;
     let prefix = "";
     const segments = stream.topic.split("/");
@@ -170,7 +170,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
       if (!nodes.has(key)) {
         addNode({
           ...emptyNode(key, "topic", segment || "(empty level)", parentKey),
-          connectionId: stream.connection_id,
+          connectionId: stream.broker_id,
           deviceId: stream.device_id,
           topic: prefix,
         });
@@ -186,7 +186,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     else bindingSearch.set(endpoint.key, [text]);
   }
 
-  const streams = new Map(document.streams.map((stream) => [stream.id, stream]));
+  const streams = new Map(document.readings.map((stream) => [stream.id, stream]));
   // Reading leaves make a topic that is both an endpoint and a parent unambiguous.
   for (const endpoint of Array.from(nodes.values())) {
     if (endpoint.kind !== "topic" || endpoint.streamIds.length === 0) continue;
@@ -204,7 +204,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
         ...emptyNode(identity("reading", endpoint.key, stream.id), "reading", stream.label, endpoint.key),
         objectId: stream.id,
         entityKind: "stream",
-        connectionId: stream.connection_id,
+        connectionId: stream.broker_id,
         deviceId: stream.device_id,
         topic: stream.topic,
         streamIds: [stream.id],
@@ -256,10 +256,10 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
     nodes: orderedNodes,
     objectKeys,
     counts: {
-      connections: document.connections.length,
+      connections: document.brokers.length,
       devices: document.devices.length,
       topics: topicIdentities.size,
-      readings: document.streams.length,
+      readings: document.readings.length,
     },
   };
 }

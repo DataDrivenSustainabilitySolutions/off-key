@@ -34,7 +34,7 @@ from .radar_environment import (
     build_radar_environment,
 )
 from .radar_lifecycle import RadarLifecycleController
-from .radar_queries import RadarServiceQueries, exactly_one, find_service
+from .radar_queries import RadarServiceQueries, find_service
 from .radar_status import (
     TERMINAL_WORKLOAD_STATES,
 )
@@ -540,36 +540,17 @@ class RadarOrchestrationService:
         return bool(affected)
 
     async def stop_radar_service(
-        self,
-        container_name: str | None = None,
-        container_id: str | None = None,
-        *,
-        deployment_revision: str | None = None,
+        self, service_id: str, *, deployment_revision: str | None = None
     ) -> bool:
-        """
-        Stop and remove a running RADAR service.
-
-        Args:
-            container_name (str): Name of the container to stop
-            container_id (str): ID of the container to stop
-
-        Returns:
-            bool: True if service was stopped, False otherwise
-        """
-        if not exactly_one(container_name, container_id, "stop"):
-            return False
-
+        """Stop a monitor and remove its workload; False when there is none."""
         await lock_collection_configuration(self.session)
         await require_application_writes(
             self.session, deployment_revision=deployment_revision
         )
 
-        service = await find_service(self.session, container_name, container_id)
+        service = await find_service(self.session, service_id)
         if not service:
-            logger.warning(
-                "No RADAR service found with identifier: %s",
-                container_name or container_id,
-            )
+            logger.warning("No RADAR service found with id: %s", service_id)
             return False
 
         await self._cancel_pipeline_activations(service.id)
@@ -602,9 +583,5 @@ class RadarOrchestrationService:
         await self.session.commit()
         return True
 
-    async def get_radar_service(
-        self, container_name: str | None = None, container_id: str | None = None
-    ) -> dict[str, Any] | None:
-        return await RadarServiceQueries(self.session, self.workloads).get(
-            container_name=container_name, container_id=container_id
-        )
+    async def get_radar_service(self, service_id: str) -> dict[str, Any] | None:
+        return await RadarServiceQueries(self.session, self.workloads).get(service_id)

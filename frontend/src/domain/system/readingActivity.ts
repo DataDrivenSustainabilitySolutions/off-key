@@ -47,7 +47,7 @@ export function readingActivity(node: Pick<ExplorerNode, "streamIds" | "connecti
   let listening = false;
   for (const id of node.streamIds) {
     const binding = runtime?.bindings?.[id];
-    const connectionId = binding?.connection_id ?? node.connectionId;
+    const connectionId = binding?.broker_id ?? node.connectionId;
     const sourceState = runtime?.ingress?.sources?.[connectionId ?? ""]?.state;
     const recording = persistentReady && binding && binding.policy.mode !== "off"
       && LISTENING_STATES.has(sourceState ?? "");
@@ -56,7 +56,7 @@ export function readingActivity(node: Pick<ExplorerNode, "streamIds" | "connecti
     if (recording && recent(receipt?.fresh_received_at, now, window)) {
       return { receiving: true, label: receivingLabel(window, false, sourceState !== "connected") };
     }
-    const connection = status?.connections.find(item => item.connection_id === connectionId && LISTENING_STATES.has(item.state));
+    const connection = status?.connections.find(item => item.broker_id === connectionId && LISTENING_STATES.has(item.state));
     const preview = source?.liveStreamIds.includes(id) && status?.active
       && (status.phase === "live" || status.phase === "reconnecting") && connection;
     if (preview) {

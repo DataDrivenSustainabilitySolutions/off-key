@@ -24,11 +24,11 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
     const inputs = index.inputs.get(service.id) ?? [];
     const name = serviceName(service, inputs);
     const paths = [...new Set(inputs.map(input => input.path))];
-    const scope = paths.join(" · ") || `${service.mqtt_topics.length} ${service.mqtt_topics.length === 1 ? "input" : "inputs"}`;
+    const scope = paths.join(" · ") || `${service.reading_ids.length} ${service.reading_ids.length === 1 ? "input" : "inputs"}`;
     const state = serviceState(service);
     // Problems first, then favourites, then everything else by name.
     const rank = state.category === "attention" ? 0 : favourites.has(service.id) ? 1 : 2;
-    return { service, name, scope, state, rank, search: `${name} ${scope} ${service.model_type ?? ""} ${inputs.map(input => input.stream.label).join(" ")} ${service.mqtt_topics.join(" ")}`.toLocaleLowerCase() };
+    return { service, name, scope, state, rank, search: `${name} ${scope} ${service.model_type ?? ""} ${inputs.map(input => input.stream.label).join(" ")} ${service.reading_ids.join(" ")}`.toLocaleLowerCase() };
   }).sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name) || a.service.id.localeCompare(b.service.id)), [services, index, favourites]);
   const matching = useMemo(() => rows.filter(row => !deferred || row.search.includes(deferred.toLocaleLowerCase())), [rows, deferred]);
   const shown = useMemo(() => matching.filter(row => filter === "all" || (filter === "favourites" ? favourites.has(row.service.id) : row.state.category === filter)),
@@ -75,7 +75,7 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                   event.preventDefault(); onOpen(service.id);
                 }}>{row.name}</Link>
                   <small className="mn-mobile-scope" title={row.scope}>{row.scope}</small></div>
-                <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</small></div>
+                <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.reading_ids.length} {service.reading_ids.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
                   {progress && <small>{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples</small>}
                   {service.operational_status.updated_at && <small className="mn-service-time">Reported <RelativeTime value={service.operational_status.updated_at} /></small>}</div>

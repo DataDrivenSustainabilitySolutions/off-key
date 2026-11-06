@@ -173,7 +173,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       const result = await validateGraph();
       if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
-        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_service_id: replaceId ?? null });
+        bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null });
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setChecking(false); }
   };

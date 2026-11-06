@@ -10,7 +10,7 @@ const CATEGORIES: Record<string, string> = { systemVoltage: "Voltage", systemCur
 export const fulfillJson = (route: Route, json: unknown) => route.fulfill({ json, headers: CORS });
 
 export type DetailsFeeds = {
-  chargerId: string;
+  deviceId: string;
   sensors?: string[];
   /** First page of readings, then `laterTelemetry` once released. */
   telemetry: unknown[];
@@ -24,11 +24,11 @@ export type DetailsFeeds = {
 };
 
 /**
- * Serves the whole /details/:id page from fixtures behind a signed-in session,
+ * Serves the whole /details/:deviceId page from fixtures behind a signed-in session,
  * so the chart journeys need no running stack. Unknown API paths fail the test.
  */
 export async function installDetailsMockApi(page: Page, {
-  chargerId, sensors = ["systemVoltage"], telemetry, laterTelemetry = [], evidence, laterEvidence = [],
+  deviceId, sensors = ["systemVoltage"], telemetry, laterTelemetry = [], evidence, laterEvidence = [],
   anomalies = [], monitors = [], theme = "light",
 }: DetailsFeeds) {
   const released = { telemetry: false, evidence: false };
@@ -44,7 +44,13 @@ export async function installDetailsMockApi(page: Page, {
     const url = new URL(route.request().url());
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const incremental = url.searchParams.has("after_created");
-    switch (url.pathname.replace(/^\/api(?=\/v1\/)/u, "")) {
+    const path = url.pathname.replace(/^\/api(?=\/v1\/)/u, "");
+    // Every catalogue reading serves the same recorded values.
+    const reading = /^\/v1\/readings\/([^/]+)\/measurements$/u.exec(path)?.[1];
+    if (reading && sensors.includes(decodeURIComponent(reading))) {
+      return fulfillJson(route, !incremental ? telemetry : released.telemetry ? laterTelemetry : []);
+    }
+    switch (path) {
       case "/v1/me":
         return fulfillJson(route, {
           id: 1, email: "charts@example.test", role: "admin",
@@ -53,20 +59,19 @@ export async function installDetailsMockApi(page: Page, {
         });
       case "/v1/favorites":
         return fulfillJson(route, []);
-      case "/v1/system":
+      case "/v1/catalogue":
         return fulfillJson(route, {
-          document: { streams: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },
-          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: chargerId, telemetry_key: key }])) },
+          document: {
+            devices: [{ id: deviceId, label: deviceId }],
+            readings: sensors.map(key => ({ id: key, device_id: deviceId, category: CATEGORIES[key] ?? key })),
+          },
+          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { device_id: deviceId }])) },
         });
-      case `/v1/telemetry/${chargerId}/type`:
-        return fulfillJson(route, sensors);
-      case `/v1/telemetry/${chargerId}/data`:
-        return fulfillJson(route, !incremental ? telemetry : released.telemetry ? laterTelemetry : []);
-      case "/v1/anomalies":
+      case "/v1/alarms":
         return fulfillJson(route, anomalies);
-      case "/v1/monitors/all":
+      case "/v1/monitors":
         return fulfillJson(route, monitors);
-      case "/v1/monitors/evidence/chart":
+      case "/v1/evidence/chart":
         return fulfillJson(route, !incremental ? evidence : released.evidence ? laterEvidence : []);
       default:
         throw new Error(`Unexpected mocked API request: ${url.pathname}`);
@@ -82,8 +87,8 @@ export async function installDetailsMockApi(page: Page, {
     await response;
   };
   return {
-    publish: () => release(["telemetry", "evidence"], `/telemetry/${chargerId}/data`),
-    publishTelemetry: () => release(["telemetry"], `/telemetry/${chargerId}/data`),
-    releaseEvidence: () => release(["evidence"], "/monitors/evidence/chart"),
+    publish: () => release(["telemetry", "evidence"], "/measurements"),
+    publishTelemetry: () => release(["telemetry"], "/measurements"),
+    releaseEvidence: () => release(["evidence"], "/v1/evidence/chart"),
   };
 }

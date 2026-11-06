@@ -11,7 +11,7 @@ import type {
   LiveStream,
 } from "@/types/system-live";
 
-const SYSTEM_LIVE_ENDPOINT = "/v1/system/live";
+const LIVE_ENDPOINT = "/v1/live";
 export const LIVE_HISTORY_LIMIT = 8192;
 const HISTORY_MS = 2 * 60 * 60 * 1000;
 const POLL_MS = 1000;
@@ -30,25 +30,25 @@ const options = { redirectOnUnauthorized: false, timeout: 10000 };
 const transport: Transport = {
   create: (revision, streamIds) =>
     apiUtils.post(
-      `${SYSTEM_LIVE_ENDPOINT}/leases`,
-      { expected_revision: revision, stream_ids: streamIds },
+      `${LIVE_ENDPOINT}/views`,
+      { expected_revision: revision, reading_ids: streamIds },
       options,
     ),
   renew: (id, signal, streamIds) =>
-    apiUtils.put<LiveLease>(
-      `${SYSTEM_LIVE_ENDPOINT}/leases/${encodeURIComponent(id)}`,
-      { stream_ids: streamIds },
+    apiUtils.post<LiveLease>(
+      `${LIVE_ENDPOINT}/views/${encodeURIComponent(id)}/renew`,
+      { reading_ids: streamIds },
       { ...options, signal },
     ),
   read: (sequence, signal) =>
-    apiUtils.get(SYSTEM_LIVE_ENDPOINT, {
+    apiUtils.get(`${LIVE_ENDPOINT}/measurements`, {
       ...options,
       signal,
       params: { after_sequence: sequence },
     }),
   release: (id) =>
     apiUtils.delete(
-      `${SYSTEM_LIVE_ENDPOINT}/leases/${encodeURIComponent(id)}`,
+      `${LIVE_ENDPOINT}/views/${encodeURIComponent(id)}`,
       undefined,
       options,
     ),
@@ -101,12 +101,12 @@ class LiveHistory {
     if (
       numeric(sample.value) === undefined ||
       time === null ||
-      sample.sequence <= (this.latestSequences.get(sample.stream_id) ?? -1)
+      sample.sequence <= (this.latestSequences.get(sample.reading_id) ?? -1)
     )
       return;
-    this.latestSequences.set(sample.stream_id, sample.sequence);
+    this.latestSequences.set(sample.reading_id, sample.sequence);
     const second = Math.floor(time / 1000);
-    const key = `${sample.stream_id}\u0000${second}`;
+    const key = `${sample.reading_id}\u0000${second}`;
     const prior = this.slots.get(key);
     if (prior !== undefined) {
       // A scope reset replays observations. Keep the newest real arrival in
@@ -117,7 +117,7 @@ class LiveHistory {
       return;
     }
     const evicted = this.rows[this.cursor];
-    if (evicted) this.slots.delete(`${evicted.stream_id}\u0000${Math.floor(timestamp(evicted.received_at)! / 1000)}`);
+    if (evicted) this.slots.delete(`${evicted.reading_id}\u0000${Math.floor(timestamp(evicted.received_at)! / 1000)}`);
     this.slots.set(key, this.cursor);
     this.rows[this.cursor] = sample;
     this.cursor = (this.cursor + 1) % LIVE_HISTORY_LIMIT;
@@ -134,7 +134,7 @@ class LiveHistory {
     const cutoff = Date.now() - HISTORY_MS;
     for (let index = 0; index < this.size; index++) {
       const sample = this.rows[(start + index) % LIVE_HISTORY_LIMIT];
-      if (sample?.stream_id !== id) continue;
+      if (sample?.reading_id !== id) continue;
       const time = timestamp(sample.received_at);
       const value = numeric(sample.value);
       if (time !== null && time >= cutoff && value !== undefined)
@@ -202,14 +202,14 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
       this.owner = owner;
     }
     if (this.document !== document) {
-      this.streamIds = new Set(document.streams.map((stream) => stream.id));
+      this.streamIds = new Set(document.readings.map((stream) => stream.id));
       this.connectionIds = new Set(
-        document.connections.map((connection) => connection.id),
+        document.brokers.map((connection) => connection.id),
       );
       this.deviceStreams = new Map(
         document.devices.map((device) => [device.id, []]),
       );
-      for (const stream of document.streams) {
+      for (const stream of document.readings) {
         if (stream.device_id)
           this.deviceStreams.get(stream.device_id)?.push(stream.id);
       }
@@ -315,12 +315,12 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
         const scopeVersion = this.scopeVersion;
         const lease = await this.api.create(this.revision, this.scopeIds);
         if (context !== this.generation) {
-          void this.api.release(lease.lease_id).catch(() => {});
+          void this.api.release(lease.view_id).catch(() => {});
           return;
         }
         this.clearTimeout("read");
-        this.leaseId = lease.lease_id;
-        this.accept(lease.telemetry, false);
+        this.leaseId = lease.view_id;
+        this.accept(lease.measurements, false);
         if (context === this.generation) this.scheduleRenew(context, scopeVersion === this.scopeVersion ? RENEW_MS : 150);
       } catch (error) {
         if (context !== this.generation) return;
@@ -385,7 +385,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
       const lease = await this.api.renew(id, controller.signal, this.scopeIds);
       if (context !== this.generation) return;
       this.clearTimeout("renew");
-      if (lease.telemetry.revision !== this.revision) {
+      if (lease.measurements.revision !== this.revision) {
         this.fail(
           new Error(
             "The saved system changed. Connect again to use its current definition.",
@@ -468,38 +468,38 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
     const knownStreams = this.streamIds;
     const knownConnections = this.connectionIds;
     this.snapshots.clear();
-    for (const connection of batch.connections)
-      if (knownConnections.has(connection.connection_id))
-        this.connections.set(connection.connection_id, connection);
-    for (const record of batch.streams)
-      if (knownStreams.has(record.stream_id))
-        this.records.set(record.stream_id, record);
+    for (const connection of batch.brokers)
+      if (knownConnections.has(connection.broker_id))
+        this.connections.set(connection.broker_id, connection);
+    for (const record of batch.readings)
+      if (knownStreams.has(record.reading_id))
+        this.records.set(record.reading_id, record);
     for (const sample of batch.samples)
-      if (knownStreams.has(sample.stream_id)) this.history.add(sample);
+      if (knownStreams.has(sample.reading_id)) this.history.add(sample);
     this.sequence = batch.sequence;
     this.hasBaseline = true;
     if (animate && !replay && batch.sequence > previousSequence) {
-      const changed = batch.streams.filter((record) => {
+      const changed = batch.readings.filter((record) => {
         const received = timestamp(record.fresh_received_at);
         return (
-          knownStreams.has(record.stream_id) &&
-          record.fresh_count > (previousFresh.get(record.stream_id) ?? 0) &&
+          knownStreams.has(record.reading_id) &&
+          record.fresh_count > (previousFresh.get(record.reading_id) ?? 0) &&
           received !== null &&
           Date.now() - received < 5000
         );
       });
       // Rotate capped visual representatives. Cumulative counters retain every receipt.
       const others = changed.filter(
-        (record) => record.stream_id !== this.priorityId,
+        (record) => record.reading_id !== this.priorityId,
       );
       const ordered = [
-        ...changed.filter((record) => record.stream_id === this.priorityId),
+        ...changed.filter((record) => record.reading_id === this.priorityId),
         ...others.slice(this.pulseOffset),
         ...others.slice(0, this.pulseOffset),
       ];
       for (const record of ordered.slice(0, MAX_PULSES)) {
         const message = {
-          nodeId: record.stream_id,
+          nodeId: record.reading_id,
           timestamp: timestamp(record.fresh_received_at)!,
           value: numeric(record.value ?? "") ?? Number.NaN,
         };

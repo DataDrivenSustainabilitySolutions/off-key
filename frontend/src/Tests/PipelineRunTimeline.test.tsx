@@ -12,7 +12,7 @@ const event = (kind: string, stage: string | null, detail: Record<string, unknow
   ({ occurred_at: at, source: kind.startsWith("activation") || kind.startsWith("workload") || kind === "run_ended" ? "tactic" : "radar", kind, stage, detail });
 
 const timeline = (events: PipelineRunEventView[], extra: Partial<Timeline> = {}): Timeline => ({
-  run_id: "run-1", service_id: "svc-1", status: "running", created_at: "2026-11-03T09:59:00Z", events, ...extra,
+  run_id: "run-1", monitor_id: "svc-1", status: "running", created_at: "2026-11-03T09:59:00Z", events, ...extra,
 });
 
 describe("run timeline entries", () => {

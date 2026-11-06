@@ -133,7 +133,7 @@ export function PipelineActivation({
       if (signal.aborted) return;
       setOperation(next);
       setError("");
-      if (next.phase === "succeeded") onComplete(next.service_id);
+      if (next.phase === "succeeded") onComplete(next.monitor_id);
     } catch (reason) {
       if (!signal.aborted) setError(getErrorMessage(reason));
     }
@@ -156,7 +156,7 @@ export function PipelineActivation({
       bindings,
       display_name: name.trim(),
       idempotency_key: key.current,
-      replace_service_id: replaceService?.id ?? null,
+      replace_monitor_id: replaceService?.id ?? null,
     };
     setPending(request);
     retainActivationRequest(requestKey, request);
@@ -166,7 +166,7 @@ export function PipelineActivation({
       setPending(undefined);
       setOperation(next);
       onOperation(next.id);
-      if (next.phase === "succeeded") onComplete(next.service_id);
+      if (next.phase === "succeeded") onComplete(next.monitor_id);
     } catch (reason) {
       if (
         reason instanceof ApiRequestError &&
@@ -201,7 +201,7 @@ export function PipelineActivation({
         <>
           <p role="status">Activation {operation.phase.replace(/_/g, " ")}</p>
           <p className="pl-help">
-            Operation {operation.id} · resulting service {operation.service_id}
+            Operation {operation.id} · resulting service {operation.monitor_id}
           </p>
           {operation.error && (
             <p role="alert" className="pl-error">
@@ -352,7 +352,7 @@ export function PipelineActivation({
                   previousBindings[slot.id] !== bindings[slot.id] && (
                     <small>
                       Binding changed from{" "}
-                      {document.streams.find(
+                      {document.readings.find(
                         (input) => input.id === previousBindings[slot.id],
                       )?.label ?? previousBindings[slot.id]}
                     </small>
@@ -377,7 +377,7 @@ export function PipelineActivation({
             {replaceService && (
               <p className="pl-warning">
                 Activation stops “
-                {replaceService.display_name ?? replaceService.container_name}”
+                {replaceService.display_name ?? replaceService.id}”
                 before starting the successor. Monitoring is interrupted during
                 replacement and fresh learning/calibration.
               </p>

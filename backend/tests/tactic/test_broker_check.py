@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import system as gateway
+from off_key_api_gateway.api.v1 import catalogue as gateway
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
@@ -178,10 +178,10 @@ def test_only_administrators_check_saved_brokers(monkeypatch):
     assert unknown.status_code == 404
     assert result.status_code == 200
     body = result.json()
-    assert body["connection_id"] == "broker"
+    assert body["broker_id"] == "broker"
     assert body["status"] == "blocked"
     assert set(body) == {
-        "connection_id",
+        "broker_id",
         "status",
         "message",
         "latency_ms",
@@ -192,7 +192,7 @@ def test_only_administrators_check_saved_brokers(monkeypatch):
 async def test_gateway_forwards_the_check_with_the_member_token(monkeypatch):
     request = AsyncMock(return_value={})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.check_broker_connection(
+    await gateway.check_broker(
         SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
     )
     request.assert_awaited_with(
@@ -231,9 +231,7 @@ def test_only_administrators_reconnect_a_recorded_broker(monkeypatch):
 async def test_gateway_forwards_a_reconnect_with_the_member_token(monkeypatch):
     request = AsyncMock(return_value={})
     monkeypatch.setattr(gateway.tactic, "request", request)
-    await gateway.reconnect_broker(
-        SystemConnectionCheckScope(connection_id="broker"), "Bearer token"
-    )
+    await gateway.reconnect_broker("broker", "Bearer token")
     request.assert_awaited_with(
         "POST",
         "/api/v1/system/connections/reconnect",

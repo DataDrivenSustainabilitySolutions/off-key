@@ -81,7 +81,7 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
     gateway.state.limiter = limiter
     gateway.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     gateway.add_middleware(SlowAPIMiddleware)
-    gateway.include_router(gateway_router, prefix="/api/v1/monitors")
+    gateway.include_router(gateway_router, prefix="/api/v1/pipelines")
     try:
         async with asyncio.timeout(10):
             while not server.started:
@@ -93,7 +93,7 @@ async def test_automatic_compilation_cannot_exhaust_writes_or_polling(
             base_url="http://gateway",
             headers={"Authorization": f"Bearer {token}"},
         ) as client:
-            path = f"/api/v1/monitors/pipelines/{design.id}"
+            path = f"/api/v1/pipelines/{design.id}"
             for _ in range(31):
                 response = await client.post(
                     path + "/validate",

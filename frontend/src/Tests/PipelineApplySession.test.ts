@@ -9,9 +9,9 @@ import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { apply: vi.fn(), activation: vi.fn(), cancel: vi.fn() } }));
 const request = () => ({ definition: normalizeDefinition({}), layout: normalizeLayout(), bindings: { value: "current" },
-  display_name: "Health", idempotency_key: "one-immutable-request", replace_service_id: null });
+  display_name: "Health", idempotency_key: "one-immutable-request", replace_monitor_id: null });
 const operation = (phase: PipelineActivationView["phase"] = "requested"): PipelineActivationView => ({
-  id: "activation", phase, service_id: "service", run_id: "run", predecessor_service_id: null, error: null,
+  id: "activation", phase, monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: null,
   created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z",
 });
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });

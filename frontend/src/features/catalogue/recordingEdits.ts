@@ -12,12 +12,12 @@ export function recordingEdit(scope: RuleScope, choice: Choice, interval: number
     ...scope.kind === "reading" ? {} : { include_future_readings: true } };
 }
 
-const broker = (connection_id: string): RuleScope => ({ kind: "broker", connection_id });
+const broker = (broker_id: string): RuleScope => ({ kind: "broker", broker_id });
 /** Record every message of a broker, including readings registered later. */
 export const startRecording = (id: string): RuleEdit[] => [recordingEdit(broker(id), "original", 10)];
 /** Stop every recording on a broker: its own rule and any topic or reading that records on its own. */
 export function stopRecording(id: string, runtime?: SystemRuntime): RuleEdit[] {
-  const exceptions = (runtime?.collection_rules ?? []).filter(rule => rule.scope.connection_id === id
+  const exceptions = (runtime?.collection_rules ?? []).filter(rule => rule.scope.broker_id === id
     && rule.scope.kind !== "broker" && rule.policy && rule.policy.mode !== "off");
   return [{ scope: broker(id), operation: "inherit" }, ...exceptions.map(rule => ({ scope: rule.scope, operation: "inherit" as const }))];
 }

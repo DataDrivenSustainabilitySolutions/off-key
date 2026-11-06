@@ -13,13 +13,17 @@ import { ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readin
 import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 
-type Input = { id: string; key: string; entityId: string; telemetryType: string };
+type Input = { id: string; key: string };
 
 class HistoryCursors {
   readonly telemetry = new Map<string, TelemetryCursor | undefined>();
-  readonly evidence = new Map<string, MonitoringEvidenceCursor | undefined>();
+  private evidenceCursor: MonitoringEvidenceCursor | undefined;
   private seeded = false;
   constructor(private readonly cache: ReadingHistoryCache, private readonly inputs: Input[]) {}
+
+  get evidence() { return this.evidenceCursor; }
+  /** Keeps the last cursor when a page brings no newer evidence. */
+  advanceEvidence(cursor: MonitoringEvidenceCursor | undefined) { this.evidenceCursor = cursor ?? this.evidenceCursor; }
 
   /** Resume from cached telemetry fetched within the last 30 seconds. */
   seed() {
@@ -32,7 +36,7 @@ class HistoryCursors {
   }
 }
 
-/** Telemetry polls per visible reading; joint evidence polls once per entity. */
+/** Telemetry polls per visible reading; the monitor's joint evidence polls once for all its readings. */
 export function useServiceHistory(
   serviceId: string,
   inputs: MonitoringInput[],
@@ -44,12 +48,12 @@ export function useServiceHistory(
   const cache = sharedCache ?? localCache;
   // Stable scalar request identities avoid restarting polls on service heartbeats.
   const requests = JSON.stringify(inputs.flatMap(({ stream, binding }) => {
-    const key = readingHistoryKey(connections.find(item => item.id === stream.connection_id), stream, binding.entity_id, binding.telemetry_key);
-    return key ? [{ id: stream.id, key, entityId: binding.entity_id, telemetryType: binding.telemetry_key }] : [];
+    const key = readingHistoryKey(connections.find(item => item.id === stream.broker_id), stream, binding);
+    return key ? [{ id: stream.id, key }] : [];
   }));
-  const entities = JSON.stringify([...new Set(allInputs.map(input => input.binding.entity_id))].sort());
-  const context = useMemo(() => ({ inputs: JSON.parse(requests) as Input[], entities: JSON.parse(entities) as string[],
-    serviceKey: `monitoring-history:${serviceId}` }), [requests, entities, serviceId]);
+  const readings = JSON.stringify([...new Set(allInputs.map(input => input.stream.id))].sort());
+  const context = useMemo(() => ({ inputs: JSON.parse(requests) as Input[], readingIds: JSON.parse(readings) as string[],
+    serviceKey: `monitoring-history:${serviceId}` }), [requests, readings, serviceId]);
   const keys = useMemo(() => [context.serviceKey, ...context.inputs.map(input => input.key)], [context]);
   const subscribe = useCallback((notify: () => void) => {
     const unsubscribes = keys.map(key => cache.subscribe(key, notify));
@@ -72,7 +76,7 @@ export function useServiceHistory(
         const initial = cursors.telemetry.get(input.key);
         const points = await drainForward({
           cursor: initial,
-          fetchPage: cursor => getTelemetryData(input.entityId, input.telemetryType, signal, cursor),
+          fetchPage: cursor => getTelemetryData(input.id, signal, cursor),
           cursorOf: getTelemetryCursor,
           pageSize: TELEMETRY_PAGE_SIZE,
         });
@@ -80,7 +84,7 @@ export function useServiceHistory(
         const next = getTelemetryCursor(points) ?? initial;
         cursors.telemetry.set(input.key, next);
         cache.update(input.key, entry => ({ ...entry, telemetryCursor: next, telemetryFetchedAt: Date.now(), data: { ...entry.data,
-          binding: { entityId: input.entityId, telemetryType: input.telemetryType },
+          binding: { readingId: input.id },
           telemetry: mergeReadingHistory(entry.data.telemetry, points, 2000), loading: false, error: "",
         } }));
       } catch {
@@ -89,23 +93,21 @@ export function useServiceHistory(
     }));
   }, [cache, context, cursors]);
   const pollEvidence = useCallback(async (signal: AbortSignal) => {
-    const results = await Promise.allSettled(context.entities.map(async entityId => {
-      const initial = cursors.evidence.get(entityId);
-      const rows = await drainForward({
-        cursor: initial,
-        fetchPage: cursor => apiUtils.get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(entityId, cursor, serviceId),
-          { signal, redirectOnUnauthorized: false }),
-        cursorOf: getMonitoringEvidenceCursor,
-        pageSize: EVIDENCE_PAGE_SIZE,
-      });
-      if (!signal.aborted) cursors.evidence.set(entityId, getMonitoringEvidenceCursor(rows) ?? initial);
-      return rows.filter(row => row.service_id === serviceId);
-    }));
+    if (context.readingIds.length === 0) return;
+    const [result] = await Promise.allSettled([drainForward({
+      cursor: cursors.evidence,
+      fetchPage: cursor => apiUtils.get<MonitoringChartEvidence[]>(
+        API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE({ readingIds: context.readingIds }, cursor, serviceId),
+        { signal, redirectOnUnauthorized: false }),
+      cursorOf: getMonitoringEvidenceCursor,
+      pageSize: EVIDENCE_PAGE_SIZE,
+    })]);
     if (signal.aborted) return;
-    const rows = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
+    if (result.status === "fulfilled") cursors.advanceEvidence(getMonitoringEvidenceCursor(result.value));
+    const rows = result.status === "fulfilled" ? result.value.filter(row => row.monitor_id === serviceId) : [];
     cache.update(context.serviceKey, entry => ({ ...entry, evidenceFetchedAt: Date.now(), data: { ...entry.data,
       evidence: mergeMonitoringChartEvidence(entry.data.evidence, rows), loading: false,
-      error: results.some(result => result.status === "rejected") ? "Detector history could not be updated." : "",
+      error: result.status === "rejected" ? "Detector history could not be updated." : "",
     } }));
   }, [cache, context, cursors, serviceId]);
   const chain = { schedule: "after-completion", overlap: "skip", pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true } as const;

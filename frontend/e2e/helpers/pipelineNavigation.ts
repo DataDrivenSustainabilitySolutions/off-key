@@ -27,7 +27,7 @@ export async function savePipelineTemplate(page: Page, name?: string, copy = fal
   if (name) await dialog.getByRole("textbox", { name: "Template name", exact: true }).fill(name);
   const saved = page.waitForResponse((response) => {
     const path = new URL(response.url()).pathname;
-    return response.request().method() === "POST" && path.endsWith("/monitors/pipelines")
+    return response.request().method() === "POST" && path.endsWith("/v1/pipelines")
       || response.request().method() === "PUT" && path.endsWith("/draft");
   });
   await dialog.getByRole("button", { name: copy ? "Save as new template" : /^(Save|Update) template$/, exact: true }).click();

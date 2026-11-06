@@ -35,6 +35,6 @@ export function PipelineApplyStatus({ apply, onInspect }: {
       {terminal && operation?.phase !== "succeeded" && <button type="button" onClick={session.reset}>Return to setup</button>}
     </div>
     {cancelRefused(operation) && <p>{REPLACEMENT_UNDER_WAY}</p>}
-    {request?.replace_service_id && operation?.phase === "failed" && <p>The previous service may have stopped. Check its status before trying again.</p>}
+    {request?.replace_monitor_id && operation?.phase === "failed" && <p>The previous service may have stopped. Check its status before trying again.</p>}
   </section>;
 }

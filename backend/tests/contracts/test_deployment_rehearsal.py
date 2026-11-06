@@ -34,34 +34,92 @@ pytestmark = [
 ]
 
 
-# The rollback reference (COMPATIBLE_REVISION in infra/tests/rehearsal_releases.py)
-# predates the REST rename, so while it runs the rehearsal calls its paths. Drop
-# a rewrite once the reference carries the new path.
-COMPATIBLE_RELEASE_PATHS = ((re.compile(r"^/v1/me$"), "/v1/members/me"),)
+# While the rollback reference (COMPATIBLE_REVISION in
+# infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
+# its answers under the current field names. The reference carries the current
+# REST paths, but it still shows how readings are recorded (topics, entities,
+# ingress keys) and names a run's catalogue revision and brokers the old way, so
+# its answers drop those recording fields and rename the rest.
+COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
+COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
+COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {
+    "system_revision": "catalogue_revision",
+    "source_id": "broker_id",
+    "source_label": "broker_label",
+    "entity_label": "device_label",
+}
+COMPATIBLE_RELEASE_DROPPED = frozenset(
+    {
+        "accepted_topic",
+        "collection_fingerprint",
+        "collection_generation",
+        "entity_id",
+        "input_key",
+        "mqtt_topics",
+        "system_schema_version",
+        "telemetry_key",
+    }
+)
+
+
+def current_field_names(value):
+    if isinstance(value, list):
+        return [current_field_names(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            COMPATIBLE_RELEASE_FIELDS.get(key, key): current_field_names(item)
+            for key, item in value.items()
+            if key not in COMPATIBLE_RELEASE_DROPPED
+        }
+    return value
 
 
 class RehearsalClient(httpx.Client):
-    """One client for both releases; ``compatible`` selects the older paths."""
+    """One client for both releases; ``compatible`` selects the older API."""
 
     compatible = False
 
     def build_request(self, method, url, **kwargs):
+        request = super().build_request(method, url, **kwargs)
         if self.compatible:
-            url = httpx.URL(url)
-            path = url.path
-            for pattern, replacement in COMPATIBLE_RELEASE_PATHS:
-                path = pattern.sub(replacement, path)
-            url = url.copy_with(path=path)
-        return super().build_request(method, url, **kwargs)
+            path = request.url.path
+            for only, pattern, replacement in COMPATIBLE_RELEASE_PATHS:
+                if only in (None, request.method):
+                    path = pattern.sub(replacement, path)
+            params = [
+                (COMPATIBLE_RELEASE_PARAMS.get(key, key), value)
+                for key, value in request.url.params.multi_items()
+            ]
+            request.url = request.url.copy_with(path=path, params=params)
+        return request
+
+    def send(self, request, **kwargs):
+        response = super().send(request, **kwargs)
+        if not self.compatible or "json" not in response.headers.get(
+            "content-type", ""
+        ):
+            return response
+        headers = [
+            (key, value)
+            for key, value in response.headers.multi_items()
+            if key.lower() not in {"content-encoding", "content-length"}
+        ]
+        return httpx.Response(
+            response.status_code,
+            headers=headers,
+            json=current_field_names(response.json()),
+            request=request,
+        )
+
+
+def get_measurements(client, entity, key="temperature"):
+    return client.get(f"/v1/readings/{entity.readings[key]}/measurements")
 
 
 def wait_for_measurement(client, entity, value):
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        response = client.get(
-            f"/v1/telemetry/{entity.entity_id}/data",
-            params={"type": entity.keys["temperature"]},
-        )
+        response = get_measurements(client, entity)
         response.raise_for_status()
         points = response.json()
         if any(point["value"] == value for point in points):
@@ -93,7 +151,7 @@ def refresh_authentication(client):
 def wait_for_activation(client, identifier):
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:
-        progress = get_json(client, f"/v1/monitors/pipeline-activations/{identifier}")
+        progress = get_json(client, f"/v1/pipeline-activations/{identifier}")
         if progress["phase"] == "succeeded":
             return progress
         if progress["phase"] in {"failed", "cancelled"}:
@@ -192,7 +250,7 @@ def exercise_graph(client, entity, service_id, run_id, batch):
     deadline = time.monotonic() + 120
     state = None
     while time.monotonic() < deadline:
-        state = get_json(client, f"/v1/monitors/{service_id}/pipeline-state")
+        state = get_json(client, f"/v1/monitors/{service_id}/pipeline/state")
         if state:
             assert state["run_id"] == run_id
             assert state["phase"] != "failed", state
@@ -230,7 +288,7 @@ def exercise_graph(client, entity, service_id, run_id, batch):
 
 
 def create_saved_graph(client, entity):
-    catalog = get_json(client, "/v1/monitors/pipelines/catalog")
+    catalog = get_json(client, "/v1/pipeline-components")
     assert catalog["authoring_enabled"]
     definition = graph_definition(catalog)
     layout = {
@@ -242,22 +300,24 @@ def create_saved_graph(client, entity):
     }
     display_name = "Saved graph " + entity.device_id
     created = client.post(
-        "/v1/monitors/pipelines",
+        "/v1/pipelines",
         json={"name": display_name, "definition": definition, "layout": layout},
     )
     created.raise_for_status()
     design = created.json()
     published = client.post(
-        f"/v1/monitors/pipelines/{design['id']}/revisions",
+        f"/v1/pipelines/{design['id']}/revisions",
         json={"expected_version": design["version"]},
     )
     published.raise_for_status()
     revision = published.json()
     activated = client.post(
-        "/v1/monitors/pipeline-activations",
+        "/v1/pipeline-activations",
         json={
             "revision_id": revision["id"],
-            "bindings": dict(zip(("processed", "raw"), entity.stream_ids, strict=True)),
+            "bindings": dict(
+                zip(("processed", "raw"), entity.reading_ids, strict=True)
+            ),
             "display_name": display_name,
             "idempotency_key": "rehearsal-" + entity.device_id,
         },
@@ -265,32 +325,34 @@ def create_saved_graph(client, entity):
     activated.raise_for_status()
     activation = wait_for_activation(client, activated.json()["id"])
     exercise_graph(
-        client, entity, activation["service_id"], activation["run_id"], batch=0
+        client, entity, activation["monitor_id"], activation["run_id"], batch=0
     )
-    view = get_json(client, f"/v1/monitors/{activation['service_id']}/pipeline")
+    view = get_json(client, f"/v1/monitors/{activation['monitor_id']}/pipeline")
     assert {
         item["slot_id"]: item["reading_id"]
         for item in view["run"]["execution"]["bindings"]
-    } == dict(zip(("processed", "raw"), entity.stream_ids, strict=True))
-    assert {
-        item["accepted_topic"] for item in view["run"]["execution"]["bindings"]
-    } == set(entity.accepted_topics)
+    } == dict(zip(("processed", "raw"), entity.reading_ids, strict=True))
+    # How TACTIC records a bound reading stays inside; the run names readings only.
+    assert all(
+        set(item) <= {"slot_id", "reading_id", "unit"}
+        for item in view["run"]["execution"]["bindings"]
+    )
     # A per-run arrangement is independent from the published design layout.
     changed_layout = deepcopy(view["layout"])
     changed_layout["nodes"]["joined"]["x"] += 83
     arranged = client.put(
-        f"/v1/monitors/{activation['service_id']}/pipeline-layout", json=changed_layout
+        f"/v1/monitors/{activation['monitor_id']}/pipeline/layout", json=changed_layout
     )
     arranged.raise_for_status()
     return SavedGraph(
         display_name=display_name,
-        design=get_json(client, f"/v1/monitors/pipelines/{design['id']}"),
+        design=get_json(client, f"/v1/pipelines/{design['id']}"),
         revision=revision,
         initial_run=view["run"],
         layout=arranged.json(),
         activation_id=activation["id"],
         run_ids=[view["run"]["id"]],
-        service_ids=[activation["service_id"]],
+        service_ids=[activation["monitor_id"]],
     )
 
 
@@ -367,7 +429,7 @@ def assert_one_graph_workload(saved, expected_image):
 
 
 def assert_graph_restored(client, entity, saved, workers, release):
-    assert not get_json(client, "/v1/monitors/pipelines/catalog")["authoring_enabled"]
+    assert not get_json(client, "/v1/pipeline-components")["authoring_enabled"]
     matches = [item for item in workers if item["display_name"] == saved.display_name]
     assert len(matches) == 1
     service_id = matches[0]["id"]
@@ -390,7 +452,7 @@ def assert_graph_restored(client, entity, saved, workers, release):
     assert [item["id"] for item in view["history"]] == list(reversed(saved.run_ids))
     for ancestor in view["history"]:
         assert ancestor["revision_id"] == saved.revision["id"]
-        retained = get_json(client, f"/v1/monitors/{ancestor['service_id']}/pipeline")[
+        retained = get_json(client, f"/v1/monitors/{ancestor['monitor_id']}/pipeline")[
             "run"
         ]
         assert retained["id"] == ancestor["id"]
@@ -398,13 +460,11 @@ def assert_graph_restored(client, entity, saved, workers, release):
             retained["execution"]["bindings"]
             == saved.initial_run["execution"]["bindings"]
         )
-    assert (
-        get_json(client, f"/v1/monitors/pipelines/{saved.design['id']}") == saved.design
-    )
+    assert get_json(client, f"/v1/pipelines/{saved.design['id']}") == saved.design
     assert (
         get_json(
             client,
-            f"/v1/monitors/pipelines/{saved.design['id']}/revisions/{saved.revision['id']}",
+            f"/v1/pipelines/{saved.design['id']}/revisions/{saved.revision['id']}",
         )
         == saved.revision
     )
@@ -424,7 +484,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
         member = get_json(client, "/v1/me")
         discovery_fields = {
             name: model["fields"]
-            for name, model in get_json(client, "/v1/monitors/models").items()
+            for name, model in get_json(client, "/v1/detectors").items()
         }
         assert all(discovery_fields.values())
         entity = add_recorded_entity(
@@ -433,8 +493,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
         graph_entity = add_recorded_entity(
             client, label="Rehearsal graph entity", keys=("current", "temperature")
         )
-        worker_name = "rehearsal-" + entity.device_id
-        snapshot = get_json(client, "/v1/system")
+        snapshot = get_json(client, "/v1/catalogue")
         topic = entity.topics["temperature"]
         graph = None
         completed = False
@@ -443,18 +502,20 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
             publish.single(topic, "23.5", hostname="localhost", port=1884, qos=1)
             saved_data = wait_for_measurement(client, entity, 23.5)
             started = client.post(
-                "/v1/monitors/start",
+                "/v1/monitors",
                 json={
-                    "container_name": worker_name,
                     "display_name": "Saved monitoring service",
-                    "mqtt_topics": list(entity.accepted_topics),
-                    "model_type": "pyod_iforest",
+                    "reading_ids": list(entity.reading_ids),
+                    "monitoring": {
+                        "strategy": "static_baseline",
+                        "model_type": "pyod_iforest",
+                    },
                 },
             )
             started.raise_for_status()
             wait_until_service_accepts_data(
                 client,
-                started.json()["service_id"],
+                started.json()["monitor_id"],
                 activation_id=started.json()["activation_id"],
             )
             current_release = json.loads(
@@ -505,9 +566,9 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 assert get_json(client, "/v1/me") == member
                 assert {
                     name: model["fields"]
-                    for name, model in get_json(client, "/v1/monitors/models").items()
+                    for name, model in get_json(client, "/v1/detectors").items()
                 } == discovery_fields
-                current = client.get("/v1/system").json()
+                current = client.get("/v1/catalogue").json()
                 assert current["revision"] == snapshot["revision"]
                 assert current["document"] == snapshot["document"]
                 assert current["runtime"]["bindings"] == snapshot["runtime"]["bindings"]
@@ -515,17 +576,8 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     current["runtime"]["collection_revision"]
                     == snapshot["runtime"]["collection_revision"]
                 )
-                assert (
-                    client.get(
-                        f"/v1/telemetry/{entity.entity_id}/data",
-                        params={"type": entity.keys["temperature"]},
-                    ).json()
-                    == saved_data
-                )
-                monitors = client.get(
-                    "/v1/monitors/all",
-                    params={"active_only": "true", "include_docker_status": "true"},
-                )
+                assert get_measurements(client, entity).json() == saved_data
+                monitors = client.get("/v1/monitors", params={"active": "true"})
                 monitors.raise_for_status()
                 workers = [
                     item
@@ -571,9 +623,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 completed
                 and not (directory / "stack/release-maintenance.json").exists()
             ):
-                monitors = client.get(
-                    "/v1/monitors/all", params={"include_docker_status": "false"}
-                ).json()
+                monitors = client.get("/v1/monitors").json()
                 for worker in monitors:
                     if worker["display_name"] == "Saved monitoring service" or (
                         graph is not None

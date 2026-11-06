@@ -17,7 +17,7 @@ export async function openPipelineWorkspace(page: Page) {
       async () => {
         try {
           const response = await page.request.get(
-            "/api/v1/monitors/pipelines/catalog",
+            "/api/v1/pipeline-components",
             {
               headers: { Authorization: `Bearer ${token}` },
               timeout: 5_000,

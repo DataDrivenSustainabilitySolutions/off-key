@@ -39,14 +39,13 @@ const acknowledgement = (value: SystemSnapshot) => value;
 const runtimeSnapshot = (status = "applied", revision = 1): SystemSnapshot => ({
   ...snapshot(revision),
   document: { ...document(),
-    connections: ["broker", "other"].map(id => ({ id, label: id, protocol: "mqtt", host: `${id}.example.test`, port: 1883, transport: "tcp", tls: false })),
-    streams: ["temperature", "humidity"].map((id, position) => ({ id, label: id, connection_id: position ? "other" : "broker", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
+    brokers: ["broker", "other"].map(id => ({ id, label: id, protocol: "mqtt", host: `${id}.example.test`, port: 1883, transport: "tcp", tls: false })),
+    readings: ["temperature", "humidity"].map((id, position) => ({ id, label: id, broker_id: position ? "other" : "broker", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
   },
   runtime: {
     mode: "collection", message: "Recording", collection_revision: 2, collection: { revision: 2, status },
     bindings: Object.fromEntries(["temperature", "humidity"].map((id, position) => [id, {
-      connection_id: position ? "other" : "broker", entity_id: "device", telemetry_key: id,
-      accepted_topic: `telemetry/device/${id}`, policy: { mode: "sample", interval_seconds: 10 },
+      broker_id: position ? "other" : "broker", policy: { mode: "sample", interval_seconds: 10 },
     }])),
     ingress: { sources: { broker: { state: "connected" }, other: { state: "connected" } } },
     latest_readings: { humidity: { value: 40, received_at: "2026-10-13T09:00:00Z", is_snapshot: false } },
@@ -114,7 +113,7 @@ describe("saved system persistence", () => {
     expect(result.current.saving).toBe(true);
     expect(result.current.document?.devices[0]?.label).toBe("Original device");
     expect(apiUtils.put).toHaveBeenCalledWith(
-      "/v1/system",
+      "/v1/catalogue",
       { expected_revision: 1, document: document("Saved name") },
       expect.objectContaining({ redirectOnUnauthorized: false }),
     );
@@ -264,7 +263,7 @@ describe("canonical system runtime polling", () => {
     await act(async () => {});
     expect(result.current.status).toBe("ready");
     await advanceRuntime(5000);
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: runtimeConnectionId ? ["temperature"] : ["temperature", "humidity"] }, expect.anything());
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: runtimeConnectionId ? ["temperature"] : ["temperature", "humidity"] }, expect.anything());
     expect(result.current.snapshot?.runtime.ingress?.sources).toEqual(runtimeConnectionId ? { other: { state: "connected" } } : {});
     expect(result.current.snapshot?.runtime.bindings?.humidity).toEqual(saved.runtime.bindings?.humidity);
     expect(result.current.snapshot?.runtime.latest_readings?.humidity).toEqual(saved.runtime.latest_readings?.humidity);
@@ -336,7 +335,7 @@ describe("canonical system runtime polling", () => {
     const signal = vi.mocked(apiUtils.post).mock.calls[0]![2]!.signal!;
     await act(async () => {
       expect(await result.current.applyCollection({ expected_revision: 1, expected_collection_revision: 2,
-        rule_changes: [{ scope: { kind: "reading", connection_id: "broker", reading_id: "temperature" }, operation: "set",
+        rule_changes: [{ scope: { kind: "reading", broker_id: "broker", reading_id: "temperature" }, operation: "set",
           policy: { mode: "original", interval_seconds: 10 } }] })).toBe(true);
     });
     expect(signal.aborted).toBe(true);
@@ -360,6 +359,6 @@ describe("canonical system runtime polling", () => {
     expect(result.current.revision).toBe(3);
     expect(result.current.document?.label).toBe("Changed catalogue");
     expect(apiUtils.get).toHaveBeenCalledTimes(2);
-    expect(apiUtils.get).toHaveBeenLastCalledWith("/v1/system", expect.objectContaining({ signal: expect.any(AbortSignal), redirectOnUnauthorized: false }));
+    expect(apiUtils.get).toHaveBeenLastCalledWith("/v1/catalogue", expect.objectContaining({ signal: expect.any(AbortSignal), redirectOnUnauthorized: false }));
   });
 });

@@ -94,7 +94,7 @@ export function ExplorerSidebar(props: Props) {
           </Popover.Content></Popover.Portal>
         </Popover.Root>}
         <span title={owner?.label}>{query ? `${rows.length === 100 ? "First " : ""}${rows.length} ${rows.length === 1 ? "match" : "matches"}`
-          : current?.kind === "root" ? `${brokers} ${brokers === 1 ? "broker" : "brokers"}${rows.some((row) => row.node.kind === "unassigned") ? " · unassigned entities" : ""}`
+          : current?.kind === "root" ? `${brokers} ${brokers === 1 ? "broker" : "brokers"}${rows.some((row) => row.node.kind === "unassigned") ? " · unassigned devices" : ""}`
             : `${rows.length} ${rows.length === 1 ? "item" : "items"}${owner ? ` · ${owner.label}` : ""}`}</span>
       </div>
       {current && current.kind !== "root" && !query && <button className="ex-icon-button" aria-label="Inspect current item" onClick={props.onInspect}><Info size={16} /></button>}

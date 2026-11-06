@@ -28,7 +28,7 @@ const status: StorageStatus = {
 };
 beforeEach(() => {
   getStorage.mockResolvedValue(status);
-  api.get.mockImplementation((url) => url === "/v1/system/storage"
+  api.get.mockImplementation((url) => url === "/v1/storage"
     ? getStorage()
     : Promise.resolve({
       revision: 0, collection: {}, ingress: {},
@@ -53,11 +53,11 @@ describe("system status, storage and retention", () => {
     expect(screen.getByText("Anomaly retention")).toBeTruthy();
     expect(screen.getByText("No cap")).toBeTruthy();
     expect(screen.getByText("7 days")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/system/storage");
+    expect(api.get).toHaveBeenCalledWith("/v1/storage");
     expect(screen.getByRole("heading", { name: "Collection diagnostics" })).toBeTruthy();
     expect(screen.getByText("Not configured")).toBeTruthy();
-    expect(api.get).toHaveBeenCalledWith("/v1/system/health");
-    expect(api.get).not.toHaveBeenCalledWith("/v1/system");
+    expect(api.get).toHaveBeenCalledWith("/v1/recording/health");
+    expect(api.get).not.toHaveBeenCalledWith("/v1/catalogue");
   });
 
   it("distinguishes paused and missing policies without substituting defaults", async () => {

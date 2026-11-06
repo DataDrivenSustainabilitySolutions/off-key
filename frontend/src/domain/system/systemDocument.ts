@@ -103,7 +103,7 @@ function policy(value: unknown, path: string): CollectionPolicy {
 }
 
 function connection(value: unknown, index: number): SystemConnection {
-  const path = `connections[${index}]`;
+  const path = `brokers[${index}]`;
   const item = object(value, path, [
     "id",
     "label",
@@ -183,27 +183,27 @@ function device(value: unknown, index: number): SystemDevice {
   const item = object(value, path, [
     "id",
     "label",
-    "connection_id",
+    "broker_id",
     "parent_id",
     "kind",
   ]);
-  const connectionId = optionalId(item.connection_id, `${path}.connection_id`);
+  const connectionId = optionalId(item.broker_id, `${path}.broker_id`);
   const parentId = optionalId(item.parent_id, `${path}.parent_id`);
   return {
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
     kind: text(item.kind ?? "device", `${path}.kind`, 60).trim(),
-    ...(connectionId === undefined ? {} : { connection_id: connectionId }),
+    ...(connectionId === undefined ? {} : { broker_id: connectionId }),
     ...(parentId === undefined ? {} : { parent_id: parentId }),
   };
 }
 
 function stream(value: unknown, index: number): SystemStream {
-  const path = `streams[${index}]`;
+  const path = `readings[${index}]`;
   const item = object(value, path, [
     "id",
     "label",
-    "connection_id",
+    "broker_id",
     "device_id",
     "topic",
     "payload_pointer",
@@ -237,7 +237,7 @@ function stream(value: unknown, index: number): SystemStream {
   return {
     id: id(item.id, `${path}.id`),
     label: text(item.label, `${path}.label`, 120).trim(),
-    connection_id: id(item.connection_id, `${path}.connection_id`),
+    broker_id: id(item.broker_id, `${path}.broker_id`),
     topic,
     value_type: valueType as SystemStream["value_type"],
     category: text(item.category ?? "Other", `${path}.category`, 60).trim(),
@@ -277,9 +277,9 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     "schema_version",
     "label",
     "default_policy",
-    "connections",
+    "brokers",
     "devices",
-    "streams",
+    "readings",
     "groups",
   ]);
   if (item.format !== "aberration-system" || item.schema_version !== 1)
@@ -289,26 +289,26 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     schema_version: 1,
     label: text(item.label, "label", 120).trim(),
     default_policy: policy(item.default_policy, "default_policy"),
-    connections: list(item.connections, "connections", 128).map(connection),
+    brokers: list(item.brokers, "brokers", 128).map(connection),
     devices: list(item.devices, "devices", 2048).map(device),
-    streams: list(item.streams, "streams", 4096).map(stream),
+    readings: list(item.readings, "readings", 4096).map(stream),
     groups: list(item.groups, "groups", 128).map(group),
   };
   const allIds = new Set<string>();
   for (const entity of [
-    ...document.connections,
+    ...document.brokers,
     ...document.devices,
-    ...document.streams,
+    ...document.readings,
     ...document.groups,
   ]) {
     if (allIds.has(entity.id)) fail("id", `duplicate identity ${entity.id}`);
     allIds.add(entity.id);
   }
-  const connectionIds = new Set(document.connections.map((entry) => entry.id));
+  const connectionIds = new Set(document.brokers.map((entry) => entry.id));
   const devices = new Map(document.devices.map((entry) => [entry.id, entry]));
   for (const entry of document.devices) {
-    if (entry.connection_id && !connectionIds.has(entry.connection_id))
-      fail(`device ${entry.id}`, "connection does not exist");
+    if (entry.broker_id && !connectionIds.has(entry.broker_id))
+      fail(`device ${entry.id}`, "broker does not exist");
     if (entry.parent_id && !devices.has(entry.parent_id))
       fail(`device ${entry.id}`, "parent device does not exist");
   }
@@ -327,14 +327,14 @@ export function validateSystemDocument(value: unknown): SystemDocument {
     }
     chain.forEach((entryId) => completed.add(entryId));
   }
-  for (const entry of document.streams) {
-    if (!connectionIds.has(entry.connection_id))
-      fail(`stream ${entry.id}`, "connection does not exist");
+  for (const entry of document.readings) {
+    if (!connectionIds.has(entry.broker_id))
+      fail(`reading ${entry.id}`, "broker does not exist");
     if (entry.device_id && !devices.has(entry.device_id))
       fail(`stream ${entry.id}`, "device does not exist");
   }
   const memberIds = new Set(
-    [...document.connections, ...document.devices, ...document.streams].map(
+    [...document.brokers, ...document.devices, ...document.readings].map(
       (entry) => entry.id,
     ),
   );
@@ -373,8 +373,17 @@ function parseJson(contents: string): unknown {
   }
 }
 
+/** Files saved before the API said brokers and readings use the older names. */
+const LEGACY_NAMES: Record<string, string> = { connections: "brokers", streams: "readings", connection_id: "broker_id" };
+function currentNames(value: unknown, depth = 0): unknown {
+  if (Array.isArray(value)) return value.map((item) => currentNames(item, depth + 1));
+  if (!record(value) || depth > 2) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) =>
+    [LEGACY_NAMES[key] ?? key, currentNames(item, depth + 1)]));
+}
+
 export function parseSystemDocument(contents: string): SystemDocument {
-  return validateSystemDocument(parseJson(contents));
+  return validateSystemDocument(currentNames(parseJson(contents)));
 }
 
 export function serializeSystemDocument(document: SystemDocument): string {
@@ -391,17 +400,17 @@ export function createEmptySystem(label = "My system"): SystemDocument {
     schema_version: 1,
     label,
     default_policy: { ...DEFAULT_POLICY },
-    connections: [],
+    brokers: [],
     devices: [],
-    streams: [],
+    readings: [],
     groups: [],
   };
 }
 
 export const collectionByKind = {
-  connection: "connections",
+  connection: "brokers",
   device: "devices",
-  stream: "streams",
+  stream: "readings",
   group: "groups",
 } as const;
 
@@ -430,10 +439,10 @@ export function systemRemovalIds(
   const removal = new Set([entityId]);
   if (kind === "connection") {
     document.devices
-      .filter((entry) => entry.connection_id === entityId)
+      .filter((entry) => entry.broker_id === entityId)
       .forEach((entry) => removal.add(entry.id));
-    document.streams
-      .filter((entry) => entry.connection_id === entityId)
+    document.readings
+      .filter((entry) => entry.broker_id === entityId)
       .forEach((entry) => removal.add(entry.id));
   }
   if (kind === "device" || kind === "connection") {
@@ -451,7 +460,7 @@ export function systemRemovalIds(
         }
       }
     }
-    document.streams
+    document.readings
       .filter((entry) => entry.device_id && removal.has(entry.device_id))
       .forEach((entry) => removal.add(entry.id));
   }
@@ -476,9 +485,9 @@ export function removeSystemEntity(
   const removed = new Set(ids);
   return validateSystemDocument({
     ...document,
-    connections: document.connections.filter((entry) => !removed.has(entry.id)),
+    brokers: document.brokers.filter((entry) => !removed.has(entry.id)),
     devices: document.devices.filter((entry) => !removed.has(entry.id)),
-    streams: document.streams.filter((entry) => !removed.has(entry.id)),
+    readings: document.readings.filter((entry) => !removed.has(entry.id)),
     groups: document.groups
       .filter((entry) => !removed.has(entry.id))
       .map((entry) => ({
@@ -498,9 +507,9 @@ export function newSystemEntity(document: SystemDocument, kind: SystemEntityKind
     case "connection":
       return { ...identity, protocol: "mqtt", host: "", port: DEFAULT_MQTT_PORT, transport: "tcp", tls: false };
     case "device":
-      return { ...identity, kind: "device", connection_id: document.connections[0]?.id };
+      return { ...identity, kind: "device", broker_id: document.brokers[0]?.id };
     case "stream":
-      return { ...identity, connection_id: document.connections[0]?.id ?? "", topic: "", value_type: "number",
+      return { ...identity, broker_id: document.brokers[0]?.id ?? "", topic: "", value_type: "number",
         category: "Other", policy: { ...DEFAULT_POLICY } };
     case "group":
       return { ...identity, color: DEFAULT_GROUP_COLOR, member_ids: [] };
@@ -525,9 +534,9 @@ export function upsertSystemEntity(baseline: SystemDocument, kind: SystemEntityK
   }
   const device = entity as SystemDevice;
   const previous = kind === "device" ? baseline.devices.find((item) => item.id === entity.id) : undefined;
-  if (previous && device.connection_id && device.connection_id !== previous.connection_id) {
-    candidate.streams = baseline.streams.map((item) => item.device_id === entity.id && item.connection_id === previous.connection_id
-      ? { ...item, connection_id: device.connection_id! } : item);
+  if (previous && device.broker_id && device.broker_id !== previous.broker_id) {
+    candidate.readings = baseline.readings.map((item) => item.device_id === entity.id && item.broker_id === previous.broker_id
+      ? { ...item, broker_id: device.broker_id! } : item);
   }
   return validateSystemDocument(candidate);
 }

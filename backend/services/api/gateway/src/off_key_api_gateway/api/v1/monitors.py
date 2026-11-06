@@ -1,22 +1,22 @@
-from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from off_key_core.schemas.pipelines import MonitorDetail, MonitorSummary
 from off_key_core.schemas.radar import (
-    FormMonitorConfig,
     MonitoringStrategy,
+    MonitorSetup,
     RadarServiceLabel,
 )
-from off_key_core.utils.timestamps import as_utc
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from ...facades.tactic import TacticError, tactic
 from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
-from .pipelines import router as pipeline_router
+from .pipelines import monitor_pipeline_router
 
 router = APIRouter(route_class=TacticErrorRoute)
-router.include_router(pipeline_router)
+# Its /overview and /{monitor_id}/pipeline routes come before /{monitor_id}.
+router.include_router(monitor_pipeline_router)
 
 shared_limit_fetch = limiter.shared_limit("60/minute", scope="services")
 shared_limit_execute = limiter.shared_limit("20/minute", scope="services")
@@ -53,256 +53,96 @@ def _normalize_models_for_gateway(
     }
 
 
-class MonitoringServiceConfig(FormMonitorConfig):
-    service_type: Literal["radar"] = Field(default="radar", exclude=True)
-    # The gateway never forwards MQTT overrides, so the field is pinned to None.
-    mqtt_config: None = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
+class MonitorStarted(BaseModel):
+    """A monitor accepted for start; poll its activation until it settles."""
 
-
-class ServiceResponse(BaseModel):
-    service_id: str
+    monitor_id: str = Field(validation_alias=AliasChoices("monitor_id", "service_id"))
     activation_id: str
-    container_name: str
-    status: str
-    mqtt_topics: list[str]
+    phase: str = Field(validation_alias=AliasChoices("phase", "status"))
+    reading_ids: list[str]
 
 
-def _require_one_container(container_name: str | None, container_id: str | None):
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+class MonitorName(BaseModel):
+    id: str
+    display_name: str
 
 
-@router.get("/all", response_model=list[dict[str, Any]])
+class MonitorStopped(BaseModel):
+    monitor_id: str = Field(validation_alias=AliasChoices("monitor_id", "service_id"))
+    status: Literal["stopped"]
+
+
+@router.get("", response_model=list[MonitorSummary])
 @shared_limit_fetch
-async def list_services(
-    request: Request,
-    active_only: bool = False,
-    include_docker_status: bool = False,
-):
-    """Every monitor with its state, strategy and the MQTT topics it reads.
+async def list_monitors(request: Request, active: bool | None = None):
+    """Every monitor with its state, strategy and the readings it watches.
 
-    `active_only` keeps running monitors. `include_docker_status` also asks
-    each container for its status (`running`, `complete`, `failed`,
-    `not_found`, `error`); slower, for diagnosis.
+    `active=true` keeps the monitors that should run, `active=false` the
+    stopped ones.
     """
-    try:
-        return await tactic.list_radar_services(
-            active_only=active_only,
-            include_docker_status=include_docker_status,
-        )
-    except TacticError:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list monitoring services: {e!s}"
-        ) from e
+    monitors = await tactic.list_radar_services(active_only=active is True)
+    if active is False:
+        monitors = [item for item in monitors if not item.get("status")]
+    return monitors
 
 
-@router.get("/evidence", response_model=list[dict[str, Any]])
-@shared_limit_fetch
-async def get_monitoring_evidence(
-    request: Request,
-    charger_id: str,
-    telemetry_type: str | None = None,
-    limit: int = Query(default=2000, ge=1, le=10000),
-):
-    """Per-observation detector evidence of one entity, newest first.
-
-    Scores, calibrated p-values and the accumulated evidence behind alarms,
-    optionally for one telemetry type.
-    """
-    return await tactic.get_monitoring_evidence(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        limit=limit,
-    )
-
-
-@router.get("/evidence/chart", response_model=list[dict[str, Any]])
-@shared_limit_fetch
-async def get_monitoring_chart_evidence(
-    request: Request,
-    charger_id: str,
-    service_id: str | None = Query(default=None, min_length=1, max_length=128),
-    after_created: datetime | None = None,
-    after_timestamp: datetime | None = None,
-    after_service_id: str | None = None,
-    after_sequence_number: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=2000, ge=1, le=10000),
-):
-    """Detector evidence of one entity for charts, optionally for one monitor.
-
-    Page with the four `after_*` cursor fields together, taken from the last
-    row of the previous page.
-    """
-    cursor_values = (
-        after_created,
-        after_timestamp,
-        after_service_id,
-        after_sequence_number,
-    )
-    if any(value is not None for value in cursor_values) and not all(
-        value is not None for value in cursor_values
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="All monitoring evidence cursor fields are required together",
-        )
-    if after_created is not None:
-        after_created = as_utc(after_created)
-    if after_timestamp is not None:
-        after_timestamp = as_utc(after_timestamp)
-    return await tactic.get_monitoring_chart_evidence(
-        charger_id=charger_id,
-        service_id=service_id,
-        after_created=after_created,
-        after_timestamp=after_timestamp,
-        after_service_id=after_service_id,
-        after_sequence_number=after_sequence_number,
-        limit=limit,
-    )
-
-
-@router.post("/start", response_model=ServiceResponse, status_code=202)
+@router.post("", response_model=MonitorStarted, status_code=202)
 @shared_limit_execute
-async def start_monitoring_service(
-    request: Request,
-    config: MonitoringServiceConfig,
-):
-    """Start a monitor from the form configuration. Needs `manage_monitors`.
+async def create_monitor(request: Request, monitor: MonitorSetup):
+    """Start a monitor on catalogue readings. Needs `manage_monitors`.
 
-    TACTIC runs it as a pipeline. New clients should prefer
-    `POST /v1/monitors/pipelines/apply`.
+    `reading_ids` are recorded numeric readings of one device, or broker
+    readings without a device; `monitoring` is the strategy and its detector.
+    TACTIC runs it as a pipeline. Answers 202 with the activation to poll at
+    `GET /v1/pipeline-activations/{activation_id}`. A monitor designed as a
+    graph starts with `POST /v1/pipelines/apply` instead.
     """
-    try:
-        return await tactic.start_radar_service(config)
-    except TacticError:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start monitoring service: {e!s}"
-        ) from e
+    return await tactic.start_radar_service(monitor)
 
 
-@router.get("", response_model=dict[str, Any])
+@router.get("/{monitor_id}", response_model=MonitorDetail)
 @shared_limit_fetch
-async def get_service_details(
-    request: Request,
-    container_name: str | None = Query(default=None),
-    container_id: str | None = Query(default=None),
-):
-    """One monitor by its container name or container id (exactly one of them)."""
-    _require_one_container(container_name, container_id)
-
-    try:
-        service_detail = await tactic.get_radar_service_details(
-            container_name=container_name,
-            container_id=container_id,
-        )
-
-        if not service_detail:
-            raise HTTPException(status_code=404, detail="Service not found")
-
-        return service_detail
-    except (HTTPException, TacticError):
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get service details: {e!s}"
-        ) from e
+async def get_monitor(request: Request, monitor_id: str):
+    """One monitor with the configuration it was started with."""
+    return await tactic.get_radar_service_details(monitor_id)
 
 
-@router.delete("/stop")
+@router.patch("/{monitor_id}", response_model=MonitorName)
 @shared_limit_execute
-async def stop_monitoring_service(
-    request: Request,
-    container_name: str | None = Query(default=None),
-    container_id: str | None = Query(default=None),
-):
-    """Stop a monitor's container by name or id. Needs `manage_monitors`."""
-    _require_one_container(container_name, container_id)
-
-    try:
-        response = await tactic.stop_radar_service(
-            container_name=container_name,
-            container_id=container_id,
-        )
-
-        success = response.get("status") == "stopped"
-
-        if not success:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Container '{container_name or container_id}'"
-                f" not found or could not be stopped",
-            )
-
-        return {
-            "status": "stopped",
-            "message": f"Container '{container_name or container_id}'"
-            f" stopped successfully",
-        }
-    except TacticError:
-        raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to stop monitoring service: {e!s}"
-        ) from e
-
-
-@router.patch("/{service_id}/label")
-@shared_limit_execute
-async def rename_monitoring_service(
-    request: Request, service_id: str, change: RadarServiceLabel
-):
+async def update_monitor(request: Request, monitor_id: str, change: RadarServiceLabel):
     """Change the name a monitor is shown with. Needs `manage_monitors`."""
-    return await tactic.rename_radar_service(service_id, change.display_name)
+    return await tactic.rename_radar_service(monitor_id, change.display_name)
 
 
-@router.delete("/{service_id}")
+@router.post("/{monitor_id}/stop", response_model=MonitorStopped)
 @shared_limit_execute
-async def delete_monitoring_service(request: Request, service_id: str):
+async def stop_monitor(request: Request, monitor_id: str):
+    """Stop a monitor and remove its workload. Needs `manage_monitors`.
+
+    The monitor stays listed as stopped and its alarms stay in Reporting.
+    """
+    return await tactic.stop_radar_service(monitor_id)
+
+
+@router.delete(
+    "/{monitor_id}", status_code=204, response_class=Response, response_model=None
+)
+@shared_limit_execute
+async def delete_monitor(request: Request, monitor_id: str):
     """Stop a monitor and delete it, releasing its readings. Needs `manage_monitors`.
 
     Its alarms stay in Reporting.
     """
-    try:
-        response = await tactic.delete_radar_service(service_id)
-
-        if response.get("status") != "deleted":
-            raise HTTPException(
-                status_code=404,
-                detail=f"Service '{service_id}' not found or could not be deleted",
-            )
-
-        return {
-            "status": "deleted",
-            "service_id": service_id,
-            "message": f"Service '{service_id}' deleted successfully",
-        }
-    except TacticError:
-        raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete monitoring service: {e!s}"
-        ) from e
+    await tactic.delete_radar_service(monitor_id)
+    return Response(status_code=204)
 
 
-@router.get("/models", response_model=dict[str, Any])
+detectors_router = APIRouter(route_class=TacticErrorRoute)
+
+
+@detectors_router.get("", response_model=dict[str, Any])
 @shared_limit_fetch
-async def list_detector_models(
+async def list_detectors(
     request: Request,
     response: Response,
     strategy: MonitoringStrategy | None = Query(default=None),

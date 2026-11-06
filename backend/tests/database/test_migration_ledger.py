@@ -84,7 +84,10 @@ APPLIED_CHECKSUMS = {
     "022_dojo_labels.sql": (
         "7946a85e1889f97d4822911bd1dbb12f6db29c8165be2b1061802d4a67b9ab25"
     ),
-    "023_lifecycle_states.sql": (
+    "023_device_favorites.sql": (
+        "51bf62d7d776dc1b1d3f3f49aab4acaae7ee6ead4479e9b80eee4f729962aa2c"
+    ),
+    "024_lifecycle_states.sql": (
         "d05b0588175a1f775ca54db11d844297a0b51b4fd6dad0138f968a258d01dbd7"
     ),
 }

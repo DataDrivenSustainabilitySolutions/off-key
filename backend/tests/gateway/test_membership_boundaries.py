@@ -35,12 +35,12 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
     remote = AsyncMock(side_effect=TacticError("Invalid token", status=401))
     monkeypatch.setattr(access.tactic, "request", remote)
     paths = (
-        "/chargers/available",
-        "/telemetry/example/type",
-        "/monitors/all",
+        "/devices",
+        "/readings/example/measurements",
+        "/monitors",
         "/favorites?user_id=99",
-        "/anomalies/count",
-        "/system",
+        "/alarms/count",
+        "/catalogue",
         "/members",
     )
     async with asgi_client(gateway) as client:
@@ -58,8 +58,8 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
 @pytest.mark.asyncio
 async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkeypatch):
     gateway.dependency_overrides[access.current_member] = lambda: PROFILE
-    entity = {"kind": "entity", "id": "charger-1"}
-    stored = entity | {"created_at": "2026-11-05T00:00:00Z"}
+    device = {"kind": "device", "id": "charger-1"}
+    stored = device | {"created_at": "2026-11-05T00:00:00Z"}
     get = AsyncMock(return_value=[stored])
     add = AsyncMock(return_value=stored)
     monkeypatch.setattr(favorites.tactic, "list_favorites", get)
@@ -69,17 +69,20 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
         assert response.json() == [stored]
         get.assert_awaited_once_with(user_id=17, kind=None)
         assert (
-            await client.post("/v1/favorites", json=entity | {"user_id": 99})
+            await client.post("/v1/favorites", json=device | {"user_id": 99})
         ).status_code == 422
         add.assert_not_awaited()
-        assert (await client.post("/v1/favorites", json=entity)).status_code == 200
-        add.assert_awaited_once_with(user_id=17, ref=FavoriteRef(**entity))
+        assert (await client.post("/v1/favorites", json=device)).status_code == 200
+        add.assert_awaited_once_with(user_id=17, ref=FavoriteRef(**device))
         for method, path in (
             ("DELETE", "/members/19"),
-            ("POST", "/monitors/start"),
+            ("POST", "/monitors"),
+            ("POST", "/monitors/example/stop"),
             ("DELETE", "/monitors/example"),
-            ("POST", "/anomalies"),
-            ("DELETE", "/anomalies/example"),
+            ("POST", "/pipelines/apply"),
+            ("POST", "/pipeline-activations/example/cancel"),
+            ("POST", "/alarms"),
+            ("DELETE", "/alarms/example"),
             ("GET", "/members"),
             ("POST", "/invitations"),
             ("PATCH", "/members/19"),
@@ -104,7 +107,7 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", delete)
     async with asgi_client(gateway) as client:
         response = await client.delete("/v1/monitors/example")
-    assert response.status_code == 200
+    assert response.status_code == 204
     delete.assert_awaited_once()
 
 
@@ -112,21 +115,21 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
 async def test_a_custom_role_changes_only_what_its_permissions_cover(
     gateway, monkeypatch
 ):
-    from off_key_api_gateway.api.v1 import anomalies
+    from off_key_api_gateway.api.v1 import alarms
 
     gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
         update={"role": "alarm-desk", "permissions": [Permission.manage_alarms]}
     )
-    remove_alarm = AsyncMock(return_value={"message": "deleted"})
-    monkeypatch.setattr(anomalies.tactic, "delete_anomaly", remove_alarm)
+    remove_alarm = AsyncMock(return_value="")
+    monkeypatch.setattr(alarms.tactic, "request", remove_alarm)
     remove_monitor = AsyncMock()
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", remove_monitor)
     async with asgi_client(gateway) as client:
-        alarm = await client.delete("/v1/anomalies/example")
+        alarm = await client.delete("/v1/alarms/example")
         monitor = await client.delete("/v1/monitors/example")
         members = await client.get("/v1/members")
         reads = await client.get("/v1/permissions")
-    assert alarm.status_code == 200, alarm.text
+    assert alarm.status_code == 204, alarm.text
     remove_alarm.assert_awaited_once()
     assert monitor.status_code == 403
     assert "manage_monitors" in monitor.json()["detail"]
@@ -196,8 +199,8 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
         assert (await client.get("/health")).status_code == 200
         for method, path in (
             ("DELETE", "/api/v1/members/19"),
-            ("GET", "/api/v1/data/chargers"),
-            ("POST", "/api/v1/data/anomalies/query"),
+            ("GET", "/api/v1/data/devices"),
+            ("POST", "/api/v1/data/alarms/query"),
             ("GET", "/api/v1/data/users/17/favorites"),
             ("POST", "/api/v1/data/auth/login"),
             ("GET", "/api/v1/system"),
@@ -292,7 +295,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
-    from off_key_api_gateway.api.v1 import anomalies
+    from off_key_api_gateway.api.v1 import devices
     from off_key_api_gateway.facades.tactic import Tactic
     from yarl import URL
 
@@ -311,12 +314,10 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
         facade, "_get_session", AsyncMock(return_value=SimpleNamespace(request=request))
     )
     monkeypatch.setattr(favorites, "tactic", facade)
-    monkeypatch.setattr(anomalies, "tactic", facade)
+    monkeypatch.setattr(devices, "tactic", facade)
     async with asgi_client(gateway) as client:
         assert (
-            await client.get(
-                "/v1/anomalies", params={"charger_id": "../users/99/favorites"}
-            )
+            await client.get("/v1/devices/..%5Cusers%5C99%5Cfavorites/readings")
         ).status_code == 422
         assert not captured
         # Favorite ids travel as query values, so no id reaches the path.
@@ -326,7 +327,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
             "..",
         ):
             response = await client.request(
-                "DELETE", "/v1/favorites", params={"kind": "entity", "id": identifier}
+                "DELETE", "/v1/favorites", params={"kind": "device", "id": identifier}
             )
             assert response.status_code == 204
             assert captured[-1][0] == "/api/v1/data/users/17/favorites"

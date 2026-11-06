@@ -27,8 +27,8 @@ export function DojoWorkspace() {
   };
   const readings = useMemo(() => {
     const ids = new Set(selected?.streamIds ?? []);
-    return document.streams.filter(stream => ids.has(stream.id));
-  }, [selected, document.streams]);
+    return document.readings.filter(stream => ids.has(stream.id));
+  }, [selected, document.readings]);
   const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }));
 
   return <main className="ex-main-content" aria-label="Dojo workspace">

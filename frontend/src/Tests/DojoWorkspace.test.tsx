@@ -20,7 +20,7 @@ vi.mock("@/features/charts/EChart", () => ({
 vi.mock("@/features/workspace/catalogue-context", () => ({
   useCatalogue: () => ({
     selected: { key: "pump", kind: "device", label: "Pump 1", streamIds: ["r1", "r2", "r3"] },
-    document: { streams: [
+    document: { readings: [
       { id: "r1", label: "Voltage", unit: "V", value_type: "number" },
       { id: "r2", label: "Current", unit: "A", value_type: "number" },
       { id: "r3", label: "Mode", value_type: "text" },

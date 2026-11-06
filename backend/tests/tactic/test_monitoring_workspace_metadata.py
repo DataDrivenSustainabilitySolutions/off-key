@@ -94,7 +94,7 @@ async def test_overview_metadata_comes_from_saved_configuration_without_docker_c
 async def test_detail_exposes_detector_settings_without_connection_credentials():
     config = configuration() | {"mqtt_config": {"password": "private-test-password"}}
     service = orchestration(row(config))
-    detail = await service.get_radar_service(container_name="stable-workload")
+    detail = await service.get_radar_service("monitor")
     assert detail["configuration"] == {
         "monitoring": config["monitoring"],
         "performance_config": config["performance_config"],
@@ -150,13 +150,11 @@ def test_gateway_service_rename_obeys_operational_write_permissions(
     app.dependency_overrides[current_member] = lambda: SimpleNamespace(
         role=role, permissions=role_permissions(role, ())
     )
-    rename = AsyncMock(
-        return_value={"service_id": "monitor", "display_name": "Climate"}
-    )
+    rename = AsyncMock(return_value={"id": "monitor", "display_name": "Climate"})
     monkeypatch.setattr(monitors.tactic, "rename_radar_service", rename)
     with TestClient(app) as client:
         response = client.patch(
-            "/v1/monitors/monitor/label", json={"display_name": "Climate"}
+            "/v1/monitors/monitor", json={"display_name": "Climate"}
         )
     assert response.status_code == expected, response.text
     if role == MEMBER_ROLE:

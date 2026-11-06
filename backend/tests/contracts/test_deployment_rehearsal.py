@@ -34,42 +34,14 @@ pytestmark = [
 ]
 
 
-# The rollback reference (COMPATIBLE_REVISION in infra/tests/rehearsal_releases.py)
-# predates the REST rename, so while it runs the rehearsal calls its paths and
-# reads its answers under the new field names. Drop a rewrite once the reference
-# carries the new path or field.
-COMPATIBLE_RELEASE_PATHS = (
-    (None, re.compile(r"^/v1/me$"), "/v1/members/me"),
-    (None, re.compile(r"^/v1/detectors$"), "/v1/monitors/models"),
-    (None, re.compile(r"^/v1/pipeline-components$"), "/v1/monitors/pipelines/catalog"),
-    (None, re.compile(r"^/v1/pipelines(?=/|$)"), "/v1/monitors/pipelines"),
-    (
-        None,
-        re.compile(r"^/v1/pipeline-activations(?=/|$)"),
-        "/v1/monitors/pipeline-activations",
-    ),
-    (
-        None,
-        re.compile(r"^(/v1/monitors/[^/]+)/pipeline/(state|layout|history|timeline)$"),
-        r"\1/pipeline-\2",
-    ),
-    (None, re.compile(r"^/v1/catalogue(?=/|$)"), "/v1/system"),
-    (None, re.compile(r"^/v1/recording/health$"), "/v1/system/health"),
-    (None, re.compile(r"^/v1/recording(?=/|$)"), "/v1/system/collection"),
-    (None, re.compile(r"^/v1/storage$"), "/v1/system/storage"),
-    ("GET", re.compile(r"^/v1/monitors$"), "/v1/monitors/all"),
-    ("POST", re.compile(r"^/v1/monitors$"), "/v1/monitors/start"),
-)
-COMPATIBLE_RELEASE_PARAMS = {"active": "active_only"}
-COMPATIBLE_RELEASE_FIELDS = {
-    "connections": "brokers",
-    "streams": "readings",
-    "connection_id": "broker_id",
-    "service_id": "monitor_id",
-    "predecessor_service_id": "predecessor_monitor_id",
-    "next_service_id": "next_monitor_id",
-    "history_next_service_id": "history_next_monitor_id",
-}
+# While the rollback reference (COMPATIBLE_REVISION in
+# infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
+# its answers under the current field names. The reference carries the current
+# REST paths and fields, so nothing is rewritten; add a rewrite when the API
+# changes and the reference does not move with it.
+COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
+COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
+COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {}
 
 
 def current_field_names(value):
@@ -122,12 +94,6 @@ class RehearsalClient(httpx.Client):
 
 
 def get_measurements(client, entity, key="temperature"):
-    # The rollback reference names a reading by its recorded entity and key.
-    if client.compatible:
-        return client.get(
-            f"/v1/telemetry/{entity.entity_id}/data",
-            params={"type": entity.keys[key]},
-        )
     return client.get(f"/v1/readings/{entity.readings[key]}/measurements")
 
 

@@ -359,6 +359,13 @@ class RadarOrchestrationService:
             )
             return None
 
+        if getattr(existing_service, "desired_state", "running") != "running":
+            # Reconciliation is still stopping this workload; adopting it would
+            # report a monitor that is about to stop as started.
+            raise ValueError(
+                f"RADAR service '{container_name}' is stopping. "
+                "Wait for it to stop before restarting."
+            )
         if not existing_service.status:
             existing_service.status = True
 

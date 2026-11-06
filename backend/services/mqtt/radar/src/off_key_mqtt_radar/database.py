@@ -30,6 +30,7 @@ from .database_status import (
     FAIL_SERVICE_STATUS,
     HEARTBEAT_UPDATE,
     LOCK_SERVICE_ROW,
+    STOP_REQUESTED,
     TERMINAL_RUN_EXISTS,
 )
 from .models import AnomalyResult
@@ -552,7 +553,12 @@ class DatabaseWriter:
         result = cast(
             CursorResult[Any], await session.execute(HEARTBEAT_UPDATE, parameters)
         )
-        if self.managed_checkpoints and result.rowcount != 1:
+        if result.rowcount == 1:
+            return True
+        if await session.scalar(STOP_REQUESTED, {"service_id": service_id}):
+            # A stop was requested; the worker keeps its checkpoint until it exits.
+            return False
+        if self.managed_checkpoints:
             raise self._lose_checkpoint_ownership()
         return True
 

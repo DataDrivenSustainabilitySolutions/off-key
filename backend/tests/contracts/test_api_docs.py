@@ -5,7 +5,13 @@ from xml.etree import ElementTree
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from off_key_core.api_docs import router
+from off_key_core.api_docs import (
+    DOCS_CONTENT_SECURITY_POLICY,
+    REDOC_JS,
+    SWAGGER_CSS,
+    SWAGGER_JS,
+    router,
+)
 
 
 @pytest.mark.parametrize("root_path", ["", "/api"])
@@ -35,3 +41,29 @@ def test_documentation_keeps_schema_and_oauth_links_with_embedded_favicon(root_p
     assert f"{root_path}/docs/oauth2-redirect" in client.get("/docs").text
     assert client.get("/docs/oauth2-redirect").status_code == 200
     assert client.get("/openapi.json").json()["paths"] == {}
+
+
+def _asset_tags(html):
+    return re.findall(r"<(?:script|link)\b[^>]*\b(?:src|href)=\"https?://[^>]*>", html)
+
+
+@pytest.mark.parametrize(
+    ("path", "assets"),
+    [("/docs", (SWAGGER_JS, SWAGGER_CSS)), ("/redoc", (REDOC_JS,))],
+)
+def test_documentation_loads_only_pinned_assets_with_integrity(path, assets):
+    app = FastAPI(title="aberration", docs_url=None, redoc_url=None)
+    app.include_router(router)
+    response = TestClient(app).get(path)
+
+    assert response.headers["content-security-policy"] == (DOCS_CONTENT_SECURITY_POLICY)
+    assert "frame-ancestors 'none'" in DOCS_CONTENT_SECURITY_POLICY
+    tags = _asset_tags(response.text)
+    assert len(tags) == len(assets)
+    for asset in assets:
+        assert re.search(r"@\d+\.\d+\.\d+/", asset.url), asset.url
+        assert asset.integrity.startswith("sha384-")
+        (tag,) = [tag for tag in tags if f'"{asset.url}"' in tag]
+        assert f'integrity="{asset.integrity}"' in tag
+        assert 'crossorigin="anonymous"' in tag
+    assert "fonts.googleapis.com" not in response.text

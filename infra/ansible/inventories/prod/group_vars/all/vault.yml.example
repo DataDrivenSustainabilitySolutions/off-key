@@ -8,6 +8,9 @@ jwt_secret: "CHANGE_ME"
 # Keep a separate value while pre-membership application images are deployed.
 postgres_password: "CHANGE_ME"
 emqx_dashboard_password: "CHANGE_ME"
+# Erlang distribution cookie for emqx-main (`emqx ctl`, clustering): openssl rand -hex 32
+# Changing it restarts the broker with the new cookie; stored broker data is unaffected.
+emqx_node_cookie: "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX"
 # Generate a dedicated CA and a server certificate whose SAN is DNS:emqx-main.
 # Paste PEM files as YAML literal blocks (|), keeping their final newline.
 # Keep the encrypted CA private key offline; only the public CA certificate goes here.

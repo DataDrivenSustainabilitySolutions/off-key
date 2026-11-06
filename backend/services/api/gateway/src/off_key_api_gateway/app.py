@@ -29,6 +29,7 @@ from off_key_api_gateway.settings import (
 
 from .api.middleware import RequestLoggingMiddleware
 from .api.rate_limiter import limiter, rate_limit_exceeded_handler
+from .api.request_guards import BodySizeLimitMiddleware, ClientRateLimitMiddleware
 from .api.v1.routes import router as v1_router
 from .facades.tactic import tactic
 
@@ -168,11 +169,15 @@ def build_app(app_settings: AppSettings) -> FastAPI:
     # from TACTIC keeps TACTIC's detail through the normal HTTPException path.
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
-    # Added innermost first: requests pass CORS, the correlation ID, GZip,
-    # SlowAPI and request logging in that order.
+    # Added innermost first: requests pass CORS, the correlation ID, the
+    # per-client rate limit, the body size limit, GZip, SlowAPI and request
+    # logging in that order. The two limits answer before routing, so they
+    # also cover anonymous requests that authentication would reject later.
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+    app.add_middleware(BodySizeLimitMiddleware)
+    app.add_middleware(ClientRateLimitMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(
         CORSMiddleware,

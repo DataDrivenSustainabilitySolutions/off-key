@@ -2,14 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
-import { EChart } from "../charts/EChart";
-import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
-import { datasetChartOption } from "./dojo-chart";
+import { DojoChart } from "./DojoChart";
+import type { DojoChartData } from "./dojo-chart";
 import { useRunAlarms, useSeriesPoints } from "./hooks";
 import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from "./model";
 
-const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const CHART_SERIES = 2;
 
 type Row = {
@@ -39,7 +37,7 @@ function bestOf(row: Row, runs: RunMetrics[]) {
   if (!row.best || runs.length < 2) return undefined;
   const { score, prefer } = row.best;
   const values = runs.filter(run => run.scored_from != null).map(score).filter((value): value is number => value != null);
-  if (!values.length) return undefined;
+  if (values.length < 2) return undefined;
   const target = prefer === "high" ? Math.max(...values) : Math.min(...values);
   // A tie favours nobody.
   return values.filter(value => value === target).length === 1 ? target : undefined;
@@ -65,18 +63,16 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
       .catch(reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();
   }, [dataset.id, chosenKey, labelsKey]);
-  const { resolvedTheme, colors } = useChartColors();
   const series = useMemo(() => dataset.series.slice(0, CHART_SERIES), [dataset.series]);
   const points = useSeriesPoints(dataset.id, series);
   const alarms = useRunAlarms(chosen);
   const names = useMemo(() => new Map(finished.map(run => [run.id, runName(run)])), [finished]);
-  const option = useMemo(() => datasetChartOption({
+  const chart = useMemo<DojoChartData>(() => ({
     series: series.flatMap(item => points.loaded[item.id]
       ? [{ id: item.id, name: item.name, unit: item.unit, points: points.loaded[item.id]!.points }] : []),
     labels: labels.map(label => ({ id: label.id, start: Date.parse(label.start_at), end: Date.parse(label.end_at), note: label.note })),
     alarms: chosen.flatMap(id => alarms.loaded[id] ? [{ id, name: names.get(id) ?? id, times: alarms.loaded[id]!.times }] : []),
-    colors, timeZone,
-  }), [series, points.loaded, labels, chosen, alarms.loaded, names, colors]);
+  }), [series, points.loaded, labels, chosen, alarms.loaded, names]);
 
   if (!finished.length) return <div className="dj-section"><p className="dj-help">Comparisons need finished runs. Start a run
     from the Runs tab; it appears here once it has finished.</p></div>;
@@ -95,7 +91,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     {!labels.length && <p className="ex-banner" role="status">This dataset has no labels yet, so every alarm counts as a false
       alarm. Mark the known problems on the Values tab first.</p>}
     {unscoredRuns.length > 0 && <p className="ex-banner dj-score-notice" role="status">
-      <strong>No values scored</strong>
+      <strong>{unscoredRuns.length === shown?.runs.length ? "No values scored" : "Some runs have no scores"}</strong>
       <span>{unscoredRuns.map(run => names.get(run.run_id) ?? run.run_name).join(", ")} finished without a scored interval. Metrics are unavailable for {unscoredRuns.length === 1 ? "this run" : "these runs"}.</span>
     </p>}
     {(error || points.error || alarms.error) && <p className="ex-banner ex-error" role="alert">{error || points.error || alarms.error}</p>}
@@ -103,8 +99,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     {chosen.length > 0 && dataset.series.length > CHART_SERIES && <p className="dj-help">
       The comparison chart shows {series.map(item => item.name).join(" and ")}. View the other series in Values and labels.
     </p>}
-    {chosen.length > 0 && <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart dj-chart--alarms"
-      accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} />}
+    {chosen.length > 0 && <DojoChart data={chart} description={`Values with labels and the alarms of ${chosen.length} runs`} />}
     {shown && <>
       <div className="dj-table-scroll dj-section" role="region" aria-label="Scroll run metrics" tabIndex={0}>
         <table className="dj-table dj-comparison-table" aria-label="Run metrics">

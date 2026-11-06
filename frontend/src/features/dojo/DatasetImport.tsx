@@ -116,8 +116,9 @@ export function CsvImportDialog({ open, trigger, onOpenChange, onCreated }: {
 const DAY_MS = 86_400_000;
 
 /** Copy recorded readings of the catalogue selection for one window. */
-export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, scope, readings }: {
+export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, onChooseSource, scope, readings }: {
   open: boolean; trigger: ReactElement; onOpenChange: (open: boolean) => void; onCreated: (dataset: DatasetView) => void;
+  onChooseSource?: () => void;
   /** What is selected in the catalogue, for the default name. */
   scope?: string;
   readings: SystemStream[];
@@ -153,10 +154,13 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, sc
       setBusy(false);
     }
   };
+  const needsSource = numeric.length === 0;
   return <ImportDialog open={open} trigger={trigger} onOpenChange={close} title="Copy recorded readings" busy={busy} error={error}
     description="The recorded values of the chosen readings are copied into a frozen dataset. Retention and catalogue edits never change it."
-    submitLabel="Copy" canSubmit={selected.size > 0 && windowValid} onSubmit={() => void submit()}>
-    {numeric.length === 0 ? <p className="ex-banner">Select a numeric reading or its entity in the catalogue, then return here.</p> : <>
+    submitLabel={needsSource && onChooseSource ? "Choose a reading" : "Copy"}
+    canSubmit={needsSource ? !!onChooseSource : selected.size > 0 && windowValid}
+    onSubmit={needsSource && onChooseSource ? onChooseSource : () => void submit()}>
+    {needsSource ? <p className="ex-banner">Choose a numeric reading or its entity in the catalogue.</p> : <>
       <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
         <ul className="dj-reading-list">{numeric.map(item => <li key={item.id}><label>
           <input type="checkbox" checked={selected.has(item.id)} disabled={busy} onChange={event => {

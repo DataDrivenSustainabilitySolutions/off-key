@@ -32,9 +32,10 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
         trigger={<button type="button" className="dj-primary"><Play size={16} aria-hidden="true" />New run</button>} />
     </div>
     {error && <p className="dj-error" role="alert">{error}</p>}
+    {runs.length > 0 && <p className="dj-help">Replay outputs include learning and calibration. Open Compare to see each run’s scored interval and detection metrics.</p>}
     {runs.length === 0 ? <p className="dj-help">No runs yet. Start one to see how a design does on this data.</p>
       : <table className="dj-table dj-record-table" role="table" aria-label="Runs">
-        <thead role="rowgroup"><tr role="row">{["Run", "Status", "Results", "Alarms", "Started", "Actions"].map(label =>
+        <thead role="rowgroup"><tr role="row">{["Run", "Status", "Replay outputs", "Alarms", "Started", "Actions"].map(label =>
           <th key={label} scope="col" role="columnheader">{label === "Actions" ? <span className="ex-sr-only">{label}</span> : label}</th>)}</tr></thead>
         <tbody role="rowgroup">{runs.map(run => {
           const state = runState(run);
@@ -43,7 +44,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
             <td role="cell"><span className="dj-cell-label" aria-hidden="true">Status</span>
               <span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
               {run.error && <small title={run.error}>{run.error}</small>}</td>
-            <td role="cell"><span className="dj-cell-label" aria-hidden="true">Results</span>
+            <td role="cell"><span className="dj-cell-label" aria-hidden="true">Replay outputs</span>
               {run.result_count.toLocaleString()}<small>{run.points_read.toLocaleString()} of {run.points_total.toLocaleString()} values</small></td>
             <td role="cell"><span className="dj-cell-label" aria-hidden="true">Alarms</span>{run.alarm_count.toLocaleString()}</td>
             <td role="cell"><span className="dj-cell-label" aria-hidden="true">Started</span>{formatInstant(run.started_at ?? run.created_at)}</td>

@@ -29,6 +29,18 @@
 .dj-muted { color: var(--ex-muted); font-size: var(--text-caption); }
 .dj-chart { height: 420px; width: 100%; min-width: 0; touch-action: pan-y; }
 .dj-chart--alarms { height: 500px; }
+.dj-chart-tools {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+  gap: 8px 16px; margin: 12px 0;
+}
+.dj-chart-tools strong { display: block; color: var(--ex-ink); }
+.dj-chart-tools [role="group"], .dj-data-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dj-chart-tools button { min-width: 40px; min-height: 40px; }
+.dj-data { border: 1px solid var(--ex-line); border-radius: 8px; margin-block: 12px 24px; }
+.dj-data summary { padding: 12px 14px; color: var(--ex-accent); font-weight: 550; cursor: pointer; }
+.dj-data-body { padding: 0 14px 14px; }
+.dj-data-body .dj-field { max-width: 280px; }
+.dj-data-pages { margin-top: 12px; font-size: var(--text-caption); }
 .dj-series-picker { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: var(--text-caption); }
 .dj-series-picker label { display: inline-flex; gap: 6px; align-items: center; }
 .dj-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 12px 0; font-size: var(--text-caption); font-weight: 500; }
@@ -70,6 +82,7 @@
   .dj-chart { height: 340px; }
   .dj-dialog :is(input, select) { min-height: 44px; }
   .dj-dialog input:is([type="checkbox"], [type="radio"]) { min-height: auto; }
+  .dj-chart-tools button { min-width: 44px; min-height: 44px; }
 }
 .dj-section-head--spaced { margin-top: 24px; }
 .dj-field--grow { flex: 1; min-width: 180px; }
@@ -108,7 +121,8 @@
   .dj-record-actions { align-self: end; }
   .dj-cell-label { display: block; margin-bottom: 2px; color: var(--ex-muted); font-size: var(--text-caption); }
   .dj-tabs { gap: 12px; }
-  .dj-summary { gap: 12px 22px; }
+  .dj-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
+  .dj-summary-span { grid-column: 1 / -1; }
   .dj-detail-header { gap: 10px; }
   .ex-shell .dj-page :is(.dj-action, .dj-primary, .dj-row-actions button) { min-height: 44px; }
 }

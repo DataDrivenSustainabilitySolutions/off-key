@@ -87,9 +87,9 @@ export function DatasetDetail({ id, tab, listHref, focusTitle, onTab, onDeleted 
     <dl className="dj-summary">
       <div><dt>Values</dt><dd>{dataset.point_count.toLocaleString()}</dd></div>
       <div><dt>Series</dt><dd>{dataset.series.length}</dd></div>
-      <div><dt>Time span</dt><dd>{formatSpan(dataset.start_at, dataset.end_at)}</dd></div>
       <div><dt>Labels</dt><dd>{labels.length}</dd></div>
       <div><dt>Runs</dt><dd>{runs.length}</dd></div>
+      <div className="dj-summary-span"><dt>Time span</dt><dd>{formatSpan(dataset.start_at, dataset.end_at)}</dd></div>
     </dl>
     <WorkspaceTabs name="Dataset sections" idPrefix="dj" className="dj-tabs" tabs={TABS} selected={tab} onSelect={onTab} />
     <div id="dj-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`} tabIndex={0}>

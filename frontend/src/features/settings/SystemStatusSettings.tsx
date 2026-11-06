@@ -65,7 +65,7 @@ export default function SystemStatusSettings() {
             Refresh storage
           </Button>
         }
-        footer={status && <>Checked <RelativeTime value={status.checked_at} />.</>}
+        footer={status && <span>Checked <RelativeTime value={status.checked_at} />.</span>}
         padded={!status}
       >
         {error ? (

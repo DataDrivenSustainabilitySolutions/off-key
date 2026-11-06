@@ -4,21 +4,18 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetView, LabelView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
-import { EChart } from "../charts/EChart";
-import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
-import { datasetChartOption } from "./dojo-chart";
+import { DojoChart } from "./DojoChart";
+import type { DojoChartData } from "./dojo-chart";
 import { CHART_POINTS, useSeriesPoints } from "./hooks";
 import { formatInstant, fromLocalInput, toLocalInput } from "./model";
 
 const SHOWN_SERIES = 4;
-const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** The dataset's values with its labels: zoom to a problem, then mark it. */
 export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   dataset: DatasetView; labels: LabelView[]; onLabelsChange: () => Promise<void>;
 }) {
-  const { resolvedTheme, colors } = useChartColors();
   const [shown, setShown] = useState(() => dataset.series.slice(0, SHOWN_SERIES).map(item => item.id));
   const series = useMemo(() => dataset.series.filter(item => shown.includes(item.id)), [dataset.series, shown]);
   const { loaded, error: loadError, loading } = useSeriesPoints(dataset.id, series);
@@ -29,11 +26,10 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirm, confirmation] = useConfirm();
-  const option = useMemo(() => datasetChartOption({
+  const chart = useMemo<DojoChartData>(() => ({
     series: series.flatMap(item => loaded[item.id] ? [{ id: item.id, name: item.name, unit: item.unit, points: loaded[item.id]!.points }] : []),
     labels: labels.map(label => ({ id: label.id, start: Date.parse(label.start_at), end: Date.parse(label.end_at), note: label.note })),
-    colors, timeZone,
-  }), [series, loaded, labels, colors]);
+  }), [series, loaded, labels]);
   const truncated = series.filter(item => loaded[item.id]?.truncated);
   const act = async (action: () => Promise<unknown>) => {
     setBusy(true); setError("");
@@ -61,9 +57,8 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     </div>
     {loadError && <p className="ex-banner ex-error" role="alert">{loadError}</p>}
     {loading && <p className="dj-loading" role="status">Loading values…</p>}
-    <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart"
-      accessibleDescription={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
-      onViewportChange={(from, to) => setViewport([from, to])} />
+    <DojoChart data={chart} description={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
+      onRangeChange={setViewport} />
     {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString()} values of{" "}
       {truncated.map(item => item.name).join(", ")}. Runs and metrics always use every value.</p>}
 

@@ -235,6 +235,12 @@
 .dark .pl-warning {
   color: #fcd34d;
 }
+.pl-warning a, .pl-notice a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 .pl-notice {
   color: #15803d;

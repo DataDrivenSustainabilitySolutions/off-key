@@ -432,7 +432,7 @@ export default function PipelineCanvas({
           }}
         >
           <PipelineGrid />
-          <Controls showInteractive={false} showFitView={false} orientation="horizontal">
+          <Controls showInteractive={false} showFitView={false} orientation="horizontal" position="top-left">
             <ControlButton className="pl-canvas-fit" aria-label="Fit entire graph" title="Fit entire graph"
               disabled={!flow} onClick={() => void flow?.fitView({ padding: 0.15 })}>
               <Scan size={14} aria-hidden="true" />Fit

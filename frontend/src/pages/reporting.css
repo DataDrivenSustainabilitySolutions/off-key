@@ -8,7 +8,9 @@
 .rp-count { margin-left: auto; font-size: var(--text-caption); color: hsl(var(--muted-foreground)); }
 .rp-table { width: 100%; border-collapse: collapse; font-size: var(--text-body); table-layout: auto; }
 .rp-table thead th { padding: 10px 12px 10px 0; border-bottom: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font-size: var(--text-caption); font-weight: 400; text-align: left; white-space: nowrap; }
-.rp-signal-heading { display: inline-flex; align-items: center; gap: 2px; margin: -6px 0; }
+.rp-result-guide { margin: 0 0 8px; }
+.rp-result-guide summary { width: fit-content; padding: 6px 0; color: hsl(var(--primary)); cursor: pointer; }
+.rp-result-guide p { max-width: 72ch; margin: 2px 0 10px; color: hsl(var(--muted-foreground)); }
 .rp-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid hsl(var(--border)); vertical-align: middle; }
 .rp-row:hover td { background: hsl(var(--accent) / .55); }
 .rp-day th { padding: 22px 0 8px; border-bottom: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); font-size: var(--text-caption); font-weight: 550; text-align: left; }
@@ -36,7 +38,8 @@ tbody:first-of-type .rp-day th { padding-top: 14px; }
   .rp-count { flex-basis: 100%; margin-left: 0; }
   /* Rows stack into the Monitoring list's two-line layout instead of scrolling sideways. */
   .rp-table, .rp-table tbody, .rp-table tr { display: block; }
-  .rp-table thead { display: none; }
+  .rp-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .rp-result-guide summary { display: list-item; min-height: 44px; padding: 12px 0; }
   .rp-day { display: block; }
   .rp-day th { display: block; }
   .rp-row { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "entity entity signal actions" "readings readings readings readings" "time type type type"; gap: 6px 8px; padding: 12px 0; border-bottom: 1px solid hsl(var(--border)); }

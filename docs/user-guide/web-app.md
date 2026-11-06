@@ -184,6 +184,8 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
 Use the Left and Right arrow keys to move between dataset tabs, or Home and End
 to jump to the first and last tabs. A finished run can have no scored interval.
 Compare identifies those runs and marks their metrics as unavailable.
+Use the chart controls to zoom or move the time window. **Inspect plotted values**
+lists the timestamps and values in that window, including alarm times on Compare.
 
 ## Expected errors and operator actions
 

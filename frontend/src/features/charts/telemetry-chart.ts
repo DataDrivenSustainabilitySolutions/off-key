@@ -336,11 +336,11 @@ export const buildMonitoringChartOption = ({
   for (const reading of model.readings) if (reading.unit) units.set(reading.name, reading.unit);
 
   const grid: GridComponentOption[] = monitoring
-    ? panes.map((_, index) => ({ left: 52, right: 18, top: 28 + index * 148, height: 100 }))
+    ? panes.map((_, index) => ({ left: 52, right: 18, top: 34 + index * 148, height: 100 }))
     : compact
     ? panes.map((_, index) => ({
         left: 44, right: 16,
-        top: index === 0 ? 22 : 242 + (index - 1) * 164,
+        top: index === 0 ? 32 : 242 + (index - 1) * 164,
         ...(panes.length === 1 ? { bottom: 76 } : { height: index === 0 ? 164 : 112 }),
       }))
     : panes.length === 1

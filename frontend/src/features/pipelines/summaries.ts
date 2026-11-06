@@ -168,7 +168,7 @@ function settingsSummary(
   if (prepared) return { text: prepared };
   switch (node.component) {
     case "source.aligned":
-      return { text: count(definition.input_slots.length, "reading") };
+      return { text: count(definition.input_slots.length, "input slot") };
     case "features.select": {
       const features = strings(params.features);
       return features.length ? { chips: features.map((name) => labels.get(name) ?? name) } : { text: "No features chosen" };

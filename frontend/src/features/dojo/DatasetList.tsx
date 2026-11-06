@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useContext, useState } from "react";
 import { FileUp, History } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetSummary, DatasetView } from "@/types/dojo.generated";
 import type { SystemStream } from "@/types/system";
+import { CatalogueSearchContext } from "../workspace/catalogue-search";
 import { dojoApi } from "./api";
 import { CsvImportDialog, HistoryImportDialog } from "./DatasetImport";
 import { formatInstant, formatSpan } from "./model";
@@ -20,6 +21,9 @@ export function DatasetList({ datasetHref, onCreated, scope, readings }: {
   const [datasets, setDatasets] = useState<DatasetSummary[] | null>(null);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState<"csv" | "history" | null>(null);
+  const [choosingSource, setChoosingSource] = useState(false);
+  const searchCatalogue = useContext(CatalogueSearchContext);
+  const hasNumericReading = readings.some(reading => reading.value_type === "number");
   const load = useCallback(async (signal: AbortSignal) => {
     try {
       const page = await dojoApi.datasets({ limit: 100 }, signal);
@@ -36,11 +40,18 @@ export function DatasetList({ datasetHref, onCreated, scope, readings }: {
       <div className="dj-actions">
         <CsvImportDialog open={importing === "csv"} onOpenChange={open => setImporting(open ? "csv" : null)} onCreated={onCreated}
           trigger={<button type="button" className="dj-primary"><FileUp size={16} aria-hidden="true" />Upload CSV</button>} />
-        <HistoryImportDialog open={importing === "history"} onOpenChange={open => setImporting(open ? "history" : null)}
+        <HistoryImportDialog open={importing === "history" || choosingSource && hasNumericReading} onOpenChange={open => {
+          setChoosingSource(false);
+          setImporting(open ? "history" : null);
+        }} onChooseSource={searchCatalogue ? () => { setImporting(null); setChoosingSource(true); searchCatalogue(); } : undefined}
           onCreated={onCreated} scope={scope} readings={readings}
           trigger={<button type="button" className="dj-action"><History size={16} aria-hidden="true" />Copy recorded readings</button>} />
       </div>
     </header>
+    {choosingSource && !hasNumericReading && <p className="ex-banner" role="status">
+      Select a numeric reading in the catalogue to continue copying recorded data.{" "}
+      <button type="button" onClick={() => setChoosingSource(false)}>Cancel selection</button>
+    </p>}
     {error && <p className="ex-banner ex-error" role="alert">{error}<button onClick={() => void reload()}>Retry</button></p>}
     {datasets === null && !error ? <p className="dj-loading" role="status">Loading datasets…</p>
       : datasets?.length === 0 ? <div className="dj-empty"><h2>No datasets yet</h2>

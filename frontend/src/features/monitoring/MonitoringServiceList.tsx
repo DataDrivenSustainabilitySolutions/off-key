@@ -73,13 +73,12 @@ export function MonitoringServiceList({ draftKey, services, index, ready, error,
                 }} onClick={event => {
                   if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                   event.preventDefault(); onOpen(service.id);
-                }}>{row.name}</Link>
-                  <small className="mn-mobile-scope" title={row.scope}>{row.scope}</small></div>
+                }}>{row.name}</Link></div>
                 <div role="cell" className="mn-service-inputs" title={row.scope}><span>{row.scope}</span><small>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</small></div>
                 <div role="cell" className="mn-service-state"><span className={`mn-state mn-state--${row.state.tone}`}>{row.state.label}</span>
                   {progress && <small>{progress.current.toLocaleString()} of {progress.target.toLocaleString()} samples</small>}
                   {service.operational_status.updated_at && <small className="mn-service-time">Reported <RelativeTime value={service.operational_status.updated_at} /></small>}</div>
-                <div role="cell"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Remove" : "Add"} ${row.name} ${favourites.has(service.id) ? "from" : "to"} favourites`}
+                <div role="cell" className="mn-service-star"><button className="mn-favourite ex-icon-button" aria-pressed={favourites.has(service.id)} aria-label={`${favourites.has(service.id) ? "Remove" : "Add"} ${row.name} ${favourites.has(service.id) ? "from" : "to"} favourites`}
                   onClick={() => onFavourite(service.id)}><Star size={15} aria-hidden="true" /></button></div>
               </div>;
             })}

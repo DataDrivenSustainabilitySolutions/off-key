@@ -5,7 +5,6 @@ import type { SystemSnapshot } from "../src/types/system";
 import { openCatalogueSettings, setAppearance } from "./helpers/appearance";
 import { accessToken } from "./helpers/auth";
 import { expectDialogFits } from "./helpers/layout";
-import { validateSystemDocument } from "../src/domain/system/systemDocument";
 
 
 test("reviews a real catalogue export before replacement", async ({ page }) => {
@@ -30,7 +29,9 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   const download = await downloadReady;
   expect(download.suggestedFilename()).toBe("aberration-system.json");
   const contents = await readFile((await download.path())!);
-  expect(JSON.parse(contents.toString())).toEqual(validateSystemDocument(before.document));
+  // The export omits optional fields that the API serializes as null.
+  const canonical = JSON.stringify(before.document, (_key, value: unknown) => value === null ? undefined : value);
+  expect(JSON.parse(contents.toString())).toEqual(JSON.parse(canonical));
 
   await dialog.getByLabel("Catalogue file", { exact: true }).setInputFiles({
     name: "catalogue-copy.json", mimeType: "application/json", buffer: contents,

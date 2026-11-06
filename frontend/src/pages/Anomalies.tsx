@@ -7,7 +7,6 @@ import toast from "react-hot-toast";
 import { ActionMenu } from "@/components/ActionMenu";
 import { useConfirm } from "@/hooks/use-confirm";
 import { MetricCard, PageHeader, PageShell } from "@/components/DashboardLayout";
-import { HelpTooltip } from "@/components/HelpTooltip";
 import { RelativeTime } from "@/components/RelativeTime";
 import { useNow } from "@/hooks/use-now";
 import { Button } from "@/components/ui/button";
@@ -220,44 +219,48 @@ export default function AnomalyTable() {
             {filtering && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}
             <span className="rp-count" role="status">{unknown ? "" : `${count.toLocaleString()} ${count === 1 ? "event" : "events"}`}</span>
           </div>
-          <table className="rp-table">
-            <thead>
-              <tr>
-                <th scope="col">Entity</th>
-                <th scope="col">Time</th>
-                <th scope="col">Readings</th>
-                <th scope="col">Type</th>
-                <th scope="col"><span className="rp-signal-heading">Detector result<HelpTooltip label="Detector result">
-                  Lower p-values indicate more unusual readings. Red means p ≤ 0.001, orange means p ≤ 0.005, and yellow means a higher p-value. Other detector scores are grey.
-                </HelpTooltip></span></th>
-                <th scope="col"><span className="sr-only">Actions</span></th>
+          <details className="rp-result-guide">
+            <summary>How to read detector results</summary>
+            <p>Event type describes the reported anomaly. Detector result identifies the statistic and its value.
+              Lower p-values indicate more unusual readings. Red indicates p ≤ 0.001, orange p ≤ 0.005, and yellow a higher p-value.
+              Other detector scores appear in grey.</p>
+          </details>
+          <table className="rp-table" role="table" aria-label="Reported anomaly events">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Entity</th>
+                <th scope="col" role="columnheader">Time</th>
+                <th scope="col" role="columnheader">Readings</th>
+                <th scope="col" role="columnheader">Event type</th>
+                <th scope="col" role="columnheader">Detector result</th>
+                <th scope="col" role="columnheader"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            {isLoading ? <tbody><tr className="rp-message"><td colSpan={6}>Loading anomalies…</td></tr></tbody>
-              : !days.length ? !error && <tbody><tr className="rp-message"><td colSpan={6}>
+            {isLoading ? <tbody role="rowgroup"><tr role="row" className="rp-message"><td role="cell" colSpan={6}>Loading anomalies…</td></tr></tbody>
+              : !days.length ? !error && <tbody role="rowgroup"><tr role="row" className="rp-message"><td role="cell" colSpan={6}>
                 {filtering && readingOptions.length ? "No events match these filters." : "No anomalies recorded."}
               </td></tr></tbody>
-              : days.map(day => <tbody key={day.key}>
-                <tr className="rp-day"><th colSpan={6} scope="rowgroup">{day.label}</th></tr>
+              : days.map(day => <tbody key={day.key} role="rowgroup">
+                <tr role="row" className="rp-day"><th role="rowheader" colSpan={6} scope="rowgroup">{day.label}</th></tr>
                 {day.rows.map(anomaly => {
                   const entity = anomaly.entity_label;
                   const source = sources.get(anomaly.charger_id);
                   const scopedHere = !!source && source.key === selected?.key;
                   const sensors = formatAnomalySensorSet(anomaly.sensor_set?.length ? anomaly.readings.map(item => item.label) : anomaly.sensor_set);
-                  return <tr key={anomaly.anomaly_id} className="rp-row">
-                    <td className="rp-entity">{source && !scopedHere
+                  return <tr key={anomaly.anomaly_id} role="row" className="rp-row">
+                    <td role="cell" className="rp-entity">{source && !scopedHere
                       ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}</td>
-                    <td className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
-                    <td className="rp-readings"><div>
+                    <td role="cell" className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
+                    <td role="cell" className="rp-readings"><div>
                       <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : anomaly.telemetry_label ?? anomaly.telemetry_type}</span>
                       {/* A single reading is already named by its badge. */}
                       {(anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (anomaly.sensor_set?.length ?? 0) > 1) && <span className="rp-sensors" title={sensors}>{sensors}</span>}
                     </div></td>
-                    <td className="rp-type">{anomaly.anomaly_type}</td>
-                    <td className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}
+                    <td role="cell" className="rp-type">{anomaly.anomaly_type}</td>
+                    <td role="cell" className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}
                       title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p"
                         : getAnomalyValueLabel(anomaly.value_type)}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
-                    <td className="rp-actions">
+                    <td role="cell" className="rp-actions">
                       <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
                         ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),
                         ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyId(anomaly.anomaly_id) }] : []),

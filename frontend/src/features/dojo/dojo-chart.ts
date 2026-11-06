@@ -6,14 +6,18 @@ type ChartSeries = { id: string; name: string; unit: string | null; points: Char
 type ChartLabel = { id: string; start: number; end: number; note: string };
 type ChartAlarms = { id: string; name: string; times: number[] };
 
-type Input = {
+export type DojoChartData = {
   series: ChartSeries[];
   labels: ChartLabel[];
   /** One row of alarm marks per run, below the values. */
   alarms?: ChartAlarms[];
+};
+
+type Input = DojoChartData & {
   colors: ChartThemeColors;
   timeZone: string;
   locale?: string;
+  viewport?: [number, number];
 };
 
 const ALARM_ROW = 22;
@@ -27,7 +31,7 @@ function labelAreas(labels: ChartLabel[], colors: ChartThemeColors) {
   };
 }
 
-function extent(series: ChartSeries[], labels: ChartLabel[], alarms: ChartAlarms[]): [number, number] | undefined {
+export function dojoChartExtent({ series, labels, alarms = [] }: DojoChartData): [number, number] | undefined {
   let low = Infinity, high = -Infinity;
   const add = (time: number) => { if (time < low) low = time; if (time > high) high = time; };
   for (const item of series) if (item.points.length) { add(item.points[0]![0]); add(item.points[item.points.length - 1]![0]); }
@@ -42,8 +46,8 @@ function extent(series: ChartSeries[], labels: ChartLabel[], alarms: ChartAlarms
  * right, any further ones on the left. The legend names each series' unit. Alarm rows share the time axis, so a
  * mark sits under the value it belongs to.
  */
-export function datasetChartOption({ series, labels, alarms = [], colors, timeZone, locale }: Input): TelemetryChartOption {
-  const range = extent(series, labels, alarms);
+export function datasetChartOption({ series, labels, alarms = [], colors, timeZone, locale, viewport }: Input): TelemetryChartOption {
+  const range = dojoChartExtent({ series, labels, alarms });
   const span = range ? range[1] - range[0] : 0;
   const palette = colors.seriesPalette ?? [colors.primary];
   const units = [...new Set(series.map(item => item.unit ?? ""))];
@@ -99,6 +103,8 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
   }));
   const grid: object[] = [{ id: "values", left, right, top: 36, bottom: 64 + alarmHeight }];
   if (alarms.length) grid.push({ id: "alarms", left, right, bottom: 64, height: alarms.length * ALARM_ROW });
+  const zoom = { xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none",
+    ...(viewport ? { startValue: viewport[0], endValue: viewport[1] } : { start: 0, end: 100 }) };
   return {
     animation: false,
     grid,
@@ -109,8 +115,8 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
     xAxis,
     yAxis,
     dataZoom: [
-      { type: "inside", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false },
-      { type: "slider", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none", bottom: 12, height: 22, left, right },
+      { ...zoom, type: "inside", zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false },
+      { ...zoom, type: "slider", bottom: 12, height: 22, left, right },
     ],
     series: [...lines, ...marks],
   } as TelemetryChartOption;

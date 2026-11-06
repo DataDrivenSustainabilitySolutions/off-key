@@ -22,6 +22,9 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Member["role"]>("user");
   const [inviting, setInviting] = useState(false);
@@ -47,18 +50,16 @@ export default function AccountSettings() {
   useEffect(() => {
     let active = true;
     // Every member can read the roles; only member managers list the members.
-    getRoles().then((roles) => {
-      if (active) setRoles(roles);
+    Promise.all([getRoles(), manageMembers ? getMembers() : Promise.resolve([])]).then(([nextRoles, nextMembers]) => {
+      if (!active) return;
+      setRoles(nextRoles);
+      setMembers(nextMembers);
+      setLoaded(true);
     }).catch((error) => {
-      if (active && manageMembers) setError(getErrorMessage(error));
-    });
-    if (manageMembers) getMembers().then((members) => {
-      if (active) setMembers(members);
-    }).catch((error) => {
-      if (active) setError(getErrorMessage(error));
+      if (active) setLoadError(getErrorMessage(error));
     });
     return () => { active = false; };
-  }, [manageMembers]);
+  }, [loadAttempt, manageMembers]);
 
   const rolesChanged = async (role?: Role) => {
     await reload();
@@ -112,11 +113,16 @@ export default function AccountSettings() {
       </SettingsGroup>
       {manageMembers && (
         <SettingsGroup title="Members" help="Members can view organization data; their role decides what they can change. Keep at least one active member who can manage members. Disabling access revokes sessions immediately. Disabled members can be permanently removed; shared organization data is kept."
-          actions={!inviting && <Button variant="outline" size="sm" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}
+          padded={!loaded}
+          actions={loaded && !inviting && <Button variant="outline" size="sm" onClick={() => { setError(""); setNotice(""); setInviting(true); }}>Invite member</Button>}
           footer={<>
             {error && <p role="alert" className="text-destructive">{error}</p>}
             {notice && <p role="status">{notice}</p>}
           </>}>
+          {!loaded ? loadError ? <div className="app-settings-load-error">
+            <p role="alert" className="text-destructive">Member access could not be loaded. {loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => { setLoadError(""); setLoadAttempt(attempt => attempt + 1); }}>Retry</Button>
+          </div> : <p className="app-settings-loading" role="status">Loading members and roles…</p> : <>
           {inviting && <form className="app-settings-invite" aria-label="Invite member" onSubmit={(event) => { event.preventDefault(); void invite(email, role); }}>
             <div className="grid min-w-0 flex-1 gap-1.5">
               <Label htmlFor="member-email">Email</Label>
@@ -159,9 +165,10 @@ export default function AccountSettings() {
               </li>
             ))}
           </ul>
+          </>}
         </SettingsGroup>
       )}
-      {manageMembers && <RoleSettings roles={roles} onChanged={rolesChanged} />}
+      {manageMembers && loaded && <RoleSettings roles={roles} onChanged={rolesChanged} />}
       {confirmation}
       {removalTarget && <RemoveMemberDialog member={removalTarget}
         onClose={() => setRemovalTarget(null)}

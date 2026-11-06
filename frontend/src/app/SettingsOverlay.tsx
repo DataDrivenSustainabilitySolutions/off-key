@@ -53,11 +53,6 @@ export function SettingsOverlay() {
   const dialog = useRef<HTMLDivElement>(null);
   const inOtherDialog = (target: EventTarget | null) => target instanceof Element
     && !dialog.current?.contains(target) && !!target.closest("[role=dialog], [role=alertdialog]");
-  const nav = useRef<HTMLElement>(null);
-  // On phones the sections scroll sideways; keep the open one in view.
-  // Braced: browsers may return a promise from scrollIntoView, which an effect must not return.
-  const revealSection = () => { nav.current?.querySelector<HTMLElement>("[aria-current]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" }); };
-  useEffect(() => { revealSection(); }, [current?.id]);
 
   // Earlier links opened catalogue settings with ?catalogue=settings.
   const legacyCatalogue = new URLSearchParams(location.search).get("catalogue") === "settings";
@@ -73,7 +68,7 @@ export function SettingsOverlay() {
       <Dialog.Overlay className="app-settings-overlay" />
       <Dialog.Content ref={dialog} className="app-settings-dialog"
         // Start on the window itself rather than lighting up the first section.
-        onOpenAutoFocus={event => { event.preventDefault(); dialog.current?.focus(); revealSection(); }}
+        onOpenAutoFocus={event => { event.preventDefault(); dialog.current?.focus(); }}
         // A dialog opened above the overlay (remove member, catalogue editor) handles its
         // own Escape and clicks; Radix can briefly count the overlay as topmost too.
         onEscapeKeyDown={event => { if (saving || inOtherDialog(event.target)) event.preventDefault(); }}
@@ -85,7 +80,7 @@ export function SettingsOverlay() {
         }}>
         <aside className="app-settings-sidebar">
           <Dialog.Title className="app-settings-title">Settings</Dialog.Title>
-          <nav ref={nav} aria-label="Settings sections" className="app-settings-nav">
+          <nav aria-label="Settings sections" className="app-settings-nav">
             {(["Personal", "Workspace"] as const).map(group => {
               const entries = sections.filter(entry => entry.group === group);
               return entries.length > 0 && <div key={group} className="app-settings-nav-group">

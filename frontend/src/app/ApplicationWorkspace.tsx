@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
@@ -8,6 +8,7 @@ import { WorkspaceNavigation } from "./WorkspaceNavigation";
 import { WORKSPACE_PATHS } from "../features/workspace/application-navigation";
 import { CatalogueProvider } from "@/features/workspace/CatalogueProvider";
 import { CatalogueDialogs } from "@/features/workspace/CatalogueDialogs";
+import { CatalogueSearchContext } from "@/features/workspace/catalogue-search";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
 import { WorkspaceCatalogue } from "@/features/workspace/WorkspaceCatalogue";
 import { ExplorerSidebarResize } from "@/features/workspace/ExplorerSidebarResize";
@@ -42,19 +43,26 @@ function WorkspaceFrame() {
     setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }));
     requestAnimationFrame(() => toggle.current?.focus({ preventScroll: true }));
   };
+  const focusCatalogueSearch = useCallback(() => {
+    if (mobile) setMobileOpen(true);
+    else if (!preferences.sidebarOpen) setPreferences(previous => ({ ...previous, sidebarOpen: true }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const search = document.querySelector<HTMLInputElement>("#system-explorer input[type=search]");
+      search?.focus();
+      search?.select();
+    }));
+  }, [mobile, preferences.sidebarOpen, setPreferences]);
   useEffect(() => { if (main.current) main.current.scrollTop = 0; }, [pathname]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
       if (mobile ? mobileOpen : preferences.sidebarOpen) return;
       event.preventDefault();
-      if (mobile) setMobileOpen(true);
-      else setPreferences(previous => ({ ...previous, sidebarOpen: true }));
-      requestAnimationFrame(() => requestAnimationFrame(() => window.document.querySelector<HTMLInputElement>(".ex-search input")?.focus()));
+      focusCatalogueSearch();
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [mobile, mobileOpen, preferences.sidebarOpen, setPreferences]);
+  }, [mobile, mobileOpen, preferences.sidebarOpen, focusCatalogueSearch]);
   return <div className={`ex-shell app-catalogue-shell${!mobile && !preferences.sidebarOpen ? " ex-sidebar-hidden" : ""}`}
     style={{ "--ex-sidebar-width": `${preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}px` } as CSSProperties}>
     <a className="workspace-skip-link" href="#workspace-content" onClick={event => {
@@ -73,7 +81,9 @@ function WorkspaceFrame() {
       <div ref={main} id="workspace-content" tabIndex={-1} className="ex-main app-catalogue-main">
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}
-        <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
+        <CatalogueSearchContext.Provider value={focusCatalogueSearch}>
+          <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
+        </CatalogueSearchContext.Provider>
       </div>
     </div>
     <Dialog.Root open={mobile && mobileOpen} onOpenChange={setMobileOpen}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay app-catalogue-mobile-overlay" />

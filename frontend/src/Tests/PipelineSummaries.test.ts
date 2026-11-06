@@ -23,7 +23,7 @@ const summary = (component: string, params?: PipelineNode["params"], metadata?: 
 
 describe("card summaries", () => {
   it("names what the structural steps do with their features", () => {
-    expect(summary("source.aligned")).toEqual({ text: "3 readings" });
+    expect(summary("source.aligned")).toEqual({ text: "3 input slots" });
     // Selections list reading labels, falling back to the key when a slot has none.
     expect(summary("features.select", { features: ["input_2", "input_3", "derived"] }))
       .toEqual({ chips: ["DC current", "input_3", "derived"] });

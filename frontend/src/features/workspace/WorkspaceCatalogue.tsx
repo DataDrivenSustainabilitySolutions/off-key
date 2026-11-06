@@ -25,10 +25,11 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
       const ancestors = navigationTrail(index, node.key).slice(1, -1);
       const nearest = ancestors.slice().reverse();
       const owner = nearest.find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection");
+      const broker = ancestors.find(ancestor => ancestor.kind === "connection");
       const topic = nearest.find(ancestor => ancestor.kind === "topic");
       return { node,
         label: node.entityKind === "stream" ? labels.get(node.objectId ?? "") ?? node.label : node.label,
-        detail: [owner?.label, topic?.label].filter(Boolean).join(" · ") || "Catalogue",
+        detail: [owner?.label, owner !== broker ? broker?.label : undefined, topic?.label].filter(Boolean).join(" / ") || "Catalogue",
         path: ancestors.map(ancestor => ancestor.label).join(" / ") || undefined };
     });
     if (group) return group.member_ids.flatMap(id => {
@@ -41,9 +42,7 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   }, [index, visibleIndex, scopeKey, deferredQuery, group, labels]);
   const favourites = starred.flatMap(item => item.kind === "reading" && labels.has(item.id) && visibleIndex.objectKeys.has(item.id)
     ? [{ ...item, label: labels.get(item.id)! }] : []);
-  const title = group?.label ?? (current?.kind === "topic"
-    ? navigationTrail(index, scopeKey).filter(node => node.kind === "topic").map(node => node.label).join("/")
-    : current?.label) ?? document.label;
+  const title = group?.label ?? current?.label ?? document.label;
   return <ExplorerSidebar index={index} scopeKey={scopeKey} title={title} catalogueGroups={document.groups}
     activity={activity} onlineOnly={onlineOnly}
     onOnlineOnlyChange={value => { setPreferences(previous => ({ ...previous, onlineOnly: value })); }}

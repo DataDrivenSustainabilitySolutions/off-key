@@ -77,7 +77,7 @@ router = APIRouter(include_in_schema=False)
 
 def _pinned(response: HTMLResponse, *assets: PinnedAsset) -> HTMLResponse:
     """Add the integrity check to each asset tag and send the page's CSP."""
-    html = response.body.decode()
+    html = bytes(response.body).decode()
     for asset in assets:
         for attribute in ("src", "href"):
             tag = f'{attribute}="{asset.url}"'

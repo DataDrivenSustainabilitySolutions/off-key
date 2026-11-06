@@ -70,7 +70,7 @@ async def forward(request, method, path, body=None, params=None):
 @router.post("/pipelines/apply", response_model=PipelineActivationView, status_code=202)
 @write_limit
 async def apply_pipeline(request: Request, change: PipelineApplyRequest):
-    """Start or replace a monitor from a design in one step. Administrators only.
+    """Start or replace a monitor from a design in one step. Needs `manage_monitors`.
 
     Saves the design, publishes a revision and activates it on the readings in
     `bindings` (input slot id to catalogue stream id). `replace_service_id`
@@ -120,7 +120,7 @@ async def list_pipelines(
 @router.post("/pipelines", response_model=PipelineView, status_code=201)
 @write_limit
 async def create_pipeline(request: Request, change: PipelineCreate):
-    """Save a new design as a draft. Administrators only."""
+    """Save a new design as a draft. Needs `manage_monitors`."""
     return await forward(request, "POST", "/pipelines", change)
 
 
@@ -145,7 +145,7 @@ async def get_pipeline(request: Request, pipeline_id: str):
 async def update_pipeline(
     request: Request, pipeline_id: str, change: PipelineMetadataChange
 ):
-    """Rename, describe or archive a design. Administrators only.
+    """Rename, describe or archive a design. Needs `manage_monitors`.
 
     Send the current `expected_version`; a stale one answers 409.
     """
@@ -157,7 +157,7 @@ async def update_pipeline(
 @router.put("/pipelines/{pipeline_id}/draft", response_model=PipelineView)
 @write_limit
 async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSave):
-    """Replace a design's draft graph and layout. Administrators only.
+    """Replace a design's draft graph and layout. Needs `manage_monitors`.
 
     Send the current `expected_version`; a stale one answers 409.
     """
@@ -204,7 +204,7 @@ async def list_pipeline_revisions(
 async def publish_revision(request: Request, pipeline_id: str, change: PipelinePublish):
     """Freeze the current draft as a new revision that monitors can run.
 
-    Administrators only. Send the current `expected_version`.
+    Needs `manage_monitors`. Send the current `expected_version`.
     """
     return await forward(
         request, "POST", f"/pipelines/{path_segment(pipeline_id)}/revisions", change
@@ -252,7 +252,7 @@ async def get_revision_metadata(
 )
 @write_limit
 async def activate_pipeline(request: Request, change: PipelineActivationRequest):
-    """Run a published revision as a monitor. Administrators only.
+    """Run a published revision as a monitor. Needs `manage_monitors`.
 
     `bindings` maps each input slot to a catalogue stream id. Answers 202 with
     an activation: poll it until its `phase` is `succeeded`, `failed` or
@@ -278,7 +278,7 @@ async def get_activation(request: Request, activation_id: str):
 )
 @write_limit
 async def cancel_activation(request: Request, activation_id: str):
-    """Cancel an activation that has not finished. Administrators only."""
+    """Cancel an activation that has not finished. Needs `manage_monitors`."""
     return await forward(
         request, "DELETE", f"/pipeline-activations/{path_segment(activation_id)}"
     )
@@ -361,7 +361,7 @@ async def save_pipeline_layout(
 ):
     """Store where a monitor's nodes sit on the canvas; the graph is unchanged.
 
-    Administrators only.
+    Needs `manage_monitors`.
     """
     return await forward(
         request, "PUT", f"/{path_segment(service_id)}/pipeline-layout", layout

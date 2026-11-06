@@ -7,7 +7,11 @@ import type { StorageStatus } from "../types/collection";
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 const getStorage = vi.fn();
-const auth = vi.hoisted(() => ({ isAdmin: true, member: { email: "admin@example.com" } }));
+const auth = vi.hoisted(() => {
+  const auth = { permissions: ["manage_sources"] as string[], member: { email: "admin@example.com" },
+    can: (permission: string) => auth.permissions.includes(permission) };
+  return auth;
+});
 vi.mock("../lib/api-client", () => ({ apiUtils: api }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 const status: StorageStatus = {
@@ -37,8 +41,8 @@ beforeEach(() => {
 });
 
 describe("system status, storage and retention", () => {
-  it.each([true, false])("loads operational status (administrator: %s)", async (isAdmin) => {
-    auth.isAdmin = isAdmin;
+  it.each([[["manage_sources"]], [[]]])("loads operational status (permissions: %j)", async (permissions) => {
+    auth.permissions = permissions;
     render(
       <MemoryRouter initialEntries={["/system/status"]}>
         <SystemStatus />

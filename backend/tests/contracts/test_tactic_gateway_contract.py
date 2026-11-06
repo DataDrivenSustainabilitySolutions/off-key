@@ -18,6 +18,7 @@ CALL_SHAPES = {
     "request": (0, 1, "endpoint", None, ""),
     "forward": (1, 2, "path", None, "/api/v1/monitors"),
     "member_request": (0, 1, "path", None, "/api/v1/members"),
+    "role_request": (0, 1, "path", None, "/api/v1/roles"),
     "system_request": (0, 2, "path", "", "/api/v1/system"),
 }
 # TACTIC routes the gateway deliberately never calls.

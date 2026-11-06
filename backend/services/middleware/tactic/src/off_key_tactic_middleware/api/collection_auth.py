@@ -1,11 +1,13 @@
 """Verify membership against current account state for every protected request."""
 
+from functools import cache
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from off_key_core.auth.permissions import Permission
 from off_key_core.auth.tokens import InvalidAccessToken, decode_access_token
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
-from off_key_core.utils.enum import RoleEnum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +42,14 @@ async def current_member(
     return user
 
 
-async def require_admin(user: User = Depends(current_member)) -> User:
-    if user.role != RoleEnum.admin:
-        raise HTTPException(403, "Administrator access required")
-    return user
+@cache
+def require_permission(permission: Permission):
+    """One dependency per permission, so access tests can tell them apart."""
+
+    async def holds_permission(user: User = Depends(current_member)) -> User:
+        if permission not in user.permissions:
+            raise HTTPException(403, f"This needs the {permission} permission")
+        return user
+
+    holds_permission.__name__ = f"require_{permission}"
+    return holds_permission

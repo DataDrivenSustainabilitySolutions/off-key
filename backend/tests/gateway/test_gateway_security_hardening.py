@@ -186,6 +186,7 @@ async def test_member_access_is_checked_on_every_request(monkeypatch):
         "id": 17,
         "email": "member@example.com",
         "role": "user",
+        "permissions": [],
         "is_active": True,
         "is_verified": True,
         "created_at": datetime.now(UTC).isoformat(),

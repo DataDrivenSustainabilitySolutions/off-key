@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import type { Member } from "../src/lib/member-types";
+import type { Member, Role } from "../src/lib/member-types";
 import { accessToken, loginWithEmail, PASSWORD } from "./helpers/auth";
 
 const mailpit = process.env.MAILPIT_BASE_URL ?? "http://localhost:8025";
@@ -195,5 +195,62 @@ test("enforces current access during removal and keeps previous sessions invalid
   } finally {
     await memberContext.close();
     await fixture.cleanup();
+  }
+});
+
+test("a custom role grants its member exactly the permissions it bundles", async ({ page, browser }) => {
+  const fixture = await accountFixture(page);
+  const name = `Operator ${randomUUID().slice(0, 8)}`;
+  const memberContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const memberPage = await memberContext.newPage();
+  const readRole = async () => {
+    const response = await page.request.get("/api/v1/roles", { headers: fixture.headers });
+    expect(response.ok(), await response.text()).toBe(true);
+    return (await response.json() as Role[]).find(role => role.name === name);
+  };
+  try {
+    const roles = page.getByRole("region", { name: "Roles", exact: true });
+    await roles.getByRole("button", { name: "New role", exact: true }).click();
+    const form = roles.getByRole("form", { name: "New role", exact: true });
+    await form.getByLabel("Name", { exact: true }).fill(name);
+    await form.getByRole("checkbox", { name: /Manage monitors/ }).check();
+    await form.getByRole("button", { name: "Create role", exact: true }).click();
+    await expect(roles.getByRole("status")).toContainText(`${name} created.`);
+    expect(await readRole()).toMatchObject({ permissions: ["manage_monitors"], built_in: false, members: 0 });
+
+    const members = page.getByRole("region", { name: "Members", exact: true });
+    await members.getByRole("button", { name: "Invite member", exact: true }).click();
+    await members.getByLabel("Email", { exact: true }).fill(fixture.email);
+    await members.getByLabel("Role", { exact: true }).selectOption({ label: name });
+    await members.getByRole("button", { name: "Send invitation", exact: true }).click();
+    await expect(members.getByRole("status")).toContainText("Invitation sent");
+    await acceptInvitation(memberPage, await invitationLink(page, fixture.email), fixture.email);
+
+    const api = (path: string) => new URL(`/api/v1${path}`, page.url()).href;
+    const memberHeaders = { Authorization: `Bearer ${await accessToken(memberPage)}` };
+    const profile = await memberPage.request.get(api("/members/me"), { headers: memberHeaders });
+    expect(await profile.json()).toMatchObject({ role: (await readRole())!.id, permissions: ["manage_monitors"] });
+    await memberPage.goto(new URL("/account", page.url()).href);
+    const signedIn = memberPage.getByRole("region", { name: "Signed in", exact: true });
+    await expect(signedIn).toContainText(name);
+    await expect(signedIn).toContainText("Your role: view organization data, manage monitors.");
+    await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
+    await expect(memberPage.getByRole("heading", { name: "Roles", exact: true })).toHaveCount(0);
+    const forbidden = await memberPage.request.post(api("/roles"), { headers: memberHeaders, data: { name: "Escalated", permissions: ["manage_members"] } });
+    expect(forbidden.status()).toBe(403);
+
+    // A role cannot be deleted while a member holds it.
+    const role = (await readRole())!;
+    expect(role.members).toBe(1);
+    const held = await page.request.delete(`/api/v1/roles/${role.id}`, { headers: fixture.headers });
+    expect(held.status(), await held.text()).toBe(409);
+  } finally {
+    await memberContext.close();
+    await fixture.cleanup();
+    const role = await readRole();
+    if (role) {
+      const removed = await page.request.delete(`/api/v1/roles/${role.id}`, { headers: fixture.headers });
+      expect(removed.status(), await removed.text()).toBe(204);
+    }
   }
 });

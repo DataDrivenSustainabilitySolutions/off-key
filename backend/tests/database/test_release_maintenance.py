@@ -39,6 +39,7 @@ from off_key_tactic_middleware.services.orchestration.radar import (
 )
 from off_key_tactic_middleware.services.pipelines import release
 from sqlalchemy import insert, inspect, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from tests.support.env import DATABASE_ENVIRONMENT, set_environment
@@ -49,6 +50,7 @@ from tests.support.schema_baselines import (
     remove_pipeline_schema,
     restore_entity_favorites,
     restore_retired_schema,
+    restore_role_enum,
     rewind_ledger,
 )
 
@@ -147,6 +149,37 @@ def test_member_favorites_migration_keeps_entity_favorites(disposable_database):
         assert connection.execute(
             text("SELECT user_id, kind, item_id FROM member_favorites")
         ).all() == [(1, "entity", "c1")]
+
+
+def test_member_roles_migration_keeps_every_members_access(disposable_database):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+        restore_role_enum(connection)
+        for id, role in ((1, "admin"), (2, "user")):
+            connection.execute(
+                insert(User).values(
+                    id=id, email=f"{role}@example.test", hashed_password="h", role=role
+                )
+            )
+        rewind_ledger(connection, "021_member_roles.sql")
+    with disposable_database.begin() as connection:
+        assert apply_migrations(connection)["applied"] == ["021_member_roles.sql"]
+        assert connection.execute(
+            text("SELECT id, name, permissions FROM member_roles ORDER BY id")
+        ).all() == [("admin", "Administrator", []), ("user", "Member", [])]
+        assert connection.execute(
+            text("SELECT id, role FROM users ORDER BY id")
+        ).all() == [(1, "admin"), (2, "user")]
+        schema = inspect(connection)
+        assert [key["referred_table"] for key in schema.get_foreign_keys("users")] == [
+            "member_roles"
+        ]
+        assert not connection.scalar(
+            text("SELECT count(*) FROM pg_type WHERE typname = 'roleenum'")
+        )
+        # A role a member holds cannot disappear underneath them.
+        with pytest.raises(IntegrityError), connection.begin_nested():
+            connection.execute(text("DELETE FROM member_roles WHERE id = 'user'"))
 
 
 def test_run_timeline_migration_keeps_existing_runs(disposable_database):

@@ -42,7 +42,7 @@ const withSince = (query: AnomalyQuery, range: string): AnomalyQuery => {
 };
 
 export default function AnomalyTable() {
-  const { isAdmin, userId } = useAuth();
+  const { can, userId } = useAuth();
   const navigate = useNavigate();
   const { streamIds, system, selected, index } = useCatalogue();
   const [result, setResult] = useState<{ query: AnomalyQuery; page: AnomalyPage } | null>(null);
@@ -260,7 +260,7 @@ export default function AnomalyTable() {
                       <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
                         ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),
                         ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyId(anomaly.anomaly_id) }] : []),
-                        ...(isAdmin ? [{ label: "Delete anomaly", icon: Trash2, destructive: true, separated: true, onSelect: () => void handleDelete(anomaly) }] : []),
+                        ...(can("manage_alarms") ? [{ label: "Delete anomaly", icon: Trash2, destructive: true, separated: true, onSelect: () => void handleDelete(anomaly) }] : []),
                       ]} />
                     </td>
                   </tr>;

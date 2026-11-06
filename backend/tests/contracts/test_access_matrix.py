@@ -1,10 +1,10 @@
 """Who may call each route, in one readable table per service.
 
 TACTIC trusts only the gateway's service key; on top of that a route may
-require the signed-in member or an administrator. The gateway authenticates
-members itself; "operational" lets every member read and only administrators
-write. A new route fails these tests until it is added to its table, so a
-change to access is always a deliberate, reviewed edit.
+require the signed-in member or one permission. The gateway authenticates
+members itself; on "monitors" and "alarms" every member reads and changes need
+manage_monitors or manage_alarms. A new route fails these tests until it is
+added to its table, so a change to access is always a deliberate, reviewed edit.
 """
 
 from collections import defaultdict
@@ -14,6 +14,7 @@ from fastapi.routing import iter_route_contexts
 from off_key_api_gateway.api import access
 from off_key_api_gateway.app import build_app
 from off_key_api_gateway.settings import AppSettings
+from off_key_core.auth.permissions import Permission
 from off_key_tactic_middleware.api import collection_auth
 from off_key_tactic_middleware.api.service_auth import require_gateway
 from off_key_tactic_middleware.main import create_app
@@ -59,6 +60,7 @@ TACTIC_ACCESS = {
     "member": {
         "GET /api/v1/members/me",
         "POST /api/v1/members/sessions",
+        "GET /api/v1/roles",
         "GET /api/v1/monitors/pipeline-activations/{activation_id}",
         "GET /api/v1/monitors/pipelines",
         "GET /api/v1/monitors/pipelines/catalog",
@@ -79,11 +81,16 @@ TACTIC_ACCESS = {
         "GET /api/v1/system/revisions",
         "GET /api/v1/system/storage",
     },
-    "admin": {
+    "manage_members": {
         "GET /api/v1/members",
         "POST /api/v1/members/invitations",
         "DELETE /api/v1/members/{user_id}",
         "PUT /api/v1/members/{user_id}",
+        "POST /api/v1/roles",
+        "DELETE /api/v1/roles/{role_id}",
+        "PATCH /api/v1/roles/{role_id}",
+    },
+    "use_dojo": {
         "GET /api/v1/dojo/datasets",
         "POST /api/v1/dojo/datasets/csv",
         "POST /api/v1/dojo/datasets/history",
@@ -97,6 +104,8 @@ TACTIC_ACCESS = {
         "GET /api/v1/dojo/runs/{run_id}",
         "POST /api/v1/dojo/runs/{run_id}/cancel",
         "GET /api/v1/dojo/runs/{run_id}/results",
+    },
+    "manage_monitors": {
         "POST /api/v1/monitors/pipeline-activations",
         "DELETE /api/v1/monitors/pipeline-activations/{activation_id}",
         "POST /api/v1/monitors/pipelines",
@@ -107,6 +116,8 @@ TACTIC_ACCESS = {
         "POST /api/v1/monitors/pipelines/{pipeline_id}/revisions",
         "POST /api/v1/monitors/pipelines/{pipeline_id}/validate",
         "PUT /api/v1/monitors/{service_id}/pipeline-layout",
+    },
+    "manage_sources": {
         "PUT /api/v1/system",
         "PUT /api/v1/system/collection",
         "POST /api/v1/system/collection/preview",
@@ -142,6 +153,8 @@ GATEWAY_ACCESS = {
         "GET /v1/favorites",
         "POST /v1/favorites",
         "GET /v1/members/me",
+        "GET /v1/permissions",
+        "GET /v1/roles",
         "GET /v1/system",
         "PUT /v1/system",
         "PUT /v1/system/collection",
@@ -160,11 +173,7 @@ GATEWAY_ACCESS = {
         "GET /v1/telemetry/{charger_id}/range",
         "GET /v1/telemetry/{charger_id}/type",
     },
-    "operational": {
-        "GET /v1/anomalies",
-        "POST /v1/anomalies",
-        "GET /v1/anomalies/count",
-        "DELETE /v1/anomalies/{anomaly_id}",
+    "monitors": {
         "GET /v1/monitors",
         "GET /v1/monitors/all",
         "GET /v1/monitors/evidence",
@@ -198,7 +207,13 @@ GATEWAY_ACCESS = {
         "GET /v1/monitors/{service_id}/pipeline-metadata",
         "GET /v1/monitors/{service_id}/pipeline-state",
     },
-    "admin": {
+    "alarms": {
+        "GET /v1/anomalies",
+        "POST /v1/anomalies",
+        "GET /v1/anomalies/count",
+        "DELETE /v1/anomalies/{anomaly_id}",
+    },
+    "use_dojo": {
         "GET /v1/dojo/datasets",
         "POST /v1/dojo/datasets/csv",
         "POST /v1/dojo/datasets/history",
@@ -212,10 +227,15 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/runs/{run_id}",
         "POST /v1/dojo/runs/{run_id}/cancel",
         "GET /v1/dojo/runs/{run_id}/results",
+    },
+    "manage_members": {
         "GET /v1/members",
         "POST /v1/members/invitations",
         "DELETE /v1/members/{user_id}",
         "PUT /v1/members/{user_id}",
+        "POST /v1/roles",
+        "DELETE /v1/roles/{role_id}",
+        "PATCH /v1/roles/{role_id}",
     },
 }
 
@@ -255,7 +275,10 @@ def test_tactic_routes_match_the_access_table(monkeypatch):
     found = _classify(
         create_app(),
         [
-            ("admin", collection_auth.require_admin),
+            *(
+                (permission.value, collection_auth.require_permission(permission))
+                for permission in Permission
+            ),
             ("member", collection_auth.current_member),
             ("service", require_gateway),
         ],
@@ -267,8 +290,12 @@ def test_gateway_routes_match_the_access_table():
     found = _classify(
         build_app(AppSettings(APP_NAME="off-key-test")),
         [
-            ("admin", access.require_admin),
-            ("operational", access.operational_access),
+            *(
+                (permission.value, access.require_permission(permission))
+                for permission in Permission
+            ),
+            ("monitors", access.writes_require(Permission.manage_monitors)),
+            ("alarms", access.writes_require(Permission.manage_alarms)),
             ("member", access.current_member),
         ],
     )

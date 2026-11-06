@@ -7,11 +7,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from off_key_api_gateway.api.access import current_member, operational_access
+from off_key_api_gateway.api.access import current_member, writes_require
 from off_key_api_gateway.api.v1 import monitors
+from off_key_core.auth.permissions import (
+    ADMIN_ROLE,
+    MEMBER_ROLE,
+    Permission,
+    role_permissions,
+)
 from off_key_core.db.maintenance import DeploymentInProgressError
 from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
-from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware import deployment
 from off_key_tactic_middleware.api.v1 import radar as radar_api
 from off_key_tactic_middleware.services.orchestration import radar, radar_queries
@@ -132,7 +137,7 @@ async def test_rename_missing_record_and_deployment_lock_do_not_commit():
     service.session.commit.assert_not_awaited()
 
 
-@pytest.mark.parametrize("role,expected", [(RoleEnum.user, 403), (RoleEnum.admin, 200)])
+@pytest.mark.parametrize("role,expected", [(MEMBER_ROLE, 403), (ADMIN_ROLE, 200)])
 def test_gateway_service_rename_obeys_operational_write_permissions(
     role, expected, monkeypatch
 ):
@@ -140,9 +145,11 @@ def test_gateway_service_rename_obeys_operational_write_permissions(
     app.include_router(
         monitors.router,
         prefix="/v1/monitors",
-        dependencies=[Depends(operational_access)],
+        dependencies=[Depends(writes_require(Permission.manage_monitors))],
     )
-    app.dependency_overrides[current_member] = lambda: SimpleNamespace(role=role)
+    app.dependency_overrides[current_member] = lambda: SimpleNamespace(
+        role=role, permissions=role_permissions(role, ())
+    )
     rename = AsyncMock(
         return_value={"service_id": "monitor", "display_name": "Climate"}
     )
@@ -152,7 +159,7 @@ def test_gateway_service_rename_obeys_operational_write_permissions(
             "/v1/monitors/monitor/label", json={"display_name": "Climate"}
         )
     assert response.status_code == expected, response.text
-    if role == RoleEnum.user:
+    if role == MEMBER_ROLE:
         rename.assert_not_awaited()
     else:
         rename.assert_awaited_once_with("monitor", "Climate")

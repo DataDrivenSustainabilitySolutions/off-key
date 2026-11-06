@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from off_key_core.auth.permissions import Permission
 from off_key_core.models.pipeline_reports import bounded_validation_report
 from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
 from off_key_core.schemas.pipelines import (
@@ -37,9 +38,10 @@ from ...provider import (
 )
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.library import PipelineLibrary
-from ..collection_auth import current_member, require_admin
+from ..collection_auth import current_member, require_permission
 from ..errors import DomainErrorRoute
 
+manage_monitors = require_permission(Permission.manage_monitors)
 router = APIRouter(
     prefix="/monitors",
     dependencies=[Depends(current_member)],
@@ -51,7 +53,7 @@ router = APIRouter(
     "/pipelines/apply",
     response_model=PipelineActivationView,
     status_code=202,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def apply_pipeline(
     change: PipelineApplyRequest,
@@ -84,7 +86,7 @@ async def list_pipelines(
     "/pipelines",
     response_model=PipelineView,
     status_code=201,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def create_pipeline(
     change: PipelineCreate, library: PipelineLibrary = Depends(get_pipeline_library)
@@ -95,7 +97,7 @@ async def create_pipeline(
 @router.post(
     "/pipelines/validate",
     response_model=PipelineValidationReport,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def validate_unsaved_design(change: PipelineValidateRequest):
     """Infer an unsaved workbench's features without creating a library record."""
@@ -114,7 +116,7 @@ async def get_pipeline(
 @router.patch(
     "/pipelines/{pipeline_id}",
     response_model=PipelineView,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def update_pipeline(
     pipeline_id: str,
@@ -127,7 +129,7 @@ async def update_pipeline(
 @router.put(
     "/pipelines/{pipeline_id}/draft",
     response_model=PipelineView,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def save_draft(
     pipeline_id: str,
@@ -140,7 +142,7 @@ async def save_draft(
 @router.post(
     "/pipelines/{pipeline_id}/validate",
     response_model=PipelineValidationReport,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def validate_draft(
     pipeline_id: str,
@@ -165,7 +167,7 @@ async def list_revisions(
     "/pipelines/{pipeline_id}/revisions",
     response_model=PipelineRevisionView,
     status_code=201,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def publish_revision(
     pipeline_id: str,
@@ -206,7 +208,7 @@ async def revision_metadata(
     "/pipeline-activations",
     response_model=PipelineActivationView,
     status_code=202,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def activate_pipeline(
     change: PipelineActivationRequest,
@@ -228,7 +230,7 @@ async def get_activation(
 @router.delete(
     "/pipeline-activations/{activation_id}",
     response_model=PipelineActivationView,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def cancel_activation(
     activation_id: str,
@@ -289,7 +291,7 @@ async def service_pipeline_state(
 @router.put(
     "/{service_id}/pipeline-layout",
     response_model=PipelineLayout,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_monitors)],
 )
 async def service_pipeline_layout(
     service_id: str,

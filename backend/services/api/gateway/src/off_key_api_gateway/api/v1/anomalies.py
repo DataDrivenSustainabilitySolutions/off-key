@@ -70,7 +70,7 @@ async def create_anomaly(
     """Record an alarm by hand and email the configured alert recipients.
 
     Monitors record their own alarms; this is for external detectors.
-    Administrators only.
+    Needs `manage_alarms`.
     """
     if payload is None:
         if (
@@ -138,7 +138,7 @@ async def create_anomaly(
 
 @router.delete("/{anomaly_id}")
 async def delete_anomaly(anomaly_id: str):
-    """Remove one alarm by its `anomaly_id`. Administrators only."""
+    """Remove one alarm by its `anomaly_id`. Needs `manage_alarms`."""
     try:
         result = await tactic.delete_anomaly(anomaly_id=anomaly_id)
     except TacticError as e:

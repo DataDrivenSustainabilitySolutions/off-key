@@ -22,7 +22,8 @@ const Pipelines = lazy(() => import("../pipelines/PipelineWorkspace"));
 const RetainedPipeline = lazy(() => import("../pipelines/PipelineRunView"));
 
 export function ExplorerWorkspace() {
-  const { userId, isAuthenticated } = useAuth();
+  const { userId, isAuthenticated, can } = useAuth();
+  const manageMonitors = can("manage_monitors");
   const [params, setParams] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
     favourites: starred, toggleFavourite, openEditor, sectionHref } = useCatalogue();
@@ -46,7 +47,7 @@ export function ExplorerWorkspace() {
   const readingDetail = selected?.entityKind === "stream" && !creating && !requestedService && !pipelineView;
   // Service detail and setup carry their own breadcrumb and heading.
   const ownHeading = !loadingCreation && !(selectionMissing && !pipelineView)
-    && (pipelineView || creating && system.canEdit || !!requestedService && !!selectedService);
+    && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
   useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
     : creating ? "New service" : pipelineView ? "Templates" : selected && (selected.entityKind === "stream"
       ? document.streams.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
@@ -72,27 +73,27 @@ export function ExplorerWorkspace() {
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
     if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>;
-    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={system.canEdit}
+    if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
       initialTarget={initialTarget} initialReading={requestedReading}
       onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;
     if (creating) return <Suspense fallback={<p className="ex-muted" role="status">Opening setup…</p>}>
-      {system.canEdit ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
+      {manageMonitors ? <ServiceCreate key={`${initialTarget ?? ""}:${requestedReading ?? ""}`}
         targets={monitoringIndex.targets} services={monitoring.services}
         initialTarget={initialTarget}
         initialReading={requestedReading} byStream={monitoringIndex.byStream}
         collectionReady={collectionApplied(system.snapshot?.runtime)} document={document}
         draftKey={`service-setup:${userId}:${params.get("target") ?? ""}:${requestedReading ?? ""}`}
         onStarted={async id => { await monitoring.reload(); if (id) openService(id); else closeView(); }} onBack={closeView} />
-        : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "An administrator can create monitoring services."}</p>}
+        : <p className="ex-muted">{system.status === "loading" ? "Loading…" : "Creating monitoring services needs the Manage monitors permission."}</p>}
     </Suspense>;
     if (requestedService && selectedService) return <Suspense fallback={<p className="ex-muted" role="status">Opening service…</p>}>
       <ServiceDetail key={selectedService.id} service={selectedService} inputs={monitoringIndex.inputs.get(selectedService.id) ?? []}
-        document={document} historyCache={history} canEdit={system.canEdit} favourite={favourites.has(selectedService.id)}
+        document={document} historyCache={history} canEdit={manageMonitors} favourite={favourites.has(selectedService.id)}
         pipelineState={monitoring.pipelineState ?? undefined} onFavourite={() => toggleFavourite("monitor", selectedService.id)} onRename={name => monitoring.rename(selectedService.id, name)} onBack={closeView}
         onDeleted={async () => { monitoring.remove(selectedService.id); closeView(); await monitoring.reload(); }} />
     </Suspense>;
     // A retained run outlives its service row.
-    if (requestedService && monitoring.ready && params.get("tab") === "pipeline") return <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={system.canEdit} replaceable={false} /></Suspense>;
+    if (requestedService && monitoring.ready && params.get("tab") === "pipeline") return <Suspense fallback={<p role="status">Opening retained run…</p>}><RetainedPipeline key={requestedService} serviceId={requestedService} canEdit={manageMonitors} replaceable={false} /></Suspense>;
     if (requestedService) return <div className="mn-empty"><p>{monitoring.error || (!monitoring.ready ? "Loading service…" : "Service not found.")}</p>
       <button onClick={closeView}><ArrowLeft size={14} aria-hidden="true" />All services</button>{monitoring.error && <button onClick={() => void monitoring.reload()}>Retry</button>}
     </div>;
@@ -125,7 +126,7 @@ export function ExplorerWorkspace() {
           {preview && selected.entityKind !== "stream" && <button className="ex-collection-action" onClick={closeView}><Info size={15} aria-hidden="true" />Hide source details</button>}
           {liveStreamIds.length > 0 && <SystemLiveControls telemetry={telemetry} canStart={system.canEdit} canView={!!system.snapshot} disabled={system.saving} />}
         </>}
-        {system.canEdit && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
+        {manageMonitors && !creating && !pipelineView && <button className="mn-primary" disabled={system.saving || !system.document || !monitoring.ready} onClick={createService}>
           <Plus size={15} />Create
         </button>}
       </div>

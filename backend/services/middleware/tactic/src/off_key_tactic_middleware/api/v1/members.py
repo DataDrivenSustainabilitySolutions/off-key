@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Response
+from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import User
 from off_key_core.schemas.members import (
     AcceptInvitation,
@@ -6,6 +7,9 @@ from off_key_core.schemas.members import (
     MemberProfile,
     MemberUpdate,
     PasswordReset,
+    RoleCreate,
+    RoleProfile,
+    RoleUpdate,
 )
 from off_key_core.schemas.sessions import RememberedSessionToken
 from off_key_core.schemas.user import ForgotPasswordRequest
@@ -13,10 +17,12 @@ from off_key_core.schemas.user import ForgotPasswordRequest
 from ...provider import get_member_service, get_remembered_session_service
 from ...services.accounts.members import MemberService
 from ...services.accounts.remembered_sessions import RememberedSessionService
-from ..collection_auth import current_member, require_admin
+from ..collection_auth import current_member, require_permission
 from ..errors import DomainErrorRoute
 
 router = APIRouter(prefix="/members", tags=["members"], route_class=DomainErrorRoute)
+roles_router = APIRouter(prefix="/roles", tags=["roles"], route_class=DomainErrorRoute)
+manage_members = require_permission(Permission.manage_members)
 
 
 # Dependency overrides in tests address these names; they are the providers.
@@ -55,7 +61,7 @@ async def me(user: User = Depends(current_member)):
 
 
 @router.get(
-    "", response_model=list[MemberProfile], dependencies=[Depends(require_admin)]
+    "", response_model=list[MemberProfile], dependencies=[Depends(manage_members)]
 )
 async def list_members(service: MemberService = Depends(member_service)):
     return await service.list_members()
@@ -64,7 +70,7 @@ async def list_members(service: MemberService = Depends(member_service)):
 @router.post("/invitations")
 async def invite(
     invitation: MemberInvitation,
-    actor: User = Depends(require_admin),
+    actor: User = Depends(manage_members),
     service: MemberService = Depends(member_service),
 ):
     return await service.invite(invitation, actor)
@@ -74,7 +80,7 @@ async def invite(
 async def update_member(
     user_id: int,
     change: MemberUpdate,
-    actor: User = Depends(require_admin),
+    actor: User = Depends(manage_members),
     service: MemberService = Depends(member_service),
 ):
     return await service.update(user_id, change, actor)
@@ -83,7 +89,7 @@ async def update_member(
 @router.delete("/{user_id}", status_code=204, response_class=Response)
 async def remove_member(
     user_id: int,
-    actor: User = Depends(require_admin),
+    actor: User = Depends(manage_members),
     service: MemberService = Depends(member_service),
 ):
     await service.remove(user_id, actor)
@@ -114,3 +120,40 @@ async def reset_password(
 ):
     await service.reset_password(request.token, request.new_password)
     return {"message": "Password has been successfully reset"}
+
+
+@roles_router.get("", response_model=list[RoleProfile])
+async def list_roles(
+    user: User = Depends(current_member),
+    service: MemberService = Depends(member_service),
+):
+    return await service.list_roles()
+
+
+@roles_router.post("", response_model=RoleProfile, status_code=201)
+async def create_role(
+    change: RoleCreate,
+    actor: User = Depends(manage_members),
+    service: MemberService = Depends(member_service),
+):
+    return await service.create_role(change, actor)
+
+
+@roles_router.patch("/{role_id}", response_model=RoleProfile)
+async def update_role(
+    role_id: str,
+    change: RoleUpdate,
+    actor: User = Depends(manage_members),
+    service: MemberService = Depends(member_service),
+):
+    return await service.update_role(role_id, change, actor)
+
+
+@roles_router.delete("/{role_id}", status_code=204, response_class=Response)
+async def delete_role(
+    role_id: str,
+    actor: User = Depends(manage_members),
+    service: MemberService = Depends(member_service),
+):
+    await service.delete_role(role_id, actor)
+    return Response(status_code=204)

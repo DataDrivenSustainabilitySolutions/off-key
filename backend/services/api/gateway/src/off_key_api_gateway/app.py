@@ -107,8 +107,13 @@ OPENAPI_TAGS = [
     },
     {
         "name": "members",
-        "description": "The signed-in member, and for administrators the "
-        "organization's members and invitations.",
+        "description": "The signed-in member and their permissions, and with "
+        "`manage_members` the organization's members and invitations.",
+    },
+    {
+        "name": "roles",
+        "description": "Roles bundle permissions; every member holds one. Every "
+        "member reads everything, and a permission allows changes in one area.",
     },
     {"name": "health", "description": "Liveness of the gateway itself."},
 ]

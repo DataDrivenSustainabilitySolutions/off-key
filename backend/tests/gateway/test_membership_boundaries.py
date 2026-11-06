@@ -8,6 +8,7 @@ from off_key_api_gateway.api import access
 from off_key_api_gateway.api.rate_limiter import limiter
 from off_key_api_gateway.api.v1 import auth, favorites, monitors
 from off_key_api_gateway.facades.tactic import TacticError
+from off_key_core.auth.permissions import Permission
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.schemas.favorites import FavoriteRef
 from off_key_core.schemas.members import AcceptInvitation
@@ -18,6 +19,7 @@ from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client
 
 PROFILE = member_profile(email="member@example.com")
+ADMIN = member_profile("admin", email="admin@example.com")
 
 
 @pytest.fixture
@@ -81,6 +83,9 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
             ("GET", "/members"),
             ("POST", "/members/invitations"),
             ("PUT", "/members/19"),
+            ("POST", "/roles"),
+            ("PATCH", "/roles/operator"),
+            ("DELETE", "/roles/operator"),
         ):
             assert (
                 await client.request(
@@ -94,15 +99,78 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
 
 @pytest.mark.asyncio
 async def test_admin_can_manage_monitors(gateway, monkeypatch):
-    gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
-        update={"role": "admin"}
-    )
+    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
     delete = AsyncMock(return_value={"status": "deleted"})
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", delete)
     async with asgi_client(gateway) as client:
         response = await client.delete("/v1/monitors/example")
     assert response.status_code == 200
     delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_custom_role_changes_only_what_its_permissions_cover(
+    gateway, monkeypatch
+):
+    from off_key_api_gateway.api.v1 import anomalies
+
+    gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
+        update={"role": "alarm-desk", "permissions": [Permission.manage_alarms]}
+    )
+    remove_alarm = AsyncMock(return_value={"message": "deleted"})
+    monkeypatch.setattr(anomalies.tactic, "delete_anomaly", remove_alarm)
+    remove_monitor = AsyncMock()
+    monkeypatch.setattr(monitors.tactic, "delete_radar_service", remove_monitor)
+    async with asgi_client(gateway) as client:
+        alarm = await client.delete("/v1/anomalies/example")
+        monitor = await client.delete("/v1/monitors/example")
+        members = await client.get("/v1/members")
+        reads = await client.get("/v1/permissions")
+    assert alarm.status_code == 200, alarm.text
+    remove_alarm.assert_awaited_once()
+    assert monitor.status_code == 403
+    assert "manage_monitors" in monitor.json()["detail"]
+    remove_monitor.assert_not_awaited()
+    assert members.status_code == 403
+    assert reads.status_code == 200
+    assert [entry["id"] for entry in reads.json()] == [p.value for p in Permission]
+
+
+@pytest.mark.asyncio
+async def test_role_changes_forward_only_the_fields_sent(gateway, monkeypatch):
+    from off_key_api_gateway.api.v1 import roles
+
+    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
+    role = {
+        "id": "operator",
+        "name": "Operator",
+        "permissions": ["manage_monitors"],
+        "editable": True,
+        "built_in": False,
+        "members": 0,
+    }
+    remote = AsyncMock(return_value=role)
+    monkeypatch.setattr(roles.tactic, "request", remote)
+    async with asgi_client(gateway) as client:
+        response = await client.patch(
+            "/v1/roles/operator",
+            json={"permissions": ["manage_monitors"]},
+            headers={"Authorization": "Bearer administrator"},
+        )
+        unknown = await client.post(
+            "/v1/roles",
+            json={"name": "Desk", "permissions": ["launch_rockets"]},
+            headers={"Authorization": "Bearer administrator"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json() == role
+    remote.assert_awaited_once_with(
+        "PATCH",
+        "/api/v1/roles/operator",
+        json_data={"permissions": ["manage_monitors"]},
+        headers={"Authorization": "Bearer administrator"},
+    )
+    assert unknown.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -150,9 +218,7 @@ async def test_admin_member_removal_forwards_identity_and_preserves_status(
 ):
     from off_key_api_gateway.api.v1 import members
 
-    gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
-        update={"role": "admin"}
-    )
+    gateway.dependency_overrides[access.current_member] = lambda: ADMIN
     remote = AsyncMock(return_value="")
     if status != 204:
         remote.side_effect = TacticError("Cannot remove member", status=status)

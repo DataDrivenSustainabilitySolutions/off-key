@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway_system
+from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     Charger,
@@ -23,7 +24,6 @@ from off_key_core.db.system import (
     SystemRevision,
 )
 from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.domain import ConflictError
@@ -348,7 +348,7 @@ async def test_stale_edits_fail_and_noop_does_not_bump_revision(database):
 def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch):
     app = FastAPI()
     app.include_router(system_api.router)
-    member = User(email="member@example.com", role=RoleEnum.user)
+    member = User(email="member@example.com", role=MEMBER_ROLE)
     app.dependency_overrides[current_member] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     read = AsyncMock(return_value={})
@@ -368,7 +368,7 @@ def test_routes_enforce_current_database_admin_role_and_member_reads(monkeypatch
 def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypatch):
     app = FastAPI()
     app.include_router(system_api.router)
-    member = User(email="member@example.com", role=RoleEnum.user)
+    member = User(email="member@example.com", role=MEMBER_ROLE)
     app.dependency_overrides[current_member] = lambda: member
     app.dependency_overrides[get_db_async] = lambda: AsyncMock()
     snapshot = SystemSnapshot(revision=1, document=document(), storage_origin="saved")
@@ -380,7 +380,7 @@ def test_members_can_read_and_admins_can_save_with_current_permissions(monkeypat
         result = client.get("/system")
         assert result.status_code == 200
         assert result.json()["can_edit"] is False
-        member.role = RoleEnum.admin
+        member.role = ADMIN_ROLE
         result = client.put(
             "/system",
             json={

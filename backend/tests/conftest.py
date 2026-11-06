@@ -88,8 +88,9 @@ def disposable_database():
 @pytest_asyncio.fixture
 async def member_database():
     """Isolate real account lifecycle tests in a disposable PostgreSQL schema."""
-    from off_key_core.db.models import RememberedSession, User
-    from sqlalchemy import text
+    from off_key_core.auth.permissions import BUILT_IN_ROLES
+    from off_key_core.db.models import MemberRole, RememberedSession, User
+    from sqlalchemy import insert, text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     url = os.getenv("TEST_SCHEMA_DATABASE_URL")
@@ -104,6 +105,11 @@ async def member_database():
     )
     try:
         async with engine.begin() as connection:
+            await connection.run_sync(MemberRole.__table__.create)
+            await connection.execute(
+                insert(MemberRole),
+                [{"id": id, "name": name} for id, name in BUILT_IN_ROLES.items()],
+            )
             await connection.run_sync(User.__table__.create)
             await connection.run_sync(RememberedSession.__table__.create)
         yield engine, async_sessionmaker(engine, expire_on_commit=False)

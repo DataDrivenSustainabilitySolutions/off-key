@@ -7,6 +7,7 @@ access. Administrators only until members get a dedicated Dojo permission.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from off_key_core.auth.permissions import Permission
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
     CsvImportQuery,
@@ -27,14 +28,14 @@ from off_key_core.schemas.dojo import (
 from off_key_core.schemas.members import MemberProfile
 
 from ...facades.tactic import path_segment, tactic
-from ..access import member_authorization, require_admin
+from ..access import member_authorization, require_permission
 from ..errors import TacticErrorRoute
 from ..rate_limiter import limiter
 
+use_dojo = require_permission(Permission.use_dojo)
 
-async def member_scope(
-    request: Request, member: MemberProfile = Depends(require_admin)
-):
+
+async def member_scope(request: Request, member: MemberProfile = Depends(use_dojo)):
     request.state.dojo_member_id = str(member.id)
 
 

@@ -128,7 +128,7 @@ async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_delivers_mail_after_responding(monkeypatch):
+async def test_password_reset_request_delivers_mail_after_responding(monkeypatch):
     set_auth_env(monkeypatch)
     order = []
 
@@ -147,7 +147,7 @@ async def test_forgot_password_delivers_mail_after_responding(monkeypatch):
     auth_api.limiter.reset()
     async with asgi_client(app) as client:
         response = await client.post(
-            "/forgot-password", json={"email": "member@example.com"}
+            "/password-reset", json={"email": "member@example.com"}
         )
     assert response.status_code == 200
     assert response.json()["message"].startswith("If the email is registered")

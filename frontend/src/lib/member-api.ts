@@ -2,16 +2,12 @@ import { apiUtils } from "./api-client";
 import type { Member, Permission, PermissionInfo, Role } from "./member-types";
 export type { Member, Permission, PermissionInfo, Role } from "./member-types";
 
-export const getCurrentMember = () => apiUtils.get<Member>("/v1/members/me", { redirectOnUnauthorized: false });
+export const getCurrentMember = () => apiUtils.get<Member>("/v1/me", { redirectOnUnauthorized: false });
 export const getMembers = () => apiUtils.get<Member[]>("/v1/members");
 export const inviteMember = (email: string, role: Member["role"]) =>
-  apiUtils.post<{ message: string }>("/v1/members/invitations", { email, role });
+  apiUtils.post<{ message: string }>("/v1/invitations", { email, role });
 export const updateMember = (member: Member, changes: Partial<Pick<Member, "role" | "is_active">>) =>
-  apiUtils.put<Member>(`/v1/members/${member.id}`, {
-    role: member.role,
-    is_active: member.is_active,
-    ...changes,
-  });
+  apiUtils.patch<Member>(`/v1/members/${member.id}`, changes);
 
 export const removeMember = (memberId: number) =>
   apiUtils.delete<void>(`/v1/members/${memberId}`);

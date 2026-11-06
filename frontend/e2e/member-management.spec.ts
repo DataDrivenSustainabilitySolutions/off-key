@@ -38,7 +38,7 @@ async function accountFixture(page: Page) {
       for (const member of (await read()).filter(member => member.email === email)) {
         const path = `/api/v1/members/${member.id}`;
         if (member.is_active) {
-          const disabled = await page.request.put(path, { headers, data: { role: member.role, is_active: false } });
+          const disabled = await page.request.patch(path, { headers, data: { is_active: false } });
           expect(disabled.ok(), await disabled.text()).toBe(true);
         }
         const removed = await page.request.delete(path, { headers });
@@ -169,7 +169,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     await fixture.disable();
     await fixture.row.getByRole("button", { name: "Remove", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Remove member?", exact: true });
-    const enabled = await page.request.put(`/api/v1/members/${initial.id}`, { headers: fixture.headers, data: { role: "user", is_active: true } });
+    const enabled = await page.request.patch(`/api/v1/members/${initial.id}`, { headers: fixture.headers, data: { role: "user", is_active: true } });
     expect(enabled.ok()).toBe(true);
     await dialog.getByRole("button", { name: "Remove member", exact: true }).click();
     await expect(dialog.getByRole("alert")).toContainText("Disable this member");
@@ -180,7 +180,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     await fixture.row.getByRole("button", { name: "Remove", exact: true }).click();
     await dialog.getByRole("button", { name: "Remove member", exact: true }).click();
     await expect(fixture.row).toHaveCount(0);
-    const denied = await memberPage.request.get(new URL("/api/v1/members/me", page.url()).href, { headers: oldHeaders });
+    const denied = await memberPage.request.get(new URL("/api/v1/me", page.url()).href, { headers: oldHeaders });
     expect(denied.status()).toBe(401);
     const refresh = await memberPage.request.post(new URL("/api/v1/auth/refresh", page.url()).href, { headers: { "X-Off-Key-Session": "1" } });
     expect(refresh.status()).toBe(401);
@@ -190,7 +190,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     const expired = await page.request.post("/api/v1/auth/accept-invitation", { data: { token: new URL(firstLink).hash.slice("#token=".length), password: PASSWORD } });
     expect(expired.status()).toBe(422);
     await acceptInvitation(memberPage, freshLink, fixture.email);
-    const stillDenied = await memberPage.request.get(new URL("/api/v1/members/me", page.url()).href, { headers: oldHeaders });
+    const stillDenied = await memberPage.request.get(new URL("/api/v1/me", page.url()).href, { headers: oldHeaders });
     expect(stillDenied.status()).toBe(401);
   } finally {
     await memberContext.close();
@@ -228,7 +228,7 @@ test("a custom role grants its member exactly the permissions it bundles", async
 
     const api = (path: string) => new URL(`/api/v1${path}`, page.url()).href;
     const memberHeaders = { Authorization: `Bearer ${await accessToken(memberPage)}` };
-    const profile = await memberPage.request.get(api("/members/me"), { headers: memberHeaders });
+    const profile = await memberPage.request.get(api("/me"), { headers: memberHeaders });
     expect(await profile.json()).toMatchObject({ role: (await readRole())!.id, permissions: ["manage_monitors"] });
     await memberPage.goto(new URL("/account", page.url()).href);
     const signedIn = memberPage.getByRole("region", { name: "Signed in", exact: true });

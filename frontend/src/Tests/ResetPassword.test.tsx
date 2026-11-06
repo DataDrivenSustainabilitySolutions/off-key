@@ -81,7 +81,7 @@ describe("ResetPassword", () => {
     );
     expect(screen.queryByLabelText("New password")).toBeNull();
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("/api/v1/auth/reset-password");
+    expect(url).toBe("/api/v1/auth/password-reset/confirm");
     expect(init).toMatchObject({ method: "POST" });
     expect(JSON.parse(init!.body as string)).toEqual({
       token: "reset-token",

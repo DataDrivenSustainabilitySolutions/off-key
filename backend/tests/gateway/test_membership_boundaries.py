@@ -81,8 +81,8 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
             ("POST", "/anomalies"),
             ("DELETE", "/anomalies/example"),
             ("GET", "/members"),
-            ("POST", "/members/invitations"),
-            ("PUT", "/members/19"),
+            ("POST", "/invitations"),
+            ("PATCH", "/members/19"),
             ("POST", "/roles"),
             ("PATCH", "/roles/operator"),
             ("DELETE", "/roles/operator"),
@@ -258,10 +258,10 @@ async def test_password_reset_does_not_disclose_membership_and_login_is_limited(
     monkeypatch.setattr(auth.tactic, "authenticate_user", authenticate)
     async with asgi_client(gateway) as client:
         missing = await client.post(
-            "/v1/auth/forgot-password", json={"email": "missing@example.com"}
+            "/v1/auth/password-reset", json={"email": "missing@example.com"}
         )
         present = await client.post(
-            "/v1/auth/forgot-password", json={"email": PROFILE.email}
+            "/v1/auth/password-reset", json={"email": PROFILE.email}
         )
         assert missing.status_code == present.status_code == 200
         assert missing.json() == present.json()

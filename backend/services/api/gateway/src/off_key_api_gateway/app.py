@@ -43,8 +43,8 @@ uses this same API, so every change it makes can be made here.
 
 **Authentication.** `POST /v1/auth/login` returns an access token. Send it as
 `Authorization: Bearer <token>` on every other call and sign in again when it
-expires. Every member may read and keep favorites; other changes need the
-administrator role.
+expires. Every member may read and keep favorites; other changes need a
+permission of the member's role, which `GET /v1/me` lists.
 
 **Vocabulary.** The web app and this API name the same things differently:
 
@@ -103,7 +103,7 @@ OPENAPI_TAGS = [
         "name": "dojo",
         "description": "The Dojo: datasets uploaded as CSV or copied from "
         "recorded readings, for comparing detection approaches offline without "
-        "touching live monitoring. Administrators only for now.",
+        "touching live monitoring. Needs `use_dojo`, reads included.",
     },
     {
         "name": "members",

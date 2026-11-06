@@ -32,7 +32,7 @@ describe('ForgotPassword', () => {
             expect(screen.getByText(/Reset link sent/i)).toBeDefined();
         });
         expect(fetch).toHaveBeenCalledWith(
-            getApiUrl(API_CONFIG.ENDPOINTS.AUTH.FORGOT_PASSWORD),
+            getApiUrl(API_CONFIG.ENDPOINTS.AUTH.PASSWORD_RESET),
             expect.objectContaining({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

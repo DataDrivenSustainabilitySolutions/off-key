@@ -40,7 +40,11 @@ protected.include_router(
 )
 protected.include_router(system.router, prefix="/system", tags=["system"])
 
+protected.include_router(members.me_router, prefix="/me", tags=["members"])
 protected.include_router(members.router, prefix="/members", tags=["members"])
+protected.include_router(
+    members.invitations_router, prefix="/invitations", tags=["members"]
+)
 protected.include_router(roles.router, tags=["roles"])
 protected.include_router(dojo.router, prefix="/dojo", tags=["dojo"])
 router.include_router(protected)

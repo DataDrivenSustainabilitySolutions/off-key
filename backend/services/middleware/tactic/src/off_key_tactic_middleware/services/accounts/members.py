@@ -186,13 +186,14 @@ class MemberService:
         )
         if user is None:
             raise NotFoundError("Member not found")
-        role = await self._role(change.role)
-        if user.role != change.role or user.is_active != change.is_active:
+        role = await self._role(user.role if change.role is None else change.role)
+        active = user.is_active if change.is_active is None else change.is_active
+        if user.role != role.id or user.is_active != active:
             user.session_version += 1
             user.reset_token_hash = None
             user.reset_token_expires_at = None
         user.member_role = role
-        user.is_active = change.is_active
+        user.is_active = active
         if not user.is_active:
             user.verification_token = None
             user.invitation_expires_at = None

@@ -76,7 +76,7 @@ async def invite(
     return await service.invite(invitation, actor)
 
 
-@router.put("/{user_id}", response_model=MemberProfile)
+@router.patch("/{user_id}", response_model=MemberProfile)
 async def update_member(
     user_id: int,
     change: MemberUpdate,

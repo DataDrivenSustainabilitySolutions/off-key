@@ -90,10 +90,11 @@ async def test_disabled_member_removal_cleans_personal_data_and_allows_fresh_inv
         active = await client.delete(path, headers=admin_headers)
         assert active.status_code == 409
         assert "Disable this member" in active.json()["detail"]
-        disabled = await client.put(
-            path, headers=admin_headers, json={"role": role, "is_active": False}
+        disabled = await client.patch(
+            path, headers=admin_headers, json={"is_active": False}
         )
         assert disabled.status_code == 200
+        assert disabled.json()["role"] == role
         removed = await client.delete(path, headers=admin_headers)
         assert removed.status_code == 204 and removed.content == b""
         assert (await client.delete(path, headers=admin_headers)).status_code == 404
@@ -164,9 +165,7 @@ async def test_removal_requires_current_administrator_and_protects_active_accoun
         assert (await client.delete(path, headers=user_headers)).status_code == 403
         assert (await client.delete(path, headers=admin_headers)).status_code == 409
         assert (
-            await client.put(
-                path, headers=admin_headers, json={"role": "admin", "is_active": False}
-            )
+            await client.patch(path, headers=admin_headers, json={"is_active": False})
         ).status_code == 409
         assert (
             await client.delete("/api/v1/members/999999", headers=admin_headers)

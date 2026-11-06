@@ -185,7 +185,7 @@ describe("Login", () => {
         JSON.stringify({
           access_token: mockToken,
           token_type: "bearer",
-          user_id: 7,
+          member_id: 7,
         }),
         {
           status: 200,

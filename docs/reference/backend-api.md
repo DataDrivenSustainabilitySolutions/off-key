@@ -48,8 +48,8 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | `POST` | `/auth/accept-invitation` | Activate an invited account | Body: `token`, `password` |
 | `POST` | `/auth/login` | Authenticate and mint a JWT | Body: `email`, `password` |
 | `GET` | `/auth/verify-email` | Retired: always returns 410 | Request a new invitation |
-| `POST` | `/auth/forgot-password` | Send reset mail when the account exists | Body: `email` |
-| `POST` | `/auth/reset-password` | Reset a password | Body: `token`, `new_password` |
+| `POST` | `/auth/password-reset` | Send reset mail when the account exists; the answer is the same either way | Body: `email` |
+| `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the reset mail | Body: `token`, `new_password` |
 | `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |
 | `POST` | `/auth/logout` | Revoke the remembered session and clear its cookie | Session cookie |
 
@@ -63,7 +63,8 @@ Content-Type: application/json
 ```json
 {
   "access_token": "<bearer-token>",
-  "token_type": "bearer"
+  "token_type": "bearer",
+  "member_id": 7
 }
 ```
 
@@ -71,11 +72,11 @@ Content-Type: application/json
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| `GET` | `/members/me` | Current profile | Active member |
+| `GET` | `/me` | Current profile | Active member |
 | `GET` | `/members` | List organization members | `manage_members` |
-| `POST` | `/members/invitations` | Invite or resend; body `email`, `role` | `manage_members` |
-| `PUT` | `/members/{user_id}` | Set `role` and `is_active` | `manage_members` |
-| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member and personal favorites/sessions; 204 on success, 409 if active, 404 if missing | `manage_members` |
+| `POST` | `/invitations` | Invite or resend; body `email`, `role` | `manage_members` |
+| `PATCH` | `/members/{member_id}` | Change `role`, `is_active` or both; fields left out keep their value | `manage_members` |
+| `DELETE` | `/members/{member_id}` | Permanently remove a disabled member and personal favorites/sessions; 204 on success, 409 if active, 404 if missing | `manage_members` |
 | `GET` | `/permissions` | Every permission a role can grant, with a description | Active member |
 | `GET` | `/roles` | Roles with their permissions and how many members hold each | Active member |
 | `POST` | `/roles` | Create a role; body `name`, `permissions`; the id is derived from the name | `manage_members` |
@@ -86,7 +87,7 @@ Every active member can read everything outside the Dojo. A role grants the
 permissions:
 `manage_sources` (catalogue, collection and live preview), `manage_monitors`
 (monitors and pipelines), `manage_alarms` (creating and deleting alarms),
-`use_dojo` (the Dojo, reads included) and `manage_members` (members and roles). `GET /members/me` returns the member's
+`use_dojo` (the Dojo, reads included) and `manage_members` (members and roles). `GET /me` returns the member's
 `role` and the `permissions` it grants. Two roles are built in: `admin`
 (Administrator) always holds every permission and cannot be changed, and `user`
 (Member) is what an invitation gives unless it names another role. Neither can be

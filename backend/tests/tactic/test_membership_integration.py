@@ -646,8 +646,10 @@ async def test_roles_bundle_permissions_and_cannot_lock_out_member_management(
             Permission.manage_sources,
             Permission.manage_alarms,
         ]
-        # The administrator may step down while another member manages members.
-        await service.update(admin_id, MemberUpdate(role="user", is_active=True), actor)
+        # The administrator may step down while another member manages members;
+        # a change that names only the role keeps the member enabled.
+        stepped_down = await service.update(admin_id, MemberUpdate(role="user"), actor)
+        assert (stepped_down.role, stepped_down.is_active) == ("user", True)
 
     async with sessions() as session:
         service = MemberService(session)
@@ -657,9 +659,7 @@ async def test_roles_bundle_permissions_and_cannot_lock_out_member_management(
             await service.update_role(managers.id, RoleUpdate(permissions=[]), manager)
         await session.rollback()
         with pytest.raises(ConflictError, match="manage members"):
-            await service.update(
-                manager_id, MemberUpdate(role=managers.id, is_active=False), manager
-            )
+            await service.update(manager_id, MemberUpdate(is_active=False), manager)
         await session.rollback()
         assert (await session.get(MemberRole, managers.id)).permissions == [
             Permission.manage_members
@@ -668,9 +668,7 @@ async def test_roles_bundle_permissions_and_cannot_lock_out_member_management(
             managers.id, RoleUpdate(name="Access desk"), manager
         )
         assert (renamed.name, renamed.members) == ("Access desk", 1)
-        await service.update(
-            desk_id, MemberUpdate(role=MEMBER_ROLE, is_active=True), manager
-        )
+        await service.update(desk_id, MemberUpdate(role=MEMBER_ROLE), manager)
         await service.delete_role(desk.id, manager)
         assert await session.get(MemberRole, desk.id) is None
         # The demoted administrator lost member management on their next call.

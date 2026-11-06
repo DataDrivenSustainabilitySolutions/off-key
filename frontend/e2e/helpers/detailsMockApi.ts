@@ -45,7 +45,7 @@ export async function installDetailsMockApi(page: Page, {
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
     const incremental = url.searchParams.has("after_created");
     switch (url.pathname.replace(/^\/api(?=\/v1\/)/u, "")) {
-      case "/v1/members/me":
+      case "/v1/me":
         return fulfillJson(route, {
           id: 1, email: "charts@example.test", role: "admin",
           permissions: ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"], is_active: true,

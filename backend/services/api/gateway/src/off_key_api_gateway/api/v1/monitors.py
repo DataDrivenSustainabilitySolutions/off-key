@@ -58,7 +58,7 @@ class MonitorCreate(FormMonitorConfig):
     """A monitor started from the setup form: what to watch and how."""
 
     container_name: SkipJsonSchema[str | None] = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
-    display_name: str = Field(min_length=1, max_length=120, strict=True)  # ty: ignore[invalid-attribute-override]
+    display_name: str = Field(min_length=1, max_length=120, strict=True)  # ty: ignore[invalid-mutable-override]
     # The gateway never forwards MQTT overrides, so the field is pinned to None.
     mqtt_config: SkipJsonSchema[None] = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
 

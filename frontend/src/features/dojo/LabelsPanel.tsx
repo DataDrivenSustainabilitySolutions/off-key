@@ -1,16 +1,20 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Tag, Trash2 } from "lucide-react";
 import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
+import { formatChartTime, getLocalTimeZone } from "../charts/telemetry-chart";
 import type { DatasetView, LabelView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { DojoChart } from "./DojoChart";
 import type { DojoChartData } from "./dojo-chart";
 import { CHART_POINTS, useSeriesPoints } from "./hooks";
-import { formatInstant, fromLocalInput, toLocalInput } from "./model";
+import { fromLocalInput, toLocalInput } from "./model";
 
 const SHOWN_SERIES = 4;
+const timeZone = getLocalTimeZone();
+const labelInterval = (label: LabelView) =>
+  `${formatChartTime(Date.parse(label.start_at), timeZone, "tooltip")} – ${formatChartTime(Date.parse(label.end_at), timeZone, "tooltip")}`;
 
 /** The dataset's values with its labels: zoom to a problem, then mark it. */
 export function LabelsPanel({ dataset, labels, onLabelsChange }: {
@@ -25,6 +29,7 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const overlapMessage = useId();
   const [confirm, confirmation] = useConfirm();
   const chart = useMemo<DojoChartData>(() => ({
     series: series.flatMap(item => loaded[item.id] ? [{ id: item.id, name: item.name, unit: item.unit, points: loaded[item.id]!.points }] : []),
@@ -38,14 +43,17 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     finally { setBusy(false); }
   };
   const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
+  const validRange = !!startAt && !!endAt && startAt < endAt;
+  const conflict = validRange ? labels.find(label =>
+    Date.parse(label.start_at) < Date.parse(endAt) && Date.parse(label.end_at) > Date.parse(startAt)) : undefined;
   const create = async () => {
-    if (!startAt || !endAt) return;
+    if (!validRange || conflict) return;
     if (await act(() => dojoApi.createLabel(dataset.id, { start_at: startAt, end_at: endAt, note: note.trim() }))) {
       setStart(""); setEnd(""); setNote("");
     }
   };
   const remove = async (label: LabelView) => {
-    if (!await confirm({ title: "Delete label?", description: `${formatInstant(label.start_at)} – ${formatInstant(label.end_at)}`,
+    if (!await confirm({ title: "Delete label?", description: labelInterval(label),
       confirmLabel: "Delete", destructive: true })) return;
     await act(() => dojoApi.deleteLabel(dataset.id, label.id));
   };
@@ -57,8 +65,8 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     </div>
     {loadError && <p className="ex-banner ex-error" role="alert">{loadError}</p>}
     {loading && <p className="dj-loading" role="status">Loading values…</p>}
-    <DojoChart data={chart} description={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
-      onRangeChange={setViewport} />
+    {(!loading || chart.series.length > 0) && <DojoChart data={chart} description={`Values of ${series.map(item => item.name).join(", ") || "no series"} with ${labels.length} labels`}
+      onRangeChange={setViewport} />}
     {truncated.length > 0 && <p className="dj-help">Showing the first {CHART_POINTS.toLocaleString()} values of{" "}
       {truncated.map(item => item.name).join(", ")}. Runs and metrics always use every value.</p>}
 
@@ -73,23 +81,28 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
       editing a label never needs a new run.</p>
     <form className="dj-label-form" onSubmit={event => { event.preventDefault(); void create(); }}>
       <label className="dj-field">From<input type="datetime-local" step={1} required value={start} disabled={busy}
+        aria-invalid={!!conflict || undefined} aria-describedby={conflict ? overlapMessage : undefined}
         onChange={event => setStart(event.target.value)} /></label>
       <label className="dj-field">To<input type="datetime-local" step={1} required value={end} disabled={busy}
+        aria-invalid={!!conflict || undefined} aria-describedby={conflict ? overlapMessage : undefined}
         onChange={event => setEnd(event.target.value)} /></label>
       <label className="dj-field dj-field--grow"><span>Note <small>(optional)</small></span><input maxLength={500}
         value={note} disabled={busy} placeholder="What happened" onChange={event => setNote(event.target.value)} /></label>
-      <button type="submit" className="dj-primary" disabled={busy || !startAt || !endAt || endAt <= startAt}>Add label</button>
+      <button type="submit" className="dj-primary" disabled={busy || !validRange || !!conflict}>Add label</button>
     </form>
+    {conflict && <p id={overlapMessage} className="dj-error" role="status">
+      This range overlaps {conflict.note ? `“${conflict.note}” (${labelInterval(conflict)})` : labelInterval(conflict)}. Choose a time before or after it.
+    </p>}
     {error && <p className="dj-error" role="alert">{error}</p>}
     {labels.length > 0 && <ul className="dj-labels" aria-label="Labels">{labels.map(label =>
       <li key={label.id}>
-        <span>{formatInstant(label.start_at)} – {formatInstant(label.end_at)}</span>
-        <input aria-label="Label note" maxLength={500} defaultValue={label.note} placeholder="Add a note" disabled={busy}
+        <span>{labelInterval(label)}</span>
+        <input aria-label={`Label note for ${labelInterval(label)}`} maxLength={500} defaultValue={label.note} placeholder="Add a note" disabled={busy}
           onBlur={event => {
             const value = event.target.value.trim();
             if (value !== label.note) void act(() => dojoApi.changeLabel(dataset.id, label.id, { note: value }));
           }} />
-        <button type="button" className="dj-danger" disabled={busy} aria-label="Delete label"
+        <button type="button" className="dj-danger" disabled={busy} aria-label={`Delete label for ${labelInterval(label)}`}
           onClick={() => void remove(label)}><Trash2 size={14} /></button>
       </li>)}</ul>}
     {confirmation}

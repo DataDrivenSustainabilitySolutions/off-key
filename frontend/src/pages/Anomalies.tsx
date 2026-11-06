@@ -255,7 +255,7 @@ export default function AnomalyTable() {
                         to={withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)}
                         aria-label={`View readings for ${entity}`}>View readings</Link>}
                     </td>
-                    <td role="cell" className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
+                    <td role="cell" className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp, "second")}</time></td>
                     <td role="cell" className="rp-readings"><div>
                       <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : anomaly.telemetry_label ?? anomaly.telemetry_type}</span>
                       {/* A single reading is already named by its badge. */}

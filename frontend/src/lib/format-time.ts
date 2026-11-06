@@ -7,6 +7,7 @@ const DAY_MS = 86_400_000;
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const exactDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
 const timeOfDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+const preciseTimeOfDay = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const elapsedDays = new Intl.RelativeTimeFormat(undefined, { numeric: "always" });
 
@@ -31,9 +32,9 @@ export const formatExactDateTime = (value: string | number | Date) => {
 };
 
 /** "6:37 PM", for rows that already sit under a day heading. */
-export const formatTimeOfDay = (value: string | number | Date) => {
+export const formatTimeOfDay = (value: string | number | Date, precision: "minute" | "second" = "minute") => {
   const date = parseTime(value);
-  return date ? timeOfDay.format(date) : "";
+  return date ? (precision === "second" ? preciseTimeOfDay : timeOfDay).format(date) : "";
 };
 
 /** Recent times use minutes and hours. Elapsed times include seconds and days. */

@@ -104,6 +104,7 @@ export default function ExplorerPreview({
   const topicCount = useMemo(() => new Set(related.map((item) => JSON.stringify([item.connection_id, item.topic]))).size, [related]);
   const isReading = node.entityKind === "stream";
   const ancestry = navigationTrail(index, node.key);
+  const sourceContext = readingConnection && (node.topic ?? stream?.topic);
   const parent = isReading ? ancestry.slice().reverse().find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection") : undefined;
   const trail = <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
     {ancestry.map((ancestor, position) => <span key={ancestor.key}>
@@ -196,7 +197,9 @@ export default function ExplorerPreview({
         </div>
         <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
-      {isReading ? parent && <p className="ex-preview-parent">{parent.label}</p> : trail}
+      {isReading ? pageTitle && sourceContext
+        ? <p className="ex-preview-parent">{readingConnection.label} · {parent?.kind === "device" ? `${parent.label} · ` : ""}<span>{sourceContext}</span></p>
+        : parent && <p className="ex-preview-parent">{parent.label}</p> : trail}
       <div className="ex-preview-status" role="status">
         <strong className={`mn-state mn-state--${tone}`}>{label}</strong>
         {showStatusDetail && <span>{statusDetail}</span>}

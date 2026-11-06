@@ -1,8 +1,10 @@
 import { useNow } from "@/hooks/use-now";
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { EChart } from "@/features/charts/EChart";
 import { ChartSamples } from "@/features/charts/ChartSamples";
+import { detectorInputSamples } from "@/features/charts/chart-sample-data";
 import { TelemetryChartSummary } from "@/features/charts/TelemetryChartSummary";
 import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
 import { TelemetryEventDetails } from "@/features/charts/TelemetryEventDetails";
@@ -27,6 +29,12 @@ type Inspection = { startMs: number; endMs: number; windowStartMs: number };
 type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache;
   heading?: "h2" | "h3" };
 
+const HISTORY_PROBLEM = {
+  unavailable: "Recorded history could not be loaded. Recent readings may still appear.",
+  stale: "Recorded history could not be refreshed. Earlier saved values and new arrivals may still appear.",
+  detail: "More detail for this time window could not be loaded. Showing the available samples.",
+};
+
 export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache, heading: Heading = "h3" }: Props) {
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
@@ -36,7 +44,8 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const now = useNow(5000);
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(viewKey && `${viewKey}:inspection`, undefined);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
-  const stored = useStoredRange(monitoring.binding, range.spanMs, inspection);
+  const { points: stored, error: historyError, loading: loadingHistory, retry: retryHistory } =
+    useStoredRange(monitoring.binding, range.spanMs, inspection);
 
   const history = useMemo(() => {
     const lastStored = stored.length ? Date.parse(stored[stored.length - 1]!.timestamp) : -Infinity;
@@ -140,6 +149,10 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
         </div>
       </div>
     </div>
+    {historyError && <div className="ex-history-retry" role="alert">
+      <span>{HISTORY_PROBLEM[historyError]}</span>
+      <Button size="sm" variant="outline" onClick={retryHistory}>Retry history</Button>
+    </div>}
     {service && <p className="ex-history-monitoring" role="status">{panes.awaitingFirstScore
       ? "Awaiting first score" : `Monitoring: ${service.operational_status.stage.replace(/_/g, " ")}`}
       {pending.length > 0 && ` · ${pending.length} awaiting score`}</p>}
@@ -153,11 +166,12 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
       onKeyDown={navigate}>
       <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description}
         onViewportChange={inspect} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
-    </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading ? "Loading history…"
-      : history.length ? "No values in selected range" : binding?.policy.mode !== undefined && binding.policy.mode !== "off" ? "Waiting for recorded values" : "Waiting for live values"}</strong></div>}
+    </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || loadingHistory || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading || loadingHistory ? "Loading history…"
+      : historyError ? "No readings available for this range" : history.length ? "No values in selected range"
+      : binding?.policy.mode !== undefined && binding.policy.mode !== "off" ? "Waiting for recorded values" : "Waiting for live values"}</strong></div>}
     {model.telemetry.data.length > 0 && <ChartSamples timeZone={timeZone} range={inspection ? [inspection.startMs, inspection.endMs] : domain}
       sources={[{ id: stream.id, name: stream.label, unit: stream.unit, points: model.telemetry.data,
-        valueType: stream.value_type === "boolean" ? "boolean" : "number" }]} />}
+        valueType: stream.value_type === "boolean" ? "boolean" : "number" }, ...detectorInputSamples(model.detectorInputs)]} />}
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {monitoring.error && <p className="ex-preview-note" role="status">{monitoring.error}</p>}

@@ -87,7 +87,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       <div className="source-recording-choice" role="radiogroup" aria-label="Recording" aria-busy={busy}>
         {options.map(([value, label]) => <div key={value} className={`source-recording-option${choice === value ? " is-selected" : ""}`}>
           <label><input type="radio" name={`recording-${scopeKey(scope)}`} value={value} checked={choice === value}
-            disabled={busy} onChange={() => choose(value)} />{label}</label>
+            disabled={busy} onChange={() => choose(value)} /><span className="source-recording-mark" aria-hidden="true" />{label}</label>
           {/* The interval sits beside its option, not inside the label, so typing in it never picks an option. */}
           {value === "sample" && <span className="source-recording-interval">
             <input aria-label="Seconds between samples" type="number" min={1} max={3600} value={interval} disabled={busy}

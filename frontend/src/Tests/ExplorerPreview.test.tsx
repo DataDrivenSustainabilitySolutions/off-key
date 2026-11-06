@@ -17,7 +17,7 @@ import { mqttConnection } from "./support/fixtures/system";
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
 vi.mock("@/features/readings/useStoredRange", async (importOriginal) => {
-  const nothingStored: never[] = [];
+  const nothingStored = { points: [], retry: () => {}, loading: false };
   return { ...await importOriginal<typeof import("@/features/readings/useStoredRange")>(), useStoredRange: vi.fn(() => nothingStored) };
 });
 vi.mock("@/features/charts/EChart", () => ({
@@ -211,7 +211,7 @@ describe("workspace chart navigation and monitoring", () => {
   it("draws stored history before collected values, and asks for the chosen span and inspected window", () => {
     const day = 86_400_000;
     const stored = [{ timestamp: new Date(NOW - 3 * day).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
-    vi.mocked(useStoredRange).mockReturnValue(stored);
+    vi.mocked(useStoredRange).mockReturnValue({ points: stored, error: undefined, retry: () => {}, loading: false });
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { entityId: "entity-id", telemetryType: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
       telemetry: [{ timestamp: new Date(NOW - 60_000).toISOString(), value: 99 }, { timestamp: new Date(NOW).toISOString(), value: 12 }] });
     render(<ExplorerHistoryChart stream={system.streams[0]!} connection={system.connections[0]} />);

@@ -97,7 +97,7 @@ describe("Dojo workspace", () => {
     await waitFor(() => expect(dojoApi.createLabel).toHaveBeenCalledWith("d1",
       { start_at: "2024-01-01T00:10:00.000Z", end_at: "2024-01-01T00:20:00.000Z", note: "Seal leak" }));
     expect(dojoApi.labels).toHaveBeenCalledTimes(2);
-    expect((screen.getByRole("textbox", { name: "Label note" }) as HTMLInputElement).value).toBe("Bearing");
+    expect((screen.getByRole("textbox", { name: /^Label note for / }) as HTMLInputElement).value).toBe("Bearing");
   });
 
   it("keeps keyboard focus on the selected dataset tab and updates its URL", async () => {

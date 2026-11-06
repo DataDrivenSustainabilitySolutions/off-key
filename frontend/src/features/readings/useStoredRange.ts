@@ -20,6 +20,7 @@ const DETAIL_DELAY_MS = 250;
 
 type Window = { startMs: number; endMs: number };
 type Loaded = { key: string; points: TelemetryDataPoint[] };
+type Overview = { key: string; points?: TelemetryDataPoint[]; failed?: boolean };
 
 /**
  * Stored history for a recorded reading: a downsampled overview of the chosen
@@ -29,8 +30,10 @@ type Loaded = { key: string; points: TelemetryDataPoint[] };
 export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined, inspected?: Window) {
   const entityId = binding?.entityId, telemetryType = binding?.telemetryType;
   const overviewKey = entityId && telemetryType ? JSON.stringify([entityId, telemetryType, spanMs ?? "all"]) : undefined;
-  const [overview, setOverview] = useState<Loaded>();
+  const [overview, setOverview] = useState<Overview>();
   const [detail, setDetail] = useState<Loaded & Window>();
+  const [failedDetail, setFailedDetail] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
 
   const loadOverview = useCallback(async (signal: AbortSignal) => {
     if (!overviewKey || !entityId || !telemetryType) return;
@@ -39,26 +42,35 @@ export function useStoredRange(binding: ReadingMonitoringBinding | undefined, sp
         { startMs: spanMs === undefined ? undefined : Date.now() - spanMs, buckets: RANGE_BUCKETS }, signal);
       if (!signal.aborted) setOverview({ key: overviewKey, points });
     } catch {
-      // Live and recently collected values still draw; the next refresh retries.
+      if (!signal.aborted) setOverview(previous => ({
+        key: overviewKey, points: previous?.key === overviewKey ? previous.points : undefined, failed: true,
+      }));
     }
   }, [overviewKey, entityId, telemetryType, spanMs]);
-  usePollingLoop(loadOverview, { enabled: !!overviewKey, intervalMs: OVERVIEW_REFRESH_MS, schedule: "after-completion",
+  const { reload } = usePollingLoop(loadOverview, { enabled: !!overviewKey, intervalMs: OVERVIEW_REFRESH_MS, schedule: "after-completion",
     pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
 
   const startMs = inspected?.startMs, endMs = inspected?.endMs;
+  const detailKey = overviewKey && startMs !== undefined && endMs !== undefined
+    ? JSON.stringify([overviewKey, startMs, endMs]) : undefined;
   useEffect(() => {
-    if (!overviewKey || !entityId || !telemetryType || startMs === undefined || endMs === undefined) return;
+    if (!detailKey || !overviewKey || !entityId || !telemetryType || startMs === undefined || endMs === undefined) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       getTelemetryRange(entityId, telemetryType, { startMs, endMs, buckets: RANGE_BUCKETS }, controller.signal)
-        .then((points) => { if (!controller.signal.aborted) setDetail({ key: overviewKey, startMs, endMs, points }); })
-        .catch(() => {});
+        .then(points => {
+          if (controller.signal.aborted) return;
+          setDetail({ key: overviewKey, startMs, endMs, points });
+          setFailedDetail(undefined);
+        })
+        .catch(() => { if (!controller.signal.aborted) setFailedDetail(detailKey); });
     }, DETAIL_DELAY_MS);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [overviewKey, entityId, telemetryType, startMs, endMs]);
+  }, [detailKey, overviewKey, entityId, telemetryType, startMs, endMs, attempt]);
 
-  return useMemo(() => {
-    const base = overview && overview.key === overviewKey ? overview.points : [];
+  const current = overview?.key === overviewKey ? overview : undefined;
+  const points = useMemo(() => {
+    const base = current?.points ?? [];
     if (!detail || detail.key !== overviewKey || startMs === undefined) return base;
     // The finer points replace the overview only across the window they cover.
     const inside = (point: TelemetryDataPoint) => {
@@ -67,5 +79,12 @@ export function useStoredRange(binding: ReadingMonitoringBinding | undefined, sp
     };
     return [...base.filter((point) => !inside(point)), ...detail.points]
       .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
-  }, [overview, detail, overviewKey, startMs]);
+  }, [current, detail, overviewKey, startMs]);
+  const error: "stale" | "unavailable" | "detail" | undefined = current?.failed ? current.points ? "stale" : "unavailable"
+    : detailKey && failedDetail === detailKey ? "detail" : undefined;
+  const retry = () => {
+    if (current?.failed) void reload();
+    if (detailKey && failedDetail === detailKey) setAttempt(previous => previous + 1);
+  };
+  return { points, error, retry, loading: !!overviewKey && !current };
 }

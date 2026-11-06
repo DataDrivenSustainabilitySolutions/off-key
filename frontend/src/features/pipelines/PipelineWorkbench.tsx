@@ -6,7 +6,9 @@ import PipelineCanvas from "./PipelineCanvas";
 import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
+import { incomingEdges, nodeOptionLabeler } from "./model";
 import { isWarning } from "./scope";
+import { familyLabel, stepFamily } from "./steps";
 import { startupSentence, startupSummary, type Startup } from "./startup";
 import { useUndoShortcuts } from "./useGraphEditor";
 
@@ -61,8 +63,7 @@ export function PipelineWorkbench({
     if (issuesRequest) setIssuesOpen(true);
   }
   const [localPanel, setLocalPanel] = useState<InspectorPanel>(null);
-  // The graph, or one row per feature the detector receives; both show the same design.
-  const [view, setView] = useState<"graph" | "features">("graph");
+  const [view, setView] = useState<"graph" | "steps" | "features">("graph");
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragFrame = useRef<number | undefined>(undefined);
@@ -109,6 +110,12 @@ export function PipelineWorkbench({
     setView("graph");
     props.onAdd(...args);
   };
+  const stepLabel = nodeOptionLabeler(props.document, catalog.components);
+  const steps = props.document.definition.nodes;
+  const inspectStep = (id: string) => {
+    select(id);
+    requestAnimationFrame(() => heading.current?.focus());
+  };
   return <div className="pl-workbench">
     <div className="pl-canvas-toolbar">
       <div className="pl-actions">
@@ -146,9 +153,9 @@ export function PipelineWorkbench({
         </Popover.Root>}
         {actions}
         <div className="pl-segmented pl-view-switch" role="group" aria-label="View">
-          {(["graph", "features"] as const).map((item) => <button type="button" key={item}
+          {(["graph", "steps", "features"] as const).map((item) => <button type="button" key={item}
             aria-pressed={view === item} onClick={() => setView(item)}>
-            {item === "graph" ? "Graph" : "Features"}
+            {{ graph: "Graph", steps: "Steps", features: "Features" }[item]}
           </button>)}
         </div>
       </div>
@@ -206,6 +213,22 @@ export function PipelineWorkbench({
         ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
           stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
           onChange={(document) => props.onChange(document)} />
+        : view === "steps" ? <section className="pl-step-overview" aria-label="Processing steps">
+          <h2>Processing steps</h2>
+          <p className="pl-help">Choose a step to see its settings and inputs.</p>
+          <ul>{steps.map(step => {
+            const inputs = incomingEdges(props.document.definition, step.id)
+              .map(edge => stepLabel(steps.find(node => node.id === edge.source)));
+            return <li key={step.id}>
+              <button type="button" aria-pressed={step.id === props.selected && panel === "component"}
+                onClick={() => inspectStep(step.id)}>
+                <span>{familyLabel(stepFamily(step.kind, step.component))}</span>
+                <strong>{stepLabel(step)}</strong>
+                {inputs.length > 0 && <small>Receives from {inputs.join(", ")}</small>}
+              </button>
+            </li>;
+          })}</ul>
+        </section>
         : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
           features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} />}
       {panel && <div className="pl-settings-panel" id={panelId} onKeyDown={(event) => {

@@ -168,6 +168,7 @@
 .ex-preview-section-heading button { min-height: 32px; border-radius: 6px; padding: 0 8px; display: flex; gap: 6px; align-items: center; color: var(--ex-muted); font-size: var(--text-caption); }
 .ex-preview-section-heading select { font: inherit; font-size: var(--text-caption); border: 1px solid var(--ex-line); padding: 5px 7px; border-radius: 5px; background: var(--ex-bg); color: var(--ex-muted); }
 .ex-preview-history { padding: 16px; background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: 10px; }
+.ex-history-retry { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; padding: 10px 12px; border: 1px solid hsl(var(--destructive) / 0.35); border-radius: 8px; }
 .ex-preview-chart { width: 100%; height: 280px; margin-top: 8px; }
 .ex-preview-chart--2 { height: 430px; }
 .ex-preview-chart--3 { height: 594px; }

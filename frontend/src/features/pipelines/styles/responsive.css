@@ -27,42 +27,22 @@
   .pl-editor-grid,
   .pl-editor-grid--settings {
     grid-template-columns: minmax(0, 1fr);
-    min-height: 400px;
+    min-height: 0;
+    height: auto;
   }
   .pl-canvas-wrap {
-    min-height: 420px;
+    min-height: 320px;
     height: auto;
   }
   .pl-flow-surface,
   .pl-canvas-wrap .react-flow {
-    min-height: 420px;
-    height: 420px;
+    min-height: 320px;
+    height: 320px;
   }
-  /* A bottom sheet leaves the top of the graph visible while editing. */
-  .pl-editor-grid,
-  .pl-editor-grid--settings {
-    height: auto;
-  }
-  /* The sheet takes its content's height up to its cap; the settings scroll inside it.
-     The cap is whole pixels: at 58% of 420px the sheet's edge fell between pixels, and a
-     field scrolled up to that edge stayed 0.4px under it. */
   .pl-settings-panel {
-    position: absolute;
-    inset: auto 0 0 0;
-    display: flex;
-    flex-direction: column;
-    max-height: 58%;
-    max-height: round(down, 58%, 1px);
-    z-index: 6;
     border-top: 1px solid hsl(var(--border));
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -8px 24px #0002;
-    overflow: hidden;
   }
   .pl-settings-panel .pl-inspector {
-    flex: 1 1 auto;
-    min-height: 0;
-    height: auto;
     border-left: 0;
   }
   .pl-component-menu,

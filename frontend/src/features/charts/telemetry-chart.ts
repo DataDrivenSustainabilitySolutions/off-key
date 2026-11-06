@@ -460,7 +460,7 @@ export const buildMonitoringChartOption = ({
   const palette = colors.seriesPalette?.length ? colors.seriesPalette : DEFAULT_SERIES_PALETTE;
   const inputSeries: LineSeriesOption[] = detectorInputs.map((series, index) => ({
     id: series.id,
-    name: series.name,
+    name: compact ? series.name : `Detector input · ${series.name}`,
     type: "line",
     xAxisIndex: inputsPane,
     yAxisIndex: inputsPane,

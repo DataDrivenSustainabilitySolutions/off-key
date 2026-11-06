@@ -122,7 +122,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
   const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
-  const [anomaliesStatus, setAnomaliesStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [anomaliesStatus, setAnomaliesStatus] = useState<"loading" | "ready" | "stale" | "unavailable">("loading");
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -209,7 +209,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
             : anomaliesResult.value
         );
       } else {
-        setAnomaliesStatus("unavailable");
+        setAnomaliesStatus(previous => previous === "ready" || previous === "stale" ? "stale" : "unavailable");
         clientLogger.error({
           event: "details.anomalies_load_failed",
           message: "Error loading entity anomalies",
@@ -340,6 +340,8 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     : hasRecentTelemetry ? "live" : latestTelemetryTimestamp !== undefined ? "history" : "empty";
   const readingsReady = !isLoadingTelemetry && !telemetryUnavailable;
   const loadingReadings = isLoadingTelemetry ? "Loading…" : telemetryUnavailable ? "Unavailable" : undefined;
+  const anomaliesKnown = anomaliesStatus === "ready" || anomaliesStatus === "stale";
+  const anomaliesHelper = { loading: "Loading…", ready: undefined, stale: "Last result", unavailable: "Unavailable" }[anomaliesStatus];
   // Recorded entity ids are binding identities, so the catalogue node is found through the stream bindings.
   const sourcesHref = useMemo(() => {
     const node = catalogue && entitySource(catalogue.index, snapshot?.document, snapshot?.runtime, chargerId);
@@ -380,9 +382,9 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           />
           <MetricCard
             label="Anomalies"
-            value={anomaliesStatus === "ready" ? chargerAnomalies.length : "—"}
-            helper={anomaliesStatus === "loading" ? "Loading…" : anomaliesStatus === "unavailable" ? "Unavailable" : undefined}
-            tone={anomaliesStatus === "ready" && chargerAnomalies.length > 0 ? "warning" : "default"}
+            value={anomaliesKnown ? chargerAnomalies.length : "—"}
+            helper={anomaliesHelper}
+            tone={anomaliesKnown && chargerAnomalies.length > 0 ? "warning" : "default"}
           />
           <MetricCard
             label="Categories"
@@ -430,8 +432,8 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
             </div>
           </div>
 
-          {anomaliesStatus === "unavailable" && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">
-            <span>{chargerAnomalies.length ? "Showing the previous anomaly results. The latest results are unavailable." : "Anomaly information is unavailable."}</span>
+          {(anomaliesStatus === "stale" || anomaliesStatus === "unavailable") && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">
+            <span>{anomaliesStatus === "stale" ? "Showing the previous anomaly results. The latest results are unavailable." : "Anomaly information is unavailable."}</span>
             <Button variant="outline" size="sm" onClick={() => void reload()}>Retry anomalies</Button>
           </div>}
 

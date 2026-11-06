@@ -45,7 +45,7 @@ export function dojoChartExtent({ series, labels, alarms = [] }: DojoChartData):
 /** Values of a dataset with its labels shaded, and optionally each run's alarms.
  *
  * Two different scales appear on separate axes. Series with a known matching
- * unit share a scale. An overview with more than two scales uses one shared axis.
+ * unit share a scale. The series picker limits each view to two scales.
  * The legend names the units and axes. Alarm rows share the time axis, so a
  * mark sits under the value it belongs to.
  */

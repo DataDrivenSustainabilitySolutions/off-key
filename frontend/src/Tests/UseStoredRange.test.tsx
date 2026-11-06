@@ -15,10 +15,10 @@ describe("stored telemetry ranges", () => {
   it("asks for the chosen span, or for everything stored", async () => {
     vi.mocked(getTelemetryRange).mockResolvedValue([point(NOW - 1000, 1)]);
     const hook = renderHook(({ span }) => useStoredRange(binding, span), { initialProps: { span: rangePreset("1d").spanMs as number | undefined } });
-    await waitFor(() => expect(hook.result.current).toEqual([point(NOW - 1000, 1)]));
+    await waitFor(() => expect(hook.result.current.points).toEqual([point(NOW - 1000, 1)]));
     expect(getTelemetryRange).toHaveBeenLastCalledWith("entity", "voltage", { startMs: NOW - 86_400_000, buckets: 600 }, expect.any(AbortSignal));
     hook.rerender({ span: rangePreset("all").spanMs });
-    expect(hook.result.current).toEqual([]);
+    expect(hook.result.current.points).toEqual([]);
     await waitFor(() => expect(getTelemetryRange).toHaveBeenLastCalledWith("entity", "voltage", { startMs: undefined, buckets: 600 }, expect.any(AbortSignal)));
   });
 
@@ -28,16 +28,33 @@ describe("stored telemetry ranges", () => {
       : [point(NOW - 2500, 20), point(NOW - 2000, 50), point(NOW - 1500, 30)]);
     const hook = renderHook(({ window }) => useStoredRange(binding, undefined, window),
       { initialProps: { window: undefined as { startMs: number; endMs: number } | undefined } });
-    await waitFor(() => expect(hook.result.current).toHaveLength(3));
+    await waitFor(() => expect(hook.result.current.points).toHaveLength(3));
     hook.rerender({ window: { startMs: NOW - 2600, endMs: NOW - 1400 } });
-    await waitFor(() => expect(hook.result.current.map(({ value }) => value)).toEqual([1, 20, 50, 30, 3]));
+    await waitFor(() => expect(hook.result.current.points.map(({ value }) => value)).toEqual([1, 20, 50, 30, 3]));
     act(() => hook.rerender({ window: undefined }));
-    expect(hook.result.current.map(({ value }) => value)).toEqual([1, 50, 3]);
+    expect(hook.result.current.points.map(({ value }) => value)).toEqual([1, 50, 3]);
+  });
+
+  it("distinguishes an unavailable history request from a failed refresh of existing values", async () => {
+    const samples = [point(NOW - 1000, 1)];
+    vi.mocked(getTelemetryRange).mockRejectedValueOnce(new Error("offline")).mockResolvedValue(samples);
+    const hook = renderHook(() => useStoredRange(binding, 3_600_000));
+    await waitFor(() => expect(hook.result.current.error).toBe("unavailable"));
+    act(() => hook.result.current.retry());
+    await waitFor(() => expect(hook.result.current.points).toEqual(samples));
+    expect(hook.result.current.error).toBeUndefined();
+
+    vi.mocked(getTelemetryRange).mockRejectedValueOnce(new Error("offline"));
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(hook.result.current.error).toBe("stale"));
+    expect(hook.result.current.points).toEqual(samples);
+    act(() => hook.result.current.retry());
+    await waitFor(() => expect(hook.result.current.error).toBeUndefined());
   });
 
   it("stays idle for a reading that is not recorded", () => {
     const hook = renderHook(() => useStoredRange(undefined, 3_600_000));
-    expect(hook.result.current).toEqual([]);
+    expect(hook.result.current.points).toEqual([]);
     expect(getTelemetryRange).not.toHaveBeenCalled();
   });
 });

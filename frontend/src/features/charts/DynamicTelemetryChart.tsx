@@ -10,6 +10,7 @@ import { ChevronDown } from "lucide-react";
 import DateTimePicker from "@/components/DateTimePicker";
 import { EChart } from "./EChart";
 import { ChartSamples } from "./ChartSamples";
+import { detectorInputSamples } from "./chart-sample-data";
 import { TelemetryDetectorControls } from "./TelemetryDetectorControls";
 import { TelemetryEventDetails } from "./TelemetryEventDetails";
 import { TelemetryChartSummary } from "./TelemetryChartSummary";
@@ -444,7 +445,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {!collapsed && (
             <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
-              <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-2 gap-2 max-sm:w-full">
                 <label className="min-w-0 space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">
                     From
@@ -454,7 +455,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     onChange={handleFromDateChange}
                     placeholder="Start"
                     ariaLabel="From date and time"
-                    className="h-8 w-full min-w-[10.5rem] text-xs sm:w-[10.5rem]"
+                    className="h-8 w-full min-w-0 text-xs sm:w-[10.5rem]"
                   />
                 </label>
                 <label className="min-w-0 space-y-1">
@@ -466,7 +467,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     onChange={handleToDateChange}
                     placeholder="End"
                     ariaLabel="To date and time"
-                    className="h-8 w-full min-w-[10.5rem] text-xs sm:w-[10.5rem]"
+                    className="h-8 w-full min-w-0 text-xs sm:w-[10.5rem]"
                   />
                 </label>
               </div>
@@ -574,7 +575,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
               />
               <TelemetryChartSummary model={chartModel} timeZone={timeZone} />
               <ChartSamples timeZone={timeZone} range={displayedExtent}
-                sources={[{ id: chartModel.telemetry.id, name: chartModel.telemetry.name, unit: chartModel.telemetry.unit, points: chartModel.telemetry.data }]} />
+                sources={[{ id: chartModel.telemetry.id, name: chartModel.telemetry.name, unit: chartModel.telemetry.unit, points: chartModel.telemetry.data },
+                  ...detectorInputSamples(chartModel.detectorInputs)]} />
               <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
             </>
           ) : null}

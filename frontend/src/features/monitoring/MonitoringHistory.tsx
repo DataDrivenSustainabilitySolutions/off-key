@@ -2,6 +2,7 @@ import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { EChart } from "@/features/charts/EChart";
 import { ChartSamples } from "@/features/charts/ChartSamples";
+import { detectorInputSamples } from "@/features/charts/chart-sample-data";
 import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
 import { useChartColors } from "@/features/charts/use-chart-colors";
 import { useDetectorSelection } from "@/features/charts/use-detector-selection";
@@ -106,7 +107,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
       </div>
       {model.readings.some(reading => reading.data.length > 0) && <ChartSamples timeZone={timeZone}
         range={inspection ? [inspection.startMs, inspection.endMs] : domain}
-        sources={model.readings.map(reading => ({ ...reading, points: reading.data }))} />}
+        sources={[...model.readings.map(reading => ({ ...reading, points: reading.data })), ...detectorInputSamples(model.detectorInputs)]} />}
     </> : <div className={`mn-history-empty${problem && !loading ? " is-error" : ""}`} role="status">
       <strong>{loading ? "Loading recorded inputs…" : problem ? "History could not be loaded" : "Waiting for recorded inputs and detector results"}</strong>
       {!loading && <span>{problem || `Monitoring is ${stage}. The chart appears with the first recorded inputs.`}</span>}

@@ -1,15 +1,8 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { ChartSampleSource } from "./chart-sample-data";
 import { formatChartTime } from "./telemetry-chart";
 import "./chart-samples.css";
-
-export type ChartSampleSource = {
-  id: string;
-  name: string;
-  unit?: string | null;
-  points: readonly (readonly [timestamp: number, value: number | null])[];
-  valueType?: "number" | "boolean";
-};
 
 type Props = {
   sources: readonly ChartSampleSource[];
@@ -46,7 +39,8 @@ function SampleTable({ sources, range, timeZone }: Props) {
           const milliseconds = date.getUTCMilliseconds();
           return <tr key={offset + index}><td><time dateTime={date.toISOString()}>
             {formatChartTime(timestamp, timeZone, "tooltip")}{milliseconds > 0 && ` (${milliseconds} ms)`}
-          </time></td><td>{value === null ? "Alarm" : source.valueType === "boolean" ? String(Boolean(value)) : String(value)}</td></tr>;
+          </time></td><td>{value === null ? source.valueType === "alarm" ? "Alarm" : "—"
+            : source.valueType === "boolean" ? String(Boolean(value)) : String(value)}</td></tr>;
         })}</tbody>
       </table>
       <div className="chart-samples-pages">

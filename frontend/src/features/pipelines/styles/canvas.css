@@ -20,6 +20,25 @@
   background: hsl(var(--background));
 }
 
+.pl-step-overview {
+  overflow: auto;
+  padding: 16px;
+}
+.pl-step-overview h2 { margin: 0 0 4px; font-size: var(--text-title3); font-weight: 600; }
+.pl-step-overview ul { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.pl-step-overview button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 10px 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+.pl-step-overview button[aria-pressed="true"] { border-color: hsl(var(--primary)); background: hsl(var(--accent)); }
+.pl-step-overview button :is(span, small) { color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
+
 .pl-canvas-wrap {
   --pl-features: #0f766e;
   --pl-scores: #6d28d9;

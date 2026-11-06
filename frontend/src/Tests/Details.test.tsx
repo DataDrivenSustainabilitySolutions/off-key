@@ -286,6 +286,20 @@ describe("<Details />", () => {
     expect(screen.getByText("Anomalies").parentElement?.textContent).toContain("0");
   });
 
+  it("keeps a successful zero anomaly count during an unavailable refresh", async () => {
+    renderDetails();
+    await screen.findByRole("heading", { name: "Processor" });
+    mockLoadAnomalies.mockRejectedValueOnce(new Error("offline"));
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect((await screen.findByRole("alert")).textContent).toContain("Showing the previous anomaly results");
+    expect(screen.getByText("Anomalies").parentElement?.textContent).toContain("0Last result");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry anomalies" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByText("Last result")).toBeNull();
+  });
+
   it("switches between independent and linked horizontal navigation", async () => {
     renderDetails();
     await screen.findByRole("heading", { name: "Processor" });

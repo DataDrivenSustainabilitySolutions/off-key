@@ -4,7 +4,7 @@ This page explains end-user workflows in the React frontend.
 
 ## When to use this page
 
-Use this page for account, entity, favourites, monitoring-service, and anomaly workflows in the UI.
+Use this page for account, device, favourites, monitoring-service, and anomaly workflows in the UI.
 
 ## Audience
 
@@ -39,19 +39,19 @@ opens the catalogue and focuses search in either layout.
 
 **Monitoring**, **Sources**, and **Reporting** are always available in the navbar,
 including on mobile. The left sidebar contains one MQTT catalogue of brokers,
-entities, topics and readings. Selecting a row scopes the current section; its
+devices, topics and readings. Selecting a row scopes the current section; its
 chevron browses the next level. Switching sections keeps the source selected and
 retains the catalogue's search, branch and scroll position.
 
 Monitoring shows services for the selected source and previews selected readings.
-Sources shows source metadata and recording configuration. Selecting an entity
+Sources shows source metadata and recording configuration. Selecting a device
 there lists its readings; choose one to configure recording. Reporting shows
 events involving the selected source. **All sources** clears this filter without
 moving the sidebar. The folder-and-hierarchy icon beside the sidebar count,
 **Back to catalogue**, returns to the root and clears the search and source filter.
 At the root it also scrolls the broker list to the top.
 
-**Collections** opens named sets of related brokers, entities and readings in the
+**Collections** opens named sets of related brokers, devices and readings in the
 same sidebar. Collections are shared parts of the catalogue. Inside a branch,
 the heading still opens the current path so you can jump to an ancestor.
 
@@ -111,8 +111,9 @@ opens the editor on top of it.
 3. Switch to **Sources** to inspect or change the selected reading's recording policy.
 4. Open its monitoring service to review detector evidence and configuration.
 
-Existing entity detail links at `/details/:chargerId` show recorded readings with
-category and time-range controls.
+Device details at `/details/:deviceId` show a device's recorded readings with
+category and time-range controls. Readings of a broker that have no device open
+at `/details/broker/:brokerId`.
 
 ## Data-source activity
 
@@ -156,9 +157,13 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
 ## Reporting workflow
 
 1. Open **Reporting** at `/anomalies`.
-2. Review events grouped by entity.
-3. Follow an event to the corresponding entity details.
-4. Remove individual anomaly records when they are no longer required.
+2. Review events grouped by day. Each event names its device, or its broker for
+   readings without a device, and the readings it is about.
+3. Narrow the events by reading, time range and p-value. With several devices in
+   scope, each reading is listed with its device's name.
+4. Follow an event to its **Device readings**, or **Broker readings** for readings
+   without a device.
+5. Remove individual anomaly records when they are no longer required.
 
 ## Dojo workflow
 
@@ -166,7 +171,7 @@ The Dojo tries detection designs on stored data before anything is monitored
 live. Nothing in it claims readings, starts monitors or writes to Reporting.
 
 1. Open **Dojo** at `/dojo`. **Upload CSV** copies a file into a new dataset;
-   **Copy recorded readings** copies the numeric readings of the entity or
+   **Copy recorded readings** copies the numeric readings of the device or
    reading selected in the catalogue for a time window. A dataset is frozen:
    retention and catalogue edits never change it.
 2. Open a dataset. **Values and labels** shows its series; zoom the chart to a

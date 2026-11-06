@@ -19,10 +19,10 @@ type Props = {
 };
 type Candidate = { document: SystemDocument; revision: number; fileName: string };
 const itemCount = (count: number, singular: string) =>
-  count.toLocaleString() + " " + (count === 1 ? singular : singular === "entity" ? "entities" : singular + "s");
+  count.toLocaleString() + " " + (count === 1 ? singular : singular + "s");
 const catalogueSummary = (document: SystemDocument, includeGroups = false) => [
   itemCount(document.brokers.length, "broker"),
-  itemCount(document.devices.length, "entity"),
+  itemCount(document.devices.length, "device"),
   itemCount(document.readings.length, "reading"),
   ...(includeGroups ? [itemCount(document.groups.length, "collection")] : []),
 ].join(" · ");
@@ -115,7 +115,7 @@ function ExplorerSettings({
         <section className="catalogue-settings-section" aria-label="Manage sources">
           <div className="catalogue-settings-section-heading">
             <h3>Manage sources</h3>
-            <p>{onEdit ? "Add to your catalogue or update an existing entity." : "Add connections, entities and readings to your catalogue."}</p>
+            <p>{onEdit ? "Add to your catalogue or update an existing entity." : "Add brokers, devices and readings to your catalogue."}</p>
           </div>
           <div className="catalogue-settings-create-grid">
             {creationActions.map(({ kind, label, description, icon: Icon }) => (

@@ -191,7 +191,7 @@ describe("explorer sidebar and catalogue list", () => {
     document.devices.push({ id: "loose", label: "Unassigned sensor", kind: "sensor" });
     const options = sidebarOptions(document);
     render(<ExplorerSidebar {...options} />);
-    expect(screen.getByText("1 broker · unassigned entities")).toBeTruthy();
+    expect(screen.getByText("1 broker · unassigned devices")).toBeTruthy();
     expect(screen.queryByText("2 brokers")).toBeNull();
   });
 

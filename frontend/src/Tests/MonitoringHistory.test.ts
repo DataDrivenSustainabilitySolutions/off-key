@@ -5,9 +5,8 @@ import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { filterServiceAnomalies } from "@/lib/monitoring-chart";
-import type { Anomaly } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
-import { trackerResult } from "./support/fixtures/monitoring";
+import { alarm, trackerResult } from "./support/fixtures/monitoring";
 
 const first = "2026-10-21T10:00:00.000Z";
 const second = "2026-10-21T10:00:00.075Z";
@@ -130,10 +129,10 @@ describe("joint monitoring history", () => {
   });
 
   it("scopes reading alarm markers to the same service as its scores, including legacy associations", () => {
-    const anomaly = (id: string, serviceId: string | null, timestamp = second): Anomaly => ({ anomaly_id: id, service_id: serviceId,
-      charger_id: "entity", timestamp, telemetry_type: "temperature", anomaly_type: "adaptive", anomaly_value: 0.61, value_type: null });
+    const anomaly = (id: string, monitorId: string | null, timestamp = second) => alarm({ alarm_id: id, monitor_id: monitorId,
+      timestamp, reading_ids: ["temperature"], alarm_type: "adaptive", value: 0.61, value_type: null });
     const anomalies = [anomaly("current", "forest"), anomaly("retired", "retired"), anomaly("legacy", null), anomaly("unmatched", null, later)];
-    expect(filterServiceAnomalies(anomalies, [row], "forest", "temperature").map(item => item.anomaly_id)).toEqual(["current", "legacy"]);
+    expect(filterServiceAnomalies(anomalies, [row], "forest", "temperature").map(item => item.alarm_id)).toEqual(["current", "legacy"]);
     expect(filterServiceAnomalies(anomalies, [row], undefined, "temperature")).toEqual(anomalies);
   });
 });

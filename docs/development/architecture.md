@@ -117,7 +117,7 @@ Gateway liveness can succeed while TACTIC-backed data or monitoring operations r
 
 | Caller | Callee | Critical paths | Purpose |
 | --- | --- | --- | --- |
-| Frontend | API Gateway | `/v1/auth/*`, `/v1/chargers/*`, `/v1/telemetry/*`, `/v1/monitors/*`, `/v1/pipelines/*`, `/v1/pipeline-*`, `/v1/detectors`, `/v1/evidence*`, `/v1/anomalies*` | Primary user contract |
+| Frontend | API Gateway | `/v1/auth/*`, `/v1/catalogue*`, `/v1/devices*`, `/v1/readings/*`, `/v1/monitors/*`, `/v1/pipelines/*`, `/v1/pipeline-*`, `/v1/detectors`, `/v1/evidence*`, `/v1/alarms*` | Primary user contract |
 | API Gateway | TACTIC | `/api/v1/data/*`, `/api/v1/members/*`, `/api/v1/system/*`, `/api/v1/monitors/*`, `/api/v1/orchestration/radar/*`, `/api/v1/models/*` | Data access, membership, catalogue, pipelines and orchestration; `test_tactic_gateway_contract.py` checks every call |
 | API Gateway (startup) | DB Sync | `/health` | Waits for the schema service before serving |
 | Health tooling | API Gateway | `/health` | Gateway liveness |

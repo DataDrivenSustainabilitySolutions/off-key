@@ -605,15 +605,17 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`87c1039ddd1a1be906d6a19e9e35959cece2efeb`, the Dojo labels head that carries
-migrations 018 (`member_favorites`), 019 (`dojo_datasets`), 020 (`dojo_runs`),
-021 (`member_roles`) and 022 (`dojo_labels`). It shares the current migration
-ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog and
-field discovery metadata, so an already-open new browser keeps its controls
-while the backend rolls back.
-The previous reference, `4a063c9`, carried migrations 018 to 021; it cannot be a
-reference any more, because releases before migration 022 refuse a database that
-has applied it. Rolling back past migration 022 means restoring a verified
+`f9163701dbe894cbd382a988ffe0b5d283430703`, the alarms head of the REST clean
+break that carries migrations 018 (`member_favorites`), 019 (`dojo_datasets`),
+020 (`dojo_runs`), 021 (`member_roles`), 022 (`dojo_labels`) and 023
+(`device_favorites`). It shares the current migration ledger, the published
+ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery metadata,
+so an already-open new browser keeps its controls while the backend rolls back.
+It also serves the current REST paths, so the rehearsal calls both releases the
+same way.
+The previous reference, `87c1039`, carried migrations 018 to 022; it cannot be a
+reference any more, because releases before migration 023 refuse a database that
+has applied it. Rolling back past migration 023 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

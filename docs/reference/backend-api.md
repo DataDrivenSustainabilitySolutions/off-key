@@ -30,7 +30,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
 | Devices and measurements | Send the login bearer token | Active, verified membership required |
-| Monitors and anomalies | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
+| Monitors and alarms | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
 | Health and readiness | No token | Public operational probes in local deployments |
@@ -256,31 +256,38 @@ errors expose `issues_truncated`. Internal MQTT overrides and runtime image pins
 are rejected by public monitor creation.
 See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
-### Favourites and anomalies
+### Favourites and alarms
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
 | `GET` | `/favorites` | The current member's favourites, oldest first | Optional query: `kind` |
-| `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
+| `POST` | `/favorites` | Star a device, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
-| `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
-| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids` (reading ids), optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
-| `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
-| `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
-| `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
+| `GET` | `/alarms/count` | Count alarms | Optional query: `since` |
+| `POST` | `/alarms/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `reading_ids`, optional `reading_id`, `monitor_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `GET` | `/alarms` | The newest alarms of a device, of readings, or of every reading | Query: `device_id` or `reading_id` (repeated, up to 200), optional `monitor_id`, `limit` |
+| `POST` | `/alarms` | Record an alarm by hand and email the alert recipients; 201 with the alarm | Body: `reading_ids`, `timestamp`, `alarm_type`, `value`, optional `value_type` |
+| `DELETE` | `/alarms/{alarm_id}` | Delete one alarm; 204, or 404 when there is none | Path: `alarm_id` |
 
-A favourite's `kind` is `entity` (a recorded `charger_id`), `reading` (a catalogue
-stream id) or `monitor` (a `service_id`). Ids are not checked against the
+A favourite's `kind` is `device` (a catalogue device id), `reading` (a catalogue
+reading id) or `monitor` (a `monitor_id`). Ids are not checked against the
 catalogue, so a favourite stays until the member removes it. A member keeps at
 most 256; adding another answers 409.
 
-`POST /anomalies/query` is a read, so members may call it although other
-`POST` routes under `/anomalies` need `manage_alarms`. An alarm is in the
-`stream_ids` scope when one of its readings is: its `sensor_set`, otherwise its
-`telemetry_type`. A multivariate alarm recorded without a sensor set is only in
-scope when every reading of its entity is. `summary` and `readings` cover every
-match rather than the returned page; `readings` ignores the narrowing filters so
-it can feed a reading picker. Pages are newest first; pass `next` as `before`.
+An alarm names its catalogue `device_id` and `reading_ids` with their names in
+`device_label` and `reading_labels`. A reading without a device has a null
+`device_id`, and `device_label` names its broker. Readings the catalogue no
+longer has are left out. `multivariate` marks an alarm a monitor raised over
+several readings together. A manual alarm names readings of one device, or of
+one broker without a device; several make it multivariate.
+
+`POST /alarms/query` is a read, so members may call it although other `POST`
+routes under `/alarms` need `manage_alarms`. An alarm is in the `reading_ids`
+scope when one of its readings is. A multivariate alarm recorded without its
+readings is only in scope when every reading of its device is. `summary` and
+`readings` cover every match rather than the returned page; `readings` ignores
+the narrowing filters so it can feed a reading picker. Pages are newest first;
+pass `next` as `before`.
 
 ### Dojo
 
@@ -370,11 +377,11 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
 | `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
-| `POST` | `/data/anomalies/query` | Reporting query by catalogue reading |
-| `GET` | `/data/anomalies/count` | Count anomalies |
-| `GET` | `/data/anomalies/{charger_id}` | List anomalies |
-| `POST` | `/data/anomalies` | Create an anomaly |
-| `DELETE` | `/data/anomalies/{anomaly_id}` | Delete an anomaly |
+| `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
+| `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
+| `GET` | `/data/alarms/count` | Count alarms |
+| `POST` | `/data/alarms` | Record an alarm about catalogue readings |
+| `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |
 
 ### Dojo
 

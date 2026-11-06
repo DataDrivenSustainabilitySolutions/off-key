@@ -52,12 +52,17 @@ export const API_CONFIG = {
       },
     },
 
-    // Anomalies
-    ANOMALIES: {
-      QUERY: '/v1/anomalies/query',
-      BY_CHARGER: (chargerId: string) =>
-        `/v1/anomalies?charger_id=${chargerId}`,
-      DELETE: (anomalyId: string) => `/v1/anomalies/${encodeURIComponent(anomalyId)}`,
+    // Alarms of catalogue devices and readings
+    ALARMS: {
+      QUERY: '/v1/alarms/query',
+      /** The newest alarms of a device, or of the named readings. */
+      LIST: (scope: { deviceId: string } | { readingIds: readonly string[] }) => {
+        const params = new URLSearchParams();
+        if ('deviceId' in scope) params.append('device_id', scope.deviceId);
+        else scope.readingIds.forEach((id) => params.append('reading_id', id));
+        return `/v1/alarms?${params}`;
+      },
+      DELETE: (alarmId: string) => `/v1/alarms/${encodeURIComponent(alarmId)}`,
     },
 
     // The signed-in member's favourites

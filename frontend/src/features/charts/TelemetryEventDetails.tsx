@@ -1,7 +1,7 @@
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { formatAnomalySensorSet, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
+import { formatAlarmReadings, isAlarmContext } from "@/lib/anomaly-utils";
 import { formatAnomalyValue, getAnomalyValueLabel } from "@/lib/anomaly-semantics";
 import { formatNumber } from "./telemetry-chart";
 import { formatTelemetryEventTime, type TelemetryEventGroup } from "./telemetry-events";
@@ -23,22 +23,22 @@ export function TelemetryEventDetails({ groups, timeZone, unit }: Props) {
       <Table aria-label="Anomaly event details" className="text-xs">
         <TableHeader>
           <TableRow>
-            {["Event time", "Event ID", "Type", "Event value", "Sensors", "Telemetry sample time", "Value", "Offset"].map((heading) => (
+            {["Event time", "Event ID", "Type", "Event value", "Readings", "Telemetry sample time", "Value", "Offset"].map((heading) => (
               <TableHead key={heading} scope="col">{heading}</TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {events.map((event) => (
-            <TableRow key={event.anomaly.anomaly_id}>
+            <TableRow key={event.anomaly.alarm_id}>
               <TableCell>{formatTelemetryEventTime(event.time, timeZone)}</TableCell>
-              <TableCell>{event.anomaly.anomaly_id}</TableCell>
-              <TableCell>{event.anomaly.anomaly_type.replace(/_/gu, " ")}</TableCell>
-              <TableCell>{getAnomalyValueLabel(event.anomaly.value_type)}: {formatAnomalyValue(event.anomaly.anomaly_value, event.anomaly.value_type)}</TableCell>
-              <TableCell>{formatAnomalySensorSet(event.anomaly.sensor_set)}</TableCell>
+              <TableCell>{event.anomaly.alarm_id}</TableCell>
+              <TableCell>{event.anomaly.alarm_type.replace(/_/gu, " ")}</TableCell>
+              <TableCell>{getAnomalyValueLabel(event.anomaly.value_type)}: {formatAnomalyValue(event.anomaly.value, event.anomaly.value_type)}</TableCell>
+              <TableCell>{formatAlarmReadings(event.anomaly)}</TableCell>
               <TableCell>{event.sample ? <>
                 {formatTelemetryEventTime(event.sample.time, timeZone)}
-                {event.anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (event.anomaly.sensor_set?.length ?? 0) > 1 ? " (context)" : ""}
+                {isAlarmContext(event.anomaly) ? " (context)" : ""}
               </> : "No nearby telemetry sample"}</TableCell>
               <TableCell>{event.sample ? `${formatNumber(event.sample.value)}${unit ? ` ${unit}` : ""}` : "—"}</TableCell>
               <TableCell>{event.sample ? `${event.sample.time - event.time >= 0 ? "+" : ""}${event.sample.time - event.time} ms` : "—"}</TableCell>

@@ -42,7 +42,7 @@ export const addTestCharger = async (
     connection = { id: "test-broker", label: "Test broker", protocol: "mqtt", host: "source-broker", port: 1883, tls: false, transport: "tcp" };
     document.brokers.push(connection);
   }
-  document.devices.push({ id: deviceId, label: `Entity ${deviceId}`, broker_id: connection.id, kind: "device" });
+  document.devices.push({ id: deviceId, label: `Device ${deviceId}`, broker_id: connection.id, kind: "device" });
   const streamIds = keys.map(key => fixtureReadingId(deviceId, key));
   document.readings.push(...keys.map((key, index) => ({
     id: streamIds[index]!, label: key, category: "Test", value_type: "number" as const,

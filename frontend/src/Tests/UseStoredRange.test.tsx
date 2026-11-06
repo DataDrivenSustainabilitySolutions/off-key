@@ -5,7 +5,7 @@ import { rangePreset, useStoredRange } from "@/features/readings/useStoredRange"
 
 vi.mock("@/lib/charger-api", () => ({ getTelemetryRange: vi.fn() }));
 const NOW = Date.parse("2026-10-28T12:00:00Z");
-const binding = { readingId: "voltage", entityId: "entity", telemetryType: "key-voltage" };
+const binding = { readingId: "voltage" };
 const point = (time: number, value: number) => ({ timestamp: new Date(time).toISOString(), value });
 
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(NOW); });

@@ -4,7 +4,7 @@ import { zoomChart } from "./helpers/chart";
 import { setAppearance } from "./helpers/appearance";
 import { fulfillJson, installDetailsMockApi } from "./helpers/detailsMockApi";
 
-const CHARGER_ID = "e2e-tandem";
+const DEVICE_ID = "e2e-tandem";
 const SENSOR = "systemVoltage";
 const BASE_TIME = Date.parse("2026-07-28T08:00:00.000Z");
 const timestamp = (seconds: number) =>
@@ -80,37 +80,23 @@ const adaptiveEvidence = [
   ...[0, 180].map((seconds, index) => adaptiveRow("adaptive-z", seconds, index + 1)),
 ];
 
+const alarm = (alarmId: string, seconds: number, readingIds: string[], alarmType: string, value: number) => ({
+  alarm_id: alarmId,
+  timestamp: timestamp(seconds),
+  device_id: DEVICE_ID,
+  device_label: DEVICE_ID,
+  reading_ids: readingIds,
+  reading_labels: Object.fromEntries(readingIds.map(id => [id, id])),
+  multivariate: readingIds.length > 1,
+  alarm_type: alarmType,
+  value,
+  value_type: readingIds.length > 1 ? "conformal_pvalue" : "tail_pvalue",
+  monitor_id: null,
+});
 const anomalies = [
-  {
-    anomaly_id: "coincident-a",
-    charger_id: CHARGER_ID,
-    timestamp: timestamp(1),
-    telemetry_type: SENSOR,
-    anomaly_type: "spike",
-    anomaly_value: 0.01,
-    value_type: "tail_pvalue",
-    sensor_set: [SENSOR],
-  },
-  {
-    anomaly_id: "coincident-b",
-    charger_id: CHARGER_ID,
-    timestamp: timestamp(1),
-    telemetry_type: "__multivariate__",
-    anomaly_type: "multivariate",
-    anomaly_value: 0.02,
-    value_type: "conformal_pvalue",
-    sensor_set: [SENSOR, "systemCurrent"],
-  },
-  {
-    anomaly_id: "unmatched",
-    charger_id: CHARGER_ID,
-    timestamp: timestamp(40),
-    telemetry_type: SENSOR,
-    anomaly_type: "drift",
-    anomaly_value: 0.005,
-    value_type: "tail_pvalue",
-    sensor_set: [SENSOR],
-  },
+  alarm("coincident-a", 1, [SENSOR], "spike", 0.01),
+  alarm("coincident-b", 1, [SENSOR, "systemCurrent"], "multivariate", 0.02),
+  alarm("unmatched", 40, [SENSOR], "drift", 0.005),
 ];
 
 const installMockApi = async (
@@ -119,7 +105,7 @@ const installMockApi = async (
   theme: Theme,
   sensors: string[] = [SENSOR],
 ) => installDetailsMockApi(page, {
-  chargerId: CHARGER_ID, sensors, theme, telemetry,
+  deviceId: DEVICE_ID, sensors, theme, telemetry,
   laterTelemetry: [{ timestamp: timestamp(300), created: timestamp(301), value: 233 }],
   evidence: mode === "static" ? staticEvidence : mode === "adaptive" ? adaptiveEvidence : [...staticEvidence, ...adaptiveEvidence],
   laterEvidence: mode === "static" ? [] : [adaptiveRow("adaptive-z", 300, 3)],
@@ -254,7 +240,7 @@ test.describe("Tandem anomaly chart regression", () => {
     for (const theme of ["light", "dark"] as const) {
       test(`${mode} alarm regions render in ${theme} at desktop and narrow widths`, async ({ page }, testInfo) => {
         await installMockApi(page, mode, theme);
-        await page.goto(`/details/${CHARGER_ID}`);
+        await page.goto(`/details/${DEVICE_ID}`);
         const chart = page.getByTestId("telemetry-echart");
         const card = page.locator('[data-slot="card"]').filter({ has: chart });
         await expect(chart).toBeVisible();
@@ -297,7 +283,7 @@ test.describe("Tandem anomaly chart regression", () => {
 
   test("detector controls support keyboard focus and retain selection through polling, zoom, and theme changes", async ({ page }) => {
     const api = await installMockApi(page, "mixed", "light");
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
     const chart = page.getByTestId("telemetry-echart");
     const card = page.locator('[data-slot="card"]').filter({ has: chart });
     const staticDetector = card.getByRole("combobox", { name: "Static detector" });
@@ -331,7 +317,7 @@ test.describe("Tandem anomaly chart regression", () => {
 
   test("event details keep coincident events and unmatched timestamps inspectable by keyboard", async ({ page }) => {
     await installMockApi(page, "mixed", "light");
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
     const chart = page.getByTestId("telemetry-echart");
     const card = page.locator('[data-slot="card"]').filter({ has: chart });
     const summary = card.locator("summary").filter({ hasText: "Event details (3)" });
@@ -341,7 +327,7 @@ test.describe("Tandem anomaly chart regression", () => {
     const table = card.getByRole("table", { name: "Anomaly event details" });
     await expect(table).toBeVisible();
     await expect(table.getByRole("row")).toHaveCount(4);
-    for (const column of ["Event time", "Type", "Sensors", "Telemetry sample time", "Value", "Offset"]) {
+    for (const column of ["Event time", "Type", "Readings", "Telemetry sample time", "Value", "Offset"]) {
       await expect(table.getByRole("columnheader", { name: column, exact: true })).toBeVisible();
     }
     await expect(table.getByRole("row").filter({ hasText: "drift" })).toContainText("No nearby telemetry sample");
@@ -358,7 +344,7 @@ test.describe("Tandem anomaly chart regression", () => {
 
   test("linked chart navigation mirrors inspection and returns every chart to live", async ({ page }) => {
     await installMockApi(page, "mixed", "light", [SENSOR, "systemCurrent"]);
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
     const voltageCard = page.locator('[data-slot="card"]').filter({ hasText: "System Voltage" }).first();
     const currentCard = page.locator('[data-slot="card"]').filter({ hasText: "System Current" }).first();
     const voltageChart = voltageCard.getByTestId("telemetry-echart");
@@ -388,10 +374,10 @@ test.describe("Tandem anomaly chart regression", () => {
       fulfillJson(route, new URL(route.request().url()).searchParams.has("after_created") ? [] : points),
     );
     await page.route("**/v1/evidence/chart?*", (route) => fulfillJson(route, []));
-    await page.route("**/v1/anomalies?*", (route) => fulfillJson(route, [
-      { ...anomalies[0], anomaly_id: "range-boundary", timestamp: timestamp(4) },
+    await page.route("**/v1/alarms?*", (route) => fulfillJson(route, [
+      { ...anomalies[0], alarm_id: "range-boundary", timestamp: timestamp(4) },
     ]));
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
     const chart = page.getByTestId("telemetry-echart");
     const card = page.locator('[data-slot="card"]').filter({ has: chart });
     await expect(chart).toBeVisible();

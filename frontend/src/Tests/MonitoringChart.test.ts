@@ -26,7 +26,7 @@ import type {
   MartingaleTrackerResult,
   MonitoringChartEvidence,
 } from "@/types/monitoring";
-import { chartEvidence, trackerResult as trackerFixture } from "./support/fixtures/monitoring";
+import { alarm, chartEvidence, trackerResult as trackerFixture } from "./support/fixtures/monitoring";
 
 const evidence = (
   serviceId: string,
@@ -731,15 +731,7 @@ describe("telemetry ECharts option", () => {
           time: timestamp,
           value: 12,
           sample: { timestamp: "2026-01-01T00:00:00Z", time: timestamp, value: 12 },
-          anomaly: {
-            anomaly_id: "anomaly-1",
-            charger_id: "charger-1",
-            timestamp: "2026-01-01T00:00:00Z",
-            telemetry_type: "L1",
-            anomaly_type: "spike",
-            anomaly_value: 0.01,
-            value_type: "tail_pvalue",
-          },
+          anomaly: alarm({ timestamp: "2026-01-01T00:00:00Z", alarm_type: "spike", value: 0.01 }),
           style: { color: "#ef4444", radius: 4, opacity: 0.9 },
         },
       ],

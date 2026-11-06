@@ -34,12 +34,12 @@ import {
   areChartNavigationStatesEqual,
   type ChartNavigationState,
 } from "./telemetry-chart";
-import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import type { Alarm, TelemetryTypeData } from "@/types/charger";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
-  anomalies?: Anomaly[];
+  anomalies?: Alarm[];
   evidence?: MonitoringChartEvidence[];
   monitoringService?: ActiveService;
   navigationState?: ChartNavigationState;

@@ -53,8 +53,8 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await picker.click();
     const choices = page.getByRole("dialog", { name: "Choose monitoring inputs", exact: true });
     await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
-    const activeChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Entity ${activeId}` });
-    const quietChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Entity ${quietId}` });
+    const activeChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Device ${activeId}` });
+    const quietChoice = choices.getByRole("button").filter({ hasText: `${broker.label} / Device ${quietId}` });
     await expect(activeChoice).toBeVisible();
     await expect(quietChoice).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("monitoring-receiving-inputs.png") });
@@ -63,11 +63,11 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await publisher.publishAsync(quietReading.topic, "27", { qos: 1 });
     await expect(quietChoice).toBeVisible({ timeout: 15_000 });
     await quietChoice.click();
-    await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
+    await expect(picker).toHaveText(`${broker.label} / Device ${quietId}`);
     await picker.click();
     await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
     await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible({ timeout: 150_000 });
-    await expect(picker).toHaveText(`${broker.label} / Entity ${quietId}`);
+    await expect(picker).toHaveText(`${broker.label} / Device ${quietId}`);
   } finally {
     if (publisher) {
       await publisher.publishAsync(`tests/${quietId}/temperature`, "", { qos: 1, retain: true });

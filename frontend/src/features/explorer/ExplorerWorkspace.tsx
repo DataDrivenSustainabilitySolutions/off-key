@@ -72,7 +72,7 @@ export function ExplorerWorkspace() {
     if (loadingCreation) return <p className={creationError ? "ex-banner ex-error" : "ex-muted"} role={creationError ? "alert" : "status"}>
       {creationError || "Opening monitoring setup…"}{creationError && <button onClick={() => void Promise.allSettled([monitoring.reload(), system.refresh()])}>Retry</button>}
     </p>;
-    if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Entity not found." : "Source not found."}</p>;
+    if (selectionMissing && !pipelineView) return <p role="alert">{params.has("reading") ? "Reading not found." : params.has("entity") ? "Device not found." : "Source not found."}</p>;
     if (pipelineView) return <Suspense fallback={<p className="ex-muted" role="status">Opening pipelines…</p>}><Pipelines services={monitoring.services} index={monitoringIndex} canEdit={manageMonitors}
       initialTarget={initialTarget} initialReading={requestedReading}
       onBack={closeView} onStarted={async id => { await monitoring.reload(); openService(id); }} /></Suspense>;

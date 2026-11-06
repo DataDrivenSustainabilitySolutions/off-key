@@ -37,7 +37,8 @@ export function createAppRoutes() {
           <Route path="/entities" element={<Navigate to="/sources" replace />} />
           <Route path="/services" element={<Navigate to="/" replace />} />
           <Route path="/sources" element={<DataSources />} />
-          <Route path="/details/:chargerId" element={<Details />} />
+          <Route path="/details/:deviceId" element={<Details />} />
+          <Route path="/details/broker/:brokerId" element={<Details />} />
           {/* Account and status open as the settings overlay above Monitoring. */}
           <Route path="/account" element={<SettingsRedirect section="account" />} />
           <Route path="/system/status" element={<SettingsRedirect section="status" />} />

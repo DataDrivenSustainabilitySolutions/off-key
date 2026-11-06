@@ -3,9 +3,9 @@ import { API_CONFIG } from "@/lib/api-config";
 import { drainForward, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { clientLogger } from "@/lib/logger";
 import type {
-  Anomaly,
-  AnomalyPage,
-  AnomalyQuery,
+  Alarm,
+  AlarmPage,
+  AlarmQuery,
   TelemetryDataPoint,
   TelemetryCursor,
   TelemetryTypeData,
@@ -128,21 +128,19 @@ export const mergeTelemetryData = (
 };
 
 /** Reporting's alarms, scoped and filtered on the server. */
-export const queryAnomalies = (query: AnomalyQuery, signal?: AbortSignal): Promise<AnomalyPage> =>
-  apiUtils.post<AnomalyPage>(API_CONFIG.ENDPOINTS.ANOMALIES.QUERY, query, signal ? { signal } : undefined);
+export const queryAlarms = (query: AlarmQuery, signal?: AbortSignal): Promise<AlarmPage> =>
+  apiUtils.post<AlarmPage>(API_CONFIG.ENDPOINTS.ALARMS.QUERY, query, signal ? { signal } : undefined);
 
-export const getAnomalies = (
-  chargerId: string,
+/** The newest alarms of a device, or of the named readings. */
+export const getAlarms = (
+  scope: Parameters<typeof API_CONFIG.ENDPOINTS.ALARMS.LIST>[0],
   signal?: AbortSignal,
-): Promise<Anomaly[]> =>
-  get<Anomaly[]>(
-    API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(chargerId),
-    signal,
-  );
+): Promise<Alarm[]> =>
+  get<Alarm[]>(API_CONFIG.ENDPOINTS.ALARMS.LIST(scope), signal);
 
-export const deleteAnomaly = async (anomalyId: string): Promise<void> => {
-  if (!anomalyId) {
-    throw new Error("Anomaly ID is required");
+export const deleteAlarm = async (alarmId: string): Promise<void> => {
+  if (!alarmId) {
+    throw new Error("Alarm ID is required");
   }
-  await apiUtils.delete(API_CONFIG.ENDPOINTS.ANOMALIES.DELETE(anomalyId));
+  await apiUtils.delete(API_CONFIG.ENDPOINTS.ALARMS.DELETE(alarmId));
 };

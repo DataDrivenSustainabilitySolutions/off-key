@@ -11,10 +11,10 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from off_key_core.schemas.reporting import (
+from off_key_core.schemas.alarms import (
     MULTIVARIATE_TELEMETRY_TYPE,
     PROBABILITY_VALUE_TYPES,
-    AnomalyCursor,
+    AlarmCursor,
 )
 from off_key_core.schemas.user import normalize_email
 from sqlalchemy import (
@@ -292,24 +292,11 @@ class AnomalyRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def list_by_charger(
-        self,
-        *,
-        charger_id: str,
-        telemetry_type: str | None,
-        limit: int,
-    ) -> list[tuple[str, Anomaly]]:
-        query = _anomaly_listing().where(Anomaly.charger_id == charger_id)
-        if telemetry_type:
-            query = query.where(Anomaly.telemetry_type == telemetry_type)
-        result = await self._session.execute(query.limit(limit))
-        return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]
-
     async def page(
         self,
         filters: AnomalyFilters,
         *,
-        before: AnomalyCursor | None,
+        before: AlarmCursor | None,
         limit: int,
     ) -> list[tuple[str, Anomaly]]:
         """Matching alarms, newest first, after a cursor."""
@@ -324,7 +311,7 @@ class AnomalyRepository:
         if before is not None:
             query = query.where(
                 tuple_(Anomaly.timestamp, AnomalyIdentity.anomaly_id)
-                < tuple_(before.timestamp, before.anomaly_id)
+                < tuple_(before.timestamp, before.alarm_id)
             )
         result = await self._session.execute(query)
         return [(anomaly_id, anomaly) for anomaly_id, anomaly in result.all()]

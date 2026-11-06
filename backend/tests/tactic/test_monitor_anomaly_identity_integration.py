@@ -5,11 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from off_key_core.db.migrate import apply_migrations, migration_status
 from off_key_core.db.models import Anomaly, AnomalyIdentity, MonitoringEvidence
+from off_key_core.schemas.system import SystemDocument, SystemSnapshot
 from off_key_mqtt_radar.config.config import MQTTRadarConfig
 from off_key_mqtt_radar.database import DatabaseWriter
 from off_key_mqtt_radar.models import AnomalyResult
 from off_key_tactic_middleware.repositories.data import AnomalyRepository
-from off_key_tactic_middleware.services.data.anomalies import AnomalyService
+from off_key_tactic_middleware.services.data.alarms import AlarmService
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -79,12 +80,22 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
 
         async with sessions() as session:
             repository = AnomalyRepository(session)
-            service = AnomalyService(session, repository)
-            rows = await service.list_anomalies(
-                charger_id="entity", telemetry_type=None, limit=10
-            )
-            assert {row["service_id"] for row in rows} == {"monitor-a", "monitor-b"}
-            assert len({row["anomaly_id"] for row in rows}) == 2
+            service = AlarmService(session, repository)
+
+            async def every_alarm():
+                return await service.list_alarms(
+                    SystemSnapshot(
+                        revision=0, document=SystemDocument(), storage_origin="saved"
+                    ),
+                    device_id=None,
+                    stream_ids=None,
+                    service_id=None,
+                    limit=10,
+                )
+
+            rows = await every_alarm()
+            assert {row.monitor_id for row in rows} == {"monitor-a", "monitor-b"}
+            assert len({row.alarm_id for row in rows}) == 2
             assert await session.scalar(select(func.count()).select_from(Anomaly)) == 2
             assert (
                 await session.scalar(
@@ -93,13 +104,11 @@ async def test_independent_monitor_alarms_survive_retries_and_independent_deleti
                 == 2
             )
             first_id = next(
-                row["anomaly_id"] for row in rows if row["service_id"] == "monitor-a"
+                row.alarm_id for row in rows if row.monitor_id == "monitor-a"
             )
-            await service.delete_anomaly(anomaly_id=first_id)
-            remaining = await service.list_anomalies(
-                charger_id="entity", telemetry_type=None, limit=10
-            )
-            assert [row["service_id"] for row in remaining] == ["monitor-b"]
+            await service.delete_alarm(alarm_id=first_id)
+            remaining = await every_alarm()
+            assert [row.monitor_id for row in remaining] == ["monitor-b"]
             assert (
                 await session.scalar(select(func.count()).select_from(AnomalyIdentity))
                 == 1

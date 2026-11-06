@@ -72,7 +72,7 @@ export function buildNavigationIndex(document: SystemDocument): NavigationIndex 
   ): ExplorerNode => ({ key, kind, label, parentKey, children: [], streamIds: [], searchText: "" });
   const ensureUnassigned = () => {
     if (!nodes.has(unassignedKey)) {
-      addNode(emptyNode(unassignedKey, "unassigned", "Unassigned entities", rootKey));
+      addNode(emptyNode(unassignedKey, "unassigned", "Unassigned devices", rootKey));
     }
     return unassignedKey;
   };

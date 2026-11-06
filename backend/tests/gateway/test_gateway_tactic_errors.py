@@ -58,10 +58,11 @@ ROUTES = [
     ("DELETE", "/v1/favorites?kind=reading&id=r1", None),
     ("GET", "/v1/members", None),
     ("GET", "/v1/system", None),
-    ("PATCH", "/v1/monitors/svc-1/label", {"display_name": "Pump"}),
-    ("GET", "/v1/monitors/pipelines/p1", None),
-    ("GET", "/v1/monitors/all", None),
-    ("GET", "/v1/monitors?container_name=svc-1", None),
+    ("PATCH", "/v1/monitors/svc-1", {"display_name": "Pump"}),
+    ("GET", "/v1/pipelines/p1", None),
+    ("GET", "/v1/monitors", None),
+    ("GET", "/v1/monitors/svc-1", None),
+    ("POST", "/v1/monitors/svc-1/stop", None),
     (
         "POST",
         "/v1/auth/password-reset/confirm",
@@ -134,7 +135,7 @@ async def test_unsafe_pipeline_identifier_is_rejected_before_forwarding(
 ):
     _fail_downstream(monkeypatch, AssertionError("must not forward"))
 
-    response = await _call(gateway, "GET", "/v1/monitors/pipelines/a%5Cb", None)
+    response = await _call(gateway, "GET", "/v1/pipelines/a%5Cb", None)
 
     assert (response.status_code, response.json()) == (
         422,

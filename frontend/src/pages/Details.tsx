@@ -171,7 +171,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
         getAnomalies(chargerId, signal),
         loadEvidence(),
         apiUtils.get<ActiveService[]>(
-          `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
+          API_CONFIG.ENDPOINTS.MONITORING.LIST,
           { signal },
         ),
       ]);
@@ -312,7 +312,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const serviceByTelemetry = useMemo(() => {
     if (!chargerId) return new Map<string, ActiveService>();
     const newestRelevantFirst = [...monitoringServices].sort((left, right) => {
-      if (left.status !== right.status) return left.status ? -1 : 1;
+      if (left.active !== right.active) return left.active ? -1 : 1;
       const rightCreated = Date.parse(right.created_at ?? "") || 0;
       const leftCreated = Date.parse(left.created_at ?? "") || 0;
       return rightCreated - leftCreated;

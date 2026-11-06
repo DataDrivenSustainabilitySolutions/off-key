@@ -7,13 +7,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from off_key_api_gateway.api.v1.monitors import (
-    MonitoringServiceConfig,
+    MonitorCreate,
     TacticError,
-    delete_monitoring_service,
-    start_monitoring_service,
-    stop_monitoring_service,
+    create_monitor,
+    delete_monitor,
+    stop_monitor,
 )
 from off_key_core.schemas.radar import (
     PerformanceConfig as GatewayPerformanceConfig,
@@ -37,7 +36,7 @@ def _build_request() -> Request:
         {
             "type": "http",
             "method": "POST",
-            "path": "/v1/monitors/start",
+            "path": "/v1/monitors",
             "headers": [],
             "client": ("127.0.0.1", 12345),
         }
@@ -46,9 +45,8 @@ def _build_request() -> Request:
 
 @pytest.mark.asyncio
 async def test_gateway_start_monitor_forwards_static_performance_config():
-    config = MonitoringServiceConfig(
-        container_name="radar-charger-1",
-        service_type="radar",
+    config = MonitorCreate(
+        display_name="radar-charger-1",
         mqtt_topics=[
             "telemetry/charger-1/sine",
             "telemetry/charger-1/cosine",
@@ -76,11 +74,13 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
         "off_key_api_gateway.api.v1.monitors.tactic.start_radar_service",
         mock_start,
     ):
-        response = await inspect.unwrap(start_monitoring_service)(
-            request=_build_request(), config=config
+        response = await inspect.unwrap(create_monitor)(
+            request=_build_request(), monitor=config
         )
 
     assert response == expected
+    # The display name also names the container, which the API never shows.
+    assert mock_start.await_args.args[0].container_name == "radar-charger-1"
     forwarded = mock_start.await_args.args[0].model_dump()
     assert forwarded["monitoring"]["strategy"] == "static_baseline"
     assert forwarded["performance_config"] == {
@@ -110,15 +110,15 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
 
 def test_gateway_monitoring_config_rejects_root_wildcard_topic():
     with pytest.raises(ValueError, match="Root wildcard"):
-        MonitoringServiceConfig(
-            container_name="radar-charger-1",
+        MonitorCreate(
+            display_name="radar-charger-1",
             mqtt_topics=["#"],
         )
 
 
 def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
-    base = dict(container_name="radar", mqtt_topics=["telemetry/c1/sine"])
-    config = MonitoringServiceConfig(
+    base = dict(display_name="radar", mqtt_topics=["telemetry/c1/sine"])
+    config = MonitorCreate(
         **base,
         strategy="adaptive_stream",
         adaptive_stream_config={"training_window_size": 1200},
@@ -126,9 +126,9 @@ def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
     assert config.monitoring.strategy == "adaptive_stream"
     assert config.monitoring.training_window_size == 1200
     with pytest.raises(ValueError, match="adaptive_stream_config"):
-        MonitoringServiceConfig(**base, adaptive_stream_config={})
+        MonitorCreate(**base, adaptive_stream_config={})
     with pytest.raises(ValueError, match="model_type conflicts"):
-        MonitoringServiceConfig(
+        MonitorCreate(
             **base,
             strategy="adaptive_stream",
             model_type="aberrant_knn",
@@ -138,8 +138,8 @@ def test_gateway_accepts_adaptive_strategy_and_rejects_cross_lane_config():
 
 def test_gateway_rejects_incompatible_adaptive_feature_count():
     with pytest.raises(ValueError, match="exactly one feature"):
-        MonitoringServiceConfig(
-            container_name="radar",
+        MonitorCreate(
+            display_name="radar",
             mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
             strategy="adaptive_stream",
             model_type="aberrant_moving_average",
@@ -150,8 +150,8 @@ def test_gateway_rejects_incompatible_adaptive_feature_count():
 
 def test_gateway_rejects_sensor_key_collisions_before_launch():
     with pytest.raises(ValueError, match="collapses multiple MQTT topics"):
-        MonitoringServiceConfig(
-            container_name="radar",
+        MonitorCreate(
+            display_name="radar",
             mqtt_topics=[
                 "telemetry/c1/phase/L1",
                 "telemetry/c1/phase/L2",
@@ -162,8 +162,8 @@ def test_gateway_rejects_sensor_key_collisions_before_launch():
 
 
 def test_gateway_resolves_strategy_specific_default_model():
-    config = MonitoringServiceConfig(
-        container_name="radar",
+    config = MonitorCreate(
+        display_name="radar",
         mqtt_topics=["telemetry/c1/L1"],
         strategy="adaptive_stream",
     )
@@ -171,8 +171,8 @@ def test_gateway_resolves_strategy_specific_default_model():
 
 
 def test_gateway_resolves_default_static_baseline_config():
-    config = MonitoringServiceConfig(
-        container_name="radar-charger-1",
+    config = MonitorCreate(
+        display_name="radar-charger-1",
         mqtt_topics=["telemetry/charger-1/sine"],
         model_type="pyod_iforest",
         model_params={"n_estimators": 128},
@@ -215,52 +215,36 @@ async def test_gateway_stop_preserves_tactic_error_status():
         ),
         pytest.raises(TacticError) as exc_info,
     ):
-        await inspect.unwrap(stop_monitoring_service)(
-            request=_build_request(), container_name="missing", container_id=None
+        await inspect.unwrap(stop_monitor)(
+            request=_build_request(), monitor_id="missing"
         )
     # The route class turns it into the HTTP response; the catch-all must not.
     assert exc_info.value.status == 404
 
 
 @pytest.mark.asyncio
-async def test_gateway_stop_validates_identifier():
-    handler = inspect.unwrap(stop_monitoring_service)
-    with pytest.raises(HTTPException) as exc_info:
-        await handler(request=_build_request(), container_name=None, container_id=None)
-    assert exc_info.value.status_code == 400
-
-    with pytest.raises(HTTPException) as exc_info:
-        await handler(
-            request=_build_request(),
-            container_name="radar-a",
-            container_id="ctr-a",
-        )
-    assert exc_info.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_gateway_stop_forwards_container_identifier():
-    mock_stop = AsyncMock(return_value={"status": "stopped", "message": "ok"})
+async def test_gateway_stop_forwards_the_monitor_id():
+    mock_stop = AsyncMock(return_value={"status": "stopped", "service_id": "svc-1"})
     with patch(
         "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
     ):
-        response = await inspect.unwrap(stop_monitoring_service)(
-            request=_build_request(), container_name=None, container_id="ctr-1"
+        response = await inspect.unwrap(stop_monitor)(
+            request=_build_request(), monitor_id="svc-1"
         )
     assert response["status"] == "stopped"
-    mock_stop.assert_awaited_once_with(container_name=None, container_id="ctr-1")
+    mock_stop.assert_awaited_once_with("svc-1")
 
 
 @pytest.mark.asyncio
-async def test_gateway_delete_uses_service_id_endpoint():
+async def test_gateway_delete_uses_the_monitor_id_endpoint():
     mock_delete = AsyncMock(return_value={"status": "deleted", "service_id": "svc-1"})
     with patch(
         "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service", mock_delete
     ):
-        response = await inspect.unwrap(delete_monitoring_service)(
-            request=_build_request(), service_id="svc-1"
+        response = await inspect.unwrap(delete_monitor)(
+            request=_build_request(), monitor_id="svc-1"
         )
-    assert response["status"] == "deleted"
+    assert response.status_code == 204
     mock_delete.assert_awaited_once_with("svc-1")
 
 
@@ -278,8 +262,8 @@ async def test_gateway_delete_preserves_tactic_error_status():
         ),
         pytest.raises(TacticError) as exc_info,
     ):
-        await inspect.unwrap(delete_monitoring_service)(
-            request=_build_request(), service_id="missing"
+        await inspect.unwrap(delete_monitor)(
+            request=_build_request(), monitor_id="missing"
         )
     assert exc_info.value.status == 404
 

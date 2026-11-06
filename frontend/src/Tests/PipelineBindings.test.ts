@@ -55,7 +55,7 @@ describe("replacement setup", () => {
   });
 
   it("counts only other active services as owners", () => {
-    const services = [{ id: "old", status: true }, { id: "stopped", status: false }, { id: "other", status: true }] as ActiveService[];
+    const services = [{ id: "old", active: true }, { id: "stopped", active: false }, { id: "other", active: true }] as ActiveService[];
     const byStream = new Map([["a", new Set(["old"])], ["b", new Set(["stopped"])], ["c", new Set(["other"])]]);
     const owned = readingOwnedElsewhere(services, byStream, "old");
     expect(["a", "b", "c", "d"].map(owned)).toEqual([false, false, true, false]);

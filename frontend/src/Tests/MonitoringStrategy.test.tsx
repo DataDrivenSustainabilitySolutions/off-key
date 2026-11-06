@@ -165,8 +165,8 @@ describe("monitoring setup forms", () => {
   beforeEach(() => {
     vi.clearAllMocks(); clearNavigationDrafts();
     mockGet.mockImplementation((url: string) => {
-      if (url.includes("/models")) return Promise.resolve(modelCatalog);
-      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", service_id: "new-service" });
+      if (url.includes("/detectors")) return Promise.resolve(modelCatalog);
+      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", monitor_id: "new-service" });
       return Promise.resolve([]);
     });
     mockPost.mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
@@ -435,8 +435,8 @@ describe("monitoring setup forms", () => {
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {
-    const existing: ActiveService = { id: "7", container_id: "workload", container_name: "radar-existing", status: true,
-      mqtt_topics: ["telemetry/charger-1/L1"], stream_ids: ["stream-L1"],
+    const existing: ActiveService = { id: "7", display_name: "radar-existing", active: true,
+      mqtt_topics: ["telemetry/charger-1/L1"], reading_ids: ["stream-L1"],
       operational_status: { stage: "operational", is_stale: false, message_count: 1, processed_message_count: 1 } };
     await renderCreate({ services: [existing], byStream: new Map([["stream-L1", new Set(["7"])]]) });
 

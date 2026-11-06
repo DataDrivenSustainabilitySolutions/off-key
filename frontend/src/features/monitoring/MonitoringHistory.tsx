@@ -32,7 +32,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const history = useServiceHistory(service.id, selectedInputs, inputs, connections, historyCache);
   const timeZone = useMemo(() => getLocalTimeZone(), []);
   const histories = useMemo(() => new Map([...history.histories].map(([id, value]) => [id, value.telemetry])), [history.histories]);
-  const operational = service.status && service.operational_status.stage === "operational" && !service.operational_status.is_stale;
+  const operational = service.active && service.operational_status.stage === "operational" && !service.operational_status.is_stale;
   const base = useMemo(() => buildServiceHistoryModel({ serviceId: service.id, inputs: selectedInputs, allInputs: inputs,
     histories, evidence: history.monitoring.evidence, dark: resolvedTheme === "dark", operational }),
   [service.id, selectedInputs, inputs, histories, history.monitoring.evidence, resolvedTheme, operational]);

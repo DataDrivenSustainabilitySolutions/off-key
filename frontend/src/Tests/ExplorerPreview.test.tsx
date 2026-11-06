@@ -66,8 +66,8 @@ beforeEach(() => {
 
 // The running monitor that watches the temperature reading.
 const owner: ActiveService = {
-  id: "selected", container_id: "test", container_name: "Selected monitor", status: true,
-  mqtt_topics: ["telemetry/entity-id/temperature"], stream_ids: ["temperature"],
+  id: "selected", display_name: "Selected monitor", active: true,
+  mqtt_topics: ["telemetry/entity-id/temperature"], reading_ids: ["temperature"],
   operational_status: { stage: "operational", message_count: 1, processed_message_count: 1, is_stale: false },
 };
 
@@ -249,8 +249,8 @@ describe("workspace chart navigation and monitoring", () => {
   it("adds aligned monitoring scores, changing thresholds, and pending scores without moving the viewport", () => {
     const { props } = fixture();
     const service: ActiveService = {
-      id: "monitor", container_id: "test", container_name: "Test monitor", status: true,
-      mqtt_topics: ["telemetry/entity-id/temperature"], stream_ids: ["temperature"],
+      id: "monitor", display_name: "Test monitor", active: true,
+      mqtt_topics: ["telemetry/entity-id/temperature"], reading_ids: ["temperature"],
       operational_status: { stage: "operational", message_count: 3, processed_message_count: 3, is_stale: false },
     };
     const history = {

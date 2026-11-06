@@ -107,7 +107,7 @@ export function StaticMonitoringSetup({
       topics: effectiveTopics,
       draft,
       modelDefinition,
-      containerName: `radar-${chargerId}-${Date.now()}`,
+      displayName: displayName || `radar-${chargerId}-${Date.now()}`,
     });
     if (!validation.request) {
       setFieldErrors(validation.errors);
@@ -117,10 +117,7 @@ export function StaticMonitoringSetup({
 
     setStarting(true);
     try {
-      const serviceId = await startFormMonitor({
-        ...validation.request,
-        ...(displayName ? { display_name: displayName } : {}),
-      });
+      const serviceId = await startFormMonitor(validation.request);
       toast.success("Static monitoring service started.");
       await onStarted(serviceId);
     } catch (error) {
@@ -188,7 +185,7 @@ export function StaticMonitoringSetup({
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {owner
-                            ? `Assigned to ${owner.container_name}`
+                            ? `Assigned to ${owner.display_name ?? owner.id}`
                             : sensorLabels?.has(sensor) ? "" : sensor}
                         </span>
                       </span>

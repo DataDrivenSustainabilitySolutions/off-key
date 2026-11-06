@@ -9,7 +9,7 @@ export async function inspectMonitoringHistory({ page, api, headers, serviceId, 
   page: Page; api: APIRequestContext; headers: Record<string, string>; serviceId: string;
   entityId: string; strategy: "adaptive_stream" | "static_baseline"; testInfo: TestInfo;
 }) {
-  const response = await api.get(`/api/v1/monitors/evidence/chart?charger_id=${entityId}&service_id=${serviceId}`, { headers });
+  const response = await api.get(`/api/v1/evidence/chart?charger_id=${entityId}&service_id=${serviceId}`, { headers });
   expect(response.ok(), await response.text()).toBe(true);
   const evidence = await response.json() as Evidence[];
   expect(evidence.length).toBeGreaterThan(0);

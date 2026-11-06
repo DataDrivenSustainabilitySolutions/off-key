@@ -15,17 +15,17 @@ const delay = (milliseconds: number) =>
 
 /** Form monitors run as pipelines; resolve once the new service exists. */
 export async function startFormMonitor(
-  request: MonitoringStartRequest & { display_name?: string },
+  request: MonitoringStartRequest,
   pollMilliseconds = 1000,
 ): Promise<string> {
-  const accepted = await apiUtils.post<{ service_id: string; activation_id: string }>(
-    API_CONFIG.ENDPOINTS.MONITORING.START,
+  const accepted = await apiUtils.post<{ monitor_id: string; activation_id: string }>(
+    API_CONFIG.ENDPOINTS.MONITORING.LIST,
     request,
   );
   const deadline = Date.now() + API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT;
   while (Date.now() < deadline) {
     const activation = await pipelinesApi.activation(accepted.activation_id);
-    if (STARTED.includes(activation.phase)) return activation.service_id;
+    if (STARTED.includes(activation.phase)) return activation.monitor_id;
     if (STOPPED.includes(activation.phase)) {
       if (!(activation.issues ?? []).length)
         throw new Error(activation.error ?? `Monitoring start was ${activation.phase}`);

@@ -50,20 +50,18 @@ def test_invalid_start_returns_422_without_launching(
     if boundary == "gateway":
         app.include_router(monitors.router, prefix="/v1/monitors")
         monkeypatch.setattr(monitors.tactic, "start_radar_service", launch)
-        path = "/v1/monitors/start"
+        path = "/v1/monitors"
+        name = {"display_name": "radar-test"}
     else:
         app.include_router(radar.router, prefix="/api/v1/orchestration")
         app.dependency_overrides[radar.get_form_monitor_starter] = lambda: launch
         path = "/api/v1/orchestration/radar/services/start/"
+        name = {"container_name": "radar-test"}
 
     with TestClient(app) as client:
         response = client.post(
             path,
-            json={
-                "container_name": "radar-test",
-                "mqtt_topics": ["telemetry/c1/L1"],
-                **invalid_config,
-            },
+            json=name | {"mqtt_topics": ["telemetry/c1/L1"], **invalid_config},
         )
 
     assert response.status_code == 422, response.text
@@ -95,15 +93,15 @@ def test_invalid_start_returns_422_without_launching(
 async def test_gateway_to_runtime_preserves_one_monitoring_config(
     legacy_config, monkeypatch
 ):
-    config = monitors.MonitoringServiceConfig(
-        container_name="radar-test",
+    config = monitors.MonitorCreate(
+        display_name="radar-test",
         mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
         performance_config={
             "sensor_key_strategy": "leaf",
             "sensor_freshness_seconds": 12.0,
         },
         **legacy_config,
-    )
+    ).form()
     facade = object.__new__(Tactic)
     facade.request = AsyncMock()
     await facade.start_radar_service(config)
@@ -111,6 +109,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
     assert set(payload) == {
         "launch_version",
         "container_name",
+        "display_name",
         "mqtt_topics",
         "monitoring",
         "performance_config",

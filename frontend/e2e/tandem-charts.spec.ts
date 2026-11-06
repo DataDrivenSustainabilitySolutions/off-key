@@ -387,7 +387,7 @@ test.describe("Tandem anomaly chart regression", () => {
     await page.route(`**/v1/telemetry/${CHARGER_ID}/data*`, (route) =>
       fulfillJson(route, new URL(route.request().url()).searchParams.has("after_created") ? [] : points),
     );
-    await page.route("**/v1/monitors/evidence/chart?*", (route) => fulfillJson(route, []));
+    await page.route("**/v1/evidence/chart?*", (route) => fulfillJson(route, []));
     await page.route("**/v1/anomalies?*", (route) => fulfillJson(route, [
       { ...anomalies[0], anomaly_id: "range-boundary", timestamp: timestamp(4) },
     ]));

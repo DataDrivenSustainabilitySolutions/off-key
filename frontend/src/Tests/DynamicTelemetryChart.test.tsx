@@ -106,11 +106,9 @@ const inspectOption = (): InspectableOption =>
 
 const operationalService: ActiveService = {
   id: "service-adaptive",
-  container_id: "container-1",
-  container_name: "radar-adaptive",
   mqtt_topics: ["telemetry/charger-1/voltage"],
-  stream_ids: ["voltage"],
-  status: true,
+  reading_ids: ["voltage"],
+  active: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {
     stage: "operational",

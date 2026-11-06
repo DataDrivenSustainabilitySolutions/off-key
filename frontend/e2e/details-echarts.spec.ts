@@ -75,11 +75,10 @@ const adaptiveEvidence = (timestamp: string, sequence: number) =>
   });
 const ADAPTIVE_SERVICE = {
   id: "adaptive-delayed",
-  container_id: "container-delayed",
-  container_name: "radar-delayed",
+  display_name: "radar-delayed",
   mqtt_topics: [`telemetry/${CHARGER_ID}/systemVoltage`],
-  stream_ids: ["systemVoltage"],
-  status: true,
+  reading_ids: ["systemVoltage"],
+  active: true,
   monitoring_strategy: "adaptive_stream",
   operational_status: {
     stage: "operational",

@@ -98,7 +98,7 @@ export function AdaptiveMonitoringSetup({
       topics,
       draft,
       modelDefinition,
-      containerName: `radar-adaptive-${chargerId}-${Date.now()}`,
+      displayName: displayName || `radar-adaptive-${chargerId}-${Date.now()}`,
     });
     if (!validation.request) {
       setFieldErrors(validation.errors);
@@ -107,10 +107,7 @@ export function AdaptiveMonitoringSetup({
     }
     setStarting(true);
     try {
-      const serviceId = await startFormMonitor({
-        ...validation.request,
-        ...(displayName ? { display_name: displayName } : {}),
-      });
+      const serviceId = await startFormMonitor(validation.request);
       toast.success("Adaptive monitoring service started.");
       await onStarted(serviceId);
     } catch (error) {
@@ -140,7 +137,7 @@ export function AdaptiveMonitoringSetup({
                       setSelectedSensors((current) => ({ ...current, [sensor]: event.target.checked }));
                       clearError("topics");
                     }} />
-                    <span className="min-w-0"><span className="block truncate font-medium">{sensorLabels?.get(sensor) ?? sensor}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.container_name}</span>}</span>
+                    <span className="min-w-0"><span className="block truncate font-medium">{sensorLabels?.get(sensor) ?? sensor}</span>{owner && <span className="block truncate text-xs text-muted-foreground">Owned by {owner.display_name ?? owner.id}</span>}</span>
                   </label>
                 );
               })}

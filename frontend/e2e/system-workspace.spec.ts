@@ -144,11 +144,11 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
     await expect(page.getByLabel("Calibration samples", { exact: true })).toHaveValue("2");
-    const startedResponse = page.waitForResponse(response => response.url().includes("/v1/monitors/start") && response.request().method() === "POST");
+    const startedResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/v1/monitors") && response.request().method() === "POST");
     await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
     const started = await startedResponse;
     expect(started.ok(), await started.text()).toBeTruthy();
-    serviceId = ((await started.json()) as { service_id: string }).service_id;
+    serviceId = ((await started.json()) as { monitor_id: string }).monitor_id;
     // The form opens the service once its pipeline activation created the workload.
     await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
     await page.getByRole("button", { name: "Rename service", exact: true }).click();
@@ -181,7 +181,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible();
     await catalogue!.dispose();
     await expect.poll(async () => {
-      const response = await api.get("/api/v1/monitors/all?active_only=true&include_docker_status=true", { headers });
+      const response = await api.get("/api/v1/monitors?active=true", { headers });
       const services = await response.json() as Array<{ id: string; display_name?: string; operational_status: { stage: string } }>;
       const service = services.find(item => item.id === serviceId);
       expect(service?.display_name).toBe("Saved workspace monitor");
@@ -192,7 +192,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
       await page.waitForTimeout(1100);
     }
     await expect.poll(async () => {
-      const response = await api.get(`/api/v1/monitors/evidence?charger_id=${binding.entity_id}`, { headers });
+      const response = await api.get(`/api/v1/evidence?charger_id=${binding.entity_id}`, { headers });
       const evidence = await response.json() as Array<{ service_id: string; anomaly_score: number | null; threshold: number | null }>;
       return evidence.some(row => row.service_id === serviceId && row.anomaly_score !== null && row.threshold !== null);
     }).toBe(true);

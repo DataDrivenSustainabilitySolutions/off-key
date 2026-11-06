@@ -31,7 +31,7 @@ export const previousBindings = (predecessor?: PipelineServiceView): Record<stri
 
 /** Whether another active service (not the one being replaced) already monitors a reading. */
 export function readingOwnedElsewhere(services: ActiveService[], byStream: Map<string, Set<string>>, replaceServiceId?: string) {
-  const active = new Set(services.filter((service) => service.status && service.id !== replaceServiceId).map((service) => service.id));
+  const active = new Set(services.filter((service) => service.active && service.id !== replaceServiceId).map((service) => service.id));
   return (readingId: string) => [...(byStream.get(readingId) ?? [])].some((id) => active.has(id));
 }
 

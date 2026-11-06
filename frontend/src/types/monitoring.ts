@@ -112,15 +112,13 @@ export interface OperationalStatus {
 
 export interface ActiveService {
   id: string;
-  container_id: string;
-  container_name: string;
   display_name?: string | null;
   mqtt_topics: string[];
   /** Catalogue readings the monitor watches, resolved by the server. */
-  stream_ids: string[];
-  status: boolean;
+  reading_ids: string[];
+  /** True while the monitor should run; false once it is stopped. */
+  active: boolean;
   operational_status: OperationalStatus;
-  docker_status?: string;
   monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;
@@ -216,9 +214,7 @@ interface AdaptiveStreamRequestConfig {
 
 // Anomaly detection request payload
 interface AnomalyDetectionRequestBase {
-  container_name: string;
-  display_name?: string;
-  service_type: 'radar';
+  display_name: string;
   mqtt_topics: string[];
   model_type: string;
   model_params: Record<string, JsonValue>;

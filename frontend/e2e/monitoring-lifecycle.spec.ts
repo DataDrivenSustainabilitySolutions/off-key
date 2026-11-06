@@ -62,7 +62,7 @@ test.describe("monitoring lifecycle smoke", () => {
 
       const startResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().includes("/v1/monitors/start") &&
+          new URL(response.url()).pathname.endsWith("/v1/monitors") &&
           response.request().method() === "POST",
       );
       await page.getByRole("button", { name: /start monitoring/i }).click();
@@ -95,8 +95,8 @@ test.describe("monitoring lifecycle smoke", () => {
         }),
       ]);
 
-      serviceId = ((await startResponse.json()) as { service_id?: string })
-        .service_id;
+      serviceId = ((await startResponse.json()) as { monitor_id?: string })
+        .monitor_id;
       expect(serviceId).toBeTruthy();
       const details = page.getByRole("region", {
         name: "Monitoring service details",

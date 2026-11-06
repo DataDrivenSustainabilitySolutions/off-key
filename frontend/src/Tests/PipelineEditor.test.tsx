@@ -151,8 +151,8 @@ beforeEach(() => {
     if (id !== "revision") throw new ApiRequestError("Published revision not found", 404);
     return { ...pipeline().revisions[0]!, definition };
   });
-  vi.mocked(pipelinesApi.apply).mockResolvedValue({ id: "activation", phase: "requested", service_id: "service", run_id: "run", predecessor_service_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
-  vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "requested", service_id: "service", run_id: "run", predecessor_service_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+  vi.mocked(pipelinesApi.apply).mockResolvedValue({ id: "activation", phase: "requested", monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+  vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "requested", monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
   vi.mocked(pipelinesApi.save).mockImplementation(async (_id, body) => ({ ...pipeline(), name: body.name!, description: body.description!, version: 2, draft: normalizeDefinition(body.definition), layout: normalizeLayout(body.layout) }));
 });
 function mount(overrides: Partial<ReturnType<typeof props>> = {}) {
@@ -255,7 +255,7 @@ describe("simple monitoring setup", () => {
   });
 
   it("tracks a replacement after its predecessor disappears from the active service list", async () => {
-    const old: ActiveService = { id: "old", display_name: "Existing health", container_id: "worker", container_name: "worker", mqtt_topics: [], stream_ids: [], status: true,
+    const old: ActiveService = { id: "old", display_name: "Existing health", mqtt_topics: [], reading_ids: [], active: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     const callbacks = props();
     const context = { id: "old", replace: true };
@@ -264,13 +264,13 @@ describe("simple monitoring setup", () => {
     const view = render(ui(old));
     fireEvent.click(await screen.findByRole("button", { name: "Update monitoring" }));
     await waitFor(() => expect(pipelinesApi.apply).toHaveBeenCalledOnce());
-    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0].replace_service_id).toBe("old");
+    expect(vi.mocked(pipelinesApi.apply).mock.calls[0]![0].replace_monitor_id).toBe("old");
     view.rerender(ui());
     expect((screen.getByRole("textbox", { name: "Service name" }) as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByRole("region", { name: "Monitoring setup progress" })).toBeTruthy();
     expect(screen.queryByText("Previous service retired")).toBeNull();
-    vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "succeeded", service_id: "service", run_id: "run",
-      predecessor_service_id: "old", error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
+    vi.mocked(pipelinesApi.activation).mockResolvedValue({ id: "activation", phase: "succeeded", monitor_id: "service", run_id: "run",
+      predecessor_monitor_id: "old", error: null, created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
     await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
     await waitFor(() => expect(callbacks.onStarted).toHaveBeenCalledWith("service"));
   });
@@ -328,7 +328,7 @@ describe("simple monitoring setup", () => {
       { name: "window", label: "Window", type: "integer", default: 8, has_default: true },
     ];
     vi.mocked(pipelinesApi.apply).mockResolvedValue({ id: "activation", phase: "failed",
-      service_id: "service", run_id: "run", predecessor_service_id: null, error: "Constructor rejected parameters",
+      monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: "Constructor rejected parameters",
       issues: [{ code: "invalid_value", message: "Choose a positive window", node_id: "detector", parameter_path: ["window"] }],
       created_at: "2026-10-20T10:00:00Z", updated_at: "2026-10-20T10:00:00Z" });
     mount({ catalog: described });

@@ -116,7 +116,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const readServiceEvidence = async () =>
         (
           await readJson<ChartEvidence[]>(
-            `/api/v1/monitors/evidence/chart?charger_id=${chargerId}&limit=2000`,
+            `/api/v1/evidence/chart?charger_id=${chargerId}&limit=2000`,
           )
         ).filter((row) => row.service_id === serviceId);
       const hasExpectedTelemetryTypes = (types: string[]) =>
@@ -159,7 +159,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
 
       const startResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().includes("/v1/monitors/start") &&
+          new URL(response.url()).pathname.endsWith("/v1/monitors") &&
           response.request().method() === "POST",
       );
       await page
@@ -167,8 +167,8 @@ test.describe("adaptive monitoring production lifecycle", () => {
         .click();
       const startResponse = await startResponsePromise;
       expect(startResponse.ok()).toBeTruthy();
-      const started = (await startResponse.json()) as { service_id: string };
-      serviceId = started.service_id;
+      const started = (await startResponse.json()) as { monitor_id: string };
+      serviceId = started.monitor_id;
 
       const readServiceStatus = async () => {
         const services = await readJson<Array<{
@@ -177,7 +177,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
             stage?: string;
             message_count?: number;
           };
-        }>>("/api/v1/monitors/all?active_only=true&include_docker_status=true");
+        }>>("/api/v1/monitors?active=true");
         return services.find((service) => service.id === serviceId)
           ?.operational_status;
       };
@@ -321,7 +321,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
       const evidenceRefresh = page.waitForResponse((response) => {
         const url = new URL(response.url());
         return (
-          url.pathname.includes("/v1/monitors/evidence/chart") &&
+          url.pathname.includes("/v1/evidence/chart") &&
           url.searchParams.has("after_created")
         );
       });

@@ -260,7 +260,7 @@ export default function PipelineRunView({
             key={serviceId}
             initial={{
               items: view.history,
-              next_service_id: view.history_next_service_id,
+              next_monitor_id: view.history_next_monitor_id,
             }}
           />
         </>

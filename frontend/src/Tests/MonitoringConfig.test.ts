@@ -47,7 +47,7 @@ describe("monitoring configuration", () => {
       ],
       draft,
       modelDefinition: definition,
-      containerName: "radar-adaptive-test",
+      displayName: "radar-adaptive-test",
     });
 
     expect(result.errors).toEqual({});
@@ -76,7 +76,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-1/L1"],
       draft,
       modelDefinition: undefined,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(result.request).toBeUndefined();
@@ -89,7 +89,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-1/L1"],
       draft: { ...createDefaultAdaptiveDraft(), trainingWindow },
       modelDefinition: undefined,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(build("1").errors.trainingWindow).toBe("Warm-up samples must be at least 2.");
@@ -115,7 +115,7 @@ describe("monitoring configuration", () => {
           },
         },
       },
-      containerName: "radar-adaptive-null",
+      displayName: "radar-adaptive-null",
     });
 
     expect(result.errors).toEqual({});
@@ -131,7 +131,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-1/L1"],
       draft: createDefaultStaticDraft(),
       modelDefinition,
-      containerName: "radar-charger-1-test",
+      displayName: "radar-charger-1-test",
     });
 
     expect(result.errors).toEqual({});
@@ -183,7 +183,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-1/L1"],
       draft,
       modelDefinition,
-      containerName: "radar-charger-1-ensemble",
+      displayName: "radar-charger-1-ensemble",
     });
 
     expect(result.errors).toEqual({});
@@ -215,7 +215,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/+/#"],
       draft: createDefaultStaticDraft(),
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
     expect(wildcard.request).toBeUndefined();
     expect(wildcard.errors.topics).toMatch(/without MQTT wildcards/);
@@ -229,7 +229,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-2/L1"],
       draft: invalidDraft,
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
     expect(invalid.request).toBeUndefined();
     expect(invalid.errors.topics).toMatch(/belong to entity charger-1/);
@@ -254,7 +254,7 @@ describe("monitoring configuration", () => {
       topics: ["telemetry/charger-1/L1"],
       draft,
       modelDefinition,
-      containerName: "unused",
+      displayName: "unused",
     });
 
     expect(result.request).toBeUndefined();

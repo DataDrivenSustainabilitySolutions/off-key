@@ -34,7 +34,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const sensorTopics = useMemo(() => new Map(enabledInputs.map(input => [input.binding.telemetry_key, input.binding.accepted_topic])), [enabledInputs]);
   const claims = useMemo(() => {
     const owners = new Map<string, ActiveService>();
-    const active = new Map(services.filter(service => service.status).map(service => [service.id, service]));
+    const active = new Map(services.filter(service => service.active).map(service => [service.id, service]));
     for (const input of enabledInputs) {
       for (const id of byStream.get(input.stream.id) ?? []) {
         const service = active.get(id);
@@ -46,7 +46,7 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const availableModels = useMemo(() => Object.fromEntries(Object.entries(models).filter(([, model]) => model.strategy === strategy)), [models, strategy]);
   useEffect(() => {
     const controller = new AbortController();
-    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.MODELS, { signal: controller.signal, redirectOnUnauthorized: false })
+    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.DETECTORS, { signal: controller.signal, redirectOnUnauthorized: false })
       .then(result => { if (!controller.signal.aborted) { setModels(result); setLoading(false); setError(""); } }, reason => {
         if (!controller.signal.aborted) { setError(getErrorMessage(reason)); setLoading(false); }
       });

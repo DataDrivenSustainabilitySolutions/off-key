@@ -110,7 +110,7 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   usePollingLoop(pollMonitoring, { ...LOOP, enabled: !!polls, intervalMs: INTERVALS.DETAILS_UPDATE });
   // The service list comes from the workspace's shared poll; the server names the readings each monitor watches.
   const feed = useMonitoringServices(!!context?.binding, INTERVALS.DETAILS_UPDATE);
-  const services = useMemo(() => context?.binding ? feed.services.filter(service => service.stream_ids.includes(id)) : [],
+  const services = useMemo(() => context?.binding ? feed.services.filter(service => service.reading_ids.includes(id)) : [],
     [context, id, feed.services]);
   const history = context ? state : UNBOUND_HISTORY;
   return { ...history, services, error: history.error || (context?.binding && feed.error ? "Monitoring services could not be updated." : "") };

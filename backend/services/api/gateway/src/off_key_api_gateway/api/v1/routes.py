@@ -7,9 +7,11 @@ from . import (
     auth,
     charger,
     dojo,
+    evidence,
     favorites,
     members,
     monitors,
+    pipelines,
     roles,
     system,
     telemetry,
@@ -22,12 +24,32 @@ protected = APIRouter(dependencies=[Depends(current_member)])
 
 protected.include_router(charger.router, prefix="/chargers", tags=["chargers"])
 protected.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
+manage_monitors = writes_require(Permission.manage_monitors)
 protected.include_router(
     monitors.router,
     prefix="/monitors",
     tags=["monitors"],
-    dependencies=[Depends(writes_require(Permission.manage_monitors))],
+    dependencies=[Depends(manage_monitors)],
 )
+protected.include_router(
+    pipelines.router,
+    prefix="/pipelines",
+    tags=["pipelines"],
+    dependencies=[Depends(manage_monitors)],
+)
+protected.include_router(
+    pipelines.components_router, prefix="/pipeline-components", tags=["pipelines"]
+)
+protected.include_router(
+    pipelines.activations_router,
+    prefix="/pipeline-activations",
+    tags=["pipelines"],
+    dependencies=[Depends(manage_monitors)],
+)
+protected.include_router(
+    monitors.detectors_router, prefix="/detectors", tags=["detectors"]
+)
+protected.include_router(evidence.router, prefix="/evidence", tags=["evidence"])
 protected.include_router(favorites.router, prefix="/favorites", tags=["favorites"])
 protected.include_router(
     anomalies.router,

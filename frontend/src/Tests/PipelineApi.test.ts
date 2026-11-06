@@ -48,25 +48,25 @@ const reads: Array<[string, () => Promise<unknown>, string, object]> = [
   [
     "catalog",
     () => pipelinesApi.catalog(signal),
-    "/v1/monitors/pipelines/catalog",
+    "/v1/pipeline-components",
     optional,
   ],
   [
     "list",
     () => pipelinesApi.list({ limit: 5 }, signal),
-    "/v1/monitors/pipelines",
+    "/v1/pipelines",
     { ...optional, params: { limit: 5 } },
   ],
   [
     "get",
     () => pipelinesApi.get("line/1", signal),
-    "/v1/monitors/pipelines/line%2F1",
+    "/v1/pipelines/line%2F1",
     optional,
   ],
   [
     "revision",
     () => pipelinesApi.revision("line/1", "rev 2", signal),
-    "/v1/monitors/pipelines/line%2F1/revisions/rev%202",
+    "/v1/pipelines/line%2F1/revisions/rev%202",
     optional,
   ],
   [
@@ -84,19 +84,19 @@ const reads: Array<[string, () => Promise<unknown>, string, object]> = [
   [
     "history",
     () => pipelinesApi.history("svc/1", signal),
-    "/v1/monitors/svc%2F1/pipeline-history",
+    "/v1/monitors/svc%2F1/pipeline/history",
     optional,
   ],
   [
     "runMetadata",
     () => pipelinesApi.runMetadata("svc/1", definition, "node", signal),
-    "/v1/monitors/svc%2F1/pipeline-metadata",
+    "/v1/monitors/svc%2F1/pipeline/metadata",
     { ...optional, params: { selected_node_id: "node" } },
   ],
   [
     "activation",
     () => pipelinesApi.activation("op/1", signal),
-    "/v1/monitors/pipeline-activations/op%2F1",
+    "/v1/pipeline-activations/op%2F1",
     optional,
   ],
 ];
@@ -130,21 +130,20 @@ describe("pipelines API", () => {
     await pipelinesApi.cancel("op/1");
 
     expect(mockPost.mock.calls).toEqual([
-      ["/v1/monitors/pipelines/apply", { service_id: "svc" }],
-      ["/v1/monitors/pipelines", { name: "Line", definition }],
-      ["/v1/monitors/pipeline-activations", { service_id: "svc" }],
+      ["/v1/pipelines/apply", { service_id: "svc" }],
+      ["/v1/pipelines", { name: "Line", definition }],
+      ["/v1/pipeline-activations", { service_id: "svc" }],
+      ["/v1/pipeline-activations/op%2F1/cancel"],
     ]);
     expect(mockPut.mock.calls).toEqual([
-      ["/v1/monitors/pipelines/line%2F1/draft", request],
-      ["/v1/monitors/svc%2F1/pipeline-layout", { nodes: {} }],
+      ["/v1/pipelines/line%2F1/draft", request],
+      ["/v1/monitors/svc%2F1/pipeline/layout", { nodes: {} }],
     ]);
     expect(mockPatch).toHaveBeenCalledExactlyOnceWith(
-      "/v1/monitors/pipelines/line%2F1",
+      "/v1/pipelines/line%2F1",
       { name: "Renamed" },
     );
-    expect(mockDelete).toHaveBeenCalledExactlyOnceWith(
-      "/v1/monitors/pipeline-activations/op%2F1",
-    );
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 
   it("validates a draft and falls back to the submitted definition", async () => {
@@ -153,7 +152,7 @@ describe("pipelines API", () => {
     const report = await pipelinesApi.validate(definition, signal, "node");
 
     expect(mockPost).toHaveBeenCalledExactlyOnceWith(
-      "/v1/monitors/pipelines/validate",
+      "/v1/pipelines/validate",
       { definition, selected_node_id: "node" },
       { signal },
     );

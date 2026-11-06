@@ -188,13 +188,13 @@ docker compose logs --tail 200 tactic-middleware
 1. Confirm that the model catalogue is served:
 
     ```bash
-    curl --fail http://localhost:8000/v1/monitors/models
+    curl --fail http://localhost:8000/v1/detectors
     ```
 
 2. List existing services and look for sensors already claimed:
 
     ```bash
-    curl --fail http://localhost:8000/v1/monitors/all
+    curl --fail http://localhost:8000/v1/monitors
     ```
 
 3. Confirm TACTIC readiness.
@@ -216,7 +216,7 @@ docker compose logs --tail 200 tactic-middleware
 4. Query evidence and anomaly counts:
 
     ```bash
-    curl --fail "http://localhost:8000/v1/monitors/evidence?charger_id=<charger-id>"
+    curl --fail "http://localhost:8000/v1/evidence?charger_id=<charger-id>"
     curl --fail http://localhost:8000/v1/anomalies/count
     ```
 

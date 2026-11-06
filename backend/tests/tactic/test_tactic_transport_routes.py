@@ -67,9 +67,13 @@ def test_workspace_reports_the_selected_service_state_and_tolerates_unknowns():
         unknown = http.get("/monitors/workspace", params={"selected_service_id": "x"})
         none = http.get("/monitors/workspace")
     assert selected.json()["pipeline_state"] == {"nodes": 3}
-    assert selected.json()["selected_service_id"] == "m1"
-    assert "pipeline_state" not in selected.json()["services"][0]["operational_status"]
-    assert selected.json()["services"][0]["stream_ids"] == []
+    # The overview answers with the API's names; container details stay inside.
+    assert selected.json()["selected_monitor_id"] == "m1"
+    monitor = selected.json()["monitors"][0]
+    assert "pipeline_state" not in monitor["operational_status"]
+    assert monitor["reading_ids"] == []
+    assert monitor["active"] is True
+    assert "container_name" not in monitor
     assert unknown.json()["pipeline_state"] is None
     assert none.json()["pipeline_state"] is None
     assert session.scalars.await_count == 3

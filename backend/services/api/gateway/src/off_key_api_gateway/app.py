@@ -54,14 +54,14 @@ permission of the member's role, which `GET /v1/me` lists.
   (its key), which telemetry, evidence and alarms use. `GET /v1/system` maps
   each stream id to that pair as `entity_id` and `telemetry_key` in
   `runtime.bindings`.
-- A *monitor* is a monitoring service (`service_id`); its design is a pipeline
-  under `/v1/monitors/pipelines`.
+- A *monitor* (`monitor_id`) watches readings; a design it can run is a
+  pipeline under `/v1/pipelines`.
 - An *alarm* in Reporting is an anomaly under `/v1/anomalies`.
 
 **Changes.** Saving the catalogue takes the last `revision` as
 `expected_revision`, pipeline drafts take `expected_version`; a stale value
 answers 409, so read again and retry. Starting a monitor answers 202 with an
-activation: poll `GET /v1/monitors/pipeline-activations/{activation_id}` until
+activation: poll `GET /v1/pipeline-activations/{activation_id}` until
 its `phase` is `succeeded`, `failed` or `cancelled`. Errors carry a readable
 `detail`.
 """
@@ -88,8 +88,22 @@ OPENAPI_TAGS = [
     },
     {
         "name": "monitors",
-        "description": "Monitors, their designs (pipelines), activations, runs "
-        "and detector evidence.",
+        "description": "Monitors: start, rename, stop and delete them, and read "
+        "the pipeline each one runs with its run history.",
+    },
+    {
+        "name": "pipelines",
+        "description": "Designs (pipelines) with their drafts and revisions, the "
+        "components a design may use, and activations that run a design as a "
+        "monitor.",
+    },
+    {
+        "name": "detectors",
+        "description": "Detector models a monitor can use, with parameter schemas.",
+    },
+    {
+        "name": "evidence",
+        "description": "Per-observation detector scores and p-values behind alarms.",
     },
     {
         "name": "anomalies",

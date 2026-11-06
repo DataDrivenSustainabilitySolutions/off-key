@@ -3,7 +3,6 @@
 import asyncio
 from typing import Any
 
-from off_key_core.config.logs import logger
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
@@ -12,25 +11,10 @@ from sqlalchemy import select
 from .radar_status import derive_operational_status
 
 
-def exactly_one(container_name, container_id, purpose: str) -> bool:
-    """Require exactly one workload identifier, logging a rejected request."""
-    if bool(container_name) == bool(container_id):
-        logger.warning(
-            "Invalid %s request: provide exactly one identifier "
-            "(container_name or container_id)",
-            purpose,
-        )
-        return False
-    return True
-
-
-async def find_service(session, container_name, container_id):
-    stmt = select(MonitoringService)
-    if container_name:
-        stmt = stmt.where(MonitoringService.container_name == container_name)
-    else:
-        stmt = stmt.where(MonitoringService.container_id == container_id)
-    result = await session.execute(stmt)
+async def find_service(session, service_id: str):
+    result = await session.execute(
+        select(MonitoringService).where(MonitoringService.id == service_id)
+    )
     return result.scalars().first()
 
 
@@ -100,16 +84,12 @@ class RadarServiceQueries:
             for service, probe in zip(services, probes, strict=True)
         ]
 
-    async def get(
-        self, *, container_name: str | None = None, container_id: str | None = None
-    ) -> dict[str, Any] | None:
+    async def get(self, service_id: str) -> dict[str, Any] | None:
         """One service; saved configuration wins over Docker labels."""
-        if not exactly_one(container_name, container_id, "get"):
-            return None
-
-        service = await find_service(self.session, container_name, container_id)
+        service = await find_service(self.session, service_id)
         if not service:
             return None
+        catalogue = (await read_collection_runtime(self.session)).catalog
 
         # Check actual workload status in Docker
         docker_service_status, labels = await self.workloads.get_status_and_labels(
@@ -129,7 +109,8 @@ class RadarServiceQueries:
                 "performance_config": configuration.get("performance_config") or {},
             },
             "mqtt_topics": service.mqtt_topic,
-            "db_status": service.status,
+            "stream_ids": catalogue.watched_by(service.mqtt_topic),
+            "status": service.status,
             "docker_status": docker_service_status,
             "operational_status": derive_operational_status(
                 service, docker_service_status

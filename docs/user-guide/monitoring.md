@@ -417,9 +417,9 @@ With the default `ephemeral` lifecycle, TACTIC also cleans up managed workloads 
 ## Operational checks
 
 ```bash
-curl --fail http://localhost:8000/v1/monitors/all
-curl --fail http://localhost:8000/v1/monitors/models
-curl --fail http://localhost:8000/v1/monitors/evidence
+curl --fail http://localhost:8000/v1/monitors
+curl --fail http://localhost:8000/v1/detectors
+curl --fail http://localhost:8000/v1/evidence
 curl --fail http://localhost:8000/v1/anomalies/count
 ```
 

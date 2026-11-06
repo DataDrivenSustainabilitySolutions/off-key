@@ -55,7 +55,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const telemetry = useMemo(() => normalizedHistory.filter(([time]) => time >= cutoff), [normalizedHistory, cutoff]);
   const telemetryType = monitoring.binding?.telemetryType ?? stream.id;
   // The services already watch this reading; the first running one owns the chart.
-  const service = useMemo(() => monitoring.services.find((item) => item.status), [monitoring.services]);
+  const service = useMemo(() => monitoring.services.find((item) => item.active), [monitoring.services]);
   const evidence = useMemo(() => monitoring.evidence.filter((item) => item.sensor_set.includes(telemetryType)
     && (!service || item.service_id === service.id)), [monitoring.evidence, service, telemetryType]);
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, telemetryType),

@@ -22,7 +22,7 @@ const models = {
 };
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async (url: string) =>
-    url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", service_id: "new-service" } : models);
+    url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", monitor_id: "new-service" } : models);
   vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
 });
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {
@@ -41,9 +41,9 @@ describe("integrated monitor creation", () => {
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(start);
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledOnce());
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors/start", expect.objectContaining({ display_name: "Room climate monitor", mqtt_topics: ["telemetry/room/temperature"] }));
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors", expect.objectContaining({ display_name: "Room climate monitor", mqtt_topics: ["telemetry/room/temperature"] }));
     await waitFor(() => expect(onStarted).toHaveBeenCalledWith("new-service"));
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/pipeline-activations/activation", expect.anything());
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/pipeline-activations/activation", expect.anything());
   });
 
   it("keeps start disabled until the explicitly selected collection revision is applied", async () => {
@@ -55,7 +55,7 @@ describe("integrated monitor creation", () => {
   });
 
   it("prevents a second active service from claiming an already owned generic input", async () => {
-    const service: ActiveService = { id: "owner", container_id: "workload", container_name: "Existing monitor", mqtt_topics: ["telemetry/room/temperature"], stream_ids: ["temperature"], status: true,
+    const service: ActiveService = { id: "owner", display_name: "Existing monitor", mqtt_topics: ["telemetry/room/temperature"], reading_ids: ["temperature"], active: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     mount(true, [service], new Map([["temperature", new Set(["owner"])]]));
     const input = await screen.findByRole("checkbox", { name: /Room temperature/ });

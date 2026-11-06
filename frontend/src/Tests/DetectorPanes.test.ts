@@ -4,7 +4,7 @@ import { useDetectorPanes } from "@/features/charts/use-detector-panes";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 const service = (status: boolean, stage = "operational") =>
-  ({ id: "svc", status, operational_status: { stage, is_stale: false } }) as unknown as ActiveService;
+  ({ id: "svc", active: status, operational_status: { stage, is_stale: false } }) as unknown as ActiveService;
 const scored = (time: number) =>
   ({ service_id: "svc", timestamp: new Date(time).toISOString(), sensor_set: ["temp"], input_timestamps: { temp: new Date(time).toISOString() },
     tracker_results: [] }) as unknown as MonitoringChartEvidence;

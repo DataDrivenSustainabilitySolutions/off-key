@@ -64,9 +64,9 @@ export async function installDetailsMockApi(page: Page, {
         return fulfillJson(route, !incremental ? telemetry : released.telemetry ? laterTelemetry : []);
       case "/v1/anomalies":
         return fulfillJson(route, anomalies);
-      case "/v1/monitors/all":
+      case "/v1/monitors":
         return fulfillJson(route, monitors);
-      case "/v1/monitors/evidence/chart":
+      case "/v1/evidence/chart":
         return fulfillJson(route, !incremental ? evidence : released.evidence ? laterEvidence : []);
       default:
         throw new Error(`Unexpected mocked API request: ${url.pathname}`);
@@ -84,6 +84,6 @@ export async function installDetailsMockApi(page: Page, {
   return {
     publish: () => release(["telemetry", "evidence"], `/telemetry/${chargerId}/data`),
     publishTelemetry: () => release(["telemetry"], `/telemetry/${chargerId}/data`),
-    releaseEvidence: () => release(["evidence"], "/monitors/evidence/chart"),
+    releaseEvidence: () => release(["evidence"], "/v1/evidence/chart"),
   };
 }

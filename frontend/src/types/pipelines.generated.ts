@@ -142,6 +142,31 @@ export type MinMaxScalerParameters = {
   clip?: boolean;
 };
 
+export type MonitorDetail = {
+  id: string;
+  display_name?: string | null;
+  monitoring_strategy?: string | null;
+  model_type?: string | null;
+  mqtt_topics?: Array<string>;
+  reading_ids?: Array<string>;
+  active: boolean;
+  operational_status?: Record<string, unknown>;
+  created_at?: string | null;
+  configuration?: Record<string, unknown>;
+};
+
+export type MonitorSummary = {
+  id: string;
+  display_name?: string | null;
+  monitoring_strategy?: string | null;
+  model_type?: string | null;
+  mqtt_topics?: Array<string>;
+  reading_ids?: Array<string>;
+  active: boolean;
+  operational_status?: Record<string, unknown>;
+  created_at?: string | null;
+};
+
 export type ObservedDetector = {
   detector_id: string;
   score: number | null;
@@ -162,15 +187,15 @@ export type PipelineActivationRequest = {
   bindings: Record<string, string>;
   display_name: string;
   idempotency_key: string;
-  replace_service_id?: string | null;
+  replace_monitor_id?: string | null;
 };
 
 export type PipelineActivationView = {
   id: string;
   phase: "requested" | "preflighting" | "validated" | "retiring" | "starting" | "awaiting_heartbeat" | "succeeded" | "cancelling" | "cancelled" | "failed";
-  service_id: string;
+  monitor_id: string;
   run_id: string;
-  predecessor_service_id: string | null;
+  predecessor_monitor_id: string | null;
   error: string | null;
   issues?: Array<PipelineIssue>;
   created_at: string;
@@ -183,7 +208,7 @@ export type PipelineApplyRequest = {
   bindings: Record<string, string>;
   display_name: string;
   idempotency_key: string;
-  replace_service_id?: string | null;
+  replace_monitor_id?: string | null;
 };
 
 export type PipelineBindingMetadata = {
@@ -258,7 +283,7 @@ export type PipelineExecutionConfig = {
 
 export type PipelineHistoryPage = {
   items: Array<PipelineRunSummary>;
-  next_service_id?: string | null;
+  next_monitor_id?: string | null;
 };
 
 export type PipelineHistoryQuery = {
@@ -405,7 +430,7 @@ export type PipelineRunEventView = {
 
 export type PipelineRunSummary = {
   id: string;
-  service_id: string;
+  monitor_id: string;
   revision_id: string | null;
   predecessor_run_id: string | null;
   status: string;
@@ -416,7 +441,7 @@ export type PipelineRunSummary = {
 
 export type PipelineRunTimeline = {
   run_id: string;
-  service_id: string;
+  monitor_id: string;
   status: string;
   error?: string | null;
   created_at: string;
@@ -428,7 +453,7 @@ export type PipelineRunTimeline = {
 
 export type PipelineRunView = {
   id: string;
-  service_id: string;
+  monitor_id: string;
   revision_id: string | null;
   predecessor_run_id: string | null;
   status: string;
@@ -459,7 +484,7 @@ export type PipelineRuntimeState = {
 export type PipelineServiceView = {
   run: PipelineRunView | null;
   history: Array<PipelineRunSummary>;
-  history_next_service_id?: string | null;
+  history_next_monitor_id?: string | null;
   definition: PipelineDefinition;
   layout: PipelineLayout;
   legacy?: boolean;
@@ -538,9 +563,9 @@ export type PipelineView = {
 };
 
 export type PipelineWorkspace = {
-  services: Array<Record<string, unknown>>;
+  monitors: Array<MonitorSummary>;
   authoring_enabled: boolean;
-  selected_service_id?: string | null;
+  selected_monitor_id?: string | null;
   pipeline_state?: Record<string, unknown> | null;
 };
 

@@ -77,7 +77,7 @@ Migration 013 adds `monitoring_pipelines.is_template`, preserving all existing
 designs as templates.
 
 **Apply monitoring** validates the graph and sends a typed
-`POST /v1/monitors/pipelines/apply` request with its definition, layout, bindings,
+`POST /v1/pipelines/apply` request with its definition, layout, bindings,
 service name and idempotency key. One server transaction creates the immutable
 execution snapshot, resolves bindings and reserves the existing durable activation.
 The normal preflight, source claims, capacity checks, worker heartbeat and
@@ -92,7 +92,7 @@ preflight and durable replacement path. Loading a template or editing settings
 does not affect the existing service until Apply. History remains immutable.
 Older library, revision and in-flight activation links remain supported.
 
-Unsaved graphs infer feature metadata with `POST /v1/monitors/pipelines/validate`,
+Unsaved graphs infer feature metadata with `POST /v1/pipelines/validate`,
 using the same typed, bounded compiler report, `manage_monitors` authorization and
 gateway compilation rate budget as saved templates. This endpoint creates no rows.
 Creation and templates share the same graph controller and account-scoped setup
@@ -497,7 +497,7 @@ Library lists return summaries with server-side search, archive filtering and
 pagination (`limit`, `offset`; default 25, maximum 100). Design details include
 at most 25 revision summaries. Revision pages use `before` revision numbers;
 individual immutable definitions load on selection. Run history pages contain
-summaries and a `next_service_id` continuation, resolved in one depth-bounded
+summaries and a `next_monitor_id` continuation, resolved in one depth-bounded
 recursive query per page. History never repeats executable definitions or binding
 snapshots. A selected run includes its design ID so opening its draft needs no
 library scan. `/pipeline-metadata` and immutable revision `/metadata` requests

@@ -44,20 +44,20 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const activity = service.operational_status.activity;
   const inputNames = new Map(inputs.map(input => [input.binding.telemetry_key, input.stream.label]));
   const describeInputs = (sensors: string[]) => sensors.map(sensor => inputNames.get(sensor) ?? sensor).join(", ");
-  const removeLabel = service.status ? "Stop and remove service" : "Remove service";
+  const removeLabel = service.active ? "Stop and remove service" : "Remove service";
   useEffect(() => {
     const controller = new AbortController();
-    void apiUtils.get<{ configuration?: Configuration }>(`${API_CONFIG.ENDPOINTS.MONITORING.DETAILS}?container_name=${encodeURIComponent(service.container_name)}`,
+    void apiUtils.get<{ configuration?: Configuration }>(API_CONFIG.ENDPOINTS.MONITORING.ITEM(service.id),
       { signal: controller.signal, redirectOnUnauthorized: false }).then(result => {
       if (!controller.signal.aborted) { setConfiguration(result.configuration); setError(""); }
     }, reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
     return () => controller.abort();
-  }, [service.id, service.container_name, retry]);
+  }, [service.id, retry]);
   const chooseTab = (next: string, streamId?: string) => setParams(withTab(params, next, streamId));
   const remove = async () => {
     setDeleting(true); setDeleteError("");
     try {
-      await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.DELETE(service.id), undefined, { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT });
+      await apiUtils.delete(API_CONFIG.ENDPOINTS.MONITORING.ITEM(service.id), undefined, { timeout: API_CONFIG.MONITORING_LIFECYCLE_TIMEOUT });
       setConfirm(false); await onDeleted();
     } catch (reason) { setDeleteError(getErrorMessage(reason)); }
     finally { setDeleting(false); }

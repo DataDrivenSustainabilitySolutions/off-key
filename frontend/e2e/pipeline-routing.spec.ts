@@ -12,7 +12,7 @@ test("reroutes around moved components during native dragging and after reload",
   await page.setViewportSize({ width: 1600, height: 1100 });
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
-  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = await response.json() as PipelineCatalog;
   const definition = structuredClone(catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!.definition);
@@ -22,7 +22,7 @@ test("reroutes around moved components during native dragging and after reload",
   );
   definition.edges = definition.edges!.filter((edge) => edge.target !== "detector");
   definition.edges.push({ source: "input", target: "middle" }, { source: "middle", target: "detector" });
-  const created = await page.request.post("/api/v1/monitors/pipelines", { headers, data: {
+  const created = await page.request.post("/api/v1/pipelines", { headers, data: {
     name: `Obstacle routing ${randomUUID()}`, definition,
     layout: { nodes: {
       input: { x: 0, y: 100 }, middle: { x: 360, y: 100 }, detector: { x: 900, y: 100 },
@@ -31,7 +31,7 @@ test("reroutes around moved components during native dragging and after reload",
   } });
   expect(created.ok(), await created.text()).toBe(true);
   const pipeline = await created.json() as PipelineView;
-  const endpoint = `/api/v1/monitors/pipelines/${pipeline.id}`;
+  const endpoint = `/api/v1/pipelines/${pipeline.id}`;
   try {
     await page.goto(`/?pipeline=${pipeline.id}`);
     const graph = page.getByLabel("Pipeline graph", { exact: true });

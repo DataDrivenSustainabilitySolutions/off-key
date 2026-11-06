@@ -14,7 +14,7 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
   const headers = { Authorization: `Bearer ${token}` };
   const deviceId = randomUUID();
   const templateIds = new Set<string>();
-  const endpoint = "/api/v1/monitors/pipelines";
+  const endpoint = "/api/v1/pipelines";
   try {
     await addTestCharger(page.request, token, deviceId, deviceId, ["AC1", "AC2", "AC3"]);
     await page.setViewportSize({ width: 1600, height: 1100 });
@@ -107,7 +107,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
     const token = (await accessToken(page))!;
     const headers = { Authorization: `Bearer ${token}` };
     const deviceId = randomUUID();
-    const endpoint = "/api/v1/monitors/pipelines";
+    const endpoint = "/api/v1/pipelines";
     const createdIds = new Set<string>();
     let creates = 0;
     let release!: () => void; let submitted!: () => void;
@@ -175,7 +175,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
 test("loads the saved template, saves an independent copy, and fits desktop and mobile layouts", async ({ page }, testInfo) => {
   await openPipelineWorkspace(page);
   const headers = { Authorization: `Bearer ${(await accessToken(page))!}` };
-  const endpoint = "/api/v1/monitors/pipelines";
+  const endpoint = "/api/v1/pipelines";
   const ids: string[] = [];
   const unique = randomUUID();
   try {

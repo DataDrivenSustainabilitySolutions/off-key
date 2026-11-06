@@ -37,7 +37,7 @@ async def test_anonymous_and_invalid_tokens_cannot_reach_business_handlers(
     paths = (
         "/chargers/available",
         "/telemetry/example/type",
-        "/monitors/all",
+        "/monitors",
         "/favorites?user_id=99",
         "/anomalies/count",
         "/system",
@@ -76,8 +76,11 @@ async def test_members_can_read_and_favorite_only_for_themselves(gateway, monkey
         add.assert_awaited_once_with(user_id=17, ref=FavoriteRef(**entity))
         for method, path in (
             ("DELETE", "/members/19"),
-            ("POST", "/monitors/start"),
+            ("POST", "/monitors"),
+            ("POST", "/monitors/example/stop"),
             ("DELETE", "/monitors/example"),
+            ("POST", "/pipelines/apply"),
+            ("POST", "/pipeline-activations/example/cancel"),
             ("POST", "/anomalies"),
             ("DELETE", "/anomalies/example"),
             ("GET", "/members"),
@@ -104,7 +107,7 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
     monkeypatch.setattr(monitors.tactic, "delete_radar_service", delete)
     async with asgi_client(gateway) as client:
         response = await client.delete("/v1/monitors/example")
-    assert response.status_code == 200
+    assert response.status_code == 204
     delete.assert_awaited_once()
 
 

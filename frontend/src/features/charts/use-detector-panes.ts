@@ -28,7 +28,7 @@ export function useDetectorPanes({ telemetryType, evidence, telemetryTimes, pend
     const time = getEvidenceTimeForSensor(item, telemetryType);
     return time === undefined ? latest : Math.max(latest ?? -Infinity, time);
   }, undefined), [evidence, telemetryType]);
-  const operational = Boolean(service?.status
+  const operational = Boolean(service?.active
     && service.operational_status.stage === "operational" && !service.operational_status.is_stale);
   const pending = useMemo(() => operational && lastScoreTime !== undefined
     ? pendingCandidateTimes.filter((time) => time > lastScoreTime) : [],

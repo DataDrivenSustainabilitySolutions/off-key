@@ -98,7 +98,7 @@ const emptyReport: AnomalyPage = { items: [], next: null, summary: { count: 0, e
 beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true; auth.permissions = everything;
   clearNavigationDrafts();
-  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
   vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
   vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/anomalies/query" ? emptyReport : {});
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
@@ -106,8 +106,8 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
 });
 
-const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
-  mqtt_topics: ["telemetry/room-input/temperature"], stream_ids: ["temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, display_name: name,
+  mqtt_topics: ["telemetry/room-input/temperature"], reading_ids: ["temperature"], active: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 /** The account's favourites on a fake server; call after `withServices`. */
 function favouritesServer() {
@@ -124,26 +124,26 @@ function favouritesServer() {
 }
 function withServices(services: ActiveService[]) {
   vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
-    : endpoint.startsWith("/v1/monitors/workspace") ? { services: [...services], authoring_enabled: false } : endpoint.startsWith("/v1/monitors?") ? { configuration: { monitoring: {}, performance_config: {} } } : []);
+    : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [...services], authoring_enabled: false } : /^\/v1\/monitors\/service-[a-z]+$/.test(endpoint) ? { configuration: { monitoring: {}, performance_config: {} } } : []);
 }
 
 describe("service-centred monitoring workspace", () => {
   it("waits for the catalogue before initializing a visual creation draft", async () => {
     let acceptSystem!: (value: SystemSnapshot) => void;
-    let acceptWorkspace!: (value: { services: ActiveService[]; authoring_enabled: boolean }) => void;
+    let acceptWorkspace!: (value: { monitors: ActiveService[]; authoring_enabled: boolean }) => void;
     const systemPending = new Promise<SystemSnapshot>((resolve) => { acceptSystem = resolve; });
-    const workspacePending = new Promise<{ services: ActiveService[]; authoring_enabled: boolean }>((resolve) => { acceptWorkspace = resolve; });
+    const workspacePending = new Promise<{ monitors: ActiveService[]; authoring_enabled: boolean }>((resolve) => { acceptWorkspace = resolve; });
     const catalogPending = new Promise<never>(() => {});
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? systemPending
-      : endpoint.startsWith("/v1/monitors/workspace") ? workspacePending
-      : endpoint === "/v1/monitors/pipelines/catalog" ? catalogPending : []);
+      : endpoint.startsWith("/v1/monitors/overview") ? workspacePending
+      : endpoint === "/v1/pipeline-components" ? catalogPending : []);
     mount("/?create=monitoring&target=room-input");
     await screen.findByText("Opening monitoring setup…", { exact: true });
-    await act(async () => { acceptWorkspace({ services: [], authoring_enabled: true }); });
+    await act(async () => { acceptWorkspace({ monitors: [], authoring_enabled: true }); });
     expect(screen.getByText("Opening monitoring setup…", { exact: true })).toBeTruthy();
-    expect(apiUtils.get).not.toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything());
+    expect(apiUtils.get).not.toHaveBeenCalledWith("/v1/pipeline-components", expect.anything());
     await act(async () => { acceptSystem(snapshot()); });
-    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything()));
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledWith("/v1/pipeline-components", expect.anything()));
   });
 
   it("offers only receiving entities in the input picker, including the exact broker and entity labels", async () => {
@@ -157,7 +157,7 @@ describe("service-centred monitoring workspace", () => {
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
     current.runtime.latest_readings = { "quiet-reading": { value: 230, received_at: new Date().toISOString(), is_snapshot: true } };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     // The role shows Create at once; it is enabled once the catalogue and monitors have loaded.
     const create = await screen.findByRole("button", { name: /^Create$/ });
@@ -188,7 +188,7 @@ describe("service-centred monitoring workspace", () => {
     current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: {} };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount("/?create=monitoring&reading=temperature");
     const picker = await screen.findByRole("button", { name: "Choose monitoring inputs" });
     fireEvent.click(picker);
@@ -211,7 +211,7 @@ describe("service-centred monitoring workspace", () => {
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount("/?reading=humidity");
     await loaded();
     const sidebar = within(screen.getByRole("navigation", { name: "System explorer" }));
@@ -281,7 +281,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]);
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], reading_ids: [] }]);
     const { router } = mount();
     await loaded();
     const sidebar = screen.getByRole("navigation", { name: "System explorer" });
@@ -332,8 +332,8 @@ describe("service-centred monitoring workspace", () => {
     saved.runtime.collection!.status = "applying";
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false }
-      : endpoint === "/v1/monitors/models" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false }
+      : endpoint === "/v1/detectors" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
     vi.mocked(apiUtils.post).mockResolvedValue({ revision: saved.revision, runtime: { ...saved.runtime, collection: { revision: 1, status: "applied" } } });
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     mount("/?create=monitoring&reading=temperature");
@@ -351,7 +351,7 @@ describe("service-centred monitoring workspace", () => {
     const saved = snapshot();
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     saved.runtime.ingress = { sources: { broker: { state: "connected" } } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
@@ -363,14 +363,14 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Room climate" }));
     expect(await screen.findByRole("region", { name: "Monitoring service details" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("?service=service-one");
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors?container_name=monitor-service-one", expect.anything());
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
     expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]); mount();
+    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], reading_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
@@ -413,8 +413,8 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.change(within(details).getByRole("textbox", { name: "Rename service" }), { target: { value: "Climate monitor" } });
     fireEvent.blur(within(details).getByRole("textbox", { name: "Rename service" }));
     await waitFor(() => expect(within(details).getByRole("button", { name: "Rename service" }).textContent).toBe("Climate monitor"));
-    expect(apiUtils.patch).toHaveBeenCalledExactlyOnceWith("/v1/monitors/service-one/label", { display_name: "Climate monitor" });
-    expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.container_name).toBe("monitor-service-one");
+    expect(apiUtils.patch).toHaveBeenCalledExactlyOnceWith("/v1/monitors/service-one", { display_name: "Climate monitor" });
+    expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.id).toBe("service-one");
     view.unmount(); mount();
     expect(await screen.findByRole("link", { name: "Climate monitor" })).toBeTruthy();
     expect((await screen.findByRole("button", { name: "Favourites 1" })).getAttribute("aria-pressed")).toBe("true");
@@ -503,7 +503,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/workspace", expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/overview", expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiUtils.put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
@@ -578,7 +578,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("button", { name: "Building broker, open" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     auth.userId = 2;
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     second.rerender(<RouterProvider router={makeRouter()} />);
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
@@ -602,7 +602,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("lets read-only users inspect signals without structural controls", async () => {
     auth.permissions = [];
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
@@ -615,7 +615,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("offers monitor creation to a role that manages monitors but not sources", async () => {
     auth.permissions = ["manage_monitors"];
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();

@@ -56,7 +56,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     const token = await accessToken(page);
     const headers = { Authorization: `Bearer ${token}` };
     const response = await page.request.get(
-      "/api/v1/monitors/pipelines/catalog",
+      "/api/v1/pipeline-components",
       { headers },
     );
     expect(response.ok()).toBe(true);
@@ -86,7 +86,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       { source: "renamed", target: "merge", order: 127 },
       { source: "merge", target: "detector" },
     );
-    const created = await page.request.post("/api/v1/monitors/pipelines", {
+    const created = await page.request.post("/api/v1/pipelines", {
       headers,
       data: {
         name: `Visual language ${randomUUID()}`,
@@ -106,7 +106,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     });
     expect(created.ok(), await created.text()).toBe(true);
     const design = (await created.json()) as PipelineView;
-    const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+    const endpoint = `/api/v1/pipelines/${design.id}`;
     try {
       await page.setViewportSize({ width: 1366, height: 900 });
       await page.goto(
@@ -272,17 +272,17 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
 test("inserts a step on a wire and replaces an occupied input, both undoable", async ({ page }, testInfo) => {
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
-  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
   const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
-  const created = await page.request.post("/api/v1/monitors/pipelines", {
+  const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Wire editing ${randomUUID()}`, definition: template.definition, layout: template.layout },
   });
   expect(created.ok(), await created.text()).toBe(true);
   const design = (await created.json()) as PipelineView;
-  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  const endpoint = `/api/v1/pipelines/${design.id}`;
   try {
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
@@ -363,17 +363,17 @@ test("inserts a step on a wire and replaces an occupied input, both undoable", a
 test("lists the features the detector receives and adds a step for one of them", async ({ page }, testInfo) => {
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
-  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
   const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
-  const created = await page.request.post("/api/v1/monitors/pipelines", {
+  const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Feature rows ${randomUUID()}`, definition: template.definition, layout: template.layout },
   });
   expect(created.ok(), await created.text()).toBe(true);
   const design = (await created.json()) as PipelineView;
-  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  const endpoint = `/api/v1/pipelines/${design.id}`;
   try {
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);
@@ -421,17 +421,17 @@ test("lists the features the detector receives and adds a step for one of them",
 test("combines a second detector in the policy and lists each detector's features", async ({ page }, testInfo) => {
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
-  const response = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
   const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
-  const created = await page.request.post("/api/v1/monitors/pipelines", {
+  const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Combined detectors ${randomUUID()}`, definition: template.definition, layout: template.layout },
   });
   expect(created.ok(), await created.text()).toBe(true);
   const design = (await created.json()) as PipelineView;
-  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  const endpoint = `/api/v1/pipelines/${design.id}`;
   try {
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto(`/?view=pipelines&pipeline=${encodeURIComponent(design.id)}`);

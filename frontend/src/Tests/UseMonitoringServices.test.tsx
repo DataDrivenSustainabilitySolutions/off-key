@@ -9,9 +9,9 @@ vi.mock("@/lib/api-client", () => ({
 }));
 beforeEach(() => {
   vi.mocked(apiUtils.get).mockResolvedValue({
-    services: [],
+    monitors: [],
     authoring_enabled: true,
-    selected_service_id: "run",
+    selected_monitor_id: "run",
     pipeline_state: { run_id: "run" },
   });
 });
@@ -21,7 +21,7 @@ describe("coordinated monitoring snapshots", () => {
     const hook = renderHook(() => useMonitoringServices(true, 5_000, "run"));
     await waitFor(() => expect(hook.result.current.ready).toBe(true));
     expect(apiUtils.get).toHaveBeenCalledExactlyOnceWith(
-      "/v1/monitors/workspace?selected_service_id=run",
+      "/v1/monitors/overview?selected_monitor_id=run",
       expect.objectContaining({ redirectOnUnauthorized: false }),
     );
     expect(hook.result.current.authoringEnabled).toBe(true);
@@ -29,7 +29,7 @@ describe("coordinated monitoring snapshots", () => {
     expect(
       vi
         .mocked(apiUtils.get)
-        .mock.calls.some(([url]) => /docker|pipeline-state/.test(url)),
+        .mock.calls.some(([url]) => /docker|pipeline\/state/.test(url)),
     ).toBe(false);
   });
   it("pauses polling while hidden and refreshes on return", async () => {
@@ -58,13 +58,13 @@ function Consumer({ interval, label }: { interval: number; label: string }) {
   return <p>{label}: {services.length}</p>;
 }
 
-const requests = () => vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace")).length;
+const requests = () => vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/overview")).length;
 
 describe("shared monitoring service poll", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.mocked(apiUtils.get).mockReset();
-    vi.mocked(apiUtils.get).mockResolvedValue({ services: [{ id: "a" }], authoring_enabled: false });
+    vi.mocked(apiUtils.get).mockResolvedValue({ monitors: [{ id: "a" }], authoring_enabled: false });
   });
   afterEach(() => { vi.useRealTimers(); });
 

@@ -134,7 +134,7 @@ test.describe("visual pipeline real infrastructure", () => {
       });
       try {
         const catalogResponse = await api.get(
-          "/api/v1/monitors/pipelines/catalog",
+          "/api/v1/pipeline-components",
           { headers },
         );
         expect(catalogResponse.ok(), await catalogResponse.text()).toBeTruthy();
@@ -192,23 +192,23 @@ test.describe("visual pipeline real infrastructure", () => {
         if (strategy === "adaptive_stream") {
           // Start through the real gateway/database, then lose only the response.
           // Recovery must return that same operation, even after a browser reload.
-          await page.route("**/v1/monitors/pipelines/apply", async (route) => {
+          await page.route("**/v1/pipelines/apply", async (route) => {
             const response = await route.fetch();
             expect(response.ok(), await response.text()).toBe(true);
             committed = await response.json() as PipelineActivationView;
-            activationIds.push(committed.id); serviceIds.push(committed.service_id);
+            activationIds.push(committed.id); serviceIds.push(committed.monitor_id);
             await route.fulfill({ status: 503, json: { detail: "Interrupted acknowledgement" } });
           });
           await page.getByRole("button", { name: "Start monitoring", exact: true }).click();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeVisible();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeEnabled();
-          await page.unroute("**/v1/monitors/pipelines/apply");
+          await page.unroute("**/v1/pipelines/apply");
           await page.reload();
           await expect(page.getByRole("button", { name: "Recover start request", exact: true })).toBeVisible();
         }
         const activationResponse = page.waitForResponse(
           (response) =>
-            response.url().endsWith("/v1/monitors/pipelines/apply") &&
+            response.url().endsWith("/v1/pipelines/apply") &&
             response.request().method() === "POST",
         );
         await page.getByRole("button", { name: committed ? "Recover start request" : "Start monitoring", exact: true }).click();
@@ -217,7 +217,7 @@ test.describe("visual pipeline real infrastructure", () => {
         const activation = (await response.json()) as PipelineActivationView;
         if (committed) expect(activation.id).toBe(committed.id);
         activationIds.push(activation.id);
-        serviceId = activation.service_id;
+        serviceId = activation.monitor_id;
         serviceIds.push(serviceId);
         const serviceDetails = page.getByRole("region", {
           name: "Monitoring service details",
@@ -245,7 +245,7 @@ test.describe("visual pipeline real infrastructure", () => {
         expect(bound.definition.input_slots?.map((slot) => slot.label).sort()).toEqual(["current", "temperature", "voltage"]);
         const readState = async () => {
           const result = await api.get(
-            `/api/v1/monitors/workspace?selected_service_id=${serviceId}`,
+            `/api/v1/monitors/overview?selected_monitor_id=${serviceId}`,
             { headers },
           );
           expect(result.ok(), await result.text()).toBeTruthy();
@@ -253,10 +253,10 @@ test.describe("visual pipeline real infrastructure", () => {
         };
         const readHealth = async () => {
           const state = await readState();
-          const service = state.services.find((item) => item.id === serviceId);
+          const service = state.monitors.find((item) => item.id === serviceId);
           expect([...(service?.mqtt_topics as string[] ?? [])].sort())
             .toEqual(bound.run!.execution!.bindings.map((binding) => binding.accepted_topic).sort());
-          const status = state.services.find((item) => item.id === serviceId)
+          const status = state.monitors.find((item) => item.id === serviceId)
             ?.operational_status as OperationalStatus | undefined;
           return {
             stage: status?.stage,
@@ -420,7 +420,7 @@ test.describe("visual pipeline real infrastructure", () => {
             await expect(page.getByRole("combobox", { name: `Reading for ${name}`, exact: true })).toHaveValue(`${deviceId}:${name}`);
           const replacementResponse = page.waitForResponse(
             (response) =>
-              response.url().endsWith("/v1/monitors/pipelines/apply") &&
+              response.url().endsWith("/v1/pipelines/apply") &&
               response.request().method() === "POST",
           );
           await page
@@ -434,8 +434,8 @@ test.describe("visual pipeline real infrastructure", () => {
           const replacement =
             (await replacementResult.json()) as PipelineActivationView;
           activationIds.push(replacement.id);
-          expect(replacement.predecessor_service_id).toBe(predecessorService);
-          serviceId = replacement.service_id;
+          expect(replacement.predecessor_monitor_id).toBe(predecessorService);
+          serviceId = replacement.monitor_id;
           serviceIds.push(serviceId);
           await Promise.race([
             serviceDetails.waitFor({ state: "visible", timeout: 240_000 }),
@@ -501,7 +501,7 @@ test.describe("visual pipeline real infrastructure", () => {
         try {
           for (const id of activationIds) {
             const operation = await api.get(
-              `/api/v1/monitors/pipeline-activations/${id}`,
+              `/api/v1/pipeline-activations/${id}`,
               { headers },
             );
             if (
@@ -510,14 +510,14 @@ test.describe("visual pipeline real infrastructure", () => {
                 ((await operation.json()) as PipelineActivationView).phase,
               )
             ) {
-              await api.delete(`/api/v1/monitors/pipeline-activations/${id}`, {
+              await api.post(`/api/v1/pipeline-activations/${id}/cancel`, {
                 headers,
               });
               await expect
                 .poll(
                   async () => {
                     const current = await api.get(
-                      `/api/v1/monitors/pipeline-activations/${id}`,
+                      `/api/v1/pipeline-activations/${id}`,
                       { headers },
                     );
                     return current.ok()
@@ -531,7 +531,7 @@ test.describe("visual pipeline real infrastructure", () => {
           }
           if (serviceId) {
             const snapshot = await api.get(
-              `/api/v1/monitors/workspace?selected_service_id=${serviceId}`,
+              `/api/v1/monitors/overview?selected_monitor_id=${serviceId}`,
               { headers },
             );
             if (snapshot.ok())
@@ -543,7 +543,7 @@ test.describe("visual pipeline real infrastructure", () => {
           for (const id of new Set(serviceIds))
             await api.delete(`/api/v1/monitors/${id}`, { headers });
           if (pipelineId)
-            await archivePipelines(api, headers, [`/api/v1/monitors/pipelines/${pipelineId}`], { lenient: true });
+            await archivePipelines(api, headers, [`/api/v1/pipelines/${pipelineId}`], { lenient: true });
           await publisher?.endAsync();
           await removeTestCharger(api, token!, deviceId);
         } catch (reason) {
@@ -571,7 +571,7 @@ test.describe("visual pipeline real infrastructure", () => {
     let pipelineId: string | undefined;
     let copyId: string | undefined;
     try {
-      const result = await api.get("/api/v1/monitors/pipelines/catalog", {
+      const result = await api.get("/api/v1/pipeline-components", {
         headers,
       });
       expect(result.ok(), await result.text()).toBeTruthy();
@@ -601,7 +601,7 @@ test.describe("visual pipeline real infrastructure", () => {
           .slice(1)
           .map((target, index) => ({ source: ids[index]!, target, order: 0 })),
       );
-      const createdResponse = await api.post("/api/v1/monitors/pipelines", {
+      const createdResponse = await api.post("/api/v1/pipelines", {
         headers,
         data: {
           name: `Maximum graph ${randomUUID()}`,
@@ -624,7 +624,7 @@ test.describe("visual pipeline real infrastructure", () => {
       const created = (await createdResponse.json()) as PipelineView;
       pipelineId = created.id;
       const focusedResponse = await api.post(
-        `/api/v1/monitors/pipelines/${pipelineId}/validate`,
+        `/api/v1/pipelines/${pipelineId}/validate`,
         { headers, data: { definition, selected_node_id: processingId(59) } },
       );
       expect(focusedResponse.ok(), await focusedResponse.text()).toBeTruthy();
@@ -648,7 +648,7 @@ test.describe("visual pipeline real infrastructure", () => {
           : node,
       );
       const selectedDefinition = await api.put(
-        `/api/v1/monitors/pipelines/${pipelineId}/draft`,
+        `/api/v1/pipelines/${pipelineId}/draft`,
         {
           headers,
           data: {
@@ -790,12 +790,12 @@ test.describe("visual pipeline real infrastructure", () => {
         fullPage: true,
       });
       const beforeConflict = await api.get(
-        `/api/v1/monitors/pipelines/${pipelineId}`,
+        `/api/v1/pipelines/${pipelineId}`,
         { headers },
       );
       const shared = (await beforeConflict.json()) as PipelineView;
       const collaborator = await api.patch(
-        `/api/v1/monitors/pipelines/${pipelineId}`,
+        `/api/v1/pipelines/${pipelineId}`,
         {
           headers,
           data: {
@@ -814,13 +814,13 @@ test.describe("visual pipeline real infrastructure", () => {
       const saveDialog = page.getByRole("dialog", { name: "Save monitoring template", exact: true });
       await saveDialog.getByRole("button", { name: "Update template", exact: true }).click();
       await expect(saveDialog.getByRole("alert")).toBeVisible();
-      const copied = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/v1/monitors/pipelines"));
+      const copied = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/v1/pipelines"));
       await saveDialog.getByRole("button", { name: "Save as new template", exact: true }).click();
       copyId = ((await (await copied).json()) as PipelineView).id;
       await expect(saveDialog).toBeHidden();
       await expect(page.getByRole("textbox", { name: "Step title", exact: true })).toHaveValue("Preserved conflicted edit");
       const copyResponse = await api.get(
-        `/api/v1/monitors/pipelines/${copyId}`,
+        `/api/v1/pipelines/${copyId}`,
         { headers },
       );
       expect(copyResponse.ok(), await copyResponse.text()).toBeTruthy();
@@ -831,7 +831,7 @@ test.describe("visual pipeline real infrastructure", () => {
       expect(copy.draft.nodes).toHaveLength(64);
     } finally {
       await archivePipelines(api, headers, [copyId, pipelineId].filter(Boolean)
-        .map(id => `/api/v1/monitors/pipelines/${id}`), { lenient: true });
+        .map(id => `/api/v1/pipelines/${id}`), { lenient: true });
       await api.dispose();
     }
   });

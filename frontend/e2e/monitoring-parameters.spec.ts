@@ -42,7 +42,7 @@ test("setup controls retain typed values and display real API field errors on de
       await page.getByLabel("Warm-up samples", { exact: true }).fill("8");
       await page.getByLabel("Calibration samples", { exact: true }).fill("2");
       const rejected = page.waitForResponse(response => response.request().method() === "POST"
-        && new URL(response.url()).pathname.endsWith("/monitors/start"));
+        && new URL(response.url()).pathname.endsWith("/v1/monitors"));
       await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
       const response = await rejected;
       expect(response.status(), await response.text()).toBe(422);
@@ -56,13 +56,13 @@ test("setup controls retain typed values and display real API field errors on de
     }
     await page.getByRole("spinbutton", { name: "Warm Up", exact: true }).fill("5");
     const accepted = page.waitForResponse(response => response.request().method() === "POST"
-      && new URL(response.url()).pathname.endsWith("/monitors/start"));
+      && new URL(response.url()).pathname.endsWith("/v1/monitors"));
     await page.getByRole("button", { name: "Start adaptive monitoring", exact: true }).click();
     const response = await accepted;
     expect(response.ok(), await response.text()).toBe(true);
     const request = response.request().postDataJSON();
     expect(request.adaptive_stream_config.model_params.similarity_engine.params).toEqual({ window_size: 8, warm_up: 5 });
-    serviceId = (await response.json() as { service_id: string }).service_id;
+    serviceId = (await response.json() as { monitor_id: string }).monitor_id;
     await expect(page.getByRole("region", { name: "Monitoring service details", exact: true })).toBeVisible({ timeout: 240_000 });
   } finally {
     if (serviceId && token) await api.delete(`/api/v1/monitors/${serviceId}`, {

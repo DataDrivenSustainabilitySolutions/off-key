@@ -71,11 +71,10 @@ export const API_CONFIG = {
 
     // Monitoring Services
     MONITORING: {
-      START: '/v1/monitors/start',
-      DELETE: (serviceId: string) => `/v1/monitors/${encodeURIComponent(serviceId)}`,
-      LIST: '/v1/monitors/all',
-      DETAILS: '/v1/monitors',
-      MODELS: '/v1/monitors/models',
+      LIST: '/v1/monitors',
+      OVERVIEW: '/v1/monitors/overview',
+      ITEM: (monitorId: string) => `/v1/monitors/${encodeURIComponent(monitorId)}`,
+      DETECTORS: '/v1/detectors',
       CHART_EVIDENCE: (
         chargerId: string,
         cursor?: {
@@ -97,7 +96,7 @@ export const API_CONFIG = {
           params.set('after_service_id', cursor.service_id);
           params.set('after_sequence_number', cursor.sequence_number.toString());
         }
-        return `/v1/monitors/evidence/chart?${params.toString()}`;
+        return `/v1/evidence/chart?${params.toString()}`;
       },
     },
   },

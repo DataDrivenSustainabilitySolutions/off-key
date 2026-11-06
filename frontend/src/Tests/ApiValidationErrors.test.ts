@@ -71,7 +71,7 @@ it("names the server's reference on a server failure so it leads to its logs", a
     });
   };
   try {
-    await expect(apiClient.get("/v1/monitors/workspace")).rejects.toMatchObject({
+    await expect(apiClient.get("/v1/monitors/overview")).rejects.toMatchObject({
       status: 502,
       reference: "4f1c-9a",
       message: "Monitoring service is unavailable (reference 4f1c-9a)",

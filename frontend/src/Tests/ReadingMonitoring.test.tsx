@@ -23,7 +23,7 @@ beforeEach(() => {
     if (endpoint.includes("/data?")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
     if (endpoint.startsWith("/v1/anomalies?")) return [];
-    if (endpoint.startsWith("/v1/monitors/workspace")) return { services: [], authoring_enabled: false };
+    if (endpoint.startsWith("/v1/monitors/overview")) return { monitors: [], authoring_enabled: false };
     throw new Error("Unexpected endpoint");
   });
 });
@@ -112,7 +112,7 @@ describe("selected-reading monitoring subscription", () => {
     expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
     expect(hook.result.current.telemetry).toEqual(points);
     const requests = (shared: boolean) => vi.mocked(apiUtils.get).mock.calls
-      .filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace") === shared);
+      .filter(([endpoint]) => endpoint.startsWith("/v1/monitors/overview") === shared);
     // Three history requests per selection, issued as the selection opens.
     expect(requests(false)).toHaveLength(6);
     // The shared service list starts on the next timer tick and is not repeated for the new selection.
@@ -121,14 +121,14 @@ describe("selected-reading monitoring subscription", () => {
 
   it("filters the shared service list to the monitors that watch the reading", async () => {
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
-    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/workspace")
-      ? Promise.resolve({ services: [
-        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"], stream_ids: ["reading"] },
-        { id: "other", mqtt_topics: ["telemetry/canonical-entity/#"], stream_ids: ["elsewhere"] },
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/overview")
+      ? Promise.resolve({ monitors: [
+        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"], reading_ids: ["reading"] },
+        { id: "other", mqtt_topics: ["telemetry/canonical-entity/#"], reading_ids: ["elsewhere"] },
       ] }) : baseGet(endpoint, options));
     const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
     await waitFor(() => expect(hook.result.current.services.map(service => service.id)).toEqual(["match"]));
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/workspace"))).toHaveLength(1);
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.startsWith("/v1/monitors/overview"))).toHaveLength(1);
   });
 
   it("polls with ingestion cursors, pauses in hidden tabs, and recovers from partial failures", async () => {

@@ -73,9 +73,9 @@ const props = () => ({
 const operation = {
   id: "activation",
   phase: "succeeded" as const,
-  service_id: "service",
+  monitor_id: "service",
   run_id: "run",
-  predecessor_service_id: null,
+  predecessor_monitor_id: null,
   error: null,
   created_at: "2026-10-16T12:00:00Z",
   updated_at: "2026-10-16T12:00:00Z",

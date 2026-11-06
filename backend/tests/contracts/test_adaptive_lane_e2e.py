@@ -29,18 +29,17 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
     with httpx.Client(base_url=gateway_url, headers=headers, timeout=210) as client:
         openapi = client.get("/openapi.json")
         openapi.raise_for_status()
-        assert "/v1/monitors/start" in openapi.json()["paths"]
+        assert "post" in openapi.json()["paths"]["/v1/monitors"]
         entity = add_recorded_entity(client, label="Adaptive test", keys=("L1", "L2"))
-        service_id = None
+        monitor_id = None
         publisher = Client(
             CallbackAPIVersion.VERSION2, client_id=f"adaptive-e2e-{entity.device_id}"
         )
         try:
             response = client.post(
-                "/v1/monitors/start",
+                "/v1/monitors",
                 json={
-                    "container_name": f"radar-{entity.device_id}",
-                    "service_type": "radar",
+                    "display_name": f"radar-{entity.device_id}",
                     "mqtt_topics": list(entity.accepted_topics),
                     "strategy": "adaptive_stream",
                     "model_type": "aberrant_online_isolation_forest",
@@ -58,9 +57,9 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 },
             )
             response.raise_for_status()
-            service_id = response.json()["service_id"]
+            monitor_id = response.json()["monitor_id"]
             wait_until_service_accepts_data(
-                client, service_id, activation_id=response.json()["activation_id"]
+                client, monitor_id, activation_id=response.json()["activation_id"]
             )
             publisher.connect(
                 os.getenv("E2E_SOURCE_MQTT_HOST", "localhost"),
@@ -114,13 +113,13 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 response = client.get(
-                    "/v1/monitors/evidence", params={"charger_id": entity.entity_id}
+                    "/v1/evidence", params={"charger_id": entity.entity_id}
                 )
                 response.raise_for_status()
                 evidence = [
                     row
                     for row in response.json()
-                    if row.get("service_id") == service_id
+                    if row.get("service_id") == monitor_id
                     and row.get("strategy") == "adaptive_stream"
                 ]
                 seen = []
@@ -150,6 +149,6 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
         finally:
             publisher.disconnect()
             publisher.loop_stop()
-            if service_id:
-                client.delete(f"/v1/monitors/{service_id}").raise_for_status()
+            if monitor_id:
+                client.delete(f"/v1/monitors/{monitor_id}").raise_for_status()
             remove_recorded_entity(client, entity)

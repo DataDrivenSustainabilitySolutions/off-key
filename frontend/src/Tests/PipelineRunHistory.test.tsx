@@ -10,7 +10,7 @@ vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { history: vi.fn() } 
 
 const run = (id: string, serviceId: string): PipelineRunSummary => ({
   id,
-  service_id: serviceId,
+  monitor_id: serviceId,
   revision_id: null,
   predecessor_run_id: null,
   status: "stopped",
@@ -21,7 +21,7 @@ const run = (id: string, serviceId: string): PipelineRunSummary => ({
 function renderHistory(items: PipelineRunSummary[], next: string | null) {
   render(
     <MemoryRouter>
-      <PipelineRunHistory initial={{ items, next_service_id: next }} />
+      <PipelineRunHistory initial={{ items, next_monitor_id: next }} />
     </MemoryRouter>,
   );
 }
@@ -35,8 +35,8 @@ describe("linked monitoring history", () => {
 
   it("pages older runs without repeating any and links each to its service", async () => {
     vi.mocked(pipelinesApi.history)
-      .mockResolvedValueOnce({ items: [run("run-3", "svc 3"), run("run-2", "svc-2")], next_service_id: "svc-1" })
-      .mockResolvedValueOnce({ items: [run("run-1", "svc-1")], next_service_id: null });
+      .mockResolvedValueOnce({ items: [run("run-3", "svc 3"), run("run-2", "svc-2")], next_monitor_id: "svc-1" })
+      .mockResolvedValueOnce({ items: [run("run-1", "svc-1")], next_monitor_id: null });
     renderHistory([run("run-3", "svc 3")], "svc-2");
 
     expect(screen.getByText("Linked monitoring history (1+)")).toBeTruthy();
@@ -56,7 +56,7 @@ describe("linked monitoring history", () => {
   it("stops paging when the next page points back into the listed history", async () => {
     vi.mocked(pipelinesApi.history).mockResolvedValueOnce({
       items: [run("run-1", "svc-1")],
-      next_service_id: "svc-2",
+      next_monitor_id: "svc-2",
     });
     renderHistory([run("run-2", "svc-2")], "svc-1");
 

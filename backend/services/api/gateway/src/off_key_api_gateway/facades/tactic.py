@@ -198,41 +198,21 @@ class Tactic:
                 return text
 
     async def start_radar_service(self, config: FormMonitorConfig) -> dict[str, Any]:
-        """Forward a setup-form configuration to TACTIC."""
+        """Forward a setup-form configuration to TACTIC; never MQTT overrides."""
+        unset = {"mqtt_config"} | (
+            {"display_name"} if config.display_name is None else set()
+        )
         return await self.request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
-            json_data=config.model_dump(
-                mode="json",
-                exclude={"display_name"} if config.display_name is None else None,
-            ),
+            json_data=config.model_dump(mode="json", exclude=unset),
         )
 
-    async def stop_radar_service(
-        self,
-        container_name: str | None = None,
-        container_id: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        Stop a RADAR service via TACTIC.
-
-        Args:
-            container_name: Name of the container to stop
-            container_id: ID of the container to stop
-
-        Returns:
-            Dict: Service stop response
-        """
-        params = {}
-        if container_name:
-            params["container_name"] = container_name
-        if container_id:
-            params["container_id"] = container_id
-
+    async def stop_radar_service(self, service_id: str) -> dict[str, Any]:
+        """Stop a RADAR service and remove its workload via TACTIC."""
         return await self.request(
-            method="DELETE",
-            endpoint="/api/v1/orchestration/radar/services/stop/",
-            params=params,
+            method="POST",
+            endpoint=f"/api/v1/orchestration/radar/services/{path_segment(service_id)}/stop",
         )
 
     async def delete_radar_service(self, service_id: str) -> dict[str, Any]:
@@ -252,55 +232,20 @@ class Tactic:
         )
 
     async def list_radar_services(
-        self, active_only: bool = False, include_docker_status: bool = False
+        self, active_only: bool = False
     ) -> list[dict[str, Any]]:
-        """
-        List RADAR services via TACTIC.
-
-        Args:
-            active_only: If True, only return active services
-            include_docker_status: If True, check actual Docker container status
-                for each service (slower but more accurate)
-
-        Returns:
-            List[Dict]: List of services
-        """
-        params = {
-            "active_only": active_only,
-            "include_docker_status": include_docker_status,
-        }
-
+        """List RADAR services via TACTIC, optionally only the running ones."""
         return await self.request(
             method="GET",
             endpoint="/api/v1/orchestration/radar/services/",
-            params=params,
+            params={"active_only": active_only, "include_docker_status": False},
         )
 
-    async def get_radar_service_details(
-        self,
-        container_name: str | None = None,
-        container_id: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        Get RADAR service details via TACTIC.
-
-        Args:
-            container_name: Name of the container
-            container_id: ID of the container
-
-        Returns:
-            Dict: Service details
-        """
-        params = {}
-        if container_name:
-            params["container_name"] = container_name
-        if container_id:
-            params["container_id"] = container_id
-
+    async def get_radar_service_details(self, service_id: str) -> dict[str, Any]:
+        """One RADAR service with its configuration via TACTIC."""
         return await self.request(
             method="GET",
-            endpoint="/api/v1/orchestration/radar/services/details/",
-            params=params,
+            endpoint=f"/api/v1/orchestration/radar/services/{path_segment(service_id)}",
         )
 
     async def get_chargers(

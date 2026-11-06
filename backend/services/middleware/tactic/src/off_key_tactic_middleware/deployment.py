@@ -280,7 +280,7 @@ async def stop_release_monitor(session, orchestration, monitor, revision):
             await wait_stopped(orchestration.workloads, workload_id)
     service = await session.get(MonitoringService, monitor["previous_id"])
     if service is not None and not await orchestration.stop_radar_service(
-        container_name=service.container_name, deployment_revision=revision
+        service.id, deployment_revision=revision
     ):
         raise ValueError(
             "A retiring monitor could not stop; deployment remains blocked"

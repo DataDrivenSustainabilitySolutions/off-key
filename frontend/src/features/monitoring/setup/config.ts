@@ -194,13 +194,14 @@ export const buildAdaptiveMonitoringRequest = ({
   topics,
   draft,
   modelDefinition,
-  containerName,
+  displayName,
 }: {
   chargerId: string;
   topics: string[];
   draft: AdaptiveDraft;
   modelDefinition: ModelDefinition | undefined;
-  containerName: string;
+  /** The name the monitor is shown with. */
+  displayName: string;
 }): RequestValidation<AdaptiveAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
   if (!topics.length) errors.topics = "Select at least one available reading.";
@@ -315,8 +316,7 @@ export const buildAdaptiveMonitoringRequest = ({
   return {
     errors,
     request: {
-      container_name: containerName,
-      service_type: "radar",
+      display_name: displayName,
       mqtt_topics: topics,
       strategy: "adaptive_stream",
       model_type: draft.modelType,
@@ -346,13 +346,14 @@ export const buildStaticMonitoringRequest = ({
   topics,
   draft,
   modelDefinition,
-  containerName,
+  displayName,
 }: {
   chargerId: string;
   topics: string[];
   draft: StaticDraft;
   modelDefinition: ModelDefinition | undefined;
-  containerName: string;
+  /** The name the monitor is shown with. */
+  displayName: string;
 }): RequestValidation<StaticAnomalyDetectionRequest> => {
   const errors: FieldErrors = {};
   if (!topics.length) {
@@ -614,8 +615,7 @@ export const buildStaticMonitoringRequest = ({
   return {
     errors,
     request: {
-      container_name: containerName,
-      service_type: "radar",
+      display_name: displayName,
       mqtt_topics: topics,
       strategy: "static_baseline",
       model_type: draft.modelType,

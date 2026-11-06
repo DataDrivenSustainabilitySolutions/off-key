@@ -71,8 +71,8 @@ export function usePipelineApply(key: string, onComplete: (id: string) => void) 
   const operationId = operation?.id;
   const finished = applyFinished(operation);
   useEffect(() => {
-    if (operation?.phase === "succeeded") { session.reset(); onComplete(operation.service_id); }
-  }, [operation?.phase, operation?.service_id, onComplete, session]);
+    if (operation?.phase === "succeeded") { session.reset(); onComplete(operation.monitor_id); }
+  }, [operation?.phase, operation?.monitor_id, onComplete, session]);
   // The operation id is part of the identity so a new apply restarts polling.
   const refresh = useCallback((signal: AbortSignal) => operationId ? session.refresh(signal) : undefined, [operationId, session]);
   usePollingLoop(refresh, { enabled: !!operationId && !finished, intervalMs: 3000, overlap: "skip",

@@ -6,7 +6,7 @@ import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, OperationalStage } from "@/types/monitoring";
 
 const monitor = (id: string, streamIds: string[], stage: OperationalStage = "operational"): ActiveService => ({
-  id, container_id: id, container_name: `worker-${id}`, mqtt_topics: [`telemetry/${id}/#`], stream_ids: streamIds, status: true,
+  id, mqtt_topics: [`telemetry/${id}/#`], reading_ids: streamIds, active: true,
   monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage, message_count: 40, processed_message_count: 35, is_stale: false },
 });
@@ -89,6 +89,6 @@ describe("monitoring workspace identity and scale", () => {
       dropped_message_count: 100, dropped_by_reason: { rate_limit: 100 }, possible_gap_count: 0,
     } } })).toMatchObject({ label: "Coverage gap", category: "attention" });
     expect(serviceState({ ...service, operational_status: { ...service.operational_status, stage: "failed", is_stale: true } })).toMatchObject({ label: "Failed", tone: "danger" });
-    expect(serviceState({ ...service, status: false })).toMatchObject({ label: "Stopped", category: "stopped" });
+    expect(serviceState({ ...service, active: false })).toMatchObject({ label: "Stopped", category: "stopped" });
   });
 });

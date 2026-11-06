@@ -12,7 +12,7 @@ export type MonitoringIndex = {
 
 export function serviceState(service: ActiveService): ServiceState {
   const stage = service.operational_status.stage;
-  if (!service.status || stage === "stopped") return { label: "Stopped", tone: "neutral", category: "stopped" };
+  if (!service.active || stage === "stopped") return { label: "Stopped", tone: "neutral", category: "stopped" };
   if (stage === "failed") return { label: "Failed", tone: "danger", category: "attention" };
   if (service.operational_status.is_stale) return { label: "No recent status", tone: "warning", category: "attention" };
   if (service.operational_status.activity?.inputs_stalled) return { label: "No recent inputs", tone: "warning", category: "attention" };
@@ -35,7 +35,7 @@ export function strategyName(service: Pick<ActiveService, "monitoring_strategy">
 export function serviceName(service: ActiveService, inputs: MonitoringInput[]): string {
   if (service.display_name) return service.display_name;
   const paths = [...new Set(inputs.map(({ path }) => path))];
-  return paths.length === 1 ? `${paths[0]} · ${strategyName(service)}` : service.container_name;
+  return paths.length === 1 ? `${paths[0]} · ${strategyName(service)}` : service.display_name ?? service.id;
 }
 
 /** Group catalogue readings by entity and by the monitors the server resolved for each. */
@@ -58,7 +58,7 @@ export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRu
   const inputs = new Map<string, MonitoringInput[]>();
   const byStream = new Map<string, Set<string>>();
   for (const service of services) {
-    const matched = service.stream_ids.flatMap(id => byId.get(id) ?? []);
+    const matched = service.reading_ids.flatMap(id => byId.get(id) ?? []);
     inputs.set(service.id, matched);
     for (const { stream } of matched) {
       const ids = byStream.get(stream.id) ?? new Set<string>();

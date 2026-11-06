@@ -154,30 +154,58 @@ session. Preview does not enable persistent collection. Accepted detector topics
 use only `telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete
 MQTT paths and JSON Pointer payload bindings.
 
-### Monitoring and model discovery
+### Monitors, pipelines and detectors
+
+A monitor is named by its `monitor_id` everywhere; container names, container
+ids and Docker states stay inside the installation. Members read everything
+here; changes need `manage_monitors`.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/monitors/all` | List services | `active_only`, `include_docker_status` |
-| `GET` | `/monitors` | Get one service | Exactly one of `container_name`, `container_id` |
-| `POST` | `/monitors/start` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
-| `DELETE` | `/monitors/stop` | Stop/remove a workload by container | Exactly one of `container_name`, `container_id` |
-| `DELETE` | `/monitors/{service_id}` | Delete a service record and backing workload | Path: `service_id` |
-| `PATCH` | `/monitors/{service_id}/label` | Rename a service; needs `manage_monitors` | Body: `display_name` |
-| `GET` | `/monitors/models` | Discover available models | Optional `strategy` |
-| `GET` | `/monitors/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
-| `GET` | `/monitors/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
+| `GET` | `/monitors` | List monitors with their state, strategy and watched readings | Optional `active` |
+| `POST` | `/monitors` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
+| `GET` | `/monitors/overview` | What the Monitoring page loads: every monitor, whether designs may be edited, and the selected monitor's pipeline state | Optional `selected_monitor_id` |
+| `GET` | `/monitors/{monitor_id}` | One monitor with the configuration it was started with | Path: `monitor_id` |
+| `PATCH` | `/monitors/{monitor_id}` | Rename a monitor | Body: `display_name` |
+| `POST` | `/monitors/{monitor_id}/stop` | Stop a monitor and remove its workload; it stays listed as stopped | Path: `monitor_id` |
+| `DELETE` | `/monitors/{monitor_id}` | Delete a monitor and its workload; 204, its alarms stay | Path: `monitor_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline` | The design a monitor runs, its current run, recent history and validation | Optional `selected_node_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/history` | Earlier runs it replaced, newest first; the next page is the history of `next_monitor_id` | `limit` |
+| `GET` | `/monitors/{monitor_id}/pipeline/timeline` | The run's lifecycle events, oldest first, and how it ended | Path: `monitor_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/metadata` | Validation with the fields available at a node | `selected_node_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/state` | The diagnostic snapshot the running monitor last reported | Path: `monitor_id` |
+| `PUT` | `/monitors/{monitor_id}/pipeline/layout` | Store where its nodes sit on the canvas; the graph is unchanged | Body: layout |
+| `GET` | `/pipelines` | Saved designs, paged | `limit`, `offset`, `query`, `archived` |
+| `POST` | `/pipelines` | Save a new design as a draft | Body: `name`, `definition` |
+| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipelines/validate` | Check an unsaved design; with `selected_node_id` also its fields | Body: `definition` |
+| `GET` | `/pipelines/{pipeline_id}` | One design with its draft, `version` and revisions | Path: `pipeline_id` |
+| `PATCH` | `/pipelines/{pipeline_id}` | Rename, describe or archive a design | Body: `expected_version` and changes |
+| `PUT` | `/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout | Body: `expected_version`, `definition` |
+| `POST` | `/pipelines/{pipeline_id}/validate` | Check a graph against a saved design | Body: `definition` |
+| `GET` | `/pipelines/{pipeline_id}/revisions` | Published revisions, newest first | `limit`, `before` |
+| `POST` | `/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run | Body: `expected_version` |
+| `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
+| `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
+| `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
+| `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
+| `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
+| `GET` | `/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
+| `GET` | `/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
 
 The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
 
-Every listed service, here and in `/monitors/workspace`, carries `stream_ids`:
+Every listed monitor, here and in `/monitors/overview`, carries `reading_ids`:
 the catalogue readings whose accepted topic one of its `mqtt_topics` filters
 takes, wildcards included. Use it to answer "which monitors watch this reading"
 without MQTT rules of your own; a reading removed from the catalogue drops out.
+`active` is true while the monitor should run and false once it is stopped.
 
 A monitor start body contains:
 
-- required `container_name` and `mqtt_topics`
+- required `display_name` and `mqtt_topics`
 - `monitoring`: the strategy configuration, including `strategy`
   (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
   the strategy's training, calibration, and alarm settings
@@ -193,33 +221,22 @@ TACTIC.
 TACTIC converts the configuration into its equivalent graph, binds each topic to
 its selected numeric catalogue reading and submits a pipeline activation, even
 while the visual workbench is disabled. The HTTP 202 response carries
-`service_id`, `activation_id`, `container_name`, `status` (the activation phase)
-and `mqtt_topics`. Poll `/monitors/pipeline-activations/{activation_id}` until
-the service exists. Topics without a selected numeric reading return HTTP 422.
+`monitor_id`, `activation_id`, `phase` and `mqtt_topics`. Poll
+`/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
+`failed` or `cancelled`. Topics without a selected numeric reading return HTTP 422.
 
-Use `/monitors/models` as the source for valid model names and parameter schemas.
+Use `/detectors` as the source for valid model names and parameter schemas.
 
-Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
-
-| Family | Paths | Purpose |
-| --- | --- | --- |
-| Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
-| Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; `manage_monitors` creates, renames, archives and saves with `expected_version` |
-| Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | With `manage_monitors`, infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
-| Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}`, `/pipelines/{id}/revisions/{revision_id}/metadata` | Publish and inspect immutable executable revisions |
-| Activations | `/pipelines/apply`, `/pipeline-activations`, `/pipeline-activations/{id}` | Apply a definition directly (HTTP 202), idempotent start/replacement, progress and cancellation |
-| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-timeline`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution, retained history and the run's lifecycle events; separately versioned layout |
-| Workspace | `/workspace?selected_service_id=...` | One member-scoped request for summaries and the selected bounded diagnostic snapshot |
-
-Use publication and activation for graph starts. The legacy `/start` endpoint
-remains compatible with existing callers; direct public graph launches are rejected
-so they cannot bypass preflight, durable input reservations or run history.
+`bindings` map each input slot of a design to a catalogue reading id. Repeating
+an apply or activation with the same `idempotency_key` returns the first
+activation instead of starting another; `replace_monitor_id` swaps out a running
+monitor. Direct public graph launches are rejected so they cannot bypass
+preflight, durable input reservations or run history.
 Draft/layout conflicts return HTTP 409. Publishing does not activate a revision.
-Run views survive deletion of the live service and expose retained input metadata,
-terminal errors and compiler feature lineage. POST
-`/pipelines/{id}/validate` accepts `{definition, selected_node_id?}`; GET
-`/{service_id}/pipeline` accepts the same optional `selected_node_id` query for
-member inspection even when authoring is disabled. Each compiler report is
+Run views survive deletion of the live monitor and expose retained input metadata,
+terminal errors and compiler feature lineage. `/monitors/{monitor_id}/pipeline`
+accepts an optional `selected_node_id` for member inspection even when authoring
+is disabled. Each compiler report is
 bounded to 512 KiB, omitting provenance and then whole unselected node tables
 with a `metadata_budget` notice. Complete ordered names for the selected node
 and its immediate parents remain available; inspect `features_complete` and
@@ -380,8 +397,8 @@ Health and readiness remain available without this service credential.
 | --- | --- | --- |
 | `GET` | `/orchestration/radar/services/` | List services |
 | `POST` | `/orchestration/radar/services/start/` | Start a form-configured monitor as a pipeline activation |
-| `GET` | `/orchestration/radar/services/details/` | Get workload details |
-| `DELETE` | `/orchestration/radar/services/stop/` | Stop by container reference |
+| `GET` | `/orchestration/radar/services/{service_id}` | Get one service with its configuration |
+| `POST` | `/orchestration/radar/services/{service_id}/stop` | Stop a service and remove its workload |
 | `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |
 
 ### Model catalogue

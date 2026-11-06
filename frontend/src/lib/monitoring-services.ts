@@ -8,7 +8,7 @@ export const buildSensorClaims = (
 ): Map<string, ActiveService> => {
   const claims = new Map<string, ActiveService>();
   for (const { type, streamId } of series) {
-    const owner = streamId === undefined ? undefined : services.find(service => service.stream_ids.includes(streamId));
+    const owner = streamId === undefined ? undefined : services.find(service => service.reading_ids.includes(streamId));
     if (owner) claims.set(type, owner);
   }
   return claims;

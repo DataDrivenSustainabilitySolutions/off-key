@@ -9,6 +9,14 @@ import { pipelinesApi } from "./api";
 export const applyFinished = (operation?: PipelineActivationView) =>
   !!operation && ["succeeded", "failed", "cancelled"].includes(operation.phase);
 
+/** Once the previous monitor is stopping, cancelling would leave nothing running. */
+export const cancelRefused = (operation?: PipelineActivationView) =>
+  !!operation?.retirement_started &&
+  ["retiring", "starting", "awaiting_heartbeat"].includes(operation.phase);
+
+export const REPLACEMENT_UNDER_WAY =
+  "The previous monitor is already stopping, so this replacement can no longer be cancelled.";
+
 type Snapshot = {
   request?: PipelineApplyRequest;
   operation?: PipelineActivationView;
@@ -50,7 +58,8 @@ export function createApplySession(storageKey: string) {
       }
     },
     cancel: async () => {
-      if (getSnapshot().busy || !getSnapshot().operation || applyFinished(getSnapshot().operation)) return;
+      const current = getSnapshot().operation;
+      if (getSnapshot().busy || !current || applyFinished(current) || cancelRefused(current)) return;
       update({ ...getSnapshot(), busy: true, error: "" });
       try {
         const operation = await pipelinesApi.cancel(getSnapshot().operation!.id);

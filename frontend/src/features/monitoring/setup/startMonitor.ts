@@ -6,14 +6,15 @@ import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 type Phase = PipelineActivationView["phase"];
 
-// The service row exists once its workload is created.
-const STARTED: Phase[] = ["awaiting_heartbeat", "succeeded"];
+// A workload that never reports healthy is cancelled after awaiting_heartbeat,
+// so only a succeeded activation has a monitor to open.
+const STARTED: Phase[] = ["succeeded"];
 const STOPPED: Phase[] = ["failed", "cancelled"];
 
 const delay = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-/** Form monitors run as pipelines; resolve once the new service exists. */
+/** Form monitors run as pipelines; resolve once the new service reports healthy. */
 export async function startFormMonitor(
   request: MonitoringStartRequest & { display_name?: string },
   pollMilliseconds = 1000,

@@ -1,5 +1,5 @@
 import { CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
-import { applyFinished, type usePipelineApply } from "./applySession";
+import { applyFinished, cancelRefused, REPLACEMENT_UNDER_WAY, type usePipelineApply } from "./applySession";
 
 const phases: Record<string, string> = {
   requested: "Preparing your service…", preflighting: "Checking the configuration…",
@@ -30,10 +30,11 @@ export function PipelineApplyStatus({ apply, onInspect }: {
     </li>)}</ul>}
     <div className="pl-actions">
       {!operation && request && !busy && <button type="button" onClick={() => void session.submit()}>Recover start request</button>}
-      {operation && !terminal && <button type="button" disabled={busy || operation.phase === "cancelling"}
+      {operation && !terminal && !cancelRefused(operation) && <button type="button" disabled={busy || operation.phase === "cancelling"}
         onClick={() => void session.cancel()}>Cancel start</button>}
       {terminal && operation?.phase !== "succeeded" && <button type="button" onClick={session.reset}>Return to setup</button>}
     </div>
+    {cancelRefused(operation) && <p>{REPLACEMENT_UNDER_WAY}</p>}
     {request?.replace_service_id && operation?.phase === "failed" && <p>The previous service may have stopped. Check its status before trying again.</p>}
   </section>;
 }

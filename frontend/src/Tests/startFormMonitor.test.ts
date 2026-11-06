@@ -12,14 +12,15 @@ const activation = (phase: string, error: string | null = null) => ({ id: "activ
 afterEach(() => vi.resetAllMocks());
 
 describe("form monitor start", () => {
-  it("waits until the activation has created the service", async () => {
+  it("waits until the new service has reported healthy", async () => {
     vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "service", activation_id: "activation" });
     vi.mocked(apiUtils.get)
       .mockResolvedValueOnce(activation("requested"))
       .mockResolvedValueOnce(activation("starting"))
-      .mockResolvedValueOnce(activation("awaiting_heartbeat"));
+      .mockResolvedValueOnce(activation("awaiting_heartbeat"))
+      .mockResolvedValueOnce(activation("succeeded"));
     await expect(startFormMonitor(request, 0)).resolves.toBe("service");
-    expect(apiUtils.get).toHaveBeenCalledTimes(3);
+    expect(apiUtils.get).toHaveBeenCalledTimes(4);
   });
 
   it.each([

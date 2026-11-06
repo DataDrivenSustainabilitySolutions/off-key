@@ -52,21 +52,39 @@ export function useFavourites(account: string | number | null, legacy: LegacyFav
     return () => controller.abort();
   }, [account, update]);
 
+  // What the server holds for each item touched since the list loaded, and the
+  // tail of that item's queued saves. Saves for one item run in order, so a
+  // quick star and unstar cannot reach the server reversed.
+  const confirmed = useRef(new Map<string, boolean>());
+  const queues = useRef(new Map<string, Promise<void>>());
   const toggle = useCallback((kind: FavouriteKind, id: string) => {
     if (account === null) return;
     const item = { kind, id };
+    const key = JSON.stringify([account, kind, id]);
     const current = () => latest.current.account === account ? latest.current.items : [];
     const included = current().some(same(item));
+    if (!queues.current.has(key)) confirmed.current.set(key, included);
     update({ account, items: included ? without(current(), item) : [...current(), item] });
-    const request = included
-      ? apiUtils.delete(`${ENDPOINT}?${new URLSearchParams(item)}`)
-      : apiUtils.post<Favourite>(ENDPOINT, item);
-    request.then(() => setError(""), (failure: unknown) => {
-      clientLogger.warn({ event: "favourites.save_failed", message: "Favourite could not be saved", error: failure });
-      setError("Your favourite could not be saved. Try again.");
-      // Undo only this change; others made meanwhile stay.
-      update({ account, items: included ? [...without(current(), item), item] : without(current(), item) });
-    });
+    const save = async () => {
+      if (latest.current.account !== account) return;
+      const wanted = current().some(same(item));
+      if (wanted === confirmed.current.get(key)) return;
+      try {
+        if (wanted) await apiUtils.post<Favourite>(ENDPOINT, item);
+        else await apiUtils.delete(`${ENDPOINT}?${new URLSearchParams(item)}`);
+        confirmed.current.set(key, wanted);
+        setError("");
+      } catch (failure) {
+        clientLogger.warn({ event: "favourites.save_failed", message: "Favourite could not be saved", error: failure });
+        setError("Your favourite could not be saved. Try again.");
+        // Show what the server still holds for this item; others stay.
+        if (latest.current.account === account)
+          update({ account, items: confirmed.current.get(key) ? [...without(current(), item), item] : without(current(), item) });
+      }
+    };
+    const queued = (queues.current.get(key) ?? Promise.resolve()).then(save);
+    queues.current.set(key, queued);
+    void queued.finally(() => { if (queues.current.get(key) === queued) queues.current.delete(key); });
   }, [account, update]);
 
   return { favourites: owned.account === account ? owned.items : NONE, toggle, error };

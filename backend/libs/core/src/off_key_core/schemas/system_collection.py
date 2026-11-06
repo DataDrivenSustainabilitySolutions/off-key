@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from ..utils.mqtt_topics import mqtt_topic_filters_overlap, validate_mqtt_topic_filter
 from .collection_policy import CollectionPolicy
 from .collection_rules import CollectionRule, legacy_rules
+from .public_names import public
 from .system import EntityId, SystemDocument, SystemModel, SystemStream
 
 
@@ -165,13 +166,17 @@ def runtime_fingerprint(catalog) -> list:
 class SystemCollectionChange(SystemModel):
     expected_revision: int = Field(ge=0)
     expected_collection_revision: int = Field(ge=0)
-    stream_ids: list[EntityId] = Field(min_length=1, max_length=4096)
+    stream_ids: list[EntityId] = Field(
+        min_length=1, max_length=4096, **public("reading_ids", "stream_ids")
+    )
     policy: CollectionPolicy
     pause_affected_monitors: bool = False
 
 
 class SystemCollectionScope(SystemModel):
-    stream_ids: list[EntityId] = Field(default_factory=list, max_length=4096)
+    stream_ids: list[EntityId] = Field(
+        default_factory=list, max_length=4096, **public("reading_ids", "stream_ids")
+    )
 
 
 class SystemCollectionPreview(SystemModel):

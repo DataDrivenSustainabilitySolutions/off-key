@@ -53,11 +53,18 @@ COMPATIBLE_RELEASE_PATHS = (
         re.compile(r"^(/v1/monitors/[^/]+)/pipeline/(state|layout|history|timeline)$"),
         r"\1/pipeline-\2",
     ),
+    (None, re.compile(r"^/v1/catalogue(?=/|$)"), "/v1/system"),
+    (None, re.compile(r"^/v1/recording/health$"), "/v1/system/health"),
+    (None, re.compile(r"^/v1/recording(?=/|$)"), "/v1/system/collection"),
+    (None, re.compile(r"^/v1/storage$"), "/v1/system/storage"),
     ("GET", re.compile(r"^/v1/monitors$"), "/v1/monitors/all"),
     ("POST", re.compile(r"^/v1/monitors$"), "/v1/monitors/start"),
 )
 COMPATIBLE_RELEASE_PARAMS = {"active": "active_only"}
 COMPATIBLE_RELEASE_FIELDS = {
+    "connections": "brokers",
+    "streams": "readings",
+    "connection_id": "broker_id",
     "service_id": "monitor_id",
     "predecessor_service_id": "predecessor_monitor_id",
     "next_service_id": "next_monitor_id",
@@ -316,7 +323,9 @@ def create_saved_graph(client, entity):
         "/v1/pipeline-activations",
         json={
             "revision_id": revision["id"],
-            "bindings": dict(zip(("processed", "raw"), entity.stream_ids, strict=True)),
+            "bindings": dict(
+                zip(("processed", "raw"), entity.reading_ids, strict=True)
+            ),
             "display_name": display_name,
             "idempotency_key": "rehearsal-" + entity.device_id,
         },
@@ -330,7 +339,7 @@ def create_saved_graph(client, entity):
     assert {
         item["slot_id"]: item["reading_id"]
         for item in view["run"]["execution"]["bindings"]
-    } == dict(zip(("processed", "raw"), entity.stream_ids, strict=True))
+    } == dict(zip(("processed", "raw"), entity.reading_ids, strict=True))
     assert {
         item["accepted_topic"] for item in view["run"]["execution"]["bindings"]
     } == set(entity.accepted_topics)
@@ -490,7 +499,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
         graph_entity = add_recorded_entity(
             client, label="Rehearsal graph entity", keys=("current", "temperature")
         )
-        snapshot = get_json(client, "/v1/system")
+        snapshot = get_json(client, "/v1/catalogue")
         topic = entity.topics["temperature"]
         graph = None
         completed = False
@@ -562,7 +571,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     name: model["fields"]
                     for name, model in get_json(client, "/v1/detectors").items()
                 } == discovery_fields
-                current = client.get("/v1/system").json()
+                current = client.get("/v1/catalogue").json()
                 assert current["revision"] == snapshot["revision"]
                 assert current["document"] == snapshot["document"]
                 assert current["runtime"]["bindings"] == snapshot["runtime"]["bindings"]

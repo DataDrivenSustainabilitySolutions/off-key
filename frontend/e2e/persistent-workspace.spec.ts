@@ -13,7 +13,7 @@ async function createFixture(page: Page, count = 40) {
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
   const read = async () => {
-    const response = await page.request.get("/api/v1/system", { headers });
+    const response = await page.request.get("/api/v1/catalogue", { headers });
     expect(response.ok(), await response.text()).toBe(true);
     return await response.json() as SystemSnapshot;
   };
@@ -23,18 +23,18 @@ async function createFixture(page: Page, count = 40) {
   const broker = "nav-broker-" + run;
   const north = "nav-north-" + run, south = "nav-south-" + run;
   const snapshot = await read();
-  snapshot.document.connections.push({ id: broker, label: "Navigation broker " + run, protocol: "mqtt", host: "source-broker", port: 1883, transport: "tcp", tls: false });
+  snapshot.document.brokers.push({ id: broker, label: "Navigation broker " + run, protocol: "mqtt", host: "source-broker", port: 1883, transport: "tcp", tls: false });
   snapshot.document.devices.push(...[
-    { id: north, label: "North room " + run, kind: "sensor", connection_id: broker },
-    { id: south, label: "South room " + run, kind: "sensor", connection_id: broker },
+    { id: north, label: "North room " + run, kind: "sensor", broker_id: broker },
+    { id: south, label: "South room " + run, kind: "sensor", broker_id: broker },
   ]);
   const streams = Array.from({ length: count + 1 }, (_, position) => ({
     id: "nav-" + run + "-" + position, label: position === count ? "South value" : "North value " + String(position + 1).padStart(2, "0"),
     topic: "navigation/" + run + "/" + (position === count ? "south" : "north") + "/reading-" + String(position + 1).padStart(2, "0"),
-    device_id: position === count ? south : north, connection_id: broker, value_type: "number" as const, category: "Navigation test",
+    device_id: position === count ? south : north, broker_id: broker, value_type: "number" as const, category: "Navigation test",
   }));
-  snapshot.document.streams.push(...streams);
-  const response = await page.request.put("/api/v1/system", { headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
+  snapshot.document.readings.push(...streams);
+  const response = await page.request.put("/api/v1/catalogue", { headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
   expect(response.ok(), await response.text()).toBe(true);
   const ownedIds = new Set([broker, north, south, ...streams.map(stream => stream.id)]);
   return { broker, north, south, streams, headers, read, ownedIds,
@@ -42,10 +42,10 @@ async function createFixture(page: Page, count = 40) {
     cleanup: async () => {
       const current = await read();
       current.document.groups = current.document.groups.filter(group => !ownedIds.has(group.id));
-      current.document.streams = current.document.streams.filter(stream => !ownedIds.has(stream.id));
+      current.document.readings = current.document.readings.filter(stream => !ownedIds.has(stream.id));
       current.document.devices = current.document.devices.filter(device => !ownedIds.has(device.id));
-      current.document.connections = current.document.connections.filter(connection => !ownedIds.has(connection.id));
-      const saved = await page.request.put("/api/v1/system", { headers, data: { expected_revision: current.revision, document: current.document } });
+      current.document.brokers = current.document.brokers.filter(connection => !ownedIds.has(connection.id));
+      const saved = await page.request.put("/api/v1/catalogue", { headers, data: { expected_revision: current.revision, document: current.document } });
       expect(saved.ok(), await saved.text()).toBe(true);
     },
   };
@@ -57,20 +57,20 @@ test("returns to the catalogue root from collections, branches and search with a
   const fixture = await createFixture(page, 1);
   try {
     const snapshot = await fixture.read();
-    const extraBrokers = Array.from({ length: 30 }, (_, index) => ({ ...snapshot.document.connections.find(item => item.id === fixture.broker)!,
+    const extraBrokers = Array.from({ length: 30 }, (_, index) => ({ ...snapshot.document.brokers.find(item => item.id === fixture.broker)!,
       id: fixture.broker + "-extra-" + index, label: "Root navigation broker " + String(index + 1).padStart(2, "0") }));
     const collection = { id: fixture.broker + "-collection", label: "North site", member_ids: [fixture.broker, fixture.north, fixture.streams[0]!.id] };
     for (const id of [collection.id, ...extraBrokers.map(broker => broker.id)]) fixture.ownedIds.add(id);
-    snapshot.document.connections.push(...extraBrokers);
+    snapshot.document.brokers.push(...extraBrokers);
     snapshot.document.groups.push(collection);
-    const saved = await page.request.put("/api/v1/system", { headers: fixture.headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
+    const saved = await page.request.put("/api/v1/catalogue", { headers: fixture.headers, data: { expected_revision: snapshot.revision, document: snapshot.document } });
     expect(saved.ok(), await saved.text()).toBe(true);
     await page.reload();
     const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
     const root = sidebar.getByRole("button", { name: "Back to catalogue", exact: true });
     const collections = sidebar.getByRole("button", { name: "Browse collections", exact: true });
     const search = sidebar.getByRole("searchbox", { name: "Search catalogue", exact: true });
-    const brokerCount = snapshot.document.connections.length + " brokers";
+    const brokerCount = snapshot.document.brokers.length + " brokers";
     await expect(sidebar.getByText(brokerCount, { exact: true })).toBeVisible();
     await expect(sidebar.getByRole("button", { name: snapshot.document.label, exact: true })).toHaveCount(0);
     await expect(root).toHaveAttribute("title", "Back to catalogue");
@@ -79,7 +79,7 @@ test("returns to the catalogue root from collections, branches and search with a
     const collectionName = "Collection check " + fixture.broker.slice(-8);
     await page.getByRole("textbox", { name: "collection name", exact: true }).fill(collectionName);
     await expect(page.getByRole("textbox", { name: "Find collection members", exact: true })).toBeVisible();
-    const collectionSaved = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/system");
+    const collectionSaved = page.waitForResponse(response => response.request().method() === "PUT" && new URL(response.url()).pathname === "/api/v1/catalogue");
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
     const created = await collectionSaved;
     expect(created.ok(), await created.text()).toBe(true);
@@ -143,10 +143,10 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     let catalogueReads = 0;
     let previewStarts = 0, previewStops = 0;
     page.on("request", request => {
-      if (request.method() === "GET" && new URL(request.url()).pathname === "/api/v1/system") catalogueReads++;
+      if (request.method() === "GET" && new URL(request.url()).pathname === "/api/v1/catalogue") catalogueReads++;
       const path = new URL(request.url()).pathname;
-      if (request.method() === "POST" && path === "/api/v1/system/live/leases") previewStarts++;
-      if (request.method() === "DELETE" && path.startsWith("/api/v1/system/live/leases/")) previewStops++;
+      if (request.method() === "POST" && path === "/api/v1/live/views") previewStarts++;
+      if (request.method() === "DELETE" && path.startsWith("/api/v1/live/views/")) previewStops++;
     });
     await page.reload();
     const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
@@ -163,11 +163,11 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await selected.click();
     await expect(page.getByRole("region", { name: "Reading preview", exact: true })).toBeVisible();
     const connected = page.waitForResponse(response => response.request().method() === "POST"
-      && new URL(response.url()).pathname === "/api/v1/system/live/leases");
+      && new URL(response.url()).pathname === "/api/v1/live/views");
     await page.getByRole("button", { name: "View live", exact: true }).click();
     const lease = await connected;
     expect(lease.ok(), await lease.text()).toBe(true);
-    leaseId = (await lease.json() as { lease_id: string }).lease_id;
+    leaseId = (await lease.json() as { view_id: string }).view_id;
     await expect(page.locator(".sp-live-indicator")).toHaveText("Live");
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
     await publisher.publishAsync(fixture.streams[29]!.topic, "42", { qos: 1 });
@@ -241,7 +241,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await sidebarHandle!.dispose(); await listHandle!.dispose();
   } finally {
     await publisher?.endAsync();
-    if (leaseId && !disconnected) await page.request.delete("/api/v1/system/live/leases/" + leaseId, { headers: fixture.headers });
+    if (leaseId && !disconnected) await page.request.delete("/api/v1/live/views/" + leaseId, { headers: fixture.headers });
     await fixture.cleanup();
   }
 });
@@ -259,13 +259,13 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     const collection = { id: fixture.broker + "-online", label: "Online check " + run, member_ids: fixture.streams.map(stream => stream.id) };
     fixture.ownedIds.add(collection.id);
     current.document.groups.push(collection);
-    const saved = await page.request.put("/api/v1/system", { headers: fixture.headers,
+    const saved = await page.request.put("/api/v1/catalogue", { headers: fixture.headers,
       data: { expected_revision: current.revision, document: current.document } });
     expect(saved.ok(), await saved.text()).toBe(true);
     const configured = await saved.json() as SystemSnapshot;
-    const applied = await page.request.put("/api/v1/system/collection", { headers: fixture.headers, data: {
+    const applied = await page.request.put("/api/v1/recording", { headers: fixture.headers, data: {
       expected_revision: configured.revision, expected_collection_revision: configured.runtime.collection_revision,
-      stream_ids: fixture.streams.slice(0, 2).map(stream => stream.id), policy: { mode: "sample", interval_seconds: 3600 },
+      reading_ids: fixture.streams.slice(0, 2).map(stream => stream.id), policy: { mode: "sample", interval_seconds: 3600 },
     } });
     expect(applied.ok(), await applied.text()).toBe(true);
     await expect.poll(async () => (await fixture.read()).runtime.ingress?.sources?.[fixture.broker]?.state,
@@ -276,8 +276,8 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
     let previewStarts = 0, configurationWrites = 0;
     page.on("request", request => {
       const path = new URL(request.url()).pathname;
-      if (request.method() === "POST" && path === "/api/v1/system/live/leases") previewStarts++;
-      if (request.method() === "PUT" && path.startsWith("/api/v1/system")) configurationWrites++;
+      if (request.method() === "POST" && path === "/api/v1/live/views") previewStarts++;
+      if (request.method() === "PUT" && (path === "/api/v1/catalogue" || path.startsWith("/api/v1/recording"))) configurationWrites++;
     });
     await page.reload();
     const sidebar = page.getByRole("navigation", { name: "System explorer", exact: true });
@@ -357,9 +357,9 @@ test("filters real recorded reports by entity and reading across the shared navb
   const anomalies: string[] = [];
   let publisher: MqttClient | undefined;
   try {
-    const applied = await page.request.put("/api/v1/system/collection", { headers: fixture.headers, data: {
+    const applied = await page.request.put("/api/v1/recording", { headers: fixture.headers, data: {
       expected_revision: fixture.snapshot.revision, expected_collection_revision: fixture.snapshot.runtime.collection_revision,
-      stream_ids: fixture.streams.map(stream => stream.id), policy: { mode: "original", interval_seconds: 10 },
+      reading_ids: fixture.streams.map(stream => stream.id), policy: { mode: "original", interval_seconds: 10 },
     } });
     expect(applied.ok(), await applied.text()).toBe(true);
     const snapshot = await applied.json() as SystemSnapshot;

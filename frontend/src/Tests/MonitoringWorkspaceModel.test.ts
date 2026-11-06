@@ -12,12 +12,12 @@ const monitor = (id: string, streamIds: string[], stage: OperationalStage = "ope
 });
 function fixture(count = 2) {
   const document: SystemDocument = { ...createEmptySystem(),
-    connections: Array.from({ length: count }, (_, index) => ({ id: `broker-${index}`, label: "Same broker label", protocol: "mqtt", host: `broker-${index}.test`, port: 1883, transport: "tcp", tls: false })),
-    devices: Array.from({ length: count }, (_, index) => ({ id: `entity-${index}`, label: `Room ${index}`, connection_id: `broker-${index}`, kind: "generic" })),
-    streams: Array.from({ length: count * 20 }, (_, index) => ({ id: `reading-${index}`, label: `Measurement ${index}`, topic: `arbitrary/room/value-${index}`,
-      value_type: "number", category: "Environment", connection_id: `broker-${Math.floor(index / 20)}`, device_id: `entity-${Math.floor(index / 20)}` })),
+    brokers: Array.from({ length: count }, (_, index) => ({ id: `broker-${index}`, label: "Same broker label", protocol: "mqtt", host: `broker-${index}.test`, port: 1883, transport: "tcp", tls: false })),
+    devices: Array.from({ length: count }, (_, index) => ({ id: `entity-${index}`, label: `Room ${index}`, broker_id: `broker-${index}`, kind: "generic" })),
+    readings: Array.from({ length: count * 20 }, (_, index) => ({ id: `reading-${index}`, label: `Measurement ${index}`, topic: `arbitrary/room/value-${index}`,
+      value_type: "number", category: "Environment", broker_id: `broker-${Math.floor(index / 20)}`, device_id: `entity-${Math.floor(index / 20)}` })),
   };
-  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", bindings: Object.fromEntries(document.streams.map(stream => [stream.id, { entity_id: `internal-${stream.device_id}`, telemetry_key: stream.id,
+  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { entity_id: `internal-${stream.device_id}`, telemetry_key: stream.id,
       accepted_topic: `telemetry/internal-${stream.device_id}/${stream.id}`, policy: { mode: "off", interval_seconds: 10 } }])) };
   return { document, runtime };
 }
@@ -46,7 +46,7 @@ describe("monitoring workspace identity and scale", () => {
     expect(servicesForScope(services, index, ["reading-20"])).toEqual([services[1]]);
     expect(servicesForScope(services, index)).toBe(services);
     expect(servicesForScope(services, index, [])).toEqual([]);
-    document.connections[0]!.label = "Renamed broker";
+    document.brokers[0]!.label = "Renamed broker";
     const renamed = buildMonitoringIndex(document, runtime, services);
     expect(renamed.byStream.get("reading-0")).toEqual(new Set(["first"]));
     expect(serviceName(services[0]!, renamed.inputs.get("first")!)).toBe("Renamed broker / Room 0 · Adaptive");

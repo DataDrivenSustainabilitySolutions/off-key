@@ -28,11 +28,11 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const uniform = recorded.length && recorded.every(item => sameRate(item.policy, recorded[0]!.policy)) ? recorded[0]!.policy : undefined;
   const excluded = ids.filter(id => runtime?.bindings?.[id]?.policy_origin?.needs_review);
   const exceptions = (runtime?.collection_rules ?? []).filter(item => item.policy && scopeKey(item.scope) !== scopeKey(scope)
-    && item.scope.connection_id === scope.connection_id && (scope.kind === "broker" || scope.kind === "topic"
+    && item.scope.broker_id === scope.broker_id && (scope.kind === "broker" || scope.kind === "topic"
       && (item.scope.kind === "topic" ? topicWithinPrefix(item.scope.topic_prefix ?? "", scope.topic_prefix ?? "")
         : ids.includes(item.scope.reading_id ?? "")))).length;
-  const busy = recording.saving === scope.connection_id;
-  const pending = !!recording.pending && recording.pending.edits.some(edit => edit.scope.connection_id === scope.connection_id);
+  const busy = recording.saving === scope.broker_id;
+  const pending = !!recording.pending && recording.pending.edits.some(edit => edit.scope.broker_id === scope.broker_id);
   const choice: Choice = (busy || pending) && picked ? picked : stored;
   const seconds = Math.round(Number(interval));
   const validInterval = Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600;
@@ -51,7 +51,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     ? selected[0] && [policyLabel(selected[0].policy), originLabel(runtime, ids[0]!, document)].filter(Boolean).join(" · ")
     : ids.length ? `${enabled} of ${ids.length} enabled${uniform ? ` · ${policyLabel(uniform)}` : enabled ? " · Mixed rates" : ""}` : "No readings";
   const collection = runtime?.collection;
-  const collectionPending = (enabled > 0 || recording.canUndo(scope.connection_id)) &&
+  const collectionPending = (enabled > 0 || recording.canUndo(scope.broker_id)) &&
     (collection?.status !== "applied" || collection.revision !== runtime?.collection_revision);
   const collectionFailed = collection?.status === "error" || collection?.status === "disabled";
   const options: [Choice, string][] = [
@@ -61,7 +61,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   // Readings opt in by following this scope when it records, or with their own rule when it does not.
   const parentRecords = choice === "original" || choice === "sample";
   const readingEdit = (reading_id: string, on: boolean): RuleEdit => {
-    const reading: RuleScope = { kind: "reading", connection_id: scope.connection_id, reading_id };
+    const reading: RuleScope = { kind: "reading", broker_id: scope.broker_id, reading_id };
     return on ? parentRecords ? { scope: reading, operation: "inherit" }
       : { scope: reading, operation: "set", policy: { mode: "original", interval_seconds: saved } }
       : { scope: reading, operation: "set", policy: { mode: "off", interval_seconds: saved } };
@@ -77,7 +77,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     const parent = parentRecords ? { mode: choice as CollectionPolicy["mode"], interval_seconds: saved } : undefined;
     return policy && policy.mode !== "off" && (!parent || !sameRate(policy, parent)) ? policyLabel(policy).toLowerCase() : undefined;
   };
-  const streams = new Map(document.streams.map(stream => [stream.id, stream]));
+  const streams = new Map(document.readings.map(stream => [stream.id, stream]));
   return <section className="source-recording" aria-label="Recording configuration">
     <div className="ex-preview-section-heading"><h3>Recording</h3>{summary && <span>{summary}</span>}</div>
     {!busy && collectionPending && <p className="ex-muted" role={collectionFailed ? "alert" : "status"}>
@@ -111,10 +111,10 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
       </div>}
       {excluded.length > 0 && !busy && <div className="source-pending"><span>{excluded.length} {excluded.length === 1 ? "reading was" : "readings were"} added after recording started and {excluded.length === 1 ? "isn't" : "aren't"} recorded.</span>
         <Button size="sm" variant="outline" onClick={() => void recording.save(excluded.map(reading_id =>
-          ({ scope: { kind: "reading", connection_id: scope.connection_id, reading_id }, operation: "inherit" })))}>Record {excluded.length === 1 ? "it" : "them"} too</Button></div>}
+          ({ scope: { kind: "reading", broker_id: scope.broker_id, reading_id }, operation: "inherit" })))}>Record {excluded.length === 1 ? "it" : "them"} too</Button></div>}
       {exceptions > 0 && scope.kind === "topic" && <p className="ex-muted">{exceptions} {exceptions === 1 ? "override stays" : "overrides stay"} in place.</p>}
       {recording.problem && <p role="alert" className="ex-preview-error">{recording.problem}</p>}
-      {recording.canUndo(scope.connection_id) && !busy && <Button variant="ghost" size="sm" onClick={recording.undo}>Undo</Button>}
+      {recording.canUndo(scope.broker_id) && !busy && <Button variant="ghost" size="sm" onClick={recording.undo}>Undo</Button>}
       <p className="ex-muted">Recording continues while you’re signed out. Turning it off keeps existing history.</p>
     </>}
   </section>;

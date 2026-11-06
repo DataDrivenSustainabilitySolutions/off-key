@@ -40,14 +40,14 @@ export function serviceName(service: ActiveService, inputs: MonitoringInput[]): 
 
 /** Group catalogue readings by entity and by the monitors the server resolved for each. */
 export function buildMonitoringIndex(document: SystemDocument, runtime: SystemRuntime | undefined, services: ActiveService[]): MonitoringIndex {
-  const connections = new Map(document.connections.map(item => [item.id, item.label]));
+  const connections = new Map(document.brokers.map(item => [item.id, item.label]));
   const devices = new Map(document.devices.map(item => [item.id, item.label]));
   const byId = new Map<string, MonitoringInput>();
   const targets = new Map<string, MonitoringTarget>();
-  for (const stream of document.streams) {
+  for (const stream of document.readings) {
     const binding = runtime?.bindings?.[stream.id];
     if (!binding || stream.value_type !== "number") continue;
-    const broker = connections.get(stream.connection_id) ?? stream.connection_id;
+    const broker = connections.get(stream.broker_id) ?? stream.broker_id;
     const entity = stream.device_id ? devices.get(stream.device_id) : undefined;
     const path = entity && entity !== broker ? `${broker} / ${entity}` : broker;
     const input = { stream, binding, path };

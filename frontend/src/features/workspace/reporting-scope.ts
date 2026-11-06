@@ -3,14 +3,14 @@ import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIn
 
 /** Resolve recorded identities to catalogue labels, keeping the identity when the catalogue no longer has it. */
 export function reportLabels(document: SystemDocument | undefined, runtime?: SystemRuntime) {
-  const connections = new Map(document?.connections.map(item => [item.id, item.label]));
+  const connections = new Map(document?.brokers.map(item => [item.id, item.label]));
   const devices = new Map(document?.devices.map(item => [item.id, item.label]));
   const entities = new Map<string, string>();
   const readings = new Map<string, string>();
-  for (const stream of document?.streams ?? []) {
+  for (const stream of document?.readings ?? []) {
     const binding = runtime?.bindings?.[stream.id];
     if (!binding) continue;
-    const entity = (stream.device_id && devices.get(stream.device_id)) || connections.get(stream.connection_id);
+    const entity = (stream.device_id && devices.get(stream.device_id)) || connections.get(stream.broker_id);
     if (entity && !entities.has(binding.entity_id)) entities.set(binding.entity_id, entity);
     readings.set(`${binding.entity_id}\u0000${binding.telemetry_key}`, stream.label);
   }
@@ -22,9 +22,9 @@ export function reportLabels(document: SystemDocument | undefined, runtime?: Sys
 
 /** The catalogue node that stands for a recorded entity, so that reports can be scoped to it. */
 export function entitySource(index: NavigationIndex, document: SystemDocument | undefined, runtime: SystemRuntime | undefined, entityId: string): ExplorerNode | undefined {
-  for (const stream of document?.streams ?? []) {
+  for (const stream of document?.readings ?? []) {
     if (runtime?.bindings?.[stream.id]?.entity_id !== entityId) continue;
-    const nodes = (index.objectKeys.get(stream.device_id ?? stream.connection_id) ?? []).flatMap(key => index.nodes.get(key) ?? []);
+    const nodes = (index.objectKeys.get(stream.device_id ?? stream.broker_id) ?? []).flatMap(key => index.nodes.get(key) ?? []);
     const node = nodes.find(item => stream.device_id ? item.entityKind === "device" : item.kind === "connection");
     if (node) return node;
   }

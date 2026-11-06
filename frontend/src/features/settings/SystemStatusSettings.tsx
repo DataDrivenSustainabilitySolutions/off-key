@@ -29,7 +29,7 @@ export default function SystemStatusSettings() {
 
   useEffect(() => {
     let active = true;
-    void apiUtils.get<StorageStatus>("/v1/system/storage").then(
+    void apiUtils.get<StorageStatus>("/v1/storage").then(
       (result) => {
         if (active) setStatus(result);
       },

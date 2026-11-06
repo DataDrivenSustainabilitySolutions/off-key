@@ -117,42 +117,47 @@ GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
 Authorization: Bearer <token>
 ```
 
-### Generic catalogue and collection
+### Catalogue, recording and live views
+
+The catalogue `document` holds `brokers`, `devices`, `readings` and `groups`;
+devices and readings name their broker as `broker_id`. Changes need
+`manage_sources`, which TACTIC checks.
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| `GET` | `/system` | Saved generic document, revision, bindings and runtime | Member |
-| `PUT` | `/system` | Save structural changes at `expected_revision` | `manage_sources` |
-| `GET` | `/system/revisions` | Saved catalogue revisions | Member |
-| `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
-| `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | `manage_sources` |
-| `PUT` | `/system/collection` | Apply confirmed opt-in policies | `manage_sources` |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | `manage_sources` |
-| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | `manage_sources` |
-| `GET` | `/system/health` | Collection `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
-| `GET` | `/system/storage` | Storage size and managed retention status | Member |
-| `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
-| `POST` | `/system/live/leases` | Start a bounded preview lease | `manage_sources` |
-| `PUT` | `/system/live/leases/{lease_id}` | Renew a preview lease | `manage_sources` |
-| `DELETE` | `/system/live/leases/{lease_id}` | Stop a preview lease; 204 | `manage_sources` |
+| `GET` | `/catalogue` | Saved document, revision, how each reading is recorded (`runtime.bindings`) and `can_edit` | Member |
+| `PUT` | `/catalogue` | Save structural changes at `expected_revision` | `manage_sources` |
+| `GET` | `/catalogue/revisions` | Saved catalogue revisions | Member |
+| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/brokers/{broker_id}/reconnect` | Restart recording from a broker now, resetting its retry backoff | `manage_sources` |
+| `PUT` | `/recording` | Apply confirmed recording policies for `reading_ids`, or `rule_changes` for a broker, topic or reading scope | `manage_sources` |
+| `POST` | `/recording/preview` | Review a recording change and the monitors it affects | `manage_sources` |
+| `POST` | `/recording/status` | Recording state and latest values of the given `reading_ids` | Member |
+| `GET` | `/recording/health` | Recording `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
+| `GET` | `/storage` | Storage size and managed retention status | Member |
+| `GET` | `/live/measurements` | Open live views: brokers, readings and samples after `after_sequence` | Member |
+| `POST` | `/live/views` | Open a bounded live view of `reading_ids`; answers its `view_id` and first `measurements` | `manage_sources` |
+| `POST` | `/live/views/{view_id}/renew` | Keep a live view open, optionally with other `reading_ids` | `manage_sources` |
+| `DELETE` | `/live/views/{view_id}` | Close a live view; 204 | `manage_sources` |
 
 Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
 replacement before saving; existing selections survive by stable reading ID.
-`/sources` and the provider-specific catalogue endpoints have been removed.
+Files exported before the rename, with `connections`, `streams` and
+`connection_id`, still import.
 
-`/system/health` decides the collection diagnosis on the server. The checks run
+`/recording/health` decides the recording diagnosis on the server. The checks run
 in a fixed order (catalogue saved, collector report younger than 15 seconds,
 local MQTT connected, revisions applied, broker routes, broker connections,
 database, traffic) and the first that fails is returned as `diagnosis.code` with
 a title, tone and explanation. The web app shows that verdict unchanged; it only
 adds "Status not refreshing" when the endpoint itself stops answering.
 
-The `/system/live` session API starts explicitly bounded in-memory previews.
-Acquiring a lease requires `manage_sources`; members can inspect an existing
-session. Preview does not enable persistent collection. Accepted detector topics
-use only `telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete
-MQTT paths and JSON Pointer payload bindings.
+Live views are explicitly bounded in-memory previews. Opening one requires
+`manage_sources`; members can read the measurements of an open view. A live view
+does not record anything. Accepted detector topics use only
+`telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete MQTT
+paths and JSON Pointer payload bindings.
 
 ### Monitors, pipelines and detectors
 
@@ -254,7 +259,7 @@ See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 | `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
 | `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
-| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids`, optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids` (reading ids), optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
 | `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
 | `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
 | `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |

@@ -17,7 +17,7 @@ const NOW = Date.parse("2026-10-07T12:00:00Z");
 const iso = (offset = 0) => new Date(NOW + offset).toISOString();
 const document: SystemDocument = {
   ...createEmptySystem(),
-  connections: [
+  brokers: [
     {
       id: "broker",
       label: "Broker",
@@ -29,12 +29,12 @@ const document: SystemDocument = {
     },
   ],
   devices: [
-    { id: "device", label: "Device", kind: "sensor", connection_id: "broker" },
+    { id: "device", label: "Device", kind: "sensor", broker_id: "broker" },
   ],
-  streams: ["temperature", "switch", "label"].map((id) => ({
+  readings: ["temperature", "switch", "label"].map((id) => ({
     id,
     label: id,
-    connection_id: "broker",
+    broker_id: "broker",
     device_id: "device",
     topic: `site/${id}`,
     value_type:
@@ -43,7 +43,7 @@ const document: SystemDocument = {
   })),
 };
 const record = (overrides: Partial<LiveStream> = {}): LiveStream => ({
-  stream_id: "temperature",
+  reading_id: "temperature",
   value: 20,
   received_at: iso(),
   is_retained: false,
@@ -61,9 +61,9 @@ const batch = (overrides: Partial<LiveBatch> = {}): LiveBatch => ({
   revision: 7,
   sequence: 1,
   reset: false,
-  connections: [
+  brokers: [
     {
-      connection_id: "broker",
+      broker_id: "broker",
       state: "connected",
       message: "Connected",
       received_messages: 1,
@@ -73,11 +73,11 @@ const batch = (overrides: Partial<LiveBatch> = {}): LiveBatch => ({
       rate_hz: 1,
     },
   ],
-  streams: [record()],
+  readings: [record()],
   samples: [
     {
       sequence: 1,
-      stream_id: "temperature",
+      reading_id: "temperature",
       value: 20,
       received_at: iso(),
       is_retained: false,
@@ -92,9 +92,9 @@ const batch = (overrides: Partial<LiveBatch> = {}): LiveBatch => ({
   ...overrides,
 });
 const lease = (telemetry = batch()): LiveLease => ({
-  lease_id: "lease",
+  view_id: "lease",
   expires_in_seconds: 45,
-  telemetry,
+  measurements: telemetry,
 });
 function harness(canStart = true) {
   const api = {
@@ -116,15 +116,15 @@ describe("generic live telemetry receipts", () => {
   it("preserves visited readings across scope resets without duplicate replay or sequence collisions", () => {
     const { source } = harness();
     source.accept(batch(), false);
-    source.accept(batch({ sequence: 50, streams: [record({ sequence: 50, value: 21 })],
-      samples: [{ sequence: 50, stream_id: "temperature", received_at: iso(1000), value: 21, is_retained: false }] }), true);
-    source.accept(batch({ reset: true, sequence: 51, streams: [record({ stream_id: "switch", value: true, sequence: 51 })],
-      samples: [{ sequence: 51, stream_id: "switch", received_at: iso(1500), value: true, is_retained: false }] }), true);
+    source.accept(batch({ sequence: 50, readings: [record({ sequence: 50, value: 21 })],
+      samples: [{ sequence: 50, reading_id: "temperature", received_at: iso(1000), value: 21, is_retained: false }] }), true);
+    source.accept(batch({ reset: true, sequence: 51, readings: [record({ reading_id: "switch", value: true, sequence: 51 })],
+      samples: [{ sequence: 51, reading_id: "switch", received_at: iso(1500), value: true, is_retained: false }] }), true);
     expect(source.getSnapshot("temperature")?.samples).toHaveLength(2);
-    source.accept(batch({ reset: true, sequence: 1, streams: [record({ sequence: 1, value: 21 })],
-      samples: [{ sequence: 1, stream_id: "temperature", received_at: iso(1000), value: 21, is_retained: false }] }), false);
-    source.accept(batch({ sequence: 2, streams: [record({ sequence: 2, value: 22 })],
-      samples: [{ sequence: 2, stream_id: "temperature", received_at: iso(2000), value: 22, is_retained: false }] }), true);
+    source.accept(batch({ reset: true, sequence: 1, readings: [record({ sequence: 1, value: 21 })],
+      samples: [{ sequence: 1, reading_id: "temperature", received_at: iso(1000), value: 21, is_retained: false }] }), false);
+    source.accept(batch({ sequence: 2, readings: [record({ sequence: 2, value: 22 })],
+      samples: [{ sequence: 2, reading_id: "temperature", received_at: iso(2000), value: 22, is_retained: false }] }), true);
     expect(source.getSnapshot("temperature")?.samples).toEqual([
       { timestamp: NOW, value: 20 }, { timestamp: NOW + 1000, value: 21 }, { timestamp: NOW + 2000, value: 22 },
     ]);
@@ -150,7 +150,7 @@ describe("generic live telemetry receipts", () => {
     expect(pulse).not.toHaveBeenCalled();
     const update = batch({
       sequence: 100,
-      streams: [
+      readings: [
         record({
           sequence: 100,
           fresh_count: 100,
@@ -161,7 +161,7 @@ describe("generic live telemetry receipts", () => {
       samples: [
         {
           sequence: 100,
-          stream_id: "temperature",
+          reading_id: "temperature",
           received_at: iso(1000),
           value: 22,
           is_retained: false,
@@ -187,7 +187,7 @@ describe("generic live telemetry receipts", () => {
     source.accept(
       batch({
         sequence: 2,
-        streams: [
+        readings: [
           record({
             sequence: 2,
             is_retained: true,
@@ -199,7 +199,7 @@ describe("generic live telemetry receipts", () => {
         samples: [
           {
             sequence: 2,
-            stream_id: "temperature",
+            reading_id: "temperature",
             received_at: iso(),
             value: 19,
             is_retained: true,
@@ -222,21 +222,21 @@ describe("generic live telemetry receipts", () => {
     const { source } = harness();
     source.accept(
       batch({
-        streams: [
-          record({ stream_id: "switch", value: true, fresh_count: 3 }),
-          record({ stream_id: "label", value: "Kitchen", fresh_count: 5 }),
+        readings: [
+          record({ reading_id: "switch", value: true, fresh_count: 3 }),
+          record({ reading_id: "label", value: "Kitchen", fresh_count: 5 }),
         ],
         samples: [
           {
             sequence: 1,
-            stream_id: "switch",
+            reading_id: "switch",
             value: true,
             received_at: iso(),
             is_retained: false,
           },
           {
             sequence: 2,
-            stream_id: "label",
+            reading_id: "label",
             value: "Kitchen",
             received_at: iso(),
             is_retained: false,
@@ -266,7 +266,7 @@ describe("generic live telemetry receipts", () => {
       { length: LIVE_HISTORY_LIMIT + 10 },
       (_, index) => ({
         sequence: index + 1,
-        stream_id: ids[index % 3]!,
+        reading_id: ids[index % 3]!,
         received_at: iso((Math.floor(index / 3) - 3000) * 1000),
         value: index,
         is_retained: false,
@@ -276,7 +276,7 @@ describe("generic live telemetry receipts", () => {
       batch({
         sequence: samples.length,
         samples,
-        streams: ids.map((id) => record({ stream_id: id })),
+        readings: ids.map((id) => record({ reading_id: id })),
       }),
       false,
     );
@@ -298,8 +298,8 @@ describe("generic live telemetry receipts", () => {
     source.accept(
       batch({
         sequence: 2,
-        streams: [
-          record({ stream_id: "unknown", fresh_count: 50 }),
+        readings: [
+          record({ reading_id: "unknown", fresh_count: 50 }),
           record({
             sequence: 2,
             fresh_count: 2,
@@ -309,7 +309,7 @@ describe("generic live telemetry receipts", () => {
         samples: [
           {
             sequence: 2,
-            stream_id: "unknown",
+            reading_id: "unknown",
             received_at: iso(),
             value: 3,
             is_retained: false,
@@ -349,7 +349,7 @@ describe("live configuration and sampling", () => {
     source.accept(
       batch({
         sequence: 2,
-        streams: [record({ sequence: 2, rate_hz: 0 })],
+        readings: [record({ sequence: 2, rate_hz: 0 })],
         samples: [],
       }),
       true,
@@ -368,7 +368,7 @@ describe("live configuration and sampling", () => {
         samples: [
           {
             sequence: 2,
-            stream_id: "temperature",
+            reading_id: "temperature",
             received_at: iso(500),
             value: 25,
             is_retained: false,
@@ -387,18 +387,18 @@ describe("live configuration and sampling", () => {
     const pulse = vi.fn();
     source.subscribe(pulse);
     const streams = Array.from({ length: 100 }, (_, index) => ({
-      ...document.streams[0]!,
+      ...document.readings[0]!,
       id: `stream-${index}`,
     }));
-    source.configure({ ...document, streams }, 7, "user1", true);
+    source.configure({ ...document, readings: streams }, 7, "user1", true);
     source.setPriority("stream-99");
     source.accept(
       batch({
         sequence: 0,
         reset: true,
         samples: [],
-        streams: streams.map((stream) =>
-          record({ stream_id: stream.id, fresh_count: 0, sequence: 0 }),
+        readings: streams.map((stream) =>
+          record({ reading_id: stream.id, fresh_count: 0, sequence: 0 }),
         ),
       }),
       false,
@@ -407,9 +407,9 @@ describe("live configuration and sampling", () => {
       batch({
         sequence: 100,
         samples: [],
-        streams: streams.map((stream, index) =>
+        readings: streams.map((stream, index) =>
           record({
-            stream_id: stream.id,
+            reading_id: stream.id,
             fresh_count: 100,
             sequence: index + 1,
           }),
@@ -429,8 +429,8 @@ describe("scene telemetry reads", () => {
     const { source } = harness();
     source.accept(
       batch({
-        streams: document.streams.map((stream) =>
-          record({ stream_id: stream.id }),
+        readings: document.readings.map((stream) =>
+          record({ reading_id: stream.id }),
         ),
       }),
       false,
@@ -464,7 +464,7 @@ describe("scene telemetry reads", () => {
     source.accept(
       batch({
         sequence: 2,
-        streams: [record({ received_count: 3, fresh_count: 3, sequence: 2 })],
+        readings: [record({ received_count: 3, fresh_count: 3, sequence: 2 })],
         samples: [],
       }),
       false,
@@ -478,7 +478,7 @@ describe("scene telemetry reads", () => {
 describe("generic live preview lease lifecycle", () => {
   it("waits for a focused selection without timing out and renews its exact scope", async () => {
     const { source, api } = harness();
-    const empty = batch({ connections: [], streams: [], samples: [] });
+    const empty = batch({ brokers: [], readings: [], samples: [] });
     api.create.mockResolvedValue(lease(empty));
     api.read.mockResolvedValue(empty);
     api.renew.mockResolvedValue(lease(empty));
@@ -501,8 +501,8 @@ describe("generic live preview lease lifecycle", () => {
   it("releases an all-failed attempt and preserves broker diagnostics for retry", async () => {
     const { source, api } = harness();
     const failure = batch({
-      connections: [{
-        ...batch().connections[0]!,
+      brokers: [{
+        ...batch().brokers[0]!,
         state: "error",
         message: "Check network or VPN access, then retry.",
       }],
@@ -512,7 +512,7 @@ describe("generic live preview lease lifecycle", () => {
     expect(source.getStatus()).toMatchObject({
       phase: "error",
       active: false,
-      connections: failure.connections,
+      connections: failure.brokers,
     });
     expect(api.release).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(60000);
@@ -528,8 +528,8 @@ describe("generic live preview lease lifecycle", () => {
   it("bounds connecting even if the service never marks a broker failed", async () => {
     const { source, api } = harness();
     const pending = batch({
-      connections: [{ ...batch().connections[0]!, state: "reconnecting" }],
-      streams: [],
+      brokers: [{ ...batch().brokers[0]!, state: "reconnecting" }],
+      readings: [],
       samples: [],
     });
     api.create.mockResolvedValue(lease(pending));
@@ -549,17 +549,17 @@ describe("generic live preview lease lifecycle", () => {
     const { source, api } = harness();
     source.configure({
       ...document,
-      connections: [
-        ...document.connections,
-        { ...document.connections[0]!, id: "second" },
+      brokers: [
+        ...document.brokers,
+        { ...document.brokers[0]!, id: "second" },
       ],
     }, 7, "user1", true);
     const mixed = batch({
-      connections: [
-        batch().connections[0]!,
-        { ...batch().connections[0]!, connection_id: "second", state: "error" },
+      brokers: [
+        batch().brokers[0]!,
+        { ...batch().brokers[0]!, broker_id: "second", state: "error" },
       ],
-      streams: [],
+      readings: [],
       samples: [],
     });
     api.create.mockResolvedValue(lease(mixed));

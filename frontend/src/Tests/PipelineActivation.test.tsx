@@ -15,7 +15,7 @@ import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
-const catalogue = { document: { ...createEmptySystem(), streams: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
+const catalogue = { document: { ...createEmptySystem(), readings: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({
   useCatalogue: () => catalogue,
 }));
@@ -46,7 +46,7 @@ const props = () => ({
           stream: {
             id: "reading",
             label: "Air temperature",
-            connection_id: "connection",
+            broker_id: "connection",
             topic: "weather/temperature",
             value_type: "number" as const,
             category: "Environment",

@@ -15,7 +15,7 @@ export type SystemConnection = {
 export type SystemDevice = {
   id: string;
   label: string;
-  connection_id?: string;
+  broker_id?: string;
   parent_id?: string;
   kind: string;
 };
@@ -23,7 +23,7 @@ export type SystemDevice = {
 export type SystemStream = {
   id: string;
   label: string;
-  connection_id: string;
+  broker_id: string;
   device_id?: string;
   topic: string;
   payload_pointer?: string;
@@ -46,15 +46,15 @@ export type SystemDocument = {
   schema_version: 1;
   label: string;
   default_policy: CollectionPolicy;
-  connections: SystemConnection[];
+  brokers: SystemConnection[];
   devices: SystemDevice[];
-  streams: SystemStream[];
+  readings: SystemStream[];
   groups: SystemGroup[];
 };
 
 /** One on-demand CONNECT to a saved broker; nothing is subscribed or stored. */
 export type SystemConnectionCheck = {
-  connection_id: string;
+  broker_id: string;
   status: "reachable" | "auth_rejected" | "refused" | "tls_error" | "unreachable" | "timeout" | "blocked";
   message: string | null;
   latency_ms: number | null;
@@ -78,7 +78,7 @@ export type SystemRuntime = {
 };
 export type SystemReadingBinding = {
   entity_id: string;
-  connection_id?: string;
+  broker_id?: string;
   telemetry_key: string;
   accepted_topic: string;
   policy: CollectionPolicy;
@@ -108,7 +108,7 @@ export type SystemSnapshot = {
   updated_by?: string | null;
 };
 
-export type RuleScope = { kind: "broker" | "topic" | "reading"; connection_id: string; topic_prefix?: string | null; reading_id?: string | null };
+export type RuleScope = { kind: "broker" | "topic" | "reading"; broker_id: string; topic_prefix?: string | null; reading_id?: string | null };
 export type CollectionRule = { scope: RuleScope; policy: CollectionPolicy | null; include_future_readings: boolean; admitted_before: number };
 export type RuleEdit =
   | { scope: RuleScope; operation: "set"; policy: CollectionPolicy; include_future_readings?: boolean }

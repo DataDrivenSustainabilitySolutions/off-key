@@ -13,7 +13,7 @@ vi.mock("@/lib/charger-api", async original => ({ ...await original<typeof impor
 vi.mock("@/lib/api-client", async original => ({ ...await original<typeof import("@/lib/api-client")>(), apiUtils: { get: vi.fn() } }));
 const connection = mqttConnection({ id: "broker", label: "Broker", host: "example.test" });
 const inputs: MonitoringInput[] = ["temperature", "humidity"].map(id => ({
-  stream: { id, label: id, connection_id: "broker", topic: id, category: "Other", value_type: "number" },
+  stream: { id, label: id, broker_id: "broker", topic: id, category: "Other", value_type: "number" },
   binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } }, path: "Station",
 }));
 const timestamp = "2026-10-21T12:00:00.000Z";

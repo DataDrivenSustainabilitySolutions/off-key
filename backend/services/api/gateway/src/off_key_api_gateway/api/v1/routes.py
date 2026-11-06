@@ -5,6 +5,7 @@ from ..access import current_member, writes_require
 from . import (
     anomalies,
     auth,
+    catalogue,
     charger,
     dojo,
     evidence,
@@ -13,7 +14,6 @@ from . import (
     monitors,
     pipelines,
     roles,
-    system,
     telemetry,
 )
 
@@ -60,7 +60,17 @@ protected.include_router(
 protected.include_router(
     anomalies.query_router, prefix="/anomalies", tags=["anomalies"]
 )
-protected.include_router(system.router, prefix="/system", tags=["system"])
+protected.include_router(catalogue.router, prefix="/catalogue", tags=["catalogue"])
+protected.include_router(
+    catalogue.brokers_router, prefix="/brokers", tags=["catalogue"]
+)
+protected.include_router(
+    catalogue.recording_router, prefix="/recording", tags=["recording"]
+)
+protected.include_router(
+    catalogue.storage_router, prefix="/storage", tags=["recording"]
+)
+protected.include_router(catalogue.live_router, prefix="/live", tags=["live"])
 
 protected.include_router(members.me_router, prefix="/me", tags=["members"])
 protected.include_router(members.router, prefix="/members", tags=["members"])

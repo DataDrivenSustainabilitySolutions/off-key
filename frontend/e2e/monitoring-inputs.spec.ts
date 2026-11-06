@@ -25,11 +25,11 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };
     const readSystem = async (): Promise<SystemSnapshot> => {
-      const response = await api.get("/api/v1/system", { headers });
+      const response = await api.get("/api/v1/catalogue", { headers });
       expect(response.ok(), await response.text()).toBeTruthy();
       return response.json();
     };
-    existingConnections = new Set((await readSystem()).document.connections.map(connection => connection.id));
+    existingConnections = new Set((await readSystem()).document.brokers.map(connection => connection.id));
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `monitoring-inputs-${runId}` });
     // Store this value before the collector subscribes, so it arrives as a retained snapshot.
     await publisher.publishAsync(`tests/${quietId}/temperature`, "25", { qos: 1, retain: true });
@@ -38,9 +38,9 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     created.push(quietId);
     await addTestCharger(api, token!, quietId, quietId, ["temperature"]);
     const initial = await readSystem();
-    const activeReading = initial.document.streams.find(stream => stream.device_id === activeId && stream.label === "temperature")!;
-    const quietReading = initial.document.streams.find(stream => stream.device_id === quietId)!;
-    const broker = initial.document.connections.find(connection => connection.id === activeReading.connection_id)!;
+    const activeReading = initial.document.readings.find(stream => stream.device_id === activeId && stream.label === "temperature")!;
+    const quietReading = initial.document.readings.find(stream => stream.device_id === quietId)!;
+    const broker = initial.document.brokers.find(connection => connection.id === activeReading.broker_id)!;
     await publisher.publishAsync(activeReading.topic, "26", { qos: 1 });
     await expect.poll(async () => (await readSystem()).runtime.ingress?.readings?.[activeReading.id]?.fresh_received_at).toBeTruthy();
     expect((await readSystem()).runtime.ingress?.readings?.[quietReading.id]).toBeUndefined();
@@ -75,16 +75,16 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     }
     if (token && created.length) {
       const headers = { Authorization: `Bearer ${token}` };
-      const response = await api.get("/api/v1/system", { headers });
+      const response = await api.get("/api/v1/catalogue", { headers });
       expect(response.ok(), await response.text()).toBeTruthy();
       const snapshot = await response.json() as SystemSnapshot;
       const document = snapshot.document;
-      document.streams = document.streams.filter(stream => !created.includes(stream.device_id ?? ""));
+      document.readings = document.readings.filter(stream => !created.includes(stream.device_id ?? ""));
       document.devices = document.devices.filter(device => !created.includes(device.id));
-      document.connections = document.connections.filter(connection => connection.id !== "test-broker" || connection.host !== "source-broker" || existingConnections?.has(connection.id)
-        || document.streams.some(stream => stream.connection_id === connection.id)
-        || document.devices.some(device => device.connection_id === connection.id));
-      const saved = await api.put("/api/v1/system", { headers, data: { expected_revision: snapshot.revision, document } });
+      document.brokers = document.brokers.filter(connection => connection.id !== "test-broker" || connection.host !== "source-broker" || existingConnections?.has(connection.id)
+        || document.readings.some(stream => stream.broker_id === connection.id)
+        || document.devices.some(device => device.broker_id === connection.id));
+      const saved = await api.put("/api/v1/catalogue", { headers, data: { expected_revision: snapshot.revision, document } });
       expect(saved.ok(), await saved.text()).toBeTruthy();
     }
     await api.dispose();

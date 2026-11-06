@@ -133,7 +133,7 @@ async def import_dojo_history(
 ):
     """Create a dataset by copying recorded readings for one time window.
 
-    `reading_ids` are catalogue stream ids from `GET /v1/system`. Each becomes
+    `reading_ids` are reading ids from `GET /v1/catalogue`. Each becomes
     one series named after the reading. The copy is frozen: later retention
     or catalogue edits do not change it.
     """

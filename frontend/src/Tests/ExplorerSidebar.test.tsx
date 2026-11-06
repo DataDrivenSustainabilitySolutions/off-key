@@ -80,9 +80,9 @@ afterEach(() => {
 function system(readings = 3): SystemDocument {
   return {
     ...createEmptySystem("Test catalogue"),
-    connections: [mqttConnection({ id: "broker", label: "North laboratory", host: "private.example.invalid" })],
-    streams: Array.from({ length: readings }, (_, position) => ({
-      id: `value-${position}`, label: `Value ${position}`, connection_id: "broker", topic: `site/room/value${position}`,
+    brokers: [mqttConnection({ id: "broker", label: "North laboratory", host: "private.example.invalid" })],
+    readings: Array.from({ length: readings }, (_, position) => ({
+      id: `value-${position}`, label: `Value ${position}`, broker_id: "broker", topic: `site/room/value${position}`,
       value_type: "number", category: "Environment",
     })),
     groups: [{ id: "catalogue-watch", label: "Building A", member_ids: ["broker"] }],
@@ -115,11 +115,11 @@ describe("explorer sidebar and catalogue list", () => {
   it("observes fresh preview traffic and clears the circle when its listener leaves", async () => {
     const document = system();
     let batch: LiveBatch = { mode: "live", revision: 1, sequence: 0, reset: true,
-      connections: [{ connection_id: "broker", state: "connected", message: null, received_messages: 1, fresh_count: 0, retained_count: 1, fresh_received_at: null, rate_hz: 0 }],
-      streams: [{ stream_id: "value-0", value: 20, received_at: new Date().toISOString(), is_retained: true, received_count: 1, fresh_count: 0, retained_count: 1,
+      brokers: [{ broker_id: "broker", state: "connected", message: null, received_messages: 1, fresh_count: 0, retained_count: 1, fresh_received_at: null, rate_hz: 0 }],
+      readings: [{ reading_id: "value-0", value: 20, received_at: new Date().toISOString(), is_retained: true, received_count: 1, fresh_count: 0, retained_count: 1,
         decode_errors: 0, fresh_received_at: null, rate_hz: 0, sequence: 0 }], samples: [],
       limits: { max_samples: 8192, history_seconds: 7200, sample_interval_seconds: 1, lease_seconds: 45 } };
-    const lease = () => Promise.resolve({ lease_id: "preview", expires_in_seconds: 45, telemetry: batch });
+    const lease = () => Promise.resolve({ view_id: "preview", expires_in_seconds: 45, measurements: batch });
     const telemetry = new SystemLiveTelemetry({ create: lease, renew: lease, read: async () => batch, release: async () => {} });
     telemetry.configure(document, 1, "test-member", true);
     telemetry.setScope(["value-0"]);
@@ -130,7 +130,7 @@ describe("explorer sidebar and catalogue list", () => {
       const row = await screen.findByRole("button", { name: "value0, preview" });
       expect(row.querySelector("svg")!.getAttribute("fill")).toBe("none");
       expect(row.querySelector(".ex-reading-activity")?.getAttribute("title")).toBe("Listening, waiting for fresh data");
-      batch = { ...batch, sequence: 1, reset: false, streams: [{ ...batch.streams[0]!, value: 21, is_retained: false, fresh_count: 1,
+      batch = { ...batch, sequence: 1, reset: false, readings: [{ ...batch.readings[0]!, value: 21, is_retained: false, fresh_count: 1,
         fresh_received_at: new Date().toISOString(), sequence: 1 }] };
       act(() => telemetry.accept(batch, true));
       expect(row.querySelector("svg")!.getAttribute("fill")).toBe("currentColor");
@@ -152,7 +152,7 @@ describe("explorer sidebar and catalogue list", () => {
     const options = listOptions();
     const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 1, collection: { status: "applied" },
       ingress: { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: { "value-0": { fresh_received_at: new Date().toISOString() } } },
-      bindings: { "value-0": { entity_id: "room", connection_id: "broker", telemetry_key: "value", accepted_topic: "telemetry/room/value", policy: { mode: "sample", interval_seconds: 3600 } } } };
+      bindings: { "value-0": { entity_id: "room", broker_id: "broker", telemetry_key: "value", accepted_topic: "telemetry/room/value", policy: { mode: "sample", interval_seconds: 3600 } } } };
     const source = { telemetry: new SystemLiveTelemetry(), runtime, liveStreamIds: [] };
     const view = render(<ExplorerList {...options} selectedKey={options.rows[0]!.node.key} activity={source} />);
     const row = await screen.findByRole("button", { name: "value0, preview" });

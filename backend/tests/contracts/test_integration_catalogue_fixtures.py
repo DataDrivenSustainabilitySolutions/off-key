@@ -1,4 +1,4 @@
-"""Cleanup respects asynchronous input ownership and fresh system revisions."""
+"""Cleanup respects asynchronous input ownership and fresh catalogue revisions."""
 
 import json
 
@@ -24,7 +24,7 @@ def test_cleanup_refreshes_revision_and_preserves_unrelated_changes(monkeypatch)
                     "revision": len(writes) + 1,
                     "document": {
                         key: [{"id": "owned"}, {"id": f"other-{len(writes)}"}]
-                        for key in ("streams", "devices", "connections")
+                        for key in ("readings", "devices", "brokers")
                     },
                 },
             )
@@ -58,7 +58,7 @@ def test_cleanup_reports_timeout_and_nonconflict_failures(status, monkeypatch):
             200 if request.method == "GET" else status,
             json={
                 "revision": 1,
-                "document": {key: [] for key in ("streams", "devices", "connections")},
+                "document": {key: [] for key in ("readings", "devices", "brokers")},
             },
         )
 

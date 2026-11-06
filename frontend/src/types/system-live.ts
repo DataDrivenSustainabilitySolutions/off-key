@@ -14,7 +14,7 @@ export interface LiveTelemetryStore {
 
 export type LiveValue = number | boolean | string | null;
 export type LiveConnection = {
-  connection_id: string;
+  broker_id: string;
   state:
     | "blocked"
     | "connecting"
@@ -30,7 +30,7 @@ export type LiveConnection = {
   rate_hz: number;
 };
 export type LiveStream = {
-  stream_id: string;
+  reading_id: string;
   value: LiveValue;
   received_at: string | null;
   is_retained: boolean;
@@ -46,7 +46,7 @@ export type LiveStream = {
 };
 export type LiveSample = {
   sequence: number;
-  stream_id: string;
+  reading_id: string;
   received_at: string;
   value: Exclude<LiveValue, null>;
   is_retained: boolean;
@@ -57,8 +57,8 @@ export type LiveBatch = {
   revision: number;
   sequence: number;
   reset: boolean;
-  connections: LiveConnection[];
-  streams: LiveStream[];
+  brokers: LiveConnection[];
+  readings: LiveStream[];
   samples: LiveSample[];
   limits: {
     max_samples: number;
@@ -69,9 +69,9 @@ export type LiveBatch = {
   };
 };
 export type LiveLease = {
-  lease_id: string;
+  view_id: string;
   expires_in_seconds: number;
-  telemetry: LiveBatch;
+  measurements: LiveBatch;
 };
 export type LiveStatus = {
   dataSource?: "broker" | "simulated";

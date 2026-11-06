@@ -18,8 +18,9 @@ query_router = APIRouter(route_class=TacticErrorRoute)
 async def query_anomalies(query: AnomalyQuery):
     """Alarms of catalogue readings, newest first, with catalogue names.
 
-    Scope by `stream_ids` from `GET /v1/system` and narrow by one recorded
-    `reading`, `service_id`, `since`/`until` and `max_p_value`. `summary` and
+    Scope by `stream_ids` (reading ids from `GET /v1/catalogue`) and narrow by
+    one recorded `reading`, `service_id`, `since`/`until` and `max_p_value`.
+    `summary` and
     `readings` describe every match, not just this page; pass `next` as
     `before` for older alarms. Reporting in the web app uses this query.
     """

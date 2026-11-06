@@ -42,12 +42,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
     // Start from a generic catalogue with every fixture reading Off.
     await addTestCharger(api, token!, entityId, localId, keys, { mode: "off", interval_seconds: 10 });
     const readSystem = async (): Promise<SystemSnapshot> => {
-      const response = await api.get("/api/v1/system", { headers });
+      const response = await api.get("/api/v1/catalogue", { headers });
       expect(response.ok(), await response.text()).toBeTruthy();
       return response.json();
     };
     const initial = await readSystem();
-    const stream = initial.document.streams.find(item => item.topic === `tests/${localId}/temperature`)!;
+    const stream = initial.document.readings.find(item => item.topic === `tests/${localId}/temperature`)!;
     expect(initial.runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -73,7 +73,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(collection.getByText("Every 1 s", { exact: true })).toBeVisible({ timeout: 120_000 });
     const applied = await readSystem();
     expect(keys.map(key => {
-      const reading = applied.document.streams.find(item => item.topic === `tests/${localId}/${key}`)!;
+      const reading = applied.document.readings.find(item => item.topic === `tests/${localId}/${key}`)!;
       return applied.runtime.bindings?.[reading.id]?.policy.mode;
     })).toEqual(["sample", "off", "off"]);
     const binding = applied.runtime.bindings![stream.id]!;
@@ -81,7 +81,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(binding.telemetry_key).toMatch(/^reading-[a-f0-9]{64}$/);
     await expectNoHorizontalScroll(page);
     await expect(page.getByRole("button", { name: "View live", exact: true })).toHaveCount(0);
-    await waitForCollectionReady(api, token!, applied, stream.connection_id);
+    await waitForCollectionReady(api, token!, applied, stream.broker_id);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "25", { qos: 1 });
     await expect.poll(async () => {
@@ -90,7 +90,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     }).toEqual([binding.telemetry_key]);
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "26", { qos: 1 });
     await expect.poll(async () => {
-      const response = await api.post("/api/v1/system/collection/status", { headers, data: { stream_ids: [stream.id] } });
+      const response = await api.post("/api/v1/recording/status", { headers, data: { reading_ids: [stream.id] } });
       const status = await response.json();
       return status.runtime.latest_readings[stream.id]?.value;
     }).toEqual(26);

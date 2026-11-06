@@ -87,7 +87,7 @@ async function acceptInvitation(page: Page, link: string, email: string) {
 test("removes a disabled invitation after confirmation and retains shared data", async ({ page }, testInfo) => {
   const fixture = await accountFixture(page);
   try {
-    const catalogue = await page.request.get("/api/v1/system", { headers: fixture.headers });
+    const catalogue = await page.request.get("/api/v1/catalogue", { headers: fixture.headers });
     expect(catalogue.ok()).toBe(true);
     const original = await catalogue.json();
     const pending = await fixture.invite();
@@ -140,7 +140,7 @@ test("removes a disabled invitation after confirmation and retains shared data",
     await page.reload();
     await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible();
     await expect(fixture.row).toHaveCount(0);
-    const retained = await page.request.get("/api/v1/system", { headers: fixture.headers });
+    const retained = await page.request.get("/api/v1/catalogue", { headers: fixture.headers });
     expect(retained.ok()).toBe(true);
     expect(await retained.json()).toMatchObject({ revision: original.revision, document: original.document });
   } finally {

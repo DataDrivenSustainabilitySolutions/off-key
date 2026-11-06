@@ -15,7 +15,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "c3f16c4e256a5d22f0867007dd92235389cc15a7"
+COMPATIBLE_REVISION = "aedc1d8f0ae42d066446677515fa3b70c5671cc5"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

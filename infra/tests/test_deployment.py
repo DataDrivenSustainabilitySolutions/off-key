@@ -835,7 +835,20 @@ class DeploymentTests(unittest.TestCase):
         controller = config["services"]["tactic"]
         self.assertIn("emqx-network", controller["networks"])
         self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
-        self.assertIn("app-network", config["services"]["broker-route"]["networks"])
+        # Only TACTIC shares the unauthenticated SOCKS proxy's network.
+        self.assertEqual(
+            set(config["services"]["broker-route"]["networks"]),
+            {"broker-route-network"},
+        )
+        self.assertEqual(
+            {
+                name
+                for name, service in config["services"].items()
+                if "broker-route-network" in service.get("networks", {})
+            },
+            {"broker-route", "tactic"},
+        )
+        self.assertNotIn("cap_add", config["services"]["broker-route"])
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
         self.assertEqual(
             config["services"]["broker-route"]["image"],

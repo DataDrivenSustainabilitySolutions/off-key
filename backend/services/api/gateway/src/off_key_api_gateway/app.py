@@ -100,6 +100,12 @@ OPENAPI_TAGS = [
         "description": "Entities, readings and monitors the signed-in member starred.",
     },
     {
+        "name": "dojo",
+        "description": "The Dojo: datasets uploaded as CSV or copied from "
+        "recorded readings, for comparing detection approaches offline without "
+        "touching live monitoring. Administrators only for now.",
+    },
+    {
         "name": "members",
         "description": "The signed-in member and their permissions, and with "
         "`manage_members` the organization's members and invitations.",

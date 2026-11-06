@@ -251,7 +251,13 @@ class DeploymentTests(unittest.TestCase):
         allowed = {
             "JWT_SECRET": {"api", "tactic"},
             "INTERNAL_API_SECRET": {"api", "tactic"},
-            "POSTGRES_PASSWORD": {"postgres", "tactic", "db-sync", "mqtt-proxy"},
+            "POSTGRES_PASSWORD": {
+                "postgres",
+                "tactic",
+                "db-sync",
+                "mqtt-proxy",
+                "dojo-worker",
+            },
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
@@ -855,6 +861,7 @@ class DeploymentTests(unittest.TestCase):
             "api": [backend / "services/api/gateway/src"],
             "tactic": [backend / "services/middleware/tactic/src"],
             "db-sync": [backend / "services/db/sync/src"],
+            "dojo-worker": [backend / "services/mqtt/radar/src"],
             # The deploy readiness probe runs inside the proxy container.
             "mqtt-proxy": [
                 backend / "services/mqtt/proxy/src",

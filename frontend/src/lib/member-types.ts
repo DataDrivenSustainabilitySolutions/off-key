@@ -1,4 +1,4 @@
-export type Permission = "manage_sources" | "manage_monitors" | "manage_alarms" | "manage_members";
+export type Permission = "manage_sources" | "manage_monitors" | "manage_alarms" | "use_dojo" | "manage_members";
 
 export interface Member {
   id: number;

@@ -1,7 +1,7 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the member roles head that carries migration 021, with
-the reviewed Aberrant 1.4.0 numerics. It is not an eligible production release
+The reference is the member roles head that carries migrations 018 to 021,
+with the reviewed Aberrant 1.4.0 numerics. It is not an eligible production release
 and proves no pre-feature compatibility.
 """
 

@@ -19,6 +19,8 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `db-sync`: schema initialization and readiness API.
 - `mqtt-proxy`: selected collection, sampling and accepted MQTT publishing.
 - `mqtt-radar`: anomaly workload image; TACTIC launches one workload per monitor.
+- `dojo-worker`: replays Dojo runs from the RADAR image; each replica runs one
+  run at a time.
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.
@@ -36,6 +38,7 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 | MQTT Proxy | Selected admission, sampling and batching | Source-scoped raw EMQX topics | Numeric history, latest state, accepted EMQX topics | Catalog, internal EMQX and database |
 | EMQX | Internal monitoring message bus | Bridge publishers | MQTT streams | Broker health and authentication settings |
 | MQTT RADAR | Online anomaly detection | EMQX topics and model configuration | Monitoring evidence and anomalies | Topic stream, model initialization, database |
+| Dojo worker | Offline replay of queued Dojo runs | Dojo datasets and run configuration | Run status, progress and results | Database |
 | TimescaleDB | Relational and time-series persistence | Write-capable services | Query results | Storage and schema readiness |
 
 ## End-to-end flows

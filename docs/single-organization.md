@@ -9,7 +9,8 @@ Every active member can read the shared workspace and maintain their own
 favorites. A role decides what a member can change. It bundles permissions:
 **Manage sources** (catalogue, brokers, recording and live views), **Manage
 monitors** (pipelines and monitors), **Manage alarms** (recording and deleting
-alarms) and **Manage members** (members and roles). Two roles are built in:
+alarms), **Use the Dojo** (offline datasets and runs) and **Manage members**
+(members and roles). Two roles are built in:
 Administrator always holds every permission, including ones a later release
 adds, and cannot be changed; Member holds none until it is edited. **Account →
 Roles** creates, edits and deletes further roles; a role cannot be deleted while

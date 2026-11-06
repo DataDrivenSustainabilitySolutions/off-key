@@ -4,6 +4,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_sources: "Manage sources",
   manage_monitors: "Manage monitors",
   manage_alarms: "Manage alarms",
+  use_dojo: "Use the Dojo",
   manage_members: "Manage members",
 };
 

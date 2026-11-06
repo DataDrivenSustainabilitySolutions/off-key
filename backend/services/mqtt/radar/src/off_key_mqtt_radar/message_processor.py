@@ -9,6 +9,7 @@ Handles MQTT message processing pipeline:
 """
 
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -63,6 +64,8 @@ class MessageProcessor:
         observation_max_age_seconds: float = 30.0,
         observation_future_tolerance_seconds: float = 5.0,
         sensor_freshness_seconds: float = 30.0,
+        clock: Callable[[], float] | None = None,
+        monotonic: Callable[[], float] | None = None,
     ):
         """
         Initialize message processor.
@@ -75,6 +78,8 @@ class MessageProcessor:
             required_sensors: Set of required sensors for alignment
             sensor_key_strategy: Feature key extraction strategy for MQTT hierarchy.
                 Allowed values: "full_hierarchy", "top_level", "leaf".
+            clock, monotonic: Clocks for the single-input cache; see
+                SensorStateCache.
         """
         self.detector = detector
         self.feature_validator = feature_validator
@@ -88,6 +93,8 @@ class MessageProcessor:
             max_sensor_age_seconds=sensor_freshness_seconds,
             observation_max_age_seconds=observation_max_age_seconds,
             observation_future_tolerance_seconds=observation_future_tolerance_seconds,
+            clock=clock,
+            monotonic=monotonic,
         )
         self.sensor_key_strategy = normalize_sensor_key_strategy(sensor_key_strategy)
 

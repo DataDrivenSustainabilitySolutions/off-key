@@ -716,6 +716,16 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         """Publish completed background training without waiting for new input."""
         self._complete_training_if_ready()
 
+    def wait_for_background(self) -> None:
+        """Block until background fitting ends; the next observation publishes it.
+
+        A Dojo replay calls this so no observation is discarded while the model
+        fits, which keeps offline runs reproducible.
+        """
+        future = self._training_future
+        if future is not None:
+            concurrent.futures.wait([future])
+
     def _compute_p_value(self, vector: list[float]) -> float:
         p_values = np.asarray(
             self.conformal_detector.compute_p_values(np.asarray([vector], dtype=float)),

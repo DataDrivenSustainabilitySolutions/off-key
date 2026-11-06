@@ -23,6 +23,8 @@ EXPECTED_MIGRATIONS = (
     "016_pipeline_run_events.sql",
     "017_detector_inputs.sql",
     "018_member_favorites.sql",
+    "019_dojo_datasets.sql",
+    "020_dojo_runs.sql",
     "021_member_roles.sql",
 )
 
@@ -63,7 +65,7 @@ def remove_pipeline_schema(connection):
 
 
 def restore_retired_schema(connection):
-    """Recreate schema every pre-014 database carries and migrations 014-020 drop."""
+    """Recreate schema every pre-014 database carries and migrations 014-021 drop."""
     connection.execute(text("CREATE TABLE model_registry (id serial PRIMARY KEY)"))
     restore_entity_favorites(connection)
     restore_role_enum(connection)

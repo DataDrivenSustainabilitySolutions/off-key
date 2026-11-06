@@ -73,6 +73,8 @@ class Tactic:
         json_data: dict | None = None,
         params: dict | None = None,
         headers: dict[str, str] | None = None,
+        content: bytes | None = None,
+        content_type: str | None = None,
     ) -> Any:
         """
         Make an HTTP request to the TACTIC service.
@@ -82,6 +84,8 @@ class Tactic:
             endpoint: API endpoint path
             json_data: JSON payload for POST requests
             params: Query parameters
+            content: Raw request body, sent instead of JSON (an upload)
+            content_type: Media type of ``content``
 
         Returns:
             Dict: Response JSON data
@@ -101,10 +105,12 @@ class Tactic:
                     method=method,
                     url=url,
                     json=json_data,
+                    data=content,
                     params=normalized_params,
                     headers={
                         **correlation_headers(),
                         **(headers or {}),
+                        **({"Content-Type": content_type} if content_type else {}),
                         "X-Off-Key-Service-Key": (
                             get_service_auth_settings().INTERNAL_API_SECRET.get_secret_value()
                         ),

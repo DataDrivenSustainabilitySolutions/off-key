@@ -28,6 +28,11 @@ from ..auth.permissions import (
     role_permissions,
 )
 from .base import Base
+from .dojo import DojoDataset as DojoDataset
+from .dojo import DojoPoint as DojoPoint
+from .dojo import DojoRun as DojoRun
+from .dojo import DojoRunResult as DojoRunResult
+from .dojo import DojoSeries as DojoSeries
 from .pipelines import (
     MonitoringPipeline as MonitoringPipeline,
 )

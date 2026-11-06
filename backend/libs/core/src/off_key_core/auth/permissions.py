@@ -14,6 +14,7 @@ class Permission(StrEnum):
     manage_sources = "manage_sources"
     manage_monitors = "manage_monitors"
     manage_alarms = "manage_alarms"
+    use_dojo = "use_dojo"
     manage_members = "manage_members"
 
 
@@ -25,6 +26,9 @@ PERMISSION_DESCRIPTIONS = {
         "Design pipelines, start, rename and stop monitors, and arrange their layout."
     ),
     Permission.manage_alarms: "Record and delete alarms.",
+    Permission.use_dojo: (
+        "Import datasets into the Dojo and replay them through detectors offline."
+    ),
     Permission.manage_members: (
         "Invite, change and remove members, and define roles. Holders also hold "
         "the keys to every other permission, since they can assign any role."

@@ -714,3 +714,65 @@ def test_maintenance_docker_socket_url_has_no_tcp_port():
         DockerConfig(api_url="unix:///var/run/docker.sock").base_url
         == "unix:///var/run/docker.sock"
     )
+
+
+@pytest.mark.asyncio
+async def test_abort_reopens_writes_and_reports_monitors_left_stopped(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
+        apply_migrations(connection)
+    engine = create_async_engine(
+        disposable_database.url.set(drivername="postgresql+asyncpg")
+    )
+    revision = "b" * 40
+    try:
+        async with AsyncSession(engine) as session:
+            session.add(
+                PipelineRun(
+                    id="replacement-run",
+                    service_id="replacement",
+                    launch_config={},
+                    status="starting",
+                )
+            )
+            session.add(
+                DeploymentMaintenance(
+                    id=1,
+                    revision=revision,
+                    phase="restarted",
+                    monitors=[
+                        {"previous_id": "kept", "replacement_id": "replacement"},
+                        {
+                            "previous_id": "retired",
+                            "replacement_id": None,
+                            "config": None,
+                            "stopped": True,
+                        },
+                    ],
+                    updated_at=datetime.now(UTC),
+                )
+            )
+            await session.commit()
+            with pytest.raises(DeploymentInProgressError):
+                await require_application_writes(session)
+            await session.rollback()
+            with pytest.raises(ValueError, match="No matching"):
+                await deployment.abort(session, "c" * 40)
+            await session.rollback()
+
+            result = await deployment.abort(session, revision)
+
+            assert result == {
+                "phase": "complete",
+                "aborted": True,
+                "aborted_phase": "restarted",
+                "restarted": ["replacement"],
+                "not_restarted": ["retired"],
+            }
+            await require_application_writes(session)
+            run = await session.get(PipelineRun, "replacement-run")
+            assert run.status == "running"
+            assert (await deployment.abort(session, revision))["aborted"] is False
+    finally:
+        await engine.dispose()

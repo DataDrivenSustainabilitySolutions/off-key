@@ -378,6 +378,48 @@ async def finish(session, revision: str) -> dict:
     return {"phase": "complete"}
 
 
+async def abort(session, revision: str) -> dict:
+    """Reopen catalog and monitor changes without verifying the restarted monitors.
+
+    For a release that cannot finish: monitors it restarted keep running as they
+    are and their runs count as running; monitors it stopped and did not restart
+    stay stopped. Their saved configurations are reported so they can be started
+    again from the workbench.
+    """
+    await lock_collection_configuration(session)
+    operation = await session.get(DeploymentMaintenance, 1)
+    if operation is None or operation.revision != revision:
+        raise ValueError("No matching deployment maintenance operation")
+    if operation.phase == "complete":
+        return {"phase": "complete", "aborted": False}
+    restarted, not_restarted = [], []
+    for monitor in operation.monitors:
+        replacement = monitor.get("replacement_id")
+        if replacement:
+            restarted.append(replacement)
+            run = await session.scalar(
+                select(PipelineRun)
+                .where(PipelineRun.service_id == replacement)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if run is not None and run.ended_at is None and run.status != "failed":
+                run.status = "running"
+        elif monitor.get("stopped") or operation.phase in {"stopped", "restarted"}:
+            not_restarted.append(monitor["previous_id"])
+    aborted_phase = operation.phase
+    operation.phase = "complete"
+    operation.updated_at = datetime.now(UTC)
+    await session.commit()
+    return {
+        "phase": "complete",
+        "aborted": True,
+        "aborted_phase": aborted_phase,
+        "restarted": restarted,
+        "not_restarted": not_restarted,
+    }
+
+
 async def run(action: str, revision: str) -> dict:
     sessions = get_async_session_local()
     async with sessions() as session:
@@ -399,6 +441,8 @@ async def run(action: str, revision: str) -> dict:
                     await asyncio.sleep(5)
         if action == "finish":
             return await finish(session, revision)
+        if action == "abort":
+            return await abort(session, revision)
         if action == "status":
             operation = await session.get(DeploymentMaintenance, 1)
             return {
@@ -417,7 +461,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "action",
-        choices=["capture", "reserve", "begin", "resume", "verify", "finish", "status"],
+        choices=[
+            "capture",
+            "reserve",
+            "begin",
+            "resume",
+            "verify",
+            "finish",
+            "abort",
+            "status",
+        ],
     )
     parser.add_argument("revision")
     args = parser.parse_args()

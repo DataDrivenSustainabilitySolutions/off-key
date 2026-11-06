@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatDateTime } from "@/lib/format-time";
 import { InlineName } from "@/components/InlineName";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 import { MonitoringHistory } from "./MonitoringHistory";
 import { chooseTab as withTab } from "@/domain/monitoring/monitoringView";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
@@ -82,13 +83,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
       <div><dt>Inputs</dt><dd>{service.mqtt_topics.length} {service.mqtt_topics.length === 1 ? "reading" : "readings"}</dd></div>
       <div><dt>Processed</dt><dd>{service.operational_status.processed_message_count.toLocaleString()}</dd></div>
       <div><dt>Last update</dt><dd><RelativeTime value={service.operational_status.updated_at} fallback="Awaiting update" /></dd></div></dl>
-    <div className="mn-tabs" role="tablist" aria-label="Service details">{tabs.map((item, index) => <button key={item.id} id={`monitor-tab-${item.id}`} role="tab"
-      aria-selected={tab === item.id} aria-controls={`monitor-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1} onClick={() => chooseTab(item.id)} onKeyDown={event => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-        event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-        chooseTab(tabs[next]!.id); window.document.getElementById(`monitor-tab-${tabs[next]!.id}`)?.focus();
-      }}>{item.label}</button>)}</div>
-    <div className="mn-detail-panel" role="tabpanel" id={`monitor-panel-${tab}`} aria-labelledby={`monitor-tab-${tab}`}>
+    <WorkspaceTabs name="Service details" idPrefix="monitor" className="mn-tabs" tabs={tabs} selected={tab} onSelect={chooseTab} />
+    <div className="mn-detail-panel" role="tabpanel" id="monitor-panel" aria-labelledby={`monitor-tab-${tab}`} tabIndex={0}>
       {tab === "pipeline" && <Suspense fallback={<p role="status">Opening pipeline…</p>}><PipelineRun key={service.id} serviceId={service.id} canEdit={canEdit} state={pipelineState} /></Suspense>}
       {tab === "overview" && <>
         {service.operational_status.error && <p className="ex-preview-error" role="alert">{service.operational_status.error}</p>}

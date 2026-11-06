@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
@@ -11,8 +11,8 @@ import { strategyLabel, suggestBindings } from "./model";
 type Choice = { key: string; name: string; group: "template" | "design"; definition?: PipelineDefinition };
 
 /** Pick a design from the templates or the library, bind its inputs to series and queue a run. */
-export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
-  open: boolean; dataset: DatasetView; onOpenChange: (open: boolean) => void; onCreated: (run: RunView) => void;
+export function RunCreateDialog({ open, trigger, dataset, onOpenChange, onCreated }: {
+  open: boolean; trigger: ReactElement; dataset: DatasetView; onOpenChange: (open: boolean) => void; onCreated: (run: RunView) => void;
 }) {
   const [choices, setChoices] = useState<Choice[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -83,6 +83,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   const templates = choices?.filter(item => item.group === "template") ?? [];
   const designs = choices?.filter(item => item.group === "design") ?? [];
   return <Dialog.Root open={open} onOpenChange={next => { if (!busy) close(next); }}>
+    <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
     <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
       <Dialog.Content className="ex-dialog dj-dialog">
         <Dialog.Title>New run</Dialog.Title>
@@ -91,7 +92,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
         <form onSubmit={event => { event.preventDefault(); if (bound && !duplicates && alignmentValid && !busy) void submit(); }}>
           {loadError && <p className="dj-error" role="alert">{loadError}</p>}
           <label className="dj-field">Design
-            <select value={key} disabled={busy || !choices} onChange={event => void choose(event.target.value)}>
+            <select aria-label="Design" value={key} disabled={busy || !choices} onChange={event => void choose(event.target.value)}>
               <option value="" disabled>{choices ? "Choose a template or design" : "Loading designs…"}</option>
               {templates.length > 0 && <optgroup label="Templates">{templates.map(item =>
                 <option key={item.key} value={item.key}>{item.name}</option>)}</optgroup>}

@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, PanelLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -8,14 +8,18 @@ type Props = {
   onClick: () => void;
   ref?: Ref<HTMLButtonElement>;
   className?: string;
-  hidden?: boolean;
+  placement?: "edge" | "header";
 };
 
-export function CatalogueToggle({ open, onClick, ref, className, hidden }: Props) {
+export function CatalogueToggle({ open, onClick, ref, className, placement = "edge" }: Props) {
   const label = open ? "Hide catalogue" : "Show catalogue";
+  if (placement === "header") return <button ref={ref} type="button" className="catalogue-header-toggle"
+    aria-label={label} aria-expanded={open} aria-controls="system-explorer" onClick={onClick}>
+    <PanelLeft size={16} aria-hidden="true" />Catalogue
+  </button>;
   return <Tooltip>
     <TooltipTrigger asChild>
-      <button ref={ref} type="button" className={cn("catalogue-edge-toggle", className)} hidden={hidden}
+      <button ref={ref} type="button" className={cn("catalogue-edge-toggle", className)}
         aria-label={label} aria-expanded={open} aria-controls="system-explorer" onClick={onClick}>
         <span className="catalogue-edge-face"><ChevronLeft size={14} aria-hidden="true" /></span>
       </button>

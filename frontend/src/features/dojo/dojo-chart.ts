@@ -49,22 +49,24 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
   const units = [...new Set(series.map(item => item.unit ?? ""))];
   const twoAxes = units.length > 1;
   const longest = Math.max(0, ...alarms.map(item => item.name.length));
-  const left = alarms.length ? Math.min(180, Math.max(56, 16 + longest * 7)) : 56;
+  const left = alarms.length ? Math.min(134, Math.max(56, 16 + longest * 7)) : 56;
   const right = twoAxes ? 56 : 24;
   const alarmHeight = alarms.length ? alarms.length * ALARM_ROW + 18 : 0;
-  const axisLabel = { formatter: timeAxisLabelFormatter(timeZone, locale, span), hideOverlap: true,
+  const labelStyle = { color: colors.mutedForeground, fontSize: 12 };
+  const axisLabel = { ...labelStyle, formatter: timeAxisLabelFormatter(timeZone, locale, span), hideOverlap: true,
     rich: { day: { fontWeight: 600 } } };
   const bounds = range ? { min: range[0], max: range[1] } : {};
   const timeAxis = (id: string, gridIndex: number, labelled: boolean) => ({ id, type: "time" as const, gridIndex, ...bounds,
     axisLabel: labelled ? axisLabel : { show: false }, axisLine: { lineStyle: { color: colors.border } } });
   const xAxis = [timeAxis("time", 0, !alarms.length)];
   const valueAxis = (index: number) => ({ id: `value:${index}`, type: "value", gridIndex: 0, scale: true,
-    position: index === 1 ? "right" : "left",
+    position: index === 1 ? "right" : "left", axisLabel: labelStyle,
     splitLine: { show: index === 0, lineStyle: { color: colors.border } } });
   const yAxis: object[] = [valueAxis(0), ...(twoAxes ? [valueAxis(1)] : [])];
   if (alarms.length) {
     xAxis.push(timeAxis("alarm-time", 1, true));
     yAxis.push({ id: "alarm-run", type: "category", gridIndex: 1, inverse: true, data: alarms.map(item => item.name),
+      axisLabel: { ...labelStyle, width: left - 14, overflow: "truncate" },
       axisTick: { show: false }, axisLine: { show: false }, splitLine: { show: false } });
   }
   const lines = series.map((item, index) => ({
@@ -100,12 +102,14 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
   return {
     animation: false,
     grid,
-    legend: { type: "scroll", top: 0, left, right, textStyle: { color: colors.mutedForeground } },
-    tooltip: { trigger: "axis", axisPointer: { type: "line" } },
+    legend: { type: "scroll", top: 0, left: 4, right: 4, data: lines.map(line => line.name),
+      textStyle: labelStyle, pageIconColor: colors.foreground, pageIconInactiveColor: colors.border, pageTextStyle: labelStyle },
+    tooltip: { trigger: "axis", axisPointer: { type: "line" },
+      backgroundColor: colors.popover, borderColor: colors.border, textStyle: { color: colors.popoverForeground } },
     xAxis,
     yAxis,
     dataZoom: [
-      { type: "inside", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none" },
+      { type: "inside", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseWheel: false },
       { type: "slider", xAxisIndex: alarms.length ? [0, 1] : [0], filterMode: "none", bottom: 12, height: 22, left, right },
     ],
     series: [...lines, ...marks],

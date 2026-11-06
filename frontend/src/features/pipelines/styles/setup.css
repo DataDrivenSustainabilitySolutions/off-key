@@ -1,9 +1,9 @@
-.pl-setup-header { align-items: center; margin: 8px 0 12px; }
-/* The name is the page's visible title; the h1 above it is for assistive technology. */
-.pl-setup-identity { flex: 1 1 320px; min-width: 0; display: grid; gap: 4px; justify-items: start; }
-.pl-name-input { width: min(100%, 560px); margin-left: -8px; padding: 2px 8px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: hsl(var(--foreground)); font: inherit; font-size: var(--text-title2); line-height: var(--leading-title2); font-weight: 600; letter-spacing: -0.015em; }
-.pl-name-input::placeholder { color: hsl(var(--muted-foreground)); font-weight: 500; }
-.pl-name-input:hover:not(:disabled) { border-color: hsl(var(--border)); }
+.pl-setup-header { align-items: end; margin: 8px 0 12px; }
+.pl-setup-identity { flex: 1 1 320px; min-width: 0; display: grid; gap: 8px; justify-items: start; }
+.pl-setup-title { font-size: var(--text-title1); line-height: var(--leading-title1); font-weight: 600; letter-spacing: -.02em; }
+.pl-name-field { display: grid; gap: 5px; width: min(100%, 380px); font-weight: 550; }
+.pl-name-input { width: 100%; min-height: 40px; padding: 8px 11px; border: 1px solid hsl(var(--input)); border-radius: 8px; background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit; font-weight: 400; }
+.pl-name-input::placeholder { color: hsl(var(--muted-foreground)); }
 .pl-name-input:focus-visible { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .2); background: hsl(var(--background)); }
 .pl-name-input[aria-invalid="true"] { border-color: #dc2626; }
 .pl-name-input:disabled { opacity: 1; }

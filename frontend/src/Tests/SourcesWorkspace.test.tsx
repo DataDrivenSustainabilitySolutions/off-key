@@ -93,9 +93,8 @@ describe("dedicated Sources configuration", () => {
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
     mount();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search catalogue" }), { target: { value: "temperature" } });
-    const row = await screen.findByRole("button", { name: "temperature, preview" });
+    const row = await screen.findByRole("button", { name: "temperature, preview", description: /Receiving data \(last 2 minutes\)/ });
     expect(row.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
-    expect(document.getElementById(row.getAttribute("aria-describedby")!)?.textContent).toBe("Receiving data (last 2 minutes)");
     expect(apiUtils.post).not.toHaveBeenCalled();
   });
 

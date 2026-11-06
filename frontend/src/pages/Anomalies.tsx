@@ -255,7 +255,8 @@ export default function AnomalyTable() {
                     </div></td>
                     <td className="rp-type">{anomaly.anomaly_type}</td>
                     <td className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}
-                      title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p" : "Score"}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
+                      title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p"
+                        : getAnomalyValueLabel(anomaly.value_type)}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
                     <td className="rp-actions">
                       <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
                         ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),

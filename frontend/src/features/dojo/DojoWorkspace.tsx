@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import type { DatasetView } from "@/types/dojo.generated";
 import { useCatalogue } from "../workspace/catalogue-context";
@@ -13,6 +13,7 @@ import "./dojo.css";
 export function DojoWorkspace() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const { state } = useLocation();
   const allowed = useDojoAccess();
   const { selected, document } = useCatalogue();
   const datasetId = params.get("dataset");
@@ -29,12 +30,12 @@ export function DojoWorkspace() {
     const ids = new Set(selected?.streamIds ?? []);
     return document.streams.filter(stream => ids.has(stream.id));
   }, [selected, document.streams]);
-  const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }));
+  const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }), { state: { openedDataset: dataset.id } });
 
   return <main className="ex-main-content" aria-label="Dojo workspace">
     {!allowed ? <div className="dj-empty"><h2>The Dojo is not open to you</h2>
       <p>Ask a member who manages members for a role with the “Use the Dojo” permission.</p></div>
-      : datasetId ? <DatasetDetail key={datasetId} id={datasetId} tab={datasetTab(params.get("tab"))}
+      : datasetId ? <DatasetDetail key={datasetId} id={datasetId} tab={datasetTab(params.get("tab"))} focusTitle={state?.openedDataset === datasetId}
         listHref={href({ dataset: null, tab: null })}
         onTab={(tab: DatasetTab) => setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", tab); return next; },
           { replace: true })}

@@ -5,7 +5,7 @@ import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
 import { isReadingLeaf, readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
 
-export type ExplorerRow = { node: ExplorerNode; label: string; detail?: string; color?: string };
+export type ExplorerRow = { node: ExplorerNode; label: string; detail?: string; path?: string; color?: string };
 export type ListPosition = { offset: number; focused?: string };
 type Props = {
   rows: ExplorerRow[];
@@ -96,13 +96,15 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
         const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : Folder;
         const indicator = isReadingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
         const descriptionId = `${activityId}-${item.index}`;
+        const pathId = `${descriptionId}-path`;
+        const descriptions = [row.path && pathId, indicator && descriptionId].filter(Boolean).join(" ");
         return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement}
           style={{ position: "absolute", width: "100%", transform: `translateY(${item.start}px)` }}>
           <div className="ex-row-container"><button className={`ex-row${selectedKey === node.key ? " is-selected" : ""}`} data-row={item.index}
             aria-current={selectedKey === node.key ? "true" : undefined}
             aria-label={`${row.label}${node.children.length ? ", open" : ", preview"}`}
-            aria-describedby={indicator ? descriptionId : undefined}
-            title={row.label} onClick={() => onOpen(node)} onKeyDown={(event) => keyboard(event, item.index)}
+            aria-describedby={descriptions || undefined}
+            title={row.path ? `${row.label} · ${row.path}` : row.label} onClick={() => onOpen(node)} onKeyDown={(event) => keyboard(event, item.index)}
             onFocus={() => positions.set(viewKey, { offset: scroll.current?.scrollTop ?? 0, focused: node.key })}>
             <span className={`ex-row-icon${indicator ? " ex-reading-activity" : ""}`} title={indicator?.label}
               style={!indicator && row.color ? { color: row.color } : undefined}>
@@ -111,6 +113,7 @@ export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, on
             </span>
             <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
               <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" || node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
+              {row.path && <span id={pathId} className="ex-row-path">{row.path}</span>}
             </span>
             {!onBrowse && node.children.length > 0 && <ChevronRight className="ex-row-arrow" size={14} />}
           </button>{onBrowse && node.children.length > 0 && <button className="ex-browse" aria-label={`Browse children of ${row.label}`} onClick={() => onBrowse(node)}><ChevronRight size={16} /></button>}</div>

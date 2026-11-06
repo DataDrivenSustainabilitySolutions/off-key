@@ -31,11 +31,11 @@ Use this page for account, entity, favourites, monitoring-service, and anomaly w
 
 ## Workspace navigation
 
-The catalogue opens and closes from the small handle on its upper edge. Desktop
-collapse restores the full content width while preserving search, navigation and
-the saved panel width. On mobile the catalogue overlays the page below the header;
-its edge handle, Escape or the backdrop closes it and restores focus. Ctrl/Cmd+K
-opens the catalogue and focuses search in either layout.
+Use **Catalogue** in the header to open the panel. On desktop, its edge handle
+collapses it and restores the full content width while preserving search, navigation
+and the saved panel width. On mobile, the catalogue opens below the header.
+Its edge handle, Escape or the backdrop closes it and returns focus to **Catalogue**.
+Ctrl/Cmd+K opens the catalogue and focuses search in either layout.
 
 **Monitoring**, **Sources**, and **Reporting** are always available in the navbar,
 including on mobile. The left sidebar contains one MQTT catalogue of brokers,
@@ -55,9 +55,9 @@ At the root it also scrolls the broker list to the top.
 same sidebar. Collections are shared parts of the catalogue. Inside a branch,
 the heading still opens the current path so you can jump to an ancestor.
 
-The logo returns to dashboard home. The catalogue button beside it hides/reopens the desktop sidebar or
-opens the mobile drawer. The section links remain in the navbar. A selected source
-is included in the URL, so links and browser back/forward retain that context.
+The logo returns to dashboard home. The section links remain in the navbar.
+A selected source is included in the URL, so links and browser back/forward retain
+that context.
 
 ## Authentication workflow
 
@@ -180,6 +180,10 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    the values, how many labels each detected and how soon, and how many false
    alarms each raised per day outside the labels. The best value of a metric is
    bold. Editing a label re-scores every run at once.
+
+Use the Left and Right arrow keys to move between dataset tabs, or Home and End
+to jump to the first and last tabs. A finished run can have no scored interval.
+Compare identifies those runs and marks their metrics as unavailable.
 
 ## Expected errors and operator actions
 

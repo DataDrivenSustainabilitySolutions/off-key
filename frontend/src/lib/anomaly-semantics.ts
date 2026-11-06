@@ -10,8 +10,13 @@ export const getAnomalyTailProbabilityClassName = (
   return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/35 dark:text-yellow-200";
 };
 
+function formatSignal(value: number, digits: number): string {
+  const rounded = value.toFixed(digits);
+  return value !== 0 && Number(rounded) === 0 ? Number(value.toPrecision(3)).toString() : rounded;
+}
+
 export const formatAnomalyTailProbability = (tailProbability: number): string =>
-  tailProbability.toFixed(4);
+  formatSignal(tailProbability, 4);
 
 export const isProbabilityAnomalyValue = (
   valueType: string | null | undefined
@@ -32,13 +37,16 @@ export const formatAnomalyValue = (
 ): string =>
   isProbabilityAnomalyValue(valueType)
     ? formatAnomalyTailProbability(value)
-    : value.toFixed(2);
+    : formatSignal(value, 2);
 
 export const getAnomalyValueLabel = (
   valueType: string | null | undefined
 ): string => {
   if (valueType === "anomaly_score") {
     return "Anomaly score";
+  }
+  if (valueType === "zscore") {
+    return "Z-score";
   }
   if (valueType === "conformal_pvalue") {
     return "Conformal p-value";

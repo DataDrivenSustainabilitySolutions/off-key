@@ -21,17 +21,23 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   const group = document.groups.find(item => scopeKey === `catalogue:${item.id}`);
   const labels = useMemo(() => new Map(document.streams.map(stream => [stream.id, stream.label])), [document.streams]);
   const rows = useMemo(() => {
-    if (deferredQuery.trim()) return searchNavigation(visibleIndex, deferredQuery).map(node => ({ node,
-      label: node.entityKind === "stream" ? labels.get(node.objectId ?? "") ?? node.label : node.label,
-      detail: navigationTrail(index, node.key).slice(1, -1).map(ancestor => ancestor.label).join(" / ") || "Catalogue" }));
+    if (deferredQuery.trim()) return searchNavigation(visibleIndex, deferredQuery).map(node => {
+      const ancestors = navigationTrail(index, node.key).slice(1, -1);
+      const nearest = ancestors.slice().reverse();
+      const owner = nearest.find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection");
+      const topic = nearest.find(ancestor => ancestor.kind === "topic");
+      return { node,
+        label: node.entityKind === "stream" ? labels.get(node.objectId ?? "") ?? node.label : node.label,
+        detail: [owner?.label, topic?.label].filter(Boolean).join(" · ") || "Catalogue",
+        path: ancestors.map(ancestor => ancestor.label).join(" / ") || undefined };
+    });
     if (group) return group.member_ids.flatMap(id => {
       const key = visibleIndex.objectKeys.get(id)?.[0];
       const node = key ? visibleIndex.nodes.get(key) : undefined;
       return node ? [{ node, label: node.entityKind === "stream" ? labels.get(id) ?? node.label : node.label,
         detail: navigationTrail(index, node.key).slice(1, -1).map(ancestor => ancestor.label).join(" / "), color: group.color }] : [];
     });
-    return navigationRows(visibleIndex, scopeKey).map(row => ({ ...row,
-      detail: row.node.entityKind === "stream" ? labels.get(row.node.objectId ?? "") : undefined }));
+    return navigationRows(visibleIndex, scopeKey);
   }, [index, visibleIndex, scopeKey, deferredQuery, group, labels]);
   const favourites = starred.flatMap(item => item.kind === "reading" && labels.has(item.id) && visibleIndex.objectKeys.has(item.id)
     ? [{ ...item, label: labels.get(item.id)! }] : []);

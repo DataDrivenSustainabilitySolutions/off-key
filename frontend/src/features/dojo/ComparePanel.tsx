@@ -38,7 +38,7 @@ const ROWS: Row[] = [
 function bestOf(row: Row, runs: RunMetrics[]) {
   if (!row.best || runs.length < 2) return undefined;
   const { score, prefer } = row.best;
-  const values = runs.map(score).filter((value): value is number => value != null);
+  const values = runs.filter(run => run.scored_from != null).map(score).filter((value): value is number => value != null);
   if (!values.length) return undefined;
   const target = prefer === "high" ? Math.max(...values) : Math.min(...values);
   // A tie favours nobody.
@@ -81,6 +81,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
   if (!finished.length) return <div className="dj-section"><p className="dj-help">Comparisons need finished runs. Start a run
     from the Runs tab; it appears here once it has finished.</p></div>;
   const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
+  const unscoredRuns = shown?.runs.filter(item => item.scored_from == null) ?? [];
   return <div className="dj-section">
     <div className="dj-compare-picker" role="group" aria-label={`Runs to compare, at most ${DOJO_LIMITS.comparedRuns}`}>
       {finished.map(run => {
@@ -93,24 +94,34 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     </div>
     {!labels.length && <p className="ex-banner" role="status">This dataset has no labels yet, so every alarm counts as a false
       alarm. Mark the known problems on the Values tab first.</p>}
+    {unscoredRuns.length > 0 && <p className="ex-banner dj-score-notice" role="status">
+      <strong>No values scored</strong>
+      <span>{unscoredRuns.map(run => names.get(run.run_id) ?? run.run_name).join(", ")} finished without a scored interval. Metrics are unavailable for {unscoredRuns.length === 1 ? "this run" : "these runs"}.</span>
+    </p>}
     {(error || points.error || alarms.error) && <p className="ex-banner ex-error" role="alert">{error || points.error || alarms.error}</p>}
+    {!chosen.length && <p className="dj-help">Select at least one finished run to see its results.</p>}
+    {chosen.length > 0 && dataset.series.length > CHART_SERIES && <p className="dj-help">
+      The comparison chart shows {series.map(item => item.name).join(" and ")}. View the other series in Values and labels.
+    </p>}
     {chosen.length > 0 && <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart dj-chart--alarms"
       accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} />}
     {shown && <>
-      <div className="dj-table-scroll dj-section"><table className="dj-table" aria-label="Run metrics">
-        <thead><tr><th>Metric</th>{shown.runs.map(item => <th key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
+      <div className="dj-table-scroll dj-section" role="region" aria-label="Scroll run metrics" tabIndex={0}>
+        <table className="dj-table dj-comparison-table" aria-label="Run metrics">
+        <thead><tr><th scope="col">Metric</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
         <tbody>{ROWS.map(row => {
           const best = bestOf(row, shown.runs);
-          return <tr key={row.label}><td>{row.label}</td>{shown.runs.map(item => {
+          return <tr key={row.label}><th scope="row">{row.label}</th>{shown.runs.map(item => {
             const isBest = best !== undefined && row.best?.score(item) === best;
-            return <td key={item.run_id} className={isBest ? "dj-metric-best" : undefined}>{row.value(item)}</td>;
+            return <td key={item.run_id} className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}</td>;
           })}</tr>;
         })}</tbody>
       </table></div>
-      {shown.labels.length > 0 && <div className="dj-table-scroll dj-section"><table className="dj-table" aria-label="Label outcomes">
-        <thead><tr><th>Label</th>{shown.runs.map(item => <th key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
+      {shown.labels.length > 0 && <div className="dj-table-scroll dj-section" role="region" aria-label="Scroll label outcomes" tabIndex={0}>
+        <table className="dj-table dj-comparison-table" aria-label="Label outcomes">
+        <thead><tr><th scope="col">Label</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
         <tbody>{shown.labels.map((label, index) => <tr key={label.id}>
-          <td>{formatInstant(label.start_at)} – {formatInstant(label.end_at)}{label.note && <small>{label.note}</small>}</td>
+          <th scope="row">{formatInstant(label.start_at)} – {formatInstant(label.end_at)}{label.note && <small>{label.note}</small>}</th>
           {shown.runs.map(item => {
             const outcome = item.labels[index]!;
             return <td key={item.run_id}><span className={`dj-outcome dj-outcome--${outcome.outcome}`}>{OUTCOME[outcome.outcome]}</span>

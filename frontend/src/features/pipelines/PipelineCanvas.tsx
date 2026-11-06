@@ -9,7 +9,7 @@ import {
   type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { LocateFixed, Magnet } from "lucide-react";
+import { LocateFixed, Magnet, Scan } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import {
@@ -427,13 +427,16 @@ export default function PipelineCanvas({
           }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
           ariaLabelConfig={{
-            "controls.fitView.ariaLabel": "Fit entire graph",
             "node.a11yDescription.default":
               "Press Enter to select a component. Use the inspector to edit parameters and connections.",
           }}
         >
           <PipelineGrid />
-          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: 0.15 }}>
+          <Controls showInteractive={false} showFitView={false} orientation="horizontal">
+            <ControlButton className="pl-canvas-fit" aria-label="Fit entire graph" title="Fit entire graph"
+              disabled={!flow} onClick={() => void flow?.fitView({ padding: 0.15 })}>
+              <Scan size={14} aria-hidden="true" />Fit
+            </ControlButton>
             <ControlButton
               className="pl-canvas-scale"
               aria-label="Readable size"

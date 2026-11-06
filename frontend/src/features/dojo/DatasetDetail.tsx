@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InlineName } from "@/components/InlineName";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usePollingLoop } from "@/hooks/use-polling";
@@ -15,8 +16,8 @@ import { DATASET_TABS as TABS, formatSpan, isActive, type DatasetTab } from "./m
 
 const RUN_POLL_MS = 3000;
 
-export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
-  id: string; tab: DatasetTab; listHref: string; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
+export function DatasetDetail({ id, tab, listHref, focusTitle, onTab, onDeleted }: {
+  id: string; tab: DatasetTab; listHref: string; focusTitle: boolean; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
 }) {
   const [dataset, setDataset] = useState<DatasetView | null>(null);
   const [labels, setLabels] = useState<LabelView[]>([]);
@@ -24,6 +25,11 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [confirm, confirmation] = useConfirm();
+  const title = useRef<HTMLHeadingElement>(null);
+  const loadedId = dataset?.id;
+  useEffect(() => {
+    if (loadedId && focusTitle) title.current?.focus();
+  }, [loadedId, focusTitle]);
   useDocumentTitle(dataset?.name, "Dojo");
 
   const loadDataset = useCallback(async (signal: AbortSignal) => {
@@ -70,7 +76,7 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   return <section className="dj-page dj-detail" aria-label={`Dataset ${dataset.name}`}>
     <Link className="dj-back" to={listHref}><ArrowLeft size={14} />All datasets</Link>
     <div className="dj-detail-header">
-      <div><h1><InlineName value={dataset.name} onSave={rename} ariaLabel="Rename dataset" /></h1>
+      <div><h1 ref={title} tabIndex={-1} aria-label={dataset.name}><InlineName value={dataset.name} onSave={rename} ariaLabel="Rename dataset" /></h1>
         {dataset.description && <small>{dataset.description}</small>}</div>
       <div className="dj-detail-actions">
         <button type="button" className="dj-action" onClick={() => void remove()}><Trash2 size={15} />Delete</button>
@@ -85,11 +91,8 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
       <div><dt>Labels</dt><dd>{labels.length}</dd></div>
       <div><dt>Runs</dt><dd>{runs.length}</dd></div>
     </dl>
-    <div className="dj-tabs" role="tablist" aria-label="Dataset sections">
-      {TABS.map(item => <button key={item.id} type="button" role="tab" id={`dj-tab-${item.id}`} aria-selected={tab === item.id}
-        aria-controls="dj-tab-panel" onClick={() => onTab(item.id)}>{item.label}</button>)}
-    </div>
-    <div id="dj-tab-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`}>
+    <WorkspaceTabs name="Dataset sections" idPrefix="dj" className="dj-tabs" tabs={TABS} selected={tab} onSelect={onTab} />
+    <div id="dj-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`} tabIndex={0}>
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}
       {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} onRunsChange={runLoop.reload} />}
       {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} />}

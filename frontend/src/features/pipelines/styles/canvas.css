@@ -95,6 +95,11 @@
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
 }
+.pl-canvas-wrap .react-flow__controls-button.pl-canvas-fit {
+  width: auto;
+  gap: 5px;
+  font-size: var(--text-caption);
+}
 
 .pl-canvas-wrap .react-flow__controls-button svg {
   fill: currentColor;
@@ -103,7 +108,7 @@
   max-width: 16px;
   max-height: 16px;
 }
-.pl-canvas-wrap .react-flow__controls-button[aria-pressed] svg {
+.pl-canvas-wrap .react-flow__controls-button:is([aria-pressed], .pl-canvas-fit) svg {
   fill: none;
 }
 .pl-canvas-wrap .react-flow__controls-button[aria-pressed="true"] {

@@ -72,6 +72,9 @@
 .ex-row-text { min-width: 0; flex: 1; }
 .ex-row-label { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--text-body); font-weight: 510; line-height: 1.55; }
 .ex-row-detail { display: block; color: var(--ex-muted); font-size: var(--text-caption); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-row-path { display: none; color: var(--ex-muted); font-size: var(--text-caption); margin-top: 4px; overflow-wrap: anywhere; }
+.ex-row:focus-visible .ex-row-path { display: block; }
+.ex-row:focus-visible:has(.ex-row-path) .ex-row-detail { display: none; }
 .ex-row-arrow { margin-top: 3px; color: var(--ex-muted); opacity: .7; flex-shrink: 0; }
 .ex-list-empty { padding: 32px 23px; color: var(--ex-muted); font-size: var(--text-caption); }
 .ex-list-empty > p { margin: 0; }

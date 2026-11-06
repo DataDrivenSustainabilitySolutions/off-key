@@ -68,9 +68,9 @@
        title3: dialog and card titles; title2: the object on screen
        title1: page titles; metric: stat tiles; display: one hero value */
     --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --text-caption: 12px;  --leading-caption: 16px;
-    --text-body: 13px;     --leading-body: 20px;
-    --text-control: 13px;  /* buttons, tabs, navigation */
+    --text-caption: 13px;  --leading-caption: 18px;
+    --text-body: 14px;     --leading-body: 21px;
+    --text-control: 14px;  /* buttons, tabs, navigation */
     --text-title3: 17px;   --leading-title3: 22px;
     --text-title2: 20px;   --leading-title2: 26px;
     --text-metric: 24px;   --leading-metric: 30px;

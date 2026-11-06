@@ -92,8 +92,10 @@ test("mobile drawers leave the header and content geometry intact and restore ke
     expect(initialHeader.height).toBe(112);
     expect(initialMain.y).toBe(initialHeader.y + initialHeader.height);
     expect(initialMain.width).toBe(width);
-    const face = await bounds(show.locator(".catalogue-edge-face"));
-    expect((await bounds(heading)).x - face.x - face.width).toBeGreaterThanOrEqual(16);
+    await expect(header.getByRole("button", { name: "Show catalogue", exact: true })).toHaveText("Catalogue");
+    const control = await bounds(show);
+    expect(control.y + control.height).toBeLessThanOrEqual((await bounds(heading)).y);
+    expect(control.height).toBeGreaterThanOrEqual(44);
     await expect(page.getByRole("separator", { name: "Resize explorer sidebar", exact: true })).toHaveCount(0);
 
     await show.click();

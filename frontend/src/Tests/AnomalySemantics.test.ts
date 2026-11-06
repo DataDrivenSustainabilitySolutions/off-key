@@ -29,4 +29,11 @@ describe("anomaly semantics formatting", () => {
     expect(isProbabilityAnomalyValue("conformal_pvalue")).toBe(true);
     expect(formatAnomalyValue(0.0031, "conformal_pvalue")).toBe("0.0031");
   });
+
+  it("keeps a nonzero signal distinct from a true zero", () => {
+    expect(formatAnomalyValue(0.003, null)).toBe("0.003");
+    expect(formatAnomalyValue(-0.0004, "anomaly_score")).toBe("-0.0004");
+    expect(formatAnomalyValue(0.00001, "conformal_pvalue")).toBe("0.00001");
+    expect(formatAnomalyValue(0, null)).toBe("0.00");
+  });
 });

@@ -33,6 +33,15 @@ function WorkspaceFrame() {
   const toggle = useRef<HTMLButtonElement>(null);
   const mobileDrawer = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLDivElement>(null);
+  const headerToggle = mobile || !preferences.sidebarOpen;
+  const toggleCatalogue = () => {
+    if (mobile) {
+      setMobileOpen(true);
+      return;
+    }
+    setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }));
+    requestAnimationFrame(() => toggle.current?.focus({ preventScroll: true }));
+  };
   useEffect(() => { if (main.current) main.current.scrollTop = 0; }, [pathname]);
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -48,17 +57,20 @@ function WorkspaceFrame() {
   }, [mobile, mobileOpen, preferences.sidebarOpen, setPreferences]);
   return <div className={`ex-shell app-catalogue-shell${!mobile && !preferences.sidebarOpen ? " ex-sidebar-hidden" : ""}`}
     style={{ "--ex-sidebar-width": `${preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}px` } as CSSProperties}>
-    <AppHeader navigation={<WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} />} />
+    <a className="workspace-skip-link" href="#workspace-content" onClick={event => {
+      event.preventDefault();
+      main.current?.focus();
+    }}>Skip to workspace content</a>
+    <AppHeader leading={headerToggle && <CatalogueToggle ref={toggle} placement="header" open={mobile && mobileOpen}
+      onClick={toggleCatalogue} />} navigation={<WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} />} />
     <div className="app-catalogue-workspace">
       {!mobile && <aside className="ex-sidebar-dock app-catalogue-sidebar" inert={!preferences.sidebarOpen} aria-hidden={!preferences.sidebarOpen}>
         <div className="app-catalogue-sidebar-content"><WorkspaceCatalogue /></div>
         {preferences.sidebarOpen && <ExplorerSidebarResize width={preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}
           onCommit={sidebarWidth => setPreferences(previous => ({ ...previous, sidebarWidth }))} />}
       </aside>}
-      <CatalogueToggle ref={toggle} className="catalogue-workspace-toggle" open={mobile ? mobileOpen : preferences.sidebarOpen}
-        hidden={mobile && mobileOpen} onClick={() => mobile ? setMobileOpen(true)
-          : setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))} />
-      <div ref={main} className="ex-main app-catalogue-main">
+      {!headerToggle && <CatalogueToggle ref={toggle} className="catalogue-workspace-toggle" open onClick={toggleCatalogue} />}
+      <div ref={main} id="workspace-content" tabIndex={-1} className="ex-main app-catalogue-main">
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}
         <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>

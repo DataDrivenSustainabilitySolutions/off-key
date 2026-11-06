@@ -110,6 +110,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const target = targets.find((item) => item.id === draft.targetId);
   const inputsForTarget = target?.inputs ?? [];
   const unrecorded = inputsForTarget.filter(input => input.binding.policy.mode === "off").map(input => input.stream.id);
+  const allReadingsOff = unrecorded.length > 0 && unrecorded.length === inputsForTarget.length;
   const waitingForRecording = !props.collectionReady && (!unrecorded.length || unrecorded.length < inputsForTarget.length);
   const recordingIds = !waitingForRecording && unrecorded.length ? unrecorded : inputsForTarget.map(input => input.stream.id);
   const recordingHref = sourceHref(initialReading && recordingIds.includes(initialReading) ? [initialReading] : recordingIds,
@@ -213,11 +214,13 @@ export function PipelineCreate(props: PipelineSetupProps) {
     <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
       current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
     <header className="pl-header pl-setup-header">
-      <h1 className="ex-sr-only">{title}</h1>
       <div className="pl-setup-identity">
-        <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
-          disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
-          value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
+        <h1 className={initialDesign ? "ex-sr-only" : "pl-setup-title"}>{title}</h1>
+        <label className="pl-name-field">Service name
+          <input ref={nameInput} className="pl-name-input" maxLength={120} placeholder="e.g. Room temperature"
+            disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
+            value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
+        </label>
         {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
         <div className="pl-setup-meta">
           <button type="button" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
@@ -240,7 +243,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
             existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
             onSave={async (details) => !!await session.save(details)} />
-          <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
+          <button type="button" className="mn-primary" disabled={busy || waitingForRecording || allReadingsOff || !!props.activationBlocked}
+            aria-describedby={waitingForRecording || allReadingsOff ? "pl-recording-prerequisite" : undefined} onClick={() => void start()}>
             <Play size={15} />{checking ? "Checking…" : replaceId ? "Update monitoring" : "Start monitoring"}</button>
         </>}
       </div>
@@ -250,10 +254,10 @@ export function PipelineCreate(props: PipelineSetupProps) {
     {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
     {error && <p className="pl-error" role="alert">{error}</p>}
     <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
-    {waitingForRecording ? <p className="pl-warning" role="status">Waiting for recording settings to apply.
+    {waitingForRecording ? <p id="pl-recording-prerequisite" className="pl-warning" role="status">Waiting for recording settings to apply.
       {target && <> <Link to={recordingHref}>Review recording in Sources</Link></>}
     </p>
-      : unrecorded.length > 0 && <p className="pl-notice" role="status">
+      : unrecorded.length > 0 && <p id="pl-recording-prerequisite" className={allReadingsOff ? "pl-warning" : "pl-notice"} role="status">
         Recording is off for {unrecorded.length} {unrecorded.length === 1 ? "reading" : "readings"}.{" "}
         <Link to={recordingHref}>Turn on recording in Sources</Link>
       </p>}

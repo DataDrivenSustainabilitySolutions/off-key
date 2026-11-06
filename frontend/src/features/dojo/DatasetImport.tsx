@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
@@ -11,11 +11,12 @@ import { fromLocalInput, toLocalInput } from "./model";
 type Layout = CsvImportQuery["layout"];
 type Delimiter = NonNullable<CsvImportQuery["delimiter"]>;
 
-function ImportDialog({ open, title, description, busy, error, submitLabel, canSubmit, onOpenChange, onSubmit, children }: {
+function ImportDialog({ open, trigger, title, description, busy, error, submitLabel, canSubmit, onOpenChange, onSubmit, children }: {
   open: boolean; title: string; description: string; busy: boolean; error: string; submitLabel: string;
-  canSubmit: boolean; onOpenChange: (open: boolean) => void; onSubmit: () => void; children: ReactNode;
+  trigger: ReactElement; canSubmit: boolean; onOpenChange: (open: boolean) => void; onSubmit: () => void; children: ReactNode;
 }) {
   return <Dialog.Root open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }}>
+    <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
     <Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay" />
       <Dialog.Content className="ex-dialog dj-dialog" onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
         onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
@@ -38,8 +39,8 @@ const stem = (name: string) => name.replace(/\.[^.]+$/, "").trim().slice(0, 120)
 const megabytes = (bytes: number) => Math.round(bytes / 1024 / 1024);
 
 /** Upload a CSV file as a new dataset. */
-export function CsvImportDialog({ open, onOpenChange, onCreated }: {
-  open: boolean; onOpenChange: (open: boolean) => void; onCreated: (dataset: DatasetView) => void;
+export function CsvImportDialog({ open, trigger, onOpenChange, onCreated }: {
+  open: boolean; trigger: ReactElement; onOpenChange: (open: boolean) => void; onCreated: (dataset: DatasetView) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
@@ -73,7 +74,7 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
       setBusy(false);
     }
   };
-  return <ImportDialog open={open} onOpenChange={reset} title="Upload CSV" busy={busy} error={error}
+  return <ImportDialog open={open} trigger={trigger} onOpenChange={reset} title="Upload CSV" busy={busy} error={error}
     description={`Values are copied into the Dojo once; editing the file later changes nothing. At most ${
       megabytes(DOJO_LIMITS.uploadBytes)} MB, ${DOJO_LIMITS.series} series and ${DOJO_LIMITS.points.toLocaleString()} values.`}
     submitLabel="Upload" canSubmit={!!file && !tooLarge && !!name.trim()} onSubmit={() => void submit()}>
@@ -96,7 +97,7 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
     <div className="dj-field-row">
       <label className="dj-field"><span>Timestamp column <small>(optional)</small></span><input value={timestampColumn} disabled={busy}
         placeholder={layout === "wide" ? "First column" : "timestamp"} onChange={event => setTimestampColumn(event.target.value)} /></label>
-      <label className="dj-field">Delimiter<select value={delimiter} disabled={busy}
+      <label className="dj-field">Delimiter<select aria-label="Delimiter" value={delimiter} disabled={busy}
         onChange={event => setDelimiter(event.target.value as "" | Delimiter)}>
         <option value="">Detect</option><option value=",">Comma</option><option value=";">Semicolon</option>
         <option value={"\t"}>Tab</option><option value="|">Pipe</option>
@@ -115,8 +116,8 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
 const DAY_MS = 86_400_000;
 
 /** Copy recorded readings of the catalogue selection for one window. */
-export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, readings }: {
-  open: boolean; onOpenChange: (open: boolean) => void; onCreated: (dataset: DatasetView) => void;
+export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, scope, readings }: {
+  open: boolean; trigger: ReactElement; onOpenChange: (open: boolean) => void; onCreated: (dataset: DatasetView) => void;
   /** What is selected in the catalogue, for the default name. */
   scope?: string;
   readings: SystemStream[];
@@ -152,27 +153,27 @@ export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, read
       setBusy(false);
     }
   };
-  return <ImportDialog open={open} onOpenChange={close} title="Copy recorded readings" busy={busy} error={error}
+  return <ImportDialog open={open} trigger={trigger} onOpenChange={close} title="Copy recorded readings" busy={busy} error={error}
     description="The recorded values of the chosen readings are copied into a frozen dataset. Retention and catalogue edits never change it."
     submitLabel="Copy" canSubmit={selected.size > 0 && windowValid} onSubmit={() => void submit()}>
-    {numeric.length === 0
-      ? <p className="dj-help" role="status">Select an entity or reading with numeric values in the catalogue first.</p>
-      : <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
+    {numeric.length === 0 ? <p className="ex-banner">Select a numeric reading or its entity in the catalogue, then return here.</p> : <>
+      <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
         <ul className="dj-reading-list">{numeric.map(item => <li key={item.id}><label>
           <input type="checkbox" checked={selected.has(item.id)} disabled={busy} onChange={event => {
             const next = new Set(selected);
             if (event.target.checked) next.add(item.id); else next.delete(item.id);
             setChosen(next);
           }} />{item.label}{item.unit && <small>{item.unit}</small>}</label></li>)}</ul>
-      </fieldset>}
-    <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={scope ?? "Recorded readings"}
-      onChange={event => setName(event.target.value)} /></label>
-    <div className="dj-field-row">
-      <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy}
-        onChange={event => setStart(event.target.value)} /></label>
-      <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy}
-        onChange={event => setEnd(event.target.value)} /></label>
-    </div>
-    {!windowValid && <p className="dj-error">The end must be after the start.</p>}
+      </fieldset>
+      <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={scope ?? "Recorded readings"}
+        onChange={event => setName(event.target.value)} /></label>
+      <div className="dj-field-row">
+        <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy}
+          onChange={event => setStart(event.target.value)} /></label>
+        <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy}
+          onChange={event => setEnd(event.target.value)} /></label>
+      </div>
+      {!windowValid && <p className="dj-error">The end must be after the start.</p>}
+    </>}
   </ImportDialog>;
 }

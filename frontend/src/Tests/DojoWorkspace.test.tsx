@@ -100,6 +100,24 @@ describe("Dojo workspace", () => {
     expect((screen.getByRole("textbox", { name: "Label note" }) as HTMLInputElement).value).toBe("Bearing");
   });
 
+  it("keeps keyboard focus on the selected dataset tab and updates its URL", async () => {
+    vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
+      runs: [metrics("r1", "Forest", 1, 2), metrics("r2", "Baseline", 0, 0)] });
+    const router = mount("/dojo?dataset=d1");
+    const values = await screen.findByRole("tab", { name: "Values and labels" });
+    const runs = screen.getByRole("tab", { name: "Runs" });
+    const compare = screen.getByRole("tab", { name: "Compare" });
+    expect([values.tabIndex, runs.tabIndex, compare.tabIndex]).toEqual([0, -1, -1]);
+    values.focus();
+    fireEvent.keyDown(values, { key: "ArrowRight" });
+    await waitFor(() => expect(router.state.location.search).toBe("?dataset=d1&tab=runs"));
+    expect(document.activeElement).toBe(runs);
+    expect(screen.getByRole("tabpanel", { name: "Runs" })).toBeTruthy();
+    fireEvent.keyDown(runs, { key: "End" });
+    expect(document.activeElement).toBe(compare);
+    expect([values.tabIndex, runs.tabIndex, compare.tabIndex]).toEqual([-1, -1, 0]);
+  });
+
   it("binds a template's inputs to the dataset's series and queues a run", async () => {
     vi.mocked(pipelinesApi.catalog).mockResolvedValue({ templates: [{ id: "t1", name: "Isolation forest", layout: { nodes: {} },
       definition: { strategy: "adaptive_stream", input_slots: [{ id: "current", label: "Current", unit: "A" }, { id: "voltage", label: "Line", unit: "V" }],

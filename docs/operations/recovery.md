@@ -97,6 +97,14 @@ These explicit operator tools may transfer backups to the ignored local
 `infra/stack/state/prod/` directory. They are separate from automatic releases.
 A persistence restore resumes writers only after it verifies the replacement task
 and restored state. An interrupted persistence recovery must finish before CD retries.
+Backups are staged on the database or broker node only for the transfer and removed
+from it once the control host holds them or the restore finishes.
+
+Restoring the application database from a backup ends every session it carried:
+each account's session version is raised and remembered sessions are deleted, so
+sessions revoked after the backup was taken cannot come back. Everyone signs in
+again. Passwords, roles and invitations return to their state at backup time, so
+review accounts changed since then.
 
 Each PostgreSQL/EMQX backup publishes `manifest.json` last, after every expected
 artifact has reached the control host. The manifest records the service, timestamp,

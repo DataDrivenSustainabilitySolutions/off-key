@@ -81,6 +81,7 @@ class PersistenceTests(unittest.TestCase):
             "stack_dir": str(root / "stack"),
             "stack_compose_files": [str(root / "stack/compose.yml")],
             "postgres_user": "fixture",
+            "postgres_db": "fixture_db",
             "persist_postgres": persistent,
             "persistence_backup_dir": str(root / "backups"),
         } | (extra_vars or {})
@@ -128,10 +129,22 @@ class PersistenceTests(unittest.TestCase):
                     command for command in commands if "pg_restore" in command
                 )
                 self.assertEqual(restore[1:3], ["-i", "replacement"])
+                # A cutover restores its own fresh backup and keeps sessions.
+                self.assertFalse(
+                    any(
+                        "session_version + 1" in part
+                        for command in commands
+                        for part in command
+                    )
+                )
                 self.assertTrue(
                     list(
                         (Path(directory) / "backups/postgres").glob("*/fixture_db.dump")
                     )
+                )
+                # Only the control host keeps the dumps; the node's staging is gone.
+                self.assertEqual(
+                    list((Path(directory) / "stack/.backup").glob("**/*.dump")), []
                 )
                 self.assertFalse(
                     (Path(directory) / "stack/recovery-pending.json").exists()
@@ -333,6 +346,7 @@ class PersistenceTests(unittest.TestCase):
                 "persistence_switch_confirm": True,
                 "stack_name": "off-key",
                 "postgres_user": "fixture",
+                "postgres_db": "fixture_db",
                 "stack_dir": str(root / "live-stack"),
             }
             env = os.environ | {
@@ -415,19 +429,29 @@ class PersistenceTests(unittest.TestCase):
                 json.loads((root / "state.json").read_text())["replicas"],
                 {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
             )
+            # The node keeps no copy of the restored dumps.
             self.assertEqual(
-                len(
-                    list(
-                        (root / "live-stack/.backup").glob("*/restore/fixture_db.dump")
-                    )
-                ),
-                1,
+                list((root / "live-stack/.backup").glob("*/**/*.dump")), []
             )
             commands = [
                 json.loads(line)
                 for line in (root / "commands.jsonl").read_text().splitlines()
             ]
             self.assertFalse(any("unlisted" in command for command in commands))
+            # Every session the backup carried ends once the data is back.
+            restored = next(
+                index
+                for index, command in enumerate(commands)
+                if "pg_restore" in command
+            )
+            revoked = [
+                index
+                for index, command in enumerate(commands)
+                if any("session_version + 1" in part for part in command)
+            ]
+            self.assertEqual(len(revoked), 1)
+            self.assertGreater(revoked[0], restored)
+            self.assertIn("fixture_db", commands[revoked[0]])
 
     def test_interrupted_fetch_never_publishes_a_complete_backup_or_replaces_tasks(
         self,

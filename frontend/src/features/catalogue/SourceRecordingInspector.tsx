@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { originLabel, policyLabel, scopeKey, topicWithinPrefix, type RuleScope } from "@/domain/system/collectionRules";
 import type { RuleEdit } from "@/domain/system/collectionRules";
@@ -19,6 +19,8 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const [picked, setPicked] = useState<Choice>();
   const saved = rule?.policy?.interval_seconds ?? 10;
   const [interval, setIntervalText] = useState(String(saved));
+  const [checkedInterval, setCheckedInterval] = useState(false);
+  const intervalHint = useId();
   const selected = ids.flatMap(id => runtime?.bindings?.[id] ?? []);
   const enabled = selected.filter(item => item.policy.mode !== "off").length;
   // The rate is summarised over the readings that record; the checkboxes show which ones those are.
@@ -34,18 +36,20 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   const busy = recording.saving === scope.connection_id;
   const pending = !!recording.pending && recording.pending.edits.some(edit => edit.scope.connection_id === scope.connection_id);
   const choice: Choice = (busy || pending) && picked ? picked : stored;
-  const seconds = Math.round(Number(interval));
-  const validInterval = Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600;
+  const seconds = Number(interval);
+  const validInterval = Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600;
+  const intervalInvalid = checkedInterval && !validInterval;
   const choose = (next: Choice) => {
-    if (busy || next === choice && (next !== "sample" || seconds === saved)) return;
-    if (next === "sample" && !validInterval) return;
+    if (busy) return;
+    if (next === "sample" && !validInterval) { setCheckedInterval(true); return; }
+    setCheckedInterval(false);
+    setIntervalText(String(next === "sample" ? seconds : saved));
+    if (next === choice && (next !== "sample" || seconds === saved)) return;
     setPicked(next);
     void recording.save([recordingEdit(scope, next, next === "sample" ? seconds : saved)]);
   };
   const commitInterval = () => {
-    if (choice !== "sample") return;
-    if (!validInterval) { setIntervalText(String(saved)); return; }
-    if (seconds !== saved) choose("sample");
+    if (choice === "sample") choose("sample");
   };
   const summary = ids.length === 1
     ? selected[0] && [policyLabel(selected[0].policy), originLabel(runtime, ids[0]!, document)].filter(Boolean).join(" · ")
@@ -55,7 +59,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
     (collection?.status !== "applied" || collection.revision !== runtime?.collection_revision);
   const collectionFailed = collection?.status === "error" || collection?.status === "disabled";
   const options: [Choice, string][] = [
-    ...scope.kind === "broker" ? [] : [["inherit", "Same as above"] as [Choice, string]],
+    ...scope.kind === "broker" ? [] : [["inherit", "Use parent setting"] as [Choice, string]],
     ["off", "Off"], ["original", "Every message"], ["sample", "At intervals"],
   ];
   // Readings opt in by following this scope when it records, or with their own rule when it does not.
@@ -90,11 +94,13 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
             disabled={busy} onChange={() => choose(value)} /><span className="source-recording-mark" aria-hidden="true" />{label}</label>
           {/* The interval sits beside its option, not inside the label, so typing in it never picks an option. */}
           {value === "sample" && <span className="source-recording-interval">
-            <input aria-label="Seconds between samples" type="number" min={1} max={3600} value={interval} disabled={busy}
+            <input aria-label="Seconds between samples" type="number" min={1} max={3600} step={1} value={interval} disabled={busy}
+              aria-invalid={intervalInvalid || undefined} aria-describedby={intervalInvalid ? intervalHint : undefined}
               onChange={event => setIntervalText(event.target.value)}
               onBlur={commitInterval} onKeyDown={event => { if (event.key === "Enter") commitInterval(); }} />s</span>}
         </div>)}
       </div>
+      {intervalInvalid && <p id={intervalHint} role="alert" className="ex-preview-error">Enter a whole number from 1 to 3,600 seconds.</p>}
       {busy && <p className="ex-muted" role="status">Saving…</p>}
       {scope.kind !== "reading" && ids.length > 1 && <fieldset className="source-readings" disabled={busy}>
         <legend>Readings<span>

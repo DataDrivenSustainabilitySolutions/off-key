@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
@@ -46,12 +46,13 @@ function bestOf(row: Row, runs: RunMetrics[]) {
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
 
 /** Up to three finished runs side by side, scored against the dataset's labels. */
-export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; runs: RunSummary[]; labels: LabelView[] }) {
+export function ComparePanel({ dataset, runs, labels, focusRun }: { dataset: DatasetView; runs: RunSummary[]; labels: LabelView[]; focusRun?: string }) {
   const finished = useMemo(() => runs.filter(run => run.status === "succeeded"), [runs]);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [resultRun, setResultRun] = useState("");
-  const chosen = useMemo(() => (picked ?? finished.slice(0, DOJO_LIMITS.comparedRuns).map(run => run.id))
-    .filter(id => finished.some(run => run.id === id)), [picked, finished]);
+  const focused = focusRun && finished.some(run => run.id === focusRun) ? focusRun : undefined;
+  const chosen = useMemo(() => (picked ?? (focused ? [focused] : finished.slice(0, DOJO_LIMITS.comparedRuns).map(run => run.id)))
+    .filter(id => finished.some(run => run.id === id)), [picked, finished, focused]);
   const chosenKey = chosen.join(",");
   const labelsKey = labels.map(label => `${label.id}:${label.start_at}:${label.end_at}`).join(",");
   const [comparison, setComparison] = useState<Comparison | null>(null);
@@ -75,14 +76,26 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     alarms: chosen.flatMap(id => alarms.loaded[id] ? [{ id, name: names.get(id) ?? id, times: alarms.loaded[id]!.times }] : []),
   }), [series, points.loaded, labels, chosen, alarms.loaded, names]);
 
+  const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
+  const results = useRef<HTMLHeadingElement>(null);
+  const movedFocus = useRef(false);
+  useEffect(() => {
+    if (!focused || !shown || movedFocus.current) return;
+    movedFocus.current = true;
+    results.current?.focus();
+  }, [focused, shown]);
+
   if (!finished.length) return <div className="dj-section"><p className="dj-help">Comparisons need finished runs. Start a run
     from the Runs tab; it appears here once it has finished.</p></div>;
-  const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
   const visibleRun = shown?.runs.find(item => item.run_id === resultRun) ?? shown?.runs[0];
   const isVisible = (item: RunMetrics) => item.run_id === visibleRun?.run_id;
   const resultHeader = (label: string) => <thead><tr><th scope="col">{label}</th>{shown?.runs.map(item =>
     <th scope="col" key={item.run_id} data-run-current={isVisible(item)}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>;
   const unscoredRuns = shown?.runs.filter(item => item.scored_from == null) ?? [];
+  const scored = shown?.runs.filter(item => item.scored_from != null) ?? [];
+  const comparable = scored.length > 1 && scored.every(item =>
+    item.scored_from === scored[0]?.scored_from && item.scored_to === scored[0]?.scored_to
+    && item.labels_scored === scored[0]?.labels_scored);
   return <div className="dj-section">
     <div className="dj-compare-picker" role="group" aria-label={`Runs to compare, at most ${DOJO_LIMITS.comparedRuns}`}>
       {finished.map(run => {
@@ -93,6 +106,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
           {runName(run)}</label>;
       })}
     </div>
+    {shown && <button type="button" className="dj-action dj-results-jump" onClick={() => results.current?.focus()}>Jump to run results</button>}
     {!labels.length && <p className="ex-banner" role="status">This dataset has no labels yet, so every alarm counts as a false
       alarm. Mark the known problems on the Values tab first.</p>}
     {unscoredRuns.length > 0 && <p className="ex-banner dj-score-notice" role="status">
@@ -106,6 +120,10 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     </p>}
     {chosen.length > 0 && <DojoChart data={chart} description={`Values with labels and the alarms of ${chosen.length} runs`} />}
     {shown && <div className="dj-comparison-results">
+      <h2 ref={results} tabIndex={-1}>Run results</h2>
+      {scored.length > 1 && !comparable && <p className="dj-help" role="status">
+        These runs scored different intervals or labels. Each result describes its own scored data.
+      </p>}
       {shown.runs.length > 1 && <label className="dj-field dj-result-run">Show results for
         <select aria-label="Show results for" value={visibleRun?.run_id ?? ""} onChange={event => setResultRun(event.target.value)}>
           {shown.runs.map(item => <option key={item.run_id} value={item.run_id}>{names.get(item.run_id) ?? item.run_name}</option>)}
@@ -115,11 +133,12 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
         <table className="dj-table dj-comparison-table" aria-label="Run metrics">
         {resultHeader("Metric")}
         <tbody>{ROWS.map(row => {
-          const best = bestOf(row, shown.runs);
+          const best = comparable ? bestOf(row, shown.runs) : undefined;
           return <tr key={row.label}><th scope="row">{row.label}</th>{shown.runs.map(item => {
             const isBest = best !== undefined && row.best?.score(item) === best;
             return <td key={item.run_id} data-run-current={isVisible(item)}
-              className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}</td>;
+              className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}
+              {isBest && <small>Best</small>}</td>;
           })}</tr>;
         })}</tbody>
       </table></div>

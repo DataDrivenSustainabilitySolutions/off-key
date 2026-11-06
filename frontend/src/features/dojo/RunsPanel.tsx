@@ -7,8 +7,8 @@ import { dojoApi } from "./api";
 import { RunCreateDialog } from "./RunCreateDialog";
 import { formatInstant, isActive, runName, runState, strategyLabel } from "./model";
 
-export function RunsPanel({ dataset, runs, onRunsChange }: {
-  dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>;
+export function RunsPanel({ dataset, runs, onRunsChange, onViewScores }: {
+  dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>; onViewScores: (runId: string) => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
         trigger={<button type="button" className="dj-primary"><Play size={16} aria-hidden="true" />New run</button>} />
     </div>
     {error && <p className="dj-error" role="alert">{error}</p>}
-    {runs.length > 0 && <p className="dj-help">Replay outputs include learning and calibration. Open Compare to see each run’s scored interval and detection metrics.</p>}
+    {runs.length > 0 && <p className="dj-help">Replay outputs include learning and calibration. View scores on a finished run to see its scored interval and detection metrics.</p>}
     {runs.length === 0 ? <p className="dj-help">No runs yet. Start one to see how a design does on this data.</p>
       : <table className="dj-table dj-record-table" role="table" aria-label="Runs">
         <thead role="rowgroup"><tr role="row">{["Run", "Status", "Replay outputs", "Alarms", "Started", "Actions"].map(label =>
@@ -49,6 +49,8 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
             <td role="cell"><span className="dj-cell-label" aria-hidden="true">Alarms</span>{run.alarm_count.toLocaleString()}</td>
             <td role="cell"><span className="dj-cell-label" aria-hidden="true">Started</span>{formatInstant(run.started_at ?? run.created_at)}</td>
             <td role="cell" className="dj-record-actions"><div className="dj-row-actions">
+              {run.status === "succeeded" && <button type="button" className="dj-link"
+                aria-label={`View scores for ${runName(run)}`} onClick={() => onViewScores(run.id)}>View scores</button>}
               {isActive(run)
                 ? <button type="button" className="dj-link" disabled={busy === run.id}
                   onClick={() => void act(run, () => dojoApi.cancelRun(run.id))}>Cancel</button>

@@ -115,7 +115,53 @@ export function CsvImportDialog({ open, trigger, onOpenChange, onCreated }: {
 }
 
 const DAY_MS = 86_400_000;
+const READING_PAGE_SIZE = 24;
 export type HistoryReading = SystemStream & { brokerName?: string; entityName?: string };
+
+function HistoryReadingPicker({ readings, scope, selected, pickedCount, busy, onChange }: {
+  readings: HistoryReading[];
+  scope?: string;
+  selected: Set<string>;
+  pickedCount: number;
+  busy: boolean;
+  onChange: (id: string, checked: boolean) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const large = readings.length > DOJO_LIMITS.series;
+  const query = filter.trim().toLocaleLowerCase();
+  const matches = useMemo(() => readings.filter(item =>
+    [item.label, item.entityName, item.brokerName, item.topic].some(value => value?.toLocaleLowerCase().includes(query))),
+  [readings, query]);
+  const lastPage = Math.max(0, Math.ceil(matches.length / READING_PAGE_SIZE) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const offset = currentPage * READING_PAGE_SIZE;
+  const visible = large ? matches.slice(offset, offset + READING_PAGE_SIZE) : readings;
+  return <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
+    {large && <>
+      <p className="dj-help" role="status">{pickedCount} selected. Choose up to {DOJO_LIMITS.series} of {readings.length.toLocaleString()} readings.</p>
+      <label className="dj-field">Find a reading
+        <input type="search" value={filter} disabled={busy} onChange={event => { setFilter(event.target.value); setPage(0); }} />
+      </label>
+    </>}
+    {visible.length ? <ul className="dj-reading-list">{visible.map(item => {
+      const checked = selected.has(item.id);
+      return <li key={item.id}><label>
+        <input type="checkbox" checked={checked} disabled={busy || !checked && pickedCount >= DOJO_LIMITS.series}
+          onChange={event => onChange(item.id, event.target.checked)} /><span>
+          {item.label}{item.unit && ` (${item.unit})`}
+          {item.entityName && <span className="dj-reading-entity">{item.entityName}</span>}
+          <small>{[item.brokerName, item.topic].filter(Boolean).join(" · ")}</small>
+        </span>
+      </label></li>;
+    })}</ul> : <p className="dj-help">No readings match your search.</p>}
+    {large && lastPage > 0 && <div className="dj-reading-pages">
+      <Button variant="outline" size="sm" disabled={busy || currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</Button>
+      <span role="status">{offset + 1}–{Math.min(offset + READING_PAGE_SIZE, matches.length)} of {matches.length.toLocaleString()}</span>
+      <Button variant="outline" size="sm" disabled={busy || currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Next</Button>
+    </div>}
+  </fieldset>;
+}
 
 /** Copy recorded readings of the catalogue selection for one window. */
 export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, onChooseSource, scope, readings }: {
@@ -125,7 +171,7 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
   scope?: string;
   readings: HistoryReading[];
 }) {
-  const numeric = useMemo(() => readings.filter(item => item.value_type === "number").slice(0, DOJO_LIMITS.series), [readings]);
+  const numeric = useMemo(() => readings.filter(item => item.value_type === "number"), [readings]);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const [name, setName] = useState("");
   const [start, setStart] = useState(() => toLocalInput(Date.now() - 7 * DAY_MS));
@@ -133,7 +179,7 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const timeZoneHint = useId();
-  const selected = chosen ?? new Set(numeric.map(item => item.id));
+  const selected = chosen ?? new Set(numeric.length <= DOJO_LIMITS.series ? numeric.map(item => item.id) : []);
   const picked = numeric.filter(item => selected.has(item.id));
   const single = numeric.length === 1 ? numeric[0] : undefined;
   const defaultName = single?.entityName ? `${single.entityName} · ${single.label}` : scope || "Recorded readings";
@@ -167,17 +213,12 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
     canSubmit={needsSource ? !!onChooseSource : picked.length > 0 && windowValid}
     onSubmit={needsSource && onChooseSource ? onChooseSource : () => void submit()}>
     {needsSource ? <p className="ex-banner">Choose a numeric reading or its entity in the catalogue.</p> : <>
-      <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
-        <ul className="dj-reading-list">{numeric.map(item => <li key={item.id}><label>
-          <input type="checkbox" checked={selected.has(item.id)} disabled={busy} onChange={event => {
-            const next = new Set(selected);
-            if (event.target.checked) next.add(item.id); else next.delete(item.id);
-            setChosen(next);
-          }} /><span>
-            {item.label}{item.unit && ` (${item.unit})`}
-            <small>{[item.brokerName, item.entityName, item.topic].filter(Boolean).join(" · ")}</small>
-          </span></label></li>)}</ul>
-      </fieldset>
+      <HistoryReadingPicker readings={numeric} scope={scope} selected={selected} pickedCount={picked.length} busy={busy}
+        onChange={(id, checked) => {
+          const next = new Set(selected);
+          if (checked) next.add(id); else next.delete(id);
+          setChosen(next);
+        }} />
       <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={defaultName}
         onChange={event => setName(event.target.value)} /></label>
       <div className="dj-field-row">

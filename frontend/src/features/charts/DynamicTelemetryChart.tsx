@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -79,6 +80,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
 }) => {
   const { resolvedTheme, colors: themeColors } = useChartColors();
   const [collapsed, setCollapsed] = useState(false);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
+  const rangeFields = useId();
   const [localNavigationState, setLocalNavigationState] =
     useState<ChartNavigationState>(DEFAULT_CHART_NAVIGATION);
   const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null);
@@ -445,7 +448,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {!collapsed && (
             <div className="flex min-w-0 flex-wrap items-end gap-2 rounded-xl border border-border/70 bg-card p-2.5 shadow-xs">
-              <div className="grid min-w-0 grid-cols-2 gap-2 max-sm:w-full">
+              <div id={rangeFields} className={`${customRangeOpen ? "grid" : "hidden sm:grid"} min-w-0 grid-cols-2 gap-2 max-sm:w-full`}>
                 <label className="min-w-0 space-y-1">
                   <span className="block text-xs font-medium text-muted-foreground">
                     From
@@ -470,6 +473,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                     className="h-8 w-full min-w-0 text-xs sm:w-[10.5rem]"
                   />
                 </label>
+                <span className="col-span-2 text-xs text-muted-foreground">Local time zone · {timeZone}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -488,15 +492,17 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 >
                   Past hour
                 </Button>
+                <Button type="button" variant="outline" size="sm" className="sm:hidden"
+                  aria-expanded={customRangeOpen} aria-controls={rangeFields}
+                  onClick={() => setCustomRangeOpen(open => !open)}>
+                  Custom range
+                </Button>
                 {(fromDate || toDate) && (
                   <Button type="button" variant="ghost" size="sm" onClick={clearRange}>
                     Clear
                   </Button>
                 )}
               </div>
-              <span className="basis-full text-xs text-muted-foreground">
-                Local time zone: {timeZone}
-              </span>
             </div>
           )}
           <Button

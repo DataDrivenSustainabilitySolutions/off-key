@@ -215,7 +215,7 @@ describe("DynamicTelemetryChart", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Past hour" }));
     expect(screen.queryByRole("button", { name: "Return to live" })).toBeNull();
-    expect(screen.getByText(/Local time zone:/u)).toBeTruthy();
+    expect(screen.getByText(/Local time zone/u)).toBeTruthy();
     expect(screen.getByText(/Current Voltage: 231 V at/u)).toBeTruthy();
   });
 

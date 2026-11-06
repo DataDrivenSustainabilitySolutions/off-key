@@ -203,7 +203,7 @@ test("keeps the catalogue DOM, selection, search and scroll while navigating and
     await expect(page.getByRole("heading", { name: "Reporting", exact: true })).toBeVisible();
     await unchanged();
     await page.goBack();
-    await expect(recording.getByRole("radio", { name: "Same as above", exact: true })).toBeChecked();
+    await expect(recording.getByRole("radio", { name: "Use parent setting", exact: true })).toBeChecked();
     await unchanged();
     await navigation.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();

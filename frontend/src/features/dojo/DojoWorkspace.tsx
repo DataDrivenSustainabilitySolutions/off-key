@@ -35,17 +35,21 @@ export function DojoWorkspace() {
       entityName: stream.device_id ? entities.get(stream.device_id) : undefined,
     }));
   }, [selected, document.streams, document.connections, document.devices]);
-  const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }), { state: { openedDataset: dataset.id } });
+  const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null, run: null }), { state: { openedDataset: dataset.id } });
 
   return <main className="ex-main-content" aria-label="Dojo workspace">
     {!allowed ? <div className="dj-empty"><h2>The Dojo is not open to you</h2>
       <p>Ask a member who manages members for a role with the “Use the Dojo” permission.</p></div>
       : datasetId ? <DatasetDetail key={datasetId} id={datasetId} tab={datasetTab(params.get("tab"))} focusTitle={state?.openedDataset === datasetId}
-        listHref={href({ dataset: null, tab: null })}
-        onTab={(tab: DatasetTab) => setParams(previous => { const next = new URLSearchParams(previous); next.set("tab", tab); return next; },
-          { replace: true })}
-        onDeleted={() => navigate(href({ dataset: null, tab: null }), { replace: true })} />
-      : <DatasetList datasetHref={id => href({ dataset: id, tab: null })} onCreated={open}
+        focusRun={params.get("run") ?? undefined} listHref={href({ dataset: null, tab: null, run: null })}
+        onTab={(tab: DatasetTab, runId?: string) => setParams(previous => {
+          const next = new URLSearchParams(previous);
+          next.set("tab", tab);
+          if (runId) next.set("run", runId); else next.delete("run");
+          return next;
+        }, { replace: true })}
+        onDeleted={() => navigate(href({ dataset: null, tab: null, run: null }), { replace: true })} />
+      : <DatasetList datasetHref={id => href({ dataset: id, tab: null, run: null })} onCreated={open}
         scope={selected && selected.kind !== "root" ? selected.label : undefined} readings={readings} />}
   </main>;
 }

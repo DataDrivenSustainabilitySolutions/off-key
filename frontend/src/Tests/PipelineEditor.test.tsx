@@ -199,7 +199,7 @@ describe("simple monitoring setup", () => {
     expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Adaptive stream", pressed: true })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Before the first alarm" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Input: Room, 3 readings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Input: Room, 3 readings selected" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
   });
 

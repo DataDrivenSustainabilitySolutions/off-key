@@ -760,7 +760,7 @@ describe("reporting", () => {
     expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
     expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
     expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
-    fireEvent.change(within(events).getByRole("combobox", { name: "p-value" }), { target: { value: "0.001" } });
+    fireEvent.change(within(events).getByRole("combobox", { name: "Detector result" }), { target: { value: "0.001" } });
     await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("1 event"));
     expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({ limit: 500, max_p_value: 0.001 });
     expect(within(events).queryByText("Humidity drift")).toBeNull();

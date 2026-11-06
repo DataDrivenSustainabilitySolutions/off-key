@@ -84,7 +84,7 @@ describe("Dojo workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy recorded readings" }));
     const dialog = await screen.findByRole("dialog", { name: "Copy recorded readings" });
     expect(within(dialog).queryByText("Mode")).toBeNull();
-    expect(within(dialog).getByText("Workshop broker · Pump 1 · pump/voltage")).toBeTruthy();
+    expect(within(dialog).getByText("Workshop broker · pump/voltage")).toBeTruthy();
     expect(within(dialog).getByLabelText("From").getAttribute("aria-describedby")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Current/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
@@ -155,13 +155,24 @@ describe("Dojo workspace", () => {
     expect(screen.queryByRole("checkbox", { name: "Waiting" })).toBeNull();
     const detected = within(table).getByRole("row", { name: /Labels detected/ });
     expect(within(detected).getByText("1 of 1").className).toBe("dj-metric-best");
-    const falseAlarms = within(table).getByRole("row", { name: /^False alarms 2 0$/ });
+    const falseAlarms = within(table).getByRole("rowheader", { name: "False alarms" }).closest("tr")!;
     expect(within(falseAlarms).getByText("0").className).toBe("dj-metric-best");
+    expect(within(falseAlarms).getByText("Best")).toBeTruthy();
     const outcomes = screen.getByRole("table", { name: "Label outcomes" });
     within(outcomes).getByText("Detected");
     within(outcomes).getByText("after 2 min");
     within(outcomes).getByText("Missed");
     expect(dojoApi.results).toHaveBeenCalledWith("r1", expect.objectContaining({ alarm: true }), expect.any(AbortSignal));
+  });
+
+  it("shows results without ranking runs that scored different intervals", async () => {
+    const comparison: Comparison = { dataset_id: "d1", labels: [label],
+      runs: [metrics("r1", "Forest", 1, 2), { ...metrics("r2", "Baseline", 0, 0), scored_from: label.start_at }] };
+    vi.mocked(dojoApi.compare).mockResolvedValue(comparison);
+    mount("/dojo?dataset=d1&tab=compare");
+    const table = await screen.findByRole("table", { name: "Run metrics" });
+    expect(screen.getByText(/These runs scored different intervals or labels/)).toBeTruthy();
+    expect(within(table).queryByText("Best")).toBeNull();
   });
 
   it("explains the missing permission instead of showing datasets", async () => {

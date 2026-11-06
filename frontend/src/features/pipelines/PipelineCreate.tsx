@@ -123,7 +123,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const ready = bindingsReady(slots, target, bindings, owned);
   const dirty = session.isDirty();
   const mapped = Object.keys(bindings).length;
-  const readingCount = draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"}` : `${mapped} of ${slots.length} readings`;
+  const readingCount = draft.startingId ? `${mapped} ${mapped === 1 ? "reading" : "readings"} selected`
+    : `${mapped} of ${slots.length} inputs mapped`;
   const intervals = system.snapshot?.runtime.ingress?.readings;
   const startup = startupEstimate(draft.document.definition,
     Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds),

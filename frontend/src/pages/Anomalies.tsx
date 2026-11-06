@@ -219,13 +219,13 @@ export default function AnomalyTable() {
           <div className="rp-filters" role="group" aria-label="Filter events">
             <Filter className="size-3.5 text-muted-foreground" aria-hidden="true" />
             <select aria-label="Reading" value={activeReading} onChange={event => setReading(event.target.value)} disabled={!readingOptions.length}>
-              <option value="any">All readings</option>
+              <option value="any">{selected && selected.kind !== "root" ? "All readings in this scope" : "All readings"}</option>
               {readingOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
             </select>
             <select aria-label="Time range" value={range} onChange={event => setRange(event.target.value)}>
               {ranges.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
-            <select aria-label="p-value" value={signal} onChange={event => setSignal(event.target.value)}>
+            <select aria-label="Detector result" value={signal} onChange={event => setSignal(event.target.value)}>
               {signals.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             {filtering && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}

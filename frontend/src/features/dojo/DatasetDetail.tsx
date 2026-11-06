@@ -16,8 +16,9 @@ import { DATASET_TABS as TABS, formatSpan, isActive, type DatasetTab } from "./m
 
 const RUN_POLL_MS = 3000;
 
-export function DatasetDetail({ id, tab, listHref, focusTitle, onTab, onDeleted }: {
-  id: string; tab: DatasetTab; listHref: string; focusTitle: boolean; onTab: (tab: DatasetTab) => void; onDeleted: () => void;
+export function DatasetDetail({ id, tab, listHref, focusTitle, focusRun, onTab, onDeleted }: {
+  id: string; tab: DatasetTab; listHref: string; focusTitle: boolean; focusRun?: string;
+  onTab: (tab: DatasetTab, runId?: string) => void; onDeleted: () => void;
 }) {
   const [dataset, setDataset] = useState<DatasetView | null>(null);
   const [labels, setLabels] = useState<LabelView[]>([]);
@@ -94,8 +95,8 @@ export function DatasetDetail({ id, tab, listHref, focusTitle, onTab, onDeleted 
     <WorkspaceTabs name="Dataset sections" idPrefix="dj" className="dj-tabs" tabs={TABS} selected={tab} onSelect={onTab} />
     <div id="dj-panel" role="tabpanel" aria-labelledby={`dj-tab-${tab}`} tabIndex={0}>
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}
-      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} onRunsChange={runLoop.reload} />}
-      {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} />}
+      {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} onRunsChange={runLoop.reload} onViewScores={runId => onTab("compare", runId)} />}
+      {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} focusRun={focusRun} />}
     </div>
     {confirmation}
   </section>;

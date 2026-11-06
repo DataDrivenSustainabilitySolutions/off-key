@@ -516,10 +516,70 @@ class PipelineRunSummary(PipelineModel):
     error: str | None = None
 
 
+class _RunProjection(BaseModel):
+    """A saved run as the API shows it; how TACTIC records readings stays inside."""
+
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+
+class PipelineRunInput(_RunProjection):
+    """One input slot of a run and the reading bound to it."""
+
+    slot_id: str
+    reading_id: str
+    unit: str | None = None
+
+
+class PipelineRunExecution(_RunProjection):
+    """What a run executes: its definition and the readings bound to it."""
+
+    schema_version: Literal[1] = 1
+    definition: PipelineDefinition
+    bindings: list[PipelineRunInput]
+    revision_id: str
+    run_id: str
+    fingerprint: str
+
+
+class PipelineRunReading(_RunProjection):
+    """A bound reading as the catalogue described it when the run started."""
+
+    slot_id: str
+    reading_id: str
+    label: str
+    unit: str | None
+    device_id: str | None
+    device_label: str | None = None
+    source_id: str = Field(**public("broker_id", "source_id"))
+    source_label: str = Field(**public("broker_label", "source_label"))
+    collection_policy: CollectionPolicy
+
+    @model_validator(mode="before")
+    @classmethod
+    def device_label_from_entity(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "entity_label" in value:
+            value = dict(value)
+            label = value.pop("entity_label")
+            if value.get("device_id") is not None:
+                value.setdefault("device_label", label)
+        return value
+
+
+class PipelineRunBindings(_RunProjection):
+    """The catalogue and recording revisions a run was bound against."""
+
+    schema_version: Literal[1] = 1
+    system_revision: int | None = Field(
+        **public("catalogue_revision", "system_revision")
+    )
+    collection_revision: int
+    readings: list[PipelineRunReading]
+
+
 class PipelineRunView(PipelineRunSummary):
     pipeline_id: str | None = None
-    execution: PipelineExecutionConfig | None
-    binding_metadata: PipelineBindingMetadata | None = None
+    execution: PipelineRunExecution | None
+    binding_metadata: PipelineRunBindings | None = None
 
 
 class PipelineHistoryPage(PipelineModel):
@@ -582,7 +642,6 @@ class MonitorSummary(BaseModel):
     display_name: str | None = None
     monitoring_strategy: str | None = None
     model_type: str | None = None
-    mqtt_topics: list[str] = Field(default_factory=list)
     stream_ids: list[str] = Field(
         default_factory=list,
         description="Catalogue readings the monitor watches.",
@@ -595,9 +654,9 @@ class MonitorSummary(BaseModel):
     operational_status: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime | None = None
 
-    @field_validator("mqtt_topics", "stream_ids", mode="before")
+    @field_validator("stream_ids", mode="before")
     @classmethod
-    def no_topics(cls, value: Any) -> Any:
+    def no_readings(cls, value: Any) -> Any:
         return [] if value is None else value
 
 

@@ -1,7 +1,7 @@
 import { pipelinesApi } from "@/features/pipelines/api";
 import { API_CONFIG } from "@/lib/api-config";
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
-import type { MonitoringStartRequest } from "@/types/monitoring";
+import type { MonitorSetup } from "@/types/monitoring";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 type Phase = PipelineActivationView["phase"];
@@ -15,7 +15,7 @@ const delay = (milliseconds: number) =>
 
 /** Form monitors run as pipelines; resolve once the new service exists. */
 export async function startFormMonitor(
-  request: MonitoringStartRequest,
+  request: MonitorSetup,
   pollMilliseconds = 1000,
 ): Promise<string> {
   const accepted = await apiUtils.post<{ monitor_id: string; activation_id: string }>(

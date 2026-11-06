@@ -4,10 +4,12 @@ import type { CollectionPolicy } from "../../src/types/collection";
 import type { SystemSnapshot } from "../../src/types/system";
 
 const stableKey = (kind: string, identity: string) => `${kind}-${createHash("sha256").update(identity).digest("hex")}`;
-export const fixtureEntityId = (deviceId: string) => stableKey("entity", deviceId);
+/** The monitor setup target of a device's readings, as setup links carry it. */
+export const fixtureTarget = (deviceId: string) => `device:${deviceId}`;
 /** The catalogue reading `addTestCharger` creates for one key. */
 export const fixtureReadingId = (deviceId: string, key: string) => `${deviceId}:${key.replaceAll("/", ":")}`;
-export const fixtureReadingKey = (deviceId: string, key: string) => stableKey("reading", fixtureReadingId(deviceId, key));
+/** The ingress key of a reading, derived from its catalogue id. */
+const fixtureReadingKey = (deviceId: string, key: string) => stableKey("reading", fixtureReadingId(deviceId, key));
 
 /** Configuration application and upstream SUBACK are separate readiness boundaries. */
 export const waitForCollectionReady = async (
@@ -64,24 +66,22 @@ export const addTestCharger = async (
   const status = await api.get("/api/v1/recording/health", { headers });
   expect(status.ok(), await status.text()).toBeTruthy();
   // Envelope tests need the current generation; upstream tests publish through real brokers.
-  const value = current;
   const health = await status.json() as { ingress: { generation?: string } };
   if (policy.mode === "off") return {};
   const generation = health.ingress.generation;
   expect(generation).toBeTruthy();
-  return Object.fromEntries(keys.map((key, index) => [key, `ingress/system/${generation}/${value.runtime.bindings![streamIds[index]!]!.telemetry_key}`]));
+  return Object.fromEntries(keys.map(key => [key, `ingress/system/${generation}/${fixtureReadingKey(deviceId, key)}`]));
 };
 
 /** A stopped monitor finishes its pipeline activation asynchronously; until then the API rejects
  * changes to its inputs with 409, so cleanup retries on a fresh revision. */
-export const removeTestCharger = async (api: APIRequestContext, token: string, identifier: string): Promise<void> => {
+export const removeTestCharger = async (api: APIRequestContext, token: string, deviceId: string): Promise<void> => {
   const headers = { Authorization: `Bearer ${token}` };
   await expect.poll(async () => {
     const response = await api.get("/api/v1/catalogue", { headers });
     expect(response.ok(), await response.text()).toBeTruthy();
     const system = await response.json() as SystemSnapshot;
-    const removedReadings = new Set(system.document.readings.filter(stream => stream.device_id === identifier
-      || system.runtime.bindings?.[stream.id]?.entity_id === identifier).map(stream => stream.id));
+    const removedReadings = new Set(system.document.readings.filter(stream => stream.device_id === deviceId).map(stream => stream.id));
     const removedDevices = new Set(system.document.readings.filter(stream => removedReadings.has(stream.id)).flatMap(stream => stream.device_id ?? []));
     system.document.readings = system.document.readings.filter(stream => !removedReadings.has(stream.id));
     system.document.devices = system.document.devices.filter(device => !removedDevices.has(device.id));

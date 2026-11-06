@@ -89,8 +89,10 @@ interface MonitoringActivity {
   last_processed_at?: string | null;
   last_inference_at?: string | null;
   last_persisted_at?: string | null;
-  missing_sensors: string[];
-  stale_sensors: string[];
+  /** Readings the monitor has not received, by catalogue id. */
+  missing_reading_ids: string[];
+  /** Readings whose latest value is older than the freshness, by catalogue id. */
+  stale_reading_ids: string[];
   inputs_stalled: boolean;
   inference_stalled: boolean;
   persistence_stalled: boolean;
@@ -113,7 +115,6 @@ export interface OperationalStatus {
 export interface ActiveService {
   id: string;
   display_name?: string | null;
-  mqtt_topics: string[];
   /** Catalogue readings the monitor watches, resolved by the server. */
   reading_ids: string[];
   /** True while the monitor should run; false once it is stopped. */
@@ -124,8 +125,8 @@ export interface ActiveService {
   created_at?: string;
 }
 
-interface MonitoringPerformanceConfig {
-  sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
+/** How fresh and how closely aligned a monitor's readings must be. */
+interface MonitorTiming {
   sensor_freshness_seconds: number;
   observation_max_age_seconds?: number;
   observation_future_tolerance_seconds?: number;
@@ -183,6 +184,7 @@ interface StaticMartingaleConfig {
 }
 
 interface StaticBaselineRequestConfig {
+  strategy: 'static_baseline';
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -204,6 +206,7 @@ export type AdaptivePreprocessingStep =
   | { type: 'random_projection'; n_components: number; seed: number | null };
 
 interface AdaptiveStreamRequestConfig {
+  strategy: 'adaptive_stream';
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -212,31 +215,22 @@ interface AdaptiveStreamRequestConfig {
   threshold_config: { mode: 'calibrated_quantile'; quantile: number };
 }
 
-// Anomaly detection request payload
-interface AnomalyDetectionRequestBase {
+/** A monitor set up on catalogue readings of one device or broker. */
+interface MonitorSetupBase {
   display_name: string;
-  mqtt_topics: string[];
-  model_type: string;
-  model_params: Record<string, JsonValue>;
-  performance_config: MonitoringPerformanceConfig;
+  reading_ids: string[];
+  performance_config: MonitorTiming;
 }
 
-export interface StaticAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
-  strategy: 'static_baseline';
-  static_baseline_config: StaticBaselineRequestConfig;
+export interface StaticMonitorSetup extends MonitorSetupBase {
+  monitoring: StaticBaselineRequestConfig;
 }
 
-export interface AdaptiveAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
-  strategy: 'adaptive_stream';
-  adaptive_stream_config: AdaptiveStreamRequestConfig;
+export interface AdaptiveMonitorSetup extends MonitorSetupBase {
+  monitoring: AdaptiveStreamRequestConfig;
 }
 
-export type MonitoringStartRequest =
-  | StaticAnomalyDetectionRequest
-  | AdaptiveAnomalyDetectionRequest;
-
-// Compatibility name retained for existing static-lane consumers.
-export type AnomalyDetectionRequest = StaticAnomalyDetectionRequest;
+export type MonitorSetup = StaticMonitorSetup | AdaptiveMonitorSetup;
 
 /** One monitor observation, naming its readings by catalogue id. */
 interface MonitoringEvidence {

@@ -52,9 +52,6 @@ const props = () => ({
             category: "Environment",
           },
           binding: {
-            entity_id: "room",
-            telemetry_key: "temperature",
-            accepted_topic: "telemetry/room/temperature",
             policy: { mode: "original" as const, interval_seconds: 10 },
           },
         },

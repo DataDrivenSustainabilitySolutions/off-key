@@ -612,7 +612,10 @@ break that carries migrations 018 (`member_favorites`), 019 (`dojo_datasets`),
 ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery metadata,
 so an already-open new browser keeps its controls while the backend rolls back.
 It also serves the current REST paths, so the rehearsal calls both releases the
-same way.
+same way. Its answers still show how readings are recorded (topics, entities and
+ingress keys) and name a run's catalogue revision and brokers the old way, so the
+rehearsal reads them without those recording fields and under the current names.
+Monitors are started on the current release, by reading id.
 The previous reference, `87c1039`, carried migrations 018 to 022; it cannot be a
 reference any more, because releases before migration 023 refuse a database that
 has applied it. Rolling back past migration 023 means restoring a verified

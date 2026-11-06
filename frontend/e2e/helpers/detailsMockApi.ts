@@ -65,8 +65,7 @@ export async function installDetailsMockApi(page: Page, {
             devices: [{ id: deviceId, label: deviceId }],
             readings: sensors.map(key => ({ id: key, device_id: deviceId, category: CATEGORIES[key] ?? key })),
           },
-          // Monitor setup still targets the recorded entity of the readings.
-          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: deviceId, telemetry_key: key }])) },
+          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { device_id: deviceId }])) },
         });
       case "/v1/alarms":
         return fulfillJson(route, anomalies);

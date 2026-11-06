@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
-  bindingsReady, predecessorEntity, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings,
+  bindingsReady, predecessorSource, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings,
 } from "@/features/pipelines/bindings";
 import type { PipelineServiceView } from "@/features/pipelines/contracts";
 import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
@@ -30,27 +30,29 @@ describe("reading selection", () => {
 });
 
 describe("replacement setup", () => {
-  const predecessor = (bindings: { slot_id: string; reading_id: string; entity_id: string }[]) =>
-    ({ run: { execution: { bindings } } }) as unknown as PipelineServiceView;
+  const predecessor = (bindings: { slot_id: string; reading_id: string }[], deviceId: string | null = null) =>
+    ({ run: { execution: { bindings }, binding_metadata: { readings: bindings.map(binding => ({ ...binding, device_id: deviceId, broker_id: "broker" })) } } }) as unknown as PipelineServiceView;
   const targets = [
     { id: "north", label: "North", inputs: [{ stream: { id: "a" } }] },
     { id: "south", label: "South", inputs: [{ stream: { id: "b" } }] },
   ] as unknown as MonitoringTarget[];
 
   it("reads the predecessor's bindings and starting target", () => {
-    const old = predecessor([{ slot_id: "value", reading_id: "b", entity_id: "south" }]);
+    const old = predecessor([{ slot_id: "value", reading_id: "b" }], "south");
     expect(previousBindings(old)).toEqual({ value: "b" });
     expect(previousBindings(undefined)).toEqual({});
-    expect(predecessorEntity(old)).toBe("south");
+    expect(predecessorSource(old)).toBe("device:south");
+    expect(predecessorSource(predecessor([{ slot_id: "value", reading_id: "b" }]))).toBe("broker:broker");
+    expect(predecessorSource(undefined)).toBeUndefined();
     expect(predecessorTarget(targets, old)).toBe("south");
     expect(predecessorTarget(targets, undefined)).toBeUndefined();
   });
 
-  it("follows a reading that moved entity since the predecessor ran", () => {
+  it("follows a reading that moved device since the predecessor ran", () => {
     // The run recorded north, but reading a now belongs to south.
-    const moved = predecessor([{ slot_id: "value", reading_id: "a", entity_id: "north" }]);
+    const moved = predecessor([{ slot_id: "value", reading_id: "a" }], "north");
     const now = [{ ...targets[1]!, inputs: [{ stream: { id: "a" } }] }] as unknown as MonitoringTarget[];
-    expect(predecessorEntity(moved)).toBe("north");
+    expect(predecessorSource(moved)).toBe("device:north");
     expect(predecessorTarget(now, moved)).toBe("south");
   });
 

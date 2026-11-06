@@ -1,5 +1,5 @@
 import type { ActiveService } from "@/types/monitoring";
-import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
+import { monitoringTargetId, type MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import type { PipelineDefinition, PipelineServiceView } from "./contracts";
 
 /** Suggest only unambiguous matches; never guess between two equivalent readings. */
@@ -37,10 +37,14 @@ export function readingOwnedElsewhere(services: ActiveService[], byStream: Map<s
 
 /**
  * The target a replacement starts on: the workspace's explicit target, else
- * the entity of the predecessor's first binding, else the target that holds
- * any of the predecessor's readings today.
+ * the device or broker of the predecessor's first reading when it started,
+ * else the target that holds any of the predecessor's readings today.
  */
-export const predecessorEntity = (predecessor?: PipelineServiceView) => predecessor?.run?.execution?.bindings[0]?.entity_id;
+export const predecessorSource = (predecessor?: PipelineServiceView) => {
+  const reading = predecessor?.run?.binding_metadata?.readings[0];
+  return reading && monitoringTargetId(reading.device_id
+    ? { kind: "device", id: reading.device_id } : { kind: "broker", id: reading.broker_id });
+};
 
 export const predecessorTarget = (targets: MonitoringTarget[], predecessor?: PipelineServiceView) =>
   targets.find((target) => target.inputs.some((input) =>

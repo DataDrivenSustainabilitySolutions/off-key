@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
+from off_key_core.schemas.radar import MonitorSetup, RadarServiceLabel
 from pydantic import BaseModel
 
 from ...domain import DomainError
@@ -22,7 +22,7 @@ class RadarServiceResponse(BaseModel):
     activation_id: str
     container_name: str
     status: str
-    mqtt_topics: list[str]
+    reading_ids: list[str]
 
 
 @router.get("/radar/services/", response_model=list[dict[str, Any]])
@@ -53,11 +53,11 @@ async def list_radar_services(
     status_code=202,
 )
 async def start_radar_service(
-    config: FormMonitorConfig, start_form_monitor=Depends(get_form_monitor_starter)
+    setup: MonitorSetup, start_form_monitor=Depends(get_form_monitor_starter)
 ):
-    """Start a monitor configured with a setup form as an equivalent pipeline."""
+    """Start a monitor set up with the forms as an equivalent pipeline."""
     try:
-        activation = await start_form_monitor(config)
+        activation = await start_form_monitor(setup)
     except DomainError as exc:
         raise http_error(exc) from exc
     return {
@@ -65,7 +65,7 @@ async def start_radar_service(
         "activation_id": activation.id,
         "container_name": f"pipeline-{activation.service_id}",
         "status": activation.phase,
-        "mqtt_topics": config.mqtt_topics,
+        "reading_ids": setup.reading_ids,
     }
 
 

@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { buildMonitoringIndex, serviceName, serviceState, servicesForScope } from "@/domain/monitoring/serviceModel";
+import { buildMonitoringIndex, readingTargetId, serviceName, serviceState, servicesForScope } from "@/domain/monitoring/serviceModel";
+import { readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import { createEmptySystem } from "@/domain/system/systemDocument";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import type { ActiveService, OperationalStage } from "@/types/monitoring";
 
 const monitor = (id: string, streamIds: string[], stage: OperationalStage = "operational"): ActiveService => ({
-  id, mqtt_topics: [`telemetry/${id}/#`], reading_ids: streamIds, active: true,
+  id, reading_ids: streamIds, active: true,
   monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage, message_count: 40, processed_message_count: 35, is_stale: false },
 });
@@ -17,8 +18,7 @@ function fixture(count = 2) {
     readings: Array.from({ length: count * 20 }, (_, index) => ({ id: `reading-${index}`, label: `Measurement ${index}`, topic: `arbitrary/room/value-${index}`,
       value_type: "number", category: "Environment", broker_id: `broker-${Math.floor(index / 20)}`, device_id: `entity-${Math.floor(index / 20)}` })),
   };
-  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { entity_id: `internal-${stream.device_id}`, telemetry_key: stream.id,
-      accepted_topic: `telemetry/internal-${stream.device_id}/${stream.id}`, policy: { mode: "off", interval_seconds: 10 } }])) };
+  const runtime: SystemRuntime = { mode: "configured_only", message: "Configured", bindings: Object.fromEntries(document.readings.map(stream => [stream.id, { policy: { mode: "off", interval_seconds: 10 } }])) };
   return { document, runtime };
 }
 
@@ -30,7 +30,7 @@ describe("monitoring workspace identity and scale", () => {
   ] as const)("shows %s even while runtime heartbeats are current", (field, label) => {
     const service = monitor("one", []);
     service.operational_status.activity = {
-      freshness_seconds: 30, missing_sensors: [], stale_sensors: [],
+      freshness_seconds: 30, missing_reading_ids: [], stale_reading_ids: [],
       inputs_stalled: false, inference_stalled: false, persistence_stalled: false,
       [field]: true,
     };
@@ -51,6 +51,25 @@ describe("monitoring workspace identity and scale", () => {
     expect(renamed.byStream.get("reading-0")).toEqual(new Set(["first"]));
     expect(serviceName(services[0]!, renamed.inputs.get("first")!)).toBe("Renamed broker / Room 0 · Adaptive");
     expect(serviceName({ ...services[0]!, display_name: "Personal name" }, renamed.inputs.get("first")!)).toBe("Personal name");
+  });
+
+  it("offers the readings of each device, and a broker's readings without a device", () => {
+    const { document, runtime } = fixture(1);
+    document.readings[19] = { ...document.readings[19]!, device_id: undefined };
+    const index = buildMonitoringIndex(document, runtime, []);
+    expect(index.targets.map(target => [target.id, target.inputs.length])).toEqual([["broker:broker-0", 1], ["device:entity-0", 19]]);
+    expect(readingTargetId(document.readings[0]!)).toBe("device:entity-0");
+  });
+
+  it("keys a reading's history anew when it is recorded for another device", () => {
+    const { document } = fixture(1);
+    const reading = document.readings[0]!;
+    const connection = { host: "broker", port: 1883, transport: "tcp" as const, tls: false };
+    const recorded = readingHistoryKey(connection, reading, { device_id: "entity-0" });
+    expect(readingHistoryKey(connection, reading, { device_id: "entity-0" })).toBe(recorded);
+    expect(readingHistoryKey(connection, reading, { device_id: "entity-1" })).not.toBe(recorded);
+    expect(readingHistoryKey(connection, reading, { device_id: null })).not.toBe(recorded);
+    expect(readingHistoryKey(connection, reading)).not.toBe(readingHistoryKey(connection, reading, { device_id: null }));
   });
 
   it("keeps Off readings available to choose without claiming they are being collected", () => {

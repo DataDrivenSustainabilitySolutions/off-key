@@ -544,20 +544,20 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
 async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
     pipeline_database, monkeypatch
 ):
-    from off_key_core.schemas.radar import FormMonitorConfig
+    from off_key_core.schemas.radar import MonitorSetup
     from off_key_tactic_middleware.services.pipelines.forms import start_form_monitor
 
     monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "false")
     get_tactic_settings.cache_clear()
     async with pipeline_database() as session:
         catalog = (await read_collection_runtime(session)).catalog
-        topics = {
-            stream.definition.id: stream.accepted_topic
+        labels = {
+            stream.definition.id: stream.definition.label
             for stream in catalog.streams(selected_only=True)
         }
-        config = FormMonitorConfig(
-            container_name="radar-device",
-            mqtt_topics=[topics["temperature"], topics["current"]],
+        config = MonitorSetup(
+            display_name="radar-device",
+            reading_ids=["temperature", "current"],
             performance_config={"sensor_freshness_seconds": 12},
         )
         with pytest.raises(ConflictError, match="disabled"):
@@ -583,6 +583,12 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
         }
         keys = [item.input_key for item in execution.bindings]
         assert keys == sorted(keys)
+        # Slots show the catalogue labels of their readings.
+        slots = {slot.id: slot.label for slot in execution.definition.input_slots}
+        assert all(
+            slots[item.slot_id] == labels[item.reading_id]
+            for item in execution.bindings
+        )
         design = await session.get(
             MonitoringPipeline,
             await session.scalar(

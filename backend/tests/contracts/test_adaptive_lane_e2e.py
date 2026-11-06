@@ -40,11 +40,9 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                 "/v1/monitors",
                 json={
                     "display_name": f"radar-{entity.device_id}",
-                    "mqtt_topics": list(entity.accepted_topics),
-                    "strategy": "adaptive_stream",
-                    "model_type": "aberrant_online_isolation_forest",
-                    "model_params": {"num_trees": 4, "max_leaf_samples": 4},
-                    "adaptive_stream_config": {
+                    "reading_ids": list(entity.reading_ids),
+                    "monitoring": {
+                        "strategy": "adaptive_stream",
                         "model_type": "aberrant_online_isolation_forest",
                         "model_params": {"num_trees": 4, "max_leaf_samples": 4},
                         "training_window_size": 4,
@@ -92,7 +90,7 @@ def test_gateway_to_postgres_adaptive_multisensor_input_correlation() -> None:
                     }
                 if all(
                     all(values[key] in observations[key] for values in published_values)
-                    for key in entity.keys
+                    for key in entity.readings
                 ):
                     break
                 time.sleep(1)

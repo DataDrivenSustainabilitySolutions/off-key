@@ -105,7 +105,6 @@ const inspectOption = (): InspectableOption =>
 
 const operationalService: ActiveService = {
   id: "service-adaptive",
-  mqtt_topics: ["telemetry/charger-1/voltage"],
   reading_ids: ["voltage"],
   active: true,
   monitoring_strategy: "adaptive_stream",

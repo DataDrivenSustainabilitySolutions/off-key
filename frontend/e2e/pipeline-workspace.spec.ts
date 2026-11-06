@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 import {
   addTestCharger,
-  fixtureEntityId,
+  fixtureTarget,
   removeTestCharger,
 } from "./helpers/collection";
 import { ingressOptions } from "./helpers/mqtt";
@@ -116,7 +116,6 @@ test.describe("visual pipeline real infrastructure", () => {
       playwright,
     }, testInfo) => {
       const deviceId = randomUUID();
-      const entityId = fixtureEntityId(deviceId);
       let serviceId: string | undefined;
       const serviceIds: string[] = [];
       const activationIds: string[] = [];
@@ -154,7 +153,7 @@ test.describe("visual pipeline real infrastructure", () => {
           { ...ingressOptions(), clientId: `pipeline-e2e-${deviceId}` },
         );
         await page.setViewportSize({ width: 1600, height: 1100 });
-        await page.goto(`/?create=monitoring&target=${entityId}`);
+        await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
         await expect(
           page.getByRole("region", { name: "Monitoring workbench", exact: true }),
         ).toBeVisible();
@@ -254,8 +253,8 @@ test.describe("visual pipeline real infrastructure", () => {
         const readHealth = async () => {
           const state = await readState();
           const service = state.monitors.find((item) => item.id === serviceId);
-          expect([...(service?.mqtt_topics as string[] ?? [])].sort())
-            .toEqual(bound.run!.execution!.bindings.map((binding) => binding.accepted_topic).sort());
+          expect([...(service?.reading_ids ?? [])].sort())
+            .toEqual(bound.run!.execution!.bindings.map((binding) => binding.reading_id).sort());
           const status = state.monitors.find((item) => item.id === serviceId)
             ?.operational_status as OperationalStatus | undefined;
           return {

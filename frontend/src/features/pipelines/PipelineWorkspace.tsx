@@ -6,7 +6,7 @@ import type { ActiveService } from "@/types/monitoring";
 import type { MonitoringIndex } from "@/domain/monitoring/serviceModel";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { collectionApplied } from "@/domain/system/collectionRules";
-import { predecessorEntity } from "./bindings";
+import { predecessorSource } from "./bindings";
 import { pipelinesApi } from "./api";
 import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
@@ -143,7 +143,7 @@ export default function PipelineWorkspace({
         initialTarget={
           initialTarget ??
           (replacement
-            ? predecessorEntity(predecessor)
+            ? predecessorSource(predecessor)
             : undefined)
         }
         initialReading={contextReading}

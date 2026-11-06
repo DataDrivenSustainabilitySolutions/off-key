@@ -90,7 +90,7 @@ describe("detector inputs", () => {
   it("shows the service's inputs in its history and names them in the hover", () => {
     const input: MonitoringInput = {
       stream: { id: "L1", label: "AC1", broker_id: "broker", topic: "L1", category: "Other", value_type: "number", unit: "A" },
-      binding: { entity_id: "entity", telemetry_key: "L1", accepted_topic: "L1", policy: { mode: "original", interval_seconds: 1 } },
+      binding: { policy: { mode: "original", interval_seconds: 1 } },
       path: "Charger 07",
     };
     const rows = [row(0, flat(0.01, -0.01)), row(1, flat(0.02, -0.02))];

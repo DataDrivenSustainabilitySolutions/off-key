@@ -138,7 +138,7 @@ const props = () => ({
 
 const target: MonitoringTarget = { id: "room", label: "Room", inputs: [
   { path: "Room", stream: { id: "current", label: "Current", unit: "A", category: "Electrical", value_type: "number", topic: "fixture/current", broker_id: "broker" },
-    binding: { entity_id: "room", telemetry_key: "current", accepted_topic: "telemetry/room/current", policy: { mode: "original", interval_seconds: 10 } } },
+    binding: { policy: { mode: "original", interval_seconds: 10 } } },
 ] };
 const telemetry = new SystemLiveTelemetry();
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => ({ system: { snapshot: null }, document: undefined, telemetry, liveStreamIds: [], previewStreamIds: [] }) }));
@@ -255,7 +255,7 @@ describe("simple monitoring setup", () => {
   });
 
   it("tracks a replacement after its predecessor disappears from the active service list", async () => {
-    const old: ActiveService = { id: "old", display_name: "Existing health", mqtt_topics: [], reading_ids: [], active: true,
+    const old: ActiveService = { id: "old", display_name: "Existing health", reading_ids: [], active: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     const callbacks = props();
     const context = { id: "old", replace: true };

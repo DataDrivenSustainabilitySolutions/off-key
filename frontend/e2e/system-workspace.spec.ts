@@ -11,7 +11,7 @@ test.setTimeout(300_000);
 test.use({ locale: "en-US" });
 
 test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }, testInfo) => {
-  const entityId = randomUUID();
+  const deviceId = randomUUID();
   const localId = `ui-${randomUUID()}`;
   const keys = ["temperature", "current", "voltage"];
   const api = await playwright.request.newContext({
@@ -40,7 +40,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(token).toBeTruthy();
     const headers = { Authorization: `Bearer ${token}` };
     // Start from a generic catalogue with every fixture reading Off.
-    await addTestCharger(api, token!, entityId, localId, keys, { mode: "off", interval_seconds: 10 });
+    await addTestCharger(api, token!, deviceId, localId, keys, { mode: "off", interval_seconds: 10 });
     const readSystem = async (): Promise<SystemSnapshot> => {
       const response = await api.get("/api/v1/catalogue", { headers });
       expect(response.ok(), await response.text()).toBeTruthy();
@@ -59,7 +59,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("button", { name: "Export JSON", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
-    await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${entityId} temperature`);
+    await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${deviceId} temperature`);
     await page.getByRole("button", { name: "temperature, preview", exact: true }).click();
     const preview = page.getByRole("region", { name: "Reading preview", exact: true });
     await expect(preview).toBeVisible();
@@ -77,12 +77,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
       return applied.runtime.bindings?.[reading.id]?.policy.mode;
     })).toEqual(["sample", "off", "off"]);
     const binding = applied.runtime.bindings![stream.id]!;
-    expect(binding.entity_id).toMatch(/^entity-[a-f0-9]{64}$/);
-    expect(binding.telemetry_key).toMatch(/^reading-[a-f0-9]{64}$/);
+    // How a reading is stored stays inside; the API names it by catalogue id.
+    for (const field of ["entity_id", "telemetry_key", "accepted_topic"]) expect(binding).not.toHaveProperty(field);
     await expectNoHorizontalScroll(page);
     await expect(page.getByRole("button", { name: "View live", exact: true })).toHaveCount(0);
     await waitForCollectionReady(api, token!, applied, stream.broker_id);
-    publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${entityId}` });
+    publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884", { clientId: `ui-${deviceId}` });
     for (const key of keys) await publisher.publishAsync(`tests/${localId}/${key}`, "25", { qos: 1 });
     const measured = async (readingId: string) => {
       const response = await api.get(`/api/v1/readings/${encodeURIComponent(readingId)}/measurements`, { headers });
@@ -215,7 +215,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
   } finally {
     await publisher?.endAsync();
     if (token && serviceId) await api.delete(`/api/v1/monitors/${encodeURIComponent(serviceId)}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (token) await removeTestCharger(api, token, entityId);
+    if (token) await removeTestCharger(api, token, deviceId);
     await api.dispose();
   }
 });

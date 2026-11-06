@@ -49,8 +49,7 @@ const fixture = (): SystemDocument => ({
 const snapshot = (document = fixture(), revision = 7, canEdit = true): SystemSnapshot => ({
   document, revision, can_edit: canEdit, storage_origin: "saved",
   runtime: { mode: "configured_only", message: "Configuration only", collection_revision: 1, collection: { revision: 1, status: "applied" },
-    bindings: Object.fromEntries(["temperature", "humidity"].map(id => [id, { broker_id: "broker", entity_id: "room-input", telemetry_key: id,
-      accepted_topic: `telemetry/room-input/${id}`, policy: { mode: "off", interval_seconds: 10 } }])) },
+    bindings: Object.fromEntries(["temperature", "humidity"].map(id => [id, { broker_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) },
 });
 function Location() { return <output data-testid="location">{useLocation().search}</output>; }
 function makeRouter(path = "/") {
@@ -108,7 +107,7 @@ beforeEach(() => {
 });
 
 const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, display_name: name,
-  mqtt_topics: ["telemetry/room-input/temperature"], reading_ids: ["temperature"], active: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+  reading_ids: ["temperature"], active: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 /** The account's favourites on a fake server; call after `withServices`. */
 function favouritesServer() {
@@ -153,7 +152,7 @@ describe("service-centred monitoring workspace", () => {
     current.document.readings.push({ id: "quiet-reading", label: "Quiet voltage", broker_id: "broker", device_id: "quiet", topic: "quiet/voltage", value_type: "number", category: "Test" });
     current.runtime.mode = "collection";
     current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
-    current.runtime.bindings!["quiet-reading"] = { entity_id: "quiet-input", broker_id: "broker", telemetry_key: "voltage", accepted_topic: "telemetry/quiet/voltage", policy: { mode: "original", interval_seconds: 10 } };
+    current.runtime.bindings!["quiet-reading"] = { broker_id: "broker", policy: { mode: "original", interval_seconds: 10 } };
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
     current.runtime.latest_readings = { "quiet-reading": { value: 230, received_at: new Date().toISOString(), is_snapshot: true } };
@@ -251,8 +250,8 @@ describe("service-centred monitoring workspace", () => {
     const monitor = service();
     monitor.operational_status.activity = {
       freshness_seconds: 30, last_input_at: "2026-10-11T10:00:00Z",
-      last_inference_at: "2026-10-11T09:59:00Z", stale_sensors: ["temperature"],
-      missing_sensors: [], inputs_stalled: true, inference_stalled: true,
+      last_inference_at: "2026-10-11T09:59:00Z", stale_reading_ids: ["temperature"],
+      missing_reading_ids: [], inputs_stalled: true, inference_stalled: true,
       persistence_stalled: false,
     };
     withServices([monitor]);
@@ -282,7 +281,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], reading_ids: [] }]);
+    withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]);
     const { router } = mount();
     await loaded();
     const sidebar = screen.getByRole("navigation", { name: "System explorer" });
@@ -371,7 +370,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], reading_ids: [] }]); mount();
+    withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();

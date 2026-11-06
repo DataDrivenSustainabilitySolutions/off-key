@@ -20,7 +20,7 @@ const liveStatus: LiveStatus = { phase: "live", active: true, observing: false, 
 function recording(): ReadingActivitySource {
   const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 7, collection: { status: "applied" },
     ingress: { revision: 7, status: "applied", sources: { broker: { state: "connected" } }, readings: { temperature: { fresh_received_at: time() } } },
-    bindings: { temperature: { entity_id: "room", broker_id: "broker", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature", policy: { mode: "sample", interval_seconds: 3600 } } },
+    bindings: { temperature: { broker_id: "broker", policy: { mode: "sample", interval_seconds: 3600 } } },
     latest_readings: { temperature: { value: 20, received_at: time(3_000_000), is_snapshot: false } } };
   return { runtime, telemetry: new SystemLiveTelemetry(), liveStreamIds: [] };
 }

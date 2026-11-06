@@ -147,7 +147,6 @@ export type MonitorDetail = {
   display_name?: string | null;
   monitoring_strategy?: string | null;
   model_type?: string | null;
-  mqtt_topics?: Array<string>;
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
@@ -160,7 +159,6 @@ export type MonitorSummary = {
   display_name?: string | null;
   monitoring_strategy?: string | null;
   model_type?: string | null;
-  mqtt_topics?: Array<string>;
   reading_ids?: Array<string>;
   active: boolean;
   operational_status?: Record<string, unknown>;
@@ -420,12 +418,46 @@ export type PipelineRevisionView = {
   definition: PipelineDefinition;
 };
 
+export type PipelineRunBindings = {
+  schema_version?: 1;
+  catalogue_revision: number | null;
+  collection_revision: number;
+  readings: Array<PipelineRunReading>;
+};
+
 export type PipelineRunEventView = {
   occurred_at: string;
   source: "radar" | "tactic";
   kind: string;
   stage?: string | null;
   detail?: Record<string, unknown>;
+};
+
+export type PipelineRunExecution = {
+  schema_version?: 1;
+  definition: PipelineDefinition;
+  bindings: Array<PipelineRunInput>;
+  revision_id: string;
+  run_id: string;
+  fingerprint: string;
+};
+
+export type PipelineRunInput = {
+  slot_id: string;
+  reading_id: string;
+  unit?: string | null;
+};
+
+export type PipelineRunReading = {
+  slot_id: string;
+  reading_id: string;
+  label: string;
+  unit: string | null;
+  device_id: string | null;
+  device_label?: string | null;
+  broker_id: string;
+  broker_label: string;
+  collection_policy: CollectionPolicy;
 };
 
 export type PipelineRunSummary = {
@@ -461,8 +493,8 @@ export type PipelineRunView = {
   ended_at: string | null;
   error?: string | null;
   pipeline_id?: string | null;
-  execution: PipelineExecutionConfig | null;
-  binding_metadata?: PipelineBindingMetadata | null;
+  execution: PipelineRunExecution | null;
+  binding_metadata?: PipelineRunBindings | null;
 };
 
 export type PipelineRuntimeState = {

@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { Alarm, TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
 import type { MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
 import type { ReadingMonitoringBinding } from "./readingMonitoring";
-import type { SystemConnection, SystemStream } from "@/types/system";
+import type { SystemConnection, SystemReadingBinding, SystemStream } from "@/types/system";
 
 export type ReadingMonitoring = {
   binding?: ReadingMonitoringBinding;
@@ -25,15 +25,16 @@ export const EMPTY_READING_HISTORY: ReadingMonitoring = {
 export const READING_HISTORY_CACHE_LIMIT = 12;
 export const READING_HISTORY_POINT_LIMIT = 32_768;
 
+/** The cache key of a reading's history; it changes when the reading is recorded anew. */
 export function readingHistoryKey(
   connection: Pick<SystemConnection, "host" | "port" | "transport" | "tls"> | undefined,
   stream: Pick<SystemStream, "id" | "topic" | "payload_pointer" | "value_type"> | undefined,
-  entityId?: string,
-  telemetryType?: string,
+  binding?: Pick<SystemReadingBinding, "device_id">,
 ): string | undefined {
   if (!connection?.host || !connection.port || !connection.transport || connection.tls === undefined || !stream) return;
+  // A reading that moves to another device is recorded as a new series.
   return JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
-    connection.host, connection.port, connection.transport, connection.tls, entityId, telemetryType]);
+    connection.host, connection.port, connection.transport, connection.tls, binding ? { device: binding.device_id ?? null } : null]);
 }
 
 export function useReadingHistorySnapshot(cache: ReadingHistoryCache | undefined, key?: string): ReadingMonitoring {

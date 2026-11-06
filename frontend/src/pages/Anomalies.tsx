@@ -30,6 +30,9 @@ import { entitySource, selectedEntity } from "@/features/workspace/reporting-sco
 import { selectedSourceHref, withCatalogueSource } from "@/features/workspace/catalogue-navigation";
 import "./reporting.css";
 
+const eventSecond = (event: ReportedAnomaly) =>
+  `${event.charger_id}/${Math.floor(Date.parse(event.timestamp) / 1000)}`;
+
 const ranges = [{ id: "any", label: "Any time", ms: Infinity }, { id: "24h", label: "Last 24 hours", ms: 86_400_000 },
   { id: "7d", label: "Last 7 days", ms: 7 * 86_400_000 }, { id: "30d", label: "Last 30 days", ms: 30 * 86_400_000 }];
 const signals = [{ id: "any", label: "All results", max: Infinity }, { id: "0.01", label: "p ≤ 0.01", max: 0.01 }, { id: "0.001", label: "p ≤ 0.001", max: 0.001 }];
@@ -133,6 +136,14 @@ export default function AnomalyTable() {
     return groups;
   }, [items, now]);
   const filtering = activeReading !== "any" || range !== "any" || signal !== "any";
+  const eventTimes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const event of items) {
+      const key = eventSecond(event);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [items]);
   const clearFilters = () => { setReading("any"); setRange("any"); setSignal("any"); };
   const unknown = isLoading || (!!error && !page);
   const count = page?.summary.count ?? 0;
@@ -146,7 +157,7 @@ export default function AnomalyTable() {
       return;
     }
     if (!await confirm({ title: "Delete this anomaly?", confirmLabel: "Delete anomaly", destructive: true,
-      description: `${anomaly.entity_label} at ${formatExactDateTime(anomaly.timestamp)}. This cannot be undone.` })) return;
+      description: `${anomaly.entity_label} at ${formatExactDateTime(anomaly.timestamp)} (event ${anomaly.anomaly_id}). This cannot be undone.` })) return;
     try {
       await deleteAnomaly(anomaly.anomaly_id);
 
@@ -248,6 +259,9 @@ export default function AnomalyTable() {
                   const source = sources.get(anomaly.charger_id);
                   const scopedHere = !!source && source.key === selected?.key;
                   const sensors = formatAnomalySensorSet(anomaly.sensor_set?.length ? anomaly.readings.map(item => item.label) : anomaly.sensor_set);
+                  const sameSecond = (eventTimes.get(eventSecond(anomaly)) ?? 0) > 1;
+                  const eventId = sameSecond && anomaly.anomaly_id ? anomaly.anomaly_id : undefined;
+                  const timestamp = formatTimeOfDay(anomaly.timestamp, "second");
                   return <tr key={anomaly.anomaly_id} role="row" className="rp-row">
                     <td role="cell" className="rp-entity">{source && !scopedHere
                       ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}
@@ -255,7 +269,10 @@ export default function AnomalyTable() {
                         to={withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)}
                         aria-label={`View readings for ${entity}`}>View readings</Link>}
                     </td>
-                    <td role="cell" className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp, "second")}</time></td>
+                    <td role="cell" className="rp-time">
+                      <time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{timestamp}</time>
+                      {eventId && <small className="rp-event-ref" title={eventId}>Event {eventId.length > 8 ? `…${eventId.slice(-8)}` : eventId}</small>}
+                    </td>
                     <td role="cell" className="rp-readings"><div>
                       <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : anomaly.telemetry_label ?? anomaly.telemetry_type}</span>
                       {/* A single reading is already named by its badge. */}
@@ -266,7 +283,7 @@ export default function AnomalyTable() {
                       title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p"
                         : getAnomalyValueLabel(anomaly.value_type)}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
                     <td role="cell" className="rp-actions">
-                      <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
+                      <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}${eventId ? `, event ${eventId}` : ""}`} actions={[
                         ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),
                         ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyEventDetail(anomaly.anomaly_id, "Event ID") }] : []),
                         { label: "Copy event type", icon: Copy, onSelect: () => void copyEventDetail(anomaly.anomaly_type, "Event type") },

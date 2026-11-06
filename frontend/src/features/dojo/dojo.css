@@ -15,19 +15,16 @@
 .dj-table small { display: block; color: var(--ex-muted); font-size: var(--text-caption); margin-top: 3px; }
 .dj-table a { color: var(--ex-accent); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .dj-table a:hover { color: var(--ex-accent); }
-.dj-table-scroll { overflow-x: auto; }
-.dj-table-scroll:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 3px; }
 .dj-cell-label { display: none; }
-.dj-comparison-table th { min-width: 106px; }
-.dj-comparison-table :is(thead, tbody) th:first-child {
-  position: sticky; left: 0; min-width: 126px; width: 126px;
-  background: var(--ex-bg); box-shadow: 1px 0 var(--ex-line);
-}
+.dj-comparison-table { table-layout: fixed; }
+.dj-comparison-table :is(th, td) { overflow-wrap: anywhere; }
+.dj-comparison-table th:first-child { width: 32%; }
+.dj-comparison-results .dj-result-run { display: none; }
 .dj-score-notice { display: grid; gap: 4px; margin-block: 0 16px; }
-.dj-scroll-hint { margin: 0 0 8px; }
-@media (max-width: 760px) {
-  .dj-table-scroll:has(.dj-comparison-table) { scroll-snap-type: x proximity; scroll-padding-inline-start: 126px; }
-  .dj-comparison-table thead th:not(:first-child) { scroll-snap-align: start; }
+@container dojo (max-width: 520px) {
+  .dj-comparison-results .dj-result-run { display: grid; margin-top: 24px; }
+  .dj-comparison-table [data-run-current="false"] { display: none; }
+  .dj-comparison-table th:first-child { width: 50%; }
 }
 .dj-row-actions { display: flex; gap: 12px; justify-content: flex-end; white-space: nowrap; }
 .dj-section { margin-top: 28px; }
@@ -65,8 +62,9 @@
 .dj-reading-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 220px; overflow: auto; border: 1px solid var(--ex-line); border-radius: 6px; }
 .dj-reading-list li { padding: 7px 10px; border-bottom: 1px solid var(--ex-line); font-weight: 400; }
 .dj-reading-list li:last-child { border-bottom: 0; }
-.dj-reading-list label { display: flex; gap: 8px; align-items: center; }
-.dj-reading-list small { color: var(--ex-muted); margin-left: auto; }
+.dj-reading-list label { display: flex; gap: 10px; align-items: flex-start; }
+.dj-reading-list label > span { min-width: 0; overflow-wrap: anywhere; }
+.dj-reading-list small { display: block; color: var(--ex-muted); margin-top: 3px; }
 .dj-bindings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px 14px; align-items: center; margin-top: 8px; font-weight: 400; }
 .dj-bindings select { width: 100%; }
 .dj-labels { list-style: none; padding: 0; margin: 14px 0 0; }

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
@@ -6,7 +6,7 @@ import { dojoApi } from "./api";
 import { DojoChart } from "./DojoChart";
 import type { DojoChartData } from "./dojo-chart";
 import { useRunAlarms, useSeriesPoints } from "./hooks";
-import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from "./model";
+import { formatDuration, formatPerDay, formatPreciseInstant, formatRate, formatSpan, runName } from "./model";
 
 const CHART_SERIES = 2;
 
@@ -30,7 +30,7 @@ const ROWS: Row[] = [
   { label: "False alarms per day", value: item => formatPerDay(item.false_alarms_per_day),
     best: { score: item => item.false_alarms_per_day, prefer: "low" } },
   { label: "Time outside labels", value: item => formatDuration(item.evaluated_seconds) },
-  { label: "Scored from", value: item => formatInstant(item.scored_from) },
+  { label: "Scored from", value: item => formatPreciseInstant(item.scored_from) },
 ];
 
 function bestOf(row: Row, runs: RunMetrics[]) {
@@ -45,32 +45,11 @@ function bestOf(row: Row, runs: RunMetrics[]) {
 
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
 
-function ComparisonScroll({ label, children }: { label: string; children: ReactNode }) {
-  const content = useRef<HTMLDivElement>(null);
-  const [overflow, setOverflow] = useState(false);
-  const hint = useId();
-  useEffect(() => {
-    const element = content.current;
-    if (!element) return;
-    const measure = () => setOverflow(element.scrollWidth > element.clientWidth + 1);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
-    return () => observer.disconnect();
-  }, []);
-  return <div className="dj-section">
-    {overflow && <p className="dj-help dj-scroll-hint" id={hint}>Scroll sideways to see all runs.</p>}
-    <div className="dj-table-scroll" ref={content} role="region" aria-label={label}
-      aria-describedby={overflow ? hint : undefined} tabIndex={overflow ? 0 : undefined}>{children}</div>
-  </div>;
-}
-
 /** Up to three finished runs side by side, scored against the dataset's labels. */
 export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; runs: RunSummary[]; labels: LabelView[] }) {
   const finished = useMemo(() => runs.filter(run => run.status === "succeeded"), [runs]);
   const [picked, setPicked] = useState<string[] | null>(null);
+  const [resultRun, setResultRun] = useState("");
   const chosen = useMemo(() => (picked ?? finished.slice(0, DOJO_LIMITS.comparedRuns).map(run => run.id))
     .filter(id => finished.some(run => run.id === id)), [picked, finished]);
   const chosenKey = chosen.join(",");
@@ -99,6 +78,10 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
   if (!finished.length) return <div className="dj-section"><p className="dj-help">Comparisons need finished runs. Start a run
     from the Runs tab; it appears here once it has finished.</p></div>;
   const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
+  const visibleRun = shown?.runs.find(item => item.run_id === resultRun) ?? shown?.runs[0];
+  const isVisible = (item: RunMetrics) => item.run_id === visibleRun?.run_id;
+  const resultHeader = (label: string) => <thead><tr><th scope="col">{label}</th>{shown?.runs.map(item =>
+    <th scope="col" key={item.run_id} data-run-current={isVisible(item)}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>;
   const unscoredRuns = shown?.runs.filter(item => item.scored_from == null) ?? [];
   return <div className="dj-section">
     <div className="dj-compare-picker" role="group" aria-label={`Runs to compare, at most ${DOJO_LIMITS.comparedRuns}`}>
@@ -122,32 +105,38 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
       The comparison chart shows {series.map(item => item.name).join(" and ")}. View the other series in Values and labels.
     </p>}
     {chosen.length > 0 && <DojoChart data={chart} description={`Values with labels and the alarms of ${chosen.length} runs`} />}
-    {shown && <>
-      <ComparisonScroll label="Run metrics">
+    {shown && <div className="dj-comparison-results">
+      {shown.runs.length > 1 && <label className="dj-field dj-result-run">Show results for
+        <select aria-label="Show results for" value={visibleRun?.run_id ?? ""} onChange={event => setResultRun(event.target.value)}>
+          {shown.runs.map(item => <option key={item.run_id} value={item.run_id}>{names.get(item.run_id) ?? item.run_name}</option>)}
+        </select>
+      </label>}
+      <div className="dj-section">
         <table className="dj-table dj-comparison-table" aria-label="Run metrics">
-        <thead><tr><th scope="col">Metric</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
+        {resultHeader("Metric")}
         <tbody>{ROWS.map(row => {
           const best = bestOf(row, shown.runs);
           return <tr key={row.label}><th scope="row">{row.label}</th>{shown.runs.map(item => {
             const isBest = best !== undefined && row.best?.score(item) === best;
-            return <td key={item.run_id} className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}</td>;
+            return <td key={item.run_id} data-run-current={isVisible(item)}
+              className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}</td>;
           })}</tr>;
         })}</tbody>
-      </table></ComparisonScroll>
-      {shown.labels.length > 0 && <ComparisonScroll label="Label outcomes">
+      </table></div>
+      {shown.labels.length > 0 && <div className="dj-section">
         <table className="dj-table dj-comparison-table" aria-label="Label outcomes">
-        <thead><tr><th scope="col">Label</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
+        {resultHeader("Label")}
         <tbody>{shown.labels.map((label, index) => <tr key={label.id}>
-          <th scope="row">{formatInstant(label.start_at)} – {formatInstant(label.end_at)}{label.note && <small>{label.note}</small>}</th>
+          <th scope="row">{formatSpan(label.start_at, label.end_at)}{label.note && <small>{label.note}</small>}</th>
           {shown.runs.map(item => {
             const outcome = item.labels[index]!;
-            return <td key={item.run_id}><span className={`dj-outcome dj-outcome--${outcome.outcome}`}>{OUTCOME[outcome.outcome]}</span>
+            return <td key={item.run_id} data-run-current={isVisible(item)}><span className={`dj-outcome dj-outcome--${outcome.outcome}`}>{OUTCOME[outcome.outcome]}</span>
               {outcome.delay_seconds != null && <small>after {formatDuration(outcome.delay_seconds)}</small>}</td>;
           })}
         </tr>)}</tbody>
-      </table></ComparisonScroll>}
+      </table></div>}
       <p className="dj-help">A label counts as detected when the run alarmed inside it. Each alarm that begins outside every
         label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.</p>
-    </>}
+    </div>}
   </div>;
 }

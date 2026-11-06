@@ -89,7 +89,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const nameInput = useRef<HTMLInputElement>(null);
   // A new service starts at its readings; a saved design or a replacement starts at its graph.
   const [opensAtInput] = useState(!initialDesign && !initialDocument && !replaceId);
-  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(opensAtInput ? "component" : null);
+  const startsFromReading = opensAtInput && !!initialReading;
+  const [inspectorPanel, setInspectorPanel] = useState<InspectorPanel>(opensAtInput && !startsFromReading ? "component" : null);
   const completed = useCallback((id: string) => { session.discard(initial()); onStarted(id); }, [initial, onStarted, session]);
   const apply = usePipelineApply(`${creationKey}:apply`, completed);
   const locked = !!apply.request || !!apply.operation;
@@ -264,6 +265,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
     {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.</p>}
     <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
+      stepsFirstOnNarrow={startsFromReading} fitOnOpen={startsFromReading}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       validationError={metadata.error} onRetryValidation={metadata.retry}
       selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}

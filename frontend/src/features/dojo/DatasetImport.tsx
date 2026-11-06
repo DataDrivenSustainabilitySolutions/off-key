@@ -1,10 +1,11 @@
-import { useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { useId, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
 import type { CsvImportQuery, DatasetView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import type { SystemStream } from "@/types/system";
+import { getLocalTimeZone } from "../charts/telemetry-chart";
 import { dojoApi } from "./api";
 import { fromLocalInput, toLocalInput } from "./model";
 
@@ -114,6 +115,7 @@ export function CsvImportDialog({ open, trigger, onOpenChange, onCreated }: {
 }
 
 const DAY_MS = 86_400_000;
+export type HistoryReading = SystemStream & { brokerName?: string; entityName?: string };
 
 /** Copy recorded readings of the catalogue selection for one window. */
 export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, onChooseSource, scope, readings }: {
@@ -121,7 +123,7 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
   onChooseSource?: () => void;
   /** What is selected in the catalogue, for the default name. */
   scope?: string;
-  readings: SystemStream[];
+  readings: HistoryReading[];
 }) {
   const numeric = useMemo(() => readings.filter(item => item.value_type === "number").slice(0, DOJO_LIMITS.series), [readings]);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
@@ -130,7 +132,11 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
   const [end, setEnd] = useState(() => toLocalInput(Date.now()));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const timeZoneHint = useId();
   const selected = chosen ?? new Set(numeric.map(item => item.id));
+  const picked = numeric.filter(item => selected.has(item.id));
+  const single = numeric.length === 1 ? numeric[0] : undefined;
+  const defaultName = single?.entityName ? `${single.entityName} · ${single.label}` : scope || "Recorded readings";
   const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
   const windowValid = !!startAt && !!endAt && endAt > startAt;
   const close = (next: boolean) => {
@@ -142,8 +148,8 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
     setBusy(true); setError("");
     try {
       const dataset = await dojoApi.importHistory({
-        name: (name.trim() || scope || "Recorded readings").slice(0, 120),
-        reading_ids: numeric.filter(item => selected.has(item.id)).map(item => item.id),
+        name: (name.trim() || defaultName).slice(0, 120),
+        reading_ids: picked.map(item => item.id),
         start: startAt, end: endAt,
       });
       close(false);
@@ -158,7 +164,7 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
   return <ImportDialog open={open} trigger={trigger} onOpenChange={close} title="Copy recorded readings" busy={busy} error={error}
     description="The recorded values of the chosen readings are copied into a frozen dataset. Retention and catalogue edits never change it."
     submitLabel={needsSource && onChooseSource ? "Choose a reading" : "Copy"}
-    canSubmit={needsSource ? !!onChooseSource : selected.size > 0 && windowValid}
+    canSubmit={needsSource ? !!onChooseSource : picked.length > 0 && windowValid}
     onSubmit={needsSource && onChooseSource ? onChooseSource : () => void submit()}>
     {needsSource ? <p className="ex-banner">Choose a numeric reading or its entity in the catalogue.</p> : <>
       <fieldset className="dj-field"><legend>Readings{scope ? ` of ${scope}` : ""}</legend>
@@ -167,16 +173,20 @@ export function HistoryImportDialog({ open, trigger, onOpenChange, onCreated, on
             const next = new Set(selected);
             if (event.target.checked) next.add(item.id); else next.delete(item.id);
             setChosen(next);
-          }} />{item.label}{item.unit && <small>{item.unit}</small>}</label></li>)}</ul>
+          }} /><span>
+            {item.label}{item.unit && ` (${item.unit})`}
+            <small>{[item.brokerName, item.entityName, item.topic].filter(Boolean).join(" · ")}</small>
+          </span></label></li>)}</ul>
       </fieldset>
-      <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={scope ?? "Recorded readings"}
+      <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={defaultName}
         onChange={event => setName(event.target.value)} /></label>
       <div className="dj-field-row">
-        <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy}
+        <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy} aria-describedby={timeZoneHint}
           onChange={event => setStart(event.target.value)} /></label>
-        <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy}
+        <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy} aria-describedby={timeZoneHint}
           onChange={event => setEnd(event.target.value)} /></label>
       </div>
+      <p className="dj-help" id={timeZoneHint}>Times use {getLocalTimeZone()}.</p>
       {!windowValid && <p className="dj-error">The end must be after the start.</p>}
     </>}
   </ImportDialog>;

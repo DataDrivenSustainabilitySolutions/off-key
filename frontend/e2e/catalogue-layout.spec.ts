@@ -154,3 +154,21 @@ test("mobile drawers leave the header and content geometry intact and restore ke
   await expect(page.getByRole("dialog", { name: "MQTT catalogue", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Show catalogue", exact: true })).toBeVisible();
 });
+
+test("catalogue search leaves room for results in a 320 by 240 viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 240 });
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Show catalogue", exact: true });
+  await expect(trigger).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  const drawer = page.getByRole("dialog", { name: "MQTT catalogue", exact: true });
+  const search = drawer.getByRole("searchbox", { name: "Search catalogue", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("Temperature");
+  await expect(drawer.getByText("Search results", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await bounds(drawer.locator(".ex-list-scroll"))).height).toBeGreaterThanOrEqual(69);
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expectNoHorizontalScroll(page);
+});

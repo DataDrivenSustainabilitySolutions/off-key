@@ -19,11 +19,15 @@ vi.mock("@/features/charts/EChart", () => ({
 vi.mock("@/features/workspace/catalogue-context", () => ({
   useCatalogue: () => ({
     selected: { key: "pump", kind: "device", label: "Pump 1", streamIds: ["r1", "r2", "r3"] },
-    document: { streams: [
-      { id: "r1", label: "Voltage", unit: "V", value_type: "number" },
-      { id: "r2", label: "Current", unit: "A", value_type: "number" },
-      { id: "r3", label: "Mode", value_type: "text" },
-    ] },
+    document: {
+      connections: [{ id: "broker", label: "Workshop broker" }],
+      devices: [{ id: "pump", label: "Pump 1" }],
+      streams: [
+        { id: "r1", label: "Voltage", unit: "V", value_type: "number", connection_id: "broker", device_id: "pump", topic: "pump/voltage" },
+        { id: "r2", label: "Current", unit: "A", value_type: "number", connection_id: "broker", device_id: "pump", topic: "pump/current" },
+        { id: "r3", label: "Mode", value_type: "text", connection_id: "broker", device_id: "pump", topic: "pump/mode" },
+      ],
+    },
   }),
 }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
@@ -80,6 +84,8 @@ describe("Dojo workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy recorded readings" }));
     const dialog = await screen.findByRole("dialog", { name: "Copy recorded readings" });
     expect(within(dialog).queryByText("Mode")).toBeNull();
+    expect(within(dialog).getByText("Workshop broker · Pump 1 · pump/voltage")).toBeTruthy();
+    expect(within(dialog).getByLabelText("From").getAttribute("aria-describedby")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /Current/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
     await waitFor(() => expect(dojoApi.importHistory).toHaveBeenCalledWith(expect.objectContaining({ name: "Pump 1", reading_ids: ["r1"] })));

@@ -28,8 +28,13 @@ export function DojoWorkspace() {
   };
   const readings = useMemo(() => {
     const ids = new Set(selected?.streamIds ?? []);
-    return document.streams.filter(stream => ids.has(stream.id));
-  }, [selected, document.streams]);
+    const brokers = new Map(document.connections.map(broker => [broker.id, broker.label]));
+    const entities = new Map(document.devices.map(entity => [entity.id, entity.label]));
+    return document.streams.filter(stream => ids.has(stream.id)).map(stream => ({
+      ...stream, brokerName: brokers.get(stream.connection_id),
+      entityName: stream.device_id ? entities.get(stream.device_id) : undefined,
+    }));
+  }, [selected, document.streams, document.connections, document.devices]);
   const open = (dataset: DatasetView) => navigate(href({ dataset: dataset.id, tab: null }), { state: { openedDataset: dataset.id } });
 
   return <main className="ex-main-content" aria-label="Dojo workspace">

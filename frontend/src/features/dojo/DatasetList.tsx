@@ -4,10 +4,9 @@ import { Link } from "react-router-dom";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetSummary, DatasetView } from "@/types/dojo.generated";
-import type { SystemStream } from "@/types/system";
 import { CatalogueSearchContext } from "../workspace/catalogue-search";
 import { dojoApi } from "./api";
-import { CsvImportDialog, HistoryImportDialog } from "./DatasetImport";
+import { CsvImportDialog, HistoryImportDialog, type HistoryReading } from "./DatasetImport";
 import { formatInstant, formatSpan } from "./model";
 
 const ORIGIN = { csv: "CSV upload", history: "Recorded readings" } as const;
@@ -16,7 +15,7 @@ export function DatasetList({ datasetHref, onCreated, scope, readings }: {
   datasetHref: (id: string) => string;
   onCreated: (dataset: DatasetView) => void;
   scope?: string;
-  readings: SystemStream[];
+  readings: HistoryReading[];
 }) {
   const [datasets, setDatasets] = useState<DatasetSummary[] | null>(null);
   const [error, setError] = useState("");

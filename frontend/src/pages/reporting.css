@@ -21,6 +21,7 @@ tbody:first-of-type .rp-day th { padding-top: 14px; }
 .rp-entity a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 3px; }
 .rp-entity a.rp-entity-readings { display: block; width: fit-content; margin-top: 4px; color: hsl(var(--primary)); font-size: var(--text-caption); font-weight: 450; }
 .rp-time { color: hsl(var(--muted-foreground)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-event-ref { display: block; margin-top: 3px; font-size: var(--text-caption); }
 .rp-readings { max-width: 26rem; }
 .rp-readings > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rp-reading { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; background: rgb(224 242 254); color: rgb(7 89 133); font-size: var(--text-caption); font-weight: 500; }

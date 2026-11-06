@@ -44,6 +44,8 @@ type Props = {
   components: PipelineComponent[];
   selected?: string;
   readOnly?: boolean;
+  /** Prefer a full, readable overview when opening a service from a reading. */
+  fitOnOpen?: boolean;
   layoutEditable?: boolean;
   states?: Record<string, string>;
   issues?: PipelineValidation["issues"];
@@ -66,6 +68,7 @@ export default function PipelineCanvas({
   components,
   selected,
   readOnly,
+  fitOnOpen,
   layoutEditable,
   states,
   issues,
@@ -101,8 +104,8 @@ export default function PipelineCanvas({
     if (!flow || !surface.current || lastFit.current === fitRequest) return;
     const initial = lastFit.current === undefined;
     lastFit.current = fitRequest;
-    void fitReadableView(flow, surface.current, selected, initial && readOnly ? 0.78 : 1);
-  }, [fitRequest, flow, readOnly, selected]);
+    void fitReadableView(flow, surface.current, selected, initial && (readOnly || fitOnOpen) ? 0.78 : 1);
+  }, [fitRequest, fitOnOpen, flow, readOnly, selected]);
   const lastReveal = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!flow || !surface.current || !reveal || lastReveal.current === reveal.request) return;

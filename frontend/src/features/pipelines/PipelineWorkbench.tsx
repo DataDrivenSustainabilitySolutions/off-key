@@ -19,6 +19,7 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"
   settings?: ReactNode;
   actions?: ReactNode;
   inspectorPanel?: InspectorPanel;
+  stepsFirstOnNarrow?: boolean;
   onInspectorPanelChange?: (panel: InspectorPanel) => void;
   /** Enables Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z for graph history. */
   onUndo?: () => void;
@@ -36,7 +37,7 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
-  catalog, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
+  catalog, validation, settings, actions, inspectorPanel, onInspectorPanelChange, stepsFirstOnNarrow,
   onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, ...props
 }: Props) {
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
@@ -63,7 +64,8 @@ export function PipelineWorkbench({
     if (issuesRequest) setIssuesOpen(true);
   }
   const [localPanel, setLocalPanel] = useState<InspectorPanel>(null);
-  const [view, setView] = useState<"graph" | "steps" | "features">("graph");
+  const [view, setView] = useState<"graph" | "steps" | "features">(() =>
+    stepsFirstOnNarrow && window.matchMedia?.("(max-width: 680px)").matches ? "steps" : "graph");
   const [adding, setAdding] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragFrame = useRef<number | undefined>(undefined);

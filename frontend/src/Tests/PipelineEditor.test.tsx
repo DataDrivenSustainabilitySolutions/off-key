@@ -228,6 +228,7 @@ describe("simple monitoring setup", () => {
     const view = render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[unrecorded]} initialReading="AC2" /></MemoryRouter>);
     expect(screen.getByText(/Recording is off for/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Turn on recording in Sources" }).getAttribute("href")).toContain("reading=AC2");
+    fireEvent.click(screen.getByRole("button", { name: "Step settings" }));
     expect(phases.inputs.every((input) => (screen.getByRole("checkbox", { name: `Monitor ${input.stream.label}` }) as HTMLInputElement).disabled)).toBe(true);
     view.rerender(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} initialReading="AC2" /></MemoryRouter>);
     expect(screen.queryByText(/recorded yet/)).toBeNull();

@@ -99,9 +99,17 @@ export function formatInstant(value: string | number | null | undefined, locale?
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+const preciseTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "long" });
+const preciseClock = new Intl.DateTimeFormat(undefined, { timeStyle: "long" });
+
+export const formatPreciseInstant = (value: string | null | undefined) =>
+  value ? preciseTime.format(new Date(value)) : "–";
+
 export function formatSpan(start: string | null | undefined, end: string | null | undefined) {
   if (!start || !end) return "–";
-  return `${formatInstant(start)} – ${formatInstant(end)}`;
+  const first = new Date(start), last = new Date(end);
+  const endFormat = first.toDateString() === last.toDateString() ? preciseClock : preciseTime;
+  return `${preciseTime.format(first)} – ${endFormat.format(last)}`;
 }
 
 export const runName = (run: Pick<RunSummary, "name" | "created_at">) => run.name || `Run of ${formatInstant(run.created_at)}`;

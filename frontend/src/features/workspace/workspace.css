@@ -78,6 +78,12 @@
   .workspace-loading { padding: 28px 20px; }
 }
 
+@media (max-width: 760px) and (max-height: 380px) {
+  .app-catalogue-mobile-overlay, .app-catalogue-mobile-sidebar { top: 0; }
+  .app-catalogue-mobile-sidebar .ex-search { margin-block: 12px 8px; }
+  .app-catalogue-mobile-sidebar .ex-level-heading { min-height: 48px; padding-block: 6px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-catalogue-workspace,.catalogue-workspace-toggle,.catalogue-edge-face svg { transition: none; }
 }

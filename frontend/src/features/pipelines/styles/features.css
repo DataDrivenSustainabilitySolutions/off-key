@@ -1,7 +1,8 @@
-/* The Graph and Features switch sits with the editing actions. */
+/* The view switch stays together when the editing actions wrap. */
 .pl-canvas-toolbar .pl-view-switch {
   display: inline-grid;
-  grid-template-columns: repeat(2, auto);
+  grid-auto-flow: column;
+  flex: none;
   padding: 2px;
   gap: 2px;
 }

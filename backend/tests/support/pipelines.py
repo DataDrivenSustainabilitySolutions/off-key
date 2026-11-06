@@ -114,3 +114,10 @@ def branched(strategy="adaptive_stream"):
         {"source": "merge", "target": "detector"},
     ]
     return PipelineDefinition.model_validate(data)
+
+
+def quick(strategy="adaptive_stream"):
+    """``branched`` with learning windows a test can fill in a few hundred steps."""
+    data = branched(strategy).model_dump(mode="json")
+    data["settings"].update(training_window_size=60, calibration_window_size=40)
+    return PipelineDefinition.model_validate(data)

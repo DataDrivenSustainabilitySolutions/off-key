@@ -24,6 +24,7 @@ EXPECTED_MIGRATIONS = (
     "017_detector_inputs.sql",
     "018_member_favorites.sql",
     "019_dojo_datasets.sql",
+    "020_dojo_runs.sql",
 )
 
 

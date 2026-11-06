@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Literal
@@ -53,6 +54,14 @@ def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float 
     return None
 
 
+def _wall_time() -> float:
+    return time.time()
+
+
+def _monotonic_time() -> float:
+    return time.monotonic()
+
+
 @dataclass(frozen=True, slots=True)
 class _SensorReading:
     """Stored snapshot of the latest reading received for one sensor."""
@@ -79,6 +88,8 @@ class SensorStateCache:
         observation_max_age_seconds: float = 30.0,
         observation_future_tolerance_seconds: float = 5.0,
         alignment_max_skew_seconds: float = 5.0,
+        clock: Callable[[], float] | None = None,
+        monotonic: Callable[[], float] | None = None,
     ):
         """
         Initialize the sensor state cache.
@@ -89,7 +100,11 @@ class SensorStateCache:
             max_sensor_age_seconds: Maximum allowed age for each required sensor
                 when emitting aligned vectors
             max_chargers: Maximum number of chargers to cache (default: 10000)
+            clock, monotonic: Wall and receipt clocks. A Dojo replay passes the
+                event time for both, so historical data ages as it did live.
         """
+        self._clock = clock or _wall_time
+        self._monotonic = monotonic or _monotonic_time
         self._lock = Lock()
         self.required_sensors = set(required_sensors)
         self.required_sensor_order = tuple(sorted(self.required_sensors))
@@ -113,7 +128,7 @@ class SensorStateCache:
         # Tracks last emitted sensor update sequence in strict-barrier mode.
         self._last_emitted_versions: dict[str, dict[str, int]] = {}
         self._next_update_seq = 0
-        self._last_cleanup = time.time()
+        self._last_cleanup = self._clock()
         self._cleanup_interval = 300  # Run cleanup every 5 minutes
 
     def update_with_status(
@@ -133,7 +148,7 @@ class SensorStateCache:
 
         Thread-safe: uses internal lock for concurrent access.
         """
-        current_time = time.time()
+        current_time = self._clock()
         event_timestamp = current_time if sample_timestamp is None else sample_timestamp
 
         with self._lock:
@@ -143,7 +158,7 @@ class SensorStateCache:
                         status="observation_rejected",
                         rejection_reason="receipt_nonfinite",
                     )
-                if time.monotonic() - received_monotonic > self.max_sensor_age_seconds:
+                if self._monotonic() - received_monotonic > self.max_sensor_age_seconds:
                     return AlignmentUpdate(
                         status="observation_rejected",
                         rejection_reason="receipt_too_old",
@@ -341,7 +356,7 @@ class SensorStateCache:
             age = (
                 current_time - sensor_entry.received_at
                 if sensor_entry.received_monotonic is None
-                else time.monotonic() - sensor_entry.received_monotonic
+                else self._monotonic() - sensor_entry.received_monotonic
             )
             ages[sensor] = max(age, 0.0)
         return ages

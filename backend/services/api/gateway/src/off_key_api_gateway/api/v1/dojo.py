@@ -1,4 +1,4 @@
-"""Dojo datasets: CSV uploads and copies of recorded readings.
+"""Dojo datasets and runs: replay detection designs over stored time series.
 
 Every call is forwarded to TACTIC with the caller's own token, which decides
 access. Administrators only until members get a dedicated Dojo permission.
@@ -17,6 +17,12 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    RunCreate,
+    RunListPage,
+    RunListQuery,
+    RunResultsPage,
+    RunResultsQuery,
+    RunView,
 )
 from off_key_core.schemas.members import MemberProfile
 
@@ -200,6 +206,119 @@ async def list_dojo_points(
         "GET",
         f"/api/v1/dojo/datasets/{path_segment(dataset_id)}"
         f"/series/{path_segment(series_id)}/points",
+        params=_query(query),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.get("/runs", response_model=RunListPage)
+@read_limit
+async def list_dojo_runs(
+    request: Request,
+    query: Annotated[RunListQuery, Query()],
+    authorization: str = Depends(member_authorization),
+):
+    """Runs, newest first, optionally of one dataset or in one status."""
+    return await tactic.request(
+        "GET",
+        "/api/v1/dojo/runs",
+        params=_query(query),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post("/runs", response_model=RunView, status_code=201)
+@write_limit
+async def create_dojo_run(
+    request: Request,
+    run: RunCreate,
+    authorization: str = Depends(member_authorization),
+):
+    """Queue a replay of one design over one dataset.
+
+    `definition` is a design as the pipeline library stores it; `bindings`
+    maps each of its input slot ids to a series id of the dataset. The design
+    is compiled and bound now, so errors in it are refused here. The run then
+    waits for a Dojo worker; poll `GET /v1/dojo/runs/{run_id}` for `status`
+    and `points_read` of `points_total`. Points are replayed in time order
+    through the same alignment and detector code as a live monitor, with the
+    data's own timestamps as the clock. At most 20 runs wait or run at once.
+    """
+    return await tactic.request(
+        "POST",
+        "/api/v1/dojo/runs",
+        json_data=run.model_dump(mode="json"),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.get("/runs/{run_id}", response_model=RunView)
+@read_limit
+async def get_dojo_run(
+    request: Request,
+    run_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """One run with its design, bindings, progress and result counts.
+
+    `stats` counts observations that produced no result, by reason, so a run
+    with few results says whether alignment or rejection held them back.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post("/runs/{run_id}/cancel", response_model=RunView)
+@write_limit
+async def cancel_dojo_run(
+    request: Request,
+    run_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """Cancel a run. A waiting run ends at once; a running one within seconds,
+    keeping the results it stored so far."""
+    return await tactic.request(
+        "POST",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}/cancel",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.delete("/runs/{run_id}", status_code=204)
+@write_limit
+async def delete_dojo_run(
+    request: Request,
+    run_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """Delete a finished run and its results. This cannot be undone."""
+    await tactic.request(
+        "DELETE",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}",
+        headers={"Authorization": authorization},
+    )
+    return Response(status_code=204)
+
+
+@router.get("/runs/{run_id}/results", response_model=RunResultsPage)
+@read_limit
+async def list_dojo_run_results(
+    request: Request,
+    run_id: str,
+    query: Annotated[RunResultsQuery, Query()],
+    authorization: str = Depends(member_authorization),
+):
+    """One row per detector result, in order, a page at a time.
+
+    Pass the returned `next_after` as `after` to continue; it is null on the
+    last page. `score` is null while the detector is still learning.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}/results",
         params=_query(query),
         headers={"Authorization": authorization},
     )

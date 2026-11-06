@@ -60,6 +60,8 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `dojo_datasets` | `id` | A frozen dataset: name, origin (`csv` or `history`), provenance, size and time span |
 | `dojo_dataset_series` | `id` | One named series of a dataset, with its unit and, for copies, the catalogue reading it came from |
 | `dojo_dataset_points` | `(series_id, timestamp)` | The values; independent of `telemetry`, so retention never removes them |
+| `dojo_runs` | `id` | One design replayed over one dataset: the bound configuration, status, progress, worker heartbeat and counts |
+| `dojo_run_results` | `(run_id, sequence)` | One detector result of a run: time, phase, score, threshold and alarm |
 
 ## Relationship highlights
 
@@ -69,6 +71,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 - `monitoring_evidence.service_id` identifies the monitoring service that produced the inference record.
 - `monitoring_pipeline_run_events.run_id → monitoring_pipeline_runs.id`; a run also keeps `final_status`, the runtime status it ended with.
 - `dojo_dataset_series.dataset_id → dojo_datasets.id`, deleted with the dataset. `dojo_dataset_points.series_id` names its series without a foreign key, which would slow large imports; the Dojo service deletes points with their dataset. `dojo_datasets.created_by → users.id` is cleared when the member is removed.
+- `dojo_runs.dataset_id → dojo_datasets.id`, deleted with the dataset, which is refused while one of its runs waits or runs. `dojo_run_results.run_id` has no foreign key, like dataset points; the Dojo service deletes results with their run. `dojo_runs.created_by → users.id` is cleared when the member is removed.
 
 ## Time-series characteristics
 

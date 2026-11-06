@@ -736,6 +736,9 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     def refresh_background_state(self) -> None:
         """Adaptive models train inline and have no background state."""
 
+    def wait_for_background(self) -> None:
+        """Adaptive models train inline; there is nothing to wait for."""
+
     def get_pipeline_state(self) -> dict[str, Any]:
         snapshot = self.diagnostics.snapshot()
         # With several detectors, the slowest one says how far learning is.

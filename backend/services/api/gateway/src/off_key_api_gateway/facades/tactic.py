@@ -4,7 +4,6 @@ HTTP client for communicating with the TACTIC middleware service.
 
 import asyncio
 import json
-from datetime import datetime
 from functools import cached_property
 from typing import Any
 from urllib.parse import quote
@@ -280,56 +279,6 @@ class Tactic:
             method="DELETE",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
             params=ref.model_dump(),
-        )
-
-    async def get_charger_anomalies(
-        self,
-        charger_id: str,
-        limit: int = 500,
-        telemetry_type: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Get anomalies for charger from TACTIC data service."""
-        params: dict[str, Any] = {"limit": limit}
-        if telemetry_type:
-            params["telemetry_type"] = telemetry_type
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/anomalies/{path_segment(charger_id)}",
-            params=params,
-        )
-
-    async def query_anomalies(self, query: dict[str, Any]) -> dict[str, Any]:
-        return await self.request(
-            method="POST", endpoint="/api/v1/data/anomalies/query", json_data=query
-        )
-
-    async def get_anomaly_count(self, since: datetime | None = None) -> dict[str, int]:
-        """Get total anomaly count, optionally filtered by timestamp."""
-        params: dict[str, Any] = {}
-        if since:
-            params["since"] = since.isoformat()
-        return await self.request(
-            method="GET",
-            endpoint="/api/v1/data/anomalies/count",
-            params=params,
-        )
-
-    async def create_anomaly(self, anomaly_data: dict[str, Any]) -> dict[str, str]:
-        """Create anomaly via TACTIC data service."""
-        return await self.request(
-            method="POST",
-            endpoint="/api/v1/data/anomalies",
-            json_data=anomaly_data,
-        )
-
-    async def delete_anomaly(
-        self,
-        anomaly_id: str,
-    ) -> dict[str, str]:
-        """Delete anomaly via TACTIC data service."""
-        return await self.request(
-            method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{path_segment(anomaly_id)}",
         )
 
     async def list_available_models(

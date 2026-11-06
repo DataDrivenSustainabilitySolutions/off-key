@@ -5,6 +5,7 @@ import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
 import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/domain/readings/readingHistoryCache";
 import type { SystemConnection, SystemStream } from "@/types/system";
+import { alarm } from "./support/fixtures/monitoring";
 import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
@@ -22,7 +23,7 @@ beforeEach(() => {
   vi.mocked(apiUtils.get).mockImplementation(async (endpoint) => {
     if (endpoint.includes("/measurements")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
-    if (endpoint.startsWith("/v1/anomalies?")) return [];
+    if (endpoint.startsWith("/v1/alarms?")) return [];
     if (endpoint.startsWith("/v1/monitors/overview")) return { monitors: [], authoring_enabled: false };
     throw new Error("Unexpected endpoint");
   });
@@ -97,15 +98,14 @@ describe("selected-reading monitoring subscription", () => {
     expect(vi.mocked(apiUtils.get).mock.calls[0]![1]?.signal?.aborted).toBe(true);
   });
 
-  it("names the reading's alarms by the catalogue reading the chart draws", async () => {
+  it("asks for the alarms of the catalogue reading the chart draws", async () => {
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
-    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/anomalies?")
-      ? Promise.resolve([{ anomaly_id: "alarm", charger_id: "canonical-entity", telemetry_type: "temperature/air",
-        sensor_set: ["temperature/air", "elsewhere"], timestamp: time, anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue" }])
-      : baseGet(endpoint, options));
+    const found = alarm({ alarm_id: "alarm", reading_ids: ["reading", "elsewhere"], multivariate: true, timestamp: time });
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/alarms?")
+      ? Promise.resolve([found]) : baseGet(endpoint, options));
     const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
-    await waitFor(() => expect(hook.result.current.anomalies).toHaveLength(1));
-    expect(hook.result.current.anomalies[0]).toMatchObject({ telemetry_type: "reading", sensor_set: ["reading", "elsewhere"] });
+    await waitFor(() => expect(hook.result.current.anomalies).toEqual([found]));
+    expect(vi.mocked(apiUtils.get).mock.calls.map(([endpoint]) => endpoint)).toContain("/v1/alarms?reading_id=reading");
   });
 
   it("does not request unrelated stored telemetry when no input matches", async () => {
@@ -122,7 +122,7 @@ describe("selected-reading monitoring subscription", () => {
     hook.rerender({ reading: { ...stream, topic: "site/other/input" } });
     await act(async () => { resolve(points); });
     expect(signal?.aborted).toBe(true);
-    expect(hook.result.current.binding).toEqual({ readingId: stream.id, entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
+    expect(hook.result.current.binding).toEqual({ readingId: stream.id });
     expect(hook.result.current.telemetry).toEqual(points);
     const requests = (shared: boolean) => vi.mocked(apiUtils.get).mock.calls
       .filter(([endpoint]) => endpoint.startsWith("/v1/monitors/overview") === shared);

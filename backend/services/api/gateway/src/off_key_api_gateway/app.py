@@ -38,8 +38,8 @@ it records, the monitors that watch them and the alarms they raise. The web app
 uses this same API, so every change it makes can be made here.
 
 **Base URL.** Behind the dashboard the API lives under `/api`, which the
-`servers` entry of this document states: `/v1/anomalies` is called as
-`https://<dashboard>/api/v1/anomalies`.
+`servers` entry of this document states: `/v1/alarms` is called as
+`https://<dashboard>/api/v1/alarms`.
 
 **Authentication.** `POST /v1/auth/login` returns an access token. Send it as
 `Authorization: Bearer <token>` on every other call and sign in again when it
@@ -52,13 +52,11 @@ permission of the member's role, which `GET /v1/me` lists.
   `GET /v1/catalogue`; `PUT /v1/recording` chooses which readings are recorded.
 - Devices and readings are named by their catalogue ids: `GET /v1/devices`
   lists devices, `GET /v1/readings/{reading_id}/measurements` returns recorded
-  values, and evidence takes a `device_id` or `reading_id`.
-- Alarms still name a reading by its recorded `charger_id` and
-  `telemetry_type`; `runtime.bindings` of `GET /v1/catalogue` maps each reading
-  id to that pair as `entity_id` and `telemetry_key`.
+  values, and evidence and alarms take a `device_id` or `reading_id`.
 - A *monitor* (`monitor_id`) watches readings; a design it can run is a
   pipeline under `/v1/pipelines`.
-- An *alarm* in Reporting is an anomaly under `/v1/anomalies`.
+- An *alarm* in Reporting is under `/v1/alarms`, with its `device_id` and
+  `reading_ids`.
 
 **Changes.** Saving the catalogue takes the last `revision` as
 `expected_revision`, pipeline drafts take `expected_version`; a stale value
@@ -114,12 +112,12 @@ OPENAPI_TAGS = [
         "description": "Per-observation detector scores and p-values behind alarms.",
     },
     {
-        "name": "anomalies",
+        "name": "alarms",
         "description": "Alarms raised by monitors, as shown in Reporting.",
     },
     {
         "name": "favorites",
-        "description": "Entities, readings and monitors the signed-in member starred.",
+        "description": "Devices, readings and monitors the signed-in member starred.",
     },
     {
         "name": "dojo",

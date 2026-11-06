@@ -13,7 +13,7 @@ import { ReadingHistoryCache, readingHistoryKey } from "@/domain/readings/readin
 import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 
-type Input = { id: string; key: string; entityId: string; telemetryType: string };
+type Input = { id: string; key: string };
 
 class HistoryCursors {
   readonly telemetry = new Map<string, TelemetryCursor | undefined>();
@@ -49,7 +49,7 @@ export function useServiceHistory(
   // Stable scalar request identities avoid restarting polls on service heartbeats.
   const requests = JSON.stringify(inputs.flatMap(({ stream, binding }) => {
     const key = readingHistoryKey(connections.find(item => item.id === stream.broker_id), stream, binding.entity_id, binding.telemetry_key);
-    return key ? [{ id: stream.id, key, entityId: binding.entity_id, telemetryType: binding.telemetry_key }] : [];
+    return key ? [{ id: stream.id, key }] : [];
   }));
   const readings = JSON.stringify([...new Set(allInputs.map(input => input.stream.id))].sort());
   const context = useMemo(() => ({ inputs: JSON.parse(requests) as Input[], readingIds: JSON.parse(readings) as string[],
@@ -84,7 +84,7 @@ export function useServiceHistory(
         const next = getTelemetryCursor(points) ?? initial;
         cursors.telemetry.set(input.key, next);
         cache.update(input.key, entry => ({ ...entry, telemetryCursor: next, telemetryFetchedAt: Date.now(), data: { ...entry.data,
-          binding: { readingId: input.id, entityId: input.entityId, telemetryType: input.telemetryType },
+          binding: { readingId: input.id },
           telemetry: mergeReadingHistory(entry.data.telemetry, points, 2000), loading: false, error: "",
         } }));
       } catch {

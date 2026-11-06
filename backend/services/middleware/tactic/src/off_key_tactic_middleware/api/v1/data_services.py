@@ -9,26 +9,25 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from off_key_core.schemas.alarms import (
+    Alarm,
+    AlarmCount,
+    AlarmCreate,
+    AlarmPage,
+    AlarmQuery,
+)
 from off_key_core.schemas.favorites import Favorite, FavoriteKind, FavoriteRef
-from off_key_core.schemas.reporting import AnomalyPage, AnomalyQuery
 
 from ...provider import (
-    get_anomaly_service,
+    get_alarm_service,
     get_favorite_service,
     get_system_service,
     get_user_service,
 )
-from ...schemas import (
-    AnomalyCreateRequest,
-    AnomalyResponse,
-    UserLoginRequest,
-)
+from ...schemas import UserLoginRequest
 from ...services.accounts.users import UserService
 from ...services.catalogue.system import SystemService
-from ...services.data import (
-    AnomalyService,
-    FavoriteService,
-)
+from ...services.data import AlarmService, FavoriteService
 from ..errors import DomainErrorRoute
 
 router = APIRouter(route_class=DomainErrorRoute)
@@ -73,49 +72,54 @@ async def remove_user_favorite(
     return Response(status_code=204)
 
 
-@router.get("/anomalies/count")
-async def get_anomaly_count(
-    since: datetime | None = Query(None),
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.get("/alarms", response_model=list[Alarm])
+async def list_alarms(
+    device_id: str | None = Query(None),
+    stream_id: list[str] | None = Query(None),
+    service_id: str | None = Query(None, min_length=1),
+    limit: int = Query(500, ge=1, le=1000),
+    service: AlarmService = Depends(get_alarm_service),
+    system: SystemService = Depends(get_system_service),
 ):
-    count = await service.count_anomalies(since=since)
-    return {"count": count}
+    return await service.list_alarms(
+        await system.read(),
+        device_id=device_id,
+        stream_ids=stream_id,
+        service_id=service_id,
+        limit=limit,
+    )
 
 
-@router.post("/anomalies/query", response_model=AnomalyPage)
-async def query_anomalies(
-    query: AnomalyQuery,
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.get("/alarms/count", response_model=AlarmCount)
+async def count_alarms(
+    since: datetime | None = Query(None),
+    service: AlarmService = Depends(get_alarm_service),
+):
+    return AlarmCount(count=await service.count_alarms(since=since))
+
+
+@router.post("/alarms/query", response_model=AlarmPage)
+async def query_alarms(
+    query: AlarmQuery,
+    service: AlarmService = Depends(get_alarm_service),
     system: SystemService = Depends(get_system_service),
 ):
     return await service.query(query, await system.read())
 
 
-@router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
-async def get_charger_anomalies(
-    charger_id: str,
-    telemetry_type: str | None = Query(None),
-    limit: int = Query(500, ge=1, le=1000),
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.post("/alarms", response_model=Alarm, status_code=201)
+async def create_alarm(
+    alarm: AlarmCreate,
+    service: AlarmService = Depends(get_alarm_service),
+    system: SystemService = Depends(get_system_service),
 ):
-    return await service.list_anomalies(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        limit=limit,
-    )
+    return await service.create_alarm(alarm, await system.read())
 
 
-@router.post("/anomalies")
-async def create_anomaly(
-    anomaly_data: AnomalyCreateRequest,
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.delete("/alarms/{alarm_id}", status_code=204, response_class=Response)
+async def delete_alarm(
+    alarm_id: str,
+    service: AlarmService = Depends(get_alarm_service),
 ):
-    return await service.create_anomaly(payload=anomaly_data)
-
-
-@router.delete("/anomalies/{anomaly_id}")
-async def delete_anomaly(
-    anomaly_id: str,
-    service: AnomalyService = Depends(get_anomaly_service),
-):
-    return await service.delete_anomaly(anomaly_id=anomaly_id)
+    await service.delete_alarm(alarm_id=alarm_id)
+    return Response(status_code=204)

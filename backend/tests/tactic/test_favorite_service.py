@@ -54,7 +54,7 @@ async def test_members_keep_their_own_favourites_of_every_kind():
 
     added = await service.add_favorite(user_id=1, ref=READING)
     await service.add_favorite(user_id=1, ref=MONITOR)
-    await service.add_favorite(user_id=2, ref=FavoriteRef(kind="entity", id="c2"))
+    await service.add_favorite(user_id=2, ref=FavoriteRef(kind="device", id="c2"))
 
     assert (added.kind, added.id) == ("reading", "line/temperature")
     assert pairs(await service.list_favorites(user_id=1)) == [
@@ -66,7 +66,7 @@ async def test_members_keep_their_own_favourites_of_every_kind():
     ]
     await service.remove_favorite(user_id=1, ref=READING)
     assert pairs(await service.list_favorites(user_id=1)) == [("monitor", "m1")]
-    assert pairs(await service.list_favorites(user_id=2)) == [("entity", "c2")]
+    assert pairs(await service.list_favorites(user_id=2)) == [("device", "c2")]
 
 
 @pytest.mark.asyncio
@@ -89,14 +89,14 @@ async def test_a_member_keeps_at_most_the_maximum_number_of_favourites():
     service = FavoriteService(session, Favorites())
     for index in range(MAX_FAVORITES):
         await service.add_favorite(
-            user_id=1, ref=FavoriteRef(kind="entity", id=f"c{index}")
+            user_id=1, ref=FavoriteRef(kind="device", id=f"c{index}")
         )
 
     with pytest.raises(ConflictError, match="at most 256"):
         await service.add_favorite(user_id=1, ref=READING)
     # One the member already has is still answered, and others are unaffected.
     assert (
-        await service.add_favorite(user_id=1, ref=FavoriteRef(kind="entity", id="c0"))
+        await service.add_favorite(user_id=1, ref=FavoriteRef(kind="device", id="c0"))
     ).id
     await service.add_favorite(user_id=2, ref=READING)
 

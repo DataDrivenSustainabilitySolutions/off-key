@@ -6,8 +6,7 @@ import { drainForward, EVIDENCE_PAGE_SIZE, TELEMETRY_PAGE_SIZE } from "@/lib/for
 import { getTelemetryCursor, getTelemetryData } from "@/lib/charger-api";
 import { INTERVALS } from "@/lib/constants";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
-import { alarmsByReading } from "@/lib/anomaly-utils";
-import type { Anomaly } from "@/types/charger";
+import type { Alarm } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "@/types/system";
@@ -68,8 +67,7 @@ class ReadingPolls {
         cursorOf: getMonitoringEvidenceCursor,
         pageSize: EVIDENCE_PAGE_SIZE,
       }),
-      get<Anomaly[]>(API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(binding.entityId))
-        .then(items => alarmsByReading(items, new Map([[binding.telemetryType, binding.readingId]]))),
+      get<Alarm[]>(API_CONFIG.ENDPOINTS.ALARMS.LIST({ readingIds: [binding.readingId] })),
     ]);
     if (signal.aborted) return;
     if (evidence.status === "fulfilled") this.evidenceCursor = getMonitoringEvidenceCursor(evidence.value) ?? this.evidenceCursor;
@@ -95,7 +93,8 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const host = connection?.host, port = connection?.port, transport = connection?.transport, tls = connection?.tls;
   const entityId = savedBinding?.entity_id, telemetryType = savedBinding?.telemetry_key;
   const context = useMemo(() => host && port && transport && tls !== undefined ? {
-    binding: entityId && telemetryType ? { readingId: id, entityId, telemetryType } : undefined,
+    // Only a recorded reading has history to poll.
+    binding: entityId && telemetryType ? { readingId: id } : undefined,
     key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type }, entityId, telemetryType)!,
   } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, entityId, telemetryType]);
   const state = useReadingHistorySnapshot(cache, context?.key);

@@ -213,11 +213,11 @@ docker compose logs --tail 200 tactic-middleware
 1. Verify that the monitor workload exists.
 2. Confirm that data reaches its EMQX topic.
 3. Allow static calibration or adaptive warm-up to complete.
-4. Query evidence and anomaly counts:
+4. Query evidence and alarm counts:
 
     ```bash
-    curl --fail "http://localhost:8000/v1/evidence?charger_id=<charger-id>"
-    curl --fail http://localhost:8000/v1/anomalies/count
+    curl --fail "http://localhost:8000/v1/evidence?reading_id=<reading-id>"
+    curl --fail http://localhost:8000/v1/alarms/count
     ```
 
 5. Inspect RADAR logs for model or persistence errors.

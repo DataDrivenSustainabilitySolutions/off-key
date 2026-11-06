@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EChart } from "@/features/charts/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
 import type { ActiveService, MonitoringChartEvidence, MartingaleTrackerResult } from "@/types/monitoring";
-import type { Anomaly } from "@/types/charger";
 import { formatTelemetryEventTime } from "@/features/charts/telemetry-events";
 
 const chartMock = vi.hoisted(() => ({
@@ -35,7 +34,7 @@ vi.mock("@/features/charts/EChart", () => ({
 }));
 
 import { DynamicTelemetryChart } from "@/features/charts/DynamicTelemetryChart";
-import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
+import { alarm, chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 
 let intersectionCallback: IntersectionObserverCallback | undefined;
 
@@ -504,10 +503,9 @@ describe("DynamicTelemetryChart", () => {
   });
 
   it("offers event details without captions and distinguishes contextual sample timing", async () => {
-    const event = (id: string, timestamp: string): Anomaly => ({
-      anomaly_id: id, charger_id: "charger-1", timestamp, telemetry_type: "voltage",
-      anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-      sensor_set: ["voltage", "current"],
+    const event = (id: string, timestamp: string) => alarm({
+      alarm_id: id, timestamp, reading_ids: ["voltage", "current"], multivariate: true,
+      alarm_type: "spike", value: 0.01,
     });
     render(
       <ThemeProvider defaultTheme="light">
@@ -536,11 +534,10 @@ describe("DynamicTelemetryChart", () => {
 
   it("retains the nearest contextual sample outside a selected range when the range changes", async () => {
     const eventTime = Date.parse("2026-07-27T10:00:00Z");
-    const event: Anomaly = {
-      anomaly_id: "near-range-edge", charger_id: "charger-1", timestamp: new Date(eventTime).toISOString(),
-      telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-      sensor_set: ["voltage"],
-    };
+    const event = alarm({
+      alarm_id: "near-range-edge", timestamp: new Date(eventTime).toISOString(),
+      reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+    });
     const data = {
       ...telemetry(),
       data: [
@@ -581,10 +578,10 @@ describe("DynamicTelemetryChart", () => {
         <DynamicTelemetryChart telemetryData={{ ...telemetry(), data: [
           { timestamp: new Date(eventTime - 1_000).toISOString(), value: 230.9 },
           { timestamp: new Date(eventTime + 3_000).toISOString(), value: 231 },
-        ] }} anomalies={[{
-          anomaly_id: "at-range-start", charger_id: "charger-1", timestamp: new Date(eventTime).toISOString(),
-          telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-        }]} navigationState={{ range: { fromMs: eventTime, toMs: eventTime + 5_000 }, viewport: { mode: "live" } }} />
+        ] }} anomalies={[alarm({
+          alarm_id: "at-range-start", timestamp: new Date(eventTime).toISOString(),
+          reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+        })]} navigationState={{ range: { fromMs: eventTime, toMs: eventTime + 5_000 }, viewport: { mode: "live" } }} />
       </ThemeProvider>,
     );
     showChart();
@@ -625,10 +622,10 @@ describe("DynamicTelemetryChart", () => {
     render(
       <ThemeProvider defaultTheme="light">
         <DynamicTelemetryChart telemetryData={telemetry()}
-          anomalies={[{
-            anomaly_id: "unmatched-in-range", charger_id: "charger-1", timestamp: new Date(time).toISOString(),
-            telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-          }]}
+          anomalies={[alarm({
+            alarm_id: "unmatched-in-range", timestamp: new Date(time).toISOString(),
+            reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+          })]}
           navigationState={{ range: { fromMs: time - 500, toMs: time + 500 }, viewport: { mode: "live" } }} />
       </ThemeProvider>,
     );

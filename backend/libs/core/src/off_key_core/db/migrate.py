@@ -42,6 +42,9 @@ PRE_LEDGER_TABLES = frozenset(
     }
 )
 BASELINE_TABLES = PRE_LEDGER_TABLES - {"deployment_maintenance"}
+# Migrations that read the saved catalogue. A database older than migration 005
+# has none until the catalogue conversion below, so they run after it there.
+READS_CONVERTED_CATALOGUE = frozenset({"023_device_favorites.sql"})
 # Columns a historical database may still carry; migration 014 drops them.
 RETIRED_COLUMNS = {"services": {"stateful_set_name"}}
 
@@ -213,9 +216,14 @@ def apply_migrations(
     )
     if status["fresh"]:
         bootstrap_schema(connection)
+    converting = not status["fresh"] and "005_generic_runtime.sql" in status["pending"]
+    after_conversion = []
     for version, sql in migrations.items():
         if not status["fresh"] and version in status["pending"]:
-            connection.exec_driver_sql(sql)
+            if converting and version in READS_CONVERTED_CATALOGUE:
+                after_conversion.append(sql)
+            else:
+                connection.exec_driver_sql(sql)
         connection.execute(
             text(f"""
             INSERT INTO {LEDGER} (version, checksum) VALUES (:version, :checksum)
@@ -223,7 +231,7 @@ def apply_migrations(
         """),
             {"version": version, "checksum": migration_checksum(version, sql)},
         )
-    if not status["fresh"] and "005_generic_runtime.sql" in status["pending"]:
+    if converting:
         from .catalogue_upgrade import upgrade_saved_catalogue
 
         # The frozen compatibility converter projects current runtime tables.
@@ -231,6 +239,8 @@ def apply_migrations(
         # database need not already have columns introduced by later releases.
         # DDL, data conversion and checksum records still commit atomically.
         upgrade_saved_catalogue(connection)
+        for sql in after_conversion:
+            connection.exec_driver_sql(sql)
     bootstrap_schema(connection)
     return {"applied": status["pending"], "fresh": status["fresh"]}
 

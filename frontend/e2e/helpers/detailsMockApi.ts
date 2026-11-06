@@ -10,7 +10,7 @@ const CATEGORIES: Record<string, string> = { systemVoltage: "Voltage", systemCur
 export const fulfillJson = (route: Route, json: unknown) => route.fulfill({ json, headers: CORS });
 
 export type DetailsFeeds = {
-  chargerId: string;
+  deviceId: string;
   sensors?: string[];
   /** First page of readings, then `laterTelemetry` once released. */
   telemetry: unknown[];
@@ -24,11 +24,11 @@ export type DetailsFeeds = {
 };
 
 /**
- * Serves the whole /details/:id page from fixtures behind a signed-in session,
+ * Serves the whole /details/:deviceId page from fixtures behind a signed-in session,
  * so the chart journeys need no running stack. Unknown API paths fail the test.
  */
 export async function installDetailsMockApi(page: Page, {
-  chargerId, sensors = ["systemVoltage"], telemetry, laterTelemetry = [], evidence, laterEvidence = [],
+  deviceId, sensors = ["systemVoltage"], telemetry, laterTelemetry = [], evidence, laterEvidence = [],
   anomalies = [], monitors = [], theme = "light",
 }: DetailsFeeds) {
   const released = { telemetry: false, evidence: false };
@@ -61,10 +61,14 @@ export async function installDetailsMockApi(page: Page, {
         return fulfillJson(route, []);
       case "/v1/catalogue":
         return fulfillJson(route, {
-          document: { readings: sensors.map(key => ({ id: key, category: CATEGORIES[key] ?? key })) },
-          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: chargerId, telemetry_key: key }])) },
+          document: {
+            devices: [{ id: deviceId, label: deviceId }],
+            readings: sensors.map(key => ({ id: key, device_id: deviceId, category: CATEGORIES[key] ?? key })),
+          },
+          // Monitor setup still targets the recorded entity of the readings.
+          runtime: { bindings: Object.fromEntries(sensors.map(key => [key, { entity_id: deviceId, telemetry_key: key }])) },
         });
-      case "/v1/anomalies":
+      case "/v1/alarms":
         return fulfillJson(route, anomalies);
       case "/v1/monitors":
         return fulfillJson(route, monitors);

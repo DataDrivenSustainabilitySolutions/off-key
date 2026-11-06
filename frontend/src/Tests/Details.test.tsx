@@ -27,7 +27,7 @@ vi.mock("../lib/api-client", () => ({
 
 vi.mock("../lib/charger-api", () => ({
   getAllTelemetryData: (...args: unknown[]) => mockLoadAllTelemetryTypes(...args),
-  getAnomalies: (...args: unknown[]) => mockLoadAnomalies(...args),
+  getAlarms: (...args: unknown[]) => mockLoadAnomalies(...args),
   getTelemetryCursor: () => undefined,
   mergeTelemetryData: (_current: unknown, incoming: unknown) => incoming,
 }));
@@ -80,9 +80,10 @@ vi.mock("../features/charts/DynamicTelemetryChart", () => ({
 function renderDetails(initialEntry = "/details/123") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <Link to="/details/456">Switch charger</Link>
+      <Link to="/details/456">Switch device</Link>
       <Routes>
-        <Route path="/details/:chargerId" element={<Details />} />
+        <Route path="/details/:deviceId" element={<Details />} />
+        <Route path="/details/broker/:brokerId" element={<Details />} />
       </Routes>
     </MemoryRouter>
   );
@@ -119,7 +120,7 @@ describe("<Details />", () => {
         undefined,
       );
       expect(mockLoadAnomalies).toHaveBeenCalledWith(
-        "123",
+        { deviceId: "123" },
         expect.any(AbortSignal),
       );
     });
@@ -201,43 +202,72 @@ describe("<Details />", () => {
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
   });
 
-  it("renders the monitoring link for the selected charger", async () => {
-    renderDetails();
-
-    const link = await screen.findByRole("link", { name: /monitoring/i });
-    expect(link.getAttribute("href")).toBe("/?create=monitoring&target=123");
-  });
-
-  it("is titled by the catalogue entity behind the recorded identity and links to it in Sources", async () => {
+  const stationCatalogue = () => {
     const document: SystemDocument = { ...createEmptySystem(),
       brokers: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.test" })],
       devices: [{ id: "station", label: "Room station", kind: "sensor", broker_id: "broker" }],
-      readings: [{ id: "temperature", label: "Air temperature", broker_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" }],
+      readings: [
+        { id: "temperature", label: "Air temperature", broker_id: "broker", device_id: "station", topic: "weather/temperature", value_type: "number", category: "Environment" },
+        { id: "wind", label: "Wind", broker_id: "broker", topic: "weather/wind", value_type: "number", category: "Environment" },
+        { id: "rain", label: "Rain", broker_id: "broker", topic: "weather/rain", value_type: "number", category: "Environment" },
+      ],
     };
     const runtime = { bindings: { temperature: { broker_id: "broker", entity_id: "123", telemetry_key: "temperature",
       accepted_topic: "telemetry/123/temperature", policy: { mode: "original", interval_seconds: 10 } } } } as unknown as SystemRuntime;
     const index = buildNavigationIndex(document);
-    const catalogue = { system: { snapshot: { document, runtime } }, index } as unknown as CatalogueContextValue;
-    render(<CatalogueContext.Provider value={catalogue}>
-      <MemoryRouter initialEntries={["/details/123"]}><Routes><Route path="/details/:chargerId" element={<Details />} /></Routes></MemoryRouter>
-    </CatalogueContext.Provider>);
+    return { document, index, value: { system: { snapshot: { document, runtime } }, index } as unknown as CatalogueContextValue };
+  };
+  const renderWithCatalogue = (catalogue: CatalogueContextValue, entry: string) => render(<CatalogueContext.Provider value={catalogue}>
+    <MemoryRouter initialEntries={[entry]}><Routes>
+      <Route path="/details/:deviceId" element={<Details />} />
+      <Route path="/details/broker/:brokerId" element={<Details />} />
+    </Routes></MemoryRouter>
+  </CatalogueContext.Provider>);
+
+  it("is titled by the catalogue device and links to it in Sources", async () => {
+    const { document, index, value } = stationCatalogue();
+    renderWithCatalogue(value, "/details/station");
     expect(await screen.findByRole("heading", { level: 1, name: "Room station" })).toBeTruthy();
-    // The binding's entity ID differs from the catalogue device ID, so the link names the catalogue node.
     const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
     expect(window.document.title).toBe("Room station · Reporting · Aberration");
-    // The entity's readings come from the provider's snapshot instead of another /v1/catalogue request.
-    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(document.readings, expect.any(AbortSignal), undefined);
+    // The device's readings come from the provider's snapshot instead of another /v1/catalogue request.
+    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith([document.readings[0]], expect.any(AbortSignal), undefined);
     expect(mockApiGet).not.toHaveBeenCalledWith("/v1/catalogue", expect.anything());
-    // Every reading of the entity belongs to one device, so evidence is asked for by that device.
+    // Alarms and evidence are asked for by the device.
+    expect(mockLoadAnomalies).toHaveBeenCalledWith({ deviceId: "station" }, expect.any(AbortSignal));
     const evidence = mockApiGet.mock.calls.map(([endpoint]) => String(endpoint)).find(endpoint => endpoint.startsWith("/v1/evidence/chart?"));
     expect(new URL(evidence!, "http://app.test").searchParams.get("device_id")).toBe("station");
+    // Monitor setup still targets the recorded identity of the device's readings.
+    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=123");
   });
 
-  it("falls back to the recorded identity without a catalogue", async () => {
+  it("shows a broker's readings without a device, named one by one", async () => {
+    const { document, index, value } = stationCatalogue();
+    renderWithCatalogue(value, "/details/broker/broker");
+    expect(await screen.findByRole("heading", { level: 1, name: "Building broker" })).toBeTruthy();
+    const broker = index.nodes.get(index.objectKeys.get("broker")!.find(key => index.nodes.get(key)?.kind === "connection")!)!;
+    expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(broker.key)}`);
+    expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith(document.readings.slice(1), expect.any(AbortSignal), undefined);
+    expect(mockLoadAnomalies).toHaveBeenCalledWith({ readingIds: ["wind", "rain"] }, expect.any(AbortSignal));
+    const evidence = mockApiGet.mock.calls.map(([endpoint]) => String(endpoint)).find(endpoint => endpoint.startsWith("/v1/evidence/chart?"));
+    expect(new URL(evidence!, "http://app.test").searchParams.getAll("reading_id")).toEqual(["wind", "rain"]);
+  });
+
+  it("asks for nothing about a broker without readings of its own", async () => {
+    const { value } = stationCatalogue();
+    renderWithCatalogue(value, "/details/broker/missing");
+    expect(await screen.findByRole("heading", { level: 1, name: "Broker missing" })).toBeTruthy();
+    await waitFor(() => expect(mockLoadAllTelemetryTypes).toHaveBeenCalled());
+    expect(mockLoadAnomalies).not.toHaveBeenCalled();
+    expect(mockApiGet.mock.calls.some(([endpoint]) => String(endpoint).startsWith("/v1/evidence/chart?"))).toBe(false);
+  });
+
+  it("falls back to the device ID without a catalogue", async () => {
     renderDetails();
-    expect(await screen.findByRole("heading", { level: 1, name: "Entity 123" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Device 123" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe("/sources");
+    expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring");
   });
 
   it("preserves chart anomaly references across telemetry refreshes", async () => {
@@ -262,7 +292,7 @@ describe("<Details />", () => {
     renderDetails();
 
     expect(
-      await screen.findByText(/no recorded readings for this entity/i)
+      await screen.findByText(/no recorded readings for this device/i)
     ).toBeTruthy();
   });
 
@@ -346,7 +376,7 @@ describe("<Details />", () => {
     expect(unlinkButton.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("clears charger data immediately on navigation even if the next load fails", async () => {
+  it("clears device data immediately on navigation even if the next load fails", async () => {
     renderDetails();
     fireEvent.click(
       await screen.findByRole("button", { name: "Navigate controllerCpuUsage" }),
@@ -356,13 +386,13 @@ describe("<Details />", () => {
     );
 
     mockLoadAllTelemetryTypes.mockRejectedValueOnce(new Error("unavailable"));
-    fireEvent.click(screen.getByRole("link", { name: "Switch charger" }));
+    fireEvent.click(screen.getByRole("link", { name: "Switch device" }));
     expect(screen.queryAllByTestId("telemetry-chart")).toHaveLength(0);
     expect(
       await screen.findByText(/readings could not be loaded/i),
     ).toBeTruthy();
     expect(mockLoadAnomalies).toHaveBeenLastCalledWith(
-      "456", expect.any(AbortSignal),
+      { deviceId: "456" }, expect.any(AbortSignal),
     );
 
     document.dispatchEvent(new Event("visibilitychange"));

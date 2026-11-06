@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { Anomaly, TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
+import type { Alarm, TelemetryCursor, TelemetryDataPoint } from "@/types/charger";
 import type { MonitoringChartEvidence, MonitoringEvidenceCursor } from "@/types/monitoring";
 import type { ReadingMonitoringBinding } from "./readingMonitoring";
 import type { SystemConnection, SystemStream } from "@/types/system";
@@ -8,7 +8,7 @@ export type ReadingMonitoring = {
   binding?: ReadingMonitoringBinding;
   telemetry: TelemetryDataPoint[];
   evidence: MonitoringChartEvidence[];
-  anomalies: Anomaly[];
+  anomalies: Alarm[];
   loading?: boolean;
   error: string;
 };

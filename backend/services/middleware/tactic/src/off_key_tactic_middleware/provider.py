@@ -26,7 +26,7 @@ from .services.catalogue.system import SystemService
 from .services.catalogue.system_ingress import SystemIngress
 from .services.catalogue.system_live import SystemLiveService
 from .services.data import (
-    AnomalyService,
+    AlarmService,
     CatalogueDataService,
     FavoriteService,
 )
@@ -69,11 +69,11 @@ def get_favorite_service(
     return FavoriteService(session, FavoriteRepository(session))
 
 
-def get_anomaly_service(
+def get_alarm_service(
     session: AsyncSession = Depends(get_db_async),
-) -> AnomalyService:
-    """Dependency provider for anomaly use cases."""
-    return AnomalyService(session, AnomalyRepository(session))
+) -> AlarmService:
+    """Dependency provider for alarm use cases."""
+    return AlarmService(session, AnomalyRepository(session))
 
 
 async def get_catalogue_data_service(

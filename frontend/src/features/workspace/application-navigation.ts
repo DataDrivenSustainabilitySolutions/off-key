@@ -21,7 +21,7 @@ export const WORKSPACE_PATHS = workspaceNavItems.map(item => item.href);
 
 export function isActiveApplicationPath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-  // Entity details are opened from Reporting events.
+  // Device details are opened from Reporting events.
   if (href === "/anomalies" && pathname.startsWith("/details/")) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }

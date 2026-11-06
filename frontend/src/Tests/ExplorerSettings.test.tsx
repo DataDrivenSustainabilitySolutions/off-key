@@ -41,7 +41,7 @@ describe("explorer settings catalogue files", () => {
     await waitForPreview();
     expect(screen.getByText("Roof observations")).not.toBeNull();
     expect(screen.getByText("system.json")).not.toBeNull();
-    expect(screen.getByText("1 broker · 1 entity · 1 reading · 0 collections")).not.toBeNull();
+    expect(screen.getByText("1 broker · 1 device · 1 reading · 0 collections")).not.toBeNull();
     expect(props.onImport).not.toHaveBeenCalled();
     rerender(<ExplorerSettings {...props} revision={9} />);
     fireEvent.click(preview());

@@ -257,7 +257,7 @@ test.describe("adaptive monitoring production lifecycle", () => {
         );
       }
 
-      await page.goto(`/details/${chargerId}`);
+      await page.goto(`/details/${deviceId}`);
       const l1Card = page
         .locator('[data-slot="card"]')
         .filter({ hasText: "L1" })

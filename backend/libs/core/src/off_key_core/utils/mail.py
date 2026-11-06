@@ -10,6 +10,7 @@ from ..config.logs import (
     logger,
     redact_email,
 )
+from ..schemas.alarms import Alarm
 
 
 @lru_cache(maxsize=1)
@@ -71,25 +72,26 @@ async def send_password_reset_email(email: str, token: str):
         raise
 
 
-async def send_anomaly_alert_email(anomaly: dict):
+async def send_alarm_email(alarm: Alarm):
+    """Tell the configured alert recipients about an alarm, by catalogue name."""
     start_time = time.time()
-    charger_id = anomaly.get("charger_id", "unknown")
-    anomaly_type = anomaly.get("anomaly_type", "unknown")
     settings = get_email_settings()
+    source = alarm.device_label or "an unknown device"
+    readings = ", ".join(alarm.reading_labels.values()) or "not recorded"
 
     try:
         body = f"""
-    Anomaly Detected
+    Alarm on {source}
 
-    Charger ID: {anomaly["charger_id"]}
-    Timestamp: {anomaly["timestamp"]}
-    Telemetry Type: {anomaly["telemetry_type"]}
-    Anomaly Type: {anomaly["anomaly_type"]}
-    Anomaly Value: {anomaly["anomaly_value"]}
+    Readings: {readings}
+    Time: {alarm.timestamp.isoformat()}
+    Type: {alarm.alarm_type}
+    Value: {alarm.value}
+    Alarm ID: {alarm.alarm_id}
     """
         recipients = settings.anomaly_alert_recipients_list
         message = MessageSchema(
-            subject=f"Anomaly Detected - Charger {anomaly['charger_id']}",
+            subject=f"Alarm on {source}",
             recipients=recipients,
             body=body,
             subtype=MessageType.plain,
@@ -98,20 +100,18 @@ async def send_anomaly_alert_email(anomaly: dict):
         await fm.send_message(message)
 
         logger.warning(
-            "event=mail.anomaly_alert_sent charger_id=%s "
-            "anomaly_type=%s recipient_count=%s",
-            charger_id,
-            anomaly_type,
+            "event=mail.alarm_sent alarm_id=%s alarm_type=%s recipient_count=%s",
+            alarm.alarm_id,
+            alarm.alarm_type,
             len(recipients),
         )
-        log_performance("send_anomaly_alert_email", start_time)
+        log_performance("send_alarm_email", start_time)
 
     except Exception as e:
         logger.error(
-            "event=mail.anomaly_alert_send_failed charger_id=%s "
-            "anomaly_type=%s error=%s",
-            charger_id,
-            anomaly_type,
+            "event=mail.alarm_send_failed alarm_id=%s alarm_type=%s error=%s",
+            alarm.alarm_id,
+            alarm.alarm_type,
             str(e),
             exc_info=True,
         )

@@ -22,7 +22,7 @@ async def list_favorites(
 
 @router.post("", response_model=Favorite)
 async def add_favorite(ref: FavoriteRef, user: MemberProfile = Depends(current_member)):
-    """Star an entity, reading or monitor for the signed-in member.
+    """Star a device, reading or monitor for the signed-in member.
 
     Adding a favorite the member already has returns it unchanged. 409 when the
     member already keeps the maximum of 256.

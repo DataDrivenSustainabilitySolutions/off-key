@@ -140,8 +140,8 @@ async def get_catalogue(authorization: str = Depends(member_authorization)):
 
     `document` holds `brokers`, `devices`, `readings` and `groups`; `revision`
     is the value to send as `expected_revision` when saving;
-    `runtime.bindings` says per reading id how it is recorded, and its
-    `entity_id` and `telemetry_key` name it for measurements and alarms;
+    `runtime.bindings` says per reading id how it is recorded, and monitor
+    setup still reads its `entity_id` and `telemetry_key`;
     `can_edit` says whether the caller may change it.
     """
     return await system_request("GET", authorization)

@@ -388,7 +388,7 @@ class SystemIngress:
                     )
                 )
                 if row is not None:
-                    await self._step(row)
+                    definition = await self._step(row)
                     await self._supervise()
                     with self.guard:
                         sources = {
@@ -397,9 +397,7 @@ class SystemIngress:
                         state: IngressWorkerState = {
                             "revision": row.revision,
                             "generation": self.generation,
-                            "status": INGRESS_APPLIED
-                            if self.output is not None and self.output.is_connected()
-                            else INGRESS_CONNECTING,
+                            "status": self._status(definition),
                             "sources": sources,
                             "readings": {
                                 key: dict(value) for key, value in self.readings.items()
@@ -419,6 +417,19 @@ class SystemIngress:
                     await session.commit()
             await asyncio.sleep(2)
 
+    def _status(self, definition) -> str:
+        """Applied once this revision's generation is configured and publishing.
+
+        The collector activates a revision when ingress reports it applied, so
+        a connected output alone is not enough: until the collector prepares
+        the new generation this process still waits to configure it.
+        """
+        connected = self.output is not None and self.output.is_connected()
+        configured = self.generation == definition.generation or not any(
+            True for _ in definition.streams(selected_only=True)
+        )
+        return INGRESS_APPLIED if connected and configured else INGRESS_CONNECTING
+
     async def _step(self, row):
         definition = SystemCollectionDefinition.model_validate(row.document)
         if self.output is None:
@@ -430,3 +441,4 @@ class SystemIngress:
                 await self._stop_workers()
             if prepared and self.output.is_connected():
                 await self._configure(definition)
+        return definition

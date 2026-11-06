@@ -453,3 +453,29 @@ async def test_persistent_collection_reaches_covered_brokers_through_the_route(
     await ingress._configure(definition("other.example"))
     assert len(FakeWorker.created) == 1
     assert ingress.states["broker"]["state"] == "blocked"
+
+
+@pytest.mark.parametrize(
+    ("connected", "generation", "selected", "status"),
+    [
+        (True, None, True, system_ingress.INGRESS_CONNECTING),
+        (True, "previous", True, system_ingress.INGRESS_CONNECTING),
+        (True, "test", True, system_ingress.INGRESS_APPLIED),
+        (True, None, False, system_ingress.INGRESS_APPLIED),
+        (False, "test", True, system_ingress.INGRESS_CONNECTING),
+    ],
+)
+def test_ingress_reports_applied_only_for_the_configured_generation(
+    monkeypatch, connected, generation, selected, status
+):
+    monkeypatch.setattr(
+        system_ingress, "get_system_live_settings", lambda: SystemLiveSettings()
+    )
+    catalog = definition()
+    if not selected:
+        for stream in catalog.document.streams:
+            stream.policy.mode = "off"
+    ingress = system_ingress.SystemIngress()
+    ingress.output = SimpleNamespace(is_connected=lambda: connected)
+    ingress.generation = generation
+    assert ingress._status(catalog) == status

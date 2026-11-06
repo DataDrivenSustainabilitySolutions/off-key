@@ -148,6 +148,10 @@ service_environment:
     SQLALCHEMY_LOG_LEVEL: "{{ sqlalchemy_log_level }}"
     # The deploy readiness probe (infra/scripts/check_application.py) runs here.
     TACTIC_PORT: "{{ tactic_port }}"
+  dojo-worker:
+    <<: [*common, *database]
+    ENVIRONMENT: "{{ app_environment }}"
+    DOJO_MEMORY_LIMIT_MB: "{{ dojo_memory_limit_mb | default(1024) }}"
   emqx-main:
     EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
     EMQX_DASHBOARD__DEFAULT_USERNAME: "{{ emqx_dashboard_username }}"

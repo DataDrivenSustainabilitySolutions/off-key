@@ -177,6 +177,29 @@ services:
     profiles:
       - radar-image
 
+  dojo-worker:
+    # Replays Dojo runs from the RADAR image; each replica runs one at a time.
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_ROOT: services/mqtt/radar
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    environment:
+      <<: [*runtime-env, *logging-env, *database-env]
+      DOJO_MEMORY_LIMIT_MB: "${DOJO_MEMORY_LIMIT_MB:-1024}"
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.dojo" ]
+    depends_on:
+      db-sync:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+    deploy:
+      replicas: ${DOJO_WORKER_REPLICAS:-2}
+
   mqtt-proxy:
     build:
       context: ./backend/

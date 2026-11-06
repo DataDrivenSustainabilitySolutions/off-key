@@ -20,7 +20,9 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 5. A durable database operation fences monitor start/stop/delete and catalog writes.
    Normal requests receive HTTP 503 during release maintenance.
 6. Pending schema migrations require every database writer to stop: TACTIC,
-   db-sync, the MQTT proxy and the RADAR workers. Ingress, the landing page, the
+   db-sync, the MQTT proxy, the Dojo workers and the RADAR workers. A Dojo run
+   in progress goes back to the queue and starts again afterwards; one whose
+   worker cannot stop in time is marked failed. Ingress, the landing page, the
    frontend and the gateway keep running, so the public site stays up. A validated
    custom-format backup stays private on the database node. SQL and checksum ledger
    changes commit together under a PostgreSQL advisory lock.

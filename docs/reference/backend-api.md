@@ -242,9 +242,10 @@ it can feed a reading picker. Pages are newest first; pass `next` as `before`.
 
 ### Dojo
 
-Datasets for comparing detection approaches offline, apart from live
+Datasets and runs for comparing detection approaches offline, apart from live
 monitoring. A dataset is a frozen copy: retention and catalogue edits never
-change it. Administrators only until members get a dedicated Dojo permission.
+change it. A run replays one design over one dataset. Administrators only
+until members get a dedicated Dojo permission.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
@@ -255,6 +256,12 @@ change it. Administrators only until members get a dedicated Dojo permission.
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
+| `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
+| `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
+| `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
+| `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run | Path: `run_id` |
+| `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204 | Path: `run_id` |
+| `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000); continue with `next_after` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value
@@ -263,6 +270,16 @@ or Unix epoch seconds or milliseconds, UTC without a zone. The delimiter is
 detected from the header; with `;` or tab a decimal comma is accepted. A
 dataset holds at most 64 series and 5,000,000 values, and two values for the
 same series and instant are rejected.
+
+A run is compiled and bound when it is created, so a design error is refused
+at once. The Dojo worker, a service on the RADAR image, then replays the bound
+series in time order through the same alignment and detector code as a live
+monitor. The clock is the data's own time, so `alignment.freshness_seconds`
+and `alignment.max_skew_seconds` mean what the live monitor settings mean. A
+static baseline's fitting is awaited instead of discarding observations, so
+the same run gives the same results again. Each worker replica executes one
+run at a time; at most 20 runs wait or run at once. A run's `stats` count
+observations that produced no result, by reason.
 
 ### Gateway health
 
@@ -297,7 +314,7 @@ Health and readiness remain available without this service credential.
 | `GET` | `/data/monitoring-evidence/{charger_id}` | List monitoring evidence |
 | `GET` | `/data/monitoring-evidence/{charger_id}/chart` | Load chart evidence with a stable cursor |
 
-### Dojo datasets
+### Dojo
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -308,6 +325,12 @@ Health and readiness remain available without this service credential.
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
+| `GET` | `/dojo/runs` | List runs |
+| `POST` | `/dojo/runs` | Compile, bind and queue a run |
+| `GET` | `/dojo/runs/{run_id}` | Read a run |
+| `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a run |
+| `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run |
+| `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
 
 ### RADAR orchestration
 

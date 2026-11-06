@@ -14,7 +14,14 @@ from uuid import uuid4
 from asyncpg.exceptions import UniqueViolationError
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.maintenance import require_application_writes
-from off_key_core.db.models import DojoDataset, DojoPoint, DojoSeries, Telemetry
+from off_key_core.db.models import (
+    DojoDataset,
+    DojoPoint,
+    DojoRun,
+    DojoRunResult,
+    DojoSeries,
+    Telemetry,
+)
 from off_key_core.schemas.dojo import (
     MAX_DATASET_POINTS,
     MAX_DATASET_SERIES,
@@ -33,7 +40,7 @@ from off_key_core.schemas.dojo import (
 )
 from sqlalchemy import Text, delete, func, insert, literal, select, update
 
-from ...domain import NotFoundError, ValidationError
+from ...domain import ConflictError, NotFoundError, ValidationError
 from .csv_import import read_points
 
 COPY_BATCH = 20_000
@@ -139,7 +146,20 @@ class DojoDatasets:
     async def remove(self, dataset_id: str) -> None:
         await require_application_writes(self.session)
         row = await self._row(dataset_id, lock=True)
-        # Points carry no foreign key (see DojoPoint), so they go first.
+        runs = select(DojoRun.id).where(DojoRun.dataset_id == row.id)
+        active = await self.session.scalar(
+            select(func.count()).where(
+                DojoRun.dataset_id == row.id,
+                DojoRun.status.in_(("queued", "running")),
+            )
+        )
+        if active:
+            raise ConflictError("Cancel the dataset's runs before deleting it")
+        # Points and results carry no foreign key, so they go first; the
+        # runs themselves cascade with the dataset.
+        await self.session.execute(
+            delete(DojoRunResult).where(DojoRunResult.run_id.in_(runs))
+        )
         await self.session.execute(
             delete(DojoPoint).where(
                 DojoPoint.series_id.in_(

@@ -1,4 +1,4 @@
-"""Dojo datasets: upload or copy time series for offline comparison runs.
+"""Dojo datasets and runs: replay detection designs over stored time series.
 
 Administrators only until members get a dedicated Dojo permission.
 """
@@ -17,10 +17,17 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    RunCreate,
+    RunListPage,
+    RunListQuery,
+    RunResultsPage,
+    RunResultsQuery,
+    RunView,
 )
 
-from ...provider import get_dojo_datasets
+from ...provider import get_dojo_datasets, get_dojo_runs
 from ...services.dojo.datasets import DojoDatasets
+from ...services.dojo.runs import DojoRuns
 from ..collection_auth import require_admin
 from ..errors import DomainErrorRoute
 
@@ -96,3 +103,44 @@ async def list_dataset_points(
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
     return await datasets.points(dataset_id, series_id, query)
+
+
+@router.get("/runs", response_model=RunListPage)
+async def list_runs(
+    query: Annotated[RunListQuery, Query()],
+    runs: DojoRuns = Depends(get_dojo_runs),
+):
+    return await runs.list(query)
+
+
+@router.post("/runs", response_model=RunView, status_code=201)
+async def create_run(
+    request: RunCreate,
+    user: User = Depends(require_admin),
+    runs: DojoRuns = Depends(get_dojo_runs),
+):
+    return await runs.create(request, created_by=user.id)
+
+
+@router.get("/runs/{run_id}", response_model=RunView)
+async def get_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
+    return await runs.get(run_id)
+
+
+@router.post("/runs/{run_id}/cancel", response_model=RunView)
+async def cancel_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
+    return await runs.cancel(run_id)
+
+
+@router.delete("/runs/{run_id}", status_code=204)
+async def delete_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
+    await runs.remove(run_id)
+
+
+@router.get("/runs/{run_id}/results", response_model=RunResultsPage)
+async def list_run_results(
+    run_id: str,
+    query: Annotated[RunResultsQuery, Query()],
+    runs: DojoRuns = Depends(get_dojo_runs),
+):
+    return await runs.results(run_id, query)

@@ -168,6 +168,20 @@ services:
       restart_policy:
         condition: any
 
+  # Replays Dojo runs from the RADAR image. Each replica runs one run at a
+  # time, so the replica count is the number of runs that execute at once.
+  dojo-worker:
+    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.dojo" ]
+    networks:
+      - app-network
+    deploy:
+      replicas: 2
+      placement:
+        constraints: [ node.labels.backend == true ]
+      restart_policy:
+        condition: any
+
   # Secret template for TACTIC-managed RADAR workers; never scaled. TACTIC finds it
   # through TACTIC_RADAR_SECRET_SERVICE and copies only its secret references.
   mqtt-radar:

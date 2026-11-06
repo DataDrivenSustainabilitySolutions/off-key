@@ -84,3 +84,51 @@ async def test_members_without_the_administrator_role_are_refused(calls):
         response = await client.get("/v1/dojo/datasets", headers=TOKEN)
     assert response.status_code == 403
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_creation_is_forwarded_as_json(monkeypatch):
+    from off_key_core.schemas.dojo import RunAlignment
+
+    from tests.support.pipelines import quick
+
+    recorded = []
+    run = {
+        "id": "r1",
+        "dataset_id": "d1",
+        "name": "",
+        "status": "queued",
+        "strategy": "adaptive_stream",
+        "points_total": 3,
+        "points_read": 0,
+        "result_count": 0,
+        "alarm_count": 0,
+        "error": None,
+        "created_by": 17,
+        "created_at": datetime(2026, 3, 1, tzinfo=UTC).isoformat(),
+        "started_at": None,
+        "finished_at": None,
+        "definition": {},
+        "bindings": [],
+        "alignment": RunAlignment().model_dump(),
+        "cancel_requested": False,
+        "stats": {},
+    }
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint, kwargs))
+        return run
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    body = {
+        "dataset_id": "d1",
+        "definition": quick().model_dump(mode="json"),
+        "bindings": {"voltage": "s1", "current": "s2", "temperature": "s3"},
+    }
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.post("/v1/dojo/runs", json=body, headers=TOKEN)
+    assert response.status_code == 201, response.text
+    [(method, endpoint, kwargs)] = recorded
+    assert (method, endpoint) == ("POST", "/api/v1/dojo/runs")
+    assert kwargs["json_data"]["bindings"] == body["bindings"]
+    assert kwargs["json_data"]["alignment"] == RunAlignment().model_dump()

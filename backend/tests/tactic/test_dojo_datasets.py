@@ -10,6 +10,8 @@ from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
     DojoPoint,
+    DojoRun,
+    DojoRunResult,
     DojoSeries,
     SystemCollectionConfiguration,
     Telemetry,
@@ -155,6 +157,8 @@ async def dojo_database(member_database, monkeypatch):
             DojoDataset,
             DojoSeries,
             DojoPoint,
+            DojoRun,
+            DojoRunResult,
         ):
             await connection.run_sync(table.__table__.create)
     return sessions

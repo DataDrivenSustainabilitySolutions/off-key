@@ -10,10 +10,13 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     PrimaryKeyConstraint,
     Text,
@@ -97,4 +100,75 @@ class DojoPoint(Base):
     __table_args__ = (
         # One value per series and instant; also the ordered read path.
         PrimaryKeyConstraint("series_id", "timestamp", name="pk_dojo_point"),
+    )
+
+
+class DojoRun(Base):
+    """One detection design replayed over one dataset by the Dojo worker.
+
+    ``config`` holds everything the worker needs: the compiled design, its
+    bindings to synthetic per-series topics and the alignment settings, so a
+    later edit to the dataset's names or the design library cannot change it.
+    """
+
+    __tablename__ = "dojo_runs"
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    dataset_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("dojo_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # queued, running, succeeded, failed or cancelled.
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
+    config: Mapped[Any] = mapped_column(document(), nullable=False)
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    points_total: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    points_read: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    result_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    alarm_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # Why observations produced no result, by reason, as the live monitor counts.
+    stats: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    worker: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
+            name="ck_dojo_run_status",
+        ),
+        # The worker's claim and the active-run limit read by status.
+        Index("ix_dojo_runs_status", "status", "created_at"),
+        Index("ix_dojo_runs_dataset", "dataset_id"),
+    )
+
+
+class DojoRunResult(Base):
+    """One detector result of a run. No foreign key, as for dataset points:
+    the run service deletes a run's results with it."""
+
+    __tablename__ = "dojo_run_results"
+    run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    alarm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    __table_args__ = (
+        PrimaryKeyConstraint("run_id", "sequence", name="pk_dojo_run_result"),
     )

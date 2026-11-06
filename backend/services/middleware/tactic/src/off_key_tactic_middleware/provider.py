@@ -36,6 +36,7 @@ from .services.data import (
     TelemetryQueryService,
 )
 from .services.dojo.datasets import DojoDatasets
+from .services.dojo.runs import DojoRuns
 from .services.orchestration.radar import RadarOrchestrationService
 from .services.pipelines.activation import PipelineActivations
 from .services.pipelines.forms import start_form_monitor
@@ -136,6 +137,10 @@ def get_pipeline_library(
 
 def get_dojo_datasets(session: AsyncSession = Depends(get_db_async)) -> DojoDatasets:
     return DojoDatasets(session)
+
+
+def get_dojo_runs(session: AsyncSession = Depends(get_db_async)) -> DojoRuns:
+    return DojoRuns(session)
 
 
 def get_pipeline_activations(

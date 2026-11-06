@@ -75,6 +75,9 @@ APPLIED_CHECKSUMS = {
     "019_dojo_datasets.sql": (
         "02d1e64607ae046c043cf2e0038e63cf2add1095a5d2d57cb6bd4200efb8bda2"
     ),
+    "020_dojo_runs.sql": (
+        "e9fa42bac7e1ce10982daa6b4f7cbd182fb57cb680b72cf4e29196a0a096801a"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -96,6 +99,7 @@ LEDGER_TABLES = {
         "dojo_dataset_series",
         "dojo_dataset_points",
     },
+    "020_dojo_runs.sql": {"dojo_runs", "dojo_run_results"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {

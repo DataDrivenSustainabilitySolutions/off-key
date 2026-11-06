@@ -19,6 +19,7 @@ tbody:first-of-type .rp-day th { padding-top: 14px; }
 .rp-entity a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .rp-entity a:hover { color: hsl(var(--primary)); }
 .rp-entity a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 3px; }
+.rp-entity a.rp-entity-readings { display: block; width: fit-content; margin-top: 4px; color: hsl(var(--primary)); font-size: var(--text-caption); font-weight: 450; }
 .rp-time { color: hsl(var(--muted-foreground)); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rp-readings { max-width: 26rem; }
 .rp-readings > div { display: flex; align-items: center; gap: 8px; min-width: 0; }

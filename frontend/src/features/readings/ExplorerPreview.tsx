@@ -116,6 +116,7 @@ export default function ExplorerPreview({
   const icon = node.kind === "connection" ? <Box size={22} /> : node.kind === "device" ? <Cpu size={22} />
     : stream ? <Radio size={22} /> : <Folder size={22} />;
   const Title = pageTitle ? "h1" : "h2";
+  const SectionTitle = pageTitle ? "h2" : "h3";
   const editable = canEdit && !saving && !!node.entityKind && !!node.objectId;
   const recorded = stream ? runtime?.latest_readings?.[stream.id] : undefined;
   const useRecorded = recorded && (!snapshot?.receivedAt || Date.parse(recorded.received_at) > snapshot.receivedAt);
@@ -214,7 +215,7 @@ export default function ExplorerPreview({
         {["number", "boolean"].includes(stream.value_type) && <ExplorerHistoryChart
           key={JSON.stringify([stream.id, stream.topic, stream.payload_pointer, stream.value_type,
             readingConnection?.host, readingConnection?.port, readingConnection?.tls, readingConnection?.transport])}
-          stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
+          stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} heading={SectionTitle} />}
       </> : <div className="ex-preview-metrics">
         <div><strong>{number.format(related.length)}</strong><span>Readings</span></div>
         <div><strong>{number.format(topicCount)}</strong><span>MQTT topics</span></div>
@@ -223,7 +224,7 @@ export default function ExplorerPreview({
       {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Source details">
         <details><summary>Source details</summary>{edit && <div className="ex-preview-section-heading">{edit}</div>}{isReading && trail}{details}</details>
       </section> : <section className="ex-preview-details" aria-label="Source details">
-        <div className="ex-preview-section-heading"><h3>Source details</h3>{edit}</div>{isReading && trail}{details}
+        <div className="ex-preview-section-heading"><SectionTitle>Source details</SectionTitle>{edit}</div>{isReading && trail}{details}
       </section>}
     </section>
   );

@@ -87,7 +87,7 @@ export function SourcesWorkspace() {
     if (!await system.rename(kind, id, label)) throw new Error("The name was not saved.");
   };
   const readingLinks = <section className="workspace-entity-readings" aria-label="Entity readings">
-    <h3>Readings</h3><p className="ex-muted">Select a reading to change how it is recorded.</p>
+    <h2>Readings</h2><p className="ex-muted">Select a reading to change how it is recorded.</p>
     {ids.length ? ids.flatMap(id => {
       const stream = document.streams.find(item => item.id === id);
       const node = index.nodes.get(index.objectKeys.get(id)?.[0] ?? "");

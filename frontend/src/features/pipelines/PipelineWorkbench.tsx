@@ -217,7 +217,7 @@ export function PipelineWorkbench({
           validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
           onChange={props.onChange} input={input}
           header={<div className="pl-inspector-heading">
-            <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
+            <h2 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h2>
             <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
               <X size={16} aria-hidden="true" />
             </button>

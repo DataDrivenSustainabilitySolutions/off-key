@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EChart } from "../charts/EChart";
+import { ChartSamples, type ChartSampleSource } from "../charts/ChartSamples";
 import { formatChartTime, getLocalTimeZone } from "../charts/telemetry-chart";
 import { useChartColors } from "../charts/use-chart-colors";
-import { datasetChartOption, dojoChartExtent, type DojoChartData } from "./dojo-chart";
+import { chartScaleKeys, datasetChartOption, dojoChartExtent, type DojoChartData } from "./dojo-chart";
 
 type Range = [number, number];
 type Props = {
@@ -13,68 +14,29 @@ type Props = {
   onRangeChange?: (range: Range | null) => void;
 };
 
-const PAGE_SIZE = 12;
 const timeZone = getLocalTimeZone();
 const time = (timestamp: number) => formatChartTime(timestamp, timeZone, "tooltip");
-const number = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 8 });
-type DataSource = { key: string; label: string; points: readonly [number, number | null][] };
-
-function PlottedValues({ data, range }: { data: DojoChartData; range: Range }) {
-  const sources = useMemo<DataSource[]>(() => [
-    ...data.series.map(series => ({
-      key: "series:" + series.id,
-      label: series.unit ? `${series.name} (${series.unit})` : series.name,
-      points: series.points,
-    })),
-    ...(data.alarms ?? []).map(run => ({
-      key: "alarms:" + run.id,
-      label: `${run.name} alarms`,
-      points: run.times.map((timestamp): [number, null] => [timestamp, null]),
-    })),
-  ], [data]);
-  const [selected, setSelected] = useState("");
-  const [page, setPage] = useState(0);
-  const source = sources.find(item => item.key === selected) ?? sources[0];
-  const [from, to] = range;
-  const rows = useMemo(() => source?.points.filter(([timestamp]) => timestamp >= from && timestamp <= to) ?? [],
-    [source, from, to]);
-  if (!source) return <p className="dj-help">Select a series or run to inspect its data.</p>;
-  const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
-  const currentPage = Math.min(page, lastPage);
-  const offset = currentPage * PAGE_SIZE;
-  return <div className="dj-data-body">
-    <label className="dj-field">Data to inspect
-      <select aria-label="Data to inspect" value={source.key} onChange={event => { setSelected(event.target.value); setPage(0); }}>
-        {sources.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
-      </select>
-    </label>
-    {rows.length > 0 ? <>
-      <table className="dj-table">
-        <caption className="ex-sr-only">{source.label} in the selected time range</caption>
-        <thead><tr><th scope="col">Time</th><th scope="col">Value or event</th></tr></thead>
-        <tbody>{rows.slice(offset, offset + PAGE_SIZE).map(([timestamp, value], index) =>
-          <tr key={offset + index}><td><time dateTime={new Date(timestamp).toISOString()}>{time(timestamp)}</time></td>
-            <td>{value === null ? "Alarm" : number.format(value)}</td></tr>)}</tbody>
-      </table>
-      <div className="dj-data-pages">
-        <Button variant="outline" size="sm" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous values</Button>
-        <span role="status">{offset + 1}–{Math.min(offset + PAGE_SIZE, rows.length)} of {rows.length.toLocaleString()}</span>
-        <Button variant="outline" size="sm" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Next values</Button>
-      </div>
-    </> : <p role="status" className="dj-help">No plotted values or events in this time range.</p>}
-  </div>;
-}
 
 /** Shared zoom and value inspection for dataset and replay charts. */
 export function DojoChart({ data, description, onRangeChange }: Props) {
   const { colors, resolvedTheme } = useChartColors();
   const [viewport, setViewport] = useState<Range>();
-  const [showValues, setShowValues] = useState(false);
-  const domain = useMemo(() => dojoChartExtent(data), [data]);
+  const [selectedSeries, setSelectedSeries] = useState("");
+  const focused = data.series.find(series => series.id === selectedSeries);
+  const plotted = useMemo(() => focused ? { ...data, series: [focused] } : data, [data, focused]);
+  const sources = useMemo<ChartSampleSource[]>(() => [
+    ...plotted.series.map(series => ({ ...series, id: "series:" + series.id })),
+    ...(plotted.alarms ?? []).map(run => ({
+      id: "alarms:" + run.id, name: `${run.name} alarms`,
+      points: run.times.map((timestamp): [number, null] => [timestamp, null]),
+    })),
+  ], [plotted]);
+  const scaleCount = chartScaleKeys(plotted.series).length;
+  const domain = useMemo(() => dojoChartExtent(plotted), [plotted]);
   const range = viewport && domain && viewport[0] >= domain[0] && viewport[1] <= domain[1] ? viewport : domain;
   const zoomed = !!range && !!domain && (range[0] > domain[0] || range[1] < domain[1]);
-  const option = useMemo(() => datasetChartOption({ ...data, colors, timeZone, viewport: zoomed ? range : undefined }),
-    [data, colors, zoomed, range]);
+  const option = useMemo(() => datasetChartOption({ ...plotted, colors, timeZone, viewport: zoomed ? range : undefined }),
+    [plotted, colors, zoomed, range]);
   const inspect = (from: number, to: number) => {
     if (to <= from) return;
     const next: Range = [from, to];
@@ -87,7 +49,17 @@ export function DojoChart({ data, description, onRangeChange }: Props) {
     const from = Math.max(domain[0], Math.min((range[0] + range[1] - width) / 2 + offset * width, domain[1] - width));
     inspect(from, from + width);
   };
+  const reset = () => { setViewport(undefined); onRangeChange?.(null); };
   return <>
+    {data.series.length > 1 && <div className="dj-plot-selection">
+      <label className="dj-field">Plot
+        <select aria-label="Plot" value={focused?.id ?? ""} onChange={event => { setSelectedSeries(event.target.value); reset(); }}>
+          <option value="">All selected series</option>
+          {data.series.map(series => <option key={series.id} value={series.id}>{series.name}{series.unit ? ` (${series.unit})` : ""}</option>)}
+        </select>
+      </label>
+      {scaleCount > 2 && <p className="dj-help">The overview uses one vertical scale. Choose a series to see its individual range.</p>}
+    </div>}
     {range && <div className="dj-chart-tools">
       <p className="dj-help"><strong>Time range</strong> <span>{time(range[0])} – {time(range[1])}</span></p>
       <div role="group" aria-label="Chart controls">
@@ -98,14 +70,11 @@ export function DojoChart({ data, description, onRangeChange }: Props) {
           onClick={() => move(1, -0.5)}><ArrowLeft /></Button>
         <Button variant="outline" size="icon" aria-label="Later time window" title="Later time window" disabled={!domain || range[1] >= domain[1]}
           onClick={() => move(1, 0.5)}><ArrowRight /></Button>
-        <Button variant="outline" size="sm" disabled={!zoomed} onClick={() => { setViewport(undefined); onRangeChange?.(null); }}><RotateCcw />Reset zoom</Button>
+        <Button variant="outline" size="sm" disabled={!zoomed} onClick={reset}><RotateCcw />Reset zoom</Button>
       </div>
     </div>}
-    <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={description} onViewportChange={inspect}
+    <EChart option={option} resolvedTheme={resolvedTheme} accessibleDescription={focused ? `${description}. Showing ${focused.name}.` : description} onViewportChange={inspect}
       className={data.alarms ? "dj-chart dj-chart--alarms" : "dj-chart"} />
-    {range && <details className="dj-data" onToggle={event => setShowValues(event.currentTarget.open)}>
-      <summary>Inspect plotted values</summary>
-      {showValues && <PlottedValues data={data} range={range} />}
-    </details>}
+    {range && <ChartSamples sources={sources} range={range} timeZone={timeZone} />}
   </>;
 }

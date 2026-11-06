@@ -56,3 +56,12 @@ export const getAnomalyValueLabel = (
   }
   return "Legacy score";
 };
+
+const eventTypes = new Map([
+  ["ml_adaptive_stream_univariate", "Adaptive · single reading"],
+  ["ml_adaptive_stream_multivariate", "Adaptive · joint readings"],
+  ["ml_conformal_static_univariate", "Static · single reading"],
+  ["ml_conformal_static_multivariate", "Static · joint readings"],
+]);
+
+export const formatAnomalyEventType = (type: string): string => eventTypes.get(type) ?? type;

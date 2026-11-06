@@ -755,7 +755,8 @@ describe("reporting", () => {
     // Recorded identities read as catalogue names, newest first.
     const rows = events.querySelectorAll(".rp-row");
     expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
-    expect(rows[0]?.querySelector(".rp-entity")?.textContent).toBe("Room station");
+    expect(rows[0]?.querySelector(".rp-entity a")?.textContent).toBe("Room station");
+    expect(within(events).getAllByRole("link", { name: "View readings for Room station" })[0]?.getAttribute("href")).toContain("/details/");
     expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
     expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
     expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
@@ -797,7 +798,7 @@ describe("reporting", () => {
     await screen.findByText("Temperature spike");
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID", "Copy event type"]);
   });
 
   it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {
@@ -808,7 +809,7 @@ describe("reporting", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID", "Delete anomaly"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID", "Copy event type", "Delete anomaly"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete anomaly" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this anomaly?" });
     expect(apiUtils.delete).not.toHaveBeenCalled();

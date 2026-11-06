@@ -9,6 +9,7 @@ import { ChevronDown } from "lucide-react";
 
 import DateTimePicker from "@/components/DateTimePicker";
 import { EChart } from "./EChart";
+import { ChartSamples } from "./ChartSamples";
 import { TelemetryDetectorControls } from "./TelemetryDetectorControls";
 import { TelemetryEventDetails } from "./TelemetryEventDetails";
 import { TelemetryChartSummary } from "./TelemetryChartSummary";
@@ -359,7 +360,7 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
     activeNavigationState.inspectionDataEndMs !== undefined &&
     chartModel.extent !== undefined &&
     chartModel.extent[1] > activeNavigationState.inspectionDataEndMs;
-  const displayedExtent = viewport.mode === "absolute"
+  const displayedExtent: readonly [number, number] | undefined = viewport.mode === "absolute"
     ? [viewport.startMs, viewport.endMs]
     : getChartDomain(timelineExtent ?? chartModel.extent, activeNavigationState.range);
   const displayedEventGroups = chartModel.anomalyMarkers.filter((group) =>
@@ -572,6 +573,8 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
                 className={`${chartHeightClass} w-full min-w-0 touch-none`}
               />
               <TelemetryChartSummary model={chartModel} timeZone={timeZone} />
+              <ChartSamples timeZone={timeZone} range={displayedExtent}
+                sources={[{ id: chartModel.telemetry.id, name: chartModel.telemetry.name, unit: chartModel.telemetry.unit, points: chartModel.telemetry.data }]} />
               <TelemetryEventDetails groups={displayedEventGroups} timeZone={timeZone} unit={telemetryData.unit} />
             </>
           ) : null}

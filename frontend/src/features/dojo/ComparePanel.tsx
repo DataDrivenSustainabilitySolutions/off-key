@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
@@ -44,6 +44,28 @@ function bestOf(row: Row, runs: RunMetrics[]) {
 }
 
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
+
+function ComparisonScroll({ label, children }: { label: string; children: ReactNode }) {
+  const content = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const hint = useId();
+  useEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    const measure = () => setOverflow(element.scrollWidth > element.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return <div className="dj-section">
+    {overflow && <p className="dj-help dj-scroll-hint" id={hint}>Scroll sideways to see all runs.</p>}
+    <div className="dj-table-scroll" ref={content} role="region" aria-label={label}
+      aria-describedby={overflow ? hint : undefined} tabIndex={overflow ? 0 : undefined}>{children}</div>
+  </div>;
+}
 
 /** Up to three finished runs side by side, scored against the dataset's labels. */
 export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; runs: RunSummary[]; labels: LabelView[] }) {
@@ -101,7 +123,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     </p>}
     {chosen.length > 0 && <DojoChart data={chart} description={`Values with labels and the alarms of ${chosen.length} runs`} />}
     {shown && <>
-      <div className="dj-table-scroll dj-section" role="region" aria-label="Scroll run metrics" tabIndex={0}>
+      <ComparisonScroll label="Run metrics">
         <table className="dj-table dj-comparison-table" aria-label="Run metrics">
         <thead><tr><th scope="col">Metric</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
         <tbody>{ROWS.map(row => {
@@ -111,8 +133,8 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
             return <td key={item.run_id} className={isBest ? "dj-metric-best" : undefined}>{item.scored_from ? row.value(item) : "—"}</td>;
           })}</tr>;
         })}</tbody>
-      </table></div>
-      {shown.labels.length > 0 && <div className="dj-table-scroll dj-section" role="region" aria-label="Scroll label outcomes" tabIndex={0}>
+      </table></ComparisonScroll>
+      {shown.labels.length > 0 && <ComparisonScroll label="Label outcomes">
         <table className="dj-table dj-comparison-table" aria-label="Label outcomes">
         <thead><tr><th scope="col">Label</th>{shown.runs.map(item => <th scope="col" key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>
         <tbody>{shown.labels.map((label, index) => <tr key={label.id}>
@@ -123,7 +145,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
               {outcome.delay_seconds != null && <small>after {formatDuration(outcome.delay_seconds)}</small>}</td>;
           })}
         </tr>)}</tbody>
-      </table></div>}
+      </table></ComparisonScroll>}
       <p className="dj-help">A label counts as detected when the run alarmed inside it. Each alarm that begins outside every
         label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.</p>
     </>}

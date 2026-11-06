@@ -49,14 +49,14 @@
     --secondary: 220 23% 97%;
     --secondary-foreground: 210 22% 19%;
     --muted: 220 23% 97%;
-    --muted-foreground: 210 10% 44%;
+    --muted-foreground: 210 10% 41%;
     --accent: 210 21% 95%;
     --accent-foreground: 210 22% 19%;
     --destructive: 4 45% 44%;
     --warning: 38 60% 40%;
     --destructive-foreground: 0 0% 100%;
     --border: 210 15% 92%;
-    --input: 210 13% 56%;
+    --input: 210 13% 53%;
     --ring: 170 37% 36%;
     --radius: 0.5rem;
     --app-header-height: 64px;

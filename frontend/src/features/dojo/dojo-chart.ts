@@ -21,6 +21,8 @@ type Input = DojoChartData & {
 };
 
 const ALARM_ROW = 22;
+const scaleKey = (item: ChartSeries) => item.unit ? `unit:${item.unit}` : `series:${item.id}`;
+export const chartScaleKeys = (series: ChartSeries[]) => [...new Set(series.map(scaleKey))];
 
 function labelAreas(labels: ChartLabel[], colors: ChartThemeColors) {
   return {
@@ -42,16 +44,17 @@ export function dojoChartExtent({ series, labels, alarms = [] }: DojoChartData):
 
 /** Values of a dataset with its labels shaded, and optionally each run's alarms.
  *
- * Series share an axis per unit: the first unit on the left, the second on the
- * right, any further ones on the left. The legend names each series' unit. Alarm rows share the time axis, so a
+ * Two different scales appear on separate axes. Series with a known matching
+ * unit share a scale. An overview with more than two scales uses one shared axis.
+ * The legend names the units and axes. Alarm rows share the time axis, so a
  * mark sits under the value it belongs to.
  */
 export function datasetChartOption({ series, labels, alarms = [], colors, timeZone, locale, viewport }: Input): TelemetryChartOption {
   const range = dojoChartExtent({ series, labels, alarms });
   const span = range ? range[1] - range[0] : 0;
   const palette = colors.seriesPalette ?? [colors.primary];
-  const units = [...new Set(series.map(item => item.unit ?? ""))];
-  const twoAxes = units.length > 1;
+  const scales = chartScaleKeys(series);
+  const twoAxes = scales.length === 2;
   const longest = Math.max(0, ...alarms.map(item => item.name.length));
   const left = alarms.length ? Math.min(134, Math.max(56, 16 + longest * 7)) : 56;
   const right = twoAxes ? 56 : 24;
@@ -76,10 +79,10 @@ export function datasetChartOption({ series, labels, alarms = [], colors, timeZo
   const lines = series.map((item, index) => ({
     id: `series:${item.id}`,
     type: "line" as const,
-    name: item.unit ? `${item.name} (${item.unit})` : item.name,
+    name: `${item.name}${item.unit ? ` (${item.unit})` : ""}${twoAxes ? scaleKey(item) === scales[0] ? " · left" : " · right" : ""}`,
     data: item.points,
     xAxisIndex: 0,
-    yAxisIndex: units.indexOf(item.unit ?? "") === 1 ? 1 : 0,
+    yAxisIndex: twoAxes && scaleKey(item) === scales[1] ? 1 : 0,
     showSymbol: false,
     sampling: "lttb" as const,
     large: true,

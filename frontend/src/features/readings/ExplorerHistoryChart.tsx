@@ -2,6 +2,7 @@ import { useNow } from "@/hooks/use-now";
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
 import { EChart } from "@/features/charts/EChart";
+import { ChartSamples } from "@/features/charts/ChartSamples";
 import { TelemetryChartSummary } from "@/features/charts/TelemetryChartSummary";
 import { TelemetryDetectorControls } from "@/features/charts/TelemetryDetectorControls";
 import { TelemetryEventDetails } from "@/features/charts/TelemetryEventDetails";
@@ -23,9 +24,10 @@ import { readingHistoryKey } from "@/domain/readings/readingHistoryCache";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 
 type Inspection = { startMs: number; endMs: number; windowStartMs: number };
-type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache };
+type Props = { stream: SystemStream; connection?: SystemConnection; snapshot?: LiveNodeSnapshot; binding?: SystemReadingBinding; historyCache?: ReadingHistoryCache;
+  heading?: "h2" | "h3" };
 
-export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache }: Props) {
+export function ExplorerHistoryChart({ stream, connection, snapshot, binding, historyCache, heading: Heading = "h3" }: Props) {
   const { resolvedTheme, colors } = useChartColors();
   const monitoring = useReadingMonitoring(connection, stream, binding, historyCache);
   const viewKey = historyCache ? `chart:${historyCache.owner}:${readingHistoryKey(connection, stream, binding?.entity_id, binding?.telemetry_key)}` : undefined;
@@ -126,7 +128,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const title = stream.value_type === "boolean" ? "State history" : "History";
   return <section className="ex-preview-history" aria-label={title}>
     <div className="ex-preview-section-heading">
-      <h3>{title}</h3>
+      <Heading>{title}</Heading>
       <div className="ex-history-tools" role="group" aria-label="Chart controls">
         <button type="button" aria-label="Zoom in" title="Zoom in" disabled={model.telemetry.data.length < 2} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button type="button" aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
@@ -153,6 +155,9 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
         onViewportChange={inspect} className={`ex-preview-chart ex-preview-chart--${paneCount}`} />
     </div> : <div className="ex-preview-chart-empty" aria-busy={monitoring.loading || undefined}><Radio size={24} strokeWidth={1.3} /><strong>{monitoring.loading ? "Loading history…"
       : history.length ? "No values in selected range" : binding?.policy.mode !== undefined && binding.policy.mode !== "off" ? "Waiting for recorded values" : "Waiting for live values"}</strong></div>}
+    {model.telemetry.data.length > 0 && <ChartSamples timeZone={timeZone} range={inspection ? [inspection.startMs, inspection.endMs] : domain}
+      sources={[{ id: stream.id, name: stream.label, unit: stream.unit, points: model.telemetry.data,
+        valueType: stream.value_type === "boolean" ? "boolean" : "number" }]} />}
     {model.secondarySeries.length > 0 && <TelemetryChartSummary model={model} timeZone={timeZone} showTelemetry={false} />}
     <TelemetryEventDetails groups={events} timeZone={timeZone} unit={stream.unit} />
     {monitoring.error && <p className="ex-preview-note" role="status">{monitoring.error}</p>}

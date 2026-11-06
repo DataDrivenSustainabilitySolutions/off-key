@@ -99,9 +99,10 @@ export default function PipelineCanvas({
   const lastFit = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!flow || !surface.current || lastFit.current === fitRequest) return;
+    const initial = lastFit.current === undefined;
     lastFit.current = fitRequest;
-    void fitReadableView(flow, surface.current, selected);
-  }, [fitRequest, flow, selected]);
+    void fitReadableView(flow, surface.current, selected, initial && readOnly ? 0.78 : 1);
+  }, [fitRequest, flow, readOnly, selected]);
   const lastReveal = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!flow || !surface.current || !reveal || lastReveal.current === reveal.request) return;

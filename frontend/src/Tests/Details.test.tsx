@@ -273,6 +273,19 @@ describe("<Details />", () => {
     expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
   });
 
+  it("distinguishes an unavailable anomaly count from a successful empty result", async () => {
+    mockLoadAnomalies.mockRejectedValueOnce(new Error("unavailable"));
+    renderDetails();
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Anomaly information is unavailable");
+    expect(screen.getByText("Anomalies").parentElement?.textContent).toContain("—");
+    expect(screen.getAllByTestId("telemetry-chart")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry anomalies" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.getByText("Anomalies").parentElement?.textContent).toContain("0");
+  });
+
   it("switches between independent and linked horizontal navigation", async () => {
     renderDetails();
     await screen.findByRole("heading", { name: "Processor" });

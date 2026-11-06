@@ -164,7 +164,7 @@
 .ex-preview-value strong { font-size: var(--text-display); line-height: var(--leading-display); font-weight: 450; letter-spacing: -.02em; overflow-wrap: anywhere; }
 .ex-preview-value small { font-size: var(--text-title3); font-weight: 400; color: var(--ex-muted); }
 .ex-preview-section-heading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.ex-preview-section-heading h3 { font-size: var(--text-body); font-weight: 550; margin: 0; }
+.ex-preview-section-heading :is(h2, h3) { font-size: var(--text-body); font-weight: 550; margin: 0; }
 .ex-preview-section-heading button { min-height: 32px; border-radius: 6px; padding: 0 8px; display: flex; gap: 6px; align-items: center; color: var(--ex-muted); font-size: var(--text-caption); }
 .ex-preview-section-heading select { font: inherit; font-size: var(--text-caption); border: 1px solid var(--ex-line); padding: 5px 7px; border-radius: 5px; background: var(--ex-bg); color: var(--ex-muted); }
 .ex-preview-history { padding: 16px; background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: 10px; }

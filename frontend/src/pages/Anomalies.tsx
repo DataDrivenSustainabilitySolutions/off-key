@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import {
   formatAnomalyValue,
+  formatAnomalyEventType,
   getAnomalyValueClassName,
   getAnomalyValueLabel,
   isProbabilityAnomalyValue,
@@ -155,9 +156,9 @@ export default function AnomalyTable() {
       toast.error(`The anomaly could not be deleted: ${getErrorMessage(err)}`);
     }
   };
-  const copyId = async (id: string) => {
-    try { await navigator.clipboard.writeText(id); toast.success("Event ID copied"); }
-    catch { toast.error("The event ID could not be copied."); }
+  const copyEventDetail = async (value: string, label: string) => {
+    try { await navigator.clipboard.writeText(value); toast.success(`${label} copied`); }
+    catch { toast.error(`${label} could not be copied.`); }
   };
 
   return (
@@ -249,21 +250,26 @@ export default function AnomalyTable() {
                   const sensors = formatAnomalySensorSet(anomaly.sensor_set?.length ? anomaly.readings.map(item => item.label) : anomaly.sensor_set);
                   return <tr key={anomaly.anomaly_id} role="row" className="rp-row">
                     <td role="cell" className="rp-entity">{source && !scopedHere
-                      ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}</td>
+                      ? <Link to={selectedSourceHref("/anomalies", source)} title={`Show only ${entity}`}>{entity}</Link> : entity}
+                      {anomaly.charger_id !== scopedEntity && <Link className="rp-entity-readings"
+                        to={withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)}
+                        aria-label={`View readings for ${entity}`}>View readings</Link>}
+                    </td>
                     <td role="cell" className="rp-time"><time dateTime={anomaly.timestamp} title={formatExactDateTime(anomaly.timestamp)}>{formatTimeOfDay(anomaly.timestamp)}</time></td>
                     <td role="cell" className="rp-readings"><div>
                       <span className="rp-reading">{anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE ? "multivariate" : anomaly.telemetry_label ?? anomaly.telemetry_type}</span>
                       {/* A single reading is already named by its badge. */}
                       {(anomaly.telemetry_type === MULTIVARIATE_TELEMETRY_TYPE || (anomaly.sensor_set?.length ?? 0) > 1) && <span className="rp-sensors" title={sensors}>{sensors}</span>}
                     </div></td>
-                    <td role="cell" className="rp-type">{anomaly.anomaly_type}</td>
+                    <td role="cell" className="rp-type" title={anomaly.anomaly_type}>{formatAnomalyEventType(anomaly.anomaly_type)}</td>
                     <td role="cell" className="rp-signal"><span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${getAnomalyValueClassName(anomaly.anomaly_value, anomaly.value_type)}`}
                       title={getAnomalyValueLabel(anomaly.value_type)}>{isProbabilityAnomalyValue(anomaly.value_type) ? "p"
                         : getAnomalyValueLabel(anomaly.value_type)}{" "}{formatAnomalyValue(anomaly.anomaly_value, anomaly.value_type)}</span></td>
                     <td role="cell" className="rp-actions">
                       <ActionMenu label={`Actions for ${entity} at ${formatExactDateTime(anomaly.timestamp)}`} actions={[
                         ...(anomaly.charger_id !== scopedEntity ? [{ label: "Entity readings", icon: Activity, onSelect: () => navigate(withCatalogueSource(`/details/${encodeURIComponent(anomaly.charger_id)}`, selected)) }] : []),
-                        ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyId(anomaly.anomaly_id) }] : []),
+                        ...(anomaly.anomaly_id ? [{ label: "Copy event ID", icon: Copy, onSelect: () => void copyEventDetail(anomaly.anomaly_id, "Event ID") }] : []),
+                        { label: "Copy event type", icon: Copy, onSelect: () => void copyEventDetail(anomaly.anomaly_type, "Event type") },
                         ...(can("manage_alarms") ? [{ label: "Delete anomaly", icon: Trash2, destructive: true, separated: true, onSelect: () => void handleDelete(anomaly) }] : []),
                       ]} />
                     </td>

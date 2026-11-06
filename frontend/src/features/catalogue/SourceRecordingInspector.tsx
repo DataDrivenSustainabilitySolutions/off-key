@@ -79,7 +79,7 @@ export function SourceRecordingInspector({ scope, ids, document, runtime, canEdi
   };
   const streams = new Map(document.streams.map(stream => [stream.id, stream]));
   return <section className="source-recording" aria-label="Recording configuration">
-    <div className="ex-preview-section-heading"><h3>Recording</h3>{summary && <span>{summary}</span>}</div>
+    <div className="ex-preview-section-heading"><h2>Recording</h2>{summary && <span>{summary}</span>}</div>
     {!busy && collectionPending && <p className="ex-muted" role={collectionFailed ? "alert" : "status"}>
       {collectionFailed ? "Recording settings could not be applied." : "Applying recording settings…"}
     </p>}

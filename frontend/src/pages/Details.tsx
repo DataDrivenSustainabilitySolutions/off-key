@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Activity, Check, Link2, Unlink2 } from "lucide-react";
+import toast from "react-hot-toast";
 
 import {
   MetricCard,
@@ -68,28 +69,29 @@ const getLatestTelemetryTimestamp = (
   return latest;
 };
 
-const LiveTelemetryIndicator: React.FC<{
-  hasRecentTelemetry: boolean;
-  hasTelemetry: boolean;
-}> = ({ hasRecentTelemetry, hasTelemetry }) => {
-  const label = hasRecentTelemetry
-    ? "Live telemetry"
-    : hasTelemetry
-      ? "Telemetry ready"
-      : "Waiting for telemetry";
+const TELEMETRY_LABELS = {
+  loading: "Loading telemetry…",
+  unavailable: "Telemetry unavailable",
+  live: "Live telemetry",
+  history: "Telemetry ready",
+  empty: "Waiting for telemetry",
+} as const;
 
+function LiveTelemetryIndicator({ state }: { state: keyof typeof TELEMETRY_LABELS }) {
+  const label = TELEMETRY_LABELS[state];
   return (
     <div
       className="inline-flex h-9 items-center gap-2 rounded-lg border border-border/70 bg-card px-3 text-sm text-muted-foreground shadow-xs"
+      role="status"
       aria-label={label}
       title={label}
     >
       <span
         className={cn(
           "size-2.5 rounded-full",
-          hasRecentTelemetry
+          state === "live"
             ? "live-pulse-ring bg-emerald-500"
-            : hasTelemetry
+            : state === "history"
               ? "bg-amber-400"
               : "bg-muted-foreground/50"
         )}
@@ -97,7 +99,7 @@ const LiveTelemetryIndicator: React.FC<{
       <span className="whitespace-nowrap">{label}</span>
     </div>
   );
-};
+}
 
 type DetailsCursors = {
   chargerId: string;
@@ -120,6 +122,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
   const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
+  const [anomaliesStatus, setAnomaliesStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -199,12 +202,14 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
       }
 
       if (anomaliesResult.status === "fulfilled") {
+        setAnomaliesStatus("ready");
         setChargerAnomalies((current) =>
           sameAnomalyWindow(current, anomaliesResult.value)
             ? current
             : anomaliesResult.value
         );
       } else {
+        setAnomaliesStatus("unavailable");
         clientLogger.error({
           event: "details.anomalies_load_failed",
           message: "Error loading entity anomalies",
@@ -328,10 +333,13 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     toggleChartLink,
   } = useLinkedChartNavigation(allTelemetryData);
 
-  const label = useMemo(() => {
-    const name = reportLabels(snapshot?.document, snapshot?.runtime).entity(chargerId);
-    return name === chargerId ? `Entity ${chargerId}` : name;
-  }, [snapshot, chargerId]);
+  const name = useMemo(() => reportLabels(snapshot?.document, snapshot?.runtime).entity(chargerId), [snapshot, chargerId]);
+  const rawIdentity = name === chargerId && chargerId.length > 32;
+  const label = name !== chargerId ? name : rawIdentity ? "Entity readings" : `Entity ${chargerId}`;
+  const telemetryState = isLoadingTelemetry ? "loading" : telemetryUnavailable ? "unavailable"
+    : hasRecentTelemetry ? "live" : latestTelemetryTimestamp !== undefined ? "history" : "empty";
+  const readingsReady = !isLoadingTelemetry && !telemetryUnavailable;
+  const loadingReadings = isLoadingTelemetry ? "Loading…" : telemetryUnavailable ? "Unavailable" : undefined;
   // Recorded entity ids are binding identities, so the catalogue node is found through the stream bindings.
   const sourcesHref = useMemo(() => {
     const node = catalogue && entitySource(catalogue.index, snapshot?.document, snapshot?.runtime, chargerId);
@@ -346,13 +354,14 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           title={label}
           actions={
             <>
+              {rawIdentity && catalogue?.system.status !== "loading" && <Button variant="ghost" onClick={async () => {
+                try { await navigator.clipboard.writeText(chargerId); toast.success("Entity ID copied"); }
+                catch { toast.error("The entity ID could not be copied."); }
+              }}>Copy entity ID</Button>}
               <Button variant="ghost" asChild>
                 <Link to={sourcesHref}>View in Sources</Link>
               </Button>
-              <LiveTelemetryIndicator
-                hasRecentTelemetry={hasRecentTelemetry}
-                hasTelemetry={latestTelemetryTimestamp !== undefined}
-              />
+              <LiveTelemetryIndicator state={telemetryState} />
               <Button asChild>
                 <Link to={`/?create=monitoring&target=${encodeURIComponent(chargerId)}`}>
                   <Activity className="h-4 w-4" />
@@ -363,19 +372,22 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           }
         />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="grid grid-cols-3 gap-2 max-sm:[&>div]:p-2.5 sm:gap-4">
           <MetricCard
             label="Readings"
-            value={allTelemetryData.length}
+            value={readingsReady ? allTelemetryData.length : "—"}
+            helper={loadingReadings}
           />
           <MetricCard
             label="Anomalies"
-            value={chargerAnomalies.length}
-            tone={chargerAnomalies.length > 0 ? "warning" : "default"}
+            value={anomaliesStatus === "ready" ? chargerAnomalies.length : "—"}
+            helper={anomaliesStatus === "loading" ? "Loading…" : anomaliesStatus === "unavailable" ? "Unavailable" : undefined}
+            tone={anomaliesStatus === "ready" && chargerAnomalies.length > 0 ? "warning" : "default"}
           />
           <MetricCard
             label="Categories"
-            value={telemetryByCategory.size}
+            value={readingsReady ? telemetryByCategory.size : "—"}
+            helper={loadingReadings}
             tone="info"
           />
         </div>
@@ -417,6 +429,11 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
               )}
             </div>
           </div>
+
+          {anomaliesStatus === "unavailable" && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">
+            <span>{chargerAnomalies.length ? "Showing the previous anomaly results. The latest results are unavailable." : "Anomaly information is unavailable."}</span>
+            <Button variant="outline" size="sm" onClick={() => void reload()}>Retry anomalies</Button>
+          </div>}
 
           {telemetryUnavailable && allTelemetryData.length > 0 && (
             <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm">

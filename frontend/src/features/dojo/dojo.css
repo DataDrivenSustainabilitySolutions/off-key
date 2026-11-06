@@ -21,6 +21,7 @@
 .dj-comparison-table th { min-width: 106px; }
 .dj-comparison-table :is(thead, tbody) th:first-child { position: sticky; left: 0; min-width: 126px; background: var(--ex-bg); }
 .dj-score-notice { display: grid; gap: 4px; margin-block: 0 16px; }
+.dj-scroll-hint { margin: 0 0 8px; }
 .dj-row-actions { display: flex; gap: 12px; justify-content: flex-end; white-space: nowrap; }
 .dj-section { margin-top: 28px; }
 .dj-section > h2 { font-size: var(--text-body); font-weight: 500; margin: 0 0 12px; }
@@ -34,13 +35,10 @@
   gap: 8px 16px; margin: 12px 0;
 }
 .dj-chart-tools strong { display: block; color: var(--ex-ink); }
-.dj-chart-tools [role="group"], .dj-data-pages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dj-chart-tools [role="group"] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dj-chart-tools button { min-width: 40px; min-height: 40px; }
-.dj-data { border: 1px solid var(--ex-line); border-radius: 8px; margin-block: 12px 24px; }
-.dj-data summary { padding: 12px 14px; color: var(--ex-accent); font-weight: 550; cursor: pointer; }
-.dj-data-body { padding: 0 14px 14px; }
-.dj-data-body .dj-field { max-width: 280px; }
-.dj-data-pages { margin-top: 12px; font-size: var(--text-caption); }
+.dj-plot-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.dj-plot-selection .dj-field { min-width: min(180px, 100%); max-width: 320px; margin-block: 4px; }
 .dj-series-picker { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: var(--text-caption); }
 .dj-series-picker label { display: inline-flex; gap: 6px; align-items: center; }
 .dj-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 12px 0; font-size: var(--text-caption); font-weight: 500; }

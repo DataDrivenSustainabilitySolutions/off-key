@@ -6,7 +6,7 @@
 .mn-filter-count.is-alert { color: hsl(var(--destructive)); opacity: 1; font-weight: 600; }
 .ex-shell .mn-filters button:hover { background: var(--ex-hover); }
 .ex-shell .mn-filters button[aria-pressed="true"] { color: var(--ex-ink); background: var(--ex-side); }
-.mn-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--ex-line); padding: 7px 10px; border-radius: 6px; color: var(--ex-muted); min-width: 180px; max-width: 260px; }
+.mn-search { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--input)); padding: 7px 10px; border-radius: 6px; color: var(--ex-muted); min-width: 180px; max-width: 260px; }
 .mn-search input { background: transparent; border: 0; color: var(--ex-ink); font: inherit; font-size: var(--text-caption); min-width: 0; width: 100%; outline-offset: 4px; }
 .mn-row { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1.15fr) minmax(140px,.8fr) 34px; gap: 18px; align-items: center; min-width: 0; }
 .mn-row > [role="cell"] { min-width: 0; }

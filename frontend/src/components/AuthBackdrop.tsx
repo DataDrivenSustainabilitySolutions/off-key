@@ -11,11 +11,11 @@ export function AuthBackdrop({
   contentClassName,
 }: AuthBackdropProps) {
   return (
-    <div className="auth-backdrop flex min-h-dvh items-center justify-center px-5 py-10">
+    <main className="auth-backdrop flex min-h-dvh items-center justify-center px-5 py-10">
       <div className="auth-monogram-pattern" aria-hidden="true" />
       <div className={cn("relative z-10 w-full", contentClassName)}>
         {children}
       </div>
-    </div>
+    </main>
   );
 }

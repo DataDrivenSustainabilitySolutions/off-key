@@ -27,6 +27,7 @@ from off_key_core.schemas.system_collection import (
 )
 from off_key_core.schemas.system_live import SystemLiveScope, SystemLiveStart
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
 
 from ...facades.tactic import tactic
 from ..access import member_authorization
@@ -60,6 +61,10 @@ class RecordedReading(_Open):
         default=None, **public("broker_id", "connection_id")
     )
     policy_origin: PolicyOrigin | None = None
+    # How TACTIC stores the reading; the API names readings by id only.
+    entity_id: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
+    telemetry_key: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
+    accepted_topic: SkipJsonSchema[str | None] = Field(default=None, exclude=True)
 
 
 class CatalogueRuntime(_Open):
@@ -140,8 +145,7 @@ async def get_catalogue(authorization: str = Depends(member_authorization)):
 
     `document` holds `brokers`, `devices`, `readings` and `groups`; `revision`
     is the value to send as `expected_revision` when saving;
-    `runtime.bindings` says per reading id how it is recorded, and its
-    `entity_id` and `telemetry_key` name it for measurements and alarms;
+    `runtime.bindings` says per reading id how it is recorded;
     `can_edit` says whether the caller may change it.
     """
     return await system_request("GET", authorization)

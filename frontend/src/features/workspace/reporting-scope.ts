@@ -1,37 +1,52 @@
-import type { SystemDocument, SystemRuntime } from "@/types/system";
+import type { SystemDocument, SystemStream } from "@/types/system";
 import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
+import type { Alarm } from "@/types/charger";
 
-/** Resolve recorded identities to catalogue labels, keeping the identity when the catalogue no longer has it. */
-export function reportLabels(document: SystemDocument | undefined, runtime?: SystemRuntime) {
-  const connections = new Map(document?.brokers.map(item => [item.id, item.label]));
-  const devices = new Map(document?.devices.map(item => [item.id, item.label]));
-  const entities = new Map<string, string>();
-  const readings = new Map<string, string>();
-  for (const stream of document?.readings ?? []) {
-    const binding = runtime?.bindings?.[stream.id];
-    if (!binding) continue;
-    const entity = (stream.device_id && devices.get(stream.device_id)) || connections.get(stream.broker_id);
-    if (entity && !entities.has(binding.entity_id)) entities.set(binding.entity_id, entity);
-    readings.set(`${binding.entity_id}\u0000${binding.telemetry_key}`, stream.label);
-  }
-  return {
-    entity: (id: string) => entities.get(id) ?? id,
-    reading: (entityId: string, key: string) => readings.get(`${entityId}\u0000${key}`) ?? key,
-  };
+/** What a Details page shows: a device's readings, or a broker's readings without a device. */
+export type ReadingSource = { kind: "device" | "broker"; id: string };
+
+const sourceOf = (stream: SystemStream): ReadingSource =>
+  stream.device_id ? { kind: "device", id: stream.device_id } : { kind: "broker", id: stream.broker_id };
+
+export const detailsHref = (source: ReadingSource) =>
+  source.kind === "device"
+    ? `/details/${encodeURIComponent(source.id)}`
+    : `/details/broker/${encodeURIComponent(source.id)}`;
+
+/** A source's catalogue readings, and how to ask for their alarms and evidence. */
+export function sourceReadings(document: SystemDocument | undefined, source: ReadingSource) {
+  const readings = (document?.readings ?? []).filter(stream => source.kind === "device"
+    ? stream.device_id === source.id
+    : stream.broker_id === source.id && !stream.device_id);
+  const scope: { deviceId: string } | { readingIds: string[] } = source.kind === "device"
+    ? { deviceId: source.id }
+    : { readingIds: readings.map(stream => stream.id) };
+  return { readings, scope };
 }
 
-/** The catalogue node that stands for a recorded entity, so that reports can be scoped to it. */
-export function entitySource(index: NavigationIndex, document: SystemDocument | undefined, runtime: SystemRuntime | undefined, entityId: string): ExplorerNode | undefined {
-  for (const stream of document?.readings ?? []) {
-    if (runtime?.bindings?.[stream.id]?.entity_id !== entityId) continue;
-    const nodes = (index.objectKeys.get(stream.device_id ?? stream.broker_id) ?? []).flatMap(key => index.nodes.get(key) ?? []);
-    const node = nodes.find(item => stream.device_id ? item.entityKind === "device" : item.kind === "connection");
-    if (node) return node;
-  }
+/** The catalogue name of a source, if the catalogue still has it. */
+export function sourceLabel(document: SystemDocument | undefined, source: ReadingSource) {
+  const items = source.kind === "device" ? document?.devices : document?.brokers;
+  return items?.find(item => item.id === source.id)?.label;
 }
 
-/** The recorded entity behind a selected source, when the selection is exactly one entity. */
-export function selectedEntity(streamIds: readonly string[] | undefined, runtime: SystemRuntime | undefined) {
-  const ids = new Set((streamIds ?? []).flatMap(id => runtime?.bindings?.[id]?.entity_id ?? []));
-  return ids.size === 1 ? [...ids][0] : undefined;
+/** The catalogue node that stands for a source, so that views can be scoped to it. */
+export function sourceNode(index: NavigationIndex, source: ReadingSource): ExplorerNode | undefined {
+  const nodes = (index.objectKeys.get(source.id) ?? []).flatMap(key => index.nodes.get(key) ?? []);
+  return nodes.find(node => source.kind === "device" ? node.entityKind === "device" : node.kind === "connection");
+}
+
+/** Where an alarm's readings come from: its device, or the broker of readings without one. */
+export function alarmSource(alarm: Alarm, document: SystemDocument | undefined): ReadingSource | undefined {
+  if (alarm.device_id) return { kind: "device", id: alarm.device_id };
+  const stream = document?.readings.find(item => alarm.reading_ids.includes(item.id));
+  return stream && sourceOf(stream);
+}
+
+/** The one source behind a selection of readings, when there is exactly one. */
+export function selectedSource(readingIds: readonly string[] | undefined, document: SystemDocument | undefined) {
+  const chosen = new Set(readingIds);
+  const sources = new Map((document?.readings ?? []).filter(stream => chosen.has(stream.id))
+    .map(stream => { const source = sourceOf(stream); return [`${source.kind}:${source.id}`, source] as const; }));
+  return sources.size === 1 ? [...sources.values()][0] : undefined;
 }

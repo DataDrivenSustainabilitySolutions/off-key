@@ -110,9 +110,11 @@ def test_upgrade_converts_inputs_and_preserves_accounts_favourites_and_monitor_s
         assert binding.accepted_topic == f"telemetry/{entity}/temperature"
         assert runtime.streams()[0].policy.mode == "original"
         assert connection.scalar(select(User.hashed_password)) == "saved-hash"
+        # The starred entity is now the catalogue device it became.
+        assert binding.device_id in {device.id for device in saved.devices}
         assert connection.execute(
             select(MemberFavorite.user_id, MemberFavorite.kind, MemberFavorite.item_id)
-        ).all() == [(1, "entity", entity)]
+        ).all() == [(1, "device", binding.device_id)]
         assert (
             connection.scalar(select(Charger.manufacturer_name)) == "Saved manufacturer"
         )

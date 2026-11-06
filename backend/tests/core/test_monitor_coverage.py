@@ -55,4 +55,36 @@ def test_every_monitor_summary_lists_its_readings():
     )
     summary = service_summary(service, CATALOGUE)
     assert summary["stream_ids"] == ["line-pressure", "line-temperature"]
-    assert summary["mqtt_topics"] == service.mqtt_topic
+    # The recorded topics name internal identities and stay inside.
+    assert "mqtt_topics" not in summary
+
+
+def test_monitor_activity_names_its_inputs_by_reading():
+    service = MonitoringService(
+        id="m1",
+        container_name="workload",
+        mqtt_topic=["telemetry/line/temperature", "telemetry/line/pressure"],
+        status=True,
+        operational_stage="degraded",
+        operational_status={
+            "stage": "degraded",
+            "activity": {
+                "freshness_seconds": 30,
+                "missing_sensors": ["pressure"],
+                "stale_sensors": ["temperature", "removed"],
+            },
+        },
+        launch_config={
+            "pipeline": {
+                "bindings": [
+                    {"input_key": "temperature", "reading_id": "line-temperature"},
+                    {"input_key": "pressure", "reading_id": "line-pressure"},
+                ]
+            }
+        },
+    )
+    activity = service_summary(service, CATALOGUE)["operational_status"]["activity"]
+    assert activity["missing_reading_ids"] == ["line-pressure"]
+    # A key no binding names any more is left out rather than shown.
+    assert activity["stale_reading_ids"] == ["line-temperature"]
+    assert "missing_sensors" not in activity and "stale_sensors" not in activity

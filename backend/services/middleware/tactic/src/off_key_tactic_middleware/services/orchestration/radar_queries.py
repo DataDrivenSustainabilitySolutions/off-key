@@ -8,7 +8,7 @@ from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import select
 
-from .radar_status import derive_operational_status
+from .radar_status import derive_operational_status, name_inputs_by_reading
 
 
 async def find_service(session, service_id: str):
@@ -16,6 +16,11 @@ async def find_service(session, service_id: str):
         select(MonitoringService).where(MonitoringService.id == service_id)
     )
     return result.scalars().first()
+
+
+def _public_status(status: dict[str, Any], launch: dict) -> dict[str, Any]:
+    pipeline = launch.get("pipeline") or {}
+    return name_inputs_by_reading(status, pipeline.get("bindings")) or {}
 
 
 def service_summary(
@@ -26,7 +31,9 @@ def service_summary(
     configuration = service.launch_config or {}
     monitoring = configuration.get("monitoring") or {}
     docker_status, labels = probe if probe is not None else (None, {})
-    operational_status = derive_operational_status(service, docker_status)
+    operational_status = _public_status(
+        derive_operational_status(service, docker_status), configuration
+    )
     # Large graph snapshots are returned only for the selected service.
     operational_status.pop("pipeline_state", None)
     summary = {
@@ -40,8 +47,7 @@ def service_summary(
         "model_type": (
             labels.get("radar_model_type") if labels else monitoring.get("model_type")
         ),
-        "mqtt_topics": service.mqtt_topic,
-        # Catalogue readings the monitor watches, so callers need no MQTT rules.
+        # Catalogue readings the monitor watches; its topics stay inside.
         "stream_ids": catalogue.watched_by(service.mqtt_topic),
         "status": service.status,
         "operational_status": operational_status,
@@ -109,12 +115,12 @@ class RadarServiceQueries:
                 "monitoring": monitoring,
                 "performance_config": configuration.get("performance_config") or {},
             },
-            "mqtt_topics": service.mqtt_topic,
             "stream_ids": catalogue.watched_by(service.mqtt_topic),
             "status": service.status,
             "docker_status": docker_service_status,
-            "operational_status": derive_operational_status(
-                service, docker_service_status
+            "operational_status": _public_status(
+                derive_operational_status(service, docker_service_status),
+                configuration,
             ),
             "monitoring_strategy": monitoring.get("strategy")
             or labels.get("monitoring_strategy"),

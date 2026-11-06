@@ -1,19 +1,20 @@
 import { expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 import { setAppearance } from "./appearance";
 
-type Evidence = { service_id: string; strategy: string; model_type?: string; anomaly_score?: number | null;
+type Evidence = { monitor_id: string; strategy: string; model_type?: string; anomaly_score?: number | null;
   input_timestamps: Record<string, string>; sequence_number: number };
 
 /** Inspect the real collector/worker/database results, without replacing API responses. */
-export async function inspectMonitoringHistory({ page, api, headers, serviceId, entityId, strategy, testInfo }: {
+export async function inspectMonitoringHistory({ page, api, headers, serviceId, deviceId, strategy, testInfo }: {
   page: Page; api: APIRequestContext; headers: Record<string, string>; serviceId: string;
-  entityId: string; strategy: "adaptive_stream" | "static_baseline"; testInfo: TestInfo;
+  deviceId: string; strategy: "adaptive_stream" | "static_baseline"; testInfo: TestInfo;
 }) {
-  const response = await api.get(`/api/v1/evidence/chart?charger_id=${entityId}&service_id=${serviceId}`, { headers });
+  const query = new URLSearchParams({ device_id: deviceId, monitor_id: serviceId });
+  const response = await api.get(`/api/v1/evidence/chart?${query}`, { headers });
   expect(response.ok(), await response.text()).toBe(true);
   const evidence = await response.json() as Evidence[];
   expect(evidence.length).toBeGreaterThan(0);
-  expect(evidence.every(row => row.service_id === serviceId)).toBe(true);
+  expect(evidence.every(row => row.monitor_id === serviceId)).toBe(true);
   expect(evidence.every(row => Object.keys(row.input_timestamps).length === 3)).toBe(true);
   if (strategy === "adaptive_stream") {
     expect(evidence.every(row => row.model_type === "aberrant_online_isolation_forest")).toBe(true);

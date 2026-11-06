@@ -6,7 +6,7 @@ import { drainForward, EVIDENCE_PAGE_SIZE, TELEMETRY_PAGE_SIZE } from "@/lib/for
 import { getTelemetryCursor, getTelemetryData } from "@/lib/charger-api";
 import { INTERVALS } from "@/lib/constants";
 import { getMonitoringEvidenceCursor, mergeMonitoringChartEvidence } from "@/lib/monitoring-chart";
-import type { Anomaly } from "@/types/charger";
+import type { Alarm } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import type { SystemConnection, SystemStream, SystemReadingBinding } from "@/types/system";
@@ -39,7 +39,7 @@ class ReadingPolls {
     try {
       const points = await drainForward({
         cursor: this.telemetryCursor,
-        fetchPage: cursor => getTelemetryData(binding.entityId, binding.telemetryType, signal, cursor),
+        fetchPage: cursor => getTelemetryData(binding.readingId, signal, cursor),
         cursorOf: getTelemetryCursor,
         pageSize: TELEMETRY_PAGE_SIZE,
       });
@@ -63,11 +63,11 @@ class ReadingPolls {
     const [evidence, anomalies] = await Promise.allSettled([
       drainForward({
         cursor: this.evidenceCursor,
-        fetchPage: cursor => get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(binding.entityId, cursor)),
+        fetchPage: cursor => get<MonitoringChartEvidence[]>(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE({ readingIds: [binding.readingId] }, cursor)),
         cursorOf: getMonitoringEvidenceCursor,
         pageSize: EVIDENCE_PAGE_SIZE,
       }),
-      get<Anomaly[]>(API_CONFIG.ENDPOINTS.ANOMALIES.BY_CHARGER(binding.entityId)),
+      get<Alarm[]>(API_CONFIG.ENDPOINTS.ALARMS.LIST({ readingIds: [binding.readingId] })),
     ]);
     if (signal.aborted) return;
     if (evidence.status === "fulfilled") this.evidenceCursor = getMonitoringEvidenceCursor(evidence.value) ?? this.evidenceCursor;
@@ -91,11 +91,13 @@ export function useReadingMonitoring(connection: SystemConnection | undefined, s
   const cache = sharedCache ?? localCache;
   const { id, topic, payload_pointer, value_type } = stream;
   const host = connection?.host, port = connection?.port, transport = connection?.transport, tls = connection?.tls;
-  const entityId = savedBinding?.entity_id, telemetryType = savedBinding?.telemetry_key;
+  const recorded = savedBinding !== undefined, recordedDevice = savedBinding?.device_id;
   const context = useMemo(() => host && port && transport && tls !== undefined ? {
-    binding: entityId && telemetryType ? { entityId, telemetryType } : undefined,
-    key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type }, entityId, telemetryType)!,
-  } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, entityId, telemetryType]);
+    // Only a recorded reading has history to poll.
+    binding: recorded ? { readingId: id } : undefined,
+    key: readingHistoryKey({ host, port, transport, tls }, { id, topic, payload_pointer, value_type },
+      recorded ? { device_id: recordedDevice } : undefined)!,
+  } : undefined, [id, topic, payload_pointer, value_type, host, port, transport, tls, recorded, recordedDevice]);
   const state = useReadingHistorySnapshot(cache, context?.key);
 
   const polls = useMemo(() => context?.binding && new ReadingPolls(cache, context.key, context.binding), [cache, context]);

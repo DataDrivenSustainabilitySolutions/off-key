@@ -49,7 +49,7 @@ async def test_favorites_are_idempotent_ordered_and_scoped_to_their_member(
         first = await client.post(PATH.format(1), json=reading)
         again = await client.post(PATH.format(1), json=reading)
         await client.post(PATH.format(1), json={"kind": "monitor", "id": "m1"})
-        await client.post(PATH.format(2), json={"kind": "entity", "id": "c1"})
+        await client.post(PATH.format(2), json={"kind": "device", "id": "c1"})
 
         assert first.status_code == again.status_code == 200
         assert again.json() == first.json()
@@ -64,7 +64,7 @@ async def test_favorites_are_idempotent_ordered_and_scoped_to_their_member(
             removed = await client.delete(PATH.format(1), params=reading)
             assert removed.status_code == 204
         assert pairs(await client.get(PATH.format(1))) == [("monitor", "m1")]
-        assert pairs(await client.get(PATH.format(2))) == [("entity", "c1")]
+        assert pairs(await client.get(PATH.format(2))) == [("device", "c1")]
 
     # Removing a member removes their favorites with them.
     async with sessions() as session:
@@ -78,13 +78,13 @@ async def test_a_member_at_the_limit_is_told_to_remove_one_first(favorites_app):
     app, sessions = favorites_app
     async with sessions() as session:
         session.add_all(
-            MemberFavorite(user_id=1, kind="entity", item_id=f"c{index}")
+            MemberFavorite(user_id=1, kind="device", item_id=f"c{index}")
             for index in range(256)
         )
         await session.commit()
     async with asgi_client(app) as client:
         full = await client.post(PATH.format(1), json={"kind": "monitor", "id": "m1"})
-        kept = await client.post(PATH.format(1), json={"kind": "entity", "id": "c0"})
+        kept = await client.post(PATH.format(1), json={"kind": "device", "id": "c0"})
 
     assert full.status_code == 409
     assert "Remove one first" in full.json()["detail"]

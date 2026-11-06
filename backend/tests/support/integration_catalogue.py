@@ -10,13 +10,13 @@ import pytest
 
 @dataclass(frozen=True)
 class RecordedEntity:
+    """A recorded test device: its readings by key and their upstream topics."""
+
     broker_id: str
     device_id: str
     reading_ids: tuple[str, ...]
-    entity_id: str
-    keys: dict[str, str]
+    readings: dict[str, str]
     topics: dict[str, str]
-    accepted_topics: tuple[str, ...]
 
 
 def add_recorded_entity(
@@ -101,20 +101,16 @@ def add_recorded_entity(
         time.sleep(1)
     else:
         pytest.fail("Selected generic test inputs did not connect and apply")
-    bindings = runtime["bindings"]
+    # The API names readings by catalogue id; how they are stored stays inside.
+    assert not {"entity_id", "telemetry_key", "accepted_topic"} & {
+        field for reading_id in reading_ids for field in runtime["bindings"][reading_id]
+    }
     return RecordedEntity(
         broker_id=broker_id,
         device_id=device_id,
         reading_ids=reading_ids,
-        entity_id=bindings[reading_ids[0]]["entity_id"],
+        readings=dict(zip(keys, reading_ids, strict=True)),
         topics=topics,
-        keys={
-            key: bindings[reading_id]["telemetry_key"]
-            for key, reading_id in zip(keys, reading_ids, strict=True)
-        },
-        accepted_topics=tuple(
-            bindings[reading_id]["accepted_topic"] for reading_id in reading_ids
-        ),
     )
 
 

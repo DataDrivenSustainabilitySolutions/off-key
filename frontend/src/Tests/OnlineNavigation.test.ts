@@ -17,8 +17,8 @@ function activity(document: SystemDocument, receiving: string[]) {
   const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 3, collection: { status: "applied" },
     ingress: { revision: 3, status: "applied", sources: Object.fromEntries(document.brokers.map(item => [item.id, { state: "connected" }])),
       readings: Object.fromEntries(receiving.map(id => [id, { fresh_received_at: new Date(now).toISOString() }])) },
-    bindings: Object.fromEntries(document.readings.map(item => [item.id, { entity_id: "entity", broker_id: item.broker_id,
-      telemetry_key: item.id, accepted_topic: item.topic, policy: { mode: "sample", interval_seconds: 3600 } }])) };
+    bindings: Object.fromEntries(document.readings.map(item => [item.id, { broker_id: item.broker_id,
+      policy: { mode: "sample", interval_seconds: 3600 } }])) };
   return { telemetry, liveStreamIds: [], runtime };
 }
 

@@ -107,7 +107,7 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
             selects.append(statement)
 
     headers = {"X-Off-Key-Service-Key": secret}
-    path = "/api/v1/data/anomalies/query"
+    path = "/api/v1/data/alarms/query"
     line = ["temperature", "pressure"]
     try:
         async with asgi_client(create_app()) as client:
@@ -126,58 +126,78 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
             # paged newest first without gaps or repeats.
             seen, before = [], None
             while True:
-                page = await query(stream_ids=["temperature"], before=before)
+                page = await query(reading_ids=["temperature"], before=before)
                 seen += page["items"]
                 before = page["next"]
                 if before is None:
                     break
             assert page["summary"]["count"] == len(seen) == 502
-            assert len({item["anomaly_id"] for item in seen}) == 502
+            assert len({item["alarm_id"] for item in seen}) == 502
             assert [item["timestamp"] for item in seen] == sorted(
                 (item["timestamp"] for item in seen), reverse=True
             )
-            assert seen[-1]["telemetry_type"] == "__multivariate__"
-            assert seen[-1]["readings"] == [
-                {"key": "temperature", "label": "Temperature"},
-                {"key": "pressure", "label": "Pressure"},
-            ]
-            assert seen[0]["entity_label"] == "Line 1"
-            assert seen[0]["telemetry_label"] == "Temperature"
+            assert seen[-1]["multivariate"] is True
+            assert seen[-1]["reading_ids"] == ["temperature", "pressure"]
+            assert seen[-1]["reading_labels"] == {
+                "temperature": "Temperature",
+                "pressure": "Pressure",
+            }
+            assert (seen[0]["device_id"], seen[0]["device_label"]) == ("line", "Line 1")
+            assert seen[0]["reading_labels"] == {"temperature": "Temperature"}
 
             # The whole entity also takes the multivariate alarm without a set.
-            whole = await query(stream_ids=line, limit=1)
+            whole = await query(reading_ids=line, limit=1)
             assert whole["summary"] == {
                 "count": 504,
-                "entities": 1,
+                "devices": 1,
                 "latest": whole["items"][0]["timestamp"],
             }
             assert [
-                (item["telemetry_key"], item["label"], item["count"])
+                (item["reading_id"], item["label"], item["count"])
                 for item in whole["readings"]
             ] == [("pressure", "Pressure", 2), ("temperature", "Temperature", 502)]
+            assert {item["device_id"] for item in whole["readings"]} == {"line"}
 
             narrowed = {
                 "p-value": {"max_p_value": 0.001},
-                "monitor": {"service_id": "monitor-a"},
-                "reading": {
-                    "reading": {"charger_id": "busy", "telemetry_key": "pressure"}
-                },
+                "monitor": {"monitor_id": "monitor-a"},
+                "reading": {"reading_id": "pressure"},
                 "time": {"since": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
             }
             counts = {}
             for name, body in narrowed.items():
-                result = await query(stream_ids=line, **body)
+                result = await query(reading_ids=line, **body)
                 counts[name] = result["summary"]["count"]
                 assert result["readings"] == whole["readings"]
             assert counts == {"p-value": 1, "monitor": 1, "reading": 2, "time": 501}
 
-            unknown = await query(stream_ids=["gone"])
-            assert unknown["items"] == [] and unknown["unknown_stream_ids"] == ["gone"]
+            unknown = await query(reading_ids=["gone"])
+            assert unknown["items"] == [] and unknown["unknown_reading_ids"] == ["gone"]
+            narrowed_away = await query(reading_ids=line, reading_id="gone")
+            assert narrowed_away["summary"]["count"] == 0
+            assert narrowed_away["unknown_reading_ids"] == ["gone"]
 
             selects.clear()
             everything = await query(limit=1)
             assert len(selects) == 3
-            assert everything["summary"]["entities"] == 3
+            assert everything["summary"]["devices"] == 3
+            # The alarms of an entity the catalogue no longer has name no device.
+            removed = await client.get(
+                "/api/v1/data/alarms", headers=headers, params={"limit": 1000}
+            )
+            assert removed.status_code == 200, removed.text
+            orphans = [
+                item["device_label"]
+                for item in removed.json()
+                if item["device_id"] is None
+            ]
+            assert sorted(orphans, key=str) == [None, "Plant MQTT"]
+            device = await client.get(
+                "/api/v1/data/alarms",
+                headers=headers,
+                params={"device_id": "line", "service_id": "monitor-c"},
+            )
+            assert [item["monitor_id"] for item in device.json()] == ["monitor-c"]
             assert everything["summary"]["count"] == 506
     finally:
         await engine.dispose()

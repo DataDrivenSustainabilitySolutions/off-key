@@ -152,7 +152,7 @@ describe("explorer sidebar and catalogue list", () => {
     const options = listOptions();
     const runtime: SystemRuntime = { mode: "collection", message: "", collection_revision: 1, collection: { status: "applied" },
       ingress: { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: { "value-0": { fresh_received_at: new Date().toISOString() } } },
-      bindings: { "value-0": { entity_id: "room", broker_id: "broker", telemetry_key: "value", accepted_topic: "telemetry/room/value", policy: { mode: "sample", interval_seconds: 3600 } } } };
+      bindings: { "value-0": { broker_id: "broker", policy: { mode: "sample", interval_seconds: 3600 } } } };
     const source = { telemetry: new SystemLiveTelemetry(), runtime, liveStreamIds: [] };
     const view = render(<ExplorerList {...options} selectedKey={options.rows[0]!.node.key} activity={source} />);
     const row = await screen.findByRole("button", { name: "value0, preview" });
@@ -191,7 +191,7 @@ describe("explorer sidebar and catalogue list", () => {
     document.devices.push({ id: "loose", label: "Unassigned sensor", kind: "sensor" });
     const options = sidebarOptions(document);
     render(<ExplorerSidebar {...options} />);
-    expect(screen.getByText("1 broker · unassigned entities")).toBeTruthy();
+    expect(screen.getByText("1 broker · unassigned devices")).toBeTruthy();
     expect(screen.queryByText("2 brokers")).toBeNull();
   });
 

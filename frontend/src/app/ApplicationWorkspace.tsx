@@ -69,7 +69,7 @@ function WorkspaceFrame() {
         onOpenAutoFocus={event => { event.preventDefault(); mobileDrawer.current?.focus(); }}
         onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog && !settingsSectionOf(search)) toggle.current?.focus(); }}>
         <Dialog.Title className="ex-sr-only">MQTT catalogue</Dialog.Title>
-        <Dialog.Description className="ex-sr-only">Browse brokers, entities, topics and readings for the current section.</Dialog.Description>
+        <Dialog.Description className="ex-sr-only">Browse brokers, devices, topics and readings for the current section.</Dialog.Description>
         <WorkspaceCatalogue onDismiss={() => setMobileOpen(false)} />
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>

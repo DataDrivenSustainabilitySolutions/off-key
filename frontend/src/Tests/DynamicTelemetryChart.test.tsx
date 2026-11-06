@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EChart } from "@/features/charts/EChart";
 import { ThemeProvider } from "@/components/theme-provider";
 import type { ActiveService, MonitoringChartEvidence, MartingaleTrackerResult } from "@/types/monitoring";
-import type { Anomaly } from "@/types/charger";
 import { formatTelemetryEventTime } from "@/features/charts/telemetry-events";
 
 const chartMock = vi.hoisted(() => ({
@@ -35,7 +34,7 @@ vi.mock("@/features/charts/EChart", () => ({
 }));
 
 import { DynamicTelemetryChart } from "@/features/charts/DynamicTelemetryChart";
-import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
+import { alarm, chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 
 let intersectionCallback: IntersectionObserverCallback | undefined;
 
@@ -106,7 +105,6 @@ const inspectOption = (): InspectableOption =>
 
 const operationalService: ActiveService = {
   id: "service-adaptive",
-  mqtt_topics: ["telemetry/charger-1/voltage"],
   reading_ids: ["voltage"],
   active: true,
   monitoring_strategy: "adaptive_stream",
@@ -119,7 +117,7 @@ const operationalService: ActiveService = {
 };
 
 const scoreEvidence = (timestamp: string, sequenceNumber: number): MonitoringChartEvidence => chartEvidence({
-  service_id: operationalService.id, timestamp, sequence_number: sequenceNumber, sensor_set: ["voltage"],
+  monitor_id: operationalService.id, timestamp, sequence_number: sequenceNumber, reading_ids: ["voltage"],
   input_timestamps: { voltage: timestamp }, strategy: "adaptive_stream", anomaly_score: sequenceNumber, threshold: 5,
 });
 
@@ -262,7 +260,7 @@ describe("DynamicTelemetryChart", () => {
   it("never substitutes historical evidence for the active monitoring service", async () => {
     const historicalEvidence = {
       ...scoreEvidence("2026-07-27T10:00:00Z", 1),
-      service_id: "service-historical",
+      monitor_id: "service-historical",
     };
     const { rerender } = render(
       <ThemeProvider defaultTheme="light">
@@ -374,10 +372,10 @@ describe("DynamicTelemetryChart", () => {
           telemetryData={multiPaneTelemetry}
           evidence={[
             {
-              service_id: "service-static",
+              monitor_id: "service-static",
               timestamp: "2026-07-27T10:00:00Z",
               sequence_number: 1,
-              sensor_set: ["voltage"],
+              reading_ids: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:00:00Z" },
               strategy: "static_baseline",
               restarted_martingale: 10,
@@ -386,10 +384,10 @@ describe("DynamicTelemetryChart", () => {
               created: "2026-07-27T10:00:00Z",
             },
             {
-              service_id: "service-adaptive",
+              monitor_id: "service-adaptive",
               timestamp: "2026-07-27T10:02:00Z",
               sequence_number: 1,
-              sensor_set: ["voltage"],
+              reading_ids: ["voltage"],
               input_timestamps: { voltage: "2026-07-27T10:02:00Z" },
               strategy: "adaptive_stream",
               restarted_martingale: null,
@@ -504,10 +502,9 @@ describe("DynamicTelemetryChart", () => {
   });
 
   it("offers event details without captions and distinguishes contextual sample timing", async () => {
-    const event = (id: string, timestamp: string): Anomaly => ({
-      anomaly_id: id, charger_id: "charger-1", timestamp, telemetry_type: "voltage",
-      anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-      sensor_set: ["voltage", "current"],
+    const event = (id: string, timestamp: string) => alarm({
+      alarm_id: id, timestamp, reading_ids: ["voltage", "current"], multivariate: true,
+      alarm_type: "spike", value: 0.01,
     });
     render(
       <ThemeProvider defaultTheme="light">
@@ -536,11 +533,10 @@ describe("DynamicTelemetryChart", () => {
 
   it("retains the nearest contextual sample outside a selected range when the range changes", async () => {
     const eventTime = Date.parse("2026-07-27T10:00:00Z");
-    const event: Anomaly = {
-      anomaly_id: "near-range-edge", charger_id: "charger-1", timestamp: new Date(eventTime).toISOString(),
-      telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-      sensor_set: ["voltage"],
-    };
+    const event = alarm({
+      alarm_id: "near-range-edge", timestamp: new Date(eventTime).toISOString(),
+      reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+    });
     const data = {
       ...telemetry(),
       data: [
@@ -581,10 +577,10 @@ describe("DynamicTelemetryChart", () => {
         <DynamicTelemetryChart telemetryData={{ ...telemetry(), data: [
           { timestamp: new Date(eventTime - 1_000).toISOString(), value: 230.9 },
           { timestamp: new Date(eventTime + 3_000).toISOString(), value: 231 },
-        ] }} anomalies={[{
-          anomaly_id: "at-range-start", charger_id: "charger-1", timestamp: new Date(eventTime).toISOString(),
-          telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-        }]} navigationState={{ range: { fromMs: eventTime, toMs: eventTime + 5_000 }, viewport: { mode: "live" } }} />
+        ] }} anomalies={[alarm({
+          alarm_id: "at-range-start", timestamp: new Date(eventTime).toISOString(),
+          reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+        })]} navigationState={{ range: { fromMs: eventTime, toMs: eventTime + 5_000 }, viewport: { mode: "live" } }} />
       </ThemeProvider>,
     );
     showChart();
@@ -625,10 +621,10 @@ describe("DynamicTelemetryChart", () => {
     render(
       <ThemeProvider defaultTheme="light">
         <DynamicTelemetryChart telemetryData={telemetry()}
-          anomalies={[{
-            anomaly_id: "unmatched-in-range", charger_id: "charger-1", timestamp: new Date(time).toISOString(),
-            telemetry_type: "voltage", anomaly_type: "spike", anomaly_value: 0.01, value_type: "tail_pvalue",
-          }]}
+          anomalies={[alarm({
+            alarm_id: "unmatched-in-range", timestamp: new Date(time).toISOString(),
+            reading_ids: ["voltage"], alarm_type: "spike", value: 0.01,
+          })]}
           navigationState={{ range: { fromMs: time - 500, toMs: time + 500 }, viewport: { mode: "live" } }} />
       </ThemeProvider>,
     );

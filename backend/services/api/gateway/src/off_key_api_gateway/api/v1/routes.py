@@ -3,10 +3,10 @@ from off_key_core.auth.permissions import Permission
 
 from ..access import current_member, writes_require
 from . import (
-    anomalies,
+    alarms,
     auth,
     catalogue,
-    charger,
+    devices,
     dojo,
     evidence,
     favorites,
@@ -14,7 +14,6 @@ from . import (
     monitors,
     pipelines,
     roles,
-    telemetry,
 )
 
 router = APIRouter()
@@ -22,8 +21,8 @@ router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 protected = APIRouter(dependencies=[Depends(current_member)])
 
-protected.include_router(charger.router, prefix="/chargers", tags=["chargers"])
-protected.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
+protected.include_router(devices.router, prefix="/devices", tags=["devices"])
+protected.include_router(devices.readings_router, prefix="/readings", tags=["devices"])
 manage_monitors = writes_require(Permission.manage_monitors)
 protected.include_router(
     monitors.router,
@@ -52,14 +51,12 @@ protected.include_router(
 protected.include_router(evidence.router, prefix="/evidence", tags=["evidence"])
 protected.include_router(favorites.router, prefix="/favorites", tags=["favorites"])
 protected.include_router(
-    anomalies.router,
-    prefix="/anomalies",
-    tags=["anomalies"],
+    alarms.router,
+    prefix="/alarms",
+    tags=["alarms"],
     dependencies=[Depends(writes_require(Permission.manage_alarms))],
 )
-protected.include_router(
-    anomalies.query_router, prefix="/anomalies", tags=["anomalies"]
-)
+protected.include_router(alarms.query_router, prefix="/alarms", tags=["alarms"])
 protected.include_router(catalogue.router, prefix="/catalogue", tags=["catalogue"])
 protected.include_router(
     catalogue.brokers_router, prefix="/brokers", tags=["catalogue"]

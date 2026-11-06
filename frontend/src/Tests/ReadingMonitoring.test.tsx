@@ -5,24 +5,25 @@ import { mergeReadingHistory } from "@/domain/readings/readingMonitoring";
 import { useReadingMonitoring } from "@/features/readings/useReadingMonitoring";
 import { EMPTY_READING_HISTORY, ReadingHistoryCache, READING_HISTORY_CACHE_LIMIT, READING_HISTORY_POINT_LIMIT } from "@/domain/readings/readingHistoryCache";
 import type { SystemConnection, SystemStream } from "@/types/system";
+import { alarm } from "./support/fixtures/monitoring";
 import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn() } }));
 const connection: SystemConnection = mqttConnection({ id: "broker", label: "Building", host: "broker.test" });
 const stream: SystemStream = { id: "reading", label: "Temperature", broker_id: "broker", topic: "site/room/air", value_type: "number", category: "Environment" };
-const savedBinding = { entity_id: "canonical-entity", telemetry_key: "temperature/air", accepted_topic: "telemetry/canonical-entity/temperature/air", policy: { mode: "original" as const, interval_seconds: 10 } };
+const savedBinding = { policy: { mode: "original" as const, interval_seconds: 10 } };
 const time = "2026-10-10T12:00:00Z";
 const points = [{ timestamp: time, created: time, value: 22 }];
-const evidence = [{ service_id: "monitor", timestamp: time, created: time, sequence_number: 1,
-  input_timestamps: { "temperature/air": time }, sensor_set: ["temperature/air"],
+const evidence = [{ monitor_id: "monitor", timestamp: time, created: time, sequence_number: 1,
+  input_timestamps: { reading: time }, reading_ids: ["reading"],
   strategy: "adaptive_stream", anomaly_score: 2, threshold: 3, alarm: false, restarted_martingale: null }];
 
 beforeEach(() => {
   vi.mocked(apiUtils.get).mockReset();
   vi.mocked(apiUtils.get).mockImplementation(async (endpoint) => {
-    if (endpoint.includes("/data?")) return points;
+    if (endpoint.includes("/measurements")) return points;
     if (endpoint.includes("/evidence/chart?")) return evidence;
-    if (endpoint.startsWith("/v1/anomalies?")) return [];
+    if (endpoint.startsWith("/v1/alarms?")) return [];
     if (endpoint.startsWith("/v1/monitors/overview")) return { monitors: [], authoring_enabled: false };
     throw new Error("Unexpected endpoint");
   });
@@ -55,7 +56,7 @@ describe("selected-reading monitoring subscription", () => {
     first.unmount();
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
     let resolve: (value: unknown) => void = () => {};
-    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.includes("/data?")
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.includes("/measurements")
       ? new Promise(done => { resolve = done; }) : baseGet(endpoint, options));
     const returned = renderHook(({ reading, store }) => useReadingMonitoring(connection, reading, savedBinding, store),
       { initialProps: { reading: stream, store: cache } });
@@ -86,13 +87,25 @@ describe("selected-reading monitoring subscription", () => {
     const hook = renderHook(({ reading }) => useReadingMonitoring(connection, reading, savedBinding), { initialProps: { reading: stream } });
     await waitFor(() => expect(hook.result.current.evidence).toHaveLength(1));
     expect(hook.result.current.telemetry).toEqual(points);
-    const telemetryRequests = vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.includes("/data?"));
+    const telemetryRequests = vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.includes("/measurements"));
     expect(telemetryRequests).toHaveLength(1);
-    expect(telemetryRequests[0]![0]).toContain("type=temperature%2Fair");
+    expect(telemetryRequests[0]![0]).toMatch(/^\/v1\/readings\/reading\/measurements\?/u);
+    const evidenceRequest = vi.mocked(apiUtils.get).mock.calls.find(([endpoint]) => endpoint.includes("/evidence/chart?"));
+    expect(new URL(evidenceRequest![0], "http://app.test").searchParams.getAll("reading_id")).toEqual(["reading"]);
     hook.rerender({ reading: { ...stream, label: "Renamed on the fly" } });
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/catalogue")).toHaveLength(0);
     hook.unmount();
     expect(vi.mocked(apiUtils.get).mock.calls[0]![1]?.signal?.aborted).toBe(true);
+  });
+
+  it("asks for the alarms of the catalogue reading the chart draws", async () => {
+    const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
+    const found = alarm({ alarm_id: "alarm", reading_ids: ["reading", "elsewhere"], multivariate: true, timestamp: time });
+    vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/alarms?")
+      ? Promise.resolve([found]) : baseGet(endpoint, options));
+    const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
+    await waitFor(() => expect(hook.result.current.anomalies).toEqual([found]));
+    expect(vi.mocked(apiUtils.get).mock.calls.map(([endpoint]) => endpoint)).toContain("/v1/alarms?reading_id=reading");
   });
 
   it("does not request unrelated stored telemetry when no input matches", async () => {
@@ -109,7 +122,7 @@ describe("selected-reading monitoring subscription", () => {
     hook.rerender({ reading: { ...stream, topic: "site/other/input" } });
     await act(async () => { resolve(points); });
     expect(signal?.aborted).toBe(true);
-    expect(hook.result.current.binding).toEqual({ entityId: savedBinding.entity_id, telemetryType: savedBinding.telemetry_key });
+    expect(hook.result.current.binding).toEqual({ readingId: stream.id });
     expect(hook.result.current.telemetry).toEqual(points);
     const requests = (shared: boolean) => vi.mocked(apiUtils.get).mock.calls
       .filter(([endpoint]) => endpoint.startsWith("/v1/monitors/overview") === shared);
@@ -123,8 +136,8 @@ describe("selected-reading monitoring subscription", () => {
     const baseGet = vi.mocked(apiUtils.get).getMockImplementation()!;
     vi.mocked(apiUtils.get).mockImplementation((endpoint, options) => endpoint.startsWith("/v1/monitors/overview")
       ? Promise.resolve({ monitors: [
-        { id: "match", mqtt_topics: ["telemetry/canonical-entity/#"], reading_ids: ["reading"] },
-        { id: "other", mqtt_topics: ["telemetry/canonical-entity/#"], reading_ids: ["elsewhere"] },
+        { id: "match", reading_ids: ["reading"] },
+        { id: "other", reading_ids: ["elsewhere"] },
       ] }) : baseGet(endpoint, options));
     const hook = renderHook(() => useReadingMonitoring(connection, stream, savedBinding));
     await waitFor(() => expect(hook.result.current.services.map(service => service.id)).toEqual(["match"]));
@@ -147,7 +160,7 @@ describe("selected-reading monitoring subscription", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(hook.result.current.evidence).toHaveLength(1);
     expect(hook.result.current.error).toBe("");
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.includes("/data?"))[1]![0]).toContain("after_created=");
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint.includes("/measurements"))[1]![0]).toContain("after_created=");
     const visible = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
     const count = vi.mocked(apiUtils.get).mock.calls.length;
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });

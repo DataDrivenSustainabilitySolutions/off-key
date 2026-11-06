@@ -175,7 +175,7 @@ describe("catalogue navigation index", () => {
     const rootRows = navigationRows(index, index.rootKey);
     expect(rootRows.map((row) => row.node.kind)).toEqual(["connection", "unassigned"]);
     expect(navigationTrail(index, object(index, "child").key).map((node) => node.label)).toEqual([
-      "Test system", "Unassigned entities", "Parent", "Child",
+      "Test system", "Unassigned devices", "Parent", "Child",
     ]);
     expect(searchNavigation(index, "Parent Child").map((node) => node.objectId)).toContain("child");
   });

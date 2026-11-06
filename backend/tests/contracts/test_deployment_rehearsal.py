@@ -34,42 +34,32 @@ pytestmark = [
 ]
 
 
-# The rollback reference (COMPATIBLE_REVISION in infra/tests/rehearsal_releases.py)
-# predates the REST rename, so while it runs the rehearsal calls its paths and
-# reads its answers under the new field names. Drop a rewrite once the reference
-# carries the new path or field.
-COMPATIBLE_RELEASE_PATHS = (
-    (None, re.compile(r"^/v1/me$"), "/v1/members/me"),
-    (None, re.compile(r"^/v1/detectors$"), "/v1/monitors/models"),
-    (None, re.compile(r"^/v1/pipeline-components$"), "/v1/monitors/pipelines/catalog"),
-    (None, re.compile(r"^/v1/pipelines(?=/|$)"), "/v1/monitors/pipelines"),
-    (
-        None,
-        re.compile(r"^/v1/pipeline-activations(?=/|$)"),
-        "/v1/monitors/pipeline-activations",
-    ),
-    (
-        None,
-        re.compile(r"^(/v1/monitors/[^/]+)/pipeline/(state|layout|history|timeline)$"),
-        r"\1/pipeline-\2",
-    ),
-    (None, re.compile(r"^/v1/catalogue(?=/|$)"), "/v1/system"),
-    (None, re.compile(r"^/v1/recording/health$"), "/v1/system/health"),
-    (None, re.compile(r"^/v1/recording(?=/|$)"), "/v1/system/collection"),
-    (None, re.compile(r"^/v1/storage$"), "/v1/system/storage"),
-    ("GET", re.compile(r"^/v1/monitors$"), "/v1/monitors/all"),
-    ("POST", re.compile(r"^/v1/monitors$"), "/v1/monitors/start"),
-)
-COMPATIBLE_RELEASE_PARAMS = {"active": "active_only"}
-COMPATIBLE_RELEASE_FIELDS = {
-    "connections": "brokers",
-    "streams": "readings",
-    "connection_id": "broker_id",
-    "service_id": "monitor_id",
-    "predecessor_service_id": "predecessor_monitor_id",
-    "next_service_id": "next_monitor_id",
-    "history_next_service_id": "history_next_monitor_id",
+# While the rollback reference (COMPATIBLE_REVISION in
+# infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
+# its answers under the current field names. The reference carries the current
+# REST paths, but it still shows how readings are recorded (topics, entities,
+# ingress keys) and names a run's catalogue revision and brokers the old way, so
+# its answers drop those recording fields and rename the rest.
+COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
+COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
+COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {
+    "system_revision": "catalogue_revision",
+    "source_id": "broker_id",
+    "source_label": "broker_label",
+    "entity_label": "device_label",
 }
+COMPATIBLE_RELEASE_DROPPED = frozenset(
+    {
+        "accepted_topic",
+        "collection_fingerprint",
+        "collection_generation",
+        "entity_id",
+        "input_key",
+        "mqtt_topics",
+        "system_schema_version",
+        "telemetry_key",
+    }
+)
 
 
 def current_field_names(value):
@@ -79,6 +69,7 @@ def current_field_names(value):
         return {
             COMPATIBLE_RELEASE_FIELDS.get(key, key): current_field_names(item)
             for key, item in value.items()
+            if key not in COMPATIBLE_RELEASE_DROPPED
         }
     return value
 
@@ -121,13 +112,14 @@ class RehearsalClient(httpx.Client):
         )
 
 
+def get_measurements(client, entity, key="temperature"):
+    return client.get(f"/v1/readings/{entity.readings[key]}/measurements")
+
+
 def wait_for_measurement(client, entity, value):
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        response = client.get(
-            f"/v1/telemetry/{entity.entity_id}/data",
-            params={"type": entity.keys["temperature"]},
-        )
+        response = get_measurements(client, entity)
         response.raise_for_status()
         points = response.json()
         if any(point["value"] == value for point in points):
@@ -340,9 +332,11 @@ def create_saved_graph(client, entity):
         item["slot_id"]: item["reading_id"]
         for item in view["run"]["execution"]["bindings"]
     } == dict(zip(("processed", "raw"), entity.reading_ids, strict=True))
-    assert {
-        item["accepted_topic"] for item in view["run"]["execution"]["bindings"]
-    } == set(entity.accepted_topics)
+    # How TACTIC records a bound reading stays inside; the run names readings only.
+    assert all(
+        set(item) <= {"slot_id", "reading_id", "unit"}
+        for item in view["run"]["execution"]["bindings"]
+    )
     # A per-run arrangement is independent from the published design layout.
     changed_layout = deepcopy(view["layout"])
     changed_layout["nodes"]["joined"]["x"] += 83
@@ -511,8 +505,11 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 "/v1/monitors",
                 json={
                     "display_name": "Saved monitoring service",
-                    "mqtt_topics": list(entity.accepted_topics),
-                    "model_type": "pyod_iforest",
+                    "reading_ids": list(entity.reading_ids),
+                    "monitoring": {
+                        "strategy": "static_baseline",
+                        "model_type": "pyod_iforest",
+                    },
                 },
             )
             started.raise_for_status()
@@ -579,13 +576,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     current["runtime"]["collection_revision"]
                     == snapshot["runtime"]["collection_revision"]
                 )
-                assert (
-                    client.get(
-                        f"/v1/telemetry/{entity.entity_id}/data",
-                        params={"type": entity.keys["temperature"]},
-                    ).json()
-                    == saved_data
-                )
+                assert get_measurements(client, entity).json() == saved_data
                 monitors = client.get("/v1/monitors", params={"active": "true"})
                 monitors.raise_for_status()
                 workers = [

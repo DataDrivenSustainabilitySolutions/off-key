@@ -4,7 +4,7 @@ import { zoomChart } from "./helpers/chart";
 import { setAppearance } from "./helpers/appearance";
 import { installDetailsMockApi } from "./helpers/detailsMockApi";
 
-const CHARGER_ID = "e2e-echarts";
+const DEVICE_ID = "e2e-echarts";
 const INITIAL_POINTS = [
   {
     timestamp: "2026-07-28T08:00:00.000Z",
@@ -33,14 +33,17 @@ const NEW_POINT = {
   value: 232.2,
 };
 const ANOMALY = {
-  anomaly_id: "anomaly-e2e-1",
-  charger_id: CHARGER_ID,
+  alarm_id: "anomaly-e2e-1",
   timestamp: "2026-07-28T08:02:00.000Z",
-  telemetry_type: "systemVoltage",
-  anomaly_type: "spike",
-  anomaly_value: 0.01,
+  device_id: DEVICE_ID,
+  device_label: DEVICE_ID,
+  reading_ids: ["systemVoltage"],
+  reading_labels: { systemVoltage: "systemVoltage" },
+  multivariate: false,
+  alarm_type: "spike",
+  value: 0.01,
   value_type: "tail_pvalue",
-  sensor_set: ["systemVoltage"],
+  monitor_id: null,
 };
 
 /** Evidence for one voltage reading, scored half a minute after it arrived. */
@@ -52,7 +55,7 @@ const evidence = (
   timestamp,
   created: new Date(Date.parse(timestamp) + 30_000).toISOString(),
   sequence_number: sequence,
-  sensor_set: ["systemVoltage"],
+  reading_ids: ["systemVoltage"],
   input_timestamps: { systemVoltage: timestamp },
   alarm: false,
   ...scores,
@@ -60,7 +63,7 @@ const evidence = (
 const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
   evidence(timestamp, index + 1, {
     strategy: "static_baseline",
-    service_id: "radar-service-e2e",
+    monitor_id: "radar-service-e2e",
     restarted_martingale: 10 ** -index,
     threshold: 100,
   }),
@@ -68,7 +71,7 @@ const STATIC_EVIDENCE = INITIAL_POINTS.slice(0, 3).map(({ timestamp }, index) =>
 const adaptiveEvidence = (timestamp: string, sequence: number) =>
   evidence(timestamp, sequence, {
     strategy: "adaptive_stream",
-    service_id: "adaptive-delayed",
+    monitor_id: "adaptive-delayed",
     anomaly_score: sequence,
     restarted_martingale: null,
     threshold: 5,
@@ -76,7 +79,6 @@ const adaptiveEvidence = (timestamp: string, sequence: number) =>
 const ADAPTIVE_SERVICE = {
   id: "adaptive-delayed",
   display_name: "radar-delayed",
-  mqtt_topics: [`telemetry/${CHARGER_ID}/systemVoltage`],
   reading_ids: ["systemVoltage"],
   active: true,
   monitoring_strategy: "adaptive_stream",
@@ -100,7 +102,7 @@ const installDetailsApi = async (
   } = {},
 ) => {
   const api = await installDetailsMockApi(page, {
-    chargerId: CHARGER_ID, sensors: telemetryTypes, telemetry, laterTelemetry: [NEW_POINT],
+    deviceId: DEVICE_ID, sensors: telemetryTypes, telemetry, laterTelemetry: [NEW_POINT],
     evidence: initialEvidence, laterEvidence: delayedEvidence, anomalies, monitors: services,
   });
   return { publishNewTelemetry: api.publishTelemetry, releaseEvidence: api.releaseEvidence };
@@ -120,7 +122,7 @@ test.describe("Details telemetry ECharts", () => {
   }) => {
     await installDetailsApi(page);
     await page.setViewportSize({ width: 1600, height: 900 });
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
 
     const navbar = page.getByTestId("application-header");
     const primaryLinks = page.getByRole("group", { name: "Workspaces", exact: true });
@@ -150,7 +152,7 @@ test.describe("Details telemetry ECharts", () => {
     page,
   }) => {
     await installDetailsApi(page);
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
 
     const chart = page.getByTestId("telemetry-echart");
     const card = page
@@ -190,7 +192,7 @@ test.describe("Details telemetry ECharts", () => {
     page,
   }) => {
     const api = await installDetailsApi(page);
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
 
     const chart = page.getByTestId("telemetry-echart");
     const card = page.locator('[data-slot="card"]').filter({ has: chart });
@@ -220,7 +222,7 @@ test.describe("Details telemetry ECharts", () => {
       initialEvidence: [adaptiveEvidence("2026-07-28T08:00:00.000Z", 1)],
       delayedEvidence: [adaptiveEvidence("2026-07-28T08:01:00.000Z", 2)],
     });
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
 
     const card = page
       .locator('[data-slot="card"]')
@@ -247,7 +249,7 @@ test.describe("Details telemetry ECharts", () => {
     await installDetailsApi(page, {
       telemetryTypes: ["systemVoltage", "systemCurrent"],
     });
-    await page.goto(`/details/${CHARGER_ID}`);
+    await page.goto(`/details/${DEVICE_ID}`);
 
     const voltageCard = page
       .locator('[data-slot="card"]')

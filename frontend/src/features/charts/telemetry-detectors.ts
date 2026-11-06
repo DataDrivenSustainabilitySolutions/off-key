@@ -101,7 +101,7 @@ export const collectTelemetryChartDetectors = ({
   const times = new Set(telemetryTimes);
   const ordered = evidence.map((item) => ({ item, time: getEvidenceTimeForSensor(item, telemetryType) }))
     .filter((entry): entry is { item: MonitoringChartEvidence; time: number } =>
-      entry.time !== undefined && times.has(entry.time) && entry.item.sensor_set.includes(telemetryType));
+      entry.time !== undefined && times.has(entry.time) && entry.item.reading_ids.includes(telemetryType));
   return collectChartDetectors(ordered);
 };
 
@@ -118,8 +118,8 @@ function collectChartDetectors(
   const ordered = rows.sort((left, right) => left.time - right.time || left.item.sequence_number - right.item.sequence_number);
   for (const { item, time } of ordered) {
     if (item.strategy === "adaptive_stream") {
-      const id = `adaptive-score:${item.service_id}`;
-      const group = groups.get(id) ?? { id, serviceId: item.service_id, name: "Anomaly score", pane: "adaptive", observations: [] };
+      const id = `adaptive-score:${item.monitor_id}`;
+      const group = groups.get(id) ?? { id, serviceId: item.monitor_id, name: "Anomaly score", pane: "adaptive", observations: [] };
       group.observations.push({
         sequenceNumber: item.sequence_number, timeMs: time, value: finiteOrNull(item.anomaly_score),
         threshold: finiteOrNull(item.threshold), alarmActive: item.alarm, logValue: null, isInfinite: false,
@@ -137,10 +137,10 @@ function collectChartDetectors(
     }];
     for (const tracker of trackers) {
       const legacy = tracker.tracker_id === "primary" && tracker.betting_function === "power" && tracker.alarm_statistic === "restarted_martingale";
-      const id = legacy ? `restarted-martingale:${item.service_id}` : `martingale:${item.service_id}:${tracker.tracker_id}`;
+      const id = legacy ? `restarted-martingale:${item.monitor_id}` : `martingale:${item.monitor_id}:${tracker.tracker_id}`;
       const suffix = tracker.betting_function === "power" && tracker.tracker_id === "primary" ? "" : ` (${bettingLabels[tracker.betting_function]} · ${tracker.tracker_id})`;
       const group = groups.get(id) ?? {
-        id, serviceId: item.service_id, trackerId: tracker.tracker_id,
+        id, serviceId: item.monitor_id, trackerId: tracker.tracker_id,
         name: `${statisticLabels[tracker.alarm_statistic]}${suffix}`,
         pane: "static", observations: [],
       };

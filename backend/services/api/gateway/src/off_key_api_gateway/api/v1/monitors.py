@@ -3,12 +3,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from off_key_core.schemas.pipelines import MonitorDetail, MonitorSummary
 from off_key_core.schemas.radar import (
-    FormMonitorConfig,
     MonitoringStrategy,
+    MonitorSetup,
     RadarServiceLabel,
 )
 from pydantic import AliasChoices, BaseModel, Field
-from pydantic.json_schema import SkipJsonSchema
 
 from ...facades.tactic import TacticError, tactic
 from ..errors import TacticErrorRoute
@@ -54,27 +53,13 @@ def _normalize_models_for_gateway(
     }
 
 
-class MonitorCreate(FormMonitorConfig):
-    """A monitor started from the setup form: what to watch and how."""
-
-    container_name: SkipJsonSchema[str | None] = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
-    display_name: str = Field(min_length=1, max_length=120, strict=True)  # ty: ignore[invalid-mutable-override]
-    # The gateway never forwards MQTT overrides, so the field is pinned to None.
-    mqtt_config: SkipJsonSchema[None] = Field(default=None, exclude=True)  # ty: ignore[invalid-attribute-override]
-
-    def form(self) -> FormMonitorConfig:
-        return FormMonitorConfig.model_validate(
-            self.model_dump(mode="json") | {"container_name": self.display_name}
-        )
-
-
 class MonitorStarted(BaseModel):
     """A monitor accepted for start; poll its activation until it settles."""
 
     monitor_id: str = Field(validation_alias=AliasChoices("monitor_id", "service_id"))
     activation_id: str
     phase: str = Field(validation_alias=AliasChoices("phase", "status"))
-    mqtt_topics: list[str]
+    reading_ids: list[str]
 
 
 class MonitorName(BaseModel):
@@ -103,14 +88,16 @@ async def list_monitors(request: Request, active: bool | None = None):
 
 @router.post("", response_model=MonitorStarted, status_code=202)
 @shared_limit_execute
-async def create_monitor(request: Request, monitor: MonitorCreate):
-    """Start a monitor from the setup form. Needs `manage_monitors`.
+async def create_monitor(request: Request, monitor: MonitorSetup):
+    """Start a monitor on catalogue readings. Needs `manage_monitors`.
 
+    `reading_ids` are recorded numeric readings of one device, or broker
+    readings without a device; `monitoring` is the strategy and its detector.
     TACTIC runs it as a pipeline. Answers 202 with the activation to poll at
     `GET /v1/pipeline-activations/{activation_id}`. A monitor designed as a
     graph starts with `POST /v1/pipelines/apply` instead.
     """
-    return await tactic.start_radar_service(monitor.form())
+    return await tactic.start_radar_service(monitor)
 
 
 @router.get("/{monitor_id}", response_model=MonitorDetail)

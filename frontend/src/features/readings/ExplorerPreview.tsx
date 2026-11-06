@@ -89,7 +89,7 @@ export default function ExplorerPreview({
     : node.kind === "topic" && related.length === 1 ? related[0] : undefined;
   const readingConnection = stream ? brokersById.get(stream.broker_id) : undefined;
   const savedBinding = stream ? runtime?.bindings?.[stream.id] : undefined;
-  const history = useReadingHistorySnapshot(historyCache, readingHistoryKey(readingConnection, stream, savedBinding?.entity_id, savedBinding?.telemetry_key));
+  const history = useReadingHistorySnapshot(historyCache, readingHistoryKey(readingConnection, stream, savedBinding));
   const lastSample = stream?.value_type === "number" ? history.telemetry[history.telemetry.length - 1] : undefined;
   const snapshotId = node.objectId ?? stream?.id;
   const snapshot = snapshotId ? telemetry.getSnapshot(snapshotId) : undefined;

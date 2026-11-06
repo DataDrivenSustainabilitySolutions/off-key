@@ -12,9 +12,9 @@ vi.mock("@/lib/api-client", () => ({ apiUtils: { get: vi.fn(), post: vi.fn() } }
 vi.mock("react-hot-toast", () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => catalogue }));
-const target: MonitoringTarget = { id: "room", label: "Building / Room", inputs: [
+const target: MonitoringTarget = { id: "device:room", label: "Building / Room", inputs: [
   { path: "Building / Room", stream: { id: "temperature", label: "Room temperature", topic: "upstream/custom/path", value_type: "number", category: "Environment", broker_id: "broker" },
-    binding: { entity_id: "room", telemetry_key: "temperature", accepted_topic: "telemetry/room/temperature", policy: { mode: "sample", interval_seconds: 10 } } },
+    binding: { policy: { mode: "sample", interval_seconds: 10 } } },
 ] };
 const models = {
   pyod_iforest: { strategy: "static_baseline", parameters: { properties: {} } },
@@ -27,13 +27,13 @@ beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
 });
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {
   const onStarted = vi.fn(async () => {});
-  render(<MemoryRouter><MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="room" initialReading="temperature"
+  render(<MemoryRouter><MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="device:room" initialReading="temperature"
     collectionReady={ready} onStarted={onStarted} onBack={vi.fn()} /></MemoryRouter>);
   return onStarted;
 }
 
 describe("integrated monitor creation", () => {
-  it.each(["adaptive", "static"])("starts %s monitoring with a saved name and the exact generic accepted input", async strategy => {
+  it.each(["adaptive", "static"])("starts %s monitoring with a saved name on the chosen reading", async strategy => {
     const onStarted = mount();
     fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Room climate monitor" } });
     if (strategy === "static") fireEvent.click(screen.getByRole("button", { name: "Static baseline" }));
@@ -41,7 +41,7 @@ describe("integrated monitor creation", () => {
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(start);
     await waitFor(() => expect(apiUtils.post).toHaveBeenCalledOnce());
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors", expect.objectContaining({ display_name: "Room climate monitor", mqtt_topics: ["telemetry/room/temperature"] }));
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/monitors", expect.objectContaining({ display_name: "Room climate monitor", reading_ids: ["temperature"] }));
     await waitFor(() => expect(onStarted).toHaveBeenCalledWith("new-service"));
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/pipeline-activations/activation", expect.anything());
   });
@@ -55,7 +55,7 @@ describe("integrated monitor creation", () => {
   });
 
   it("prevents a second active service from claiming an already owned generic input", async () => {
-    const service: ActiveService = { id: "owner", display_name: "Existing monitor", mqtt_topics: ["telemetry/room/temperature"], reading_ids: ["temperature"], active: true,
+    const service: ActiveService = { id: "owner", display_name: "Existing monitor", reading_ids: ["temperature"], active: true,
       operational_status: { stage: "operational", is_stale: false, message_count: 10, processed_message_count: 10 } };
     mount(true, [service], new Map([["temperature", new Set(["owner"])]]));
     const input = await screen.findByRole("checkbox", { name: /Room temperature/ });
@@ -69,7 +69,7 @@ describe("integrated monitor creation", () => {
 
 it("restores the entire service draft after a Sources detour", async () => {
   const router = createMemoryRouter([
-    { path: "/", element: <MonitoringServiceCreate targets={[target]} services={[]} byStream={new Map()} initialTarget="room" initialReading="temperature" collectionReady draftKey="test-detour" onStarted={vi.fn()} onBack={vi.fn()} /> },
+    { path: "/", element: <MonitoringServiceCreate targets={[target]} services={[]} byStream={new Map()} initialTarget="device:room" initialReading="temperature" collectionReady draftKey="test-detour" onStarted={vi.fn()} onBack={vi.fn()} /> },
     { path: "/sources", element: <Link to="/?create=monitoring&reading=temperature">Return to service setup</Link> },
   ], { initialEntries: ["/?create=monitoring&reading=temperature"] });
   render(<RouterProvider router={router} />);

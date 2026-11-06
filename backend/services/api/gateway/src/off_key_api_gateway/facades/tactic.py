@@ -4,7 +4,6 @@ HTTP client for communicating with the TACTIC middleware service.
 
 import asyncio
 import json
-from datetime import datetime
 from functools import cached_property
 from typing import Any
 from urllib.parse import quote
@@ -13,7 +12,7 @@ import aiohttp
 from off_key_core.config.logs import correlation_headers, logger
 from off_key_core.config.service_auth import get_service_auth_settings
 from off_key_core.schemas.favorites import FavoriteRef
-from off_key_core.schemas.radar import FormMonitorConfig
+from off_key_core.schemas.radar import MonitorSetup
 
 from off_key_api_gateway.settings import get_service_endpoints_settings
 
@@ -197,15 +196,12 @@ class Tactic:
             except json.JSONDecodeError:
                 return text
 
-    async def start_radar_service(self, config: FormMonitorConfig) -> dict[str, Any]:
-        """Forward a setup-form configuration to TACTIC; never MQTT overrides."""
-        unset = {"mqtt_config"} | (
-            {"display_name"} if config.display_name is None else set()
-        )
+    async def start_radar_service(self, setup: MonitorSetup) -> dict[str, Any]:
+        """Forward a monitor set up on catalogue readings to TACTIC."""
         return await self.request(
             method="POST",
             endpoint="/api/v1/orchestration/radar/services/start/",
-            json_data=config.model_dump(mode="json", exclude=unset),
+            json_data=setup.model_dump(mode="json"),
         )
 
     async def stop_radar_service(self, service_id: str) -> dict[str, Any]:
@@ -248,94 +244,6 @@ class Tactic:
             endpoint=f"/api/v1/orchestration/radar/services/{path_segment(service_id)}",
         )
 
-    async def get_chargers(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-        active_only: bool = False,
-    ) -> list[dict[str, Any]]:
-        """Get chargers from TACTIC data service."""
-        params = {
-            "skip": skip,
-            "limit": limit,
-            "active_only": active_only,
-        }
-        return await self.request(
-            method="GET",
-            endpoint="/api/v1/data/chargers",
-            params=params,
-        )
-
-    async def get_active_charger_ids(
-        self, skip: int = 0, limit: int = 100
-    ) -> dict[str, list[str]]:
-        """Get active charger IDs from TACTIC data service."""
-        params = {"skip": skip, "limit": limit}
-        return await self.request(
-            method="GET",
-            endpoint="/api/v1/data/chargers/active/ids",
-            params=params,
-        )
-
-    async def get_telemetry_types(self, charger_id: str, limit: int = 100) -> list[str]:
-        """Get telemetry types for a charger from TACTIC data service."""
-        params = {"limit": limit}
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}/types",
-            params=params,
-        )
-
-    async def get_telemetry_data(
-        self,
-        charger_id: str,
-        telemetry_type: str,
-        limit: int = 1000,
-        after_timestamp: datetime | None = None,
-        after_created: datetime | None = None,
-        after_event_timestamp: datetime | None = None,
-        paginated: bool = False,
-    ) -> Any:
-        """Get telemetry data from TACTIC data service."""
-        params: dict[str, Any] = {
-            "type": telemetry_type,
-            "limit": limit,
-            "paginated": paginated,
-        }
-        if after_timestamp is not None:
-            params["after_timestamp"] = after_timestamp.isoformat()
-        if after_created is not None:
-            if after_event_timestamp is None:
-                raise ValueError("after_created requires after_event_timestamp")
-            params["after_created"] = after_created.isoformat()
-            params["after_event_timestamp"] = after_event_timestamp.isoformat()
-
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}",
-            params=params,
-        )
-
-    async def get_telemetry_range(
-        self,
-        charger_id: str,
-        telemetry_type: str,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        buckets: int = 600,
-    ) -> list[dict[str, Any]]:
-        """Get a downsampled telemetry range from TACTIC data service."""
-        params: dict[str, Any] = {"type": telemetry_type, "buckets": buckets}
-        if start is not None:
-            params["start"] = start.isoformat()
-        if end is not None:
-            params["end"] = end.isoformat()
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/telemetry/{path_segment(charger_id)}/range",
-            params=params,
-        )
-
     async def authenticate_user(self, email: str, password: str) -> dict[str, Any]:
         """Validate user credentials via TACTIC data service."""
         return await self.request(
@@ -368,112 +276,6 @@ class Tactic:
             method="DELETE",
             endpoint=f"/api/v1/data/users/{user_id}/favorites",
             params=ref.model_dump(),
-        )
-
-    async def get_charger_anomalies(
-        self,
-        charger_id: str,
-        limit: int = 500,
-        telemetry_type: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Get anomalies for charger from TACTIC data service."""
-        params: dict[str, Any] = {"limit": limit}
-        if telemetry_type:
-            params["telemetry_type"] = telemetry_type
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/anomalies/{path_segment(charger_id)}",
-            params=params,
-        )
-
-    async def query_anomalies(self, query: dict[str, Any]) -> dict[str, Any]:
-        return await self.request(
-            method="POST", endpoint="/api/v1/data/anomalies/query", json_data=query
-        )
-
-    async def get_anomaly_count(self, since: datetime | None = None) -> dict[str, int]:
-        """Get total anomaly count, optionally filtered by timestamp."""
-        params: dict[str, Any] = {}
-        if since:
-            params["since"] = since.isoformat()
-        return await self.request(
-            method="GET",
-            endpoint="/api/v1/data/anomalies/count",
-            params=params,
-        )
-
-    async def get_monitoring_evidence(
-        self,
-        *,
-        charger_id: str,
-        telemetry_type: str | None = None,
-        limit: int = 2000,
-    ) -> list[dict[str, Any]]:
-        """Get persisted static evidence for a charger and optional sensor."""
-        params: dict[str, Any] = {"limit": limit}
-        if telemetry_type:
-            params["telemetry_type"] = telemetry_type
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{path_segment(charger_id)}",
-            params=params,
-        )
-
-    async def get_monitoring_chart_evidence(
-        self,
-        *,
-        charger_id: str,
-        service_id: str | None = None,
-        after_created: datetime | None = None,
-        after_timestamp: datetime | None = None,
-        after_service_id: str | None = None,
-        after_sequence_number: int | None = None,
-        limit: int = 2000,
-    ) -> list[dict[str, Any]]:
-        """Get the compact, incrementally pageable chart evidence projection."""
-        params: dict[str, Any] = {"limit": limit}
-        if service_id is not None:
-            params["service_id"] = service_id
-        if after_created is not None:
-            if (
-                after_timestamp is None
-                or after_service_id is None
-                or after_sequence_number is None
-            ):
-                raise TacticError(
-                    "after_timestamp, after_service_id and after_sequence_number "
-                    "are required when after_created is provided"
-                )
-            params.update(
-                {
-                    "after_created": after_created.isoformat(),
-                    "after_timestamp": after_timestamp.isoformat(),
-                    "after_service_id": after_service_id,
-                    "after_sequence_number": after_sequence_number,
-                }
-            )
-        return await self.request(
-            method="GET",
-            endpoint=f"/api/v1/data/monitoring-evidence/{path_segment(charger_id)}/chart",
-            params=params,
-        )
-
-    async def create_anomaly(self, anomaly_data: dict[str, Any]) -> dict[str, str]:
-        """Create anomaly via TACTIC data service."""
-        return await self.request(
-            method="POST",
-            endpoint="/api/v1/data/anomalies",
-            json_data=anomaly_data,
-        )
-
-    async def delete_anomaly(
-        self,
-        anomaly_id: str,
-    ) -> dict[str, str]:
-        """Delete anomaly via TACTIC data service."""
-        return await self.request(
-            method="DELETE",
-            endpoint=f"/api/v1/data/anomalies/{path_segment(anomaly_id)}",
         )
 
     async def list_available_models(

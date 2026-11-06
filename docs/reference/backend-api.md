@@ -29,8 +29,8 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Endpoint group | Client behaviour | Current enforcement note |
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
-| Chargers and telemetry | Send the login bearer token | Active, verified membership required |
-| Monitors and anomalies | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
+| Devices and measurements | Send the login bearer token | Active, verified membership required |
+| Monitors and alarms | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
 | Health and readiness | No token | Public operational probes in local deployments |
@@ -95,25 +95,27 @@ deleted. A change that would leave no active member able to manage members is
 refused with 409. Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).
 
-### Chargers and telemetry
+### Devices and measurements
+
+Devices and readings are named by their catalogue ids, `devices[].id` and
+`readings[].id` of `GET /v1/catalogue`. The installation resolves where their
+values are stored.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/chargers/available` | List chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active` | List active chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active/id` | List active charger identifiers | Query: `skip`, `limit` |
-| `GET` | `/telemetry/{charger_id}/type` | List telemetry types | Query: `limit` |
-| `GET` | `/telemetry/{charger_id}/data` | Fetch telemetry points | Query: `type`, `limit`, cursor fields, `paginated` |
-| `GET` | `/telemetry/{charger_id}/range` | Fetch a downsampled range: each time bucket's lowest and highest value | Query: `type`, `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
+| `GET` | `/devices` | Catalogue devices with their `reading_ids`, `online` and `last_seen` | Query: optional `active` |
+| `GET` | `/devices/{device_id}/readings` | The catalogue readings of one device | Path: `device_id` |
+| `GET` | `/readings/{reading_id}/measurements` | Recorded values of one reading | Query: `limit`, cursor fields, `paginated` |
+| `GET` | `/readings/{reading_id}/measurements/buckets` | A downsampled range: each time bucket's lowest and highest value | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
 
-Telemetry cursors:
+Measurement cursors:
 
 - Use `after_timestamp` for historical event-time pagination.
 - Use `after_created` and `after_event_timestamp` together for live ingestion-order pagination.
 - Do not mix historical and live cursor forms.
 
 ```http
-GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
+GET /v1/readings/stream:cpu-usage/measurements?limit=200
 Authorization: Bearer <token>
 ```
 
@@ -197,38 +199,49 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
 | `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
 | `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
-| `GET` | `/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
-| `GET` | `/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
+| `GET` | `/evidence` | Inference evidence of the observations that covered one reading | `reading_id`, `limit` |
+| `GET` | `/evidence/chart` | Incrementally load chart evidence | `device_id`, or `reading_id` repeated for up to 200 readings, optional `monitor_id`, optional complete cursor, `limit` |
 
-The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
+Evidence rows name their `monitor_id` and the `reading_ids` they covered;
+`input_timestamps` is keyed by reading id. The chart cursor is the complete
+tuple `after_created`, `after_timestamp`, `after_monitor_id`, and
+`after_sequence_number`; if one is supplied, all four are required.
 
 Every listed monitor, here and in `/monitors/overview`, carries `reading_ids`:
-the catalogue readings whose accepted topic one of its `mqtt_topics` filters
-takes, wildcards included. Use it to answer "which monitors watch this reading"
-without MQTT rules of your own; a reading removed from the catalogue drops out.
-`active` is true while the monitor should run and false once it is stopped.
+the catalogue readings it watches. Use it to answer "which monitors watch this
+reading"; a reading removed from the catalogue drops out. A monitor's
+`operational_status` names its inputs by reading id as well. How a reading is
+recorded (its topic and ingress key) stays inside the backend. `active` is true
+while the monitor should run and false once it is stopped.
 
 A monitor start body contains:
 
-- required `display_name` and `mqtt_topics`
+- required `display_name` and `reading_ids`: up to 100 distinct numeric readings
+  that are recorded, all of one device or all of one broker without a device
 - `monitoring`: the strategy configuration, including `strategy`
   (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
   the strategy's training, calibration, and alarm settings
-- optional `performance_config` for sensor alignment
+- optional `performance_config`: `sensor_freshness_seconds`,
+  `observation_max_age_seconds`, `observation_future_tolerance_seconds` and
+  `alignment_max_skew_seconds`
 
-Omitting `monitoring` selects the default static baseline. The former top-level
-`strategy`, `model_type`, `model_params`, `static_baseline_config`, and
-`adaptive_stream_config` fields remain accepted at API ingress and are converted
-to `monitoring`. Mixing the two formats, conflicting model fields, and malformed
-configuration return HTTP 422. The gateway forwards only the canonical format to
-TACTIC.
+Omitting `monitoring` selects the default static baseline. Other fields,
+including the former top-level `mqtt_topics`, `strategy`, `model_type` and
+`model_params`, and malformed configuration return HTTP 422.
 
-TACTIC converts the configuration into its equivalent graph, binds each topic to
-its selected numeric catalogue reading and submits a pipeline activation, even
-while the visual workbench is disabled. The HTTP 202 response carries
-`monitor_id`, `activation_id`, `phase` and `mqtt_topics`. Poll
-`/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
-`failed` or `cancelled`. Topics without a selected numeric reading return HTTP 422.
+TACTIC converts the configuration into its equivalent graph, binds one input
+per reading and submits a pipeline activation, even while the visual workbench
+is disabled. The graph's inputs carry the readings' catalogue labels. The HTTP
+202 response carries `monitor_id`, `activation_id`, `phase` and `reading_ids`.
+Poll `/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
+`failed` or `cancelled`. A reading that is unknown, not numeric, not recorded or
+of another device returns HTTP 422.
+
+A run view (`/monitors/{monitor_id}/pipeline`) names its bound inputs by
+`slot_id`, `reading_id` and `unit`. Its `binding_metadata` keeps the
+`catalogue_revision` and `collection_revision` the run was bound against and,
+per reading, the catalogue `label`, `unit`, `device_id`, `device_label`,
+`broker_id`, `broker_label` and `collection_policy` at that time.
 
 Use `/detectors` as the source for valid model names and parameter schemas.
 
@@ -251,31 +264,38 @@ errors expose `issues_truncated`. Internal MQTT overrides and runtime image pins
 are rejected by public monitor creation.
 See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
-### Favourites and anomalies
+### Favourites and alarms
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
 | `GET` | `/favorites` | The current member's favourites, oldest first | Optional query: `kind` |
-| `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
+| `POST` | `/favorites` | Star a device, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
-| `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
-| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids` (reading ids), optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
-| `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
-| `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
-| `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
+| `GET` | `/alarms/count` | Count alarms | Optional query: `since` |
+| `POST` | `/alarms/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `reading_ids`, optional `reading_id`, `monitor_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `GET` | `/alarms` | The newest alarms of a device, of readings, or of every reading | Query: `device_id` or `reading_id` (repeated, up to 200), optional `monitor_id`, `limit` |
+| `POST` | `/alarms` | Record an alarm by hand and email the alert recipients; 201 with the alarm | Body: `reading_ids`, `timestamp`, `alarm_type`, `value`, optional `value_type` |
+| `DELETE` | `/alarms/{alarm_id}` | Delete one alarm; 204, or 404 when there is none | Path: `alarm_id` |
 
-A favourite's `kind` is `entity` (a recorded `charger_id`), `reading` (a catalogue
-stream id) or `monitor` (a `service_id`). Ids are not checked against the
+A favourite's `kind` is `device` (a catalogue device id), `reading` (a catalogue
+reading id) or `monitor` (a `monitor_id`). Ids are not checked against the
 catalogue, so a favourite stays until the member removes it. A member keeps at
 most 256; adding another answers 409.
 
-`POST /anomalies/query` is a read, so members may call it although other
-`POST` routes under `/anomalies` need `manage_alarms`. An alarm is in the
-`stream_ids` scope when one of its readings is: its `sensor_set`, otherwise its
-`telemetry_type`. A multivariate alarm recorded without a sensor set is only in
-scope when every reading of its entity is. `summary` and `readings` cover every
-match rather than the returned page; `readings` ignores the narrowing filters so
-it can feed a reading picker. Pages are newest first; pass `next` as `before`.
+An alarm names its catalogue `device_id` and `reading_ids` with their names in
+`device_label` and `reading_labels`. A reading without a device has a null
+`device_id`, and `device_label` names its broker. Readings the catalogue no
+longer has are left out. `multivariate` marks an alarm a monitor raised over
+several readings together. A manual alarm names readings of one device, or of
+one broker without a device; several make it multivariate.
+
+`POST /alarms/query` is a read, so members may call it although other `POST`
+routes under `/alarms` need `manage_alarms`. An alarm is in the `reading_ids`
+scope when one of its readings is. A multivariate alarm recorded without its
+readings is only in scope when every reading of its device is. `summary` and
+`readings` cover every match rather than the returned page; `readings` ignores
+the narrowing filters so it can feed a reading picker. Pages are newest first;
+pass `next` as `before`.
 
 ### Dojo
 
@@ -364,22 +384,21 @@ Health and readiness remain available without this service credential.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/data/chargers` | Charger listing |
-| `GET` | `/data/chargers/active/ids` | Active charger IDs |
-| `GET` | `/data/telemetry/{charger_id}/types` | Telemetry type list |
-| `GET` | `/data/telemetry/{charger_id}` | Telemetry points |
-| `GET` | `/data/telemetry/{charger_id}/range` | Downsampled telemetry range |
+| `GET` | `/data/devices` | Catalogue devices with recording status |
+| `GET` | `/data/devices/{device_id}/readings` | Catalogue readings of one device |
+| `GET` | `/data/readings/{stream_id}/measurements` | Measurements of a catalogue reading |
+| `GET` | `/data/readings/{stream_id}/measurements/buckets` | Downsampled measurements of a catalogue reading |
+| `GET` | `/data/evidence` | Evidence of a catalogue reading |
+| `GET` | `/data/evidence/chart` | Chart evidence of a catalogue device or of catalogue readings |
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
 | `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
-| `POST` | `/data/anomalies/query` | Reporting query by catalogue reading |
-| `GET` | `/data/anomalies/count` | Count anomalies |
-| `GET` | `/data/anomalies/{charger_id}` | List anomalies |
-| `POST` | `/data/anomalies` | Create an anomaly |
-| `DELETE` | `/data/anomalies/{anomaly_id}` | Delete an anomaly |
-| `GET` | `/data/monitoring-evidence/{charger_id}` | List monitoring evidence |
-| `GET` | `/data/monitoring-evidence/{charger_id}/chart` | Load chart evidence with a stable cursor |
+| `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
+| `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
+| `GET` | `/data/alarms/count` | Count alarms |
+| `POST` | `/data/alarms` | Record an alarm about catalogue readings |
+| `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |
 
 ### Dojo
 
@@ -448,7 +467,6 @@ FastAPI validation errors and Gateway-propagated TACTIC errors use a `detail` fi
 
 ## Compatibility notes
 
-- The current active-ID Gateway route is singular: `/chargers/active/id`.
 - The Gateway API family remains `/favorites`. The dashboard's Favorites filter uses `/?state=favorites`; the old `/favourites` frontend route redirects there.
 - Removed sync and preprocessor-discovery routes must not be used by new clients.
 

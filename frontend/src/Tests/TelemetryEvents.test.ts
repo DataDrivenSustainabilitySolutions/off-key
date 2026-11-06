@@ -1,25 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { createAnomalyMarkers, MULTIVARIATE_TELEMETRY_TYPE } from "@/lib/anomaly-utils";
+import { createAnomalyMarkers } from "@/lib/anomaly-utils";
 import {
   buildTelemetryEventMarkPoints,
   formatEventSampleOffset,
   formatTelemetryEventTooltip,
   groupTelemetryEvents,
 } from "@/features/charts/telemetry-events";
-import type { Anomaly } from "@/types/charger";
+import { alarm } from "./support/fixtures/monitoring";
 
-const anomaly: Anomaly = {
-  anomaly_id: "event-a",
-  charger_id: "test-charger",
-  timestamp: "2026-05-19T08:00:00.000Z",
-  telemetry_type: "L1",
-  anomaly_type: "threshold_exceeded",
-  anomaly_value: 0.004,
-  value_type: "tail_pvalue",
-  sensor_set: ["L1"],
-};
+const anomaly = alarm({ alarm_id: "event-a", alarm_type: "threshold_exceeded" });
 const time = Date.parse(anomaly.timestamp);
 const options = {
   timeZone: "UTC",
@@ -31,15 +22,15 @@ const options = {
 describe("telemetry event presentation", () => {
   it("groups coincident distinct events without changing their recorded time", () => {
     const markers = createAnomalyMarkers([], [
-      { ...anomaly, anomaly_id: "later", timestamp: "2026-05-19T08:00:02.000Z" },
+      { ...anomaly, alarm_id: "later", timestamp: "2026-05-19T08:00:02.000Z" },
       anomaly,
-      { ...anomaly, anomaly_id: "event-b", anomaly_type: "spike" },
+      { ...anomaly, alarm_id: "event-b", alarm_type: "spike" },
     ]);
     const groups = groupTelemetryEvents(markers);
 
     expect(groups).toHaveLength(2);
     expect(groups[0]?.timeMs).toBe(time);
-    expect(groups[0]?.events.map(({ anomaly: event }) => event.anomaly_id)).toEqual(["event-a", "event-b"]);
+    expect(groups[0]?.events.map(({ anomaly: event }) => event.alarm_id)).toEqual(["event-a", "event-b"]);
     expect(groups[1]?.timeMs).toBe(time + 2_000);
   });
 
@@ -83,7 +74,7 @@ describe("telemetry event presentation", () => {
     const sampleTimestamp = "2026-05-19T08:00:03.000Z";
     const groups = groupTelemetryEvents(createAnomalyMarkers([
       { timestamp: sampleTimestamp, value },
-    ], [anomaly, { ...anomaly, anomaly_id: "event-b" }]));
+    ], [anomaly, { ...anomaly, alarm_id: "event-b" }]));
     const marks = buildTelemetryEventMarkPoints(groups, {
       ...options,
       extent: [time, time + 1_000],
@@ -137,10 +128,10 @@ describe("telemetry event presentation", () => {
     const markers = createAnomalyMarkers([
       { timestamp: anomaly.timestamp, value: 1 },
     ], [
-      { ...anomaly, anomaly_id: "before", timestamp: "2026-05-19T07:59:59.999Z" },
+      { ...anomaly, alarm_id: "before", timestamp: "2026-05-19T07:59:59.999Z" },
       anomaly,
-      { ...anomaly, anomaly_id: "end", timestamp: "2026-05-19T08:01:00.000Z" },
-      { ...anomaly, anomaly_id: "after", timestamp: "2026-05-19T08:01:00.001Z" },
+      { ...anomaly, alarm_id: "end", timestamp: "2026-05-19T08:01:00.000Z" },
+      { ...anomaly, alarm_id: "after", timestamp: "2026-05-19T08:01:00.001Z" },
     ]);
     const marks = buildTelemetryEventMarkPoints(groupTelemetryEvents(markers), {
       ...options,
@@ -154,7 +145,7 @@ describe("telemetry event presentation", () => {
   it("labels coincident event counts and lists every event in the tooltip", () => {
     const groups = groupTelemetryEvents(createAnomalyMarkers([], [
       anomaly,
-      { ...anomaly, anomaly_id: "event-b", anomaly_type: "spike" },
+      { ...anomaly, alarm_id: "event-b", alarm_type: "spike" },
     ]));
     const marks = buildTelemetryEventMarkPoints(groups, options);
 
@@ -168,10 +159,10 @@ describe("telemetry event presentation", () => {
   it("describes multivariate sample values as nearby context", () => {
     const groups = groupTelemetryEvents(createAnomalyMarkers([
       { timestamp: anomaly.timestamp, value: 230 },
-    ], [{ ...anomaly, telemetry_type: MULTIVARIATE_TELEMETRY_TYPE, sensor_set: ["L1", "L2"] }]));
+    ], [{ ...anomaly, multivariate: true, reading_ids: ["L1", "L2"], reading_labels: { L1: "Phase 1", L2: "Phase 2" } }]));
     const tooltip = formatTelemetryEventTooltip(groups[0]!, options);
 
-    expect(tooltip).toContain("Sensors: L1, L2");
+    expect(tooltip).toContain("Readings: Phase 1, Phase 2");
     expect(tooltip).toContain("exact detector input is not recorded with the event");
   });
 

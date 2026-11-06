@@ -1,16 +1,15 @@
 import { validateModelParameters } from "@/components/parameter-editor/validation";
 import type {
-  MonitoringStartRequest,
+  MonitorSetup,
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
   MartingaleTrackerConfig,
   ModelDefinition,
   JsonValue,
   AdaptivePreprocessingStep,
-  AdaptiveAnomalyDetectionRequest,
-  StaticAnomalyDetectionRequest,
+  AdaptiveMonitorSetup,
+  StaticMonitorSetup,
 } from "@/types/monitoring";
-import { parseDeviceTelemetryTopic } from "@/lib/mqtt-topics";
 
 // Deliberate floors, stricter than the server: a smaller reading freshness or
 // betting tolerance is almost certainly a typo.
@@ -19,7 +18,6 @@ export const MIN_BETTING_TOLERANCE = 0.0001;
 
 export type ConfigValue = JsonValue;
 export type FieldErrors = Record<string, string>;
-export type SensorKeyStrategy = "full_hierarchy" | "top_level" | "leaf";
 
 export interface MartingaleTrackerDraft {
   trackerId: string;
@@ -43,7 +41,6 @@ export interface StaticDraft {
   automaticThresholdHorizon: string;
   automaticThresholdSimulations: string;
   sensorFreshness: string;
-  sensorKeyStrategy: SensorKeyStrategy;
 }
 
 export interface AdaptiveDraft {
@@ -63,7 +60,6 @@ export interface AdaptiveDraft {
   projectionForgettingFactor: string;
   projectionSeed: string;
   sensorFreshness: string;
-  sensorKeyStrategy: SensorKeyStrategy;
 }
 
 const DEFAULT_MODEL_TYPE = "pyod_iforest";
@@ -99,7 +95,6 @@ export const createDefaultStaticDraft = (): StaticDraft => ({
   automaticThresholdHorizon: "1000",
   automaticThresholdSimulations: "5000",
   sensorFreshness: "30",
-  sensorKeyStrategy: "full_hierarchy",
 });
 
 export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
@@ -119,7 +114,6 @@ export const createDefaultAdaptiveDraft = (): AdaptiveDraft => ({
   projectionForgettingFactor: "",
   projectionSeed: "42",
   sensorFreshness: "30",
-  sensorKeyStrategy: "full_hierarchy",
 });
 
 export const humanize = (value: string): string =>
@@ -190,33 +184,20 @@ const parseNumber = ({
 };
 
 export const buildAdaptiveMonitoringRequest = ({
-  chargerId,
-  topics,
+  readingIds,
   draft,
   modelDefinition,
   displayName,
 }: {
-  chargerId: string;
-  topics: string[];
+  /** Catalogue readings of one device, or of one broker without a device. */
+  readingIds: string[];
   draft: AdaptiveDraft;
   modelDefinition: ModelDefinition | undefined;
   /** The name the monitor is shown with. */
   displayName: string;
-}): RequestValidation<AdaptiveAnomalyDetectionRequest> => {
+}): RequestValidation<AdaptiveMonitorSetup> => {
   const errors: FieldErrors = {};
-  if (!topics.length) errors.topics = "Select at least one available reading.";
-  else if (topics.some((topic) => topic.split("/").some((part) => part === "+" || part === "#"))) {
-    errors.topics = "Adaptive monitoring requires concrete reading topics.";
-  } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
-    errors.topics =
-      "This monitor requires the configured device telemetry topic format.";
-  } else if (
-    topics.some(
-      (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
-    )
-  ) {
-    errors.topics = `All reading topics must belong to entity ${chargerId}.`;
-  }
+  if (!readingIds.length) errors.readings = "Select at least one available reading.";
   const trainingWindow = parseNumber({
     value: draft.trainingWindow, label: "Warm-up samples", field: "trainingWindow",
     errors, integer: true, min: 2,
@@ -255,7 +236,7 @@ export const buildAdaptiveMonitoringRequest = ({
       value: draft.projectionComponents, label: "Projection components",
       field: "projectionComponents", errors, integer: true, min: 1,
     });
-    if (nComponents !== undefined && nComponents > topics.length) {
+    if (nComponents !== undefined && nComponents > readingIds.length) {
       errors.projectionComponents = "Projection components cannot exceed selected readings.";
     }
     if (draft.projection === "incremental_pca") {
@@ -301,7 +282,7 @@ export const buildAdaptiveMonitoringRequest = ({
     }
   }
   const capabilities = modelDefinition?.default_capabilities;
-  const featureCount = draft.projection === "none" ? topics.length : Number(draft.projectionComponents);
+  const featureCount = draft.projection === "none" ? readingIds.length : Number(draft.projectionComponents);
   if (modelDefinition?.available === false) errors.modelType = "This model is unavailable in the monitoring runtime.";
   if (capabilities && (featureCount < capabilities.feature_count.minimum || (capabilities.feature_count.maximum !== null && featureCount > capabilities.feature_count.maximum))) {
     errors.modelType = "This model does not support the selected feature count.";
@@ -317,15 +298,10 @@ export const buildAdaptiveMonitoringRequest = ({
     errors,
     request: {
       display_name: displayName,
-      mqtt_topics: topics,
-      strategy: "adaptive_stream",
-      model_type: draft.modelType,
-      model_params: modelParams,
-      performance_config: {
-        sensor_key_strategy: draft.sensorKeyStrategy,
-        sensor_freshness_seconds: sensorFreshness,
-      },
-      adaptive_stream_config: {
+      reading_ids: readingIds,
+      performance_config: { sensor_freshness_seconds: sensorFreshness },
+      monitoring: {
+        strategy: "adaptive_stream",
         model_type: draft.modelType,
         model_params: modelParams,
         training_window_size: trainingWindow,
@@ -337,44 +313,25 @@ export const buildAdaptiveMonitoringRequest = ({
   };
 };
 
-export type RequestValidation<T extends MonitoringStartRequest = MonitoringStartRequest> =
+export type RequestValidation<T extends MonitorSetup = MonitorSetup> =
   | { request: T; errors: FieldErrors }
   | { request?: never; errors: FieldErrors };
 
 export const buildStaticMonitoringRequest = ({
-  chargerId,
-  topics,
+  readingIds,
   draft,
   modelDefinition,
   displayName,
 }: {
-  chargerId: string;
-  topics: string[];
+  /** Catalogue readings of one device, or of one broker without a device. */
+  readingIds: string[];
   draft: StaticDraft;
   modelDefinition: ModelDefinition | undefined;
   /** The name the monitor is shown with. */
   displayName: string;
-}): RequestValidation<StaticAnomalyDetectionRequest> => {
+}): RequestValidation<StaticMonitorSetup> => {
   const errors: FieldErrors = {};
-  if (!topics.length) {
-    errors.topics = "Select at least one available reading.";
-  } else if (
-    topics.some((topic) =>
-      topic.split("/").some((part) => part === "+" || part === "#"),
-    )
-  ) {
-    errors.topics =
-      "Static monitoring requires concrete reading topics without MQTT wildcards.";
-  } else if (topics.some((topic) => parseDeviceTelemetryTopic(topic) === null)) {
-    errors.topics =
-      "This monitor requires the configured device telemetry topic format.";
-  } else if (
-    topics.some(
-      (topic) => parseDeviceTelemetryTopic(topic)?.chargerId !== chargerId,
-    )
-  ) {
-    errors.topics = `All reading topics must belong to entity ${chargerId}.`;
-  }
+  if (!readingIds.length) errors.readings = "Select at least one available reading.";
 
   const trainingWindow = parseNumber({
     value: draft.trainingWindow,
@@ -616,15 +573,10 @@ export const buildStaticMonitoringRequest = ({
     errors,
     request: {
       display_name: displayName,
-      mqtt_topics: topics,
-      strategy: "static_baseline",
-      model_type: draft.modelType,
-      model_params: modelParams,
-      performance_config: {
-        sensor_key_strategy: draft.sensorKeyStrategy,
-        sensor_freshness_seconds: sensorFreshness,
-      },
-      static_baseline_config: {
+      reading_ids: readingIds,
+      performance_config: { sensor_freshness_seconds: sensorFreshness },
+      monitoring: {
+        strategy: "static_baseline",
         model_type: draft.modelType,
         model_params: modelParams,
         training_window_size: trainingWindow,

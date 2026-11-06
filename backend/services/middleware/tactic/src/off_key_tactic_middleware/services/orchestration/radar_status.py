@@ -24,6 +24,31 @@ RUNTIME_STATUS_STALE_AFTER_SECONDS = 120.0
 PIPELINE_ACTIVATION_HEARTBEAT_MAX_AGE_SECONDS = 30.0
 
 
+def name_inputs_by_reading(
+    status: dict[str, Any] | None, bindings: list | None
+) -> dict[str, Any] | None:
+    """A status whose activity names its inputs by catalogue reading id.
+
+    RADAR reports inputs by their recorded feature keys, which stay inside;
+    ``bindings`` are the run's bound inputs that map one to the other.
+    """
+    if not isinstance(status, dict) or not isinstance(status.get("activity"), dict):
+        return status
+    readings = {
+        item["input_key"]: item["reading_id"]
+        for item in bindings or []
+        if isinstance(item, dict) and {"input_key", "reading_id"} <= item.keys()
+    }
+    activity = dict(status["activity"])
+    for internal, public in (
+        ("missing_sensors", "missing_reading_ids"),
+        ("stale_sensors", "stale_reading_ids"),
+    ):
+        keys = activity.pop(internal, None) or []
+        activity[public] = [readings[key] for key in keys if key in readings]
+    return {**status, "activity": activity}
+
+
 def heartbeat_age_seconds(updated_at: datetime, now: datetime | None = None) -> float:
     """Seconds since a persisted runtime heartbeat."""
     return ((now or datetime.now(UTC)) - updated_at).total_seconds()

@@ -352,7 +352,7 @@ test("filters online topics and their paths as real MQTT traffic starts and expi
   }
 });
 
-test("filters real recorded reports by entity and reading across the shared navbar", async ({ page }) => {
+test("filters real recorded reports by device and reading across the shared navbar", async ({ page }) => {
   const fixture = await createFixture(page, 2);
   const anomalies: string[] = [];
   let publisher: MqttClient | undefined;
@@ -370,32 +370,28 @@ test("filters real recorded reports by entity and reading across the shared navb
     }, { timeout: 120_000 }).toBe(true);
     publisher = await connectAsync(process.env.MQTT_SOURCE_URL ?? "mqtt://127.0.0.1:1884");
     for (const stream of fixture.streams) await publisher.publishAsync(stream.topic, "23", { qos: 1 });
-    const north = snapshot.runtime.bindings![fixture.streams[0]!.id]!;
-    await expect.poll(async () => {
-      const response = await page.request.get("/api/v1/telemetry/" + north.entity_id + "/type", { headers: fixture.headers });
-      return response.ok() ? response.json() : [];
-    }).toContain(north.telemetry_key);
+    const recorded = async (readingId: string) => {
+      const response = await page.request.get(`/api/v1/readings/${encodeURIComponent(readingId)}/measurements?limit=1`, { headers: fixture.headers });
+      return response.ok() ? (await response.json() as unknown[]).length : 0;
+    };
+    await expect.poll(() => recorded(fixture.streams[0]!.id)).toBeGreaterThan(0);
     const names = ["North first " + fixture.north, "North second " + fixture.north, "South report " + fixture.south];
     for (const [position, stream] of fixture.streams.entries()) {
-      const binding = snapshot.runtime.bindings![stream.id]!;
-      await expect.poll(async () => {
-        const response = await page.request.get("/api/v1/telemetry/" + binding.entity_id + "/type", { headers: fixture.headers });
-        return response.ok() ? response.json() : [];
-      }).toContain(binding.telemetry_key);
-      const response = await page.request.post("/api/v1/anomalies", { headers: fixture.headers, data: { payload: {
-        charger_id: binding.entity_id, timestamp: new Date().toISOString(), telemetry_type: binding.telemetry_key,
-        anomaly_type: names[position], anomaly_value: .01, value_type: "tail_pvalue", sensor_set: [binding.telemetry_key],
-      } } });
-      expect(response.ok(), await response.text()).toBe(true);
-      anomalies.push((await response.json() as { anomaly_id: string }).anomaly_id);
+      await expect.poll(() => recorded(stream.id)).toBeGreaterThan(0);
+      const response = await page.request.post("/api/v1/alarms", { headers: fixture.headers, data: {
+        reading_ids: [stream.id], timestamp: new Date().toISOString(),
+        alarm_type: names[position], value: .01, value_type: "tail_pvalue",
+      } });
+      expect(response.status(), await response.text()).toBe(201);
+      anomalies.push((await response.json() as { alarm_id: string }).alarm_id);
     }
     const report = page.waitForResponse(response =>
-      new URL(response.url()).pathname === "/api/v1/anomalies/query");
+      new URL(response.url()).pathname === "/api/v1/alarms/query");
     await page.goto("/anomalies");
     const response = await report;
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json() as { items: unknown[] }).items).toEqual(expect.arrayContaining(
-      anomalies.map(anomaly_id => expect.objectContaining({ anomaly_id })),
+      anomalies.map(alarm_id => expect.objectContaining({ alarm_id })),
     ));
     const navigation = page.getByRole("navigation", { name: "Primary navigation", exact: true });
     const search = page.getByRole("searchbox", { name: "Search catalogue", exact: true });
@@ -419,7 +415,7 @@ test("filters real recorded reports by entity and reading across the shared navb
   } finally {
     await publisher?.endAsync();
     for (const id of anomalies) {
-      const response = await page.request.delete("/api/v1/anomalies/" + id, { headers: fixture.headers });
+      const response = await page.request.delete("/api/v1/alarms/" + encodeURIComponent(id), { headers: fixture.headers });
       expect(response.ok(), await response.text()).toBe(true);
     }
     await fixture.cleanup();

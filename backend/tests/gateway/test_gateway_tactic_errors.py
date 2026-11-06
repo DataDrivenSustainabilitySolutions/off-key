@@ -50,9 +50,11 @@ def test_raise_tactic_http_error_defaults_to_bad_gateway():
 
 
 ROUTES = [
-    ("GET", "/v1/chargers/available", None),
-    ("GET", "/v1/telemetry/c1/type", None),
-    ("GET", "/v1/anomalies/count", None),
+    ("GET", "/v1/devices", None),
+    ("GET", "/v1/readings/r1/measurements", None),
+    ("GET", "/v1/alarms/count", None),
+    ("GET", "/v1/alarms", None),
+    ("DELETE", "/v1/alarms/a1", None),
     ("GET", "/v1/favorites", None),
     ("POST", "/v1/favorites", {"kind": "reading", "id": "r1"}),
     ("DELETE", "/v1/favorites?kind=reading&id=r1", None),
@@ -108,25 +110,6 @@ async def test_downstream_failures_keep_status_and_detail(
         status_code,
         {"detail": detail},
     )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "method,path,body,upstream,detail",
-    [
-        ("DELETE", "/v1/anomalies/a1", None, 404, "Anomaly not found"),
-    ],
-)
-async def test_gateway_rewords_some_downstream_failures(
-    gateway, monkeypatch, method, path, body, upstream, detail
-):
-    error = TacticError("failed", status=upstream, body={"detail": "raw"})
-    _fail_downstream(monkeypatch, error)
-
-    response = await _call(gateway, method, path, body)
-
-    expected = 409 if upstream == 400 else upstream
-    assert (response.status_code, response.json()) == (expected, {"detail": detail})
 
 
 @pytest.mark.asyncio

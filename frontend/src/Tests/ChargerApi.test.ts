@@ -4,11 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import {
-  deleteAnomaly,
-  getAllChargers,
+  deleteAlarm,
   getAllTelemetryData,
   getTelemetryCursor,
-  getTelemetryTypes,
   mergeTelemetryData,
 } from "@/lib/charger-api";
 
@@ -22,106 +20,62 @@ vi.mock("@/lib/api-client", () => ({
 const mockGet = vi.mocked(apiUtils.get);
 const mockDelete = vi.mocked(apiUtils.delete);
 
-const catalogResponse = {
-  document: { readings: [
-    { id: "other-voltage", category: "Electrical" },
-    { id: "cpu", category: "Processor" },
-    { id: "voltage", category: "Voltage" },
-  ] },
-  runtime: { bindings: {
-    "other-voltage": { entity_id: "charger-2", telemetry_key: "systemVoltage" },
-    cpu: { entity_id: "charger-1", telemetry_key: "controllerCpuUsage" },
-    voltage: { entity_id: "charger-1", telemetry_key: "systemVoltage" },
-  } },
-};
+const readings = [
+  { id: "reading:cpu", label: "CPU", category: "Processor" },
+  { id: "reading:voltage", label: "", category: "" },
+];
 
-describe("charger API", () => {
+describe("measurement API", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
   });
 
-  it("fetches telemetry types from the charger endpoint", async () => {
-    mockGet.mockResolvedValueOnce(["controllerCpuUsage"]);
-
-    await expect(getTelemetryTypes("abc-123")).resolves.toEqual([
-      "controllerCpuUsage",
-    ]);
-    expect(mockGet).toHaveBeenCalledWith(
-      API_CONFIG.ENDPOINTS.TELEMETRY.TYPES("abc-123"),
+  it("names each reading by its catalogue id in the measurement and bucket paths", () => {
+    expect(API_CONFIG.ENDPOINTS.READINGS.MEASUREMENTS("reading:cpu", 50, {
+      created: "2026-01-01T00:00:02Z", timestamp: "2026-01-01T00:00:01Z",
+    })).toBe(
+      "/v1/readings/reading%3Acpu/measurements?limit=50"
+      + "&after_created=2026-01-01T00%3A00%3A02Z&after_event_timestamp=2026-01-01T00%3A00%3A01Z",
     );
+    expect(API_CONFIG.ENDPOINTS.READINGS.BUCKETS("reading:cpu", { buckets: 600 }))
+      .toBe("/v1/readings/reading%3Acpu/measurements/buckets?buckets=600");
   });
 
-  it("loads categories and reading ids from the matching charger's catalog sensors", async () => {
+  it("asks chart evidence for a device or for each named reading", () => {
+    const device = new URL(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE({ deviceId: "device:pump" }), "http://app.test");
+    expect(device.searchParams.get("device_id")).toBe("device:pump");
+    const named = new URL(API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(
+      { readingIds: ["reading:a", "reading:b"] },
+      { created: "c", timestamp: "t", monitor_id: "m0", sequence_number: 4 },
+      "m1",
+    ), "http://app.test");
+    expect(named.searchParams.getAll("reading_id")).toEqual(["reading:a", "reading:b"]);
+    expect(named.searchParams.get("monitor_id")).toBe("m1");
+    expect(named.searchParams.get("after_monitor_id")).toBe("m0");
+  });
+
+  it("loads one series per catalogue reading, keyed by its id", async () => {
     const signal = new AbortController().signal;
     mockGet
-      .mockResolvedValueOnce(["controllerCpuUsage", "systemVoltage"])
-      .mockResolvedValueOnce(catalogResponse)
       .mockResolvedValueOnce([{ timestamp: "now", value: 70 }])
       .mockResolvedValueOnce([{ timestamp: "now", value: 230 }]);
 
-    await expect(getAllTelemetryData("charger-1", signal)).resolves.toEqual([
-      {
-        type: "controllerCpuUsage",
-        streamId: "cpu",
-        category: "Processor",
-        data: [{ timestamp: "now", value: 70 }],
-      },
-      {
-        type: "systemVoltage",
-        streamId: "voltage",
-        category: "Voltage",
-        data: [{ timestamp: "now", value: 230 }],
-      },
+    await expect(getAllTelemetryData(readings, signal)).resolves.toEqual([
+      { type: "reading:cpu", label: "CPU", category: "Processor", data: [{ timestamp: "now", value: 70 }] },
+      { type: "reading:voltage", category: "Other", data: [{ timestamp: "now", value: 230 }] },
     ]);
-    expect(mockGet).toHaveBeenCalledWith("/v1/catalogue", { signal });
+    expect(mockGet).toHaveBeenCalledWith(API_CONFIG.ENDPOINTS.READINGS.MEASUREMENTS("reading:cpu", 1000), { signal });
   });
 
-  it("starts loading points while catalogue metadata is still pending", async () => {
-    let resolveCatalogue!: (value: typeof catalogResponse) => void;
-    const catalogue = new Promise<typeof catalogResponse>(resolve => {
-      resolveCatalogue = resolve;
-    });
-    let markRequested!: () => void;
-    const requested = new Promise<void>(resolve => {
-      markRequested = resolve;
-    });
+  it("leaves out a reading whose values could not be loaded", async () => {
     mockGet
-      .mockResolvedValueOnce(["systemVoltage"])
-      .mockReturnValueOnce(catalogue)
-      .mockImplementationOnce(async () => {
-        markRequested();
-        return [{ timestamp: "now", value: 230 }];
-      });
+      .mockResolvedValueOnce([{ timestamp: "now", value: 70 }])
+      .mockRejectedValueOnce(new Error("unavailable"));
 
-    const result = getAllTelemetryData("charger-1");
-    await requested;
-    resolveCatalogue(catalogResponse);
-    await expect(result).resolves.toEqual([
-      { type: "systemVoltage", streamId: "voltage", category: "Voltage", data: [{ timestamp: "now", value: 230 }] },
+    await expect(getAllTelemetryData(readings)).resolves.toEqual([
+      { type: "reading:cpu", label: "CPU", category: "Processor", data: [{ timestamp: "now", value: 70 }] },
     ]);
-  });
-
-  it.each([
-    ["charger-1", "systemCurrent"],
-    ["missing-charger", "systemVoltage"],
-  ])("uses Other when %s / %s is absent from the catalog", async (chargerId, type) => {
-    mockGet
-      .mockResolvedValueOnce([type])
-      .mockResolvedValueOnce(catalogResponse)
-      .mockResolvedValueOnce([{ timestamp: "now", value: 230 }]);
-
-    await expect(getAllTelemetryData(chargerId)).resolves.toEqual([
-      { type, category: "Other", data: [{ timestamp: "now", value: 230 }] },
-    ]);
-  });
-
-  it("propagates catalog failures so a refresh preserves previously loaded telemetry", async () => {
-    mockGet
-      .mockResolvedValueOnce(["systemVoltage"])
-      .mockRejectedValueOnce(new Error("Catalog unavailable"));
-
-    await expect(getAllTelemetryData("charger-1")).rejects.toThrow("Catalog unavailable");
   });
 
   it("advances telemetry cursors by ingestion order", () => {
@@ -174,23 +128,24 @@ describe("charger API", () => {
       timestamp: "2025-12-31T23:59:59.000Z",
     };
     mockGet
-      .mockResolvedValueOnce(["systemVoltage"])
-      .mockResolvedValueOnce(catalogResponse)
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce([finalPoint]);
 
     const result = await getAllTelemetryData(
-      "charger-1",
+      [readings[1]!],
       undefined,
-      new Map([["systemVoltage", initialCursor]]),
+      new Map([["reading:voltage", initialCursor]]),
     );
 
     expect(result[0]?.data).toHaveLength(1001);
     expect(mockGet).toHaveBeenNthCalledWith(
-      4,
-      API_CONFIG.ENDPOINTS.TELEMETRY.DATA(
-        "charger-1",
-        "systemVoltage",
+      1,
+      API_CONFIG.ENDPOINTS.READINGS.MEASUREMENTS("reading:voltage", 1000, initialCursor),
+    );
+    expect(mockGet).toHaveBeenNthCalledWith(
+      2,
+      API_CONFIG.ENDPOINTS.READINGS.MEASUREMENTS(
+        "reading:voltage",
         1000,
         getTelemetryCursor(firstPage),
       ),
@@ -252,26 +207,14 @@ describe("charger API", () => {
     expect(merged[0]?.data).toBe(existing.data);
   });
 
-  it("normalizes charger last-seen timestamps", async () => {
-    mockGet.mockResolvedValueOnce([
-      {
-        charger_id: "charger-1",
-        charger_name: null,
-        last_seen: "database-time",
-        mqtt_last_message: "mqtt-time",
-        online: true,
-        state: "ready",
-        created: "created-time",
-      },
-    ]);
-
-    const chargers = await getAllChargers();
-
-    expect(chargers[0]?.last_seen).toBe("mqtt-time");
+  it("asks for a device's alarms by device, and other alarms reading by reading", () => {
+    expect(API_CONFIG.ENDPOINTS.ALARMS.LIST({ deviceId: "pump/1" })).toBe("/v1/alarms?device_id=pump%2F1");
+    expect(API_CONFIG.ENDPOINTS.ALARMS.LIST({ readingIds: ["wind", "rain"] })).toBe("/v1/alarms?reading_id=wind&reading_id=rain");
+    expect(API_CONFIG.ENDPOINTS.ALARMS.DELETE("a/1")).toBe("/v1/alarms/a%2F1");
   });
 
-  it("rejects an anomaly deletion without an identifier", async () => {
-    await expect(deleteAnomaly("")).rejects.toThrow("Anomaly ID is required");
+  it("rejects an alarm deletion without an identifier", async () => {
+    await expect(deleteAlarm("")).rejects.toThrow("Alarm ID is required");
     expect(mockDelete).not.toHaveBeenCalled();
   });
 });

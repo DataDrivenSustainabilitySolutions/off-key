@@ -261,6 +261,7 @@ class DeploymentTests(unittest.TestCase):
             "EMAIL_PASSWORD": {"api", "tactic"},
             "OAUTH2_PROXY_CLIENT_SECRET": {"oauth2-proxy"},
             "OAUTH2_PROXY_COOKIE_SECRET": {"oauth2-proxy"},
+            "EMQX_NODE__COOKIE": {"emqx-main"},
         }
         for case, result in self.results.items():
             services = result["config"]["services"]
@@ -423,6 +424,31 @@ class DeploymentTests(unittest.TestCase):
                         inputs["email_password"], result.stdout + result.stderr
                     )
                 self.assertFalse((Path(directory) / "stack").exists())
+
+    def test_operator_sessions_are_short_lived_and_same_site(self):
+        environment = self.results["prod"]["config"]["services"]["oauth2-proxy"][
+            "environment"
+        ]
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_EXPIRE"], "12h")
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_REFRESH"], "1h")
+        self.assertEqual(environment["OAUTH2_PROXY_COOKIE_SAMESITE"], "lax")
+
+    def test_production_requires_a_dedicated_emqx_node_cookie(self):
+        for cookie in (
+            "",
+            "short-cookie",
+            "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX",
+            "cookie with spaces " + "x" * 32,
+        ):
+            with (
+                self.subTest(cookie=cookie),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                result, _ = render(Path(directory), "prod", emqx_node_cookie=cookie)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((Path(directory) / "stack").exists())
+                if cookie:
+                    self.assertNotIn(cookie, result.stdout + result.stderr)
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():
@@ -802,6 +828,11 @@ class DeploymentTests(unittest.TestCase):
                 "emqx_auth_users.json",
             },
         )
+        # Erlang distribution never falls back to the image's default cookie.
+        self.assertEqual(
+            broker["environment"]["EMQX_NODE__COOKIE"],
+            self.results["prod"]["inputs"]["emqx_node_cookie"],
+        )
         rendered = json.dumps(config)
         self.assertNotIn(
             self.results["prod"]["inputs"]["mqtt_proxy_password"], rendered
@@ -812,7 +843,20 @@ class DeploymentTests(unittest.TestCase):
         controller = config["services"]["tactic"]
         self.assertIn("emqx-network", controller["networks"])
         self.assertEqual(controller["environment"]["SYSTEM_LIVE_ENABLED"], "true")
-        self.assertIn("app-network", config["services"]["broker-route"]["networks"])
+        # Only TACTIC shares the unauthenticated SOCKS proxy's network.
+        self.assertEqual(
+            set(config["services"]["broker-route"]["networks"]),
+            {"broker-route-network"},
+        )
+        self.assertEqual(
+            {
+                name
+                for name, service in config["services"].items()
+                if "broker-route-network" in service.get("networks", {})
+            },
+            {"broker-route", "tactic"},
+        )
+        self.assertNotIn("cap_add", config["services"]["broker-route"])
         self.assertNotIn("MQTT_SOURCE_TOPICS", proxy["environment"])
         self.assertEqual(
             config["services"]["broker-route"]["image"],

@@ -87,7 +87,10 @@
       - "'TEST_ONLY' not in mqtt_proxy_password"
       - "'TEST_ONLY' not in mqtt_radar_password"
       - "'TEST_ONLY' not in radar_checkpoint_secret"
-    fail_msg: Add a dedicated EMQX CA, broker certificate/key and separate MQTT credentials to the production vault.
+      - emqx_node_cookie | default('') | length >= 32
+      - "'TEST_ONLY' not in emqx_node_cookie | default('')"
+      - emqx_node_cookie | default('') is match('^[A-Za-z0-9_-]+$')
+    fail_msg: Add a dedicated EMQX CA, broker certificate/key, Erlang node cookie and separate MQTT credentials to the production vault.
   no_log: true
 
 - name: Define production deployment secret material

@@ -81,3 +81,11 @@
     backup_service: postgres
     backup_directory: "{{ persistence_backup_dir }}/postgres/{{ persistence_run_ts }}"
     backup_filenames: "{{ ['roles.sql'] + (pg_dbs.stdout_lines | map('regex_replace', '$', '.dump') | list) }}"
+
+# The control host keeps the backup; the node's copy was only for the transfer.
+- name: postgres | remove the staged dumps from the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: absent
+  become: true
+  delegate_to: "{{ svc_node }}"

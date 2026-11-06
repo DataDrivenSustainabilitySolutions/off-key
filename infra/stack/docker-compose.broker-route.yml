@@ -11,9 +11,7 @@ services:
 
   broker-route:
     image: "${TAILSCALE_IMAGE:-tailscale/tailscale:latest}"
-    cap_add:
-      - net_admin
-      - sys_module
+    # Userspace networking needs no extra kernel capabilities, so none are added.
     volumes:
       - broker-route-state:/var/lib/tailscale
 
@@ -24,8 +22,11 @@ services:
       - TS_STATE_DIR=/var/lib/tailscale
       # SOCKS5 proxy on port 1055, named by the route's socks_proxy.
       - TS_SOCKS5_SERVER=0.0.0.0:1055
+    # The proxy has no login, so only TACTIC shares its network: other workloads
+    # cannot tunnel through it, and a peer on the source network that reaches
+    # the proxy finds nothing else behind it.
     networks:
-      - app-network
+      - broker-route-network
     deploy:
       replicas: 1
       update_config:
@@ -36,6 +37,16 @@ services:
         constraints: [ node.labels.backend == true ]
       restart_policy:
         condition: any
+
+  tactic:
+    networks:
+      - broker-route-network
+
+networks:
+  broker-route-network:
+    driver: overlay
+    driver_opts:
+      com.docker.network.driver.mtu: 1280
 
 volumes:
   broker-route-state:

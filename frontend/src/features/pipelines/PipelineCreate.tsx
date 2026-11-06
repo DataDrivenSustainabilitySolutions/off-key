@@ -246,7 +246,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       </div>
     </header>
     {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
-      : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "An administrator can configure monitoring services."}</p>}
+      : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
     {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
     {error && <p className="pl-error" role="alert">{error}</p>}
     <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />

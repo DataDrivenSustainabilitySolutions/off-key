@@ -67,13 +67,15 @@ is included in the URL, so links and browser back/forward retain that context.
 
 With **Remember this device**, the access token stays in memory and is restored from an HttpOnly session cookie through `/v1/auth/refresh`; otherwise it lives in session storage for the tab. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
-**Account → Access control** shows your signed-in email and role. Administrators manage
-invitations, roles, and access under **Account → Members**. Disable a member to revoke
+**Account → Signed in** shows your email, your role and what it lets you change.
+Members whose role can manage members handle invitations, roles and access under
+**Account → Members** and **Account → Roles**. Disable a member to revoke
 their access. Once disabled, **Remove** permanently deletes their account and personal
 favorites after confirmation. Shared catalogue data, monitoring services and reports
 are kept. A removed member needs a new invitation to return.
-Members can view the shared workspace and edit their own favorites. Administrators
-also manage data sources, monitors, and anomalies.
+Every member can view the shared workspace and edit their own favorites. A role
+adds permissions to manage sources, monitors, alarms or members; Administrator
+holds all of them. Controls a role does not cover stay hidden.
 
 ## Settings and system status
 
@@ -95,7 +97,7 @@ retention information. Collection status refreshes automatically every three
 seconds; **Refresh storage** requests updated database measurements. The former
 `/system/status` and `/account/settings` links open this section above Monitoring.
 
-**Menu → Account** shows who is signed in and, for administrators, member access.
+**Menu → Account** shows who is signed in and, for members who manage members, member access and roles.
 Catalogue configuration opens from **Catalogue settings** at the bottom of the
 catalogue sidebar as the overlay's Catalogue section; adding or editing an entry
 opens the editor on top of it.
@@ -130,7 +132,7 @@ current folder, search and source selection.
 
 Configure recording under **Sources**. Broker and topic policies can cover several
 readings; review the affected scope before applying changes. Including readings
-added later requires an explicit opt-in. Administrators can also use **View live**
+added later requires an explicit opt-in. Roles that manage sources can also use **View live**
 to preview configured sources whose recording is off, and **Stop live view** to end
 that preview. Previewing does not enable background recording.
 

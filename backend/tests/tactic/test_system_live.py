@@ -9,11 +9,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import system as gateway
+from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from off_key_core.schemas.system import SystemStream
 from off_key_core.schemas.system_live import SystemLiveStart
-from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.payload_decode import decode_value
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
@@ -577,7 +577,7 @@ def test_mqtt_tls_websocket_reconnect_and_suback_state():
     client.loop_stop.assert_called_once()
 
 
-def _api(monkeypatch, *, role=RoleEnum.user, authenticated=True):
+def _api(monkeypatch, *, role=MEMBER_ROLE, authenticated=True):
     app = FastAPI()
     app.include_router(system_api.router)
     service, _ = manager()
@@ -619,7 +619,7 @@ def test_live_route_requires_sign_in_and_admin_for_broker_actions(monkeypatch):
 def test_admin_route_starts_renews_and_releases_with_no_database_telemetry_writes(
     monkeypatch,
 ):
-    app, service = _api(monkeypatch, role=RoleEnum.admin)
+    app, service = _api(monkeypatch, role=ADMIN_ROLE)
     session = AsyncMock()
     app.dependency_overrides[get_db_async] = lambda: session
     with TestClient(app) as client:

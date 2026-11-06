@@ -9,11 +9,16 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
 from off_key_core.db.migrate import migration_files
-from off_key_core.db.models import RememberedSession, User
-from off_key_core.schemas.members import MemberInvitation, MemberUpdate
+from off_key_core.db.models import MemberRole, RememberedSession, User
+from off_key_core.schemas.members import (
+    MemberInvitation,
+    MemberUpdate,
+    RoleCreate,
+    RoleUpdate,
+)
 from off_key_core.utils import mail
-from off_key_core.utils.enum import RoleEnum
 from off_key_tactic_middleware import bootstrap_admin
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1.members import member_service
@@ -252,7 +257,7 @@ async def test_bootstrap_replaces_expired_or_explicitly_resent_links(
     "change",
     [
         {"email": "someone-else@example.com"},
-        {"role": RoleEnum.user},
+        {"role": MEMBER_ROLE},
         {"is_active": False},
     ],
 )
@@ -469,7 +474,7 @@ async def test_expired_links_and_last_administrator_race(member_database):
     ]
     async with sessions() as session:
         remaining = list(
-            await session.scalars(select(User).where(User.role == RoleEnum.admin))
+            await session.scalars(select(User).where(User.role == ADMIN_ROLE))
         )
         assert len(remaining) == 1
         with pytest.raises(ConflictError):
@@ -504,7 +509,7 @@ async def test_membership_migration_preserves_existing_accounts(member_database)
     async with sessions() as session:
         user = await session.get(User, admin_id)
         assert user.email == "admin@example.com"
-        assert user.is_verified and user.is_active and user.role == RoleEnum.admin
+        assert user.is_verified and user.is_active and user.role == ADMIN_ROLE
         assert user.session_version == 0
         assert user.verification_token is None
         assert user.hashed_password.startswith("$2")
@@ -559,3 +564,116 @@ async def test_reset_between_actor_read_and_self_update_revokes_new_session(
         with pytest.raises(HTTPException) as denied:
             await current_member(credential, session)
         assert denied.value.status_code == 401
+
+
+async def _member(sessions, actor_id, email, role):
+    """Invite and accept a verified member holding ``role``."""
+    async with sessions() as session:
+        service = MemberService(session)
+        actor = await session.get(User, actor_id)
+        invitation = await service.invite(
+            MemberInvitation(email=email, role=role), actor
+        )
+        await service.accept_invitation(invitation["token"], PASSWORD)
+        return (await session.scalar(select(User).where(User.email == email))).id
+
+
+@pytest.mark.asyncio
+async def test_roles_bundle_permissions_and_cannot_lock_out_member_management(
+    member_database,
+):
+    _, sessions = member_database
+    admin_id = await bootstrap(sessions)
+    async with sessions() as session:
+        service = MemberService(session)
+        actor = await session.get(User, admin_id)
+        desk = await service.create_role(
+            RoleCreate(
+                name=" Prüfer Öst ",
+                permissions=[Permission.manage_alarms, Permission.manage_alarms],
+            ),
+            actor,
+        )
+        assert (desk.id, desk.name) == ("prufer-ost", "Prüfer Öst")
+        assert desk.permissions == [Permission.manage_alarms]
+        with pytest.raises(ConflictError, match="already has this name"):
+            await service.create_role(RoleCreate(name="PRÜFER ÖST"), actor)
+        await session.rollback()
+        managers = await service.create_role(
+            RoleCreate(name="Managers", permissions=[Permission.manage_members]), actor
+        )
+        with pytest.raises(ValidationError, match="no role"):
+            await service.invite(
+                MemberInvitation(email="x@example.com", role="missing"), actor
+            )
+        await session.rollback()
+        for change in (RoleUpdate(name="Root"), RoleUpdate(permissions=[])):
+            with pytest.raises(ConflictError, match="every permission"):
+                await service.update_role(ADMIN_ROLE, change, actor)
+            await session.rollback()
+        for built_in in (ADMIN_ROLE, MEMBER_ROLE):
+            with pytest.raises(ConflictError, match="Built-in"):
+                await service.delete_role(built_in, actor)
+            await session.rollback()
+
+    desk_id = await _member(sessions, admin_id, "desk@example.com", desk.id)
+    manager_id = await _member(sessions, admin_id, "boss@example.com", managers.id)
+    async with sessions() as session:
+        desk_member = await session.get(User, desk_id)
+        assert desk_member.permissions == [Permission.manage_alarms]
+        assert [Permission.manage_members] == (
+            await session.get(User, manager_id)
+        ).permissions
+        service = MemberService(session)
+        roles = {role.id: role for role in await service.list_roles()}
+        assert list(roles) == [ADMIN_ROLE, MEMBER_ROLE, desk.id, managers.id]
+        assert roles[ADMIN_ROLE].permissions == list(Permission)
+        assert not roles[ADMIN_ROLE].editable and roles[MEMBER_ROLE].editable
+        assert roles[desk.id].members == 1 and not roles[desk.id].built_in
+        actor = await session.get(User, admin_id)
+        with pytest.raises(ConflictError, match="1 member still holds"):
+            await service.delete_role(desk.id, actor)
+        await session.rollback()
+        # A role's new permissions apply to its holders at once.
+        widened = await service.update_role(
+            desk.id,
+            RoleUpdate(
+                permissions=[Permission.manage_sources, Permission.manage_alarms]
+            ),
+            actor,
+        )
+        assert widened.permissions == [
+            Permission.manage_sources,
+            Permission.manage_alarms,
+        ]
+        # The administrator may step down while another member manages members.
+        await service.update(admin_id, MemberUpdate(role="user", is_active=True), actor)
+
+    async with sessions() as session:
+        service = MemberService(session)
+        manager = await session.get(User, manager_id)
+        # Without the last manager's permission nobody could change access again.
+        with pytest.raises(ConflictError, match="manage members"):
+            await service.update_role(managers.id, RoleUpdate(permissions=[]), manager)
+        await session.rollback()
+        with pytest.raises(ConflictError, match="manage members"):
+            await service.update(
+                manager_id, MemberUpdate(role=managers.id, is_active=False), manager
+            )
+        await session.rollback()
+        assert (await session.get(MemberRole, managers.id)).permissions == [
+            Permission.manage_members
+        ]
+        renamed = await service.update_role(
+            managers.id, RoleUpdate(name="Access desk"), manager
+        )
+        assert (renamed.name, renamed.members) == ("Access desk", 1)
+        await service.update(
+            desk_id, MemberUpdate(role=MEMBER_ROLE, is_active=True), manager
+        )
+        await service.delete_role(desk.id, manager)
+        assert await session.get(MemberRole, desk.id) is None
+        # The demoted administrator lost member management on their next call.
+        former = await session.get(User, admin_id)
+        with pytest.raises(AuthenticationError):
+            await service.create_role(RoleCreate(name="Again"), former)

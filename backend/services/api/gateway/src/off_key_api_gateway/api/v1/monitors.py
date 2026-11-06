@@ -177,7 +177,7 @@ async def start_monitoring_service(
     request: Request,
     config: MonitoringServiceConfig,
 ):
-    """Start a monitor from the form configuration. Administrators only.
+    """Start a monitor from the form configuration. Needs `manage_monitors`.
 
     TACTIC runs it as a pipeline. New clients should prefer
     `POST /v1/monitors/pipelines/apply`.
@@ -227,7 +227,7 @@ async def stop_monitoring_service(
     container_name: str | None = Query(default=None),
     container_id: str | None = Query(default=None),
 ):
-    """Stop a monitor's container by name or id. Administrators only."""
+    """Stop a monitor's container by name or id. Needs `manage_monitors`."""
     _require_one_container(container_name, container_id)
 
     try:
@@ -265,14 +265,14 @@ async def stop_monitoring_service(
 async def rename_monitoring_service(
     request: Request, service_id: str, change: RadarServiceLabel
 ):
-    """Change the name a monitor is shown with. Administrators only."""
+    """Change the name a monitor is shown with. Needs `manage_monitors`."""
     return await tactic.rename_radar_service(service_id, change.display_name)
 
 
 @router.delete("/{service_id}")
 @shared_limit_execute
 async def delete_monitoring_service(request: Request, service_id: str):
-    """Stop a monitor and delete it, releasing its readings. Administrators only.
+    """Stop a monitor and delete it, releasing its readings. Needs `manage_monitors`.
 
     Its alarms stay in Reporting.
     """

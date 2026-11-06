@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
+from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.config.auth import get_auth_settings
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import PipelineRun, User
@@ -18,7 +19,6 @@ from off_key_core.schemas.pipelines import (
     PipelinePublish,
 )
 from off_key_core.schemas.radar import RadarStartConfig
-from off_key_core.utils.enum import RoleEnum
 from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
 from off_key_tactic_middleware.api.v1.pipelines import router
 from off_key_tactic_middleware.config.config import get_tactic_settings
@@ -94,7 +94,7 @@ async def test_http_reports_are_bounded_and_member_can_inspect_selected_run(
                 is_active=True,
                 is_verified=True,
             )
-            for role in (RoleEnum.admin, RoleEnum.user)
+            for role in (ADMIN_ROLE, MEMBER_ROLE)
         ]
         session.add_all(users)
         await session.commit()

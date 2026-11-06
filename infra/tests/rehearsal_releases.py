@@ -1,6 +1,6 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the Dojo datasets head that carries migrations 018 and 019,
+The reference is the member roles head that carries migrations 018 to 021,
 with the reviewed Aberrant 1.4.0 numerics. It is not an eligible production release
 and proves no pre-feature compatibility.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "aedc1d8f0ae42d066446677515fa3b70c5671cc5"
+COMPATIBLE_REVISION = "4a063c92e411ed583b5c39e10a14763beefb47b7"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

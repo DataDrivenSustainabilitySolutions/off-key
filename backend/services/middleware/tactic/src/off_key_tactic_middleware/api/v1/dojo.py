@@ -6,6 +6,7 @@ Administrators only until members get a dedicated Dojo permission.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import User
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
@@ -28,13 +29,15 @@ from off_key_core.schemas.dojo import (
 from ...provider import get_dojo_datasets, get_dojo_runs
 from ...services.dojo.datasets import DojoDatasets
 from ...services.dojo.runs import DojoRuns
-from ..collection_auth import require_admin
+from ..collection_auth import require_permission
 from ..errors import DomainErrorRoute
+
+use_dojo = require_permission(Permission.use_dojo)
 
 router = APIRouter(
     prefix="/dojo",
     tags=["dojo"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(use_dojo)],
     route_class=DomainErrorRoute,
 )
 
@@ -51,7 +54,7 @@ async def list_datasets(
 async def import_csv_dataset(
     request: Request,
     query: Annotated[CsvImportQuery, Query()],
-    user: User = Depends(require_admin),
+    user: User = Depends(use_dojo),
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
     body = await request.body()
@@ -63,7 +66,7 @@ async def import_csv_dataset(
 @router.post("/datasets/history", response_model=DatasetView, status_code=201)
 async def import_history_dataset(
     change: DatasetFromHistory,
-    user: User = Depends(require_admin),
+    user: User = Depends(use_dojo),
     datasets: DojoDatasets = Depends(get_dojo_datasets),
 ):
     return await datasets.import_history(change, created_by=user.id)
@@ -116,7 +119,7 @@ async def list_runs(
 @router.post("/runs", response_model=RunView, status_code=201)
 async def create_run(
     request: RunCreate,
-    user: User = Depends(require_admin),
+    user: User = Depends(use_dojo),
     runs: DojoRuns = Depends(get_dojo_runs),
 ):
     return await runs.create(request, created_by=user.id)

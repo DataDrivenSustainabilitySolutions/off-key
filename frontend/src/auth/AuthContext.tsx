@@ -2,7 +2,7 @@ import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import React, { createContext, useContext, useEffect, useReducer, useState, useSyncExternalStore } from "react";
 import { endSession, refreshSession, subscribeToSession, tokenManager } from "./session";
 import { getTokenPayload, getUserIdFromToken } from "./token";
-import { getCurrentMember, type Member } from "@/lib/member-api";
+import { getCurrentMember, type Member, type Permission } from "@/lib/member-api";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -11,7 +11,8 @@ interface AuthContextType {
   authError: string | null;
   retryAuthentication: () => void;
   member: Member | null;
-  isAdmin: boolean;
+  /** Whether the signed-in member may make changes that need this permission. */
+  can: (permission: Permission) => boolean;
   login: (token: string, rememberMe?: boolean) => void;
   logout: () => void;
 }
@@ -154,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const isLoading = (restoring && !restoreError)
     || (!!token && !member && (resolved === null || (expired && tokenManager.isRemembered() && !authError)));
   const isAuthenticated = !!token && !expired;
-  const isAdmin = member?.role === "admin";
+  const can = (permission: Permission) => !!member?.permissions?.includes(permission);
   const userId = token ? getUserIdFromToken(token) : null;
 
   useEffect(() => {
@@ -170,7 +171,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, userId, member, isAdmin, isLoading, authError, retryAuthentication, login, logout }}
+      value={{ isAuthenticated, userId, member, can, isLoading, authError, retryAuthentication, login, logout }}
     >
       {children}
     </AuthContext.Provider>

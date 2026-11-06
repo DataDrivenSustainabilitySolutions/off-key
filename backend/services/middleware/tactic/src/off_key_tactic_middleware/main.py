@@ -230,6 +230,7 @@ def create_app() -> FastAPI:
     business.include_router(system.router, prefix="/api/v1")
 
     business.include_router(members.router, prefix="/api/v1")
+    business.include_router(members.roles_router, prefix="/api/v1")
     business.include_router(dojo.router, prefix="/api/v1")
     app.include_router(business)
 

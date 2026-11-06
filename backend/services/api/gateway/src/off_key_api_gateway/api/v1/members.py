@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from off_key_core.auth.permissions import Permission
 from off_key_core.config.logs import logger
 from off_key_core.schemas.members import MemberInvitation, MemberProfile, MemberUpdate
 from off_key_core.utils.mail import send_invitation_email
 
 from ...facades.tactic import tactic
-from ..access import current_member, member_authorization, require_admin
+from ..access import current_member, member_authorization, require_permission
 from ..errors import TacticErrorRoute
 
 router = APIRouter(route_class=TacticErrorRoute)
+manage_members = require_permission(Permission.manage_members)
 
 
 async def member_request(method, path, authorization, body=None):
@@ -21,26 +23,26 @@ async def member_request(method, path, authorization, body=None):
 
 @router.get("/me", response_model=MemberProfile)
 async def get_my_profile(user: MemberProfile = Depends(current_member)):
-    """The signed-in member: id, email, role and status."""
+    """The signed-in member: id, email, role, permissions and status."""
     return user
 
 
 @router.get(
-    "", response_model=list[MemberProfile], dependencies=[Depends(require_admin)]
+    "", response_model=list[MemberProfile], dependencies=[Depends(manage_members)]
 )
 async def list_members(authorization: str = Depends(member_authorization)):
-    """Every member and pending invitation. Administrators only."""
+    """Every member and pending invitation. Needs `manage_members`."""
     return await member_request("GET", "", authorization)
 
 
-@router.post("/invitations", dependencies=[Depends(require_admin)])
+@router.post("/invitations", dependencies=[Depends(manage_members)])
 async def invite_member(
     invitation: MemberInvitation, authorization: str = Depends(member_authorization)
 ):
     """Invite an email address with a role and send the invitation email.
 
     The link expires after 48 hours; inviting a pending address again sends a new one.
-    Administrators only.
+    Needs `manage_members`.
     """
     result = await member_request(
         "POST",
@@ -59,16 +61,16 @@ async def invite_member(
 
 
 @router.put(
-    "/{user_id}", response_model=MemberProfile, dependencies=[Depends(require_admin)]
+    "/{user_id}", response_model=MemberProfile, dependencies=[Depends(manage_members)]
 )
 async def update_member(
     user_id: int,
     change: MemberUpdate,
     authorization: str = Depends(member_authorization),
 ):
-    """Change a member's role or disable them. Administrators only.
+    """Change a member's role or disable them. Needs `manage_members`.
 
-    The last active administrator cannot be demoted or disabled.
+    Refused with 409 when no active member could manage members afterwards.
     """
     return await member_request(
         "PUT",
@@ -82,12 +84,12 @@ async def update_member(
     "/{user_id}",
     status_code=204,
     response_class=Response,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(manage_members)],
 )
 async def remove_member(
     user_id: int, authorization: str = Depends(member_authorization)
 ):
-    """Delete a disabled member and their favorites. Administrators only.
+    """Delete a disabled member and their favorites. Needs `manage_members`.
 
     Shared catalogue data, monitors and alarms are kept.
     """

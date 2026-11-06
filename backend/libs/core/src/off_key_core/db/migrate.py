@@ -67,10 +67,10 @@ def migration_checksum(version: str, sql: str) -> str:
     return sha256(contents.encode()).hexdigest()
 
 
-def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list[str]:
-    """Adopt only the verified pre-integration schema or a fresh current schema."""
-    existing = set(inspect(connection).get_table_names())
-    application_tables = set(Base.metadata.tables)
+def pending_columns(
+    connection: Connection, existing: set[str]
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Declared columns pending migrations add, and old ones they still change."""
     # Verified pre-ledger databases can predate scoped monitor alarms. Migration
     # 007 adds these columns without changing their historical public IDs.
     excluded_columns = {
@@ -114,6 +114,20 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
             "detector_results",
             "detector_inputs",
         } - columns
+    retired_columns = dict(RETIRED_COLUMNS)
+    if "users" in existing and "member_roles" not in existing:
+        # Migration 021 turns the former role enum into a member_roles
+        # reference, so neither shape of the column is checked before it runs.
+        excluded_columns["users"] = {"role"}
+        retired_columns["users"] = {"role"}
+    return excluded_columns, retired_columns
+
+
+def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list[str]:
+    """Adopt only the verified pre-integration schema or a fresh current schema."""
+    existing = set(inspect(connection).get_table_names())
+    application_tables = set(Base.metadata.tables)
+    excluded_columns, retired_columns = pending_columns(connection, existing)
     if not existing.intersection(application_tables):
         if existing - {LEDGER}:
             raise ValueError("Cannot initialize a database containing unknown tables")
@@ -122,7 +136,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         validate_existing_schema(
             connection,
             excluded_columns=excluded_columns,
-            retired_columns=RETIRED_COLUMNS,
+            retired_columns=retired_columns,
         )
         adopted = [
             "001_membership.sql",
@@ -142,7 +156,7 @@ def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list
         tables=baseline,
         excluded_columns=excluded_columns
         | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
-        retired_columns=RETIRED_COLUMNS,
+        retired_columns=retired_columns,
     )
     return ["001_membership.sql", "002_monitor_stop_intent.sql"]
 

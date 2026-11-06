@@ -82,7 +82,7 @@ closing the last active view, or changing the saved revision releases subscripti
 An abandoned connection lease expires after 45 seconds. Saving a document alone
 still does not start ingestion.
 
-Administrators can start live subscriptions; members can view an existing live
+Members whose role manages sources can start live subscriptions; every member can view an existing live
 session. Retained MQTT values are shown as retained readings and do not create
 fresh arrival pulses or inflate arrival rates. Connection failures and malformed
 payloads appear in the live inspector. Histories begin with observed messages;

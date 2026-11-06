@@ -252,6 +252,29 @@ class RunResultsPage(DojoModel):
     )
 
 
+class RunPromote(DojoModel):
+    """Save a run's design as a template in the pipeline library."""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+
+
+class PromotedBinding(DojoModel):
+    slot_id: str
+    slot_label: str
+    series_name: str
+    reading_id: str | None = Field(
+        description="Catalogue reading the bound series was copied from, the "
+        "suggested live input for this slot; null for an uploaded series."
+    )
+
+
+class RunPromotion(DojoModel):
+    pipeline_id: str = Field(description="The new template in the library.")
+    pipeline_name: str
+    bindings: list[PromotedBinding] = Field(max_length=MAX_DATASET_SERIES)
+
+
 def _aware(value: datetime | None, name: str) -> None:
     if value is not None and value.tzinfo is None:
         raise ValueError(f"{name} needs a time zone, for example Z")

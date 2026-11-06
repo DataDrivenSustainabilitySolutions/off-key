@@ -28,6 +28,8 @@ from off_key_core.schemas.dojo import (
     RunListPage,
     RunListQuery,
     RunMetrics,
+    RunPromote,
+    RunPromotion,
     RunResultsPage,
     RunResultsQuery,
     RunView,
@@ -47,6 +49,7 @@ from ..collection_auth import require_permission
 from ..errors import DomainErrorRoute
 
 use_dojo = require_permission(Permission.use_dojo)
+manage_monitors = require_permission(Permission.manage_monitors)
 
 router = APIRouter(
     prefix="/dojo",
@@ -190,6 +193,18 @@ async def get_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
 @router.post("/runs/{run_id}/cancel", response_model=RunView)
 async def cancel_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
     return await runs.cancel(run_id)
+
+
+@router.post(
+    "/runs/{run_id}/promote",
+    response_model=RunPromotion,
+    status_code=201,
+    dependencies=[Depends(manage_monitors)],
+)
+async def promote_run(
+    run_id: str, request: RunPromote, runs: DojoRuns = Depends(get_dojo_runs)
+):
+    return await runs.promote(run_id, request)
 
 
 @router.delete("/runs/{run_id}", status_code=204)

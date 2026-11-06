@@ -105,6 +105,7 @@ def render(directory, environment, **overrides):
             "mqtt_proxy_password": "proxy-" + "p" * 32,
             "mqtt_radar_password": "radar-" + "r" * 32,
             "radar_checkpoint_secret": "checkpoint-" + "c" * 32,
+            "emqx_node_cookie": "cookie-" + "e" * 32,
             "email_password": "re_validation_only_not_a_real_key",
         } | variables
     inputs = directory / "inputs.json"

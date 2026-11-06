@@ -2,10 +2,27 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseTab, createPipeline, dropReplacement, editFromRun, monitoringNavigationKey, openPipeline, resetView,
-  setActivation, setRevision, showLibrary,
+  setActivation, setRevision, showLibrary, suggestedBindings, templateHref,
 } from "@/domain/monitoring/monitoringView";
 
 const search = (query: string) => new URLSearchParams(query);
+
+describe("suggested template inputs", () => {
+  it("round-trips slot readings through the link, splitting at the first colon", () => {
+    const href = templateHref("p1", { voltage: "pump:volts", current: "amps" });
+    expect(href).toBe("/?pipeline=p1&bind=voltage%3Apump%3Avolts&bind=current%3Aamps");
+    expect(suggestedBindings(new URL(href, "https://x.invalid").searchParams))
+      .toEqual({ voltage: "pump:volts", current: "amps" });
+    expect(suggestedBindings(search("bind=nocolon&bind=:r&bind=s:"))).toEqual({});
+  });
+  it("keeps suggestions on their template and drops them elsewhere", () => {
+    expect(openPipeline(search("pipeline=p1&bind=a:r"), "p1").getAll("bind")).toEqual(["a:r"]);
+    expect(openPipeline(search("pipeline=p1&bind=a:r"), "p2").has("bind")).toBe(false);
+    expect(showLibrary(search("pipeline=p1&bind=a:r")).has("bind")).toBe(false);
+    expect(createPipeline(search("pipeline=p1&bind=a:r")).has("bind")).toBe(false);
+    expect(resetView(search("pipeline=p1&bind=a:r")).has("bind")).toBe(false);
+  });
+});
 
 describe("monitoring URL contract", () => {
   it.each([

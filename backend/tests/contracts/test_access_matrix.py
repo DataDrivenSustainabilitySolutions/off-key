@@ -112,6 +112,8 @@ TACTIC_ACCESS = {
         "GET /api/v1/dojo/runs/{run_id}/results",
     },
     "manage_monitors": {
+        # Also behind the Dojo router's use_dojo; see test_dojo_promotion.
+        "POST /api/v1/dojo/runs/{run_id}/promote",
         "POST /api/v1/monitors/pipeline-activations",
         "DELETE /api/v1/monitors/pipeline-activations/{activation_id}",
         "POST /api/v1/monitors/pipelines",
@@ -212,6 +214,10 @@ GATEWAY_ACCESS = {
         "GET /v1/pipelines/{pipeline_id}/revisions/{revision_id}",
         "GET /v1/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
         "POST /v1/pipelines/{pipeline_id}/validate",
+    },
+    "manage_monitors": {
+        # Also behind the Dojo router's use_dojo; see test_dojo_promotion.
+        "POST /v1/dojo/runs/{run_id}/promote",
     },
     "alarms": {
         "GET /v1/anomalies",

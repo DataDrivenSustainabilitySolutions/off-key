@@ -1,5 +1,6 @@
 import type { InputSlot } from "@/types/pipelines.generated";
-import type { DatasetSeriesView, RunSummary } from "@/types/dojo.generated";
+import type { DatasetSeriesView, RunPromotion, RunSummary } from "@/types/dojo.generated";
+import { templateHref } from "@/domain/monitoring/monitoringView";
 import { featureName } from "../pipelines/slots";
 
 export type ChartPoint = [number, number];
@@ -114,3 +115,7 @@ export const DATASET_TABS = [
 export type DatasetTab = typeof DATASET_TABS[number]["id"];
 export const datasetTab = (value: string | null): DatasetTab =>
   DATASET_TABS.find(item => item.id === value)?.id ?? "values";
+
+/** Monitoring opens the new template with each slot's recorded reading suggested. */
+export const monitoringHandOff = (promotion: RunPromotion) => templateHref(promotion.pipeline_id,
+  Object.fromEntries(promotion.bindings.flatMap(item => item.reading_id ? [[item.slot_id, item.reading_id]] : [])));

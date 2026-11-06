@@ -45,3 +45,14 @@ export const predecessorEntity = (predecessor?: PipelineServiceView) => predeces
 export const predecessorTarget = (targets: MonitoringTarget[], predecessor?: PipelineServiceView) =>
   targets.find((target) => target.inputs.some((input) =>
     predecessor?.run?.execution?.bindings.some((binding) => binding.reading_id === input.stream.id)))?.id;
+
+/** The target that holds the most suggested readings; the first such target on a tie. */
+export function suggestedTarget(targets: MonitoringTarget[], suggested: Record<string, string>) {
+  const readings = new Set(Object.values(suggested));
+  let best: { id: string; count: number } | undefined;
+  for (const target of targets) {
+    const count = target.inputs.filter((input) => readings.has(input.stream.id)).length;
+    if (count && count > (best?.count ?? 0)) best = { id: target.id, count };
+  }
+  return best?.id;
+}

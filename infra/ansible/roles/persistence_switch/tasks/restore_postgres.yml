@@ -68,6 +68,43 @@
     label: "{{ item }}"
   changed_when: true
 
+# An older backup also holds the sessions that were live when it was taken,
+# including ones revoked since, so accounts restored from it must sign in again.
+# A cutover restores the backup it took moments before and keeps sessions.
+- name: postgres | end every session the backup carried
+  command:
+    argv:
+      - docker
+      - exec
+      - "{{ svc_container }}"
+      - psql
+      - -U
+      - "{{ postgres_user }}"
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - "{{ postgres_db | default('postgres') }}"
+      - -c
+      - >-
+        DO $$ BEGIN
+        IF to_regclass('public.users') IS NOT NULL THEN
+        UPDATE users SET session_version = session_version + 1; END IF;
+        IF to_regclass('public.remembered_sessions') IS NOT NULL THEN
+        DELETE FROM remembered_sessions; END IF;
+        END $$;
+  delegate_to: "{{ svc_node }}"
+  when:
+    - restore_from is defined
+    - (postgres_db | default('postgres')) ~ '.dump' in persistence_backup_files.postgres
+  changed_when: true
+
+- name: postgres | remove the staged dumps from the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: absent
+  become: true
+  delegate_to: "{{ svc_node }}"
+
 - name: postgres | report
   debug:
     msg: "Restored {{ persistence_backup_files.postgres | length - 1 }} database(s) from {{ persistence_backup_paths.postgres }}"

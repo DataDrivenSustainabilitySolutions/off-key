@@ -1,6 +1,6 @@
 """Dojo datasets and runs: replay detection designs over stored time series.
 
-Administrators only until members get a dedicated Dojo permission.
+Open to members whose role grants the Dojo permission.
 """
 
 from typing import Annotated
@@ -10,6 +10,8 @@ from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import User
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
+    Comparison,
+    ComparisonQuery,
     CsvImportQuery,
     DatasetChange,
     DatasetFromHistory,
@@ -18,16 +20,28 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    LabelChange,
+    LabelCreate,
+    LabelList,
+    LabelView,
     RunCreate,
     RunListPage,
     RunListQuery,
+    RunMetrics,
     RunResultsPage,
     RunResultsQuery,
     RunView,
 )
 
-from ...provider import get_dojo_datasets, get_dojo_runs
+from ...provider import (
+    get_dojo_datasets,
+    get_dojo_labels,
+    get_dojo_metrics,
+    get_dojo_runs,
+)
 from ...services.dojo.datasets import DojoDatasets
+from ...services.dojo.labels import DojoLabels
+from ...services.dojo.metrics import DojoMetrics
 from ...services.dojo.runs import DojoRuns
 from ..collection_auth import require_permission
 from ..errors import DomainErrorRoute
@@ -108,6 +122,49 @@ async def list_dataset_points(
     return await datasets.points(dataset_id, series_id, query)
 
 
+@router.get("/datasets/{dataset_id}/labels", response_model=LabelList)
+async def list_dataset_labels(
+    dataset_id: str, labels: DojoLabels = Depends(get_dojo_labels)
+):
+    return await labels.list(dataset_id)
+
+
+@router.post("/datasets/{dataset_id}/labels", response_model=LabelView, status_code=201)
+async def create_dataset_label(
+    dataset_id: str,
+    request: LabelCreate,
+    user: User = Depends(use_dojo),
+    labels: DojoLabels = Depends(get_dojo_labels),
+):
+    return await labels.create(dataset_id, request, created_by=user.id)
+
+
+@router.patch("/datasets/{dataset_id}/labels/{label_id}", response_model=LabelView)
+async def change_dataset_label(
+    dataset_id: str,
+    label_id: str,
+    change: LabelChange,
+    labels: DojoLabels = Depends(get_dojo_labels),
+):
+    return await labels.change(dataset_id, label_id, change)
+
+
+@router.delete("/datasets/{dataset_id}/labels/{label_id}", status_code=204)
+async def delete_dataset_label(
+    dataset_id: str, label_id: str, labels: DojoLabels = Depends(get_dojo_labels)
+):
+    await labels.remove(dataset_id, label_id)
+
+
+@router.get("/datasets/{dataset_id}/comparison", response_model=Comparison)
+async def compare_dataset_runs(
+    dataset_id: str,
+    query: Annotated[ComparisonQuery, Query()],
+    metrics: DojoMetrics = Depends(get_dojo_metrics),
+):
+    return await metrics.compare(dataset_id, query)
+
+
 @router.get("/runs", response_model=RunListPage)
 async def list_runs(
     query: Annotated[RunListQuery, Query()],
@@ -138,6 +195,13 @@ async def cancel_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
 @router.delete("/runs/{run_id}", status_code=204)
 async def delete_run(run_id: str, runs: DojoRuns = Depends(get_dojo_runs)):
     await runs.remove(run_id)
+
+
+@router.get("/runs/{run_id}/metrics", response_model=RunMetrics)
+async def get_run_metrics(
+    run_id: str, metrics: DojoMetrics = Depends(get_dojo_metrics)
+):
+    return await metrics.run(run_id)
 
 
 @router.get("/runs/{run_id}/results", response_model=RunResultsPage)

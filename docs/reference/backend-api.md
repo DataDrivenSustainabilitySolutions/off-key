@@ -270,12 +270,18 @@ change it. A run replays one design over one dataset. Every route needs
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
+| `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
+| `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
+| `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
+| `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
+| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to three finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
 | `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
 | `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run | Path: `run_id` |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204 | Path: `run_id` |
-| `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000); continue with `next_after` |
+| `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
+| `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
 names another) and one series per remaining column; a long CSV has one value
@@ -294,6 +300,21 @@ static baseline's fitting is awaited instead of discarding observations, so
 the same run gives the same results again. Each worker replica executes one
 run at a time; at most 20 runs wait or run at once. A run's `stats` count
 observations that produced no result, by reason.
+
+A label marks a known problem as the interval from `start_at` to `end_at`.
+Labels of one dataset may touch but not overlap and must overlap the dataset's
+time span; a dataset holds at most 500. Metrics treat each label as one event
+and are computed when read, from the stored results and the current labels,
+so editing a label re-scores every finished run without a replay. A label is
+`detected` when the run alarmed inside it, ends included, with
+`delay_seconds` from its start to the first alarm; `missed` when the run
+scored it without alarming; and `unscored` when the run had no scores during
+it, for example while the detector was still learning. `detection_rate`
+divides detected labels by scored ones. Each alarm onset outside every label
+is one false alarm, so an alarm held over many results counts once, and one
+that starts inside a label and outlasts it does not count.
+`false_alarms_per_day` divides them by `evaluated_seconds`, the scored time
+outside the labels. Only runs with status `succeeded` have metrics.
 
 ### Gateway health
 
@@ -339,11 +360,17 @@ Health and readiness remain available without this service credential.
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
+| `GET` | `/dojo/datasets/{dataset_id}/labels` | List a dataset's labels |
+| `POST` | `/dojo/datasets/{dataset_id}/labels` | Add a label, refusing overlaps |
+| `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move or annotate a label |
+| `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label |
+| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Score runs of one dataset side by side |
 | `GET` | `/dojo/runs` | List runs |
 | `POST` | `/dojo/runs` | Compile, bind and queue a run |
 | `GET` | `/dojo/runs/{run_id}` | Read a run |
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a run |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run |
+| `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
 | `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
 
 ### RADAR orchestration

@@ -43,7 +43,9 @@ async def _submit(session, key):
 async def test_a_phase_that_outlasts_its_budget_ends_as_failed(
     pipeline_database, monkeypatch
 ):
-    workloads = SimpleNamespace(remove_intent=AsyncMock(return_value=True))
+    workloads = SimpleNamespace(
+        remove_intent=AsyncMock(return_value=True), async_docker=None
+    )
     monkeypatch.setattr(PipelinePreflight, "remove_for", AsyncMock())
     async with pipeline_database() as session:
         activation = await _submit(session, "phase-budget")
@@ -132,7 +134,8 @@ async def test_cancelling_hands_an_unconfirmed_delete_to_reconciliation(
 
         # Docker cannot confirm removal; the delete intent is still durable.
         workloads = SimpleNamespace(
-            remove_intent=AsyncMock(side_effect=RuntimeError("Docker outage"))
+            remove_intent=AsyncMock(side_effect=RuntimeError("Docker outage")),
+            async_docker=None,
         )
         await PipelineActivations(session, workloads=workloads).advance(activation.id)
 

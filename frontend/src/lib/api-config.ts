@@ -19,8 +19,8 @@ export const API_CONFIG = {
       LOGIN: '/v1/auth/login',
       REFRESH: '/v1/auth/refresh',
       LOGOUT: '/v1/auth/logout',
-      FORGOT_PASSWORD: '/v1/auth/forgot-password',
-      RESET_PASSWORD: '/v1/auth/reset-password',
+      PASSWORD_RESET: '/v1/auth/password-reset',
+      PASSWORD_RESET_CONFIRM: '/v1/auth/password-reset/confirm',
     },
 
     // Chargers

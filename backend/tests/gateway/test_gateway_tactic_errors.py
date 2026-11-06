@@ -64,7 +64,7 @@ ROUTES = [
     ("GET", "/v1/monitors?container_name=svc-1", None),
     (
         "POST",
-        "/v1/auth/reset-password",
+        "/v1/auth/password-reset/confirm",
         {"token": "t" * 43, "new_password": "Correct-Horse-9-Battery"},
     ),
 ]

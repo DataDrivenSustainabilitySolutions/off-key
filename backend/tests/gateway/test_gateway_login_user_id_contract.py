@@ -36,7 +36,7 @@ async def test_login_includes_server_assigned_id_and_session_version(monkeypatch
         audience=settings.JWT_AUDIENCE,
     )
 
-    assert response["user_id"] == 42
+    assert response["member_id"] == 42
     assert payload["sub"] == "user@example.com"
     assert payload["user_id"] == 42
     assert payload["session_version"] == 3

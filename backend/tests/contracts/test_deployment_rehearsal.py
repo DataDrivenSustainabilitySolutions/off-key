@@ -6,6 +6,7 @@ The next identical deployment checks that retries do not duplicate workers.
 
 import json
 import os
+import re
 import subprocess
 import time
 from copy import deepcopy
@@ -31,6 +32,27 @@ pytestmark = [
         reason="requires the disposable production Swarm rehearsal",
     ),
 ]
+
+
+# The rollback reference (COMPATIBLE_REVISION in infra/tests/rehearsal_releases.py)
+# predates the REST rename, so while it runs the rehearsal calls its paths. Drop
+# a rewrite once the reference carries the new path.
+COMPATIBLE_RELEASE_PATHS = ((re.compile(r"^/v1/me$"), "/v1/members/me"),)
+
+
+class RehearsalClient(httpx.Client):
+    """One client for both releases; ``compatible`` selects the older paths."""
+
+    compatible = False
+
+    def build_request(self, method, url, **kwargs):
+        if self.compatible:
+            url = httpx.URL(url)
+            path = url.path
+            for pattern, replacement in COMPATIBLE_RELEASE_PATHS:
+                path = pattern.sub(replacement, path)
+            url = url.copy_with(path=path)
+        return super().build_request(method, url, **kwargs)
 
 
 def wait_for_measurement(client, entity, value):
@@ -393,13 +415,13 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
-    with httpx.Client(
+    with RehearsalClient(
         base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"),
         headers=headers,
         timeout=210,
     ) as client:
         refresh_authentication(client)
-        member = get_json(client, "/v1/members/me")
+        member = get_json(client, "/v1/me")
         discovery_fields = {
             name: model["fields"]
             for name, model in get_json(client, "/v1/monitors/models").items()
@@ -478,8 +500,9 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 if restore:
                     command.append("--restore")
                 subprocess.run(command, cwd=root, check=True, timeout=1200)
+                client.compatible = target == "compatible"
                 refresh_authentication(client)
-                assert get_json(client, "/v1/members/me") == member
+                assert get_json(client, "/v1/me") == member
                 assert {
                     name: model["fields"]
                     for name, model in get_json(client, "/v1/monitors/models").items()

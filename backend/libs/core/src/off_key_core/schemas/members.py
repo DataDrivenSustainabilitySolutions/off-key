@@ -55,10 +55,12 @@ class MemberInvitation(BaseModel):
 
 
 class MemberUpdate(BaseModel):
+    """Change a member's role, enable or disable them, or both."""
+
     model_config = ConfigDict(extra="forbid")
 
-    role: RoleId
-    is_active: bool
+    role: RoleId | None = None
+    is_active: bool | None = None
 
 
 class PermissionInfo(BaseModel):

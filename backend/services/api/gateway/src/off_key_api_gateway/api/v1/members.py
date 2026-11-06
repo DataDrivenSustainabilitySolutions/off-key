@@ -9,6 +9,8 @@ from ..access import current_member, member_authorization, require_permission
 from ..errors import TacticErrorRoute
 
 router = APIRouter(route_class=TacticErrorRoute)
+me_router = APIRouter(route_class=TacticErrorRoute)
+invitations_router = APIRouter(route_class=TacticErrorRoute)
 manage_members = require_permission(Permission.manage_members)
 
 
@@ -21,8 +23,8 @@ async def member_request(method, path, authorization, body=None):
     )
 
 
-@router.get("/me", response_model=MemberProfile)
-async def get_my_profile(user: MemberProfile = Depends(current_member)):
+@me_router.get("", response_model=MemberProfile)
+async def get_me(user: MemberProfile = Depends(current_member)):
     """The signed-in member: id, email, role, permissions and status."""
     return user
 
@@ -35,8 +37,8 @@ async def list_members(authorization: str = Depends(member_authorization)):
     return await member_request("GET", "", authorization)
 
 
-@router.post("/invitations", dependencies=[Depends(manage_members)])
-async def invite_member(
+@invitations_router.post("", dependencies=[Depends(manage_members)])
+async def create_invitation(
     invitation: MemberInvitation, authorization: str = Depends(member_authorization)
 ):
     """Invite an email address with a role and send the invitation email.
@@ -60,38 +62,41 @@ async def invite_member(
     return {"message": "Invitation sent. The link expires in 48 hours."}
 
 
-@router.put(
-    "/{user_id}", response_model=MemberProfile, dependencies=[Depends(manage_members)]
+@router.patch(
+    "/{member_id}",
+    response_model=MemberProfile,
+    dependencies=[Depends(manage_members)],
 )
 async def update_member(
-    user_id: int,
+    member_id: int,
     change: MemberUpdate,
     authorization: str = Depends(member_authorization),
 ):
-    """Change a member's role or disable them. Needs `manage_members`.
+    """Change a member's `role`, set `is_active`, or both. Needs `manage_members`.
 
-    Refused with 409 when no active member could manage members afterwards.
+    Fields left out keep their value. Refused with 409 when no active member
+    could manage members afterwards.
     """
     return await member_request(
-        "PUT",
-        f"/{user_id}",
+        "PATCH",
+        f"/{member_id}",
         authorization,
-        change.model_dump(mode="json"),
+        change.model_dump(mode="json", exclude_unset=True),
     )
 
 
 @router.delete(
-    "/{user_id}",
+    "/{member_id}",
     status_code=204,
     response_class=Response,
     dependencies=[Depends(manage_members)],
 )
 async def remove_member(
-    user_id: int, authorization: str = Depends(member_authorization)
+    member_id: int, authorization: str = Depends(member_authorization)
 ):
     """Delete a disabled member and their favorites. Needs `manage_members`.
 
     Shared catalogue data, monitors and alarms are kept.
     """
-    await member_request("DELETE", f"/{user_id}", authorization)
+    await member_request("DELETE", f"/{member_id}", authorization)
     return Response(status_code=204)

@@ -107,6 +107,6 @@ async def test_gateway_issued_token_round_trips_through_tactic():
     issued = access_token_response(
         {"email": "member@example.com", "id": 7, "session_version": 2}
     )
-    assert issued["user_id"] == 7
+    assert issued["member_id"] == 7
     user = SimpleNamespace(is_verified=True, is_active=True, session_version=2)
     assert await decode(issued["access_token"], user) is user

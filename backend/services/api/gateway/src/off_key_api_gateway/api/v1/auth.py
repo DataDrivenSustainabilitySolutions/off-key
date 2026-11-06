@@ -50,7 +50,7 @@ def access_token_response(authenticated_user: dict) -> dict:
             )
         ),
         "token_type": "bearer",
-        "user_id": user_id,
+        "member_id": user_id,
     }
 
 
@@ -279,10 +279,10 @@ async def deliver_password_reset(email: str, token: str) -> None:
         logger.error("event=password_reset_delivery_failed")
 
 
-@router.post("/forgot-password")
+@router.post("/password-reset")
 @limiter.limit("5/minute", key_func=auth_limit_key)
 @auth_client_limit
-async def forgot_password(
+async def request_password_reset(
     request: Request,
     background: BackgroundTasks,
     user: ForgotPasswordRequest = Depends(reset_email_attempt),
@@ -304,10 +304,10 @@ async def forgot_password(
     }
 
 
-@router.post("/reset-password")
+@router.post("/password-reset/confirm")
 @limiter.limit("10/minute", key_func=auth_limit_key)
 @auth_client_limit
-async def reset_password(
+async def confirm_password_reset(
     request: Request, reset: PasswordReset = Depends(reset_attempt)
 ):
     """Set a new password with the token from a reset email."""

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
@@ -6,8 +6,9 @@ import { dojoApi } from "@/features/dojo/api";
 import { pipelinesApi } from "@/features/pipelines/api";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 
-const access = vi.hoisted(() => ({ allowed: true }));
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true, can: (permission: string) => access.allowed && permission === "use_dojo" }) }));
+const access = vi.hoisted(() => ({ allowed: true, monitors: false }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true,
+  can: (permission: string) => access.allowed && (permission === "use_dojo" || access.monitors && permission === "manage_monitors") }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/features/charts/EChart", () => ({
   EChart: ({ accessibleDescription, onViewportChange }: { accessibleDescription: string; onViewportChange?: (a: number, b: number) => void }) =>
@@ -29,7 +30,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), importCsv: vi.fn(), importHistory: vi.fn(), changeDataset: vi.fn(), deleteDataset: vi.fn(),
   points: vi.fn(), labels: vi.fn(), createLabel: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
-  createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
+  createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), promoteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -56,7 +57,8 @@ const metrics = (runId: string, name: string, detected: number, falseAlarms: num
     first_alarm_at: detected ? "2024-01-01T00:32:00Z" : null, delay_seconds: detected ? 120 : null }] });
 
 function mount(path: string) {
-  const router = createMemoryRouter([{ path: "/dojo", element: <DojoWorkspace /> }], { initialEntries: [path] });
+  const router = createMemoryRouter([{ path: "/dojo", element: <DojoWorkspace /> }, { path: "/", element: <p>Monitoring</p> }],
+    { initialEntries: [path] });
   render(<RouterProvider router={router} />);
   return router;
 }
@@ -64,6 +66,7 @@ function mount(path: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   access.allowed = true;
+  access.monitors = false;
   vi.mocked(dojoApi.datasets).mockResolvedValue({ items: [dataset], next_offset: null });
   vi.mocked(dojoApi.dataset).mockResolvedValue(dataset);
   vi.mocked(dojoApi.labels).mockResolvedValue({ items: [label] });
@@ -138,6 +141,30 @@ describe("Dojo workspace", () => {
     within(outcomes).getByText("after 2 min");
     within(outcomes).getByText("Missed");
     expect(dojoApi.results).toHaveBeenCalledWith("r1", expect.objectContaining({ alarm: true }), expect.any(AbortSignal));
+  });
+
+  it("saves a finished run as a template and opens Monitoring with its recorded readings", async () => {
+    vi.mocked(dojoApi.promoteRun).mockResolvedValue({ pipeline_id: "p9", pipeline_name: "Pump forest", bindings: [
+      { slot_id: "voltage", slot_label: "Voltage", series_name: "Voltage", reading_id: "r1" },
+      { slot_id: "load", slot_label: "Load", series_name: "Load", reading_id: null },
+    ] });
+    const router = mount("/dojo?dataset=d1&tab=runs");
+    await screen.findByRole("table", { name: "Runs" });
+    expect(screen.queryByRole("button", { name: "Use as template" })).toBeNull();
+    cleanup(); router.dispose();
+    access.monitors = true;
+    const next = mount("/dojo?dataset=d1&tab=runs");
+    const row = (await screen.findByText("Forest")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Use as template" }));
+    const name = await screen.findByRole("textbox", { name: "Template name" }) as HTMLInputElement;
+    expect(name.value).toBe("Forest");
+    fireEvent.change(name, { target: { value: "Pump forest" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    expect(await screen.findByText(/choose a live reading in Monitoring/)).toBeTruthy();
+    expect(dojoApi.promoteRun).toHaveBeenCalledWith("r1", { name: "Pump forest", description: "" });
+    fireEvent.click(screen.getByRole("button", { name: "Start a monitor" }));
+    await waitFor(() => expect(next.state.location.pathname).toBe("/"));
+    expect(next.state.location.search).toBe("?pipeline=p9&bind=voltage%3Ar1");
   });
 
   it("explains the missing permission instead of showing datasets", async () => {

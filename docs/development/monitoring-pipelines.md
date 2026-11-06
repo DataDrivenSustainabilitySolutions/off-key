@@ -605,7 +605,7 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`2346682786a5b47230e7d62a6c703f949b3bd4cf`, the member roles head that carries
+`4a063c92e411ed583b5c39e10a14763beefb47b7`, the member roles head that carries
 migrations 018 (`member_favorites`), 019 (`dojo_datasets`), 020 (`dojo_runs`)
 and 021 (`member_roles`). It shares the current migration ledger, the published
 ABERRANT 1.4.0 pin, frozen lock, generated catalog and field discovery metadata,

@@ -866,14 +866,9 @@ class PipelineActivations:
             await self.workloads.remove_intent(row.service_id, None)
         row = await self._owned_row(row.id, token, "cancelling")
         await self.session.commit()
-        try:
-            await PipelinePreflight(self.workloads).remove_for(row.id)
-        except Exception:
-            # The orphan sweep removes preflight workers of every activation
-            # that is no longer preflighting, so this need not block the end.
-            logger.exception(
-                "Pipeline preflight cleanup deferred activation_id=%s", row.id
-            )
+        # A preflight job under this name that is not ours keeps the activation
+        # cancelling, with the reason, until its owner removes it.
+        await PipelinePreflight(self.workloads).remove_for(row.id)
         row = await self._owned_row(row.id, token, "cancelling")
         row.phase = "failed" if row.error else "cancelled"
         await self.session.commit()

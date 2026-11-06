@@ -15,9 +15,13 @@ MAX_POINTS_PAGE = 10_000
 # Runs replay on the Dojo worker; more than this many waiting is refused.
 MAX_ACTIVE_RUNS = 20
 MAX_RESULTS_PAGE = 10_000
+MAX_DATASET_LABELS = 500
+# A comparison puts this many runs on one dataset side by side.
+MAX_COMPARED_RUNS = 3
 DatasetOrigin = Literal["csv", "history"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
+LabelOutcomeKind = Literal["detected", "missed", "unscored"]
 
 
 class DojoModel(BaseModel):
@@ -214,6 +218,11 @@ class RunResultsQuery(DojoModel):
     after: int | None = Field(
         default=None, ge=0, description="Return results after this sequence."
     )
+    alarm: bool | None = Field(
+        default=None,
+        description="true returns only results that alarmed, for example to "
+        "mark alarms on a chart without reading every result.",
+    )
     limit: int = Field(default=2000, ge=1, le=MAX_RESULTS_PAGE)
 
 
@@ -241,3 +250,127 @@ class RunResultsPage(DojoModel):
     next_after: int | None = Field(
         default=None, description="Pass as 'after' to read the next page."
     )
+
+
+def _aware(value: datetime | None, name: str) -> None:
+    if value is not None and value.tzinfo is None:
+        raise ValueError(f"{name} needs a time zone, for example Z")
+
+
+class LabelCreate(DojoModel):
+    """Mark a known problem as the interval from ``start_at`` to ``end_at``."""
+
+    start_at: datetime
+    end_at: datetime
+    note: str = Field(
+        default="",
+        max_length=500,
+        description="What happened, for example 'bearing fault, replaced'.",
+    )
+
+    @model_validator(mode="after")
+    def interval(self):
+        _aware(self.start_at, "start_at")
+        _aware(self.end_at, "end_at")
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be after start_at")
+        return self
+
+
+class LabelChange(DojoModel):
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def interval(self):
+        _aware(self.start_at, "start_at")
+        _aware(self.end_at, "end_at")
+        return self
+
+
+class LabelView(DojoModel):
+    id: str
+    dataset_id: str
+    start_at: datetime
+    end_at: datetime
+    note: str
+    created_by: int | None
+    created_at: datetime
+
+
+class LabelList(DojoModel):
+    items: list[LabelView] = Field(
+        max_length=MAX_DATASET_LABELS, description="Ordered by start_at."
+    )
+
+
+class LabelOutcome(DojoModel):
+    label_id: str
+    start_at: datetime
+    end_at: datetime
+    outcome: LabelOutcomeKind = Field(
+        description="'detected' if the run alarmed inside the interval, "
+        "'missed' if it scored the interval without alarming, and 'unscored' "
+        "if the run produced no score during it, for example because the "
+        "detector was still learning."
+    )
+    first_alarm_at: datetime | None
+    delay_seconds: float | None = Field(
+        description="From the start of the label to the first alarm inside it."
+    )
+
+
+class RunMetrics(DojoModel):
+    """Event metrics of one finished run against its dataset's labels.
+
+    A label is one event: alarming once inside it detects it. Alarms outside
+    every label count as false alarms, once per onset, so an alarm held over
+    many consecutive results is one false alarm.
+    """
+
+    run_id: str
+    run_name: str
+    strategy: str
+    scored_from: datetime | None = Field(
+        description="First result with a score; nothing before it can alarm."
+    )
+    scored_to: datetime | None = Field(description="Last result of the run.")
+    labels_total: int
+    labels_scored: int = Field(description="Labels the run produced scores for.")
+    labels_detected: int
+    detection_rate: float | None = Field(
+        description="labels_detected / labels_scored; null without scored labels."
+    )
+    median_delay_seconds: float | None
+    max_delay_seconds: float | None
+    alarm_count: int = Field(description="Results with an alarm, inside or outside.")
+    false_alarms: int = Field(description="Alarm onsets outside every label.")
+    evaluated_seconds: float = Field(
+        description="Scored time outside every label, the base of the rate."
+    )
+    false_alarms_per_day: float | None = Field(
+        description="false_alarms per 24 hours of evaluated time; null when "
+        "no time outside the labels was scored."
+    )
+    labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
+
+
+class ComparisonQuery(DojoModel):
+    run_ids: list[str] = Field(
+        min_length=1,
+        max_length=MAX_COMPARED_RUNS,
+        description="Finished runs on this dataset; repeat the parameter.",
+    )
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if len(set(self.run_ids)) != len(self.run_ids):
+            raise ValueError("Each run may appear only once")
+        return self
+
+
+class Comparison(DojoModel):
+    dataset_id: str
+    labels: list[LabelView] = Field(max_length=MAX_DATASET_LABELS)
+    runs: list[RunMetrics] = Field(max_length=MAX_COMPARED_RUNS)

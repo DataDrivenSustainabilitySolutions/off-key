@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from off_key_core.auth.permissions import Permission
 from off_key_core.schemas.dojo import (
     MAX_UPLOAD_BYTES,
+    Comparison,
+    ComparisonQuery,
     CsvImportQuery,
     DatasetChange,
     DatasetFromHistory,
@@ -18,9 +20,14 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    LabelChange,
+    LabelCreate,
+    LabelList,
+    LabelView,
     RunCreate,
     RunListPage,
     RunListQuery,
+    RunMetrics,
     RunResultsPage,
     RunResultsQuery,
     RunView,
@@ -212,6 +219,104 @@ async def list_dojo_points(
     )
 
 
+@router.get("/datasets/{dataset_id}/labels", response_model=LabelList)
+@read_limit
+async def list_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """The dataset's labels, each a time interval with a known problem,
+    ordered by start."""
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post("/datasets/{dataset_id}/labels", response_model=LabelView, status_code=201)
+@write_limit
+async def create_dojo_label(
+    request: Request,
+    dataset_id: str,
+    label: LabelCreate,
+    authorization: str = Depends(member_authorization),
+):
+    """Mark a known problem from `start_at` to `end_at`.
+
+    Labels of one dataset may touch but not overlap, and must overlap the
+    dataset's time span. A dataset holds at most 500. Run metrics read the
+    labels when asked, so adding one re-scores every finished run.
+    """
+    return await tactic.request(
+        "POST",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels",
+        json_data=label.model_dump(mode="json"),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.patch("/datasets/{dataset_id}/labels/{label_id}", response_model=LabelView)
+@write_limit
+async def change_dojo_label(
+    request: Request,
+    dataset_id: str,
+    label_id: str,
+    change: LabelChange,
+    authorization: str = Depends(member_authorization),
+):
+    """Move a label's start or end, or change its note."""
+    return await tactic.request(
+        "PATCH",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}"
+        f"/labels/{path_segment(label_id)}",
+        json_data=change.model_dump(mode="json", exclude_none=True),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.delete("/datasets/{dataset_id}/labels/{label_id}", status_code=204)
+@write_limit
+async def delete_dojo_label(
+    request: Request,
+    dataset_id: str,
+    label_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """Delete a label."""
+    await tactic.request(
+        "DELETE",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}"
+        f"/labels/{path_segment(label_id)}",
+        headers={"Authorization": authorization},
+    )
+    return Response(status_code=204)
+
+
+@router.get("/datasets/{dataset_id}/comparison", response_model=Comparison)
+@read_limit
+async def compare_dojo_runs(
+    request: Request,
+    dataset_id: str,
+    query: Annotated[ComparisonQuery, Query()],
+    authorization: str = Depends(member_authorization),
+):
+    """Up to three finished runs of the dataset, scored against its labels.
+
+    Repeat `run_ids` for each run, for example
+    `?run_ids=a&run_ids=b`. Each run carries the metrics of
+    `GET /v1/dojo/runs/{run_id}/metrics`, and `labels` lists the intervals
+    they were scored against.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/comparison",
+        params=_query(query),
+        headers={"Authorization": authorization},
+    )
+
+
 @router.get("/runs", response_model=RunListPage)
 @read_limit
 async def list_dojo_runs(
@@ -304,6 +409,30 @@ async def delete_dojo_run(
     return Response(status_code=204)
 
 
+@router.get("/runs/{run_id}/metrics", response_model=RunMetrics)
+@read_limit
+async def get_dojo_run_metrics(
+    request: Request,
+    run_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """Event metrics of a finished run against its dataset's current labels.
+
+    Each label is one event: `detected` if the run alarmed inside it, with
+    the delay from its start to the first alarm; `missed` if the run scored
+    it without alarming; `unscored` if the run had no scores then, for
+    example while the detector was still learning. `detection_rate` covers
+    scored labels only. Alarm onsets outside every label are `false_alarms`,
+    and `false_alarms_per_day` divides them by the scored time outside the
+    labels. Only a run with status `succeeded` has metrics.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}/metrics",
+        headers={"Authorization": authorization},
+    )
+
+
 @router.get("/runs/{run_id}/results", response_model=RunResultsPage)
 @read_limit
 async def list_dojo_run_results(
@@ -316,6 +445,7 @@ async def list_dojo_run_results(
 
     Pass the returned `next_after` as `after` to continue; it is null on the
     last page. `score` is null while the detector is still learning.
+    Pass `alarm=true` to read only the results that alarmed.
     """
     return await tactic.request(
         "GET",

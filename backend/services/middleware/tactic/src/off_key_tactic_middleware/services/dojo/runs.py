@@ -189,6 +189,8 @@ class DojoRuns:
         statement = select(DojoRunResult).where(DojoRunResult.run_id == run_id)
         if query.after is not None:
             statement = statement.where(DojoRunResult.sequence > query.after)
+        if query.alarm is not None:
+            statement = statement.where(DojoRunResult.alarm.is_(query.alarm))
         rows = (
             await self.session.scalars(
                 statement.order_by(DojoRunResult.sequence).limit(query.limit + 1)

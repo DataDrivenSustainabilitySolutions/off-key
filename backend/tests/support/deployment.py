@@ -12,7 +12,7 @@ def wait_for_activation(
     """Wait until an accepted start has created its worker."""
     phase = None
     while time.monotonic() < deadline:
-        response = client.get(f"/v1/monitors/pipeline-activations/{activation_id}")
+        response = client.get(f"/v1/pipeline-activations/{activation_id}")
         response.raise_for_status()
         activation = response.json()
         phase = activation["phase"]
@@ -26,7 +26,7 @@ def wait_for_activation(
 
 def wait_until_service_accepts_data(
     client: httpx.Client,
-    service_id: str,
+    monitor_id: str,
     timeout: float = 120,
     *,
     activation_id: str | None = None,
@@ -37,13 +37,10 @@ def wait_until_service_accepts_data(
         wait_for_activation(client, activation_id, deadline)
     last_status: object = None
     while time.monotonic() < deadline:
-        response = client.get(
-            "/v1/monitors/all",
-            params={"active_only": "true", "include_docker_status": "true"},
-        )
+        response = client.get("/v1/monitors", params={"active": "true"})
         response.raise_for_status()
         service = next(
-            (item for item in response.json() if item.get("id") == service_id), None
+            (item for item in response.json() if item.get("id") == monitor_id), None
         )
         last_status = service.get("operational_status") if service else None
         if isinstance(last_status, dict):

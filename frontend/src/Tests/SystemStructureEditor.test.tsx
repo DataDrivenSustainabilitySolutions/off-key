@@ -13,7 +13,7 @@ import type { SystemDocument } from "@/types/system";
 const fixture = (): SystemDocument => ({
   ...createEmptySystem("Weather observations"),
   default_policy: { mode: "sample", interval_seconds: 30 },
-  connections: [
+  brokers: [
     {
       id: "broker:east",
       label: "East broker",
@@ -38,14 +38,14 @@ const fixture = (): SystemDocument => ({
       id: "station",
       label: "Weather station",
       kind: "weather-station",
-      connection_id: "broker:east",
+      broker_id: "broker:east",
     },
   ],
-  streams: [
+  readings: [
     {
       id: "temperature",
       label: "Temperature",
-      connection_id: "broker:east",
+      broker_id: "broker:east",
       device_id: "station",
       topic: "weather/temperature",
       value_type: "number",
@@ -105,7 +105,7 @@ describe("generic structure editing", () => {
     await waitFor(() => expect(props.onDone).toHaveBeenCalled());
     expect(props.onSave).toHaveBeenCalledWith(
       expect.objectContaining({
-        connections: [
+        brokers: [
           expect.objectContaining({
             id: expect.stringMatching(/^connection:/),
             label: "Roof observatory",
@@ -144,7 +144,7 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     const saved = props.onSave.mock.calls[0]![0] as SystemDocument;
-    expect(saved.streams[1]).toMatchObject({
+    expect(saved.readings[1]).toMatchObject({
       label: "Roof humidity",
       topic: "weather/roof/readings",
       payload_pointer: "/sensors/humidity",
@@ -158,8 +158,8 @@ describe("generic structure editing", () => {
 
   it("removes hidden WebSocket-only fields when switching an existing connection back to TCP", async () => {
     const system = fixture();
-    system.connections[0] = {
-      ...system.connections[0]!,
+    system.brokers[0] = {
+      ...system.brokers[0]!,
       transport: "websocket",
       websocket_path: "/mqtt",
     };
@@ -179,7 +179,7 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     expect(
-      (props.onSave.mock.calls[0]![0] as SystemDocument).connections.find(
+      (props.onSave.mock.calls[0]![0] as SystemDocument).brokers.find(
         (entry) => entry.id === "broker:east",
       ),
     ).not.toHaveProperty("websocket_path");
@@ -202,10 +202,10 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     const saved = props.onSave.mock.calls[0]![0] as SystemDocument;
-    expect(saved.devices[0]?.connection_id).toBe("broker:west");
-    expect(saved.streams[0]).toMatchObject({
+    expect(saved.devices[0]?.broker_id).toBe("broker:west");
+    expect(saved.readings[0]).toMatchObject({
       id: "temperature",
-      connection_id: "broker:west",
+      broker_id: "broker:west",
       topic: "weather/temperature",
     });
   });
@@ -227,7 +227,7 @@ describe("generic structure editing", () => {
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     const saved = props.onSave.mock.calls[0]![0] as SystemDocument;
     expect(saved.devices).toEqual([]);
-    expect(saved.streams).toEqual([]);
+    expect(saved.readings).toEqual([]);
     expect(saved.groups[0]?.member_ids).toEqual([]);
   });
 
@@ -247,8 +247,8 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     const saved = props.onSave.mock.calls[0]![0] as SystemDocument;
-    expect(saved.devices[0]).not.toHaveProperty("connection_id");
-    expect(saved.streams[0]?.connection_id).toBe("broker:east");
+    expect(saved.devices[0]).not.toHaveProperty("broker_id");
+    expect(saved.readings[0]?.broker_id).toBe("broker:east");
   });
 
   it("keeps the configuration's object order stable when editing an existing definition", async () => {
@@ -267,7 +267,7 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(props.onSave).toHaveBeenCalled());
     expect(
-      (props.onSave.mock.calls[0]![0] as SystemDocument).connections.map(
+      (props.onSave.mock.calls[0]![0] as SystemDocument).brokers.map(
         (item) => item.id,
       ),
     ).toEqual(["broker:east", "broker:west"]);
@@ -311,7 +311,7 @@ describe("generic structure editing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByRole("alert")).not.toBeNull());
     const updated = fixture();
-    updated.streams[0]!.label = "Other editor";
+    updated.readings[0]!.label = "Other editor";
     rerender(
       <SystemStructureEditor
         {...props}

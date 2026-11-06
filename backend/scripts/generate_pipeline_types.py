@@ -55,10 +55,14 @@ def object_type(schema: dict) -> str:
 
 
 def contracts(module) -> dict:
-    """Every Pydantic model defined in ``module`` and the models it refers to."""
+    """Every public Pydantic model defined in ``module`` and the models it refers to."""
     definitions = {}
     for name, model in inspect.getmembers(module, inspect.isclass):
-        if model.__module__ != module.__name__ or not issubclass(model, BaseModel):
+        if (
+            name.startswith("_")
+            or model.__module__ != module.__name__
+            or not issubclass(model, BaseModel)
+        ):
             continue
         schema = model.model_json_schema()
         definitions.update(schema.pop("$defs", {}))

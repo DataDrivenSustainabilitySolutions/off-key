@@ -27,7 +27,8 @@ import {
   normalizeView,
 } from "./contracts";
 
-const base = "/v1/monitors/pipelines";
+const base = "/v1/pipelines";
+const activations = "/v1/pipeline-activations";
 const item = (id: string) => `${base}/${encodeURIComponent(id)}`;
 const monitor = (id: string) => `/v1/monitors/${encodeURIComponent(id)}`;
 export const pipelinesApi = {
@@ -35,7 +36,7 @@ export const pipelinesApi = {
     apiUtils.post<PipelineActivationView>(`${base}/apply`, request),
   catalog: (signal?: AbortSignal) =>
     apiUtils
-      .get<PipelineCatalog>(`${base}/catalog`, {
+      .get<PipelineCatalog>("/v1/pipeline-components", {
         signal,
         redirectOnUnauthorized: false,
       })
@@ -91,12 +92,12 @@ export const pipelinesApi = {
       )
       .then(normalizeService),
   history: (serviceId: string, signal?: AbortSignal) =>
-    apiUtils.get<PipelineHistoryPage>(`${monitor(serviceId)}/pipeline-history`, {
+    apiUtils.get<PipelineHistoryPage>(`${monitor(serviceId)}/pipeline/history`, {
       signal,
       redirectOnUnauthorized: false,
     }),
   timeline: (serviceId: string, signal?: AbortSignal) =>
-    apiUtils.get<PipelineRunTimeline>(`${monitor(serviceId)}/pipeline-timeline`, {
+    apiUtils.get<PipelineRunTimeline>(`${monitor(serviceId)}/pipeline/timeline`, {
       signal,
       redirectOnUnauthorized: false,
     }),
@@ -107,7 +108,7 @@ export const pipelinesApi = {
     signal?: AbortSignal,
   ) =>
     apiUtils
-      .get<PipelineValidationReport>(`${monitor(serviceId)}/pipeline-metadata`, {
+      .get<PipelineValidationReport>(`${monitor(serviceId)}/pipeline/metadata`, {
         signal,
         params: { selected_node_id: selectedNodeId },
         redirectOnUnauthorized: false,
@@ -116,22 +117,19 @@ export const pipelinesApi = {
   saveLayout: (id: string, layout: PipelineLayout) =>
     apiUtils
       .put<PipelineLayout>(
-        `${monitor(id)}/pipeline-layout`,
+        `${monitor(id)}/pipeline/layout`,
         layout,
       )
       .then(normalizeLayout),
   activate: (request: PipelineActivationRequest) =>
-    apiUtils.post<PipelineActivationView>(
-      "/v1/monitors/pipeline-activations",
-      request,
-    ),
+    apiUtils.post<PipelineActivationView>(activations, request),
   activation: (id: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineActivationView>(
-      `/v1/monitors/pipeline-activations/${encodeURIComponent(id)}`,
+      `${activations}/${encodeURIComponent(id)}`,
       { signal, redirectOnUnauthorized: false },
     ),
   cancel: (id: string) =>
-    apiUtils.delete<PipelineActivationView>(
-      `/v1/monitors/pipeline-activations/${encodeURIComponent(id)}`,
+    apiUtils.post<PipelineActivationView>(
+      `${activations}/${encodeURIComponent(id)}/cancel`,
     ),
 };

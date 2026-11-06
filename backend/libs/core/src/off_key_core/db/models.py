@@ -345,7 +345,7 @@ class MqttTopic(Base):
 
 
 class MemberFavorite(Base):
-    """An entity, catalogue reading or monitor a member starred."""
+    """A catalogue device or reading, or a monitor, a member starred."""
 
     __tablename__ = "member_favorites"
 
@@ -362,7 +362,7 @@ class MemberFavorite(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('entity', 'reading', 'monitor')", name="ck_member_favorite_kind"
+            "kind IN ('device', 'reading', 'monitor')", name="ck_member_favorite_kind"
         ),
     )
 

@@ -10,9 +10,6 @@ from off_key_tactic_middleware.provider import get_radar_orchestration_service
 
 from tests.support.http import asgi_client
 
-BY_NAME = {"container_name": "radar-1"}
-BY_ID = {"container_id": "abc"}
-
 
 def orchestration(**methods):
     service = AsyncMock()
@@ -38,32 +35,12 @@ async def call(service, method, path, params=None, body=None):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("method", "path"),
-    [("GET", "/radar/services/details/"), ("DELETE", "/radar/services/stop/")],
-)
-@pytest.mark.parametrize(
-    ("params", "detail"),
-    [
-        ({}, "You must provide either container_name or container_id."),
-        (BY_NAME | BY_ID, "Provide only one of container_name or container_id."),
-    ],
-)
-async def test_lookups_need_exactly_one_identifier(method, path, params, detail):
-    service = orchestration()
-    response = await call(service, method, path, params)
-
-    assert (response.status_code, response.json()["detail"]) == (400, detail)
-    assert service.method_calls == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
     ("method", "path", "params", "operation", "outcome", "status"),
     [
-        ("GET", "/radar/services/details/", BY_ID, "get_radar_service", {"id": 1}, 200),
-        ("GET", "/radar/services/details/", BY_ID, "get_radar_service", None, 404),
-        ("DELETE", "/radar/services/stop/", BY_NAME, "stop_radar_service", True, 200),
-        ("DELETE", "/radar/services/stop/", BY_NAME, "stop_radar_service", False, 404),
+        ("GET", "/radar/services/s1", None, "get_radar_service", {"id": 1}, 200),
+        ("GET", "/radar/services/s1", None, "get_radar_service", None, 404),
+        ("POST", "/radar/services/s1/stop", None, "stop_radar_service", True, 200),
+        ("POST", "/radar/services/s1/stop", None, "stop_radar_service", False, 404),
         ("DELETE", "/radar/services/s1", None, "delete_radar_service", True, 200),
         ("DELETE", "/radar/services/s1", None, "delete_radar_service", False, 404),
         ("GET", "/radar/services/", None, "list_radar_services", [], 200),
@@ -82,8 +59,8 @@ async def test_outcomes_map_to_status(method, path, params, operation, outcome, 
     ("method", "path", "params", "operation"),
     [
         ("GET", "/radar/services/", None, "list_radar_services"),
-        ("GET", "/radar/services/details/", BY_ID, "get_radar_service"),
-        ("DELETE", "/radar/services/stop/", BY_ID, "stop_radar_service"),
+        ("GET", "/radar/services/s1", None, "get_radar_service"),
+        ("POST", "/radar/services/s1/stop", None, "stop_radar_service"),
         ("DELETE", "/radar/services/s1", None, "delete_radar_service"),
     ],
 )
@@ -101,8 +78,8 @@ async def test_unexpected_failures_become_500_with_the_cause(
 @pytest.mark.parametrize(
     ("method", "path", "params", "operation"),
     [
-        ("GET", "/radar/services/details/", BY_ID, "get_radar_service"),
-        ("DELETE", "/radar/services/stop/", BY_ID, "stop_radar_service"),
+        ("GET", "/radar/services/s1", None, "get_radar_service"),
+        ("POST", "/radar/services/s1/stop", None, "stop_radar_service"),
         ("DELETE", "/radar/services/s1", None, "delete_radar_service"),
     ],
 )

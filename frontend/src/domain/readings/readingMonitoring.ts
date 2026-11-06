@@ -1,6 +1,7 @@
 import type { TelemetryDataPoint } from "@/types/charger";
 
-export type ReadingMonitoringBinding = { entityId: string; telemetryType: string };
+/** A catalogue reading that records, so it has history to poll. */
+export type ReadingMonitoringBinding = { readingId: string };
 
 export function mergeReadingHistory(
   current: readonly TelemetryDataPoint[],

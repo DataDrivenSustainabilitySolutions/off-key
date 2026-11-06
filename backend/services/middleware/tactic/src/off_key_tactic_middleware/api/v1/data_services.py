@@ -6,133 +6,31 @@ invoke application services, and map domain errors to HTTP responses.
 """
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response
+from off_key_core.schemas.alarms import (
+    Alarm,
+    AlarmCount,
+    AlarmCreate,
+    AlarmPage,
+    AlarmQuery,
+)
 from off_key_core.schemas.favorites import Favorite, FavoriteKind, FavoriteRef
-from off_key_core.schemas.reporting import AnomalyPage, AnomalyQuery
 
-from ...domain import ValidationError
 from ...provider import (
-    get_anomaly_service,
-    get_charger_query_service,
+    get_alarm_service,
     get_favorite_service,
-    get_monitoring_evidence_service,
     get_system_service,
-    get_telemetry_query_service,
     get_user_service,
 )
-from ...schemas import (
-    AnomalyCreateRequest,
-    AnomalyResponse,
-    ChargerResponse,
-    MonitoringChartEvidenceResponse,
-    MonitoringEvidenceResponse,
-    TelemetryDataPoint,
-    TelemetryPaginatedResponse,
-    TelemetryRangePoint,
-    UserLoginRequest,
-)
+from ...schemas import UserLoginRequest
 from ...services.accounts.users import UserService
 from ...services.catalogue.system import SystemService
-from ...services.data import (
-    AnomalyService,
-    ChargerQueryService,
-    FavoriteService,
-    MonitoringEvidenceService,
-    TelemetryQueryService,
-)
+from ...services.data import AlarmService, FavoriteService
 from ..errors import DomainErrorRoute
 
 router = APIRouter(route_class=DomainErrorRoute)
-
-
-@router.get("/chargers", response_model=list[ChargerResponse])
-async def get_chargers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    active_only: bool = Query(False),
-    service: ChargerQueryService = Depends(get_charger_query_service),
-):
-    return await service.list_chargers(
-        skip=skip,
-        limit=limit,
-        active_only=active_only,
-    )
-
-
-@router.get("/chargers/active/ids", response_model=dict)
-async def get_active_charger_ids(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    service: ChargerQueryService = Depends(get_charger_query_service),
-):
-    return await service.list_active_charger_ids(skip=skip, limit=limit)
-
-
-@router.get("/telemetry/{charger_id}/types", response_model=list[str])
-async def get_telemetry_types(
-    charger_id: str,
-    limit: int = Query(100, ge=1, le=1000),
-    service: TelemetryQueryService = Depends(get_telemetry_query_service),
-):
-    return await service.list_types(charger_id=charger_id, limit=limit)
-
-
-@router.get(
-    "/telemetry/{charger_id}",
-    response_model=list[TelemetryDataPoint] | TelemetryPaginatedResponse,
-)
-async def get_telemetry_data(
-    charger_id: str,
-    telemetry_type: str = Query(..., alias="type"),
-    limit: int = Query(1000, ge=1, le=10000),
-    after_timestamp: datetime | None = Query(None),
-    after_created: datetime | None = Query(None),
-    after_event_timestamp: datetime | None = Query(None),
-    paginated: bool = Query(False),
-    service: TelemetryQueryService = Depends(get_telemetry_query_service),
-) -> list[dict[str, Any]] | dict[str, Any]:
-    # response_model on the decorator validates and documents the payload.
-    cursor_values = (after_created, after_event_timestamp)
-    if any(value is not None for value in cursor_values) and not all(
-        value is not None for value in cursor_values
-    ):
-        raise ValidationError("All telemetry live cursor fields are required")
-    if after_timestamp is not None and after_created is not None:
-        raise ValidationError(
-            "Historical and live telemetry cursors cannot be used together"
-        )
-    return await service.get_telemetry_data(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        limit=limit,
-        after_timestamp=after_timestamp,
-        after_created=after_created,
-        after_event_timestamp=after_event_timestamp,
-        paginated=paginated,
-    )
-
-
-@router.get(
-    "/telemetry/{charger_id}/range",
-    response_model=list[TelemetryRangePoint],
-)
-async def get_telemetry_range(
-    charger_id: str,
-    telemetry_type: str = Query(..., alias="type"),
-    start: datetime | None = Query(None),
-    end: datetime | None = Query(None),
-    buckets: int = Query(600, ge=10, le=2000),
-    service: TelemetryQueryService = Depends(get_telemetry_query_service),
-) -> list[dict[str, Any]]:
-    return await service.get_telemetry_range(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        start=start,
-        end=end,
-        buckets=buckets,
-    )
 
 
 @router.post("/auth/login")
@@ -174,104 +72,54 @@ async def remove_user_favorite(
     return Response(status_code=204)
 
 
-@router.get("/anomalies/count")
-async def get_anomaly_count(
-    since: datetime | None = Query(None),
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.get("/alarms", response_model=list[Alarm])
+async def list_alarms(
+    device_id: str | None = Query(None),
+    stream_id: list[str] | None = Query(None),
+    service_id: str | None = Query(None, min_length=1),
+    limit: int = Query(500, ge=1, le=1000),
+    service: AlarmService = Depends(get_alarm_service),
+    system: SystemService = Depends(get_system_service),
 ):
-    count = await service.count_anomalies(since=since)
-    return {"count": count}
-
-
-@router.get(
-    "/monitoring-evidence/{charger_id}",
-    response_model=list[MonitoringEvidenceResponse],
-)
-async def get_monitoring_evidence(
-    charger_id: str,
-    telemetry_type: str | None = Query(None),
-    limit: int = Query(2000, ge=1, le=10000),
-    service: MonitoringEvidenceService = Depends(get_monitoring_evidence_service),
-):
-    return await service.list_evidence(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        limit=limit,
-    )
-
-
-@router.get(
-    "/monitoring-evidence/{charger_id}/chart",
-    response_model=list[MonitoringChartEvidenceResponse],
-)
-async def get_monitoring_chart_evidence(
-    charger_id: str,
-    service_id: str | None = Query(None, min_length=1, max_length=128),
-    after_created: datetime | None = Query(None),
-    after_timestamp: datetime | None = Query(None),
-    after_service_id: str | None = Query(None),
-    after_sequence_number: int | None = Query(None, ge=1),
-    limit: int = Query(2000, ge=1, le=10000),
-    service: MonitoringEvidenceService = Depends(get_monitoring_evidence_service),
-):
-    cursor_values = (
-        after_created,
-        after_timestamp,
-        after_service_id,
-        after_sequence_number,
-    )
-    if any(value is not None for value in cursor_values) and not all(
-        value is not None for value in cursor_values
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="All monitoring evidence cursor fields are required together",
-        )
-    return await service.list_chart_evidence(
-        charger_id=charger_id,
+    return await service.list_alarms(
+        await system.read(),
+        device_id=device_id,
+        stream_ids=stream_id,
         service_id=service_id,
-        after_created=after_created,
-        after_timestamp=after_timestamp,
-        after_service_id=after_service_id,
-        after_sequence_number=after_sequence_number,
         limit=limit,
     )
 
 
-@router.post("/anomalies/query", response_model=AnomalyPage)
-async def query_anomalies(
-    query: AnomalyQuery,
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.get("/alarms/count", response_model=AlarmCount)
+async def count_alarms(
+    since: datetime | None = Query(None),
+    service: AlarmService = Depends(get_alarm_service),
+):
+    return AlarmCount(count=await service.count_alarms(since=since))
+
+
+@router.post("/alarms/query", response_model=AlarmPage)
+async def query_alarms(
+    query: AlarmQuery,
+    service: AlarmService = Depends(get_alarm_service),
     system: SystemService = Depends(get_system_service),
 ):
     return await service.query(query, await system.read())
 
 
-@router.get("/anomalies/{charger_id}", response_model=list[AnomalyResponse])
-async def get_charger_anomalies(
-    charger_id: str,
-    telemetry_type: str | None = Query(None),
-    limit: int = Query(500, ge=1, le=1000),
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.post("/alarms", response_model=Alarm, status_code=201)
+async def create_alarm(
+    alarm: AlarmCreate,
+    service: AlarmService = Depends(get_alarm_service),
+    system: SystemService = Depends(get_system_service),
 ):
-    return await service.list_anomalies(
-        charger_id=charger_id,
-        telemetry_type=telemetry_type,
-        limit=limit,
-    )
+    return await service.create_alarm(alarm, await system.read())
 
 
-@router.post("/anomalies")
-async def create_anomaly(
-    anomaly_data: AnomalyCreateRequest,
-    service: AnomalyService = Depends(get_anomaly_service),
+@router.delete("/alarms/{alarm_id}", status_code=204, response_class=Response)
+async def delete_alarm(
+    alarm_id: str,
+    service: AlarmService = Depends(get_alarm_service),
 ):
-    return await service.create_anomaly(payload=anomaly_data)
-
-
-@router.delete("/anomalies/{anomaly_id}")
-async def delete_anomaly(
-    anomaly_id: str,
-    service: AnomalyService = Depends(get_anomaly_service),
-):
-    return await service.delete_anomaly(anomaly_id=anomaly_id)
+    await service.delete_alarm(alarm_id=alarm_id)
+    return Response(status_code=204)

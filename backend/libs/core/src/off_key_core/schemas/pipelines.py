@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
+from .public_names import public
 
 # The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
 PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
@@ -427,7 +428,9 @@ class PipelineActivationRequest(PipelineModel):
     bindings: dict[str, str]
     display_name: str = Field(min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=1, max_length=128)
-    replace_service_id: str | None = None
+    replace_service_id: str | None = Field(
+        default=None, **public("replace_monitor_id", "replace_service_id")
+    )
 
 
 class PipelineApplyRequest(PipelineModel):
@@ -438,7 +441,9 @@ class PipelineApplyRequest(PipelineModel):
     bindings: dict[str, str] = Field(min_length=1, max_length=100)
     display_name: str = Field(min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=1, max_length=128)
-    replace_service_id: str | None = None
+    replace_service_id: str | None = Field(
+        default=None, **public("replace_monitor_id", "replace_service_id")
+    )
 
     @field_validator("display_name")
     @classmethod
@@ -465,9 +470,11 @@ ActivationPhase = Literal[
 class PipelineActivationView(PipelineModel):
     id: str
     phase: ActivationPhase
-    service_id: str
+    service_id: str = Field(**public("monitor_id", "service_id"))
     run_id: str
-    predecessor_service_id: str | None
+    predecessor_service_id: str | None = Field(
+        **public("predecessor_monitor_id", "predecessor_service_id")
+    )
     error: str | None
     issues: list[PipelineIssue] = Field(default_factory=list, max_length=64)
     created_at: datetime
@@ -500,7 +507,7 @@ class PipelineBindingMetadata(PipelineModel):
 
 class PipelineRunSummary(PipelineModel):
     id: str
-    service_id: str
+    service_id: str = Field(**public("monitor_id", "service_id"))
     revision_id: str | None
     predecessor_run_id: str | None
     status: str
@@ -509,15 +516,77 @@ class PipelineRunSummary(PipelineModel):
     error: str | None = None
 
 
+class _RunProjection(BaseModel):
+    """A saved run as the API shows it; how TACTIC records readings stays inside."""
+
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+
+class PipelineRunInput(_RunProjection):
+    """One input slot of a run and the reading bound to it."""
+
+    slot_id: str
+    reading_id: str
+    unit: str | None = None
+
+
+class PipelineRunExecution(_RunProjection):
+    """What a run executes: its definition and the readings bound to it."""
+
+    schema_version: Literal[1] = 1
+    definition: PipelineDefinition
+    bindings: list[PipelineRunInput]
+    revision_id: str
+    run_id: str
+    fingerprint: str
+
+
+class PipelineRunReading(_RunProjection):
+    """A bound reading as the catalogue described it when the run started."""
+
+    slot_id: str
+    reading_id: str
+    label: str
+    unit: str | None
+    device_id: str | None
+    device_label: str | None = None
+    source_id: str = Field(**public("broker_id", "source_id"))
+    source_label: str = Field(**public("broker_label", "source_label"))
+    collection_policy: CollectionPolicy
+
+    @model_validator(mode="before")
+    @classmethod
+    def device_label_from_entity(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "entity_label" in value:
+            value = dict(value)
+            label = value.pop("entity_label")
+            if value.get("device_id") is not None:
+                value.setdefault("device_label", label)
+        return value
+
+
+class PipelineRunBindings(_RunProjection):
+    """The catalogue and recording revisions a run was bound against."""
+
+    schema_version: Literal[1] = 1
+    system_revision: int | None = Field(
+        **public("catalogue_revision", "system_revision")
+    )
+    collection_revision: int
+    readings: list[PipelineRunReading]
+
+
 class PipelineRunView(PipelineRunSummary):
     pipeline_id: str | None = None
-    execution: PipelineExecutionConfig | None
-    binding_metadata: PipelineBindingMetadata | None = None
+    execution: PipelineRunExecution | None
+    binding_metadata: PipelineRunBindings | None = None
 
 
 class PipelineHistoryPage(PipelineModel):
     items: list[PipelineRunSummary] = Field(max_length=100)
-    next_service_id: str | None = None
+    next_service_id: str | None = Field(
+        default=None, **public("next_monitor_id", "next_service_id")
+    )
 
 
 MAX_TIMELINE_EVENTS = 500
@@ -541,7 +610,7 @@ class PipelineRunTimeline(PipelineModel):
     """
 
     run_id: str
-    service_id: str
+    service_id: str = Field(**public("monitor_id", "service_id"))
     status: str
     error: str | None = None
     created_at: datetime
@@ -554,17 +623,55 @@ class PipelineRunTimeline(PipelineModel):
 class PipelineServiceView(PipelineModel):
     run: PipelineRunView | None
     history: list[PipelineRunSummary] = Field(max_length=100)
-    history_next_service_id: str | None = None
+    history_next_service_id: str | None = Field(
+        default=None,
+        **public("history_next_monitor_id", "history_next_service_id"),
+    )
     definition: PipelineDefinition
     layout: PipelineLayout
     legacy: bool = False
     validation: PipelineValidationReport | None = None
 
 
+class MonitorSummary(BaseModel):
+    """A monitor as the API shows it; container and Docker details stay inside."""
+
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+    id: str
+    display_name: str | None = None
+    monitoring_strategy: str | None = None
+    model_type: str | None = None
+    stream_ids: list[str] = Field(
+        default_factory=list,
+        description="Catalogue readings the monitor watches.",
+        **public("reading_ids", "stream_ids"),
+    )
+    status: bool = Field(
+        description="True while the monitor should run; false once stopped.",
+        **public("active", "status"),
+    )
+    operational_status: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+    @field_validator("stream_ids", mode="before")
+    @classmethod
+    def no_readings(cls, value: Any) -> Any:
+        return [] if value is None else value
+
+
+class MonitorDetail(MonitorSummary):
+    """One monitor with the configuration it was started with."""
+
+    configuration: dict[str, Any] = Field(default_factory=dict)
+
+
 class PipelineWorkspace(PipelineModel):
-    services: list[dict[str, Any]]
+    services: list[MonitorSummary] = Field(**public("monitors", "services"))
     authoring_enabled: bool
-    selected_service_id: str | None = None
+    selected_service_id: str | None = Field(
+        default=None, **public("selected_monitor_id", "selected_service_id")
+    )
     pipeline_state: dict[str, Any] | None = None
 
 

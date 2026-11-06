@@ -19,7 +19,7 @@ export function WorkspaceCatalogue({ onDismiss }: { onDismiss?: () => void }) {
   const deferredQuery = useDeferredValue(query);
   const current = index.nodes.get(scopeKey);
   const group = document.groups.find(item => scopeKey === `catalogue:${item.id}`);
-  const labels = useMemo(() => new Map(document.streams.map(stream => [stream.id, stream.label])), [document.streams]);
+  const labels = useMemo(() => new Map(document.readings.map(stream => [stream.id, stream.label])), [document.readings]);
   const rows = useMemo(() => {
     if (deferredQuery.trim()) return searchNavigation(visibleIndex, deferredQuery).map(node => ({ node,
       label: node.entityKind === "stream" ? labels.get(node.objectId ?? "") ?? node.label : node.label,

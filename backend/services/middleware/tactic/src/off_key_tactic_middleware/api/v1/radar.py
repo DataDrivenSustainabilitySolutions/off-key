@@ -1,8 +1,8 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
+from off_key_core.schemas.radar import MonitorSetup, RadarServiceLabel
 from pydantic import BaseModel
 
 from ...domain import DomainError
@@ -22,20 +22,7 @@ class RadarServiceResponse(BaseModel):
     activation_id: str
     container_name: str
     status: str
-    mqtt_topics: list[str]
-
-
-def _require_one_identifier(container_name: str | None, container_id: str | None):
-    if not container_name and not container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="You must provide either container_name or container_id.",
-        )
-    if container_name and container_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Provide only one of container_name or container_id.",
-        )
+    reading_ids: list[str]
 
 
 @router.get("/radar/services/", response_model=list[dict[str, Any]])
@@ -66,11 +53,11 @@ async def list_radar_services(
     status_code=202,
 )
 async def start_radar_service(
-    config: FormMonitorConfig, start_form_monitor=Depends(get_form_monitor_starter)
+    setup: MonitorSetup, start_form_monitor=Depends(get_form_monitor_starter)
 ):
-    """Start a monitor configured with a setup form as an equivalent pipeline."""
+    """Start a monitor set up with the forms as an equivalent pipeline."""
     try:
-        activation = await start_form_monitor(config)
+        activation = await start_form_monitor(setup)
     except DomainError as exc:
         raise http_error(exc) from exc
     return {
@@ -78,23 +65,18 @@ async def start_radar_service(
         "activation_id": activation.id,
         "container_name": f"pipeline-{activation.service_id}",
         "status": activation.phase,
-        "mqtt_topics": config.mqtt_topics,
+        "reading_ids": setup.reading_ids,
     }
 
 
-@router.get("/radar/services/details/", response_model=dict[str, Any])
+@router.get("/radar/services/{service_id}", response_model=dict[str, Any])
 async def get_radar_service_details(
-    container_name: str | None = Query(default=None),
-    container_id: str | None = Query(default=None),
+    service_id: str,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
-    """
-    Gets details for a specific RADAR service by container name or ID.
-    """
-    _require_one_identifier(container_name, container_id)
-
+    """One RADAR service by its id."""
     try:
-        service_detail = await service.get_radar_service(container_name, container_id)
+        service_detail = await service.get_radar_service(service_id)
 
         if not service_detail:
             raise HTTPException(status_code=404, detail="RADAR service not found")
@@ -108,34 +90,22 @@ async def get_radar_service_details(
         ) from e
 
 
-@router.delete("/radar/services/stop/")
+@router.post("/radar/services/{service_id}/stop")
 async def stop_radar_service(
-    container_name: str | None = Query(default=None),
-    container_id: str | None = Query(default=None),
+    service_id: str,
     service: RadarOrchestrationService = Depends(get_radar_orchestration_service),
 ):
-    """
-    Stops and removes a running RADAR Docker service.
-    Updates the corresponding record in the database.
-    """
-    _require_one_identifier(container_name, container_id)
-
+    """Stop a RADAR service and remove its workload; the record is retired."""
     try:
-        lookup_target = container_name or container_id
-        success = await service.stop_radar_service(container_name, container_id)
+        success = await service.stop_radar_service(service_id)
 
         if not success:
             raise HTTPException(
                 status_code=404,
-                detail=f"RADAR service '{lookup_target}'"
-                f" not found or could not be stopped",
+                detail=f"RADAR service '{service_id}' was not found or not stopped",
             )
 
-        return {
-            "status": "stopped",
-            "message": f"RADAR service '{lookup_target}'"
-            f" stopped and deleted successfully",
-        }
+        return {"status": "stopped", "service_id": service_id}
     except (HTTPException, DeploymentInProgressError):
         raise
     except Exception as e:

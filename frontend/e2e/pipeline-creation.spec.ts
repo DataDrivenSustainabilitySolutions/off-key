@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import type { PipelineCatalog, PipelineView } from "../src/types/pipelines.generated";
-import { addTestCharger, fixtureEntityId, removeTestCharger } from "./helpers/collection";
+import { addTestCharger, fixtureTarget, removeTestCharger } from "./helpers/collection";
 import { archivePipelines, openPipelineWorkspace } from "./helpers/pipelines";
 import { openPipelineInput, openPipelineSettings, savePipelineTemplate } from "./helpers/pipelineNavigation";
 import { accessToken } from "./helpers/auth";
@@ -14,11 +14,11 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
   const headers = { Authorization: `Bearer ${token}` };
   const deviceId = randomUUID();
   const templateIds = new Set<string>();
-  const endpoint = "/api/v1/monitors/pipelines";
+  const endpoint = "/api/v1/pipelines";
   try {
     await addTestCharger(page.request, token, deviceId, deviceId, ["AC1", "AC2", "AC3"]);
     await page.setViewportSize({ width: 1600, height: 1100 });
-    await page.goto(`/?create=monitoring&target=${fixtureEntityId(deviceId)}`);
+    await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
     const setupUrl = page.url();
     const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
     await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Two phases ${deviceId}`);
@@ -107,7 +107,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
     const token = (await accessToken(page))!;
     const headers = { Authorization: `Bearer ${token}` };
     const deviceId = randomUUID();
-    const endpoint = "/api/v1/monitors/pipelines";
+    const endpoint = "/api/v1/pipelines";
     const createdIds = new Set<string>();
     let creates = 0;
     let release!: () => void; let submitted!: () => void;
@@ -116,7 +116,7 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
     page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === endpoint) creates++; });
     try {
       await addTestCharger(page.request, token, deviceId, deviceId, ["voltage"], { mode: "off", interval_seconds: 10 });
-      await page.goto(`/?create=monitoring&target=${fixtureEntityId(deviceId)}`);
+      await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
       const workbench = page.getByRole("region", { name: "Monitoring workbench", exact: true });
       await workbench.getByRole("textbox", { name: "Service name", exact: true }).fill(`Service ${deviceId}`);
       await openPipelineSettings(workbench, "Component");
@@ -175,11 +175,11 @@ for (const acknowledgement of ["after returning", "while in Sources"] as const) 
 test("loads the saved template, saves an independent copy, and fits desktop and mobile layouts", async ({ page }, testInfo) => {
   await openPipelineWorkspace(page);
   const headers = { Authorization: `Bearer ${(await accessToken(page))!}` };
-  const endpoint = "/api/v1/monitors/pipelines";
+  const endpoint = "/api/v1/pipelines";
   const ids: string[] = [];
   const unique = randomUUID();
   try {
-    const catalog = await (await page.request.get(`${endpoint}/catalog`, { headers })).json() as PipelineCatalog;
+    const catalog = await (await page.request.get("/api/v1/pipeline-components", { headers })).json() as PipelineCatalog;
     const definition = structuredClone(catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!.definition);
     definition.input_slots = [{ id: "voltage", label: "Voltage", unit: "V" }];
     const response = await page.request.post(endpoint, { headers, data: { name: `Reusable ${unique}`, definition } });

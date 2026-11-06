@@ -11,9 +11,10 @@ import Reporting from "@/pages/Anomalies";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
 import { createDefaultExplorerPreferences, loadExplorerPreferences, saveExplorerPreferences } from "@/features/workspace/preferences";
 import { createEmptySystem } from "@/domain/system/systemDocument";
-import type { AnomalyPage, AnomalyQuery, ReportedAnomaly } from "@/types/charger";
+import type { Alarm, AlarmPage, AlarmQuery } from "@/types/charger";
 import type { ActiveService } from "@/types/monitoring";
 import type { SystemDocument, SystemSnapshot } from "@/types/system";
+import { alarm } from "./support/fixtures/monitoring";
 import { mqttConnection } from "./support/fixtures/system";
 
 const everything = ["manage_sources", "manage_monitors", "manage_alarms", "manage_members"];
@@ -40,16 +41,15 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 const fixture = (): SystemDocument => ({
   ...createEmptySystem(), label: "North building",
-  connections: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.example.test" })],
-  devices: [{ id: "station", label: "Room station", kind: "sensor", connection_id: "broker" }],
-  streams: ["temperature", "humidity"].map((id) => ({ id, label: id === "temperature" ? "Air temperature" : "Relative humidity", connection_id: "broker", device_id: "station", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
+  brokers: [mqttConnection({ id: "broker", label: "Building broker", host: "broker.example.test" })],
+  devices: [{ id: "station", label: "Room station", kind: "sensor", broker_id: "broker" }],
+  readings: ["temperature", "humidity"].map((id) => ({ id, label: id === "temperature" ? "Air temperature" : "Relative humidity", broker_id: "broker", device_id: "station", topic: `weather/${id}`, value_type: "number", category: "Environment" })),
   groups: [{ id: "roof", label: "Roof", member_ids: ["station", "temperature"] }],
 });
 const snapshot = (document = fixture(), revision = 7, canEdit = true): SystemSnapshot => ({
   document, revision, can_edit: canEdit, storage_origin: "saved",
   runtime: { mode: "configured_only", message: "Configuration only", collection_revision: 1, collection: { revision: 1, status: "applied" },
-    bindings: Object.fromEntries(["temperature", "humidity"].map(id => [id, { connection_id: "broker", entity_id: "room-input", telemetry_key: id,
-      accepted_topic: `telemetry/room-input/${id}`, policy: { mode: "off", interval_seconds: 10 } }])) },
+    bindings: Object.fromEntries(["temperature", "humidity"].map(id => [id, { broker_id: "broker", policy: { mode: "off", interval_seconds: 10 } }])) },
 });
 function Location() { return <output data-testid="location">{useLocation().search}</output>; }
 function makeRouter(path = "/") {
@@ -93,21 +93,21 @@ beforeAll(async () => {
   await import("@/features/pipelines/PipelineWorkspace");
 });
 
-const emptyReport: AnomalyPage = { items: [], next: null, summary: { count: 0, entities: 0, latest: null }, readings: [], unknown_stream_ids: [] };
+const emptyReport: AlarmPage = { items: [], next: null, summary: { count: 0, devices: 0, latest: null }, readings: [], unknown_reading_ids: [] };
 
 beforeEach(() => {
   auth.userId = 1; auth.isAuthenticated = true; auth.permissions = everything;
   clearNavigationDrafts();
-  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot() : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
   vi.mocked(apiUtils.put).mockImplementation(async (_endpoint, payload) => snapshot((payload as { document: SystemDocument }).document, 8));
-  vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/anomalies/query" ? emptyReport : {});
+  vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/alarms/query" ? emptyReport : {});
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => window.setTimeout(callback, 0));
   vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
 });
 
-const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, container_id: `workload-${id}`, container_name: `monitor-${id}`, display_name: name,
-  mqtt_topics: ["telemetry/room-input/temperature"], stream_ids: ["temperature"], status: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
+const service = (id = "service-one", name = "Room climate"): ActiveService => ({ id, display_name: name,
+  reading_ids: ["temperature"], active: true, monitoring_strategy: "adaptive_stream", model_type: "aberrant_knn",
   operational_status: { stage: "operational", is_stale: false, message_count: 120, processed_message_count: 118, updated_at: "2026-10-11T10:00:00Z" } });
 /** The account's favourites on a fake server; call after `withServices`. */
 function favouritesServer() {
@@ -123,41 +123,41 @@ function favouritesServer() {
   return items;
 }
 function withServices(services: ActiveService[]) {
-  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot()
-    : endpoint.startsWith("/v1/monitors/workspace") ? { services: [...services], authoring_enabled: false } : endpoint.startsWith("/v1/monitors?") ? { configuration: { monitoring: {}, performance_config: {} } } : []);
+  vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot()
+    : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [...services], authoring_enabled: false } : /^\/v1\/monitors\/service-[a-z]+$/.test(endpoint) ? { configuration: { monitoring: {}, performance_config: {} } } : []);
 }
 
 describe("service-centred monitoring workspace", () => {
   it("waits for the catalogue before initializing a visual creation draft", async () => {
     let acceptSystem!: (value: SystemSnapshot) => void;
-    let acceptWorkspace!: (value: { services: ActiveService[]; authoring_enabled: boolean }) => void;
+    let acceptWorkspace!: (value: { monitors: ActiveService[]; authoring_enabled: boolean }) => void;
     const systemPending = new Promise<SystemSnapshot>((resolve) => { acceptSystem = resolve; });
-    const workspacePending = new Promise<{ services: ActiveService[]; authoring_enabled: boolean }>((resolve) => { acceptWorkspace = resolve; });
+    const workspacePending = new Promise<{ monitors: ActiveService[]; authoring_enabled: boolean }>((resolve) => { acceptWorkspace = resolve; });
     const catalogPending = new Promise<never>(() => {});
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? systemPending
-      : endpoint.startsWith("/v1/monitors/workspace") ? workspacePending
-      : endpoint === "/v1/monitors/pipelines/catalog" ? catalogPending : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? systemPending
+      : endpoint.startsWith("/v1/monitors/overview") ? workspacePending
+      : endpoint === "/v1/pipeline-components" ? catalogPending : []);
     mount("/?create=monitoring&target=room-input");
     await screen.findByText("Opening monitoring setup…", { exact: true });
-    await act(async () => { acceptWorkspace({ services: [], authoring_enabled: true }); });
+    await act(async () => { acceptWorkspace({ monitors: [], authoring_enabled: true }); });
     expect(screen.getByText("Opening monitoring setup…", { exact: true })).toBeTruthy();
-    expect(apiUtils.get).not.toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything());
+    expect(apiUtils.get).not.toHaveBeenCalledWith("/v1/pipeline-components", expect.anything());
     await act(async () => { acceptSystem(snapshot()); });
-    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/pipelines/catalog", expect.anything()));
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledWith("/v1/pipeline-components", expect.anything()));
   });
 
   it("offers only receiving entities in the input picker, including the exact broker and entity labels", async () => {
     const current = snapshot();
-    current.document.devices.push({ id: "quiet", label: "Quiet charger", kind: "charger", connection_id: "broker" });
-    current.document.streams.push({ id: "quiet-reading", label: "Quiet voltage", connection_id: "broker", device_id: "quiet", topic: "quiet/voltage", value_type: "number", category: "Test" });
+    current.document.devices.push({ id: "quiet", label: "Quiet charger", kind: "charger", broker_id: "broker" });
+    current.document.readings.push({ id: "quiet-reading", label: "Quiet voltage", broker_id: "broker", device_id: "quiet", topic: "quiet/voltage", value_type: "number", category: "Test" });
     current.runtime.mode = "collection";
     current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
-    current.runtime.bindings!["quiet-reading"] = { entity_id: "quiet-input", connection_id: "broker", telemetry_key: "voltage", accepted_topic: "telemetry/quiet/voltage", policy: { mode: "original", interval_seconds: 10 } };
+    current.runtime.bindings!["quiet-reading"] = { broker_id: "broker", policy: { mode: "original", interval_seconds: 10 } };
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
     current.runtime.latest_readings = { "quiet-reading": { value: 230, received_at: new Date().toISOString(), is_snapshot: true } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? current
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     // The role shows Create at once; it is enabled once the catalogue and monitors have loaded.
     const create = await screen.findByRole("button", { name: /^Create$/ });
@@ -187,8 +187,8 @@ describe("service-centred monitoring workspace", () => {
     current.runtime.mode = "collection";
     current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } }, readings: {} };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? current
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount("/?create=monitoring&reading=temperature");
     const picker = await screen.findByRole("button", { name: "Choose monitoring inputs" });
     fireEvent.click(picker);
@@ -210,8 +210,8 @@ describe("service-centred monitoring workspace", () => {
     current.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 3600 };
     current.runtime.ingress = { revision: 1, status: "applied", sources: { broker: { state: "connected" } },
       readings: { temperature: { fresh_received_at: new Date().toISOString() } } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? current
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? current
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount("/?reading=humidity");
     await loaded();
     const sidebar = within(screen.getByRole("navigation", { name: "System explorer" }));
@@ -233,25 +233,25 @@ describe("service-centred monitoring workspace", () => {
     expect(await sidebar.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe(location);
     expect(apiUtils.put).not.toHaveBeenCalled();
-    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/system/live/leases", expect.anything(), expect.anything());
+    expect(apiUtils.post).not.toHaveBeenCalledWith("/v1/live/views", expect.anything(), expect.anything());
   });
 
   it("keeps sibling topics in the live preview when one topic is selected", async () => {
-    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/system/live/leases"
-      ? { lease_id: "lease", telemetry: { sequence: 0, connections: [], streams: [] } } : {});
+    vi.mocked(apiUtils.post).mockImplementation(async endpoint => endpoint === "/v1/live/views"
+      ? { view_id: "lease", measurements: { sequence: 0, brokers: [], readings: [] } } : {});
     mount("/?reading=temperature");
     await loaded();
     fireEvent.click(await screen.findByRole("button", { name: "View live" }));
-    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/live/leases",
-      expect.objectContaining({ stream_ids: ["humidity", "temperature"] }), expect.anything()));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledWith("/v1/live/views",
+      expect.objectContaining({ reading_ids: ["humidity", "temperature"] }), expect.anything()));
   });
 
   it("identifies stale inputs separately from a current runtime heartbeat", async () => {
     const monitor = service();
     monitor.operational_status.activity = {
       freshness_seconds: 30, last_input_at: "2026-10-11T10:00:00Z",
-      last_inference_at: "2026-10-11T09:59:00Z", stale_sensors: ["temperature"],
-      missing_sensors: [], inputs_stalled: true, inference_stalled: true,
+      last_inference_at: "2026-10-11T09:59:00Z", stale_reading_ids: ["temperature"],
+      missing_reading_ids: [], inputs_stalled: true, inference_stalled: true,
       persistence_stalled: false,
     };
     withServices([monitor]);
@@ -281,7 +281,7 @@ describe("service-centred monitoring workspace", () => {
   });
 
   it("keeps the same catalogue DOM, search, scroll and source selection across all sections", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]);
+    withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]);
     const { router } = mount();
     await loaded();
     const sidebar = screen.getByRole("navigation", { name: "System explorer" });
@@ -304,7 +304,7 @@ describe("service-centred monitoring workspace", () => {
       expect(new URLSearchParams(router.state.location.search).get("source")).toBe(selection);
       expect(within(sidebar).getByRole("button", { name: "Room station, open" }).getAttribute("aria-current")).toBe("true");
     }
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/catalogue")).toHaveLength(1);
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -331,9 +331,9 @@ describe("service-centred monitoring workspace", () => {
     const saved = snapshot();
     saved.runtime.collection!.status = "applying";
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved
-      : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false }
-      : endpoint === "/v1/monitors/models" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved
+      : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false }
+      : endpoint === "/v1/detectors" ? { aberrant_online_isolation_forest: { strategy: "adaptive_stream", parameters: { properties: {} } } } : []);
     vi.mocked(apiUtils.post).mockResolvedValue({ revision: saved.revision, runtime: { ...saved.runtime, collection: { revision: 1, status: "applied" } } });
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     mount("/?create=monitoring&reading=temperature");
@@ -343,7 +343,7 @@ describe("service-centred monitoring workspace", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
     expect(screen.queryByText("Waiting for recording settings to apply.")).toBeNull();
-    expect(apiUtils.post).toHaveBeenCalledWith("/v1/system/collection/status", { stream_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.post).toHaveBeenCalledWith("/v1/recording/status", { reading_ids: ["temperature", "humidity"] }, expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
 
@@ -351,26 +351,26 @@ describe("service-centred monitoring workspace", () => {
     const saved = snapshot();
     saved.runtime.bindings!.temperature!.policy = { mode: "sample", interval_seconds: 10 };
     saved.runtime.ingress = { sources: { broker: { state: "connected" } } };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? saved : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? saved : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
     expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
-    expect(vi.mocked(apiUtils.post).mock.calls.some(([endpoint]) => endpoint === "/v1/system/live/leases")).toBe(false);
+    expect(vi.mocked(apiUtils.post).mock.calls.some(([endpoint]) => endpoint === "/v1/live/views")).toBe(false);
   });
   it("shows monitors by default without starting telemetry or enabling collection, and keeps service selection in the URL", async () => {
     withServices([service()]); mount();
     fireEvent.click(await screen.findByRole("link", { name: "Room climate" }));
     expect(await screen.findByRole("region", { name: "Monitoring service details" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("?service=service-one");
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors?container_name=monitor-service-one", expect.anything());
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/service-one", expect.anything());
     expect(vi.mocked(apiUtils.get).mock.calls.some(([path]) => path.includes("/data?") || path.includes("/evidence/"))).toBe(false);
     expect(apiUtils.post).not.toHaveBeenCalled(); expect(apiUtils.put).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
   });
 
   it("searches service inputs, scopes rows to a catalogue branch, and returns home without losing the sidebar position", async () => {
-    withServices([service(), { ...service("other", "Other service"), mqtt_topics: ["unmapped/input"], stream_ids: [] }]); mount();
+    withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]); mount();
     await screen.findByRole("link", { name: "Other service" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "temperature" } });
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
@@ -413,8 +413,8 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.change(within(details).getByRole("textbox", { name: "Rename service" }), { target: { value: "Climate monitor" } });
     fireEvent.blur(within(details).getByRole("textbox", { name: "Rename service" }));
     await waitFor(() => expect(within(details).getByRole("button", { name: "Rename service" }).textContent).toBe("Climate monitor"));
-    expect(apiUtils.patch).toHaveBeenCalledExactlyOnceWith("/v1/monitors/service-one/label", { display_name: "Climate monitor" });
-    expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.container_name).toBe("monitor-service-one");
+    expect(apiUtils.patch).toHaveBeenCalledExactlyOnceWith("/v1/monitors/service-one", { display_name: "Climate monitor" });
+    expect(screen.queryByText("Name saved.")).toBeNull(); expect(saved[0]?.id).toBe("service-one");
     view.unmount(); mount();
     expect(await screen.findByRole("link", { name: "Climate monitor" })).toBeTruthy();
     expect((await screen.findByRole("button", { name: "Favourites 1" })).getAttribute("aria-pressed")).toBe("true");
@@ -438,7 +438,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.keyDown(screen.getByRole("separator", { name: "Resize explorer sidebar" }), { key: "ArrowRight", shiftKey: true });
     expect(screen.getByRole("region", { name: "Reading preview" })).toBe(preview);
     await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(352));
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/system")).toHaveLength(1);
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/catalogue")).toHaveLength(1);
     expect(apiUtils.put).not.toHaveBeenCalled();
     first.unmount();
     mount();
@@ -473,7 +473,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     view.unmount();
     mount("/?entity=missing");
-    expect(await screen.findByText("Entity not found.")).toBeTruthy();
+    expect(await screen.findByText("Device not found.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     expect(apiUtils.put).not.toHaveBeenCalled();
   });
@@ -502,8 +502,8 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
     expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
-    expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/system")).toHaveLength(1);
-    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/workspace", expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/catalogue")).toHaveLength(1);
+    expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/overview", expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiUtils.put).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
@@ -530,9 +530,9 @@ describe("hierarchical explorer workspace", () => {
     await waitFor(() => expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature"));
     expect(apiUtils.put).toHaveBeenCalledOnce();
     const request = vi.mocked(apiUtils.put).mock.calls[0]!;
-    expect(request[0]).toBe("/v1/system");
+    expect(request[0]).toBe("/v1/catalogue");
     expect(request[1]).toMatchObject({ expected_revision: 7 });
-    expect((request[1] as { document: SystemDocument }).document.streams.find((stream) => stream.id === "temperature"))
+    expect((request[1] as { document: SystemDocument }).document.readings.find((stream) => stream.id === "temperature"))
       .toMatchObject({ id: "temperature", label: "Room temperature", topic: "weather/temperature" });
     expect((request[1] as { document: SystemDocument }).document.groups).toEqual(fixture().groups);
   });
@@ -578,7 +578,7 @@ describe("hierarchical explorer workspace", () => {
     expect(screen.queryByRole("button", { name: "Building broker, open" })).toBeNull();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     auth.userId = 2;
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     second.rerender(<RouterProvider router={makeRouter()} />);
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
@@ -602,7 +602,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("lets read-only users inspect signals without structural controls", async () => {
     auth.permissions = [];
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
@@ -615,7 +615,7 @@ describe("hierarchical explorer workspace", () => {
 
   it("offers monitor creation to a role that manages monitors but not sources", async () => {
     auth.permissions = ["manage_monitors"];
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/workspace") ? { services: [], authoring_enabled: false } : []);
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot(fixture(), 7, false) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount();
     const preview = await selectTemperature();
     expect(within(preview).queryByRole("button", { name: "Rename reading" })).toBeNull();
@@ -691,7 +691,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [fileFor(imported)] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
-    expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/system", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
+    expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/catalogue", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
@@ -720,26 +720,27 @@ describe("hierarchical explorer workspace", () => {
 describe("reporting", () => {
   const yesterday = () => { const date = new Date(); date.setDate(date.getDate() - 1); date.setHours(12, 0, 0, 0); return date.toISOString(); };
   const labels: Record<string, string> = { temperature: "Air temperature", humidity: "Relative humidity" };
-  const reports = (): ReportedAnomaly[] => [
-    { anomaly_id: "new", charger_id: "room-input", timestamp: new Date(Date.now() - 1000).toISOString(), telemetry_type: "temperature", anomaly_type: "Temperature spike", anomaly_value: 0.0005, value_type: "tail_pvalue", sensor_set: ["temperature"] },
-    { anomaly_id: "old", charger_id: "room-input", timestamp: yesterday(), telemetry_type: "humidity", anomaly_type: "Humidity drift", anomaly_value: 0.02, value_type: "tail_pvalue", sensor_set: ["humidity"] },
-  ].map(item => ({ ...item, entity_label: "Room station", telemetry_label: labels[item.telemetry_type]!,
-    readings: item.sensor_set.map(key => ({ key, label: labels[key]! })) }) as ReportedAnomaly);
+  const reading = (id: string, deviceId: string | null = "station", deviceLabel = "Room station") =>
+    ({ device_id: deviceId, device_label: deviceLabel, reading_ids: [id], reading_labels: { [id]: labels[id] ?? id } });
+  const reports = (): Alarm[] => [
+    alarm({ alarm_id: "new", timestamp: new Date(Date.now() - 1000).toISOString(), ...reading("temperature"), alarm_type: "Temperature spike", value: 0.0005 }),
+    alarm({ alarm_id: "old", timestamp: yesterday(), ...reading("humidity"), alarm_type: "Humidity drift", value: 0.02 }),
+  ];
   /** Stands in for the server: it applies the reading and p-value filters. */
-  const answer = (items: ReportedAnomaly[], query: AnomalyQuery): AnomalyPage => {
-    const matches = items.filter(item => (!query.reading || item.readings.some(reading => reading.key === query.reading!.telemetry_key))
-      && (query.max_p_value === undefined || item.anomaly_value <= query.max_p_value));
+  const answer = (items: Alarm[], query: AlarmQuery): AlarmPage => {
+    const matches = items.filter(item => (!query.reading_id || item.reading_ids.includes(query.reading_id))
+      && (query.max_p_value === undefined || item.value <= query.max_p_value));
     return {
-      items: matches, next: null, unknown_stream_ids: [],
-      summary: { count: matches.length, entities: new Set(matches.map(item => item.charger_id)).size, latest: matches[0]?.timestamp ?? null },
-      readings: items.flatMap(item => item.readings.map(reading => ({ charger_id: item.charger_id, telemetry_key: reading.key,
-        entity_label: item.entity_label, label: reading.label, count: 1 }))),
+      items: matches, next: null, unknown_reading_ids: [],
+      summary: { count: matches.length, devices: new Set(matches.map(item => item.device_label)).size, latest: matches[0]?.timestamp ?? null },
+      readings: items.flatMap(item => item.reading_ids.map(id => ({ reading_id: id, device_id: item.device_id,
+        device_label: item.device_label, label: item.reading_labels[id]!, count: 1 }))),
     };
   };
-  function withReports(items = reports()) {
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
+  function withReports(items = reports(), document = fixture()) {
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot(document) : []);
     vi.mocked(apiUtils.post).mockImplementation(async (endpoint, query) =>
-      endpoint === "/v1/anomalies/query" ? answer(items, query as AnomalyQuery) : {});
+      endpoint === "/v1/alarms/query" ? answer(items, query as AlarmQuery) : {});
   }
 
   it("groups events by day under catalogue labels and narrows them with filters", async () => {
@@ -748,36 +749,37 @@ describe("reporting", () => {
     const events = await screen.findByRole("region", { name: "Anomaly events" });
     await within(events).findByText("Temperature spike");
     expect(vi.mocked(apiUtils.get).mock.calls.map(([endpoint]) => endpoint)
-      .filter(endpoint => endpoint.startsWith("/v1/anomalies") || endpoint.startsWith("/v1/chargers"))).toEqual([]);
-    expect(vi.mocked(apiUtils.post).mock.lastCall?.slice(0, 2)).toEqual(["/v1/anomalies/query", { limit: 500 }]);
+      .filter(endpoint => endpoint.startsWith("/v1/alarms"))).toEqual([]);
+    expect(vi.mocked(apiUtils.post).mock.lastCall?.slice(0, 2)).toEqual(["/v1/alarms/query", { limit: 500 }]);
     const days = within(events).getAllByRole("rowgroup").map(group => group.querySelector(".rp-day th")?.textContent).filter(Boolean);
     expect(days).toEqual(items.map(item => formatDay(item.timestamp)));
-    // Recorded identities read as catalogue names, newest first.
+    // Alarms read under catalogue names, newest first.
     const rows = events.querySelectorAll(".rp-row");
     expect([...rows].map(row => row.querySelector(".rp-type")?.textContent)).toEqual(["Temperature spike", "Humidity drift"]);
     expect(rows[0]?.querySelector(".rp-entity")?.textContent).toBe("Room station");
     expect(rows[0]?.querySelector(".rp-reading")?.textContent).toBe("Air temperature");
     expect(rows[0]?.querySelector(".rp-signal")?.textContent).toBe("p 0.0005");
     expect(screen.getByText("Last anomaly").parentElement?.textContent).toContain("just now");
+    expect(screen.getByText("Affected devices").parentElement?.textContent).toContain("1");
     fireEvent.change(within(events).getByRole("combobox", { name: "p-value" }), { target: { value: "0.001" } });
     await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("1 event"));
     expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({ limit: 500, max_p_value: 0.001 });
     expect(within(events).queryByText("Humidity drift")).toBeNull();
-    fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "room-input\u0000humidity" } });
+    fireEvent.change(within(events).getByRole("combobox", { name: "Reading" }), { target: { value: "humidity" } });
     expect(await within(events).findByText("No events match these filters.", { exact: false })).toBeTruthy();
     expect(vi.mocked(apiUtils.post).mock.lastCall?.[1]).toEqual({
-      limit: 500, max_p_value: 0.001, reading: { charger_id: "room-input", telemetry_key: "humidity" } });
+      limit: 500, max_p_value: 0.001, reading_id: "humidity" });
     fireEvent.click(within(events).getByRole("button", { name: "Clear filters" }));
     await waitFor(() => expect(within(events).getByRole("status").textContent).toBe("2 events"));
   });
 
   it("loads older events with the cursor of the same query", async () => {
     const [newest, older] = reports();
-    const cursor = { timestamp: newest!.timestamp, anomaly_id: newest!.anomaly_id };
-    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/system" ? snapshot() : []);
+    const cursor = { timestamp: newest!.timestamp, alarm_id: newest!.alarm_id };
+    vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot() : []);
     vi.mocked(apiUtils.post).mockImplementation(async (_endpoint, query) => {
       const page = answer([newest!, older!], {});
-      return (query as AnomalyQuery).before
+      return (query as AlarmQuery).before
         ? { ...page, items: [older!], next: null }
         : { ...page, items: [newest!], next: cursor };
     });
@@ -797,7 +799,30 @@ describe("reporting", () => {
     await screen.findByText("Temperature spike");
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Device readings", "Copy event ID"]);
+  });
+
+  it("names devices and brokers, labels readings by device, and opens each one's details", async () => {
+    const document = fixture();
+    // Readings of the broker without a device.
+    document.readings.push(...["wind", "rain"].map(id => ({ id, label: id === "wind" ? "Wind" : "Rain", broker_id: "broker",
+      topic: `weather/${id}`, value_type: "number" as const, category: "Environment" })));
+    const items = [...reports(), alarm({ alarm_id: "gust", timestamp: yesterday(), device_id: null, device_label: "Building broker",
+      reading_ids: ["wind", "rain"], reading_labels: { wind: "Wind", rain: "Rain" }, alarm_type: "Gust", multivariate: true })];
+    withReports(items, document);
+    const { router } = mount("/anomalies");
+    const events = await screen.findByRole("region", { name: "Anomaly events" });
+    await within(events).findByText("Gust");
+    const options = within(within(events).getByRole("combobox", { name: "Reading" })).getAllByRole("option").map(item => item.textContent);
+    expect(options).toContain("Wind · Building broker");
+    expect(options).toContain("Air temperature · Room station");
+    const gust = [...events.querySelectorAll(".rp-row")].find(row => row.querySelector(".rp-type")?.textContent === "Gust")!;
+    expect(gust.querySelector(".rp-entity")?.textContent).toBe("Building broker");
+    expect(gust.querySelector(".rp-reading")?.textContent).toBe("multivariate");
+    expect(gust.querySelector(".rp-sensors")?.textContent).toBe("Wind, Rain");
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Actions for Building broker at / }), { key: "Enter" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Broker readings" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/details/broker/broker"));
   });
 
   it("keeps row actions in a menu and asks in the application dialog before deleting", async () => {
@@ -808,11 +833,11 @@ describe("reporting", () => {
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     const [menu] = screen.getAllByRole("button", { name: /^Actions for Room station at / });
     fireEvent.keyDown(menu!, { key: "Enter" });
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Entity readings", "Copy event ID", "Delete anomaly"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["Device readings", "Copy event ID", "Delete anomaly"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete anomaly" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this anomaly?" });
     expect(apiUtils.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete anomaly" }));
-    await waitFor(() => expect(apiUtils.delete).toHaveBeenCalledExactlyOnceWith("/v1/anomalies/new"));
+    await waitFor(() => expect(apiUtils.delete).toHaveBeenCalledExactlyOnceWith("/v1/alarms/new"));
   });
 });

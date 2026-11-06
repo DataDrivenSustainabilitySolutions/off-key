@@ -92,8 +92,8 @@ test("keeps settings usable on small screens and across workspaces", async ({ pa
 test("shows real system diagnostics above the current page and keeps old links working", async ({ page }) => {
   await page.goto("/anomalies");
   await page.getByRole("button", { name: "Application menu", exact: true }).click();
-  const storageReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/storage");
-  const healthReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/health");
+  const storageReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/storage");
+  const healthReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/recording/health");
   await page.getByRole("menuitem", { name: "System status", exact: true }).click();
   await expect(page).toHaveURL(/\/anomalies\?settings=status$/);
   const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
@@ -115,9 +115,9 @@ test("shows real system diagnostics above the current page and keeps old links w
   await expect(technicalDetails).toHaveJSProperty("open", true);
   await expect(technicalDetails.getByText(/Since worker start/)).toBeVisible();
 
-  const nextHealth = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/health");
+  const nextHealth = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/recording/health");
   expect((await nextHealth).ok()).toBe(true);
-  const nextStorage = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/system/storage");
+  const nextStorage = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/storage");
   await dialog.getByRole("button", { name: "Refresh storage", exact: true }).click();
   expect((await nextStorage).ok()).toBe(true);
 

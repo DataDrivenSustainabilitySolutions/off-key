@@ -22,11 +22,11 @@ The desktop sidebar has a draggable right edge. Width ranges from 240 to 480 pix
 
 ## Monitoring services
 
-The home lists actual services from `/v1/monitors/all?active_only=false`: saved name, monitored scope, detector, lifecycle stage, preparation progress, last reported update and processed inputs. It has search and state filters, with Attention shown when a service reports a failure, degradation or stale status. No anomaly-count dashboard or fabricated healthy state is shown. Empty deployments offer service creation without activating any collection automatically.
+The home lists actual services from `/v1/monitors`: saved name, monitored scope, detector, lifecycle stage, preparation progress, last reported update and processed inputs. It has search and state filters, with Attention shown when a service reports a failure, degradation or stale status. No anomaly-count dashboard or fabricated healthy state is shown. Empty deployments offer service creation without activating any collection automatically.
 
 The overview uses one compact status request every 20 seconds while visible, refreshing every five seconds while a service is open, without per-service Docker probes or history subscriptions. List rows are virtualized. Explicit service inspection loads its settings; Evidence mounts only the selected reading’s chart. Preparation, read-only configuration, existing static/adaptive detector settings, dynamic score/threshold charts, and stop/remove actions retain the real backend lifecycle. Unsupported pause/resume and notification-delivery controls are not presented.
 
-`/?service=<stable-service-id>` restores a selected monitor; `tab` and `stream` select its detail tab and evidence input. Service names save quietly on Enter or blur through a `/v1/monitors/<id>/label` PATCH that needs `manage_monitors` and persist in the database’s launch metadata. Workload names, IDs and subscriptions remain stable. Restart capture preserves saved service names. Detail settings exclude connection credentials.
+`/?service=<stable-service-id>` restores a selected monitor; `tab` and `stream` select its detail tab and evidence input. Service names save quietly on Enter or blur through a `PATCH /v1/monitors/<id>` that needs `manage_monitors` and persist in the database’s launch metadata. Workload names, IDs and subscriptions remain stable. Restart capture preserves saved service names. Detail settings exclude connection credentials.
 
 **Create** opens monitoring setup. Input pickers retain the broker/entity labels and offer only entities with at least one numeric reading receiving fresh data, using the same 30-second activity predicate as **Online topics only**. Choices update with existing recording/preview observations and expire every second while the picker is open. Filtering does not change the selected entity, its configured readings, collection policies, or existing services. Setup links to Sources for recording configuration, then configures a static or adaptive detector using the acknowledged numeric input bindings. Starting remains disabled until collection is applied. A reading’s Configure monitoring link uses `/?create=monitoring&reading=<stable-reading-id>`; its input is preselected. Active ownership prevents a second service from claiming a reading. A successful launch opens the returned service ID.
 
@@ -36,7 +36,7 @@ Notification recipients remain deployment-managed. The existing anomaly email en
 
 ## Catalogue
 
-Catalogue names and structural changes use the existing revisioned `/v1/system` database API and permission checks. Enter or leaving an inline name field saves; Escape cancels. A rejected or conflicting save is never presented as successful.
+Catalogue names and structural changes use the revisioned `/v1/catalogue` API and its permission checks. Enter or leaving an inline name field saves; Escape cancels. A rejected or conflicting save is never presented as successful.
 
 Shared groups remain part of the saved system definition and are labelled **Collections** in the sidebar, settings and structure editor. Their dropdown preserves the saved names and membership counts and opens each collection in the same sidebar. There is no personal grouping: no membership editor, personal scopes, color overlays, or workspace export. Personal groups saved by older versions are dropped on the next save, and a previously selected personal scope falls back to the catalogue. Ordinary navigation and sidebar visibility still persist per account.
 

@@ -25,7 +25,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `deployment_maintenance` | `id` (singleton) | Durable release phase and monitor restart plan |
 | `off_key_schema_migrations` | `version` | Reviewed SQL migration checksums and application times |
 | `mqtt_topics` | `id` | Service-to-topic mappings |
-| `member_favorites` | `(user_id, kind, item_id)` | Entities, catalogue readings and monitors each member starred |
+| `member_favorites` | `(user_id, kind, item_id)` | Catalogue devices, catalogue readings and monitors each member starred |
 | `anomalies` | `(charger_id, timestamp, telemetry_type, service_id)` | Detected anomaly events and contributing sensor set |
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
@@ -68,7 +68,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 ## Relationship highlights
 
 - `users.role → member_roles.id`. `admin` (Administrator) and `user` (Member) are built in; `admin` always holds every permission, and a role cannot be deleted while a member holds it.
-- `member_favorites.user_id → users.id`, removed with the member. `item_id` is a `charger_id`, a catalogue stream id or a `service_id` by `kind`, and is not a foreign key.
+- `member_favorites.user_id → users.id`, removed with the member. `item_id` is a catalogue device id, a catalogue reading id or a monitor id by `kind` (`device`, `reading` or `monitor`), and is not a foreign key. Migration `023_device_favorites.sql` turned the former `entity` favourites into `device` favourites.
 - `mqtt_topics.service_id → services.id`
 - `anomaly_identity.(charger_id, timestamp, telemetry_type, service_id) → anomalies` composite key
 - `monitoring_evidence.service_id` identifies the monitoring service that produced the inference record.

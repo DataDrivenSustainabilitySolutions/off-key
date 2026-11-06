@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1 import monitors
 from off_key_api_gateway.facades.tactic import Tactic
+from off_key_core.schemas.radar import MonitorSetup
 from off_key_mqtt_radar.config.config import RadarSettings
 from off_key_tactic_middleware.api.v1 import radar
 from off_key_tactic_middleware.config.config import (
@@ -22,24 +23,28 @@ from tests.support.form_pipeline import form_launch
 @pytest.mark.parametrize(
     "invalid_config",
     [
-        {"strategy": []},
-        {"model_type": 123},
-        {"model_params": []},
-        {"static_baseline_config": []},
-        {"model_type": "custom_model"},
-        {"adaptive_stream_config": {}},
-        {
-            "model_type": "pyod_knn",
-            "static_baseline_config": {"model_type": "pyod_iforest"},
-        },
-        {
-            "model_params": {"n_estimators": 5},
-            "static_baseline_config": {"model_params": {"n_estimators": 10}},
-        },
-        {"model_params": {"n_estimators": "invalid"}},
+        {"monitoring": []},
         {"monitoring": {"strategy": "unsupported"}},
-        {"monitoring": {"strategy": "static_baseline"}, "model_type": None},
-        {"mqtt_topics": ["telemetry/ /L1"]},
+        {"monitoring": {"model_type": "pyod_iforest"}},
+        {"monitoring": {"strategy": "static_baseline", "model_type": 123}},
+        {"monitoring": {"strategy": "static_baseline", "model_type": "custom_model"}},
+        {"monitoring": {"strategy": "static_baseline", "model_params": []}},
+        {
+            "monitoring": {
+                "strategy": "static_baseline",
+                "model_params": {"n_estimators": "invalid"},
+            }
+        },
+        # The setup names readings; topics and the form's strategy fields are gone.
+        {"strategy": "static_baseline"},
+        {"model_type": "pyod_iforest"},
+        {"static_baseline_config": {}},
+        {"mqtt_topics": ["telemetry/c1/L1"]},
+        {"performance_config": {"sensor_key_strategy": "leaf"}},
+        {"reading_ids": []},
+        {"reading_ids": ["L1", "L1"]},
+        {"reading_ids": ["L 1"]},
+        {"display_name": " "},
     ],
 )
 def test_invalid_start_returns_422_without_launching(
@@ -50,7 +55,7 @@ def test_invalid_start_returns_422_without_launching(
     if boundary == "gateway":
         app.include_router(monitors.router, prefix="/v1/monitors")
         monkeypatch.setattr(monitors.tactic, "start_radar_service", launch)
-        path = "/v1/monitors/start"
+        path = "/v1/monitors"
     else:
         app.include_router(radar.router, prefix="/api/v1/orchestration")
         app.dependency_overrides[radar.get_form_monitor_starter] = lambda: launch
@@ -59,11 +64,7 @@ def test_invalid_start_returns_422_without_launching(
     with TestClient(app) as client:
         response = client.post(
             path,
-            json={
-                "container_name": "radar-test",
-                "mqtt_topics": ["telemetry/c1/L1"],
-                **invalid_config,
-            },
+            json={"display_name": "radar-test", "reading_ids": ["L1"]} | invalid_config,
         )
 
     assert response.status_code == 422, response.text
@@ -72,53 +73,48 @@ def test_invalid_start_returns_422_without_launching(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "legacy_config",
+    "monitoring",
     [
         {
-            "static_baseline_config": {
-                "model_params": {"n_estimators": 5, "random_state": None},
-                "training_window_size": 100,
-                "calibration_window_size": 20,
-                "seed": None,
-            },
+            "strategy": "static_baseline",
+            "model_params": {"n_estimators": 5, "random_state": None},
+            "training_window_size": 100,
+            "calibration_window_size": 20,
+            "seed": None,
         },
         {
             "strategy": "adaptive_stream",
-            "adaptive_stream_config": {
-                "model_params": {"num_trees": 2},
-                "preprocessing_steps": [{"type": "standard_scaler"}],
-                "threshold_config": {"quantile": 0.95},
-            },
+            "model_params": {"num_trees": 2},
+            "preprocessing_steps": [{"type": "standard_scaler"}],
+            "threshold_config": {"quantile": 0.95},
         },
     ],
 )
 async def test_gateway_to_runtime_preserves_one_monitoring_config(
-    legacy_config, monkeypatch
+    monitoring, monkeypatch
 ):
-    config = monitors.MonitoringServiceConfig(
-        container_name="radar-test",
-        mqtt_topics=["telemetry/c1/L1", "telemetry/c1/L2"],
-        performance_config={
-            "sensor_key_strategy": "leaf",
-            "sensor_freshness_seconds": 12.0,
-        },
-        **legacy_config,
+    setup = MonitorSetup(
+        display_name="radar-test",
+        reading_ids=["reading-l1", "reading-l2"],
+        monitoring=monitoring,
+        performance_config={"sensor_freshness_seconds": 12.0},
     )
     facade = object.__new__(Tactic)
     facade.request = AsyncMock()
-    await facade.start_radar_service(config)
+    await facade.start_radar_service(setup)
     payload = facade.request.await_args.kwargs["json_data"]
     assert set(payload) == {
-        "launch_version",
-        "container_name",
-        "mqtt_topics",
+        "display_name",
+        "reading_ids",
         "monitoring",
         "performance_config",
     }
-    assert payload["launch_version"] == 1
-    # TACTIC binds the form's readings into the equivalent pipeline.
-    launch = form_launch(**payload)
-
+    # TACTIC resolves the readings to their recorded topics and binds the
+    # form's equivalent pipeline.
+    config = MonitorSetup.model_validate(payload).form(
+        ["telemetry/c1/L1", "telemetry/c1/L2"]
+    )
+    launch = form_launch(**config.model_dump(mode="json"))
     monkeypatch.setattr(
         radar_environment, "get_tactic_settings", lambda: TacticSettings(_env_file=None)
     )
@@ -151,7 +147,7 @@ async def test_gateway_to_runtime_preserves_one_monitoring_config(
         launch.monitoring.model_params | config.monitoring.model_params
     )
     assert runtime.subscription_topics == config.mqtt_topics
-    assert runtime.sensor_key_strategy == config.performance_config.sensor_key_strategy
+    assert runtime.sensor_key_strategy == "full_hierarchy"
     assert (
         runtime.sensor_freshness_seconds
         == config.performance_config.sensor_freshness_seconds

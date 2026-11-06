@@ -4,9 +4,7 @@
  */
 
 import { ANOMALY_SAMPLE_TOLERANCE_MS } from './constants';
-import type { Anomaly, TelemetryDataPoint } from '@/types/charger';
-
-export const MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__";
+import type { Alarm, TelemetryDataPoint } from '@/types/charger';
 
 export interface AnomalySample extends TelemetryDataPoint {
   time: number;
@@ -15,33 +13,28 @@ export interface AnomalySample extends TelemetryDataPoint {
 export interface AnomalyMarker {
   timestamp: string;
   time: number;
-  anomaly: Anomaly;
+  anomaly: Alarm;
   style: AnomalyStyle;
   sample?: AnomalySample;
   value?: number;
 }
 
-export const formatAnomalySensorSet = (
-  sensorSet: Anomaly["sensor_set"]
-): string => {
-  return sensorSet && sensorSet.length > 0 ? sensorSet.join(", ") : "not recorded";
+/** The names of an alarm's readings, or that the monitor did not record them. */
+export const formatAlarmReadings = (alarm: Alarm): string => {
+  const names = alarm.reading_ids.map((id) => alarm.reading_labels[id] ?? id);
+  return names.length > 0 ? names.join(", ") : "not recorded";
 };
 
-const multivariateAnomalyAppliesToTelemetry = (
-  anomaly: Anomaly,
-  telemetryType: string
-): boolean => {
-  if (anomaly.telemetry_type !== MULTIVARIATE_TELEMETRY_TYPE) {
-    return false;
-  }
+/** A multivariate alarm about several readings is context on each one's chart. */
+export const isAlarmContext = (alarm: Alarm): boolean =>
+  alarm.multivariate || alarm.reading_ids.length > 1;
 
-  // Legacy multivariate anomalies without sensor_set metadata are shown on all charts.
-  if (!anomaly.sensor_set || anomaly.sensor_set.length === 0) {
-    return true;
-  }
-
-  return anomaly.sensor_set.includes(telemetryType);
-};
+/**
+ * Whether an alarm belongs on one reading's chart. A multivariate alarm that
+ * did not record its readings belongs on every chart of its device.
+ */
+const alarmAppliesToReading = (alarm: Alarm, readingId: string): boolean =>
+  alarm.reading_ids.includes(readingId) || (alarm.multivariate && alarm.reading_ids.length === 0);
 
 export interface AnomalyStyle {
   color: string;
@@ -72,7 +65,7 @@ const ANOMALY_STYLES: Record<string, AnomalyStyle> = {
  */
 export const createAnomalyMarkers = (
   telemetry: TelemetryDataPoint[],
-  anomalies: Anomaly[],
+  anomalies: Alarm[],
   toleranceMs: number = ANOMALY_SAMPLE_TOLERANCE_MS
 ): AnomalyMarker[] => {
   if (anomalies.length === 0 || !Number.isFinite(toleranceMs) || toleranceMs < 0) {
@@ -87,17 +80,17 @@ export const createAnomalyMarkers = (
   });
   const samples = [...samplesByTime.values()].sort((left, right) => left.time - right.time);
 
-  const eventsByIdentity = new Map<string, { anomaly: Anomaly; time: number }>();
+  const eventsByIdentity = new Map<string, { anomaly: Alarm; time: number }>();
   anomalies.forEach((anomaly, index) => {
     const time = Date.parse(anomaly.timestamp);
     if (!Number.isFinite(time)) return;
-    const identity = anomaly.anomaly_id ? `id:${anomaly.anomaly_id}` : `row:${index}`;
+    const identity = anomaly.alarm_id ? `id:${anomaly.alarm_id}` : `row:${index}`;
     eventsByIdentity.set(identity, { anomaly, time });
   });
 
   return [...eventsByIdentity.values()]
     .sort((left, right) =>
-      left.time - right.time || (left.anomaly.anomaly_id ?? "").localeCompare(right.anomaly.anomaly_id ?? ""),
+      left.time - right.time || (left.anomaly.alarm_id ?? "").localeCompare(right.anomaly.alarm_id ?? ""),
     )
     .map(({ anomaly, time }) => {
       let lower = 0;
@@ -121,27 +114,23 @@ export const createAnomalyMarkers = (
         timestamp: anomaly.timestamp,
         time,
         anomaly,
-        style: getAnomalyStyle(anomaly.anomaly_type),
+        style: getAnomalyStyle(anomaly.alarm_type),
         ...(sample ? { sample, value: sample.value } : {}),
       };
     });
 };
 
 /**
- * Filter anomalies by telemetry type and time range
+ * Filter alarms by catalogue reading and time range
  */
 export const filterAnomalies = (
-  anomalies: Anomaly[],
-  telemetryType: string,
+  anomalies: Alarm[],
+  readingId: string,
   fromDate?: Date,
   toDate?: Date
-): Anomaly[] => {
+): Alarm[] => {
   return anomalies.filter(anomaly => {
-    // Filter by telemetry type
-    if (
-      anomaly.telemetry_type !== telemetryType &&
-      !multivariateAnomalyAppliesToTelemetry(anomaly, telemetryType)
-    ) {
+    if (!alarmAppliesToReading(anomaly, readingId)) {
       return false;
     }
 

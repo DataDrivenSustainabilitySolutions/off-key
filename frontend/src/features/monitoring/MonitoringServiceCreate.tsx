@@ -29,16 +29,15 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const collectionIds = useMemo(() => target?.inputs.some(input => input.stream.id === initialReading)
     ? [initialReading!] : target?.inputs.map(input => input.stream.id) ?? [], [target, initialReading]);
   const enabledInputs = useMemo(() => target?.inputs.filter(input => input.binding.policy.mode !== "off") ?? [], [target]);
-  const sensors = useMemo(() => enabledInputs.map(input => input.binding.telemetry_key), [enabledInputs]);
-  const sensorLabels = useMemo(() => new Map(enabledInputs.map(input => [input.binding.telemetry_key, input.stream.label])), [enabledInputs]);
-  const sensorTopics = useMemo(() => new Map(enabledInputs.map(input => [input.binding.telemetry_key, input.binding.accepted_topic])), [enabledInputs]);
+  const readingIds = useMemo(() => enabledInputs.map(input => input.stream.id), [enabledInputs]);
+  const readingLabels = useMemo(() => new Map(enabledInputs.map(input => [input.stream.id, input.stream.label])), [enabledInputs]);
   const claims = useMemo(() => {
     const owners = new Map<string, ActiveService>();
-    const active = new Map(services.filter(service => service.status).map(service => [service.id, service]));
+    const active = new Map(services.filter(service => service.active).map(service => [service.id, service]));
     for (const input of enabledInputs) {
       for (const id of byStream.get(input.stream.id) ?? []) {
         const service = active.get(id);
-        if (service) owners.set(input.binding.telemetry_key, service);
+        if (service) owners.set(input.stream.id, service);
       }
     }
     return owners;
@@ -46,15 +45,15 @@ export function MonitoringServiceCreate({ targets, services, initialTarget, init
   const availableModels = useMemo(() => Object.fromEntries(Object.entries(models).filter(([, model]) => model.strategy === strategy)), [models, strategy]);
   useEffect(() => {
     const controller = new AbortController();
-    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.MODELS, { signal: controller.signal, redirectOnUnauthorized: false })
+    void apiUtils.get<Record<string, ModelDefinition>>(API_CONFIG.ENDPOINTS.MONITORING.DETECTORS, { signal: controller.signal, redirectOnUnauthorized: false })
       .then(result => { if (!controller.signal.aborted) { setModels(result); setLoading(false); setError(""); } }, reason => {
         if (!controller.signal.aborted) { setError(getErrorMessage(reason)); setLoading(false); }
       });
     return () => controller.abort();
   }, [retry]);
   const displayName = name.trim() || `${target?.label ?? "Monitoring"} · ${strategy === "adaptive_stream" ? "Adaptive" : "Static"}`;
-  const props = { draftKey: draftKey && `${draftKey}:${targetId}:${strategy}`, chargerId: target?.id ?? "", sensorTypes: sensors, claimsBySensor: claims, loadingModels: loading || !collectionReady,
-    onStarted, displayName, initialReading: target?.inputs.find(input => input.stream.id === initialReading)?.binding.telemetry_key, sensorLabels, sensorTopics };
+  const props = { draftKey: draftKey && `${draftKey}:${targetId}:${strategy}`, readingIds, claimsByReading: claims, loadingModels: loading || !collectionReady,
+    onStarted, displayName, initialReading: target?.inputs.some(input => input.stream.id === initialReading) ? initialReading : undefined, readingLabels };
   return <section className="mn-create" aria-label="Create monitoring service">
     <Breadcrumb steps={[{ label: "Monitoring", onClick: onBack }]} current="New service" />
     <div className="mn-detail-header"><div><h1>Create service</h1></div></div>

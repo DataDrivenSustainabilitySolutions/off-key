@@ -39,8 +39,8 @@ it records, the monitors that watch them and the alarms they raise. The web app
 uses this same API, so every change it makes can be made here.
 
 **Base URL.** Behind the dashboard the API lives under `/api`, which the
-`servers` entry of this document states: `/v1/anomalies` is called as
-`https://<dashboard>/api/v1/anomalies`.
+`servers` entry of this document states: `/v1/alarms` is called as
+`https://<dashboard>/api/v1/alarms`.
 
 **Authentication.** `POST /v1/auth/login` returns an access token. Send it as
 `Authorization: Bearer <token>` on every other call and sign in again when it
@@ -49,20 +49,20 @@ permission of the member's role, which `GET /v1/me` lists.
 
 **Vocabulary.** The web app and this API name the same things differently:
 
-- *Sources* are the brokers (`connections`), `devices` and readings
-  (`streams`) in the `document` of `GET /v1/system`.
-- A *reading* is recorded under `charger_id` (its entity) plus `telemetry_type`
-  (its key), which telemetry, evidence and alarms use. `GET /v1/system` maps
-  each stream id to that pair as `entity_id` and `telemetry_key` in
-  `runtime.bindings`.
-- A *monitor* is a monitoring service (`service_id`); its design is a pipeline
-  under `/v1/monitors/pipelines`.
-- An *alarm* in Reporting is an anomaly under `/v1/anomalies`.
+- *Sources* are the `brokers`, `devices` and `readings` in the `document` of
+  `GET /v1/catalogue`; `PUT /v1/recording` chooses which readings are recorded.
+- Devices and readings are named by their catalogue ids: `GET /v1/devices`
+  lists devices, `GET /v1/readings/{reading_id}/measurements` returns recorded
+  values, and evidence and alarms take a `device_id` or `reading_id`.
+- A *monitor* (`monitor_id`) watches readings; a design it can run is a
+  pipeline under `/v1/pipelines`.
+- An *alarm* in Reporting is under `/v1/alarms`, with its `device_id` and
+  `reading_ids`.
 
 **Changes.** Saving the catalogue takes the last `revision` as
 `expected_revision`, pipeline drafts take `expected_version`; a stale value
 answers 409, so read again and retry. Starting a monitor answers 202 with an
-activation: poll `GET /v1/monitors/pipeline-activations/{activation_id}` until
+activation: poll `GET /v1/pipeline-activations/{activation_id}` until
 its `phase` is `succeeded`, `failed` or `cancelled`. Errors carry a readable
 `detail`.
 """
@@ -74,31 +74,51 @@ OPENAPI_TAGS = [
         "These calls need no token.",
     },
     {
-        "name": "system",
+        "name": "catalogue",
         "description": "Sources: the saved catalogue of brokers, devices and "
-        "readings, what is recorded, collection health and live preview.",
+        "readings, its revisions, and broker checks.",
     },
     {
-        "name": "chargers",
-        "description": "Recorded entities, the `charger_id` that telemetry, "
-        "evidence and alarms are keyed by.",
+        "name": "recording",
+        "description": "Which readings are recorded and how often, whether "
+        "recording is healthy, and how much storage it uses.",
     },
     {
-        "name": "telemetry",
-        "description": "Recorded values of one entity, by telemetry type.",
+        "name": "live",
+        "description": "Live views of configured readings, watched without "
+        "recording them.",
+    },
+    {
+        "name": "devices",
+        "description": "Catalogue devices, whether they are sending data, and "
+        "the recorded measurements of each reading.",
     },
     {
         "name": "monitors",
-        "description": "Monitors, their designs (pipelines), activations, runs "
-        "and detector evidence.",
+        "description": "Monitors: start, rename, stop and delete them, and read "
+        "the pipeline each one runs with its run history.",
     },
     {
-        "name": "anomalies",
+        "name": "pipelines",
+        "description": "Designs (pipelines) with their drafts and revisions, the "
+        "components a design may use, and activations that run a design as a "
+        "monitor.",
+    },
+    {
+        "name": "detectors",
+        "description": "Detector models a monitor can use, with parameter schemas.",
+    },
+    {
+        "name": "evidence",
+        "description": "Per-observation detector scores and p-values behind alarms.",
+    },
+    {
+        "name": "alarms",
         "description": "Alarms raised by monitors, as shown in Reporting.",
     },
     {
         "name": "favorites",
-        "description": "Entities, readings and monitors the signed-in member starred.",
+        "description": "Devices, readings and monitors the signed-in member starred.",
     },
     {
         "name": "dojo",

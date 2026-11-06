@@ -10,15 +10,15 @@ test("preserves edits made after a real atomic draft save was submitted", async 
   const token = await accessToken(page);
   expect(token).toBeTruthy();
   const headers = { Authorization: `Bearer ${token}` };
-  const catalogResponse = await page.request.get("/api/v1/monitors/pipelines/catalog", { headers });
+  const catalogResponse = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(catalogResponse.ok()).toBe(true);
   const catalog = await catalogResponse.json() as PipelineCatalog;
-  const created = await page.request.post("/api/v1/monitors/pipelines", {
+  const created = await page.request.post("/api/v1/pipelines", {
     headers, data: { name: `Save race ${randomUUID()}`, definition: catalog.templates[0]!.definition },
   });
   expect(created.ok(), await created.text()).toBe(true);
   const design = await created.json() as PipelineView;
-  const endpoint = `/api/v1/monitors/pipelines/${design.id}`;
+  const endpoint = `/api/v1/pipelines/${design.id}`;
   let release!: () => void;
   let submitted!: () => void;
   const saving = new Promise<void>(resolve => { submitted = resolve; });

@@ -1,16 +1,16 @@
 {
-  "description": "Connection and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
+  "description": "Broker and group cases that the backend SystemDocument model and the frontend validator must judge alike; the backend is canonical.",
   "default_group_color": "#397f74",
   "base": {
     "format": "aberration-system",
     "schema_version": 1,
     "label": "Conformance",
     "default_policy": {"mode": "off", "interval_seconds": 10},
-    "connections": [
+    "brokers": [
       {"id": "broker", "label": "Broker", "protocol": "mqtt", "host": "broker.example.test", "port": 1883, "transport": "tcp", "tls": false}
     ],
     "devices": [],
-    "streams": [],
+    "readings": [],
     "groups": []
   },
   "cases": [

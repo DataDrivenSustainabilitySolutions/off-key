@@ -16,11 +16,11 @@ function connection(id = "broker", label = "Workshop broker"): SystemConnection 
 }
 
 function stream(id: string, topic: string, changes: Partial<SystemStream> = {}): SystemStream {
-  return { id, label: id, topic, connection_id: "broker", value_type: "number", category: "Measurements", ...changes };
+  return { id, label: id, topic, broker_id: "broker", value_type: "number", category: "Measurements", ...changes };
 }
 
 function fixture(changes: Partial<SystemDocument> = {}): SystemDocument {
-  return { ...createEmptySystem("Test system"), connections: [connection()], ...changes };
+  return { ...createEmptySystem("Test system"), brokers: [connection()], ...changes };
 }
 
 function object(index: NavigationIndex, id: string) {
@@ -30,8 +30,8 @@ function object(index: NavigationIndex, id: string) {
 describe("catalogue navigation index", () => {
   it("preserves generic devices and actual MQTT ancestry without touching the document", () => {
     const document = fixture({
-      devices: [{ id: "room", label: "Room sensor", kind: "environment", connection_id: "broker" }],
-      streams: [stream("temperature", "site/room/environment/temperature", { device_id: "room" })],
+      devices: [{ id: "room", label: "Room sensor", kind: "environment", broker_id: "broker" }],
+      readings: [stream("temperature", "site/room/environment/temperature", { device_id: "room" })],
     });
     const original = structuredClone(document);
     const index = buildNavigationIndex(document);
@@ -56,7 +56,7 @@ describe("catalogue navigation index", () => {
   });
 
   it("keeps a topic's own reading visible beside child topic branches", () => {
-    const index = buildNavigationIndex(fixture({ streams: [stream("state", "device"), stream("temperature", "device/temperature")] }));
+    const index = buildNavigationIndex(fixture({ readings: [stream("state", "device"), stream("temperature", "device/temperature")] }));
     const broker = object(index, "broker");
     const rows = navigationRows(index, broker.key);
     expect(rows[0]!.label).toBe("device");
@@ -70,7 +70,7 @@ describe("catalogue navigation index", () => {
   });
 
   it("exposes separate payload fields without duplicating an MQTT topic", () => {
-    const index = buildNavigationIndex(fixture({ streams: [
+    const index = buildNavigationIndex(fixture({ readings: [
       stream("Temperature", "room/environment", { payload_pointer: "/temperature" }),
       stream("Humidity", "room/environment", { payload_pointer: "/humidity" }),
     ] }));
@@ -89,7 +89,7 @@ describe("catalogue navigation index", () => {
 
   it("preserves empty MQTT segments, trailing separators, Unicode, and dollar topics", () => {
     const topics = ["/a", "a//b", "a/", "$SYS/uptime", "λ/測定"];
-    const index = buildNavigationIndex(fixture({ streams: topics.map((topic, position) => stream(`s-${position}`, topic)) }));
+    const index = buildNavigationIndex(fixture({ readings: topics.map((topic, position) => stream(`s-${position}`, topic)) }));
     for (let position = 0; position < topics.length; position += 1) {
       expect(object(index, `s-${position}`).topic).toBe(topics[position]);
     }
@@ -102,20 +102,20 @@ describe("catalogue navigation index", () => {
     ]);
     expect(searchNavigation(index, "$SYS/uptime").map((node) => node.objectId)).toContain("s-3");
     expect(searchNavigation(index, "測定").map((node) => node.objectId)).toContain("s-4");
-    const emptyChain = buildNavigationIndex(fixture({ streams: [stream("empty", "//value/")] }));
+    const emptyChain = buildNavigationIndex(fixture({ readings: [stream("empty", "//value/")] }));
     expect(navigationRows(emptyChain, object(emptyChain, "broker").key)[0]!.label).toBe("(empty level)/(empty level)/value/(empty level)");
   });
 
   it("uses collision-safe identities for brokers, entities, and exact topic paths", () => {
     const index = buildNavigationIndex(fixture({
-      connections: [connection("a:b", "Shared"), connection("a", "Shared")],
+      brokers: [connection("a:b", "Shared"), connection("a", "Shared")],
       devices: [
-        { id: "c", label: "Same", kind: "sensor", connection_id: "a:b" },
-        { id: "b:c", label: "Same", kind: "sensor", connection_id: "a" },
+        { id: "c", label: "Same", kind: "sensor", broker_id: "a:b" },
+        { id: "b:c", label: "Same", kind: "sensor", broker_id: "a" },
       ],
-      streams: [
-        stream('s:["quoted"]', "a//b", { connection_id: "a:b", device_id: "c" }),
-        stream("s:quoted", "a/b", { connection_id: "a", device_id: "b:c" }),
+      readings: [
+        stream('s:["quoted"]', "a//b", { broker_id: "a:b", device_id: "c" }),
+        stream("s:quoted", "a/b", { broker_id: "a", device_id: "b:c" }),
       ],
     }));
     expect(index.objectKeys.size).toBe(6);
@@ -127,14 +127,14 @@ describe("catalogue navigation index", () => {
 
   it("keeps device parents inside the actual broker context, including cross-broker bindings", () => {
     const document = fixture({
-      connections: [connection("broker", "Primary broker"), connection("secondary", "Secondary broker")],
+      brokers: [connection("broker", "Primary broker"), connection("secondary", "Secondary broker")],
       devices: [
-        { id: "child", label: "Meter", kind: "sensor", parent_id: "parent", connection_id: "broker" },
-        { id: "parent", label: "Cabinet", kind: "cabinet", connection_id: "broker" },
+        { id: "child", label: "Meter", kind: "sensor", parent_id: "parent", broker_id: "broker" },
+        { id: "parent", label: "Cabinet", kind: "cabinet", broker_id: "broker" },
       ],
-      streams: [
+      readings: [
         stream("local", "cabinet/meter/power", { device_id: "child" }),
-        stream("remote", "aux/power", { device_id: "child", connection_id: "secondary" }),
+        stream("remote", "aux/power", { device_id: "child", broker_id: "secondary" }),
       ],
     });
     const index = buildNavigationIndex(document);
@@ -149,7 +149,7 @@ describe("catalogue navigation index", () => {
     expect(object(index, "secondary").streamIds).toEqual(["remote"]);
     expect(index.nodes.get(index.rootKey)!.streamIds).toEqual(["local", "remote"]);
 
-    document.streams.push(stream("parent-remote", "cabinet/state", { device_id: "parent", connection_id: "secondary" }));
+    document.readings.push(stream("parent-remote", "cabinet/state", { device_id: "parent", broker_id: "secondary" }));
     const bothContexts = buildNavigationIndex(document);
     expect(navigationTrail(bothContexts, object(bothContexts, "remote").key).map((node) => node.label)).toContain("Cabinet");
     expect(navigationTrail(bothContexts, object(bothContexts, "remote").key)[1]!.objectId).toBe("secondary");
@@ -157,8 +157,8 @@ describe("catalogue navigation index", () => {
 
   it("deduplicates topic counts across entity contexts without merging their readings", () => {
     const index = buildNavigationIndex(fixture({
-      devices: ["a", "b"].map((id) => ({ id, label: id, kind: "sensor", connection_id: "broker" })),
-      streams: [stream("a-value", "shared/payload", { device_id: "a" }), stream("b-value", "shared/payload", { device_id: "b" })],
+      devices: ["a", "b"].map((id) => ({ id, label: id, kind: "sensor", broker_id: "broker" })),
+      readings: [stream("a-value", "shared/payload", { device_id: "a" }), stream("b-value", "shared/payload", { device_id: "b" })],
     }));
     expect(index.counts.topics).toBe(1);
     expect(object(index, "a-value").key).not.toBe(object(index, "b-value").key);
@@ -175,15 +175,15 @@ describe("catalogue navigation index", () => {
     const rootRows = navigationRows(index, index.rootKey);
     expect(rootRows.map((row) => row.node.kind)).toEqual(["connection", "unassigned"]);
     expect(navigationTrail(index, object(index, "child").key).map((node) => node.label)).toEqual([
-      "Test system", "Unassigned entities", "Parent", "Child",
+      "Test system", "Unassigned devices", "Parent", "Child",
     ]);
     expect(searchNavigation(index, "Parent Child").map((node) => node.objectId)).toContain("child");
   });
 
   it("searches closed branches by full path, aliases, and ancestors without indexing endpoints", () => {
     const index = buildNavigationIndex(fixture({
-      devices: [{ id: "room", label: "North laboratory", kind: "sensor", connection_id: "broker" }],
-      streams: [stream("reading", "hidden/deep/temperature", { label: "Air temperature", device_id: "room", unit: "°C" })],
+      devices: [{ id: "room", label: "North laboratory", kind: "sensor", broker_id: "broker" }],
+      readings: [stream("reading", "hidden/deep/temperature", { label: "Air temperature", device_id: "room", unit: "°C" })],
     }));
     expect(searchNavigation(index, "north hidden/deep/temperature AIR").map((node) => node.objectId)).toEqual(["reading"]);
     expect(searchNavigation(index, "private-endpoint.invalid")).toEqual([]);
@@ -196,9 +196,9 @@ describe("catalogue navigation index", () => {
   });
 
   it("keeps natural order and bounded search stable when catalogue input order changes", () => {
-    const document = fixture({ streams: [stream("s-10", "metric10"), stream("s-2", "metric2"), stream("s-1", "metric1")] });
+    const document = fixture({ readings: [stream("s-10", "metric10"), stream("s-2", "metric2"), stream("s-1", "metric1")] });
     const first = buildNavigationIndex(document);
-    const second = buildNavigationIndex({ ...document, streams: [...document.streams].reverse() });
+    const second = buildNavigationIndex({ ...document, readings: [...document.readings].reverse() });
     expect(navigationRows(first, object(first, "broker").key).map((row) => row.label)).toEqual(["metric1", "metric2", "metric10"]);
     expect(searchNavigation(first, "metric", 2).map((node) => node.key)).toEqual(searchNavigation(second, "metric", 2).map((node) => node.key));
     expect(searchNavigation(first, "metric", 2).map((node) => node.objectId)).toEqual(["s-1", "s-2"]);
@@ -206,7 +206,7 @@ describe("catalogue navigation index", () => {
 
   it("navigates deep topic chains iteratively without losing intermediate ancestry", () => {
     const segments = Array.from({ length: 600 }, (_, position) => `level${position}`);
-    const index = buildNavigationIndex(fixture({ streams: [stream("deep", segments.join("/"))] }));
+    const index = buildNavigationIndex(fixture({ readings: [stream("deep", segments.join("/"))] }));
     const row = navigationRows(index, object(index, "broker").key)[0]!;
     expect(row.label).toBe(segments.join("/"));
     expect(row.trailKeys).toHaveLength(600);
@@ -216,7 +216,7 @@ describe("catalogue navigation index", () => {
   });
 
   it("indexes thousands of siblings once and finds a late reading in a bounded result", () => {
-    const index = buildNavigationIndex(fixture({ streams: Array.from({ length: 4000 }, (_, position) => stream(`signal-${position}`, `metrics/value${position}`)) }));
+    const index = buildNavigationIndex(fixture({ readings: Array.from({ length: 4000 }, (_, position) => stream(`signal-${position}`, `metrics/value${position}`)) }));
     const branch = navigationRows(index, object(index, "broker").key)[0]!.node;
     const rows = navigationRows(index, branch.key);
     expect(index.nodes.size).toBe(4003);
@@ -233,13 +233,13 @@ describe("catalogue navigation index", () => {
   it("ranks an entity whose serial number ends with the typed digits before readings that only contain them", () => {
     const serials = Array.from({ length: 40 }, (_, position) => `20251300000010002${String(position).padStart(2, "0")}`);
     const index = buildNavigationIndex(fixture({
-      devices: serials.map((serial) => ({ id: serial, label: `Meter ${serial}`, kind: "sensor", connection_id: "broker" })),
-      streams: serials.flatMap((serial) => ["temperature", "humidity"].map((key) => stream(`${serial}-${key}`, `meter/${serial}/${key}`, { device_id: serial }))),
+      devices: serials.map((serial) => ({ id: serial, label: `Meter ${serial}`, kind: "sensor", broker_id: "broker" })),
+      readings: serials.flatMap((serial) => ["temperature", "humidity"].map((key) => stream(`${serial}-${key}`, `meter/${serial}/${key}`, { device_id: serial }))),
     }));
     // The device earlier in the catalogue carries 219 only inside its readings' IDs.
     const decoy = buildNavigationIndex(fixture({
-      devices: [{ id: "a", label: "Meter 1", kind: "sensor", connection_id: "broker" }, { id: "b", label: "Meter 2025130000001000219", kind: "sensor", connection_id: "broker" }],
-      streams: [stream("port-2190", "meter/1/port2190", { device_id: "a" }), stream("b-power", "meter/b/power", { device_id: "b" })],
+      devices: [{ id: "a", label: "Meter 1", kind: "sensor", broker_id: "broker" }, { id: "b", label: "Meter 2025130000001000219", kind: "sensor", broker_id: "broker" }],
+      readings: [stream("port-2190", "meter/1/port2190", { device_id: "a" }), stream("b-power", "meter/b/power", { device_id: "b" })],
     }));
     expect(searchNavigation(index, "219")[0]!.label).toBe("Meter 2025130000001000219");
     // Its own topic folder and readings follow before anything from the other boxes.
@@ -253,8 +253,8 @@ describe("catalogue navigation index", () => {
   it("orders matches by whole label, label start, number end, number start, anywhere, identifiers, then ancestry", () => {
     const labels = ["xx219xx", "Meter 219000", "219", "Box 0219", "219 rack", "Other"];
     const index = buildNavigationIndex(fixture({
-      devices: labels.map((label, position) => ({ id: `d-${position}`, label, kind: "sensor", connection_id: "broker" })),
-      streams: [stream("s-219", "plain/value", { label: "Plain", device_id: "d-5" }), stream("child", "plain/child", { label: "Child", device_id: "d-2" })],
+      devices: labels.map((label, position) => ({ id: `d-${position}`, label, kind: "sensor", broker_id: "broker" })),
+      readings: [stream("s-219", "plain/value", { label: "Plain", device_id: "d-5" }), stream("child", "plain/child", { label: "Child", device_id: "d-2" })],
     }));
     expect(searchNavigation(index, "219").map((node) => node.label)).toEqual([
       "219", "219 rack", "Box 0219", "Meter 219000", "xx219xx",
@@ -265,10 +265,10 @@ describe("catalogue navigation index", () => {
 
   it("keeps the best match of a broad query even when it comes last in a large catalogue", () => {
     const index = buildNavigationIndex(fixture({
-      connections: [connection(), connection("late", "Zulu broker")],
-      streams: [
+      brokers: [connection(), connection("late", "Zulu broker")],
+      readings: [
         ...Array.from({ length: 4000 }, (_, position) => stream(`signal-${position}`, `metrics/value${position}`)),
-        stream("exact", "late/value", { connection_id: "late", label: "value" }),
+        stream("exact", "late/value", { broker_id: "late", label: "value" }),
       ],
     }));
     const results = searchNavigation(index, "value", 3);
@@ -278,8 +278,8 @@ describe("catalogue navigation index", () => {
 
   it("keeps malformed parent cycles reachable rather than recursing indefinitely", () => {
     const index = buildNavigationIndex(fixture({ devices: [
-      { id: "a", label: "A", kind: "sensor", connection_id: "broker", parent_id: "b" },
-      { id: "b", label: "B", kind: "sensor", connection_id: "broker", parent_id: "a" },
+      { id: "a", label: "A", kind: "sensor", broker_id: "broker", parent_id: "b" },
+      { id: "b", label: "B", kind: "sensor", broker_id: "broker", parent_id: "a" },
     ] }));
     expect(index.nodes.size).toBe(4);
     expect(navigationTrail(index, object(index, "a").key)[0]!.key).toBe(index.rootKey);

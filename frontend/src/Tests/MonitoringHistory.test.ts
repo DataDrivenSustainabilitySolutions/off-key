@@ -5,16 +5,15 @@ import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { filterServiceAnomalies } from "@/lib/monitoring-chart";
-import type { Anomaly } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
-import { trackerResult } from "./support/fixtures/monitoring";
+import { alarm, trackerResult } from "./support/fixtures/monitoring";
 
 const first = "2026-10-21T10:00:00.000Z";
 const second = "2026-10-21T10:00:00.075Z";
 const later = "2026-10-21T10:00:01.000Z";
 const input = (id: string, unit: string): MonitoringInput => ({
-  stream: { id, label: id, connection_id: "broker", topic: id, category: "Other", value_type: "number", unit },
-  binding: { entity_id: "entity", telemetry_key: id, accepted_topic: id, policy: { mode: "original", interval_seconds: 1 } },
+  stream: { id, label: id, broker_id: "broker", topic: id, category: "Other", value_type: "number", unit },
+  binding: { policy: { mode: "original", interval_seconds: 1 } },
   path: "Room station",
 });
 const inputs = [input("temperature", "°C"), input("humidity", "%")];
@@ -23,8 +22,8 @@ const histories = new Map([
   ["humidity", [{ timestamp: second, value: 55 }]],
 ]);
 const row: MonitoringChartEvidence = {
-  service_id: "forest", timestamp: second, created: later, sequence_number: 101,
-  sensor_set: ["temperature", "humidity"], input_timestamps: { temperature: first, humidity: second },
+  monitor_id: "forest", timestamp: second, created: later, sequence_number: 101,
+  reading_ids: ["temperature", "humidity"], input_timestamps: { temperature: first, humidity: second },
   strategy: "adaptive_stream", model_type: "aberrant_online_isolation_forest",
   anomaly_score: 0.61, threshold: 0.6, alarm: true, restarted_martingale: null,
 };
@@ -113,7 +112,7 @@ describe("joint monitoring history", () => {
   });
 
   it("keeps inputs usable without detector evidence and excludes another service's decisions", () => {
-    const { model } = build([{ ...row, service_id: "retired", anomaly_score: 100 }]);
+    const { model } = build([{ ...row, monitor_id: "retired", anomaly_score: 100 }]);
     expect(model.readings[0]!.data).toHaveLength(2);
     expect(model.secondarySeries).toEqual([]);
     expect(model.readings.every(reading => reading.alarmTimes!.length === 0)).toBe(true);
@@ -130,10 +129,10 @@ describe("joint monitoring history", () => {
   });
 
   it("scopes reading alarm markers to the same service as its scores, including legacy associations", () => {
-    const anomaly = (id: string, serviceId: string | null, timestamp = second): Anomaly => ({ anomaly_id: id, service_id: serviceId,
-      charger_id: "entity", timestamp, telemetry_type: "temperature", anomaly_type: "adaptive", anomaly_value: 0.61, value_type: null });
+    const anomaly = (id: string, monitorId: string | null, timestamp = second) => alarm({ alarm_id: id, monitor_id: monitorId,
+      timestamp, reading_ids: ["temperature"], alarm_type: "adaptive", value: 0.61, value_type: null });
     const anomalies = [anomaly("current", "forest"), anomaly("retired", "retired"), anomaly("legacy", null), anomaly("unmatched", null, later)];
-    expect(filterServiceAnomalies(anomalies, [row], "forest", "temperature").map(item => item.anomaly_id)).toEqual(["current", "legacy"]);
+    expect(filterServiceAnomalies(anomalies, [row], "forest", "temperature").map(item => item.alarm_id)).toEqual(["current", "legacy"]);
     expect(filterServiceAnomalies(anomalies, [row], undefined, "temperature")).toEqual(anomalies);
   });
 });

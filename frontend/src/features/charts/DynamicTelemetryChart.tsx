@@ -34,12 +34,12 @@ import {
   areChartNavigationStatesEqual,
   type ChartNavigationState,
 } from "./telemetry-chart";
-import type { Anomaly, TelemetryTypeData } from "@/types/charger";
+import type { Alarm, TelemetryTypeData } from "@/types/charger";
 import type { ActiveService, MonitoringChartEvidence } from "@/types/monitoring";
 
 interface DynamicTelemetryChartProps {
   telemetryData: TelemetryTypeData;
-  anomalies?: Anomaly[];
+  anomalies?: Alarm[];
   evidence?: MonitoringChartEvidence[];
   monitoringService?: ActiveService;
   navigationState?: ChartNavigationState;
@@ -231,12 +231,12 @@ export const DynamicTelemetryChart: React.FC<DynamicTelemetryChartProps> = ({
   const sensorEvidence = useMemo(
     () =>
       evidence.filter(
-        (item) => item.sensor_set.includes(telemetryData.type),
+        (item) => item.reading_ids.includes(telemetryData.type),
       ),
     [evidence, telemetryData.type],
   );
   const serviceEvidence = useMemo(
-    () => sensorEvidence.filter((item) => !monitoringService || item.service_id === monitoringService.id),
+    () => sensorEvidence.filter((item) => !monitoringService || item.monitor_id === monitoringService.id),
     [monitoringService, sensorEvidence],
   );
   const telemetryTimes = useMemo(() => normalizedTelemetry.map(([time]) => time), [normalizedTelemetry]);

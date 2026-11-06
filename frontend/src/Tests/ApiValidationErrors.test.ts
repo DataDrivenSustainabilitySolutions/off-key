@@ -22,12 +22,12 @@ it("shows actionable field errors from catalog validation", async () => {
     });
   };
   try {
-    await expect(client.post("/v1/system/collection/preview", {})).rejects.toMatchObject({
+    await expect(client.post("/v1/recording/preview", {})).rejects.toMatchObject({
       status: 422,
       issues: [{ loc: ["body", "catalog", "sources", 0, "host"],
         msg: "Use a broker hostname, without a URL or port" }],
     });
-    await expect(client.post("/v1/system/collection/preview", {})).rejects.toThrow(
+    await expect(client.post("/v1/recording/preview", {})).rejects.toThrow(
       "catalog.sources.0.host: Use a broker hostname, without a URL or port",
     );
   } finally {
@@ -44,8 +44,8 @@ it("preserves a conflict status for safe versioned catalog retries", async () =>
     });
   };
   try {
-    await expect(apiClient.patch("/v1/system/labels", {})).rejects.toMatchObject({ name: "ApiRequestError", status: 409 });
-    await expect(apiClient.patch("/v1/system/labels", {})).rejects.toBeInstanceOf(ApiRequestError);
+    await expect(apiClient.patch("/v1/catalogue", {})).rejects.toMatchObject({ name: "ApiRequestError", status: 409 });
+    await expect(apiClient.patch("/v1/catalogue", {})).rejects.toBeInstanceOf(ApiRequestError);
   } finally { apiClient.defaults.adapter = original; }
 });
 
@@ -58,7 +58,7 @@ it("lets optional preview requests surface an expired session without forcing na
     });
   };
   try {
-    await expect(apiUtils.get("/v1/system", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
+    await expect(apiUtils.get("/v1/catalogue", { redirectOnUnauthorized: false })).rejects.toMatchObject({ name: "ApiRequestError", status: 401 });
   } finally { apiClient.defaults.adapter = original; }
 });
 
@@ -71,7 +71,7 @@ it("names the server's reference on a server failure so it leads to its logs", a
     });
   };
   try {
-    await expect(apiClient.get("/v1/monitors/workspace")).rejects.toMatchObject({
+    await expect(apiClient.get("/v1/monitors/overview")).rejects.toMatchObject({
       status: 502,
       reference: "4f1c-9a",
       message: "Monitoring service is unavailable (reference 4f1c-9a)",
@@ -90,8 +90,8 @@ it("keeps client errors free of references and ignores unsafe header values", as
     });
   };
   try {
-    await expect(apiClient.get("/v1/system")).rejects.toMatchObject({ message: "Try again", reference: "4f1c-9a" });
+    await expect(apiClient.get("/v1/catalogue")).rejects.toMatchObject({ message: "Try again", reference: "4f1c-9a" });
     status = 503;
-    await expect(apiClient.get("/v1/system")).rejects.toMatchObject({ message: "Try again", reference: undefined });
+    await expect(apiClient.get("/v1/catalogue")).rejects.toMatchObject({ message: "Try again", reference: undefined });
   } finally { apiClient.defaults.adapter = original; }
 });

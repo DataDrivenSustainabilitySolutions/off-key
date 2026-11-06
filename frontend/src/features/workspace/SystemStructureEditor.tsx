@@ -75,9 +75,9 @@ export function SystemStructureEditor({
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return [
-      ...baseline.connections,
+      ...baseline.brokers,
       ...baseline.devices,
-      ...baseline.streams,
+      ...baseline.readings,
     ].filter((item) => item.label.toLowerCase().includes(needle));
   }, [baseline, search]);
   const dependencies = useMemo(
@@ -89,10 +89,10 @@ export function SystemStructureEditor({
       ? baseline.devices.find((item) => item.id === entityId)
       : undefined;
   const movingStreams = existingDevice
-    ? baseline.streams.filter(
+    ? baseline.readings.filter(
         (item) =>
           item.device_id === entityId &&
-          item.connection_id === existingDevice.connection_id,
+          item.broker_id === existingDevice.broker_id,
       )
     : [];
   const submit = async (remove = false) => {
@@ -237,10 +237,10 @@ export function SystemStructureEditor({
             Connection
             <select
               aria-label="Connection"
-              value={(kind === "stream" ? stream : device).connection_id ?? ""}
+              value={(kind === "stream" ? stream : device).broker_id ?? ""}
               onChange={(event) =>
                 update({
-                  connection_id: event.target.value || undefined,
+                  broker_id: event.target.value || undefined,
                   ...(kind === "stream" ? { device_id: undefined } : {}),
                 })
               }
@@ -249,7 +249,7 @@ export function SystemStructureEditor({
               <option value="">
                 {kind === "stream" ? "Choose a connection" : "No connection"}
               </option>
-              {baseline.connections.map((item) => (
+              {baseline.brokers.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.label}
                 </option>
@@ -313,8 +313,8 @@ export function SystemStructureEditor({
                 {baseline.devices
                   .filter(
                     (item) =>
-                      !item.connection_id ||
-                      item.connection_id === stream.connection_id,
+                      !item.broker_id ||
+                      item.broker_id === stream.broker_id,
                   )
                   .map((item) => (
                     <option key={item.id} value={item.id}>

@@ -31,7 +31,7 @@ function brokerStatus(source: { state: string; message?: string | null } | undef
 const canRetry = (state?: string) => state === "error" || state === "reconnecting";
 
 const enabledReadings = (document: SystemDocument, runtime: SystemRuntime | undefined, id: string) =>
-  document.streams.filter(stream => stream.connection_id === id && (runtime?.bindings?.[stream.id]?.policy.mode ?? "off") !== "off").length;
+  document.readings.filter(stream => stream.broker_id === id && (runtime?.bindings?.[stream.id]?.policy.mode ?? "off") !== "off").length;
 
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
@@ -45,7 +45,7 @@ export function SourcesWorkspace() {
   const brokerChecks = useBrokerChecks();
   const sources = runtime?.ingress?.sources;
   // A recorded broker already reports its state; only the others need a check.
-  const idleBrokers = document.connections.filter(item => [undefined, "error"].includes(sources?.[item.id]?.state)).map(item => item.id);
+  const idleBrokers = document.brokers.filter(item => [undefined, "error"].includes(sources?.[item.id]?.state)).map(item => item.id);
   const selectedBroker = selected?.kind === "connection" ? selected.connectionId : undefined;
   const selectedState = selectedBroker ? sources?.[selectedBroker]?.state : undefined;
   const [reconnects, setReconnects] = useState<Record<string, { pending: boolean; error?: string }>>({});
@@ -89,7 +89,7 @@ export function SourcesWorkspace() {
   const readingLinks = <section className="workspace-entity-readings" aria-label="Entity readings">
     <h3>Readings</h3><p className="ex-muted">Select a reading to change how it is recorded.</p>
     {ids.length ? ids.flatMap(id => {
-      const stream = document.streams.find(item => item.id === id);
+      const stream = document.readings.find(item => item.id === id);
       const node = index.nodes.get(index.objectKeys.get(id)?.[0] ?? "");
       return stream && node ? <button key={id} className="source-broker" onClick={() => selectSource(node)}>
         <strong>{stream.label}</strong><span>{stream.topic}</span><span>{policyLabel(runtime?.bindings?.[id]?.policy)}</span>
@@ -135,9 +135,9 @@ export function SourcesWorkspace() {
         connectionCheck={selectedBroker && !selectedState ? checkProblem(brokerChecks.checks[selectedBroker]) : undefined} />
     </Suspense> : <section aria-label="Broker overview" className="source-overview">
       <p className="ex-muted">Record a broker to keep its readings, also while you are signed out.</p>
-      {!document.connections.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
-      {document.connections.map(item => {
-        const readings = document.streams.filter(stream => stream.connection_id === item.id).length;
+      {!document.brokers.length && <p>{system.status === "loading" ? "Loading sources…" : "No brokers configured yet."}</p>}
+      {document.brokers.map(item => {
+        const readings = document.readings.filter(stream => stream.broker_id === item.id).length;
         const enabled = enabledReadings(document, runtime, item.id);
         const source = sources?.[item.id];
         const check = brokerChecks.checks[item.id];

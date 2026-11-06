@@ -379,11 +379,8 @@ async def test_get_docker_status_and_labels_reads_the_service(service, expected)
 @pytest.mark.parametrize(
     ("operation", "kwargs", "workload_present"),
     [
-        pytest.param("stop", {"container_name": "radar-static"}, True, id="stop-name"),
-        pytest.param(
-            "stop", {"container_name": "radar-static"}, False, id="stop-name-missing"
-        ),
-        pytest.param("stop", {"container_id": "ctr-1"}, True, id="stop-id"),
+        pytest.param("stop", {"service_id": "svc-1"}, True, id="stop"),
+        pytest.param("stop", {"service_id": "svc-1"}, False, id="stop-missing"),
         pytest.param("delete", {"service_id": "svc-1"}, True, id="delete"),
     ],
 )
@@ -414,8 +411,7 @@ async def test_removal_deletes_db_row_after_removing_workload(
 @pytest.mark.parametrize(
     ("operation", "kwargs"),
     [
-        ("stop", {"container_name": "missing"}),
-        ("stop", {"container_id": "missing"}),
+        ("stop", {"service_id": "missing"}),
         ("delete", {"service_id": "missing"}),
     ],
 )
@@ -437,39 +433,15 @@ async def test_removal_returns_false_when_service_not_found(
 
 
 @pytest.mark.asyncio
-async def test_stop_and_get_require_exactly_one_identifier(monkeypatch):
-    session = _session()
-    service = _orchestrator(monkeypatch, session)
-
-    assert await service.stop_radar_service() is False
-    assert (
-        await service.stop_radar_service(container_name="radar-a", container_id="ctr-a")
-        is False
-    )
-    assert await service.get_radar_service() is None
-    assert (
-        await service.get_radar_service(container_name="radar-a", container_id="ctr-a")
-        is None
-    )
-    session.execute.assert_not_awaited()
-    session.commit.assert_not_awaited()
-    session.rollback.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("kwargs", "labels", "model_type"),
+    ("labels", "model_type"),
     [
-        ({"container_id": "ctr-1"}, TASK_LABELS, "knn"),
-        (
-            {"container_name": "radar-static"},
-            {"monitoring_strategy": "static_baseline"},
-            None,
-        ),
+        (TASK_LABELS, "knn"),
+        ({"monitoring_strategy": "static_baseline"}, None),
     ],
 )
-async def test_get_radar_service_resolves_identifier(
-    monkeypatch, kwargs, labels, model_type
+async def test_get_radar_service_reads_saved_configuration_over_labels(
+    monkeypatch, labels, model_type
 ):
     db_row = _db_row(
         mqtt_topic=["telemetry/a"],
@@ -484,7 +456,7 @@ async def test_get_radar_service_resolves_identifier(
     session = _session(scalars_result(first=db_row), row=db_row)
 
     detail = await _orchestrator(monkeypatch, session, fake_docker).get_radar_service(
-        **kwargs
+        "svc-1"
     )
 
     assert detail is not None

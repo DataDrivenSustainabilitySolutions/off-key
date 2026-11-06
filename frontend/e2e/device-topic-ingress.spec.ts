@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { connectAsync, type MqttClient } from "mqtt";
 
-import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureReadingId } from "./helpers/collection";
 import { accessToken } from "./helpers/auth";
 
 const telemetry = [
@@ -19,7 +19,6 @@ test.describe("device topic ingress", () => {
     playwright,
   }) => {
     const deviceId = randomUUID();
-    const chargerId = fixtureEntityId(deviceId);
     let publisher: MqttClient | undefined;
     let authToken: string | null = null;
     const api = await playwright.request.newContext({
@@ -51,36 +50,39 @@ test.describe("device topic ingress", () => {
         );
       }
 
-      const expectedTypes = telemetry.map(([type]) => fixtureReadingKey(deviceId, type)).sort();
+      const readingIds = telemetry.map(([type]) => fixtureReadingId(deviceId, type)).sort();
 
       await expect
         .poll(async () => {
-          const response = await api.get(
-            `/api/v1/telemetry/${chargerId}/type`,
-            { headers },
-          );
-          if (!response.ok()) return [];
-          return ((await response.json()) as string[]).sort();
+          const recorded = await Promise.all(readingIds.map(async (readingId) => {
+            const response = await api.get(
+              `/api/v1/readings/${encodeURIComponent(readingId)}/measurements?limit=1`,
+              { headers },
+            );
+            return response.ok() && ((await response.json()) as unknown[]).length > 0;
+          }));
+          return readingIds.filter((_, index) => recorded[index]);
         })
-        .toEqual(expectedTypes);
+        .toEqual(readingIds);
 
       await expect
         .poll(async () => {
-          const response = await api.get("/api/v1/chargers/available", {
+          const response = await api.get("/api/v1/devices?active=true", {
             headers,
           });
-          if (!response.ok()) return false;
-          const chargers = (await response.json()) as Array<{
-            charger_id: string;
+          if (!response.ok()) return undefined;
+          const devices = (await response.json()) as Array<{
+            id: string;
+            reading_ids: string[];
           }>;
-          return chargers.some(({ charger_id }) => charger_id === chargerId);
+          return devices.find(({ id }) => id === deviceId)?.reading_ids.sort();
         })
-        .toBe(true);
+        .toEqual(readingIds);
 
-      await page.goto(`/details/${chargerId}`);
-      // The page is titled by the catalogue label of the recorded entity.
+      await page.goto(`/details/${deviceId}`);
+      // The page is titled by the catalogue label of the device.
       await expect(
-        page.getByRole("heading", { name: `Entity ${deviceId}` }),
+        page.getByRole("heading", { name: `Device ${deviceId}` }),
       ).toBeVisible();
 
       for (const [title] of telemetry) {
@@ -99,7 +101,7 @@ test.describe("device topic ingress", () => {
       }
     } finally {
       await publisher?.endAsync();
-      if (authToken) await removeTestCharger(api, authToken, chargerId);
+      if (authToken) await removeTestCharger(api, authToken, deviceId);
       await api.dispose();
     }
   });

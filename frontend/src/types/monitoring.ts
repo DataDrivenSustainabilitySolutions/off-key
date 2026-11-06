@@ -89,8 +89,10 @@ interface MonitoringActivity {
   last_processed_at?: string | null;
   last_inference_at?: string | null;
   last_persisted_at?: string | null;
-  missing_sensors: string[];
-  stale_sensors: string[];
+  /** Readings the monitor has not received, by catalogue id. */
+  missing_reading_ids: string[];
+  /** Readings whose latest value is older than the freshness, by catalogue id. */
+  stale_reading_ids: string[];
   inputs_stalled: boolean;
   inference_stalled: boolean;
   persistence_stalled: boolean;
@@ -112,22 +114,19 @@ export interface OperationalStatus {
 
 export interface ActiveService {
   id: string;
-  container_id: string;
-  container_name: string;
   display_name?: string | null;
-  mqtt_topics: string[];
   /** Catalogue readings the monitor watches, resolved by the server. */
-  stream_ids: string[];
-  status: boolean;
+  reading_ids: string[];
+  /** True while the monitor should run; false once it is stopped. */
+  active: boolean;
   operational_status: OperationalStatus;
-  docker_status?: string;
   monitoring_strategy?: MonitoringStrategy | null;
   model_type?: string;
   created_at?: string;
 }
 
-interface MonitoringPerformanceConfig {
-  sensor_key_strategy: 'full_hierarchy' | 'top_level' | 'leaf';
+/** How fresh and how closely aligned a monitor's readings must be. */
+interface MonitorTiming {
   sensor_freshness_seconds: number;
   observation_max_age_seconds?: number;
   observation_future_tolerance_seconds?: number;
@@ -185,6 +184,7 @@ interface StaticMartingaleConfig {
 }
 
 interface StaticBaselineRequestConfig {
+  strategy: 'static_baseline';
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -206,6 +206,7 @@ export type AdaptivePreprocessingStep =
   | { type: 'random_projection'; n_components: number; seed: number | null };
 
 interface AdaptiveStreamRequestConfig {
+  strategy: 'adaptive_stream';
   model_type: string;
   model_params: Record<string, JsonValue>;
   training_window_size: number;
@@ -214,40 +215,32 @@ interface AdaptiveStreamRequestConfig {
   threshold_config: { mode: 'calibrated_quantile'; quantile: number };
 }
 
-// Anomaly detection request payload
-interface AnomalyDetectionRequestBase {
-  container_name: string;
-  display_name?: string;
-  service_type: 'radar';
-  mqtt_topics: string[];
-  model_type: string;
-  model_params: Record<string, JsonValue>;
-  performance_config: MonitoringPerformanceConfig;
+/** A monitor set up on catalogue readings of one device or broker. */
+interface MonitorSetupBase {
+  display_name: string;
+  reading_ids: string[];
+  performance_config: MonitorTiming;
 }
 
-export interface StaticAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
-  strategy: 'static_baseline';
-  static_baseline_config: StaticBaselineRequestConfig;
+export interface StaticMonitorSetup extends MonitorSetupBase {
+  monitoring: StaticBaselineRequestConfig;
 }
 
-export interface AdaptiveAnomalyDetectionRequest extends AnomalyDetectionRequestBase {
-  strategy: 'adaptive_stream';
-  adaptive_stream_config: AdaptiveStreamRequestConfig;
+export interface AdaptiveMonitorSetup extends MonitorSetupBase {
+  monitoring: AdaptiveStreamRequestConfig;
 }
 
-export type MonitoringStartRequest =
-  | StaticAnomalyDetectionRequest
-  | AdaptiveAnomalyDetectionRequest;
+export type MonitorSetup = StaticMonitorSetup | AdaptiveMonitorSetup;
 
-// Compatibility name retained for existing static-lane consumers.
-export type AnomalyDetectionRequest = StaticAnomalyDetectionRequest;
-
+/** One monitor observation, naming its readings by catalogue id. */
 interface MonitoringEvidence {
-  service_id: string;
+  monitor_id: string;
   timestamp: string;
   sequence_number: number;
-  charger_id: string;
-  sensor_set: string[];
+  device_id: string | null;
+  /** The catalogue readings the observation covered. */
+  reading_ids: string[];
+  /** The time of each reading's value the observation scored, by reading id. */
   input_timestamps: Record<string, string>;
   strategy: MonitoringStrategy;
   model_type: string | null;
@@ -313,10 +306,10 @@ export interface MartingaleTrackerResult {
 
 export type MonitoringChartEvidence = Pick<
   MonitoringEvidence,
-  | 'service_id'
+  | 'monitor_id'
   | 'timestamp'
   | 'sequence_number'
-  | 'sensor_set'
+  | 'reading_ids'
   | 'input_timestamps'
   | 'restarted_martingale'
   | 'tracker_results'
@@ -333,7 +326,7 @@ export type MonitoringChartEvidence = Pick<
 
 export type MonitoringEvidenceCursor = Pick<
   MonitoringChartEvidence,
-  'created' | 'timestamp' | 'service_id' | 'sequence_number'
+  'created' | 'timestamp' | 'monitor_id' | 'sequence_number'
 >;
 
 // Model parameters (cleaned for API submission)

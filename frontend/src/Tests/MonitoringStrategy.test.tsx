@@ -7,12 +7,12 @@ import type { MonitoringTarget } from "@/domain/monitoring/serviceModel";
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
 import type { ApiRequestOptions } from "../lib/api-client";
-import type { ActiveService, AnomalyDetectionRequest, ModelCapabilities } from "../types/monitoring";
+import type { ActiveService, StaticMonitorSetup, ModelCapabilities } from "../types/monitoring";
 
 const mockPost = vi.fn<
   (
     endpoint: string,
-    payload: AnomalyDetectionRequest,
+    payload: StaticMonitorSetup,
     options?: ApiRequestOptions
   ) => Promise<unknown>
 >(() => Promise.resolve({}));
@@ -27,7 +27,7 @@ vi.mock("../lib/api-client", async importOriginal => ({
       mockGet(endpoint, options),
     post: (
       endpoint: string,
-      payload: AnomalyDetectionRequest,
+      payload: StaticMonitorSetup,
       options?: ApiRequestOptions
     ) => mockPost(endpoint, payload, options),
   },
@@ -35,11 +35,11 @@ vi.mock("../lib/api-client", async importOriginal => ({
 const catalogue = { system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
 vi.mock("@/features/workspace/catalogue-context", () => ({ useCatalogue: () => catalogue }));
 
-// One entity with three recorded readings, each accepted on its canonical topic.
-const target: MonitoringTarget = { id: "charger-1", label: "Site / Charger", inputs: ["L1", "L2", "L3"].map(key => ({
+// One device with three recorded readings.
+const target: MonitoringTarget = { id: "device:charger-1", label: "Site / Charger", inputs: ["L1", "L2", "L3"].map(key => ({
   path: "Site / Charger",
-  stream: { id: `stream-${key}`, label: key, topic: `site/charger-1/${key}`, value_type: "number", category: "Power", connection_id: "broker" },
-  binding: { entity_id: "charger-1", telemetry_key: key, accepted_topic: `telemetry/charger-1/${key}`, policy: { mode: "sample", interval_seconds: 10 } },
+  stream: { id: `stream-${key}`, label: key, topic: `site/charger-1/${key}`, value_type: "number", category: "Power", broker_id: "broker" },
+  binding: { policy: { mode: "sample", interval_seconds: 10 } },
 })) };
 
 const vectorCapabilities: ModelCapabilities = {
@@ -143,7 +143,7 @@ type Setup = { strategy?: "static" | "adaptive"; initialReading?: string; servic
 async function renderCreate({ strategy = "static", initialReading, services = [], byStream = new Map() }: Setup = {}) {
   render(
     <MemoryRouter>
-      <MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="charger-1"
+      <MonitoringServiceCreate targets={[target]} services={services} byStream={byStream} initialTarget="device:charger-1"
         initialReading={initialReading} collectionReady onStarted={vi.fn(async () => {})} onBack={vi.fn()} />
     </MemoryRouter>
   );
@@ -152,7 +152,7 @@ async function renderCreate({ strategy = "static", initialReading, services = []
   await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
 }
 
-const getSubmittedPayload = (): AnomalyDetectionRequest => {
+const getSubmittedPayload = (): StaticMonitorSetup => {
   const latestCall = mockPost.mock.calls[mockPost.mock.calls.length - 1];
   const payload = latestCall?.[1];
   if (!payload) {
@@ -165,8 +165,8 @@ describe("monitoring setup forms", () => {
   beforeEach(() => {
     vi.clearAllMocks(); clearNavigationDrafts();
     mockGet.mockImplementation((url: string) => {
-      if (url.includes("/models")) return Promise.resolve(modelCatalog);
-      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", service_id: "new-service" });
+      if (url.includes("/detectors")) return Promise.resolve(modelCatalog);
+      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", monitor_id: "new-service" });
       return Promise.resolve([]);
     });
     mockPost.mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
@@ -180,12 +180,13 @@ describe("monitoring setup forms", () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = getSubmittedPayload();
 
-    expect(payload.mqtt_topics).toEqual(["telemetry/charger-1/L1"]);
-    expect(payload.strategy).toBe("static_baseline");
-    expect(payload.model_type).toBe("pyod_iforest");
-    expect(payload.static_baseline_config.training_window_size).toBe(1200);
-    expect(payload.static_baseline_config.calibration_window_size).toBe(360);
-    expect(payload.static_baseline_config.martingale_config).toEqual({
+    expect(Object.keys(payload).sort()).toEqual(["display_name", "monitoring", "performance_config", "reading_ids"]);
+    expect(payload.reading_ids).toEqual(["stream-L1"]);
+    expect(payload.monitoring.strategy).toBe("static_baseline");
+    expect(payload.monitoring.model_type).toBe("pyod_iforest");
+    expect(payload.monitoring.training_window_size).toBe(1200);
+    expect(payload.monitoring.calibration_window_size).toBe(360);
+    expect(payload.monitoring.martingale_config).toEqual({
       automatic_threshold_calibration: {
         false_alarm_probability: 0.01,
         horizon: 1000,
@@ -199,8 +200,7 @@ describe("monitoring setup forms", () => {
         threshold_config: { mode: "manual", value: 100 },
       }],
     });
-    expect("adaptive_stream_config" in payload).toBe(false);
-    expect("preprocessing_steps" in payload).toBe(false);
+    expect("preprocessing_steps" in payload.monitoring).toBe(false);
   });
 
   it("submits concrete sensor topics for multivariate alignment", async () => {
@@ -211,12 +211,8 @@ describe("monitoring setup forms", () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = getSubmittedPayload();
 
-    expect(payload.mqtt_topics).toEqual([
-      "telemetry/charger-1/L1",
-      "telemetry/charger-1/L2",
-      "telemetry/charger-1/L3",
-    ]);
-    expect(payload.performance_config).not.toHaveProperty("alignment_mode");
+    expect(payload.reading_ids).toEqual(["stream-L1", "stream-L2", "stream-L3"]);
+    expect(payload.performance_config).toEqual({ sensor_freshness_seconds: 30 });
   });
 
   it("submits editable epsilon and alarm threshold", async () => {
@@ -233,8 +229,8 @@ describe("monitoring setup forms", () => {
 
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const payload = getSubmittedPayload();
-    expect(payload.static_baseline_config.calibration_window_size).toBe(400);
-    expect(payload.static_baseline_config.martingale_config).toEqual({
+    expect(payload.monitoring.calibration_window_size).toBe(400);
+    expect(payload.monitoring.martingale_config).toEqual({
       automatic_threshold_calibration: {
         false_alarm_probability: 0.01,
         horizon: 1000,
@@ -270,7 +266,7 @@ describe("monitoring setup forms", () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
 
     expect(
-      getSubmittedPayload().static_baseline_config.martingale_config.trackers[0],
+      getSubmittedPayload().monitoring.martingale_config.trackers[0],
     ).toMatchObject({
       alarm_statistic: "cusum",
       threshold_config: { mode: "automatic" },
@@ -319,7 +315,7 @@ describe("monitoring setup forms", () => {
     fireEvent.change(trainingInput, { target: { value: "2000" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(getSubmittedPayload().static_baseline_config.training_window_size).toBe(2000);
+    expect(getSubmittedPayload().monitoring.training_window_size).toBe(2000);
   });
 
   it("keeps invalid detector integer drafts visible and blocks submit", async () => {
@@ -338,7 +334,7 @@ describe("monitoring setup forms", () => {
     fireEvent.change(estimatorsInput, { target: { value: "101" } });
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(getSubmittedPayload().static_baseline_config.model_params.n_estimators).toBe(101);
+    expect(getSubmittedPayload().monitoring.model_params.n_estimators).toBe(101);
   });
 
   it("switches to the available adaptive lifecycle", async () => {
@@ -369,11 +365,10 @@ describe("monitoring setup forms", () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     const latestCall = mockPost.mock.calls[mockPost.mock.calls.length - 1];
     const payload = latestCall?.[1] as unknown as {
-      model_params: Record<string, unknown>;
-      adaptive_stream_config: { model_params: Record<string, unknown> };
+      monitoring: { strategy: string; model_params: Record<string, unknown> };
     };
-    expect(payload.model_params.max_feature_cache_size).toBeNull();
-    expect(payload.adaptive_stream_config.model_params.max_feature_cache_size).toBeNull();
+    expect(payload.monitoring.strategy).toBe("adaptive_stream");
+    expect(payload.monitoring.model_params.max_feature_cache_size).toBeNull();
   });
 
   it("uses catalog families, availability, and feature limits for model selection", async () => {
@@ -429,14 +424,14 @@ describe("monitoring setup forms", () => {
     fireEvent.change(screen.getByLabelText("Warm Up"), { target: { value: "30" } });
     fireEvent.click(screen.getByRole("button", { name: /start adaptive monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(getSubmittedPayload().model_params.similarity_engine).toEqual({
+    expect(getSubmittedPayload().monitoring.model_params.similarity_engine).toEqual({
       id: "faiss", params: { window_size: 1000, warm_up: 30 },
     });
   });
 
   it("disables sensors claimed by an overlapping active service", async () => {
-    const existing: ActiveService = { id: "7", container_id: "workload", container_name: "radar-existing", status: true,
-      mqtt_topics: ["telemetry/charger-1/L1"], stream_ids: ["stream-L1"],
+    const existing: ActiveService = { id: "7", display_name: "radar-existing", active: true,
+      reading_ids: ["stream-L1"],
       operational_status: { stage: "operational", is_stale: false, message_count: 1, processed_message_count: 1 } };
     await renderCreate({ services: [existing], byStream: new Map([["stream-L1", new Set(["7"])]]) });
 
@@ -446,9 +441,6 @@ describe("monitoring setup forms", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /start monitoring/i }));
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
-    expect(getSubmittedPayload().mqtt_topics).toEqual([
-      "telemetry/charger-1/L2",
-      "telemetry/charger-1/L3",
-    ]);
+    expect(getSubmittedPayload().reading_ids).toEqual(["stream-L2", "stream-L3"]);
   });
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
-import { addTestCharger, removeTestCharger, fixtureEntityId, fixtureReadingKey } from "./helpers/collection";
+import { addTestCharger, removeTestCharger, fixtureTarget, fixtureReadingId } from "./helpers/collection";
 import { accessToken } from "./helpers/auth";
 
 test.describe("monitoring lifecycle smoke", () => {
@@ -12,8 +12,7 @@ test.describe("monitoring lifecycle smoke", () => {
     playwright,
   }) => {
     const deviceId = randomUUID();
-    const chargerId = fixtureEntityId(deviceId);
-    const topic = `telemetry/${chargerId}/${fixtureReadingKey(deviceId, "L1")}`;
+    const readingId = fixtureReadingId(deviceId, "L1");
     let serviceId: string | undefined;
     let authToken: string | null = null;
     const cleanupRequest = await playwright.request.newContext({
@@ -28,7 +27,7 @@ test.describe("monitoring lifecycle smoke", () => {
       await addTestCharger(cleanupRequest, authToken!, deviceId, deviceId, [
         "L1",
       ]);
-      await page.goto(`/?create=monitoring&target=${encodeURIComponent(chargerId)}`);
+      await page.goto(`/?create=monitoring&target=${encodeURIComponent(fixtureTarget(deviceId))}`);
 
       await expect(
         page.getByRole("heading", { name: "Create service", exact: true }),
@@ -62,7 +61,7 @@ test.describe("monitoring lifecycle smoke", () => {
 
       const startResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().includes("/v1/monitors/start") &&
+          new URL(response.url()).pathname.endsWith("/v1/monitors") &&
           response.request().method() === "POST",
       );
       await page.getByRole("button", { name: /start monitoring/i }).click();
@@ -71,16 +70,16 @@ test.describe("monitoring lifecycle smoke", () => {
       expect(startResponse.ok()).toBeTruthy();
 
       const startPayload = startResponse.request().postDataJSON() as {
-        mqtt_topics?: string[];
-        static_baseline_config?: {
+        reading_ids?: string[];
+        monitoring?: {
           martingale_config?: {
             trackers?: Array<Record<string, unknown>>;
           };
         };
       };
-      expect(startPayload.mqtt_topics).toEqual([topic]);
+      expect(startPayload.reading_ids).toEqual([readingId]);
       expect(
-        startPayload.static_baseline_config?.martingale_config?.trackers,
+        startPayload.monitoring?.martingale_config?.trackers,
       ).toEqual([
         expect.objectContaining({
           tracker_id: "primary",
@@ -95,8 +94,8 @@ test.describe("monitoring lifecycle smoke", () => {
         }),
       ]);
 
-      serviceId = ((await startResponse.json()) as { service_id?: string })
-        .service_id;
+      serviceId = ((await startResponse.json()) as { monitor_id?: string })
+        .monitor_id;
       expect(serviceId).toBeTruthy();
       const details = page.getByRole("region", {
         name: "Monitoring service details",
@@ -137,7 +136,7 @@ test.describe("monitoring lifecycle smoke", () => {
         );
       }
       if (authToken)
-        await removeTestCharger(cleanupRequest, authToken, chargerId);
+        await removeTestCharger(cleanupRequest, authToken, deviceId);
       await cleanupRequest.dispose();
     }
   });

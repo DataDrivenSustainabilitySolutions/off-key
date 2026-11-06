@@ -29,8 +29,8 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | Endpoint group | Client behaviour | Current enforcement note |
 | --- | --- | --- |
 | Authentication | Public calls without a bearer token | Public by design |
-| Chargers and telemetry | Send the login bearer token | Active, verified membership required |
-| Monitors and anomalies | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
+| Devices and measurements | Send the login bearer token | Active, verified membership required |
+| Monitors and alarms | Send the login bearer token | Members read; writes need `manage_monitors` or `manage_alarms` |
 | Favourites | Send the login bearer token | Server selects the current member as owner |
 | Members and roles | Send the login bearer token | Profile and roles for every member; `manage_members` changes them |
 | Health and readiness | No token | Public operational probes in local deployments |
@@ -95,131 +95,166 @@ deleted. A change that would leave no active member able to manage members is
 refused with 409. Account and token lifecycle details are in
 [Single-organization operation](../single-organization.md).
 
-### Chargers and telemetry
+### Devices and measurements
+
+Devices and readings are named by their catalogue ids, `devices[].id` and
+`readings[].id` of `GET /v1/catalogue`. The installation resolves where their
+values are stored.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/chargers/available` | List chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active` | List active chargers | Query: `skip`, `limit` |
-| `GET` | `/chargers/active/id` | List active charger identifiers | Query: `skip`, `limit` |
-| `GET` | `/telemetry/{charger_id}/type` | List telemetry types | Query: `limit` |
-| `GET` | `/telemetry/{charger_id}/data` | Fetch telemetry points | Query: `type`, `limit`, cursor fields, `paginated` |
-| `GET` | `/telemetry/{charger_id}/range` | Fetch a downsampled range: each time bucket's lowest and highest value | Query: `type`, `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
+| `GET` | `/devices` | Catalogue devices with their `reading_ids`, `online` and `last_seen` | Query: optional `active` |
+| `GET` | `/devices/{device_id}/readings` | The catalogue readings of one device | Path: `device_id` |
+| `GET` | `/readings/{reading_id}/measurements` | Recorded values of one reading | Query: `limit`, cursor fields, `paginated` |
+| `GET` | `/readings/{reading_id}/measurements/buckets` | A downsampled range: each time bucket's lowest and highest value | Query: `start` (omit for all stored history), `end` (default now), `buckets` (10–2000, default 600) |
 
-Telemetry cursors:
+Measurement cursors:
 
 - Use `after_timestamp` for historical event-time pagination.
 - Use `after_created` and `after_event_timestamp` together for live ingestion-order pagination.
 - Do not mix historical and live cursor forms.
 
 ```http
-GET /v1/telemetry/charger-123/data?type=controllerCpuUsage&limit=200
+GET /v1/readings/stream:cpu-usage/measurements?limit=200
 Authorization: Bearer <token>
 ```
 
-### Generic catalogue and collection
+### Catalogue, recording and live views
+
+The catalogue `document` holds `brokers`, `devices`, `readings` and `groups`;
+devices and readings name their broker as `broker_id`. Changes need
+`manage_sources`, which TACTIC checks.
 
 | Method | Path | Purpose | Access |
 | --- | --- | --- | --- |
-| `GET` | `/system` | Saved generic document, revision, bindings and runtime | Member |
-| `PUT` | `/system` | Save structural changes at `expected_revision` | `manage_sources` |
-| `GET` | `/system/revisions` | Saved catalogue revisions | Member |
-| `POST` | `/system/collection/status` | Scoped collector status and latest readings | Member |
-| `POST` | `/system/collection/preview` | Review explicit collection changes and affected monitors | `manage_sources` |
-| `PUT` | `/system/collection` | Apply confirmed opt-in policies | `manage_sources` |
-| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes | `manage_sources` |
-| `POST` | `/system/connections/reconnect` | Restart the recording connection to a broker now, resetting its retry backoff | `manage_sources` |
-| `GET` | `/system/health` | Collection `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
-| `GET` | `/system/storage` | Storage size and managed retention status | Member |
-| `GET` | `/system/live` | Current preview session and samples after `after_sequence` | Member |
-| `POST` | `/system/live/leases` | Start a bounded preview lease | `manage_sources` |
-| `PUT` | `/system/live/leases/{lease_id}` | Renew a preview lease | `manage_sources` |
-| `DELETE` | `/system/live/leases/{lease_id}` | Stop a preview lease; 204 | `manage_sources` |
+| `GET` | `/catalogue` | Saved document, revision, how each reading is recorded (`runtime.bindings`) and `can_edit` | Member |
+| `PUT` | `/catalogue` | Save structural changes at `expected_revision` | `manage_sources` |
+| `GET` | `/catalogue/revisions` | Saved catalogue revisions | Member |
+| `POST` | `/brokers/check` | One MQTT CONNECT to a saved broker (`broker_id`), then disconnect; never subscribes | `manage_sources` |
+| `POST` | `/brokers/{broker_id}/reconnect` | Restart recording from a broker now, resetting its retry backoff | `manage_sources` |
+| `PUT` | `/recording` | Apply confirmed recording policies for `reading_ids`, or `rule_changes` for a broker, topic or reading scope | `manage_sources` |
+| `POST` | `/recording/preview` | Review a recording change and the monitors it affects | `manage_sources` |
+| `POST` | `/recording/status` | Recording state and latest values of the given `reading_ids` | Member |
+| `GET` | `/recording/health` | Recording `diagnosis` (first failing check, with code and explanation) plus the raw ingress/collector reports | Member |
+| `GET` | `/storage` | Storage size and managed retention status | Member |
+| `GET` | `/live/measurements` | Open live views: brokers, readings and samples after `after_sequence` | Member |
+| `POST` | `/live/views` | Open a bounded live view of `reading_ids`; answers its `view_id` and first `measurements` | `manage_sources` |
+| `POST` | `/live/views/{view_id}/renew` | Keep a live view open, optionally with other `reading_ids` | `manage_sources` |
+| `DELETE` | `/live/views/{view_id}` | Close a live view; 204 | `manage_sources` |
 
 Catalogue documents use only `aberration-system` schema version 1. New inputs
 remain Off regardless of policy metadata in an import. The UI reviews structural
 replacement before saving; existing selections survive by stable reading ID.
-`/sources` and the provider-specific catalogue endpoints have been removed.
+Files exported before the rename, with `connections`, `streams` and
+`connection_id`, still import.
 
-`/system/health` decides the collection diagnosis on the server. The checks run
+`/recording/health` decides the recording diagnosis on the server. The checks run
 in a fixed order (catalogue saved, collector report younger than 15 seconds,
 local MQTT connected, revisions applied, broker routes, broker connections,
 database, traffic) and the first that fails is returned as `diagnosis.code` with
 a title, tone and explanation. The web app shows that verdict unchanged; it only
 adds "Status not refreshing" when the endpoint itself stops answering.
 
-The `/system/live` session API starts explicitly bounded in-memory previews.
-Acquiring a lease requires `manage_sources`; members can inspect an existing
-session. Preview does not enable persistent collection. Accepted detector topics
-use only `telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete
-MQTT paths and JSON Pointer payload bindings.
+Live views are explicitly bounded in-memory previews. Opening one requires
+`manage_sources`; members can read the measurements of an open view. A live view
+does not record anything. Accepted detector topics use only
+`telemetry/<entity>/<reading>`; upstream topics can use arbitrary concrete MQTT
+paths and JSON Pointer payload bindings.
 
-### Monitoring and model discovery
+### Monitors, pipelines and detectors
+
+A monitor is named by its `monitor_id` everywhere; container names, container
+ids and Docker states stay inside the installation. Members read everything
+here; changes need `manage_monitors`.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `GET` | `/monitors/all` | List services | `active_only`, `include_docker_status` |
-| `GET` | `/monitors` | Get one service | Exactly one of `container_name`, `container_id` |
-| `POST` | `/monitors/start` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
-| `DELETE` | `/monitors/stop` | Stop/remove a workload by container | Exactly one of `container_name`, `container_id` |
-| `DELETE` | `/monitors/{service_id}` | Delete a service record and backing workload | Path: `service_id` |
-| `PATCH` | `/monitors/{service_id}/label` | Rename a service; needs `manage_monitors` | Body: `display_name` |
-| `GET` | `/monitors/models` | Discover available models | Optional `strategy` |
-| `GET` | `/monitors/evidence` | List inference evidence | `charger_id`, optional `telemetry_type`, `limit` |
-| `GET` | `/monitors/evidence/chart` | Incrementally load chart evidence | `charger_id`, optional complete cursor, `limit` |
+| `GET` | `/monitors` | List monitors with their state, strategy and watched readings | Optional `active` |
+| `POST` | `/monitors` | Start a form-configured monitor as a pipeline (HTTP 202) | Monitoring configuration body |
+| `GET` | `/monitors/overview` | What the Monitoring page loads: every monitor, whether designs may be edited, and the selected monitor's pipeline state | Optional `selected_monitor_id` |
+| `GET` | `/monitors/{monitor_id}` | One monitor with the configuration it was started with | Path: `monitor_id` |
+| `PATCH` | `/monitors/{monitor_id}` | Rename a monitor | Body: `display_name` |
+| `POST` | `/monitors/{monitor_id}/stop` | Stop a monitor and remove its workload; it stays listed as stopped | Path: `monitor_id` |
+| `DELETE` | `/monitors/{monitor_id}` | Delete a monitor and its workload; 204, its alarms stay | Path: `monitor_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline` | The design a monitor runs, its current run, recent history and validation | Optional `selected_node_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/history` | Earlier runs it replaced, newest first; the next page is the history of `next_monitor_id` | `limit` |
+| `GET` | `/monitors/{monitor_id}/pipeline/timeline` | The run's lifecycle events, oldest first, and how it ended | Path: `monitor_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/metadata` | Validation with the fields available at a node | `selected_node_id` |
+| `GET` | `/monitors/{monitor_id}/pipeline/state` | The diagnostic snapshot the running monitor last reported | Path: `monitor_id` |
+| `PUT` | `/monitors/{monitor_id}/pipeline/layout` | Store where its nodes sit on the canvas; the graph is unchanged | Body: layout |
+| `GET` | `/pipelines` | Saved designs, paged | `limit`, `offset`, `query`, `archived` |
+| `POST` | `/pipelines` | Save a new design as a draft | Body: `name`, `definition` |
+| `POST` | `/pipelines/apply` | Save, publish and activate a design in one step (HTTP 202) | Body: `definition`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `POST` | `/pipelines/validate` | Check an unsaved design; with `selected_node_id` also its fields | Body: `definition` |
+| `GET` | `/pipelines/{pipeline_id}` | One design with its draft, `version` and revisions | Path: `pipeline_id` |
+| `PATCH` | `/pipelines/{pipeline_id}` | Rename, describe or archive a design | Body: `expected_version` and changes |
+| `PUT` | `/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout | Body: `expected_version`, `definition` |
+| `POST` | `/pipelines/{pipeline_id}/validate` | Check a graph against a saved design | Body: `definition` |
+| `GET` | `/pipelines/{pipeline_id}/revisions` | Published revisions, newest first | `limit`, `before` |
+| `POST` | `/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run | Body: `expected_version` |
+| `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
+| `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
+| `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
+| `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
+| `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
+| `GET` | `/detectors` | Detector models with family, cost and parameter schema | Optional `strategy` |
+| `GET` | `/evidence` | Inference evidence of the observations that covered one reading | `reading_id`, `limit` |
+| `GET` | `/evidence/chart` | Incrementally load chart evidence | `device_id`, or `reading_id` repeated for up to 200 readings, optional `monitor_id`, optional complete cursor, `limit` |
 
-The chart cursor is the complete tuple `after_created`, `after_timestamp`, `after_service_id`, and `after_sequence_number`; if one is supplied, all four are required.
+Evidence rows name their `monitor_id` and the `reading_ids` they covered;
+`input_timestamps` is keyed by reading id. The chart cursor is the complete
+tuple `after_created`, `after_timestamp`, `after_monitor_id`, and
+`after_sequence_number`; if one is supplied, all four are required.
 
-Every listed service, here and in `/monitors/workspace`, carries `stream_ids`:
-the catalogue readings whose accepted topic one of its `mqtt_topics` filters
-takes, wildcards included. Use it to answer "which monitors watch this reading"
-without MQTT rules of your own; a reading removed from the catalogue drops out.
+Every listed monitor, here and in `/monitors/overview`, carries `reading_ids`:
+the catalogue readings it watches. Use it to answer "which monitors watch this
+reading"; a reading removed from the catalogue drops out. A monitor's
+`operational_status` names its inputs by reading id as well. How a reading is
+recorded (its topic and ingress key) stays inside the backend. `active` is true
+while the monitor should run and false once it is stopped.
 
 A monitor start body contains:
 
-- required `container_name` and `mqtt_topics`
+- required `display_name` and `reading_ids`: up to 100 distinct numeric readings
+  that are recorded, all of one device or all of one broker without a device
 - `monitoring`: the strategy configuration, including `strategy`
   (`static_baseline` or `adaptive_stream`), `model_type`, `model_params`, and
   the strategy's training, calibration, and alarm settings
-- optional `performance_config` for sensor alignment
+- optional `performance_config`: `sensor_freshness_seconds`,
+  `observation_max_age_seconds`, `observation_future_tolerance_seconds` and
+  `alignment_max_skew_seconds`
 
-Omitting `monitoring` selects the default static baseline. The former top-level
-`strategy`, `model_type`, `model_params`, `static_baseline_config`, and
-`adaptive_stream_config` fields remain accepted at API ingress and are converted
-to `monitoring`. Mixing the two formats, conflicting model fields, and malformed
-configuration return HTTP 422. The gateway forwards only the canonical format to
-TACTIC.
+Omitting `monitoring` selects the default static baseline. Other fields,
+including the former top-level `mqtt_topics`, `strategy`, `model_type` and
+`model_params`, and malformed configuration return HTTP 422.
 
-TACTIC converts the configuration into its equivalent graph, binds each topic to
-its selected numeric catalogue reading and submits a pipeline activation, even
-while the visual workbench is disabled. The HTTP 202 response carries
-`service_id`, `activation_id`, `container_name`, `status` (the activation phase)
-and `mqtt_topics`. Poll `/monitors/pipeline-activations/{activation_id}` until
-the service exists. Topics without a selected numeric reading return HTTP 422.
+TACTIC converts the configuration into its equivalent graph, binds one input
+per reading and submits a pipeline activation, even while the visual workbench
+is disabled. The graph's inputs carry the readings' catalogue labels. The HTTP
+202 response carries `monitor_id`, `activation_id`, `phase` and `reading_ids`.
+Poll `/pipeline-activations/{activation_id}` until its `phase` is `succeeded`,
+`failed` or `cancelled`. A reading that is unknown, not numeric, not recorded or
+of another device returns HTTP 422.
 
-Use `/monitors/models` as the source for valid model names and parameter schemas.
+A run view (`/monitors/{monitor_id}/pipeline`) names its bound inputs by
+`slot_id`, `reading_id` and `unit`. Its `binding_metadata` keeps the
+`catalogue_revision` and `collection_revision` the run was bound against and,
+per reading, the catalogue `label`, `unit`, `device_id`, `device_label`,
+`broker_id`, `broker_label` and `collection_policy` at that time.
 
-Visual monitoring interfaces use the same authenticated `/v1/monitors` prefix:
+Use `/detectors` as the source for valid model names and parameter schemas.
 
-| Family | Paths | Purpose |
-| --- | --- | --- |
-| Catalog | `/pipelines/catalog` | Generated components, bounded field descriptors and templates |
-| Library | `/pipelines`, `/pipelines/{id}`, `/pipelines/{id}/draft` | Inspect designs; `manage_monitors` creates, renames, archives and saves with `expected_version` |
-| Validation | `/pipelines/validate`, `/pipelines/{id}/validate` | With `manage_monitors`, infer bounded feature metadata and validate unsaved or saved graphs without changing library state |
-| Revisions | `/pipelines/{id}/revisions`, `/pipelines/{id}/revisions/{revision_id}`, `/pipelines/{id}/revisions/{revision_id}/metadata` | Publish and inspect immutable executable revisions |
-| Activations | `/pipelines/apply`, `/pipeline-activations`, `/pipeline-activations/{id}` | Apply a definition directly (HTTP 202), idempotent start/replacement, progress and cancellation |
-| Bound run | `/{service_id}/pipeline`, `/{service_id}/pipeline-layout`, `/{service_id}/pipeline-history`, `/{service_id}/pipeline-timeline`, `/{service_id}/pipeline-metadata`, `/{service_id}/pipeline-state` | Immutable execution, retained history and the run's lifecycle events; separately versioned layout |
-| Workspace | `/workspace?selected_service_id=...` | One member-scoped request for summaries and the selected bounded diagnostic snapshot |
-
-Use publication and activation for graph starts. The legacy `/start` endpoint
-remains compatible with existing callers; direct public graph launches are rejected
-so they cannot bypass preflight, durable input reservations or run history.
+`bindings` map each input slot of a design to a catalogue reading id. Repeating
+an apply or activation with the same `idempotency_key` returns the first
+activation instead of starting another; `replace_monitor_id` swaps out a running
+monitor. Direct public graph launches are rejected so they cannot bypass
+preflight, durable input reservations or run history.
 Draft/layout conflicts return HTTP 409. Publishing does not activate a revision.
-Run views survive deletion of the live service and expose retained input metadata,
-terminal errors and compiler feature lineage. POST
-`/pipelines/{id}/validate` accepts `{definition, selected_node_id?}`; GET
-`/{service_id}/pipeline` accepts the same optional `selected_node_id` query for
-member inspection even when authoring is disabled. Each compiler report is
+Run views survive deletion of the live monitor and expose retained input metadata,
+terminal errors and compiler feature lineage. `/monitors/{monitor_id}/pipeline`
+accepts an optional `selected_node_id` for member inspection even when authoring
+is disabled. Each compiler report is
 bounded to 512 KiB, omitting provenance and then whole unselected node tables
 with a `metadata_budget` notice. Complete ordered names for the selected node
 and its immediate parents remain available; inspect `features_complete` and
@@ -229,31 +264,38 @@ errors expose `issues_truncated`. Internal MQTT overrides and runtime image pins
 are rejected by public monitor creation.
 See [pipeline architecture and rollout](../development/monitoring-pipelines.md).
 
-### Favourites and anomalies
+### Favourites and alarms
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
 | `GET` | `/favorites` | The current member's favourites, oldest first | Optional query: `kind` |
-| `POST` | `/favorites` | Star an entity, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
+| `POST` | `/favorites` | Star a device, reading or monitor; an existing favourite is returned unchanged | Body: `kind`, `id` |
 | `DELETE` | `/favorites` | Remove a favourite; 204 whether or not it existed | Query: `kind`, `id` |
-| `GET` | `/anomalies/count` | Count anomalies | Optional query: `since` |
-| `POST` | `/anomalies/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `stream_ids`, optional `reading`, `service_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
-| `GET` | `/anomalies` | List charger anomalies | `charger_id`, optional `telemetry_type`, `limit` |
-| `POST` | `/anomalies` | Create an anomaly | JSON body, or the documented equivalent query fields |
-| `DELETE` | `/anomalies/{anomaly_id}` | Delete by stable identity | Path: `anomaly_id` |
+| `GET` | `/alarms/count` | Count alarms | Optional query: `since` |
+| `POST` | `/alarms/query` | Reporting: alarms of catalogue readings with catalogue names, a summary and per-reading counts; every member | Body: `reading_ids`, optional `reading_id`, `monitor_id`, `since`, `until`, `max_p_value`, `limit`, `before` |
+| `GET` | `/alarms` | The newest alarms of a device, of readings, or of every reading | Query: `device_id` or `reading_id` (repeated, up to 200), optional `monitor_id`, `limit` |
+| `POST` | `/alarms` | Record an alarm by hand and email the alert recipients; 201 with the alarm | Body: `reading_ids`, `timestamp`, `alarm_type`, `value`, optional `value_type` |
+| `DELETE` | `/alarms/{alarm_id}` | Delete one alarm; 204, or 404 when there is none | Path: `alarm_id` |
 
-A favourite's `kind` is `entity` (a recorded `charger_id`), `reading` (a catalogue
-stream id) or `monitor` (a `service_id`). Ids are not checked against the
+A favourite's `kind` is `device` (a catalogue device id), `reading` (a catalogue
+reading id) or `monitor` (a `monitor_id`). Ids are not checked against the
 catalogue, so a favourite stays until the member removes it. A member keeps at
 most 256; adding another answers 409.
 
-`POST /anomalies/query` is a read, so members may call it although other
-`POST` routes under `/anomalies` need `manage_alarms`. An alarm is in the
-`stream_ids` scope when one of its readings is: its `sensor_set`, otherwise its
-`telemetry_type`. A multivariate alarm recorded without a sensor set is only in
-scope when every reading of its entity is. `summary` and `readings` cover every
-match rather than the returned page; `readings` ignores the narrowing filters so
-it can feed a reading picker. Pages are newest first; pass `next` as `before`.
+An alarm names its catalogue `device_id` and `reading_ids` with their names in
+`device_label` and `reading_labels`. A reading without a device has a null
+`device_id`, and `device_label` names its broker. Readings the catalogue no
+longer has are left out. `multivariate` marks an alarm a monitor raised over
+several readings together. A manual alarm names readings of one device, or of
+one broker without a device; several make it multivariate.
+
+`POST /alarms/query` is a read, so members may call it although other `POST`
+routes under `/alarms` need `manage_alarms`. An alarm is in the `reading_ids`
+scope when one of its readings is. A multivariate alarm recorded without its
+readings is only in scope when every reading of its device is. `summary` and
+`readings` cover every match rather than the returned page; `readings` ignores
+the narrowing filters so it can feed a reading picker. Pages are newest first;
+pass `next` as `before`.
 
 ### Dojo
 
@@ -319,7 +361,7 @@ that starts inside a label and outlasts it does not count.
 outside the labels. Only runs with status `succeeded` have metrics.
 
 Promoting a run copies its compiled design into the pipeline library as a new
-template, the same as `POST /monitors/pipelines`, so pipeline authoring must
+template, the same as `POST /pipelines`, so pipeline authoring must
 be enabled and the member needs `manage_monitors`. The answer names the new
 `pipeline_id` and lists each input slot with the series it was bound to. For a
 series copied from recorded history, `reading_id` is the catalogue reading it
@@ -342,22 +384,21 @@ Health and readiness remain available without this service credential.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/data/chargers` | Charger listing |
-| `GET` | `/data/chargers/active/ids` | Active charger IDs |
-| `GET` | `/data/telemetry/{charger_id}/types` | Telemetry type list |
-| `GET` | `/data/telemetry/{charger_id}` | Telemetry points |
-| `GET` | `/data/telemetry/{charger_id}/range` | Downsampled telemetry range |
+| `GET` | `/data/devices` | Catalogue devices with recording status |
+| `GET` | `/data/devices/{device_id}/readings` | Catalogue readings of one device |
+| `GET` | `/data/readings/{stream_id}/measurements` | Measurements of a catalogue reading |
+| `GET` | `/data/readings/{stream_id}/measurements/buckets` | Downsampled measurements of a catalogue reading |
+| `GET` | `/data/evidence` | Evidence of a catalogue reading |
+| `GET` | `/data/evidence/chart` | Chart evidence of a catalogue device or of catalogue readings |
 | `POST` | `/data/auth/login` | Internal authentication check |
 | `GET` | `/data/users/{user_id}/favorites` | List favourites |
 | `POST` | `/data/users/{user_id}/favorites` | Add a favourite |
 | `DELETE` | `/data/users/{user_id}/favorites` | Remove a favourite named by query `kind` and `id` |
-| `POST` | `/data/anomalies/query` | Reporting query by catalogue reading |
-| `GET` | `/data/anomalies/count` | Count anomalies |
-| `GET` | `/data/anomalies/{charger_id}` | List anomalies |
-| `POST` | `/data/anomalies` | Create an anomaly |
-| `DELETE` | `/data/anomalies/{anomaly_id}` | Delete an anomaly |
-| `GET` | `/data/monitoring-evidence/{charger_id}` | List monitoring evidence |
-| `GET` | `/data/monitoring-evidence/{charger_id}/chart` | Load chart evidence with a stable cursor |
+| `GET` | `/data/alarms` | Alarms of a catalogue device or of catalogue readings |
+| `POST` | `/data/alarms/query` | Reporting query by catalogue reading |
+| `GET` | `/data/alarms/count` | Count alarms |
+| `POST` | `/data/alarms` | Record an alarm about catalogue readings |
+| `DELETE` | `/data/alarms/{alarm_id}` | Delete an alarm |
 
 ### Dojo
 
@@ -390,8 +431,8 @@ Health and readiness remain available without this service credential.
 | --- | --- | --- |
 | `GET` | `/orchestration/radar/services/` | List services |
 | `POST` | `/orchestration/radar/services/start/` | Start a form-configured monitor as a pipeline activation |
-| `GET` | `/orchestration/radar/services/details/` | Get workload details |
-| `DELETE` | `/orchestration/radar/services/stop/` | Stop by container reference |
+| `GET` | `/orchestration/radar/services/{service_id}` | Get one service with its configuration |
+| `POST` | `/orchestration/radar/services/{service_id}/stop` | Stop a service and remove its workload |
 | `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |
 
 ### Model catalogue
@@ -426,7 +467,6 @@ FastAPI validation errors and Gateway-propagated TACTIC errors use a `detail` fi
 
 ## Compatibility notes
 
-- The current active-ID Gateway route is singular: `/chargers/active/id`.
 - The Gateway API family remains `/favorites`. The dashboard's Favorites filter uses `/?state=favorites`; the old `/favourites` frontend route redirects there.
 - Removed sync and preprocessor-discovery routes must not be used by new clients.
 

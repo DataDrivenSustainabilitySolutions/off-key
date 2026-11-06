@@ -17,7 +17,7 @@ import type { SystemDocument } from "@/types/system";
 
 const systemFixture = (): SystemDocument => ({
   ...createEmptySystem("Workshop"),
-  connections: [
+  brokers: [
     {
       id: "connection:workshop",
       label: "Workshop broker",
@@ -34,7 +34,7 @@ const systemFixture = (): SystemDocument => ({
       id: "device:oven",
       label: "Oven",
       kind: "oven",
-      connection_id: "connection:workshop",
+      broker_id: "connection:workshop",
     },
     {
       id: "device:probe",
@@ -43,11 +43,11 @@ const systemFixture = (): SystemDocument => ({
       parent_id: "device:oven",
     },
   ],
-  streams: [
+  readings: [
     {
       id: "stream:temperature",
       label: "Temperature",
-      connection_id: "connection:workshop",
+      broker_id: "connection:workshop",
       device_id: "device:probe",
       topic: "workshop/oven/measurements",
       payload_pointer: "/temperature",
@@ -87,16 +87,16 @@ describe("domain agnostic saved systems", () => {
     const system = systemFixture();
     const response = {
       ...system,
-      connections: system.connections.map((entry) => ({
+      brokers: system.brokers.map((entry) => ({
         ...entry,
         websocket_path: null,
       })),
       devices: system.devices.map((entry) => ({
         ...entry,
         parent_id: entry.parent_id ?? null,
-        connection_id: entry.connection_id ?? null,
+        broker_id: entry.broker_id ?? null,
       })),
-      streams: system.streams.map((entry) => ({
+      readings: system.readings.map((entry) => ({
         ...entry,
         unit: null,
         payload_pointer: null,
@@ -104,31 +104,31 @@ describe("domain agnostic saved systems", () => {
       })),
     };
     const parsed = validateSystemDocument(response);
-    expect(parsed.connections[0]).not.toHaveProperty("websocket_path");
-    expect(parsed.streams[0]).not.toHaveProperty("policy");
+    expect(parsed.brokers[0]).not.toHaveProperty("websocket_path");
+    expect(parsed.readings[0]).not.toHaveProperty("policy");
   });
 
   it.each([
     (system: SystemDocument) => ({ ...system, password: "secret" }),
     (system: SystemDocument) => ({
       ...system,
-      connections: [{ ...system.connections[0], password: "secret" }],
+      brokers: [{ ...system.brokers[0], password: "secret" }],
     }),
     (system: SystemDocument) => ({
       ...system,
-      streams: [{ ...system.streams[0], connection_id: "missing" }],
+      readings: [{ ...system.readings[0], broker_id: "missing" }],
     }),
     (system: SystemDocument) => ({
       ...system,
-      streams: [{ ...system.streams[0], topic: "workshop/#" }],
+      readings: [{ ...system.readings[0], topic: "workshop/#" }],
     }),
     (system: SystemDocument) => ({
       ...system,
-      streams: [{ ...system.streams[0], topic: "💧".repeat(129) }],
+      readings: [{ ...system.readings[0], topic: "💧".repeat(129) }],
     }),
     (system: SystemDocument) => ({
       ...system,
-      streams: [{ ...system.streams[0], payload_pointer: "/invalid~escape" }],
+      readings: [{ ...system.readings[0], payload_pointer: "/invalid~escape" }],
     }),
     (system: SystemDocument) => ({
       ...system,
@@ -167,12 +167,12 @@ describe("domain agnostic saved systems", () => {
       "stream:temperature",
       "Room temperature",
     );
-    expect(renamed.streams[0]).toEqual({
-      ...before.streams[0],
+    expect(renamed.readings[0]).toEqual({
+      ...before.readings[0],
       label: "Room temperature",
     });
-    expect(before.streams[0]?.label).toBe("Temperature");
-    expect(renamed.connections).toEqual(before.connections);
+    expect(before.readings[0]?.label).toBe("Temperature");
+    expect(renamed.brokers).toEqual(before.brokers);
   });
 
   it("requires explicit cascade removal and removes dependent streams and group memberships together", () => {
@@ -187,9 +187,9 @@ describe("domain agnostic saved systems", () => {
     );
     const removed = removeSystemEntity(before, "device", "device:oven", true);
     expect(removed.devices).toEqual([]);
-    expect(removed.streams).toEqual([]);
+    expect(removed.readings).toEqual([]);
     expect(removed.groups[0]?.member_ids).toEqual(["connection:workshop"]);
-    expect(removed.connections).toEqual(before.connections);
+    expect(removed.brokers).toEqual(before.brokers);
   });
 
   it("accepts only the generic catalogue format", () => {
@@ -203,7 +203,7 @@ describe("domain agnostic saved systems", () => {
 describe("catalogue entity edits", () => {
   const withSecondBroker = (): SystemDocument => {
     const system = systemFixture();
-    system.connections.push({ ...system.connections[0]!, id: "connection:annex", label: "Annex broker" });
+    system.brokers.push({ ...system.brokers[0]!, id: "connection:annex", label: "Annex broker" });
     system.groups.push({ id: "group:annex", label: "Annex", color: "#123456", member_ids: [] });
     return system;
   };
@@ -211,16 +211,16 @@ describe("catalogue entity edits", () => {
   it("creates new objects with the editor defaults", () => {
     const system = systemFixture();
     expect(newSystemEntity(system, "connection")).toMatchObject({ label: "New connection", port: 1883, transport: "tcp", tls: false });
-    expect(newSystemEntity(system, "device")).toMatchObject({ kind: "device", connection_id: "connection:workshop" });
-    expect(newSystemEntity(system, "stream")).toMatchObject({ connection_id: "connection:workshop", policy: { mode: "off", interval_seconds: 10 } });
+    expect(newSystemEntity(system, "device")).toMatchObject({ kind: "device", broker_id: "connection:workshop" });
+    expect(newSystemEntity(system, "stream")).toMatchObject({ broker_id: "connection:workshop", policy: { mode: "off", interval_seconds: 10 } });
     expect(newSystemEntity(system, "group")).toMatchObject({ label: "New collection", color: DEFAULT_GROUP_COLOR, member_ids: [] });
     expect(newSystemEntity(system, "stream").id).toMatch(/^stream:/);
   });
 
   it("replaces an existing object in place and appends a new one", () => {
     const system = withSecondBroker();
-    const renamed = upsertSystemEntity(system, "connection", { ...system.connections[0]!, label: "Renamed" });
-    expect(renamed.connections.map(item => [item.id, item.label])).toEqual([
+    const renamed = upsertSystemEntity(system, "connection", { ...system.brokers[0]!, label: "Renamed" });
+    expect(renamed.brokers.map(item => [item.id, item.label])).toEqual([
       ["connection:workshop", "Renamed"], ["connection:annex", "Annex broker"],
     ]);
     const added = upsertSystemEntity(system, "device", { id: "device:new", label: "New", kind: "sensor" });
@@ -229,18 +229,18 @@ describe("catalogue entity edits", () => {
 
   it("moves a device's readings on its old broker along with it", () => {
     const system = withSecondBroker();
-    system.devices[1]!.connection_id = "connection:workshop";
-    const moved = upsertSystemEntity(system, "device", { ...system.devices[1]!, connection_id: "connection:annex" });
-    expect(moved.streams[0]).toMatchObject({ id: "stream:temperature", connection_id: "connection:annex", topic: "workshop/oven/measurements" });
+    system.devices[1]!.broker_id = "connection:workshop";
+    const moved = upsertSystemEntity(system, "device", { ...system.devices[1]!, broker_id: "connection:annex" });
+    expect(moved.readings[0]).toMatchObject({ id: "stream:temperature", broker_id: "connection:annex", topic: "workshop/oven/measurements" });
   });
 
   it("keeps explicit reading bindings when a device leaves its broker", () => {
     const system = systemFixture();
     const detached = { ...system.devices[1]! };
-    delete detached.connection_id;
+    delete detached.broker_id;
     const saved = upsertSystemEntity(system, "device", detached);
-    expect(saved.devices[1]).not.toHaveProperty("connection_id");
-    expect(saved.streams[0]?.connection_id).toBe("connection:workshop");
+    expect(saved.devices[1]).not.toHaveProperty("broker_id");
+    expect(saved.readings[0]?.broker_id).toBe("connection:workshop");
   });
 
   it("moves group members out of every other group", () => {
@@ -260,7 +260,7 @@ const conformance = JSON.parse(fs.readFileSync(
 describe("validator conformance with the backend model", () => {
   it.each(conformance.cases.map((item) => [item.name, item] as const))("%s", (_, item) => {
     const document = structuredClone(conformance.base);
-    Object.assign(document.connections[0]!, item.connection);
+    Object.assign(document.brokers[0]!, item.connection);
     if (item.group) document.groups.push(item.group as SystemDocument["groups"][number]);
     if (item.valid) expect(() => validateSystemDocument(document)).not.toThrow();
     else expect(() => validateSystemDocument(document)).toThrow();

@@ -20,6 +20,7 @@ CALL_SHAPES = {
     "member_request": (0, 1, "path", None, "/api/v1/members"),
     "role_request": (0, 1, "path", None, "/api/v1/roles"),
     "system_request": (0, 2, "path", "", "/api/v1/system"),
+    "data_request": ("GET", 0, "path", None, "/api/v1/data"),
 }
 # TACTIC routes the gateway deliberately never calls.
 INTERNAL_ONLY: dict[tuple[str, str], str] = {}
@@ -75,7 +76,11 @@ def gateway_calls():
                 if not isinstance(call, ast.Call) or not (name := _name(call)):
                     continue
                 method_index, path_index, keyword, default, prefix = CALL_SHAPES[name]
-                method = _argument(call, method_index, "method")
+                method = (
+                    method_index
+                    if isinstance(method_index, str)
+                    else _argument(call, method_index, "method")
+                )
                 endpoint = _argument(call, path_index, keyword, default)
                 calls.add((method, prefix + endpoint.split("?", 1)[0]))
     return calls

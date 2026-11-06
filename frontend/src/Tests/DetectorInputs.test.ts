@@ -12,7 +12,7 @@ import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 const start = Date.parse("2026-11-03T08:00:00Z");
 const at = (seconds: number) => new Date(start + seconds * 1000).toISOString();
 const row = (seconds: number, inputs: MonitoringDetectorInputs[] | undefined, sequence = seconds): MonitoringChartEvidence =>
-  chartEvidence({ service_id: "phases", timestamp: at(seconds), sequence_number: sequence, sensor_set: ["L1"],
+  chartEvidence({ monitor_id: "phases", timestamp: at(seconds), sequence_number: sequence, reading_ids: ["L1"],
     strategy: "static_baseline", tracker_results: [trackerResult()], detector_inputs: inputs });
 const flat = (l1: number | null, l2: number | null): MonitoringDetectorInputs[] =>
   [{ detector_id: null, inputs: { L1_dev: l1, L2_dev: l2 } }];
@@ -89,8 +89,8 @@ describe("detector inputs", () => {
 
   it("shows the service's inputs in its history and names them in the hover", () => {
     const input: MonitoringInput = {
-      stream: { id: "L1", label: "AC1", connection_id: "broker", topic: "L1", category: "Other", value_type: "number", unit: "A" },
-      binding: { entity_id: "entity", telemetry_key: "L1", accepted_topic: "L1", policy: { mode: "original", interval_seconds: 1 } },
+      stream: { id: "L1", label: "AC1", broker_id: "broker", topic: "L1", category: "Other", value_type: "number", unit: "A" },
+      binding: { policy: { mode: "original", interval_seconds: 1 } },
       path: "Charger 07",
     };
     const rows = [row(0, flat(0.01, -0.01)), row(1, flat(0.02, -0.02))];

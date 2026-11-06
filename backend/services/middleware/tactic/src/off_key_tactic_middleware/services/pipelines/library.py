@@ -49,6 +49,7 @@ from sqlalchemy import select
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..orchestration.radar_queries import service_summary
+from ..orchestration.radar_status import name_inputs_by_reading
 from .queries import list_designs, list_revisions, run_history
 
 
@@ -320,7 +321,9 @@ class PipelineLibrary:
             error=run.error,
             created_at=run.created_at,
             ended_at=run.ended_at,
-            final_status=run.final_status,
+            final_status=name_inputs_by_reading(
+                run.final_status, (run.execution or {}).get("bindings")
+            ),
             events=[
                 PipelineRunEventView(
                     occurred_at=row.occurred_at,

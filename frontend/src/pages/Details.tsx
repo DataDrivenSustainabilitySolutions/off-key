@@ -23,8 +23,8 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { drainForward, EVIDENCE_PAGE_SIZE } from "@/lib/forward-pages";
 import {
+  getAlarms,
   getAllTelemetryData,
-  getAnomalies,
   mergeTelemetryData,
 } from "@/lib/charger-api";
 import type {
@@ -33,23 +33,30 @@ import type {
   MonitoringEvidenceCursor,
 } from "@/types/monitoring";
 import { buildSensorClaims } from "@/lib/monitoring-services";
+import { monitoringTargetId } from "@/domain/monitoring/serviceModel";
 import { useLinkedChartNavigation } from "@/features/charts/use-linked-chart-navigation";
 import {
   getMonitoringEvidenceCursor,
   mergeMonitoringChartEvidence,
 } from "@/lib/monitoring-chart";
-import type { Anomaly, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
+import type { Alarm, TelemetryCursor, TelemetryTypeData } from "@/types/charger";
 import { useOptionalCatalogue } from "@/features/workspace/catalogue-context";
 import { selectedSourceHref } from "@/features/workspace/catalogue-navigation";
-import { entitySource, reportLabels } from "@/features/workspace/reporting-scope";
+import {
+  sourceLabel,
+  sourceNode,
+  sourceReadings,
+  type ReadingSource,
+} from "@/features/workspace/reporting-scope";
+import type { SystemSnapshot } from "@/types/system";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
 
-const sameAnomalyWindow = (left: Anomaly[], right: Anomaly[]): boolean =>
+const sameAnomalyWindow = (left: Alarm[], right: Alarm[]): boolean =>
   left.length === right.length &&
-  left.every((item, index) => item.anomaly_id === right[index]?.anomaly_id);
+  left.every((item, index) => item.alarm_id === right[index]?.alarm_id);
 
 // A loop instead of Math.max(...all points): spreading every point of every
 // reading as arguments can exceed the engine's argument limit.
@@ -100,26 +107,31 @@ const LiveTelemetryIndicator: React.FC<{
 };
 
 type DetailsCursors = {
-  chargerId: string;
+  sourceKey: string;
   evidenceCursor?: MonitoringEvidenceCursor;
   evidenceLoaded: boolean;
   telemetryLoaded: boolean;
   telemetryCursors: Map<string, TelemetryCursor>;
 };
-const freshCursors = (chargerId: string): DetailsCursors =>
-  ({ chargerId, evidenceLoaded: false, telemetryLoaded: false, telemetryCursors: new Map() });
+const freshCursors = (sourceKey: string): DetailsCursors =>
+  ({ sourceKey, evidenceLoaded: false, telemetryLoaded: false, telemetryCursors: new Map() });
 
+/** The readings of one device, or of one broker's readings without a device. */
 const Details: React.FC = () => {
-  const { chargerId = "" } = useParams<{ chargerId: string }>();
-  return <ChargerDetails key={chargerId} chargerId={chargerId} />;
+  const { deviceId, brokerId } = useParams<{ deviceId?: string; brokerId?: string }>();
+  const source = useMemo((): ReadingSource => brokerId !== undefined
+    ? { kind: "broker", id: brokerId }
+    : { kind: "device", id: deviceId ?? "" }, [deviceId, brokerId]);
+  const key = `${source.kind}:${source.id}`;
+  return <SourceDetails key={key} source={source} sourceKey={key} />;
 };
 
-const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
+const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({ source, sourceKey }) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(true);
   const [allTelemetryData, setAllTelemetryData] = useState<TelemetryTypeData[]>([]);
-  const [chargerAnomalies, setChargerAnomalies] = useState<Anomaly[]>([]);
+  const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [monitoringEvidence, setMonitoringEvidence] = useState<MonitoringChartEvidence[]>([]);
   const [monitoringServices, setMonitoringServices] = useState<ActiveService[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -132,46 +144,47 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
 
-  // Cursors for the incremental reads; a different entity starts over.
-  const cursorRef = useRef(freshCursors(chargerId));
+  // Cursors for the incremental reads; a different source starts over.
+  const cursorRef = useRef(freshCursors(sourceKey));
   const refresh = useCallback(async (signal: AbortSignal) => {
-    if (cursorRef.current.chargerId !== chargerId) cursorRef.current = freshCursors(chargerId);
+    if (cursorRef.current.sourceKey !== sourceKey) cursorRef.current = freshCursors(sourceKey);
     const cursors = cursorRef.current;
     const first = !cursors.telemetryLoaded && !cursors.evidenceLoaded;
     if (first) setIsLoadingTelemetry(true);
-    const loadEvidence = () =>
-      drainForward({
+    // A loaded catalogue saves fetching it on every refresh.
+    const loadedCatalogue = snapshotRef.current;
+    const scope = Promise.resolve(
+      loadedCatalogue ?? apiUtils.get<SystemSnapshot>("/v1/catalogue", { signal }),
+    ).then(catalogue => sourceReadings(catalogue.document, source));
+    // A broker's readings without a device are named one by one.
+    const none = (readings: ReturnType<typeof sourceReadings>) =>
+      "readingIds" in readings.scope && readings.scope.readingIds.length === 0;
+    const loadEvidence = async () => {
+      const readings = await scope;
+      if (none(readings)) return [];
+      return drainForward({
         cursor: cursors.evidenceCursor,
         fetchPage: cursor =>
           apiUtils.get<MonitoringChartEvidence[]>(
-            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(chargerId, cursor),
+            API_CONFIG.ENDPOINTS.MONITORING.CHART_EVIDENCE(readings.scope, cursor),
             { signal },
           ),
         cursorOf: getMonitoringEvidenceCursor,
         pageSize: EVIDENCE_PAGE_SIZE,
       });
+    };
 
-    const loadedCatalogue = snapshotRef.current;
     const [telemetryResult, anomaliesResult, evidenceResult, servicesResult] =
       await Promise.allSettled([
-        loadedCatalogue
-          ? getAllTelemetryData(
-              chargerId,
-              signal,
-              cursors.telemetryLoaded ? cursors.telemetryCursors : undefined,
-              loadedCatalogue,
-            )
-          : cursors.telemetryLoaded
-          ? getAllTelemetryData(
-              chargerId,
-              signal,
-              cursors.telemetryCursors,
-            )
-          : getAllTelemetryData(chargerId, signal),
-        getAnomalies(chargerId, signal),
+        scope.then(({ readings }) => getAllTelemetryData(
+          readings,
+          signal,
+          cursors.telemetryLoaded ? cursors.telemetryCursors : undefined,
+        )),
+        scope.then(readings => none(readings) ? [] : getAlarms(readings.scope, signal)),
         loadEvidence(),
         apiUtils.get<ActiveService[]>(
-          `${API_CONFIG.ENDPOINTS.MONITORING.LIST}?active_only=false`,
+          API_CONFIG.ENDPOINTS.MONITORING.LIST,
           { signal },
         ),
       ]);
@@ -192,14 +205,14 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
         setTelemetryUnavailable(true);
         clientLogger.error({
           event: "details.telemetry_load_failed",
-          message: "Error loading entity readings",
+          message: "Error loading device readings",
           error: telemetryResult.reason,
-          context: { chargerId },
+          context: { source: sourceKey },
         });
       }
 
       if (anomaliesResult.status === "fulfilled") {
-        setChargerAnomalies((current) =>
+        setAlarms((current) =>
           sameAnomalyWindow(current, anomaliesResult.value)
             ? current
             : anomaliesResult.value
@@ -207,9 +220,9 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
       } else {
         clientLogger.error({
           event: "details.anomalies_load_failed",
-          message: "Error loading entity anomalies",
+          message: "Error loading device alarms",
           error: anomaliesResult.reason,
-          context: { chargerId },
+          context: { source: sourceKey },
         });
       }
 
@@ -228,7 +241,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           event: "details.monitoring_evidence_load_failed",
           message: "Error loading monitoring evidence",
           error: evidenceResult.reason,
-          context: { chargerId },
+          context: { source: sourceKey },
         });
       }
 
@@ -239,7 +252,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           event: "details.monitoring_services_load_failed",
           message: "Error loading monitoring service status",
           error: servicesResult.reason,
-          context: { chargerId },
+          context: { source: sourceKey },
         });
       }
 
@@ -247,11 +260,12 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
 
       if (first) setIsLoadingTelemetry(false);
     }
-  }, [chargerId]);
+    // The source is fixed for this component; the page remounts for another.
+  }, [source, sourceKey]);
   const { reload } = usePollingLoop(refresh, { intervalMs: INTERVALS.DETAILS_UPDATE, overlap: "skip",
     pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
   const retry = () => {
-    cursorRef.current = freshCursors(chargerId);
+    cursorRef.current = freshCursors(sourceKey);
     void reload();
   };
 
@@ -300,25 +314,25 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
   const evidenceByTelemetry = useMemo(() => {
     const grouped = new Map<string, MonitoringChartEvidence[]>();
     monitoringEvidence.forEach((item) => {
-      item.sensor_set.forEach((sensor) => {
-        const sensorEvidence = grouped.get(sensor) ?? [];
-        sensorEvidence.push(item);
-        grouped.set(sensor, sensorEvidence);
+      item.reading_ids.forEach((readingId) => {
+        const readingEvidence = grouped.get(readingId) ?? [];
+        readingEvidence.push(item);
+        grouped.set(readingId, readingEvidence);
       });
     });
     return grouped;
   }, [monitoringEvidence]);
 
   const serviceByTelemetry = useMemo(() => {
-    if (!chargerId) return new Map<string, ActiveService>();
+    if (!source.id) return new Map<string, ActiveService>();
     const newestRelevantFirst = [...monitoringServices].sort((left, right) => {
-      if (left.status !== right.status) return left.status ? -1 : 1;
+      if (left.active !== right.active) return left.active ? -1 : 1;
       const rightCreated = Date.parse(right.created_at ?? "") || 0;
       const leftCreated = Date.parse(left.created_at ?? "") || 0;
       return rightCreated - leftCreated;
     });
     return buildSensorClaims(allTelemetryData, newestRelevantFirst);
-  }, [allTelemetryData, chargerId, monitoringServices]);
+  }, [allTelemetryData, source.id, monitoringServices]);
 
   const {
     chartsLinked,
@@ -328,15 +342,10 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
     toggleChartLink,
   } = useLinkedChartNavigation(allTelemetryData);
 
-  const label = useMemo(() => {
-    const name = reportLabels(snapshot?.document, snapshot?.runtime).entity(chargerId);
-    return name === chargerId ? `Entity ${chargerId}` : name;
-  }, [snapshot, chargerId]);
-  // Recorded entity ids are binding identities, so the catalogue node is found through the stream bindings.
-  const sourcesHref = useMemo(() => {
-    const node = catalogue && entitySource(catalogue.index, snapshot?.document, snapshot?.runtime, chargerId);
-    return selectedSourceHref("/sources", node);
-  }, [catalogue, snapshot, chargerId]);
+  const label = sourceLabel(snapshot?.document, source)
+    ?? `${source.kind === "device" ? "Device" : "Broker"} ${source.id}`;
+  const sourcesHref = selectedSourceHref("/sources", catalogue && sourceNode(catalogue.index, source));
+  const monitoringTarget = monitoringTargetId(source);
   useDocumentTitle(label, "Reporting");
 
   return (
@@ -354,7 +363,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
                 hasTelemetry={latestTelemetryTimestamp !== undefined}
               />
               <Button asChild>
-                <Link to={`/?create=monitoring&target=${encodeURIComponent(chargerId)}`}>
+                <Link to={`/?create=monitoring&target=${encodeURIComponent(monitoringTarget)}`}>
                   <Activity className="h-4 w-4" />
                   Set up monitoring
                 </Link>
@@ -370,8 +379,8 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           />
           <MetricCard
             label="Anomalies"
-            value={chargerAnomalies.length}
-            tone={chargerAnomalies.length > 0 ? "warning" : "default"}
+            value={alarms.length}
+            tone={alarms.length > 0 ? "warning" : "default"}
           />
           <MetricCard
             label="Categories"
@@ -475,7 +484,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
           ) : allTelemetryData.length === 0 ? (
             <div className="h-80">
               <NoDataFound
-                message={telemetryUnavailable ? "Readings could not be loaded" : "No recorded readings for this entity"}
+                message={telemetryUnavailable ? "Readings could not be loaded" : "No recorded readings for this device"}
                 onRefresh={retry}
               />
             </div>
@@ -494,7 +503,7 @@ const ChargerDetails: React.FC<{ chargerId: string }> = ({ chargerId }) => {
                     <DynamicTelemetryChart
                       key={telemetryData.type}
                       telemetryData={telemetryData}
-                      anomalies={chargerAnomalies}
+                      anomalies={alarms}
                       evidence={
                         evidenceByTelemetry.get(telemetryData.type) ?? EMPTY_EVIDENCE
                       }

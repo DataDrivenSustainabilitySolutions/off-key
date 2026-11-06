@@ -29,7 +29,7 @@ export function CollectionHealth() {
   const advanceClock = useCallback(() => setNow(Date.now()), []);
   const refresh = useCallback(async (signal: AbortSignal) => {
     try {
-      const result = await apiUtils.get<CollectionStatus>("/v1/system/health");
+      const result = await apiUtils.get<CollectionStatus>("/v1/recording/health");
       if (!signal.aborted) {
         setSnapshot(result);
         setReceivedAt(Date.now());

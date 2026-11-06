@@ -45,7 +45,14 @@ def member_key(request: Request) -> str:
     return request.state.pipeline_member_id
 
 
-router = APIRouter(dependencies=[Depends(member_scope)], route_class=TacticErrorRoute)
+def member_router() -> APIRouter:
+    return APIRouter(dependencies=[Depends(member_scope)], route_class=TacticErrorRoute)
+
+
+router = member_router()
+components_router = member_router()
+activations_router = member_router()
+monitor_pipeline_router = member_router()
 read_limit = limiter.shared_limit(
     "120/minute", scope="pipeline-reads", key_func=member_key
 )
@@ -67,13 +74,13 @@ async def forward(request, method, path, body=None, params=None):
     )
 
 
-@router.post("/pipelines/apply", response_model=PipelineActivationView, status_code=202)
+@router.post("/apply", response_model=PipelineActivationView, status_code=202)
 @write_limit
 async def apply_pipeline(request: Request, change: PipelineApplyRequest):
     """Start or replace a monitor from a design in one step. Needs `manage_monitors`.
 
     Saves the design, publishes a revision and activates it on the readings in
-    `bindings` (input slot id to catalogue stream id). `replace_service_id`
+    `bindings` (input slot id to catalogue reading id). `replace_monitor_id`
     swaps out a running monitor. Repeating a request with the same
     `idempotency_key` returns the first activation instead of starting another.
     Answers 202: poll the activation until its `phase` settles.
@@ -81,32 +88,32 @@ async def apply_pipeline(request: Request, change: PipelineApplyRequest):
     return await forward(request, "POST", "/pipelines/apply", change)
 
 
-@router.get("/workspace", response_model=PipelineWorkspace)
+@monitor_pipeline_router.get("/overview", response_model=PipelineWorkspace)
 @read_limit
-async def get_monitoring_workspace(
-    request: Request, selected_service_id: str | None = None
+async def get_monitor_overview(
+    request: Request, selected_monitor_id: str | None = None
 ):
     """What the Monitoring page loads: every monitor, whether designs may be
-    edited, and the live pipeline state of `selected_service_id`.
+    edited, and the live pipeline state of `selected_monitor_id`.
     """
     return await forward(
         request,
         "GET",
         "/workspace",
-        params={"selected_service_id": selected_service_id},
+        params={"selected_service_id": selected_monitor_id},
     )
 
 
-@router.get("/pipelines/catalog", response_model=PipelineCatalog)
+@components_router.get("", response_model=PipelineCatalog)
 @read_limit
-async def get_pipeline_catalog(request: Request):
+async def list_pipeline_components(request: Request):
     """The components a design may use, with descriptions and parameter schemas,
     and the starting templates.
     """
     return await forward(request, "GET", "/pipelines/catalog")
 
 
-@router.get("/pipelines", response_model=PipelineListPage)
+@router.get("", response_model=PipelineListPage)
 @read_limit
 async def list_pipelines(
     request: Request, query: Annotated[PipelineListQuery, Query()]
@@ -117,14 +124,14 @@ async def list_pipelines(
     )
 
 
-@router.post("/pipelines", response_model=PipelineView, status_code=201)
+@router.post("", response_model=PipelineView, status_code=201)
 @write_limit
 async def create_pipeline(request: Request, change: PipelineCreate):
     """Save a new design as a draft. Needs `manage_monitors`."""
     return await forward(request, "POST", "/pipelines", change)
 
 
-@router.post("/pipelines/validate", response_model=PipelineValidationReport)
+@router.post("/validate", response_model=PipelineValidationReport)
 @compile_limit
 async def validate_unsaved_design(request: Request, change: PipelineValidateRequest):
     """Check a design without saving it: issues, and with `selected_node_id` the
@@ -133,14 +140,14 @@ async def validate_unsaved_design(request: Request, change: PipelineValidateRequ
     return await forward(request, "POST", "/pipelines/validate", change)
 
 
-@router.get("/pipelines/{pipeline_id}", response_model=PipelineView)
+@router.get("/{pipeline_id}", response_model=PipelineView)
 @read_limit
 async def get_pipeline(request: Request, pipeline_id: str):
     """One design with its draft graph, its `version` and its revisions."""
     return await forward(request, "GET", f"/pipelines/{path_segment(pipeline_id)}")
 
 
-@router.patch("/pipelines/{pipeline_id}", response_model=PipelineView)
+@router.patch("/{pipeline_id}", response_model=PipelineView)
 @write_limit
 async def update_pipeline(
     request: Request, pipeline_id: str, change: PipelineMetadataChange
@@ -154,7 +161,7 @@ async def update_pipeline(
     )
 
 
-@router.put("/pipelines/{pipeline_id}/draft", response_model=PipelineView)
+@router.put("/{pipeline_id}/draft", response_model=PipelineView)
 @write_limit
 async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSave):
     """Replace a design's draft graph and layout. Needs `manage_monitors`.
@@ -166,9 +173,7 @@ async def save_draft(request: Request, pipeline_id: str, change: PipelineDraftSa
     )
 
 
-@router.post(
-    "/pipelines/{pipeline_id}/validate", response_model=PipelineValidationReport
-)
+@router.post("/{pipeline_id}/validate", response_model=PipelineValidationReport)
 @compile_limit
 async def validate_pipeline(
     request: Request, pipeline_id: str, change: PipelineValidateRequest
@@ -179,7 +184,7 @@ async def validate_pipeline(
     )
 
 
-@router.get("/pipelines/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
+@router.get("/{pipeline_id}/revisions", response_model=PipelineRevisionPage)
 @read_limit
 async def list_pipeline_revisions(
     request: Request,
@@ -196,7 +201,7 @@ async def list_pipeline_revisions(
 
 
 @router.post(
-    "/pipelines/{pipeline_id}/revisions",
+    "/{pipeline_id}/revisions",
     response_model=PipelineRevisionView,
     status_code=201,
 )
@@ -212,7 +217,7 @@ async def publish_revision(request: Request, pipeline_id: str, change: PipelineP
 
 
 @router.get(
-    "/pipelines/{pipeline_id}/revisions/{revision_id}",
+    "/{pipeline_id}/revisions/{revision_id}",
     response_model=PipelineRevisionView,
 )
 @read_limit
@@ -226,7 +231,7 @@ async def get_revision(request: Request, pipeline_id: str, revision_id: str):
 
 
 @router.get(
-    "/pipelines/{pipeline_id}/revisions/{revision_id}/metadata",
+    "/{pipeline_id}/revisions/{revision_id}/metadata",
     response_model=PipelineValidationReport,
 )
 @compile_limit
@@ -247,14 +252,12 @@ async def get_revision_metadata(
     )
 
 
-@router.post(
-    "/pipeline-activations", response_model=PipelineActivationView, status_code=202
-)
+@activations_router.post("", response_model=PipelineActivationView, status_code=202)
 @write_limit
 async def activate_pipeline(request: Request, change: PipelineActivationRequest):
     """Run a published revision as a monitor. Needs `manage_monitors`.
 
-    `bindings` maps each input slot to a catalogue stream id. Answers 202 with
+    `bindings` maps each input slot to a catalogue reading id. Answers 202 with
     an activation: poll it until its `phase` is `succeeded`, `failed` or
     `cancelled`. Repeating a request with the same `idempotency_key` returns the
     first activation instead of starting another.
@@ -262,9 +265,7 @@ async def activate_pipeline(request: Request, change: PipelineActivationRequest)
     return await forward(request, "POST", "/pipeline-activations", change)
 
 
-@router.get(
-    "/pipeline-activations/{activation_id}", response_model=PipelineActivationView
-)
+@activations_router.get("/{activation_id}", response_model=PipelineActivationView)
 @read_limit
 async def get_activation(request: Request, activation_id: str):
     """Progress of an activation: its `phase`, the monitor it starts and any issues."""
@@ -273,8 +274,8 @@ async def get_activation(request: Request, activation_id: str):
     )
 
 
-@router.delete(
-    "/pipeline-activations/{activation_id}", response_model=PipelineActivationView
+@activations_router.post(
+    "/{activation_id}/cancel", response_model=PipelineActivationView
 )
 @write_limit
 async def cancel_activation(request: Request, activation_id: str):
@@ -284,11 +285,13 @@ async def cancel_activation(request: Request, activation_id: str):
     )
 
 
-@router.get("/{service_id}/pipeline", response_model=PipelineServiceView)
+@monitor_pipeline_router.get(
+    "/{monitor_id}/pipeline", response_model=PipelineServiceView
+)
 @read_limit
-async def get_service_pipeline(
+async def get_monitor_pipeline(
     request: Request,
-    service_id: str,
+    monitor_id: str,
     selected_node_id: str | None = Query(default=None, min_length=1, max_length=100),
 ):
     """The design a monitor runs, its current run, recent run history and
@@ -297,43 +300,49 @@ async def get_service_pipeline(
     return await forward(
         request,
         "GET",
-        f"/{path_segment(service_id)}/pipeline",
+        f"/{path_segment(monitor_id)}/pipeline",
         params={"selected_node_id": selected_node_id} if selected_node_id else None,
     )
 
 
-@router.get("/{service_id}/pipeline-history", response_model=PipelineHistoryPage)
+@monitor_pipeline_router.get(
+    "/{monitor_id}/pipeline/history", response_model=PipelineHistoryPage
+)
 @read_limit
-async def get_service_pipeline_history(
+async def list_monitor_pipeline_history(
     request: Request,
-    service_id: str,
+    monitor_id: str,
     query: Annotated[PipelineHistoryQuery, Query()],
 ):
-    """Earlier runs this monitor replaced, most recent first, paged by
-    `next_service_id`.
+    """Earlier runs this monitor replaced, most recent first. For the next page
+    ask for the history of `next_monitor_id`.
     """
     return await forward(
         request,
         "GET",
-        f"/{path_segment(service_id)}/pipeline-history",
+        f"/{path_segment(monitor_id)}/pipeline-history",
         params=query.model_dump(exclude_none=True),
     )
 
 
-@router.get("/{service_id}/pipeline-timeline", response_model=PipelineRunTimeline)
+@monitor_pipeline_router.get(
+    "/{monitor_id}/pipeline/timeline", response_model=PipelineRunTimeline
+)
 @read_limit
-async def get_service_pipeline_timeline(request: Request, service_id: str):
+async def get_monitor_pipeline_timeline(request: Request, monitor_id: str):
     """What a monitor's run went through, oldest event first, and how it ended."""
     return await forward(
-        request, "GET", f"/{path_segment(service_id)}/pipeline-timeline"
+        request, "GET", f"/{path_segment(monitor_id)}/pipeline-timeline"
     )
 
 
-@router.get("/{service_id}/pipeline-metadata", response_model=PipelineValidationReport)
+@monitor_pipeline_router.get(
+    "/{monitor_id}/pipeline/metadata", response_model=PipelineValidationReport
+)
 @compile_limit
-async def get_service_pipeline_metadata(
+async def get_monitor_pipeline_metadata(
     request: Request,
-    service_id: str,
+    monitor_id: str,
     selected_node_id: str = Query(min_length=1, max_length=100),
 ):
     """Validation of a monitor's design, with the fields available at
@@ -342,27 +351,29 @@ async def get_service_pipeline_metadata(
     return await forward(
         request,
         "GET",
-        f"/{path_segment(service_id)}/pipeline-metadata",
+        f"/{path_segment(monitor_id)}/pipeline-metadata",
         params={"selected_node_id": selected_node_id},
     )
 
 
-@router.get("/{service_id}/pipeline-state")
+@monitor_pipeline_router.get("/{monitor_id}/pipeline/state")
 @read_limit
-async def get_pipeline_state(request: Request, service_id: str):
+async def get_monitor_pipeline_state(request: Request, monitor_id: str):
     """The diagnostic snapshot a running monitor last reported for its nodes."""
-    return await forward(request, "GET", f"/{path_segment(service_id)}/pipeline-state")
+    return await forward(request, "GET", f"/{path_segment(monitor_id)}/pipeline-state")
 
 
-@router.put("/{service_id}/pipeline-layout", response_model=PipelineLayout)
+@monitor_pipeline_router.put(
+    "/{monitor_id}/pipeline/layout", response_model=PipelineLayout
+)
 @write_limit
-async def save_pipeline_layout(
-    request: Request, service_id: str, layout: PipelineLayout
+async def save_monitor_pipeline_layout(
+    request: Request, monitor_id: str, layout: PipelineLayout
 ):
     """Store where a monitor's nodes sit on the canvas; the graph is unchanged.
 
     Needs `manage_monitors`.
     """
     return await forward(
-        request, "PUT", f"/{path_segment(service_id)}/pipeline-layout", layout
+        request, "PUT", f"/{path_segment(monitor_id)}/pipeline-layout", layout
     )

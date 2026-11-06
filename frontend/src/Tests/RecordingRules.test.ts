@@ -10,8 +10,8 @@ import { mqttConnection } from "./support/fixtures/system";
 
 vi.mock("@/lib/api-client", () => ({ apiUtils: { post: vi.fn() } }));
 
-const broker: RuleScope = { kind: "broker", connection_id: "broker" };
-const power: RuleScope = { kind: "reading", connection_id: "broker", reading_id: "power" };
+const broker: RuleScope = { kind: "broker", broker_id: "broker" };
+const power: RuleScope = { kind: "reading", broker_id: "broker", reading_id: "power" };
 const original: CollectionRule = {
   scope: broker, policy: { mode: "original", interval_seconds: 10 }, include_future_readings: true, admitted_before: 1,
 };
@@ -19,10 +19,10 @@ const sample: RuleEdit = { scope: broker, operation: "set", policy: { mode: "sam
 
 function fixture(rules: CollectionRule[] = [original]): SystemSnapshot {
   const streams = ["temperature", "power"].map(id => ({
-    id, label: id, connection_id: "broker", topic: `room/${id}`, value_type: "number" as const, category: "Environment",
+    id, label: id, broker_id: "broker", topic: `room/${id}`, value_type: "number" as const, category: "Environment",
   }));
   return {
-    document: { ...createEmptySystem(), streams, connections: [mqttConnection({ id: "broker", label: "broker", host: "localhost" })] },
+    document: { ...createEmptySystem(), readings: streams, brokers: [mqttConnection({ id: "broker", label: "broker", host: "localhost" })] },
     revision: 3, can_edit: true, storage_origin: "saved",
     runtime: { mode: "collection", message: "", collection_revision: 4, collection_rules: rules, bindings: {} },
   };

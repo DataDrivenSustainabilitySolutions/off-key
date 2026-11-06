@@ -137,6 +137,13 @@ export type LabelView = {
   created_at: string;
 };
 
+export type PromotedBinding = {
+  slot_id: string;
+  slot_label: string;
+  series_name: string;
+  reading_id: string | null;
+};
+
 export type RunAlignment = {
   freshness_seconds?: number;
   max_skew_seconds?: number;
@@ -185,6 +192,17 @@ export type RunMetrics = {
   evaluated_seconds: number;
   false_alarms_per_day: number | null;
   labels: Array<LabelOutcome>;
+};
+
+export type RunPromote = {
+  name: string;
+  description?: string;
+};
+
+export type RunPromotion = {
+  pipeline_id: string;
+  pipeline_name: string;
+  bindings: Array<PromotedBinding>;
 };
 
 export type RunResult = {

@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
+import { useAuth } from "@/auth/AuthContext";
 import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetView, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
+import { PromoteRunDialog } from "./PromoteRunDialog";
 import { RunCreateDialog } from "./RunCreateDialog";
 import { formatInstant, isActive, runName, runState, strategyLabel } from "./model";
 
 export function RunsPanel({ dataset, runs, onRunsChange }: {
   dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>;
 }) {
+  const { can } = useAuth();
   const [creating, setCreating] = useState(false);
+  const [promoting, setPromoting] = useState<RunSummary | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [confirm, confirmation] = useConfirm();
@@ -44,6 +48,8 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
             <td>{run.alarm_count.toLocaleString()}</td>
             <td>{formatInstant(run.started_at ?? run.created_at)}</td>
             <td><div className="dj-row-actions">
+              {run.status === "succeeded" && can("manage_monitors") && <button type="button" className="dj-link"
+                disabled={busy === run.id} onClick={() => setPromoting(run)}>Use as template</button>}
               {isActive(run)
                 ? <button type="button" className="dj-link" disabled={busy === run.id}
                   onClick={() => void act(run, () => dojoApi.cancelRun(run.id))}>Cancel</button>
@@ -53,6 +59,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
           </tr>;
         })}</tbody>
       </table></div>}
+    <PromoteRunDialog run={promoting} onOpenChange={open => { if (!open) setPromoting(null); }} />
     <RunCreateDialog open={creating} dataset={dataset} onOpenChange={setCreating} onCreated={() => void onRunsChange()} />
     {confirmation}
   </div>;

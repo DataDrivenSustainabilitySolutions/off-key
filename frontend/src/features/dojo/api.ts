@@ -17,6 +17,8 @@ import type {
   RunListPage,
   RunListQuery,
   RunMetrics,
+  RunPromote,
+  RunPromotion,
   RunResultsPage,
   RunResultsQuery,
   RunView,
@@ -63,6 +65,7 @@ export const dojoApi = {
   createRun: (request: RunCreate) => apiUtils.post<RunView>(`${base}/runs`, request),
   cancelRun: (id: string) => apiUtils.post<RunView>(`${run(id)}/cancel`),
   deleteRun: (id: string) => apiUtils.delete<void>(run(id)),
+  promoteRun: (id: string, request: RunPromote) => apiUtils.post<RunPromotion>(`${run(id)}/promote`, request),
   results: (id: string, query: RunResultsQuery, signal?: AbortSignal) =>
     apiUtils.get<RunResultsPage>(`${run(id)}/results`, { ...read, signal, params: query }),
   metrics: (id: string, signal?: AbortSignal) => apiUtils.get<RunMetrics>(`${run(id)}/metrics`, { ...read, signal }),

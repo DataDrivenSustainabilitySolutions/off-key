@@ -52,6 +52,13 @@
   register: emqx_import
   changed_when: true
 
+- name: emqx | remove the staged archive from the node
+  file:
+    path: "{{ persistence_stage_dir }}"
+    state: absent
+  become: true
+  delegate_to: "{{ svc_node }}"
+
 - name: emqx | report
   debug:
     msg: "{{ emqx_import.stdout_lines }}"

@@ -26,7 +26,7 @@ import { PipelineInputBindings } from "./PipelineInputBindings";
 import { PipelineReadingPicker } from "./PipelineReadingPicker";
 import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
-import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings } from "./bindings";
+import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings, suggestedTarget } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
 import { strategyLabel } from "./semantics";
 import { startupEstimate } from "./startup";
@@ -35,6 +35,8 @@ export type PipelineSetupProps = {
   catalog: PipelineCatalog; canEdit: boolean; targets: MonitoringTarget[];
   services: ActiveService[]; byStream: Map<string, Set<string>>; collectionReady: boolean;
   initialTarget?: string; initialReading?: string; initialDesign?: PipelineView;
+  /** Readings suggested per slot, for example the ones a Dojo run tested the design on. */
+  initialBindings?: Record<string, string>;
   initialDocument?: GraphDocument; replaceService?: ActiveService; predecessor?: PipelineServiceView;
   revisionId?: string;
   sourceService?: { id: string; replace: boolean };
@@ -55,7 +57,7 @@ const inputNode = (document: GraphDocument) => document.definition.nodes.find((n
 
 /** The same setup surface configures a new service, a template or a replacement. */
 export function PipelineCreate(props: PipelineSetupProps) {
-  const { catalog, targets, initialTarget, initialReading, initialDesign, initialDocument, replaceService, predecessor, onStarted } = props;
+  const { catalog, targets, initialTarget, initialReading, initialDesign, initialDocument, initialBindings, replaceService, predecessor, onStarted } = props;
   const { userId } = useAuth();
   const { document: catalogueDocument, system } = useCatalogue();
   const [confirm, confirmation] = useConfirm();
@@ -64,7 +66,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const sourceId = props.sourceService?.id ?? replaceId;
   const startingId = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")?.id ?? catalog.templates[0]?.id;
   const initial = useCallback((): CreationDraft => {
-    const targetId = initialTarget ?? predecessorTarget(targets, predecessor);
+    const suggested = { ...initialBindings, ...previousBindings(predecessor) };
+    const targetId = initialTarget ?? predecessorTarget(targets, predecessor) ?? suggestedTarget(targets, suggested);
     const target = targets.find((item) => item.id === targetId);
     const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
@@ -73,9 +76,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
     return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
-        previousBindings(predecessor)) : starting.bindings };
-  }, [catalog, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
-  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}`;
+        suggested) : starting.bindings };
+  }, [catalog, initialBindings, initialDesign, initialDocument, initialReading, initialTarget, predecessor, replaceService, startingId, targets]);
+  const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
     !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
   const setDraft = session.setDraft;

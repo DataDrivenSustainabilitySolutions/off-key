@@ -15,11 +15,14 @@ from off_key_core.models.dojo_runs import BoundSeries, bind_dataset
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import (
     MAX_ACTIVE_RUNS,
+    PromotedBinding,
     RunAlignment,
     RunBinding,
     RunCreate,
     RunListPage,
     RunListQuery,
+    RunPromote,
+    RunPromotion,
     RunResult,
     RunResultsPage,
     RunResultsQuery,
@@ -27,10 +30,12 @@ from off_key_core.schemas.dojo import (
     RunSummary,
     RunView,
 )
+from off_key_core.schemas.pipelines import PipelineCreate, PipelineDefinition
 from off_key_core.utils.json_budget import bounded_utf8_text
 from sqlalchemy import delete, func, select
 
 from ...domain import ConflictError, NotFoundError, ValidationError
+from ..pipelines.library import PipelineLibrary
 
 ACTIVE = ("queued", "running")
 
@@ -183,6 +188,49 @@ class DojoRuns:
         )
         await self.session.delete(row)
         await self.session.commit()
+
+    async def promote(self, run_id: str, request: RunPromote) -> RunPromotion:
+        """Save the run's compiled design as a library template.
+
+        Each slot comes back with the series it was bound to and, for a series
+        copied from recorded history, that series' catalogue reading, so the
+        monitor can start on the inputs the design was tested on.
+        """
+        row = await self._row(run_id)
+        definition = PipelineDefinition.model_validate(
+            row.config["execution"]["definition"]
+        )
+        bound = row.config["series"]
+        readings = dict(
+            (
+                await self.session.execute(
+                    select(DojoSeries.id, DojoSeries.reading_id).where(
+                        DojoSeries.id.in_([item["id"] for item in bound])
+                    )
+                )
+            ).all()
+        )
+        labels = {slot.id: slot.label for slot in definition.input_slots}
+        pipeline = await PipelineLibrary(self.session).create(
+            PipelineCreate(
+                name=request.name,
+                description=request.description,
+                definition=definition,
+            )
+        )
+        return RunPromotion(
+            pipeline_id=pipeline.id,
+            pipeline_name=pipeline.name,
+            bindings=[
+                PromotedBinding(
+                    slot_id=item["slot_id"],
+                    slot_label=labels.get(item["slot_id"], item["slot_id"]),
+                    series_name=item["name"],
+                    reading_id=readings.get(item["id"]),
+                )
+                for item in bound
+            ],
+        )
 
     async def results(self, run_id: str, query: RunResultsQuery) -> RunResultsPage:
         await self._row(run_id)

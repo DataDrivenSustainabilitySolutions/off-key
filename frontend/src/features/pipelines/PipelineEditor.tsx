@@ -44,7 +44,7 @@ export default function PipelineEditor(props: Props) {
     <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`}
       catalog={props.catalog} canEdit={props.canEdit} targets={props.targets} services={props.services} byStream={props.byStream}
       collectionReady={props.collectionReady} initialTarget={props.initialTarget} initialReading={props.initialReading}
-      replaceService={props.replaceService} predecessor={props.predecessor} revisionId={props.revisionId}
+      initialBindings={props.initialBindings} replaceService={props.replaceService} predecessor={props.predecessor} revisionId={props.revisionId}
       sourceService={props.sourceService} activationBlocked={props.activationBlocked} onManage={props.onManage}
       onBack={props.onBack} onStarted={props.onStarted} backLabel={props.backLabel} initialDesign={pipeline}
       initialDocument={revision ? { definition: revision.definition, layout: pipeline.layout } : undefined} />

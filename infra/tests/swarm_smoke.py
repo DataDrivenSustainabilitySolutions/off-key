@@ -324,7 +324,7 @@ def prepare(directory):
     model["services"]["broker-route"] = {
         "image": release["images"]["gost"],
         "command": ["-L", "socks5://:1055"],
-        "networks": ["app-network", "emqx-network"],
+        "networks": ["broker-route-network", "emqx-network"],
         "deploy": {"replicas": 1},
     }
     model["services"]["source-broker"] = {

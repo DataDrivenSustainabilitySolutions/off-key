@@ -314,6 +314,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run | Path: `run_id` |
+| `POST` | `/dojo/runs/{run_id}/promote` | Save the run's design as a library template; 201. Also needs `manage_monitors` | Body: `name`, optional `description` |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204 | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
@@ -350,6 +351,14 @@ is one false alarm, so an alarm held over many results counts once, and one
 that starts inside a label and outlasts it does not count.
 `false_alarms_per_day` divides them by `evaluated_seconds`, the scored time
 outside the labels. Only runs with status `succeeded` have metrics.
+
+Promoting a run copies its compiled design into the pipeline library as a new
+template, the same as `POST /pipelines`, so pipeline authoring must
+be enabled and the member needs `manage_monitors`. The answer names the new
+`pipeline_id` and lists each input slot with the series it was bound to. For a
+series copied from recorded history, `reading_id` is the catalogue reading it
+came from, the live input to bind when the template starts a monitor; an
+uploaded series has none. The template has no published revision yet.
 
 ### Gateway health
 
@@ -403,6 +412,7 @@ Health and readiness remain available without this service credential.
 | `POST` | `/dojo/runs` | Compile, bind and queue a run |
 | `GET` | `/dojo/runs/{run_id}` | Read a run |
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a run |
+| `POST` | `/dojo/runs/{run_id}/promote` | Save a run's design as a template |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run |
 | `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
 | `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |

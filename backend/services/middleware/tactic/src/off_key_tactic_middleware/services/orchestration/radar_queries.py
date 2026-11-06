@@ -72,10 +72,11 @@ class RadarServiceQueries:
         if not include_docker_status:
             return [service_summary(service, catalogue) for service in services]
 
-        # AsyncDocker already bounds concurrent requests across callers.
+        # Probes share at most half of AsyncDocker's slots, so a large listing
+        # cannot hold up creating, scaling or removing workloads.
         probes = await asyncio.gather(
             *(
-                self.workloads.get_status_and_labels(item.container_id)
+                self.workloads.get_status_and_labels(item.container_id, probe=True)
                 for item in services
             )
         )

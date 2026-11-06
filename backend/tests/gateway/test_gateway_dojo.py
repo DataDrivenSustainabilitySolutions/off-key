@@ -155,3 +155,29 @@ async def test_a_comparison_forwards_each_run_id(monkeypatch):
     assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/comparison")
     assert kwargs["params"] == {"run_ids": ["r1", "r2"]}
     assert refused.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_promoting_a_run_needs_manage_monitors_too(monkeypatch):
+    recorded = []
+    promotion = {"pipeline_id": "p1", "pipeline_name": "Final", "bindings": []}
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint, kwargs))
+        return promotion
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    trainer = member_profile("trainer", permissions=["use_dojo"])
+    async with asgi_client(gateway_app(trainer)) as client:
+        refused = await client.post(
+            "/v1/dojo/runs/r1/promote", json={"name": "Final"}, headers=TOKEN
+        )
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.post(
+            "/v1/dojo/runs/r1/promote", json={"name": "Final"}, headers=TOKEN
+        )
+    assert refused.status_code == 403
+    assert response.status_code == 201, response.text
+    [(method, endpoint, kwargs)] = recorded
+    assert (method, endpoint) == ("POST", "/api/v1/dojo/runs/r1/promote")
+    assert kwargs["json_data"] == {"name": "Final", "description": ""}

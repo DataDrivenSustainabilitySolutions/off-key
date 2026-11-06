@@ -24,6 +24,7 @@ Use this page for account, entity, favourites, monitoring-service, and anomaly w
 | `/services` | Legacy link to Monitoring | Authenticated |
 | `/sources` | Sources: configure brokers and recorded readings | Authenticated |
 | `/anomalies` | Reporting: review recent anomaly events | Authenticated |
+| `/dojo` | Dojo: datasets, labels, offline runs and comparisons; `?dataset=<id>&tab=values\|runs\|compare` opens one dataset | Members who may use the Dojo |
 | `?settings=<section>` | Settings overlay above any workspace page: `account`, `preferences`, `catalogue` or `status` | Authenticated |
 | `/account` | Legacy link: opens the Account settings section above Monitoring | Authenticated |
 | `/system/status` | Legacy link: opens the System status settings section above Monitoring | Authenticated |
@@ -158,6 +159,27 @@ Open **Monitoring** at `/` to inspect monitoring services. The view refreshes se
 2. Review events grouped by entity.
 3. Follow an event to the corresponding entity details.
 4. Remove individual anomaly records when they are no longer required.
+
+## Dojo workflow
+
+The Dojo tries detection designs on stored data before anything is monitored
+live. Nothing in it claims readings, starts monitors or writes to Reporting.
+
+1. Open **Dojo** at `/dojo`. **Upload CSV** copies a file into a new dataset;
+   **Copy recorded readings** copies the numeric readings of the entity or
+   reading selected in the catalogue for a time window. A dataset is frozen:
+   retention and catalogue edits never change it.
+2. Open a dataset. **Values and labels** shows its series; zoom the chart to a
+   known problem and choose **Use the zoomed range**, or type the window, then
+   **Add label**. Labels may touch but not overlap.
+3. **Runs** starts a run: choose a template or a design from the library, check
+   which series feeds each input, and start it. The run replays the dataset in
+   time order through the same alignment, learning and scoring as a live
+   monitor; its progress updates while it runs.
+4. **Compare** puts up to three finished runs side by side: their alarms under
+   the values, how many labels each detected and how soon, and how many false
+   alarms each raised per day outside the labels. The best value of a metric is
+   bold. Editing a label re-scores every run at once.
 
 ## Expected errors and operator actions
 

@@ -11,7 +11,7 @@ import { apiUtils } from "@/lib/api-client";
 import type { SystemSnapshot } from "@/types/system";
 import { mqttConnection } from "./support/fixtures/system";
 
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true, logout: vi.fn() }) }));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true, logout: vi.fn(), can: () => false }) }));
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }) }));
 vi.mock("@/features/charts/EChart", () => ({ EChart: () => <div role="img" aria-label="Received values" /> }));
 vi.mock("@/lib/api-client", async original => ({ ...await original<typeof import("@/lib/api-client")>(), apiUtils: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));

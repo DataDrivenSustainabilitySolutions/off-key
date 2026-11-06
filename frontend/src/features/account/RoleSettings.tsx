@@ -1,110 +1,107 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SettingsGroup, SettingsRow } from "@/components/SettingsGroup";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
-import { createRole, deleteRole, getPermissions, updateRole, type Permission, type PermissionInfo, type Role } from "@/lib/member-api";
-import { PERMISSION_LABELS, permissionSummary } from "./permissions";
+import { deleteRole, type Role } from "@/lib/member-api";
+import { permissionSummary } from "./permissions";
+import { RoleEditor } from "./RoleEditor";
+import "./roles.css";
 
-type Draft = { role?: Role; name: string; permissions: Permission[] };
+type Props = {
+  roles: Role[] | null;
+  loadFailed: boolean;
+  disabled: boolean;
+  onRetry: () => void;
+  onSaved: (role: Role) => void;
+  onDeleted: (id: string) => void;
+};
 
-const holders = (count: number) => `${count} ${count === 1 ? "member" : "members"}`;
+type Action = { kind: "create" } | { kind: "edit" | "delete"; role: Role };
 
-/** Roles bundle permissions; members who manage members define them here. */
-export function RoleSettings({ roles, onChanged }: { roles: Role[]; onChanged: (role?: Role) => Promise<void> }) {
-  const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+const holders = (count: number) => count + (count === 1 ? " member" : " members");
+
+export function RoleSettings({ roles, loadFailed, disabled, onRetry, onSaved, onDeleted }: Props) {
+  const [action, setAction] = useState<Action | null>(null);
   const [notice, setNotice] = useState("");
-  const [confirm, confirmation] = useConfirm();
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const opener = useRef<HTMLButtonElement>(null);
+  const createButton = useRef<HTMLButtonElement>(null);
+  const listArea = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    getPermissions().then(list => { if (active) setPermissions(list); })
-      .catch(error => { if (active) setError(getErrorMessage(error)); });
-    return () => { active = false; };
-  }, []);
-
-  const run = async (work: () => Promise<string>) => {
-    setBusy(true);
-    setError("");
+  const open = (next: Action, button: HTMLButtonElement) => {
+    opener.current = button;
     setNotice("");
+    setRemoveError("");
+    setAction(next);
+  };
+
+  const returnFocus = (event: Event) => {
+    event.preventDefault();
+    (opener.current?.isConnected ? opener.current : createButton.current)?.focus();
+  };
+
+  const remove = async (role: Role) => {
+    if (removing) return;
+    setRemoving(true);
+    setRemoveError("");
     try {
-      setNotice(await work());
+      await deleteRole(role.id);
+      onDeleted(role.id);
+      setNotice(role.name + " deleted.");
+      setAction(null);
     } catch (error) {
-      setError(getErrorMessage(error));
+      setRemoveError(getErrorMessage(error));
     } finally {
-      setBusy(false);
+      setRemoving(false);
     }
   };
 
-  const save = ({ role, name, permissions }: Draft) => run(async () => {
-    const saved = role
-      ? await updateRole(role.id, { name, permissions })
-      : await createRole(name, permissions);
-    setDraft(null);
-    await onChanged(saved);
-    return role ? `${saved.name} saved. Members holding it get the change on their next request.` : `${saved.name} created.`;
-  });
-
-  const remove = async (role: Role) => {
-    if (!await confirm({ title: `Delete ${role.name}?`, description: "No member holds this role. Deleting it cannot be undone.",
-      confirmLabel: "Delete role", destructive: true })) return;
-    await run(async () => {
-      await deleteRole(role.id);
-      await onChanged();
-      return `${role.name} deleted.`;
-    });
-  };
-
-  const toggle = (permission: Permission, granted: boolean) => setDraft(current => current && ({
-    ...current,
-    permissions: granted ? [...current.permissions, permission] : current.permissions.filter(entry => entry !== permission),
-  }));
-
   return <>
-    <SettingsGroup title="Roles" help="Every member can view organization data. A role decides what its members can change. Administrator always holds every permission. Members holding a role get a change on their next request. Keep at least one active member who can manage members."
-      actions={!draft && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setError(""); setNotice(""); setDraft({ name: "", permissions: [] }); }}>New role</Button>}
-      footer={<>
-        {error && <p role="alert" className="text-destructive">{error}</p>}
-        {notice && <p role="status">{notice}</p>}
-      </>}>
-      {draft && <form className="app-settings-invite app-settings-role-form" aria-label={draft.role ? `Edit ${draft.role.name}` : "New role"}
-        onSubmit={(event) => { event.preventDefault(); void save(draft); }}>
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          <Label htmlFor="role-name">Name</Label>
-          <Input id="role-name" required autoFocus autoComplete="off" maxLength={60} placeholder="Operator" value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </div>
-        <fieldset className="app-settings-fieldset app-settings-permissions">
-          <legend>Can change</legend>
-          {permissions.map(permission => <label key={permission.id} className="app-settings-permission">
-            <input type="checkbox" checked={draft.permissions.includes(permission.id)} onChange={(event) => toggle(permission.id, event.target.checked)} />
-            <span><span className="app-settings-permission-name">{PERMISSION_LABELS[permission.id]}</span>
-              <span className="app-settings-row-detail">{permission.description}</span></span>
-          </label>)}
-        </fieldset>
-        <div className="flex gap-2">
-          <Button disabled={busy} type="submit">{draft.role ? "Save role" : "Create role"}</Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={() => setDraft(null)}>Cancel</Button>
-        </div>
-      </form>}
-      <ul aria-label="Roles" className="app-settings-list">
-        {roles.map(role => <li key={role.id}>
-          <SettingsRow className="is-wrapping" label={role.name}
-            detail={`${role.editable ? permissionSummary(role.permissions) : "Every permission, always"} · ${holders(role.members)}`}>
-            {role.editable && <Button variant="outline" size="sm" disabled={busy}
-              onClick={() => { setError(""); setNotice(""); setDraft({ role, name: role.name, permissions: role.permissions }); }}>Edit</Button>}
-            {!role.built_in && <Button variant="outline" size="sm" className="text-destructive hover:text-destructive"
-              disabled={busy || role.members > 0} title={role.members > 0 ? "Give its members another role first" : undefined}
-              onClick={() => void remove(role)}>Delete</Button>}
-          </SettingsRow>
-        </li>)}
-      </ul>
+    <SettingsGroup title="Roles" className="account-roles"
+      actions={<Button ref={createButton} variant="outline" size="sm" disabled={!roles || disabled}
+        onClick={event => open({ kind: "create" }, event.currentTarget)}><Plus aria-hidden="true" />New role</Button>}
+      footer={notice && <p role="status">{notice}</p>}>
+      <p className="account-roles-intro">Everyone can view organization data. Roles determine what members can change.</p>
+      <div ref={listArea} tabIndex={-1} className="account-role-list-area">
+        {roles ? <ul aria-label="Roles" className="app-settings-list">
+          {roles.map(role => <li key={role.id}>
+            <SettingsRow className="account-role-row"
+              label={<div className="account-role-identity">
+                <strong>{role.name}</strong>
+                {role.built_in && <span className="account-role-badge">Built-in</span>}
+              </div>}
+              detail={<>
+                <p>{role.editable ? permissionSummary(role.permissions) : "All permissions"}</p>
+                <p>{holders(role.members)}{!role.built_in && role.members > 0 && " · Reassign members to delete"}</p>
+              </>}>
+              {role.editable && <Button variant="outline" size="sm" disabled={disabled} aria-label={"Edit " + role.name}
+                onClick={event => open({ kind: "edit", role }, event.currentTarget)}>Edit</Button>}
+              {!role.built_in && role.members === 0 && <Button variant="ghost" size="sm" aria-label={"Delete " + role.name}
+                className="text-destructive hover:text-destructive" disabled={disabled}
+                onClick={event => open({ kind: "delete", role }, event.currentTarget)}>Delete</Button>}
+            </SettingsRow>
+          </li>)}
+        </ul> : <div className="account-role-load">
+          {loadFailed ? <>
+            <p role="alert">Couldn’t load roles.</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => { listArea.current?.focus(); onRetry(); }}>Retry</Button>
+          </> : <p role="status">Loading roles…</p>}
+        </div>}
+      </div>
     </SettingsGroup>
-    {confirmation}
+    {action?.kind === "delete" && <ConfirmDialog open title={"Delete " + action.role.name + "?"}
+      description="This role has no members. Deleting it is permanent."
+      confirmLabel="Delete role" busyLabel="Deleting…" destructive busy={removing} error={removeError}
+      onConfirm={() => void remove(action.role)} onCancel={() => setAction(null)} onCloseAutoFocus={returnFocus} />}
+    {action && action.kind !== "delete" && <RoleEditor role={action.kind === "edit" ? action.role : undefined}
+      onClose={() => setAction(null)} onCloseAutoFocus={returnFocus}
+      onSaved={role => {
+        onSaved(role);
+        setNotice(role.name + (action.kind === "edit" ? " saved." : " created."));
+        setAction(null);
+      }} />}
   </>;
 }

@@ -150,17 +150,17 @@ it("keeps failed removal visible and allows a retry", async () => {
 it("creates a role from chosen permissions", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   const group = await screen.findByRole("region", { name: "Roles" });
-  const list = within(group).getByRole("list", { name: "Roles" });
-  expect(await within(list).findByText("Every permission, always · 1 member")).toBeTruthy();
-  expect(within(list).getByText("View only · 1 member")).toBeTruthy();
+  const list = await within(group).findByRole("list", { name: "Roles" });
+  expect(within(list).getByText("All permissions")).toBeTruthy();
+  expect(within(list).getByText("View only")).toBeTruthy();
   fireEvent.click(within(group).getByRole("button", { name: "New role" }));
-  const form = within(group).getByRole("form", { name: "New role" });
+  const form = within(screen.getByRole("dialog", { name: "New role" })).getByRole("form", { name: "New role" });
   fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Auditor" } });
   fireEvent.click(await within(form).findByRole("checkbox", { name: /Manage alarms/ }));
   fireEvent.click(within(form).getByRole("button", { name: "Create role" }));
   await waitFor(() => expect(createRole).toHaveBeenCalledWith("Auditor", ["manage_alarms"]));
   expect((await within(group).findByRole("status")).textContent).toContain("Auditor created.");
-  expect(within(group).queryByRole("form")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(auth.retryAuthentication).not.toHaveBeenCalled();
 });
 
@@ -170,10 +170,10 @@ it("edits a role's permissions and refreshes your own access when it is your rol
   const group = await screen.findByRole("region", { name: "Roles" });
   const [administrator, memberRole] = await within(group).findAllByRole("listitem");
   // Administrator cannot be edited; built-in roles cannot be deleted.
-  expect(within(administrator!).queryByRole("button", { name: "Edit" })).toBeNull();
-  expect(within(memberRole!).queryByRole("button", { name: "Delete" })).toBeNull();
-  fireEvent.click(within(memberRole!).getByRole("button", { name: "Edit" }));
-  const form = within(group).getByRole("form", { name: "Edit Member" });
+  expect(within(administrator!).queryByRole("button", { name: "Edit Administrator" })).toBeNull();
+  expect(within(memberRole!).queryByRole("button", { name: "Delete Member" })).toBeNull();
+  fireEvent.click(within(memberRole!).getByRole("button", { name: "Edit Member" }));
+  const form = within(screen.getByRole("dialog", { name: "Edit role" })).getByRole("form", { name: "Edit Member" });
   fireEvent.click(await within(form).findByRole("checkbox", { name: /Manage sources/ }));
   fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
   await waitFor(() => expect(updateRole).toHaveBeenCalledWith("user", { name: "Member", permissions: ["manage_sources"] }));
@@ -184,7 +184,7 @@ it("deletes a role nobody holds after confirmation", async () => {
   render(<MemoryRouter><Account /></MemoryRouter>);
   const group = await screen.findByRole("region", { name: "Roles" });
   const operator = (await within(group).findByText("Operator")).closest("li")!;
-  fireEvent.click(within(operator).getByRole("button", { name: "Delete" }));
+  fireEvent.click(within(operator).getByRole("button", { name: "Delete Operator" }));
   const dialog = await screen.findByRole("dialog", { name: "Delete Operator?" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Delete role" }));
   await waitFor(() => expect(deleteRole).toHaveBeenCalledWith("operator"));

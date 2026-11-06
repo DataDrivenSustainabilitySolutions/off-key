@@ -73,9 +73,12 @@ Members whose role can manage members handle invitations, roles and access under
 their access. Once disabled, **Remove** permanently deletes their account and personal
 favorites after confirmation. Shared catalogue data, monitoring services and reports
 are kept. A removed member needs a new invitation to return.
-Every member can view the shared workspace and edit their own favorites. A role
-adds permissions to manage sources, monitors, alarms or members; Administrator
-holds all of them. Controls a role does not cover stay hidden.
+
+Every member can view the shared workspace and edit their own favorites.
+In **Account → Roles**, choose **New role** or **Edit**, then select the
+permissions the role grants. Leave the permissions clear for a view-only role.
+Administrator always has every permission. To delete a custom role, first
+assign its members another role.
 
 ## Settings and system status
 

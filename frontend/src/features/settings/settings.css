@@ -195,11 +195,3 @@ dl.app-settings-list .app-settings-row { min-height: 40px; padding-block: 8px; }
   .app-settings-preview-sidebar { padding: 10px 5px; }
   .app-settings-preview-content { padding: 10px 6px; gap: 5px; }
 }
-
-/* Role editor: the name on top, then one checkbox per permission with its description. */
-.app-settings-role-form { flex-direction: column; align-items: stretch; }
-.app-settings-permissions { display: grid; gap: 8px; }
-.app-settings-permissions legend { margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-.app-settings-permission { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.app-settings-permission input { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; accent-color: hsl(var(--primary)); }
-.app-settings-permission-name { display: block; font-size: 14px; }

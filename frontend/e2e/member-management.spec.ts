@@ -210,13 +210,54 @@ test("a custom role grants its member exactly the permissions it bundles", async
   };
   try {
     const roles = page.getByRole("region", { name: "Roles", exact: true });
-    await roles.getByRole("button", { name: "New role", exact: true }).click();
-    const form = roles.getByRole("form", { name: "New role", exact: true });
+    const newRole = roles.getByRole("button", { name: "New role", exact: true });
+    await page.route("**/api/v1/permissions", route => route.abort("failed"), { times: 1 });
+    await expect(newRole).toBeEnabled();
+    await newRole.focus();
+    await page.keyboard.press("Enter");
+    const form = page.getByRole("dialog", { name: "New role", exact: true }).getByRole("form", { name: "New role", exact: true });
+    await expect(form.getByLabel("Name", { exact: true })).toBeFocused();
     await form.getByLabel("Name", { exact: true }).fill(name);
+    await expect(form.getByRole("alert")).toHaveText("Couldn’t load permissions.");
+    await expect(form.getByRole("button", { name: "Create role", exact: true })).toBeDisabled();
+    await form.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(form.getByLabel("Name", { exact: true })).toHaveValue(name);
     await form.getByRole("checkbox", { name: /Manage monitors/ }).check();
     await form.getByRole("button", { name: "Create role", exact: true }).click();
     await expect(roles.getByRole("status")).toContainText(`${name} created.`);
+    await expect(newRole).toBeFocused();
     expect(await readRole()).toMatchObject({ permissions: ["manage_monitors"], built_in: false, members: 0 });
+
+    await page.setViewportSize({ width: 320, height: 568 });
+    const edit = roles.getByRole("button", { name: `Edit ${name}`, exact: true });
+    const editor = page.getByRole("dialog", { name: "Edit role", exact: true });
+    const editName = editor.getByLabel("Name", { exact: true });
+    const save = editor.getByRole("button", { name: "Save role", exact: true });
+    await edit.click();
+    await expect(editName).toHaveValue(name);
+    await expect(editor.getByRole("checkbox", { name: "Manage monitors", exact: true })).toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(editor).toHaveCount(0);
+    await expect(edit).toBeFocused();
+    await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
+
+    await page.keyboard.press("Enter");
+    await expect(editName).toBeFocused();
+    await editName.fill("Administrator");
+    const alarms = editor.getByRole("checkbox", { name: "Manage alarms", exact: true });
+    await alarms.check();
+    await expect(save).toBeInViewport({ ratio: 1 });
+    await expect(editor.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport({ ratio: 1 });
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await save.click();
+    await expect(editor.getByRole("alert")).toContainText("Another role already has this name");
+    await expect(editor.getByRole("alert")).toBeInViewport({ ratio: 1 });
+    await expect(alarms).toBeChecked();
+    await editName.fill(name);
+    await save.click();
+    await expect(editor).toHaveCount(0);
+    await expect(edit).toBeFocused();
+    expect(await readRole()).toMatchObject({ permissions: ["manage_monitors", "manage_alarms"] });
 
     const members = page.getByRole("region", { name: "Members", exact: true });
     await members.getByRole("button", { name: "Invite member", exact: true }).click();
@@ -229,11 +270,11 @@ test("a custom role grants its member exactly the permissions it bundles", async
     const api = (path: string) => new URL(`/api/v1${path}`, page.url()).href;
     const memberHeaders = { Authorization: `Bearer ${await accessToken(memberPage)}` };
     const profile = await memberPage.request.get(api("/members/me"), { headers: memberHeaders });
-    expect(await profile.json()).toMatchObject({ role: (await readRole())!.id, permissions: ["manage_monitors"] });
+    expect(await profile.json()).toMatchObject({ role: (await readRole())!.id, permissions: ["manage_monitors", "manage_alarms"] });
     await memberPage.goto(new URL("/account", page.url()).href);
     const signedIn = memberPage.getByRole("region", { name: "Signed in", exact: true });
     await expect(signedIn).toContainText(name);
-    await expect(signedIn).toContainText("Your role: view organization data, manage monitors.");
+    await expect(signedIn).toContainText("Your role: view organization data, manage monitors, manage alarms.");
     await expect(memberPage.getByRole("heading", { name: "Members", exact: true })).toHaveCount(0);
     await expect(memberPage.getByRole("heading", { name: "Roles", exact: true })).toHaveCount(0);
     const forbidden = await memberPage.request.post(api("/roles"), { headers: memberHeaders, data: { name: "Escalated", permissions: ["manage_members"] } });
@@ -242,8 +283,25 @@ test("a custom role grants its member exactly the permissions it bundles", async
     // A role cannot be deleted while a member holds it.
     const role = (await readRole())!;
     expect(role.members).toBe(1);
+    const heldRole = roles.getByRole("listitem").filter({ hasText: name });
+    await expect(heldRole).toContainText("Reassign members to delete");
+    await expect(heldRole.getByRole("button", { name: `Delete ${name}`, exact: true })).toHaveCount(0);
     const held = await page.request.delete(`/api/v1/roles/${role.id}`, { headers: fixture.headers });
     expect(held.status(), await held.text()).toBe(409);
+
+    await fixture.cleanup();
+    await page.reload();
+    const deleteButton = heldRole.getByRole("button", { name: `Delete ${name}`, exact: true });
+    const confirmation = page.getByRole("dialog", { name: `Delete ${name}?`, exact: true });
+    await deleteButton.click();
+    await expect(confirmation.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(deleteButton).toBeFocused();
+    await deleteButton.press("Enter");
+    await confirmation.getByRole("button", { name: "Delete role", exact: true }).click();
+    await expect(heldRole).toHaveCount(0);
+    await expect(newRole).toBeFocused();
+    expect(await readRole()).toBeUndefined();
   } finally {
     await memberContext.close();
     await fixture.cleanup();

@@ -1,0 +1,271 @@
+.account-roles .app-settings-group-header h3 {
+  font-size: var(--text-body);
+}
+
+.account-roles-intro {
+  margin: 0;
+  padding: 12px 16px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / .55);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.account-role-row {
+  padding-block: 12px;
+}
+
+.account-role-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.account-role-identity strong {
+  font-weight: 600;
+}
+
+.account-role-badge {
+  padding-inline: 6px;
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+}
+
+.account-role-row .app-settings-row-detail {
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  overflow-wrap: anywhere;
+}
+
+.account-role-row .app-settings-row-detail p {
+  margin: 0;
+}
+
+.account-role-row .app-settings-row-trailing:empty {
+  display: none;
+}
+
+.account-role-list-area:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.account-role-load {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 16px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-body);
+}
+
+.account-role-load p {
+  margin: 0;
+}
+
+.account-role-load [role="alert"] {
+  color: hsl(var(--destructive));
+}
+
+.ex-dialog.account-role-editor {
+  width: min(540px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  padding: 0;
+  border-radius: 14px;
+  outline: none;
+}
+
+.account-role-form {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  min-width: 0;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.account-role-editor-header,
+.account-role-fields,
+.account-role-editor-footer {
+  padding: 16px 24px;
+}
+
+.account-role-editor-header {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.account-role-editor-header h2 {
+  margin: 0 0 4px;
+  font-size: var(--text-title2);
+  line-height: var(--leading-title2);
+  font-weight: 600;
+}
+
+.account-role-editor-header p,
+.account-role-permissions-note {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.account-role-fields {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px;
+}
+
+.account-role-name {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-role-permissions legend {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.account-role-permissions-note {
+  margin-bottom: 10px;
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.account-role-options,
+.account-role-permissions .account-role-load {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+.account-role-permission {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.account-role-permission + .account-role-permission {
+  border-top: 1px solid hsl(var(--border));
+}
+
+.account-role-permission:first-child {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.account-role-permission:last-child {
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.account-role-permission:has(input:checked) {
+  background: hsl(var(--primary) / .09);
+}
+
+@media (hover: hover) {
+  .account-role-permission:has(input:enabled):hover {
+    background: hsl(var(--accent));
+  }
+}
+
+.account-role-permission input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: hsl(var(--primary));
+  cursor: inherit;
+}
+
+.account-role-permission:has(input:focus-visible) {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.account-role-permission input:focus-visible {
+  outline: none;
+}
+
+.account-role-permission-name,
+.account-role-permission-description {
+  display: block;
+}
+
+.account-role-permission-name {
+  font-weight: 600;
+}
+
+.account-role-permission-description {
+  margin-top: 2px;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.account-role-editor-footer {
+  border-top: 1px solid hsl(var(--border));
+}
+
+.account-role-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.account-role-editor-actions button[aria-disabled="true"] {
+  opacity: .65;
+  cursor: wait;
+}
+
+.account-role-save-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: hsl(var(--destructive) / .09);
+  color: hsl(var(--destructive));
+  overflow-wrap: anywhere;
+}
+
+.account-roles button:focus-visible,
+.account-role-form button:focus-visible,
+.account-role-name input:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@container (max-width: 400px) {
+  .account-role-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .ex-dialog.account-role-editor {
+    width: calc(100% - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .account-role-editor-header,
+  .account-role-fields,
+  .account-role-editor-footer {
+    padding: 12px 16px;
+  }
+
+  .account-role-editor-actions > button {
+    flex: 1;
+  }
+}

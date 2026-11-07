@@ -13,6 +13,7 @@ from off_key_core.db.collection_runtime import (
 )
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import (
+    MemberFavorite,
     MonitoringPipeline,
     MonitoringService,
     PipelineActivation,
@@ -55,7 +56,8 @@ from off_key_core.utils.json_budget import bounded_utf8_text
 from off_key_core.utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
 )
-from sqlalchemy import select
+from sqlalchemy import delete, literal, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ...config.config import get_tactic_settings
 from ...domain import ConflictError, NotFoundError, ValidationError
@@ -80,6 +82,38 @@ def activation_view(row):
             if key != "issues"
         }
         | {"issues": (row.preflight or {}).get("issues", [])}
+    )
+
+
+# Once retirement starts the predecessor is gone; cancelling would leave nothing.
+RETIRED_PREDECESSOR_PHASES = frozenset({"retiring", "starting", "awaiting_heartbeat"})
+RETIRED_PREDECESSOR = (
+    "The monitor being replaced has already stopped, so cancelling now would leave "
+    "nothing running. Let the replacement finish starting, then stop it if needed."
+)
+# Open phases bounded by pipeline_phase_timeout_seconds.
+DEADLINE_PHASES = frozenset(
+    {"requested", "preflighting", "validated", "retiring", "starting"}
+)
+
+
+async def carry_monitor_favorites(session, previous_id, next_id):
+    """Members who starred the replaced monitor keep the star on its successor."""
+    starred = select(
+        MemberFavorite.user_id,
+        literal("monitor"),
+        literal(next_id),
+        MemberFavorite.created_at,
+    ).where(MemberFavorite.kind == "monitor", MemberFavorite.item_id == previous_id)
+    await session.execute(
+        pg_insert(MemberFavorite)
+        .from_select(["user_id", "kind", "item_id", "created_at"], starred)
+        .on_conflict_do_nothing()
+    )
+    await session.execute(
+        delete(MemberFavorite).where(
+            MemberFavorite.kind == "monitor", MemberFavorite.item_id == previous_id
+        )
     )
 
 
@@ -269,6 +303,7 @@ class PipelineActivations:
             cancel_requested=False,
             created_at=now,
             updated_at=now,
+            phase_entered_at=now,
         )
         self.session.add(row)
         self.session.add(
@@ -490,6 +525,9 @@ class PipelineActivations:
         await lock_collection_configuration(self.session)
         await require_application_writes(self.session)
         row = await self._row(identifier, lock=True)
+        if row.retirement_started and row.phase in RETIRED_PREDECESSOR_PHASES:
+            await self.session.rollback()
+            raise ConflictError(RETIRED_PREDECESSOR)
         if row.phase not in TERMINAL_ACTIVATION_PHASES:
             row.cancel_requested = True
             row.updated_at = datetime.now(UTC)
@@ -517,6 +555,15 @@ class PipelineActivations:
         if run.ended_at is not None:
             row.cancel_requested = True
             row.error = run.error or row.error
+        elif not row.cancel_requested and self._phase_expired(row, now):
+            # A phase that cannot finish must not hold its claims and block
+            # releases indefinitely; awaiting_heartbeat keeps its own deadline.
+            row.cancel_requested = True
+            row.error = (
+                f"Activation did not finish {row.phase.replace('_', ' ')} within "
+                f"{int(get_tactic_settings().config.pipeline_phase_timeout_seconds)} "
+                "seconds"
+            )
         if row.cancel_requested:
             row.phase = "cancelling"
         elif row.phase == "requested":
@@ -552,9 +599,19 @@ class PipelineActivations:
                 self._record_progress(current, started_phase, started_error)
             await self.session.commit()
 
+    @staticmethod
+    def _phase_expired(row, now):
+        if row.phase not in DEADLINE_PHASES:
+            return False
+        entered = row.phase_entered_at or row.created_at
+        budget = get_tactic_settings().config.pipeline_phase_timeout_seconds
+        return entered is not None and now - entered >= timedelta(seconds=budget)
+
     def _record_progress(self, row, started_phase, started_error):
         """One run event per phase change or new error; retries add none."""
         changed = row.phase != started_phase
+        if changed:
+            row.phase_entered_at = row.updated_at
         if not changed and (row.error is None or row.error == started_error):
             return
         self.session.add(
@@ -590,6 +647,25 @@ class PipelineActivations:
             logger.exception(
                 "Pipeline activation requires retry activation_id=%s", identifier
             )
+
+    async def _require_deleting(self, service_id):
+        """Hand an unconfirmed shutdown to the reconciler once delete is durable.
+
+        The row keeps its claim until the reconciler confirms removal and
+        purges it, so ending the activation now cannot free the inputs early.
+        """
+        await self.session.rollback()
+        service = await self.session.get(
+            MonitoringService, service_id, populate_existing=True
+        )
+        if service is not None and (
+            service.desired_state != "deleted" or service.stop_requested_at is None
+        ):
+            raise RuntimeError("Cancelled successor shutdown is not yet confirmed")
+        logger.warning(
+            "Cancelled successor shutdown continues in reconciliation service_id=%s",
+            service_id,
+        )
 
     async def _validated(self, row, token):
         row = await self._owned_row(row.id, token, "validated")
@@ -754,6 +830,10 @@ class PipelineActivations:
             row.phase = "succeeded"
             row.error = None
             run.status = "running"
+            if row.predecessor_service_id:
+                await carry_monitor_favorites(
+                    self.session, row.predecessor_service_id, row.service_id
+                )
         elif row.heartbeat_deadline is not None and now >= row.heartbeat_deadline:
             row.error = (
                 "Successor did not report a healthy heartbeat "
@@ -780,12 +860,14 @@ class PipelineActivations:
         service = await self.session.get(MonitoringService, row.service_id)
         if service is not None:
             if not await self._orchestration().retire_service(service):
-                raise RuntimeError("Cancelled successor shutdown is not yet confirmed")
+                await self._require_deleting(row.service_id)
         else:
             await self.session.commit()
             await self.workloads.remove_intent(row.service_id, None)
         row = await self._owned_row(row.id, token, "cancelling")
         await self.session.commit()
+        # A preflight job under this name that is not ours keeps the activation
+        # cancelling, with the reason, until its owner removes it.
         await PipelinePreflight(self.workloads).remove_for(row.id)
         row = await self._owned_row(row.id, token, "cancelling")
         row.phase = "failed" if row.error else "cancelled"

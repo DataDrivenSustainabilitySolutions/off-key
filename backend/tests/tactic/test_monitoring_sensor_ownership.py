@@ -162,3 +162,33 @@ async def test_unverified_or_starting_workload_keeps_sensor_claim(docker_status)
             config_fingerprint="fingerprint",
         )
     session.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("desired_state", ["stopped", "deleted"])
+async def test_a_running_workload_being_stopped_is_not_reused(desired_state):
+    session = AsyncMock()
+    session.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    monitor = SimpleNamespace(
+        id="existing-id",
+        stop_requested_at=None,
+        desired_state=desired_state,
+        status=False,
+        container_name="existing",
+        container_id="ctr-1",
+        mqtt_topic=["telemetry/charger-1/L1"],
+    )
+    service = _service_with_session(session)
+    service.workloads.get_status_and_labels.return_value = ("running", {})
+    session.get.return_value = monitor
+
+    with pytest.raises(ValueError, match="is stopping"):
+        await service._resolve_existing_service_request(
+            existing_service=monitor,
+            container_name="existing",
+            mqtt_topics=monitor.mqtt_topic,
+            strategy="static_baseline",
+            model_type="pyod_iforest",
+            config_fingerprint="fingerprint",
+        )
+    assert monitor.status is False

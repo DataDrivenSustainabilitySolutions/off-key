@@ -171,3 +171,32 @@ async def test_graph_heartbeat_remains_independent_of_blocked_checkpoint_commit(
             if commit is not None:
                 await asyncio.wait_for(commit, timeout=10)
     assert await writer.load_checkpoint(activation.service_id) == replacement
+
+
+@pytest.mark.asyncio
+async def test_a_stopping_worker_reports_stopped_but_no_longer_running(
+    signed_graph_writer,
+):
+    writer, sessions, activation, _, _ = signed_graph_writer
+    await writer.write_heartbeat(healthy_metrics())
+    async with sessions.begin() as session:
+        service = await session.get(MonitoringService, activation.service_id)
+        service.desired_state = "stopped"
+        service.stop_requested_at = datetime.now(UTC)
+        service.operational_stage = "stopped"
+        reported = service.operational_updated_at
+
+    events = [{"kind": "stage_changed", "stage": "operational", "detail": {}}]
+    assert not await writer.write_heartbeat(healthy_metrics() | {"run_events": events})
+    async with sessions() as session:
+        service = await session.get(MonitoringService, activation.service_id)
+        assert service.operational_stage == "stopped"
+        assert service.operational_updated_at == reported
+    assert writer.total_errors == 0
+
+    stopped = healthy_metrics()
+    stopped["operational_status"]["stage"] = "stopped"
+    await writer.write_heartbeat(stopped)
+    async with sessions() as session:
+        service = await session.get(MonitoringService, activation.service_id)
+        assert service.operational_updated_at > reported

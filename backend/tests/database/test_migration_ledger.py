@@ -87,6 +87,9 @@ APPLIED_CHECKSUMS = {
     "023_device_favorites.sql": (
         "51bf62d7d776dc1b1d3f3f49aab4acaae7ee6ead4479e9b80eee4f729962aa2c"
     ),
+    "024_lifecycle_states.sql": (
+        "d05b0588175a1f775ca54db11d844297a0b51b4fd6dad0138f968a258d01dbd7"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

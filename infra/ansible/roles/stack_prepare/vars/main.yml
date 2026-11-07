@@ -93,6 +93,7 @@ service_environment:
     TACTIC_PIPELINE_AUTHORING_ENABLED: "{{ tactic_pipeline_authoring_enabled | default(true) | bool | lower }}"
     TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: "{{ tactic_pipeline_preflight_timeout_seconds | default(90) }}"
     TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: "{{ tactic_pipeline_heartbeat_timeout_seconds | default(120) }}"
+    TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS: "{{ tactic_pipeline_phase_timeout_seconds | default(900) }}"
     TACTIC_RADAR_SECRET_SERVICE: "{{ stack_name ~ '_mqtt-radar' }}"
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: "{{ tactic_radar_default_mqtt_broker_host }}"
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: "{{ tactic_radar_default_mqtt_broker_port }}"

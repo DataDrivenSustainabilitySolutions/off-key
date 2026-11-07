@@ -15,12 +15,18 @@ from .retention import reconcile_retention_policies
 
 
 def validate_existing_schema(
-    connection: Connection, *, tables=None, excluded_columns=None, retired_columns=None
+    connection: Connection,
+    *,
+    tables=None,
+    excluded_columns=None,
+    retired_columns=None,
+    excluded_constraints=None,
 ) -> None:
     """Reject obsolete table shapes before executing any bootstrap DDL.
 
     ``excluded_columns`` are declared columns a pending migration adds;
-    ``retired_columns`` are undeclared ones a pending migration drops.
+    ``retired_columns`` are undeclared ones a pending migration drops;
+    ``excluded_constraints`` are declared constraints a pending migration adds.
     """
     inspector = inspect(connection)
     existing = set(inspector.get_table_names())
@@ -69,6 +75,7 @@ def validate_existing_schema(
                 constraint, CheckConstraint | ForeignKeyConstraint | UniqueConstraint
             )
             and constraint.name
+            and constraint.name not in (excluded_constraints or ())
         )
         if not compatible:
             raise RuntimeError(

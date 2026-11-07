@@ -293,6 +293,7 @@ async def test_database_writer_updates_service_operational_status(monkeypatch):
 
         async def execute(self, statement, params=None):
             self.executed.append((str(statement), params or {}))
+            return SimpleNamespace(rowcount=1)
 
         async def commit(self):
             self.committed = True

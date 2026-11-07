@@ -78,6 +78,43 @@ describe("favourites kept on the server", () => {
     expect(hook.result.current.favourites).toEqual([]);
   });
 
+  it("saves a quick star and unstar in the order they were made", async () => {
+    const remote = server();
+    const hook = mount(1);
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledOnce());
+    let finishStar: () => void = () => undefined;
+    const post = vi.mocked(apiUtils.post).getMockImplementation()!;
+    vi.mocked(apiUtils.post).mockImplementationOnce((endpoint, body) =>
+      new Promise(resolve => { finishStar = () => resolve(post(endpoint, body)); }));
+
+    act(() => hook.result.current.toggle("monitor", "m1"));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledOnce());
+    act(() => hook.result.current.toggle("monitor", "m1"));
+    expect(hook.result.current.favourites).toEqual([]);
+    expect(apiUtils.delete).not.toHaveBeenCalled();
+    finishStar();
+    await waitFor(() => expect(apiUtils.delete).toHaveBeenCalledOnce());
+    expect(remote.list()).toEqual([]);
+    expect(hook.result.current.favourites).toEqual([]);
+  });
+
+  it("skips a save the server already holds", async () => {
+    server();
+    const hook = mount(1);
+    await waitFor(() => expect(apiUtils.get).toHaveBeenCalledOnce());
+    let finishStar: () => void = () => undefined;
+    vi.mocked(apiUtils.post).mockImplementationOnce(async () => { await new Promise<void>(resolve => { finishStar = resolve; }); return { kind: "monitor", id: "m1" }; });
+
+    act(() => hook.result.current.toggle("monitor", "m1"));
+    await waitFor(() => expect(apiUtils.post).toHaveBeenCalledOnce());
+    act(() => hook.result.current.toggle("monitor", "m1"));
+    act(() => hook.result.current.toggle("monitor", "m1"));
+    finishStar();
+    await waitFor(() => expect(hook.result.current.favourites).toEqual([{ kind: "monitor", id: "m1" }]));
+    expect(apiUtils.post).toHaveBeenCalledOnce();
+    expect(apiUtils.delete).not.toHaveBeenCalled();
+  });
+
   it("never shows one member's favourites to the next", async () => {
     const remote = server({ 1: [{ kind: "monitor", id: "mine" }], 2: [] });
     const hook = mount(1);

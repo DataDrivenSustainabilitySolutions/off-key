@@ -166,7 +166,7 @@ describe("monitoring setup forms", () => {
     vi.clearAllMocks(); clearNavigationDrafts();
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/detectors")) return Promise.resolve(modelCatalog);
-      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "awaiting_heartbeat", monitor_id: "new-service" });
+      if (url.includes("pipeline-activations")) return Promise.resolve({ phase: "succeeded", monitor_id: "new-service" });
       return Promise.resolve([]);
     });
     mockPost.mockResolvedValue({ service_id: "new-service", activation_id: "activation" });

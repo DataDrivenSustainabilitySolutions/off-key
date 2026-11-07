@@ -22,7 +22,7 @@ const models = {
 };
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts();
   vi.mocked(apiUtils.get).mockImplementation(async (url: string) =>
-    url.includes("pipeline-activations") ? { phase: "awaiting_heartbeat", monitor_id: "new-service" } : models);
+    url.includes("pipeline-activations") ? { phase: "succeeded", monitor_id: "new-service" } : models);
   vi.mocked(apiUtils.post).mockResolvedValue({ service_id: "new-service", activation_id: "activation" });
 });
 function mount(ready = true, services: ActiveService[] = [], byStream = new Map<string, Set<string>>()) {

@@ -36,30 +36,12 @@ pytestmark = [
 
 # While the rollback reference (COMPATIBLE_REVISION in
 # infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
-# its answers under the current field names. The reference carries the current
-# REST paths, but it still shows how readings are recorded (topics, entities,
-# ingress keys) and names a run's catalogue revision and brokers the old way, so
-# its answers drop those recording fields and rename the rest.
+# its answers under the current field names. The reference serves the current
+# REST paths and field names, so nothing is renamed or dropped.
 COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
 COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
-COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {
-    "system_revision": "catalogue_revision",
-    "source_id": "broker_id",
-    "source_label": "broker_label",
-    "entity_label": "device_label",
-}
-COMPATIBLE_RELEASE_DROPPED = frozenset(
-    {
-        "accepted_topic",
-        "collection_fingerprint",
-        "collection_generation",
-        "entity_id",
-        "input_key",
-        "mqtt_topics",
-        "system_schema_version",
-        "telemetry_key",
-    }
-)
+COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {}
+COMPATIBLE_RELEASE_DROPPED: frozenset[str] = frozenset()
 
 
 def current_field_names(value):

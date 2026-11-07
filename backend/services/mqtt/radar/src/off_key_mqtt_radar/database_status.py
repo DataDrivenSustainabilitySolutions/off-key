@@ -28,9 +28,18 @@ FAIL_SERVICE_STATUS = text(
     "WHERE id = :service_id"
 )
 
+# A stop or delete request fences live status: a stopping worker may still
+# report that it stopped or failed, but no longer that it is running.
+RUNNING_INTENT = "(desired_state = 'running' AND stop_requested_at IS NULL)"
+
+STOP_REQUESTED = text(
+    f"SELECT NOT {RUNNING_INTENT} FROM services WHERE id = :service_id"
+)
+
 # Heartbeat receipt evidence and checkpoint fencing in one atomic status write.
 
-HEARTBEAT_UPDATE = text("""
+HEARTBEAT_UPDATE = text(
+    """
     UPDATE services
     SET operational_stage = :stage,
         operational_status = CAST(:status_payload AS jsonb) ||
@@ -42,9 +51,13 @@ HEARTBEAT_UPDATE = text("""
             ELSE '{}'::jsonb END,
         operational_updated_at = :updated_at
     WHERE id = :service_id
+        AND (:stage IN ('failed', 'stopped') OR """
+    + RUNNING_INTENT
+    + """)
         AND (NOT :managed OR EXISTS (
             SELECT 1 FROM radar_runtime_checkpoints
             WHERE service_id = :service_id
                 AND signature IN (:signature, :pending_signature)
         ))
-""")
+"""
+)

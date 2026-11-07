@@ -14,7 +14,7 @@ import { useCatalogue } from "../workspace/catalogue-context";
 import type { PipelineDefinition, PipelineRevisionView } from "./contracts";
 import { executableChanges } from "./model";
 import { pipelinesApi } from "./api";
-import { applyFinished } from "./applySession";
+import { applyFinished, cancelRefused, REPLACEMENT_UNDER_WAY } from "./applySession";
 import { strategyLabel } from "./semantics";
 import { readingOwnedElsewhere } from "./bindings";
 import {
@@ -208,7 +208,10 @@ export function PipelineActivation({
               {operation.error}
             </p>
           )}
-          {!applyFinished(operation) && (
+          {cancelRefused(operation) && (
+            <p className="pl-help">{REPLACEMENT_UNDER_WAY}</p>
+          )}
+          {!applyFinished(operation) && !cancelRefused(operation) && (
             <button
               type="button"
               disabled={busy || operation.phase === "cancelling"}

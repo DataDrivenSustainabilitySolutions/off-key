@@ -22,6 +22,21 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 
+# Lifecycle values the database accepts; migration 023 installs the checks.
+RUN_STATUSES = ("reserved", "starting", "running", "stopped", "failed", "cancelled")
+ACTIVATION_PHASES = (
+    "requested",
+    "preflighting",
+    "validated",
+    "retiring",
+    "starting",
+    "awaiting_heartbeat",
+    "succeeded",
+    "cancelling",
+    "cancelled",
+    "failed",
+)
+
 
 def document():
     return JSON().with_variant(JSONB(), "postgresql")
@@ -91,6 +106,12 @@ class PipelineRun(Base):
     # The last runtime status when the run ended; the service row that held it
     # is deleted by stop and retention purge.
     final_status: Mapped[Any | None] = mapped_column(document(), nullable=True)
+    __table_args__ = (
+        CheckConstraint(
+            f"status IN ({', '.join(repr(item) for item in RUN_STATUSES)})",
+            name="ck_pipeline_run_status",
+        ),
+    )
 
 
 class PipelineRunEvent(Base):
@@ -165,4 +186,14 @@ class PipelineActivation(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Each open phase ends as failed once it outlasts the configured budget.
+    phase_entered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint(
+            f"phase IN ({', '.join(repr(item) for item in ACTIVATION_PHASES)})",
+            name="ck_pipeline_activation_phase",
+        ),
     )

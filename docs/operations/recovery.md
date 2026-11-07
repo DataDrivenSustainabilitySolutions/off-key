@@ -45,6 +45,21 @@ that release's operation through trusted SSH instead:
    release, so the fixed release compares its runtime changes from there.
 5. Merge the fix and deploy its SHA, then reenable automatic deployment.
 
+## Abandon a release whose monitors cannot recover
+
+When the attempted SHA itself keeps restarted monitors from reporting healthy, so
+neither a retry nor `finish` can succeed, abandon its operation instead of leaving
+catalog and monitor changes blocked:
+
+1. Set `AUTO_DEPLOY_ENABLED=false`.
+2. On the node running the stack's TACTIC task, run
+   `docker exec <container> /app/bin/python -m off_key_tactic_middleware.deployment abort <SHA>`.
+   Monitors the release restarted keep running as they are; the output lists them
+   under `restarted`. Monitors it stopped but did not restart stay stopped and are
+   listed under `not_restarted`; start them again from the workbench.
+3. Rename `<stack_dir>/release-maintenance.json` as in step 4 above, deploy a fixed
+   or earlier SHA, and reenable automatic deployment.
+
 ## Roll back a completed release
 
 Dispatch a previously green **integrated** main SHA with bootstrap unchecked.

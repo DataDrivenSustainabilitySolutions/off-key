@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import { clearNavigationDrafts, readStoredDraft } from "@/lib/navigation-draft";
 import { pipelinesApi } from "@/features/pipelines/api";
-import { createApplySession, usePipelineApply } from "@/features/pipelines/applySession";
+import { cancelRefused, createApplySession, usePipelineApply } from "@/features/pipelines/applySession";
 import { normalizeDefinition, normalizeLayout } from "@/features/pipelines/contracts";
 import type { PipelineActivationView } from "@/types/pipelines.generated";
 
@@ -72,6 +72,16 @@ describe("durable direct apply", () => {
     await session.cancel(); expect(session.getSnapshot().operation?.phase).toBe("cancelling");
     await session.refresh(new AbortController().signal); session.reset();
     expect(session.getSnapshot().request).toBeUndefined();
+  });
+  it("does not cancel a replacement once the previous monitor is stopping", async () => {
+    const retiring = { ...operation("starting"), retirement_started: true };
+    vi.mocked(pipelinesApi.apply).mockResolvedValue(retiring);
+    const session = createApplySession("apply"); await session.submit(request());
+    expect(cancelRefused(retiring)).toBe(true);
+    await session.cancel();
+    expect(pipelinesApi.cancel).not.toHaveBeenCalled();
+    expect(cancelRefused({ ...operation("starting"), retirement_started: false })).toBe(false);
+    expect(cancelRefused({ ...operation("succeeded"), retirement_started: true })).toBe(false);
   });
   it("cannot restore an old account's state from a response arriving after logout", async () => {
     let acknowledge!: (value: PipelineActivationView) => void;

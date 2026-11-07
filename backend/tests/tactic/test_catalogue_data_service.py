@@ -167,7 +167,7 @@ async def test_devices_report_whether_their_entity_is_sending(monkeypatch):
         },
     }
     data._runtime.bindings["flow"].update(
-        broker_id="broker", policy={"mode": "original"}
+        connection_id="broker", policy={"mode": "original"}
     )
 
     devices = await data.devices(active=None)
@@ -220,7 +220,7 @@ def test_receiving_window_is_fresh_bounded_and_requires_current_workers(
         mode="collection",
         collection_revision=2,
         bindings={
-            "r": {"broker_id": "b", "policy": {"mode": "original"}},
+            "r": {"connection_id": "b", "policy": {"mode": "original"}},
         },
         collection={"status": "applied", "revision": 2, "checked_at": NOW.isoformat()},
         ingress={

@@ -28,7 +28,7 @@ def reading_is_receiving(
     binding = runtime.bindings.get(reading_id, {})
     if binding.get("policy", {}).get("mode", "off") == "off":
         return False
-    source = runtime.ingress.get("sources", {}).get(binding.get("broker_id"), {})
+    source = runtime.ingress.get("sources", {}).get(binding.get("connection_id"), {})
     if source.get("state") not in {"connected", "connecting", "reconnecting"}:
         return False
     receipt = runtime.ingress.get("readings", {}).get(reading_id, {})

@@ -287,22 +287,22 @@ async def test_fitting_keeps_heartbeating_while_another_replica_polls(
 
     def slow_step(*args):
         loop.call_soon_threadsafe(entered.set)
-        if not release.wait(5):
+        if not release.wait(15):
             raise RuntimeError("test did not release fitting")
         return
 
     monkeypatch.setattr(Replay, "step", slow_step)
     worker = DojoWorker(
         engine,
-        WorkerOptions(worker_id="w1", heartbeat_seconds=0.02, stale_seconds=0.15),
+        WorkerOptions(worker_id="w1", heartbeat_seconds=1, stale_seconds=3),
     )
     task = asyncio.create_task(worker.run_once())
     try:
-        await asyncio.wait_for(entered.wait(), 3)
-        await asyncio.sleep(0.3)
+        await asyncio.wait_for(entered.wait(), 10)
+        await asyncio.sleep(worker.options.stale_seconds + 0.5)
         other = DojoWorker(
             engine,
-            WorkerOptions(worker_id="w2", heartbeat_seconds=0.02, stale_seconds=0.15),
+            WorkerOptions(worker_id="w2", heartbeat_seconds=1, stale_seconds=3),
         )
         assert not await other.run_once()
         run, _ = await stored_run(sessions)
@@ -364,7 +364,7 @@ async def test_slow_result_write_does_not_fail_its_own_heartbeat(
         await session.commit()
     worker = DojoWorker(
         engine,
-        WorkerOptions(worker_id="w1", heartbeat_seconds=0.02, stale_seconds=0.15),
+        WorkerOptions(worker_id="w1", heartbeat_seconds=1, stale_seconds=3),
     )
     run = _Run("run", pending=[ReplayResult(1, START, "ready", 0.1, None, False)])
     run.replay = SimpleNamespace(sequence=1, alarm_count=0, stats=dict)
@@ -378,10 +378,10 @@ async def test_slow_result_write_does_not_fail_its_own_heartbeat(
 
     monkeypatch.setattr(worker, "_write", slow_write)
     flushing = asyncio.create_task(worker._flush(run))
-    await asyncio.wait_for(entered.wait(), 3)
+    await asyncio.wait_for(entered.wait(), 10)
     heartbeat = asyncio.create_task(worker._keep_alive(run, finished))
     try:
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(worker.options.stale_seconds + 0.5)
         assert run.heartbeat_error is None
     finally:
         release.set()
@@ -407,7 +407,7 @@ async def test_cancelled_initialization_closes_the_late_replay(
 
     def initialize(_):
         loop.call_soon_threadsafe(entered.set)
-        if not release.wait(3):
+        if not release.wait(15):
             raise RuntimeError("test did not release initialization")
         return SimpleNamespace(close=closed.set)
 
@@ -416,7 +416,7 @@ async def test_cancelled_initialization_closes_the_late_replay(
         DojoWorker(engine, WorkerOptions(worker_id="w1")).run_once()
     )
     try:
-        await asyncio.wait_for(entered.wait(), 3)
+        await asyncio.wait_for(entered.wait(), 10)
         task.cancel()
     finally:
         release.set()

@@ -12,7 +12,7 @@ import type { PipelineCatalog, PipelineServiceView } from "./contracts";
 import { PipelineLibrary } from "./PipelineLibrary";
 import { PipelineCreate } from "./PipelineCreate";
 import PipelineEditor from "./PipelineEditor";
-import { createPipeline, dropReplacement, openPipeline, setActivation, setRevision, showLibrary, suggestedBindings } from "@/domain/monitoring/monitoringView";
+import { createPipeline, dropReplacement, openPipeline, setRevision, showLibrary, suggestedBindings } from "@/domain/monitoring/monitoringView";
 import "./pipelines.css";
 
 type Props = {
@@ -164,7 +164,6 @@ export default function PipelineWorkspace({
         backLabel={creating ? "Monitoring" : "Templates"}
         onManage={library}
         onRevision={(revision) => setParams(setRevision(params, revision))}
-        onOperation={(activation) => setParams(setActivation(params, activation))}
         onStarted={onStarted}
       />
     </>

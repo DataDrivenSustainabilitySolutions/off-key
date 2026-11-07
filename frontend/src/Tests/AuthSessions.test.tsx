@@ -5,7 +5,7 @@ import { AxiosError } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
-import { endSession, refreshSession, tokenManager, waitForLogout } from "@/auth/session";
+import { endSession, refreshSession, subscribeToSession, tokenManager, waitForLogout } from "@/auth/session";
 import { apiClient, apiUtils, ApiRequestError } from "@/lib/api-client";
 import { readStoredDraft, storeDraft } from "@/lib/navigation-draft";
 
@@ -42,6 +42,30 @@ const StatefulWorkspace = () => {
 const renderWorkspace = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><StatefulWorkspace /></ProtectedRoute></MemoryRouter></AuthProvider>);
 
 describe("remembered session recovery", () => {
+  it("retires an in-flight renewal when another tab changes the remembered member", async () => {
+    tokenManager.setToken(token(), true);
+    let finishOld!: (value: Response) => void;
+    let finishCurrent!: (value: Response) => void;
+    const currentToken = token(3600, "other-tab", 43);
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishCurrent = resolve; }));
+    const unsubscribe = subscribeToSession(() => {});
+    try {
+      const old = refreshSession();
+      localStorage.setItem("session_member", "43");
+      window.dispatchEvent(new StorageEvent("storage", { key: "session_member", newValue: "43" }));
+      const current = refreshSession();
+      finishOld(response(token(3600, "obsolete-member", 42)));
+      await old;
+      expect(refreshSession()).toBe(current);
+      finishCurrent(response(currentToken));
+      await Promise.all([old, current]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(tokenManager.getToken()).toBe(currentToken);
+      expect(tokenManager.getMemberId()).toBe(43);
+    } finally { unsubscribe(); }
+  });
+
   it("preserves this member's setup drafts when a remembered login is restored", async () => {
     localStorage.setItem("token_storage_type", "remembered");
     localStorage.setItem("session_member", "42");

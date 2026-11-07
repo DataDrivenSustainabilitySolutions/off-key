@@ -565,9 +565,9 @@ class PipelineActivations:
                 "seconds"
             )
         if row.cancel_requested:
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
         elif row.phase == "requested":
-            row.phase = "preflighting"
+            self._enter_phase(row, "preflighting")
         phase = row.phase
         await self.session.commit()
         try:
@@ -600,6 +600,13 @@ class PipelineActivations:
             await self.session.commit()
 
     @staticmethod
+    def _enter_phase(row, phase):
+        # Commit the deadline with its phase, before remote work can interrupt us.
+        if row.phase != phase:
+            row.phase = phase
+            row.phase_entered_at = row.updated_at = datetime.now(UTC)
+
+    @staticmethod
     def _phase_expired(row, now):
         if row.phase not in DEADLINE_PHASES:
             return False
@@ -610,8 +617,6 @@ class PipelineActivations:
     def _record_progress(self, row, started_phase, started_error):
         """One run event per phase change or new error; retries add none."""
         changed = row.phase != started_phase
-        if changed:
-            row.phase_entered_at = row.updated_at
         if not changed and (row.error is None or row.error == started_error):
             return
         self.session.add(
@@ -641,7 +646,7 @@ class PipelineActivations:
                     "issues": [issue.model_dump(mode="json") for issue in error.issues],
                 }
             current.cancel_requested = True
-            current.phase = "cancelling"
+            self._enter_phase(current, "cancelling")
         await self.session.commit()
         if not reject:
             logger.exception(
@@ -675,12 +680,13 @@ class PipelineActivations:
         )
         if fingerprint != row.collection_fingerprint:
             raise PreflightRejected("Inputs changed after runtime preflight")
-        row.phase = (
+        self._enter_phase(
+            row,
             "cancelling"
             if row.cancel_requested
             else "retiring"
             if row.predecessor_service_id
-            else "starting"
+            else "starting",
         )
         await self.session.commit()
 
@@ -714,13 +720,13 @@ class PipelineActivations:
             )
         row.preflight = report
         row.error = None
-        row.phase = "cancelling" if row.cancel_requested else "validated"
+        self._enter_phase(row, "cancelling" if row.cancel_requested else "validated")
         await self.session.commit()
 
     async def _retire(self, row, token):
         row = await self._owned_row(row.id, token, "retiring")
         if row.cancel_requested:
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
             await self.session.commit()
             return
         predecessor = await self.session.get(
@@ -752,7 +758,7 @@ class PipelineActivations:
             await self.session.commit()
             await self.workloads.remove_intent(row.predecessor_service_id, None)
         row = await self._owned_row(row.id, token, "retiring")
-        row.phase = "cancelling" if row.cancel_requested else "starting"
+        self._enter_phase(row, "cancelling" if row.cancel_requested else "starting")
         row.error = None
         await self.session.commit()
 
@@ -765,7 +771,9 @@ class PipelineActivations:
             config, activation_id=row.id, execution_service_id=row.service_id
         )
         row = await self._owned_row(row.id, token, "starting")
-        row.phase = "cancelling" if row.cancel_requested else "awaiting_heartbeat"
+        self._enter_phase(
+            row, "cancelling" if row.cancel_requested else "awaiting_heartbeat"
+        )
         row.heartbeat_deadline = datetime.now(UTC) + timedelta(
             seconds=get_tactic_settings().config.pipeline_heartbeat_timeout_seconds
         )
@@ -777,7 +785,7 @@ class PipelineActivations:
             run.status = "starting"
         else:
             row.cancel_requested = True
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
             row.error = run.error or "Successor execution ended during startup"
         await self.session.commit()
 
@@ -821,13 +829,13 @@ class PipelineActivations:
             or service.stop_requested_at is not None
         ):
             row.cancel_requested = True
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
         elif service.operational_stage == "failed":
             row.error = "Successor reported a failed runtime"
             row.cancel_requested = True
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
         elif healthy:
-            row.phase = "succeeded"
+            self._enter_phase(row, "succeeded")
             row.error = None
             run.status = "running"
             if row.predecessor_service_id:
@@ -840,7 +848,7 @@ class PipelineActivations:
                 "before its startup deadline"
             )
             row.cancel_requested = True
-            row.phase = "cancelling"
+            self._enter_phase(row, "cancelling")
         await self.session.commit()
 
     async def _cancel(self, row, token):
@@ -870,5 +878,5 @@ class PipelineActivations:
         # cancelling, with the reason, until its owner removes it.
         await PipelinePreflight(self.workloads).remove_for(row.id)
         row = await self._owned_row(row.id, token, "cancelling")
-        row.phase = "failed" if row.error else "cancelled"
+        self._enter_phase(row, "failed" if row.error else "cancelled")
         await self.session.commit()

@@ -46,11 +46,13 @@ export function createDraftStore<S>(storageKey: string | undefined, initial: (st
   const generation = navigationDraftGeneration();
   let snapshot = initial(storageKey ? readStoredDraft(storageKey) : undefined);
   const listeners = new Set<() => void>();
+  const isCurrent = () => generation === navigationDraftGeneration();
   return {
+    isCurrent,
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (next: S) => {
-      if (generation !== navigationDraftGeneration()) return;
+      if (!isCurrent()) return;
       snapshot = next;
       if (storageKey) storeDraft(storageKey, persist(next));
       listeners.forEach((listener) => listener());

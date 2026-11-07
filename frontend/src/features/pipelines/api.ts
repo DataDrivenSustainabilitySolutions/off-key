@@ -1,6 +1,5 @@
 import { apiUtils } from "@/lib/api-client";
 import type {
-  PipelineActivationRequest,
   PipelineActivationView,
   PipelineApplyRequest,
   PipelineCatalog,
@@ -121,8 +120,6 @@ export const pipelinesApi = {
         layout,
       )
       .then(normalizeLayout),
-  activate: (request: PipelineActivationRequest) =>
-    apiUtils.post<PipelineActivationView>(activations, request),
   activation: (id: string, signal?: AbortSignal) =>
     apiUtils.get<PipelineActivationView>(
       `${activations}/${encodeURIComponent(id)}`,

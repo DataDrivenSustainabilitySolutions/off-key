@@ -56,9 +56,6 @@ export const setRevision = (params: URLSearchParams, revision?: string) =>
     next.delete("activation");
   });
 
-export const setActivation = (params: URLSearchParams, activation: string) =>
-  edit(params, next => next.set("activation", activation));
-
 export const dropReplacement = (params: URLSearchParams) => edit(params, next => next.delete("replace"));
 
 /** Edit a running service as a replacement, or as a copy when it cannot be replaced. */

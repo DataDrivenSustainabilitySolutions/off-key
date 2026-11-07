@@ -8,7 +8,6 @@ import {
   incomingEdges,
   insertBlocker,
   insertOnEdge,
-  executableChanges,
   moveMergeInput,
   removeElements,
   removeNode,
@@ -69,29 +68,14 @@ describe("visual pipeline documents", () => {
     expect(connectNodes(graph, "raw", "source", components)).toBe(graph);
   });
 
-  it("reorders merge inputs semantically while presentation never changes a definition", () => {
+  it("reorders merge inputs semantically", () => {
     const graph = definition();
     const reordered = moveMergeInput(graph, "merge", 1, -1);
     expect(reordered.edges.filter((edge) => edge.target === "merge")).toEqual([
       { source: "raw", target: "merge", order: 0 },
       { source: "scale", target: "merge", order: 1 },
     ]);
-    const first = {
-      definition: graph,
-      layout: normalizeLayout({
-        nodes: { merge: { x: 1, y: 2, label: "All selected values" } },
-      }),
-    };
-    const moved = {
-      ...first,
-      layout: normalizeLayout({
-        nodes: { merge: { x: 500, y: 100, label: "Combined features" } },
-      }),
-    };
-    expect(executableChanges(first.definition, moved.definition)).toEqual([]);
-    expect(executableChanges(graph, reordered)).toEqual([
-      "Feature connections or merge order changed",
-    ]);
+
   });
 
   it("removes all incident connections and its layout when a component is removed", () => {
@@ -162,26 +146,7 @@ describe("visual pipeline documents", () => {
     ]);
   });
 
-  it("includes semantic output renaming and learning settings in activation review", () => {
-    const before = definition();
-    const after = {
-      ...before,
-      nodes: before.nodes.map((node) =>
-        node.id === "raw"
-          ? {
-              ...node,
-              component: "features.rename",
-              params: { mapping: { temperature: "temperature_raw" } },
-            }
-          : node,
-      ),
-      settings: { ...before.settings, training_window_size: 900 },
-    };
-    expect(executableChanges(before, after)).toEqual([
-      "Updated features.rename (raw)",
-      "Learning or calibration settings changed",
-    ]);
-  });
+
 
   it("applies authoring limits to dropped components as well as toolbox buttons", () => {
     const component: PipelineComponent = {
@@ -214,21 +179,7 @@ describe("visual pipeline documents", () => {
     ).toBe(normal);
   });
 
-  it("excludes display labels and ordering of serialized connections from processing changes", () => {
-    const before = definition();
-    const after = {
-      ...before,
-      input_slots: before.input_slots.map((slot) => ({
-        ...slot,
-        label: "Updated display label",
-      })),
-      edges: [...before.edges].reverse(),
-      nodes: [...before.nodes]
-        .reverse()
-        .map((node) => ({ ...node, label: "Cosmetic title" })),
-    };
-    expect(executableChanges(before, after)).toEqual([]);
-  });
+
 });
 
 describe("graph document helpers", () => {

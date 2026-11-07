@@ -126,13 +126,11 @@ describe("pipelines API", () => {
     await pipelinesApi.save("line/1", request);
     await pipelinesApi.metadata("line/1", { name: "Renamed" } as never);
     await pipelinesApi.saveLayout("svc/1", { nodes: {} });
-    await pipelinesApi.activate({ service_id: "svc" } as never);
     await pipelinesApi.cancel("op/1");
 
     expect(mockPost.mock.calls).toEqual([
       ["/v1/pipelines/apply", { service_id: "svc" }],
       ["/v1/pipelines", { name: "Line", definition }],
-      ["/v1/pipeline-activations", { service_id: "svc" }],
       ["/v1/pipeline-activations/op%2F1/cancel"],
     ]);
     expect(mockPut.mock.calls).toEqual([

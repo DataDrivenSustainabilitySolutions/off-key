@@ -58,7 +58,6 @@ export function useSystemDocument({
   }));
   const [saving, setSaving] = useState(false);
   const generation = useRef(0);
-  const readSequence = useRef(0);
   const latest = useRef<SystemSnapshot | null>(null);
   const permission = useRef(false);
   const busy = useRef(false);
@@ -114,7 +113,6 @@ export function useSystemDocument({
     const controller = new AbortController();
     readController.current = controller;
     const context = generation.current;
-    const sequence = ++readSequence.current;
     permission.current = false;
     setState((current) => ({
       ...current,
@@ -129,16 +127,14 @@ export function useSystemDocument({
       });
       if (
         controller.signal.aborted ||
-        context !== generation.current ||
-        sequence !== readSequence.current
+        context !== generation.current
       )
         return undefined;
       return accept(snapshot, context);
     } catch (error) {
       if (
         controller.signal.aborted ||
-        context !== generation.current ||
-        sequence !== readSequence.current
+        context !== generation.current
       )
         return undefined;
       permission.current = false;
@@ -239,92 +235,70 @@ export function useSystemDocument({
   usePollingLoop(pollRuntime, { enabled: runtimeReady, intervalMs: pollInterval, overlap: "skip", initialRun: false,
     pauseWhenHidden: true, resumeOnVisible: true, abortWhenHidden: true });
 
-  const save = useCallback(
-    async (
-      proposed: SystemDocument,
-      expectedRevision?: number,
-    ): Promise<boolean> => {
-      const current = latest.current;
-      const setError = (error: string) =>
-        setState((previous) => ({ ...previous, error }));
-      if (busy.current) {
-        setError(
-          "Another configuration change is being saved. Wait for it to finish.",
-        );
-        return false;
+  // Catalogue and recording writes share acknowledgement, permission and owner rules.
+  const persist = useCallback(async (
+    write: (options: ApiRequestOptions) => Promise<SystemSnapshot>,
+    conflictMessage?: string,
+  ): Promise<boolean> => {
+    if (busy.current || !isAuthenticated || !permission.current || !latest.current) return false;
+    busy.current = true;
+    runtimeController.current?.abort();
+    runtimeController.current = undefined;
+    setSaving(true);
+    setState(previous => ({ ...previous, error: "" }));
+    const context = generation.current;
+    const controller = new AbortController();
+    saveController.current = controller;
+    const active = () => !controller.signal.aborted && context === generation.current;
+    try {
+      const response = await write({ signal: controller.signal, redirectOnUnauthorized: false });
+      return active() && !!accept(response, context, true);
+    } catch (error) {
+      if (!active()) return false;
+      const status = error instanceof ApiRequestError ? error.status : undefined;
+      if (status === 409) await refresh();
+      // Refresh can outlive this account or the workspace.
+      if (!active()) return false;
+      if (status === 401 || status === 403) {
+        permission.current = false;
+        setState(previous => ({
+          ...previous,
+          status: status === 401 ? "sign-in-required" : "read-only",
+          snapshot: previous.snapshot ? { ...previous.snapshot, can_edit: false } : null,
+          error: messageFor(error),
+        }));
+      } else {
+        setState(previous => ({ ...previous,
+          error: status === 409 && conflictMessage ? conflictMessage : messageFor(error),
+        }));
       }
-      if (!isAuthenticated || !current || !permission.current) {
-        setError(
-          "Changing the catalogue needs the Manage sources permission and the saved system.",
-        );
-        return false;
+      return false;
+    } finally {
+      if (context === generation.current) {
+        saveController.current = undefined;
+        busy.current = false;
+        setSaving(false);
       }
+    }
+  }, [accept, isAuthenticated, refresh]);
+
+  const save = useCallback(async (proposed: SystemDocument, expectedRevision?: number): Promise<boolean> => {
+    const current = latest.current;
+    try {
+      if (busy.current) throw new Error("Another configuration change is being saved. Wait for it to finish.");
+      if (!isAuthenticated || !current || !permission.current)
+        throw new Error("Changing the catalogue needs the Manage sources permission and the saved system.");
       const revision = expectedRevision ?? current.revision;
-      if (revision !== current.revision) {
-        setError(
-          "The saved system changed. Review or reload your draft before saving again.",
-        );
-        return false;
-      }
-      let document: SystemDocument;
-      try {
-        document = validateSystemDocument(proposed);
-      } catch (error) {
-        setError(messageFor(error));
-        return false;
-      }
-      busy.current = true;
-      runtimeController.current?.abort();
-      runtimeController.current = undefined;
-      setSaving(true);
-      setError("");
-      const context = generation.current;
-      const controller = new AbortController();
-      saveController.current = controller;
-      const options: ApiRequestOptions = {
-        signal: controller.signal,
-        redirectOnUnauthorized: false,
-      };
-      try {
-        const response = await systemApi.save(revision, document, options);
-        if (controller.signal.aborted || context !== generation.current)
-          return false;
-        return !!accept(response, context, true);
-      } catch (error) {
-        if (controller.signal.aborted || context !== generation.current)
-          return false;
-        if (error instanceof ApiRequestError && error.status === 409) {
-          await refresh();
-          if (context === generation.current)
-            setError(
-              "The saved system changed. Your draft has not been saved; review the current configuration or reload your draft before trying again.",
-            );
-        } else {
-          const denied =
-            error instanceof ApiRequestError &&
-            (error.status === 401 || error.status === 403);
-          if (denied) {
-            permission.current = false;
-            setState((previous) => ({
-              ...previous,
-              status: error.status === 401 ? "sign-in-required" : "read-only",
-              snapshot: previous.snapshot
-                ? { ...previous.snapshot, can_edit: false }
-                : null,
-              error: messageFor(error),
-            }));
-          } else setError(messageFor(error));
-        }
-        return false;
-      } finally {
-        if (context === generation.current) {
-          busy.current = false;
-          setSaving(false);
-        }
-      }
-    },
-    [accept, isAuthenticated, refresh],
-  );
+      if (revision !== current.revision)
+        throw new Error("The saved system changed. Review or reload your draft before saving again.");
+      const document = validateSystemDocument(proposed);
+      return persist(options => systemApi.save(revision, document, options),
+        "The saved system changed. Your draft has not been saved; review the current configuration or reload your draft before trying again.");
+    } catch (error) {
+      setState(previous => ({ ...previous, error: messageFor(error) }));
+      return false;
+    }
+  }, [isAuthenticated, persist]);
 
   const rename = useCallback(
     async (
@@ -347,29 +321,8 @@ export function useSystemDocument({
     [save],
   );
 
-  const applyCollection = useCallback(async (change: RuleChange): Promise<boolean> => {
-    if (busy.current || !permission.current || !latest.current) return false;
-    busy.current = true;
-    runtimeController.current?.abort();
-    runtimeController.current = undefined;
-    setSaving(true);
-    const context = generation.current;
-    const controller = new AbortController();
-    saveController.current = controller;
-    try {
-      const options: ApiRequestOptions = { signal: controller.signal, redirectOnUnauthorized: false };
-      const response = await systemApi.applyCollection(change, options);
-      return !controller.signal.aborted && !!accept(response, context, true);
-    } catch (error) {
-      if (!controller.signal.aborted && context === generation.current) {
-        if (error instanceof ApiRequestError && error.status === 409) await refresh();
-        setState((previous) => ({ ...previous, error: messageFor(error) }));
-      }
-      return false;
-    } finally {
-      if (context === generation.current) { busy.current = false; setSaving(false); }
-    }
-  }, [accept, refresh]);
+  const applyCollection = useCallback((change: RuleChange) =>
+    persist(options => systemApi.applyCollection(change, options)), [persist]);
 
   // Do not expose the previous account's configuration while effects catch up.
   const visible =

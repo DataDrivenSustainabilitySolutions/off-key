@@ -17,6 +17,45 @@ const operation = (phase: PipelineActivationView["phase"] = "requested"): Pipeli
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
 
 describe("durable direct apply", () => {
+  it("ignores a poll that finishes after cancellation has taken ownership", async () => {
+    let finishPoll!: (value: PipelineActivationView) => void;
+    vi.mocked(pipelinesApi.apply).mockResolvedValue(operation());
+    vi.mocked(pipelinesApi.activation).mockImplementationOnce(() => new Promise(resolve => { finishPoll = resolve; }));
+    vi.mocked(pipelinesApi.cancel).mockResolvedValue(operation("cancelling"));
+    const session = createApplySession("apply");
+    await session.submit(request());
+    const poll = session.refresh(new AbortController().signal);
+    await session.cancel();
+    finishPoll(operation("starting"));
+    await poll;
+    expect(session.getSnapshot().operation?.phase).toBe("cancelling");
+  });
+
+  it("does not let an old poll failure replace a new request's status", async () => {
+    let failPoll!: (reason: Error) => void;
+    vi.mocked(pipelinesApi.apply).mockResolvedValue(operation());
+    vi.mocked(pipelinesApi.activation).mockImplementationOnce(() => new Promise((_, reject) => { failPoll = reject; }))
+      .mockResolvedValueOnce(operation("failed"));
+    const session = createApplySession("apply");
+    await session.submit(request());
+    const old = session.refresh(new AbortController().signal);
+    await session.refresh(new AbortController().signal);
+    session.reset();
+    vi.mocked(pipelinesApi.apply).mockResolvedValue({ ...operation(), id: "next" });
+    await session.submit({ ...request(), idempotency_key: "next" });
+    failPoll(new Error("Old operation failed"));
+    await old;
+    expect(session.getSnapshot().operation?.id).toBe("next");
+    expect(session.getSnapshot().error).toBe("");
+  });
+
+  it("cannot submit a retained callback after its account's drafts were invalidated", async () => {
+    const session = createApplySession("apply");
+    clearNavigationDrafts();
+    await session.submit(request());
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
+  });
+
   it("polls at a bounded interval, pauses while hidden and stops after failure", async () => {
     vi.useFakeTimers();
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);

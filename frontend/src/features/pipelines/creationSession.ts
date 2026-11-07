@@ -58,7 +58,7 @@ export function createCreationSession(initial: CreationDraft, storageKey?: strin
     },
     detachTemplate: () => update({ ...getSnapshot(), template: undefined, save: { status: "idle" } }),
     save: async (details?: TemplateDetails) => {
-      if (getSnapshot().save.status === "saving" || getSnapshot().save.status === "saved") return;
+      if (!store.isCurrent() || getSnapshot().save.status === "saving" || getSnapshot().save.status === "saved") return;
       const submitted = getSnapshot().draft;
       const metadata = details ?? { name: submitted.name.trim(), description: submitted.description };
       const base = details?.copy ? undefined : getSnapshot().template;

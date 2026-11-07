@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseTab, createPipeline, dropReplacement, editFromRun, monitoringNavigationKey, openPipeline, resetView,
-  setActivation, setRevision, showLibrary, suggestedBindings, templateHref,
+  setRevision, showLibrary, suggestedBindings, templateHref,
 } from "@/domain/monitoring/monitoringView";
 
 const search = (query: string) => new URLSearchParams(query);
@@ -45,8 +45,6 @@ describe("monitoring URL contract", () => {
       () => setRevision(search("pipeline=p&revision=old&activation=a"), "new"), "pipeline=p&revision=new"],
     ["setRevision without one clears it",
       () => setRevision(search("pipeline=p&revision=old&activation=a")), "pipeline=p"],
-    ["setActivation tracks an operation",
-      () => setActivation(search("pipeline=p"), "op"), "pipeline=p&activation=op"],
     ["dropReplacement starts a new service instead",
       () => dropReplacement(search("pipeline=design&revision=published&replace=previous")), "pipeline=design&revision=published"],
     ["editFromRun replaces a replaceable service",

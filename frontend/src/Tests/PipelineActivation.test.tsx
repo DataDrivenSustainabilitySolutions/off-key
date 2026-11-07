@@ -1,178 +1,75 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PipelineActivation } from "@/features/pipelines/PipelineActivation";
 import { pipelinesApi } from "@/features/pipelines/api";
-import { normalizeDefinition } from "@/features/pipelines/contracts";
-import { ApiRequestError } from "@/lib/api-client";
-import { createEmptySystem } from "@/domain/system/systemDocument";
 import { clearNavigationDrafts } from "@/lib/navigation-draft";
-import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
+import type { PipelineActivationView } from "@/types/pipelines.generated";
 
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1 }) }));
-const catalogue = { document: { ...createEmptySystem(), readings: [] }, system: { snapshot: null }, telemetry: new SystemLiveTelemetry(), liveStreamIds: [], previewStreamIds: [] };
-vi.mock("@/features/workspace/catalogue-context", () => ({
-  useCatalogue: () => catalogue,
-}));
 vi.mock("@/features/pipelines/api", () => ({
-  pipelinesApi: { activate: vi.fn(), activation: vi.fn(), cancel: vi.fn() },
+  pipelinesApi: { apply: vi.fn(), activation: vi.fn(), cancel: vi.fn() },
 }));
-const definition = normalizeDefinition({
-  strategy: "adaptive_stream",
-  input_slots: [{ id: "temperature", label: "Temperature" }],
+const operation = (phase: PipelineActivationView["phase"] = "requested"): PipelineActivationView => ({
+  id: "activation", phase, monitor_id: "service", run_id: "run", predecessor_monitor_id: null, error: null,
+  created_at: "2026-10-16T12:00:00Z", updated_at: "2026-10-16T12:00:00Z",
 });
-const props = () => ({
-  revision: {
-    id: "revision",
-    pipeline_id: "pipeline",
-    number: 1,
-    definition,
-    fingerprint: "hash",
-    catalog_id: "catalog",
-    created_at: "2026-10-16T12:00:00Z",
-  },
-  targets: [
-    {
-      id: "room",
-      label: "Room",
-      inputs: [
-        {
-          path: "Room",
-          stream: {
-            id: "reading",
-            label: "Air temperature",
-            broker_id: "connection",
-            topic: "weather/temperature",
-            value_type: "number" as const,
-            category: "Environment",
-          },
-          binding: {
-            policy: { mode: "original" as const, interval_seconds: 10 },
-          },
-        },
-      ],
-    },
-  ],
-  services: [],
-  byStream: new Map<string, Set<string>>(),
-  initialTarget: "room",
-  defaultName: "Room monitor",
-  collectionReady: true,
-  onClose: vi.fn(),
-  onComplete: vi.fn(),
-  onOperation: vi.fn(),
-});
-const operation = {
-  id: "activation",
-  phase: "succeeded" as const,
-  monitor_id: "service",
-  run_id: "run",
-  predecessor_monitor_id: null,
-  error: null,
-  created_at: "2026-10-16T12:00:00Z",
-  updated_at: "2026-10-16T12:00:00Z",
-};
-beforeEach(() => {
-  clearNavigationDrafts();
-});
-const mount = (input = props()) =>
-  render(
-    <MemoryRouter>
-      <PipelineActivation {...input} />
-    </MemoryRouter>,
-  );
-async function submit() {
-  fireEvent.change(
-    screen.getByRole("combobox", { name: "Temperature · unit unspecified" }),
-    { target: { value: "reading" } },
-  );
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: /I reviewed the input bindings/ }),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Start revision" }));
-  await screen.findByRole("button", { name: "Recover activation request" });
-}
+const props = () => ({ operationId: "activation", onClose: vi.fn(), onComplete: vi.fn() });
+beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
 
-describe("activation request recovery", () => {
-  it("preserves tentative bindings and name across a source detour and requires renewed confirmation", () => {
-    const first = mount();
-    fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), {
-      target: { value: "Preserved monitor name" },
-    });
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Temperature · unit unspecified" }),
-      { target: { value: "reading" } },
-    );
-    fireEvent.click(screen.getByRole("checkbox", { name: /I reviewed/ }));
-    first.unmount();
-    mount();
-    expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Service name",
-        }) as HTMLInputElement
-      ).value,
-    ).toBe("Preserved monitor name");
-    expect(
-      (
-        screen.getByRole("combobox", {
-          name: "Temperature · unit unspecified",
-        }) as HTMLSelectElement
-      ).value,
-    ).toBe("reading");
-    expect(
-      (screen.getByRole("checkbox", { name: /I reviewed/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(false);
-    expect(pipelinesApi.activate).not.toHaveBeenCalled();
-  });
-  it("freezes an uncertain payload and retries its original idempotency key", async () => {
-    vi.mocked(pipelinesApi.activate)
-      .mockRejectedValueOnce(new ApiRequestError("Network error"))
-      .mockResolvedValue(operation);
+describe("existing activation links", () => {
+  it("follows the existing operation without submitting another monitor", async () => {
+    vi.mocked(pipelinesApi.activation).mockResolvedValue(operation());
     const input = props();
-    mount(input);
-    await submit();
-    expect(
-      screen
-        .getByRole("combobox", { name: "Temperature · unit unspecified" })
-        .matches(":disabled"),
-    ).toBe(true);
-    const original = vi.mocked(pipelinesApi.activate).mock.calls[0]![0];
-    fireEvent.click(
-      screen.getByRole("button", { name: "Recover activation request" }),
-    );
-    await waitFor(() =>
-      expect(input.onComplete).toHaveBeenCalledWith("service"),
-    );
-    expect(vi.mocked(pipelinesApi.activate).mock.calls[1]![0]).toEqual(
-      original,
-    );
-    expect(
-      sessionStorage.getItem("pipeline-activation:1:revision:new"),
-    ).toBeNull();
+    render(<PipelineActivation {...input} />);
+    await screen.findByRole("heading", { name: "Preparing your service…" });
+    expect(pipelinesApi.activation).toHaveBeenCalledWith("activation", expect.any(AbortSignal));
+    expect(pipelinesApi.apply).not.toHaveBeenCalled();
+    expect(input.onComplete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(input.onClose).toHaveBeenCalledOnce();
   });
 
-  it("retains uncertain requests through navigation and reload of the review", async () => {
-    vi.mocked(pipelinesApi.activate)
-      .mockRejectedValueOnce(new ApiRequestError("Request timed out", 504))
-      .mockResolvedValue(operation);
-    const first = mount();
-    await submit();
-    const original = vi.mocked(pipelinesApi.activate).mock.calls[0]![0];
-    first.unmount();
-    mount();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Recover activation request" }),
-    );
-    await waitFor(() => expect(pipelinesApi.activate).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(pipelinesApi.activate).mock.calls[1]![0]).toEqual(
-      original,
-    );
+  it("uses the shared cancellation flow and returns to setup after failure", async () => {
+    vi.mocked(pipelinesApi.activation).mockResolvedValue(operation());
+    vi.mocked(pipelinesApi.cancel).mockResolvedValue(operation("failed"));
+    const input = props();
+    render(<PipelineActivation {...input} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel start" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Return to setup" }));
+    expect(pipelinesApi.cancel).toHaveBeenCalledWith("activation");
+    expect(input.onClose).toHaveBeenCalledOnce();
+  });
+
+  it("explains why a replacement that is already retiring cannot be cancelled", async () => {
+    vi.mocked(pipelinesApi.activation).mockResolvedValue({ ...operation("retiring"), retirement_started: true });
+    render(<PipelineActivation {...props()} />);
+    await screen.findByText(/this replacement can no longer be cancelled/);
+    expect(screen.queryByRole("button", { name: "Cancel start" })).toBeNull();
+  });
+
+  it("opens a successful monitor exactly once", async () => {
+    vi.mocked(pipelinesApi.activation).mockResolvedValue(operation("succeeded"));
+    const input = props();
+    const view = render(<PipelineActivation {...input} />);
+    await waitFor(() => expect(input.onComplete).toHaveBeenCalledExactlyOnceWith("service"));
+    view.rerender(<PipelineActivation {...input} />);
+    expect(input.onComplete).toHaveBeenCalledOnce();
+    view.unmount();
+    render(<PipelineActivation {...input} />);
+    await waitFor(() => expect(input.onComplete).toHaveBeenCalledTimes(2));
+  });
+
+  it("ignores a previous operation's reply after following another link", async () => {
+    let finishOld!: (value: PipelineActivationView) => void;
+    vi.mocked(pipelinesApi.activation)
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValue({ ...operation("failed"), id: "other" });
+    const input = props();
+    const view = render(<PipelineActivation {...input} />);
+    view.rerender(<PipelineActivation {...input} operationId="other" />);
+    await screen.findByRole("heading", { name: "Monitoring could not start" });
+    await act(async () => { finishOld(operation("succeeded")); });
+    expect(input.onComplete).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Monitoring could not start" })).toBeTruthy();
   });
 });

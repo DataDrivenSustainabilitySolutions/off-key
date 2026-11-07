@@ -24,6 +24,14 @@ const saved = () => normalizeView({
 beforeEach(() => { vi.resetAllMocks(); clearNavigationDrafts(); });
 
 describe("account-scoped pipeline creation session", () => {
+  it("cannot save a template through a callback retained after logout", async () => {
+    const session = createCreationSession({ ...initial(), name: "Previous member's template" });
+    clearNavigationDrafts();
+    await session.save();
+    expect(pipelinesApi.create).not.toHaveBeenCalled();
+    expect(pipelinesApi.save).not.toHaveBeenCalled();
+  });
+
   it("restores a reading selection even when the unnamed graph did not change", () => {
     const session = createCreationSession(initial(), "creation:bindings");
     session.setDraft((draft) => ({ ...draft, targetId: "other-room", bindings: { value: "other-current" } }));

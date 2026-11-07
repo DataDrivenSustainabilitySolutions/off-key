@@ -180,7 +180,6 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
   private priorityId: string | null = null;
   private scopeIds: string[] | undefined;
   private scopeVersion = 0;
-  private renewing = false;
   private pulseOffset = 0;
 
   constructor(private readonly api: Transport = transport) {}
@@ -265,6 +264,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
     this.timeouts.clear();
     this.controller?.abort();
     this.renewController?.abort();
+    this.controller = this.renewController = undefined;
     const lease = this.leaseId;
     this.leaseId = undefined;
     if (lease) void this.api.release(lease).catch(() => {});
@@ -372,8 +372,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
   }
   private async renew(context: number) {
     const id = this.leaseId;
-    if (context !== this.generation || !id || this.renewing) return;
-    this.renewing = true;
+    if (context !== this.generation || !id || this.renewController) return;
     const scopeVersion = this.scopeVersion;
     const controller = new AbortController();
     this.renewController = controller;
@@ -410,7 +409,7 @@ export class SystemLiveTelemetry implements LiveTelemetryStore {
         this.scheduleRenew(context, 2000);
       }
     } finally {
-      this.renewing = false;
+      if (this.renewController === controller) this.renewController = undefined;
       if (context === this.generation && this.leaseId && scopeVersion !== this.scopeVersion)
         this.scheduleRenew(context, 150);
     }

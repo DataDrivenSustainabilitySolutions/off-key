@@ -31,6 +31,7 @@ try {
 }
 let renewal: Promise<string | null> | null = null;
 let logoutRequest: Promise<void> | null = null;
+const invalidateRenewal = () => { generation++; renewal = null; };
 
 class SessionRequestError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -61,7 +62,7 @@ export const tokenManager = {
     if (!rememberMe) sessionStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(STORAGE_TYPE_KEY, rememberMe ? REMEMBERED : 'sessionStorage');
     localStorage.setItem(MEMBER_KEY, String(getUserIdFromToken(token) ?? ''));
-    generation += 1;
+    invalidateRenewal();
     window.dispatchEvent(new Event(SESSION_CHANGED));
   },
 
@@ -71,7 +72,7 @@ export const tokenManager = {
     sessionStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(STORAGE_TYPE_KEY);
     localStorage.removeItem(MEMBER_KEY);
-    generation += 1;
+    invalidateRenewal();
     window.dispatchEvent(new Event(SESSION_CHANGED));
   },
 
@@ -84,6 +85,7 @@ export const subscribeToSession = (onChange: () => void): (() => void) => {
       // Another tab signed out or switched accounts; drop this tab's copy so
       // it restores the current member from the shared cookie.
       if (!tokenManager.isRemembered() || event.key === MEMBER_KEY || event.key === null) rememberedToken = null;
+      invalidateRenewal();
       onChange();
     }
   };
@@ -107,12 +109,9 @@ export const refreshSession = (): Promise<string | null> => {
   if (!tokenManager.isRemembered()) return Promise.resolve(null);
   if (renewal) return renewal;
   const startedGeneration = generation;
-  const previousToken = tokenManager.getToken();
-  renewal = (async () => {
+  const pending = (async () => {
     const response = await sessionRequest(API_CONFIG.ENDPOINTS.AUTH.REFRESH);
     if (startedGeneration !== generation || !tokenManager.isRemembered()) return tokenManager.getToken();
-    const currentToken = tokenManager.getToken();
-    if (currentToken !== previousToken && currentToken && !isTokenExpired(currentToken)) return currentToken;
     if (!response.ok) {
       if (response.status === 401) tokenManager.removeToken();
       throw new SessionRequestError(
@@ -128,8 +127,9 @@ export const refreshSession = (): Promise<string | null> => {
     }
     tokenManager.setToken(data.access_token, true);
     return data.access_token;
-  })().finally(() => { renewal = null; });
-  return renewal;
+  })().finally(() => { if (renewal === pending) renewal = null; });
+  renewal = pending;
+  return pending;
 };
 
 export const endSession = (): Promise<void> => {

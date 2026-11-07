@@ -476,6 +476,32 @@ describe("scene telemetry reads", () => {
 });
 
 describe("generic live preview lease lifecycle", () => {
+  it("gives a resumed preview its own renewal even while an aborted renewal is settling", async () => {
+    const { source, api } = harness();
+    let finishOld!: (value: LiveLease) => void;
+    let finishCurrent!: (value: LiveLease) => void;
+    api.renew.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishCurrent = resolve; }));
+    await source.start();
+    await vi.advanceTimersByTimeAsync(15000);
+    const oldSignal = api.renew.mock.calls[0]![1] as AbortSignal;
+    source.pause();
+    expect(oldSignal.aborted).toBe(true);
+    source.resume();
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(api.renew).toHaveBeenCalledTimes(2);
+    finishOld(lease());
+    await vi.advanceTimersByTimeAsync(0);
+    source.setScope(["temperature"]);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(api.renew).toHaveBeenCalledTimes(2);
+    finishCurrent(lease());
+    await vi.advanceTimersByTimeAsync(150);
+    expect(api.renew).toHaveBeenCalledTimes(3);
+    expect(api.renew).toHaveBeenLastCalledWith("lease", expect.any(AbortSignal), ["temperature"]);
+    source.stop();
+  });
+
   it("waits for a focused selection without timing out and renews its exact scope", async () => {
     const { source, api } = harness();
     const empty = batch({ brokers: [], readings: [], samples: [] });

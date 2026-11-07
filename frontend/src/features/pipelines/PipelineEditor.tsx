@@ -4,12 +4,11 @@ import { pipelinesApi } from "./api";
 import type { PipelineRevisionView, PipelineView } from "./contracts";
 import { PipelineCreate, type PipelineSetupProps } from "./PipelineCreate";
 import { PipelineActivation } from "./PipelineActivation";
-import { previousBindings } from "./bindings";
 import { Breadcrumb } from "@/components/Breadcrumb";
 
 type Props = Omit<PipelineSetupProps, "initialDesign" | "initialDocument"> & {
   id: string; revisionId?: string; activationId?: string;
-  onRevision: (id?: string) => void; onOperation: (id: string) => void;
+  onRevision: (id?: string) => void;
 };
 
 export default function PipelineEditor(props: Props) {
@@ -34,11 +33,7 @@ export default function PipelineEditor(props: Props) {
       : <p role="status">Loading template…</p>}
   </section>;
   // Recover existing links to an in-flight start created by earlier releases.
-  if (props.activationId && revision) return <PipelineActivation revision={revision} previous={props.predecessor?.definition}
-    previousBindings={previousBindings(props.predecessor)}
-    replaceService={props.replaceService} targets={props.targets} services={props.services} byStream={props.byStream}
-    initialTarget={props.initialTarget} initialReading={props.initialReading} defaultName={pipeline.name}
-    collectionReady={props.collectionReady} operationId={props.activationId} onOperation={props.onOperation}
+  if (props.activationId && revision) return <PipelineActivation operationId={props.activationId}
     onComplete={props.onStarted} onClose={() => props.onRevision(undefined)} />;
   return <>
     <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`}

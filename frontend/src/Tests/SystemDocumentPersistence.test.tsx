@@ -65,6 +65,39 @@ beforeEach(() => {
 });
 
 describe("saved system persistence", () => {
+  it.each([401, 403])("revokes recording write permission after a %s response", async (status) => {
+    vi.mocked(apiUtils.get).mockResolvedValue(snapshot());
+    vi.mocked(apiUtils.put).mockRejectedValue(new ApiRequestError("Permission revoked", status));
+    const { result } = renderHook(() => useSystemDocument({ isAuthenticated: true, accountKey: 1 }));
+    await waitFor(() => expect(result.current.canEdit).toBe(true));
+    const change = { expected_revision: 1, expected_collection_revision: 0, rule_changes: [] };
+    await act(async () => { expect(await result.current.applyCollection(change)).toBe(false); });
+    expect(result.current.status).toBe(status === 401 ? "sign-in-required" : "read-only");
+    expect(result.current.canEdit).toBe(false);
+    await act(async () => { expect(await result.current.applyCollection(change)).toBe(false); });
+    expect(apiUtils.put).toHaveBeenCalledOnce();
+  });
+
+  it("discards a recording conflict when its refresh finishes after an account change", async () => {
+    let finishRefresh!: (value: SystemSnapshot) => void;
+    vi.mocked(apiUtils.get).mockResolvedValueOnce(snapshot())
+      .mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve; }))
+      .mockResolvedValueOnce(snapshot(3, "Current account"));
+    vi.mocked(apiUtils.put).mockRejectedValue(new ApiRequestError("Old account conflict", 409));
+    const { result, rerender } = renderHook(({ accountKey }) => useSystemDocument({ isAuthenticated: true, accountKey }),
+      { initialProps: { accountKey: 1 } });
+    await waitFor(() => expect(result.current.canEdit).toBe(true));
+    let pending!: Promise<boolean>;
+    await act(async () => {
+      pending = result.current.applyCollection({ expected_revision: 1, expected_collection_revision: 0, rule_changes: [] });
+    });
+    rerender({ accountKey: 2 });
+    await waitFor(() => expect(result.current.document?.devices[0]?.label).toBe("Current account"));
+    await act(async () => { finishRefresh(snapshot(2, "Old account")); await pending; });
+    expect(result.current.error).toBe("");
+    expect(result.current.canEdit).toBe(true);
+  });
+
   it("does not request or write saved systems for anonymous previews", async () => {
     const { result } = renderHook(() =>
       useSystemDocument({ isAuthenticated: false }),

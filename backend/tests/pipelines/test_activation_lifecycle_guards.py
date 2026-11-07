@@ -91,6 +91,37 @@ async def test_a_fresh_phase_keeps_retrying_inside_its_budget(
 
 
 @pytest.mark.asyncio
+async def test_phase_entry_is_durable_before_remote_work_and_retries_keep_it(
+    pipeline_database, monkeypatch
+):
+    observed = []
+
+    async def inspect_committed_phase(_preflight):
+        async with pipeline_database() as reader:
+            row = await reader.get(PipelineActivation, identifier)
+            observed.append((row.phase, row.phase_entered_at))
+        raise RuntimeError("Docker is unreachable")
+
+    monkeypatch.setattr(PipelinePreflight, "resolve_image", inspect_committed_phase)
+    async with pipeline_database() as session:
+        activation = await _submit(session, "phase-entry")
+        identifier = activation.id
+        row = await session.get(PipelineActivation, identifier)
+        started = datetime.now(UTC)
+        row.phase_entered_at = started - timedelta(minutes=10)
+        await session.commit()
+        controller = PipelineActivations(
+            session, workloads=SimpleNamespace(async_docker=None)
+        )
+        await controller.advance(identifier)
+        await controller.advance(identifier)
+
+    assert [phase for phase, _ in observed] == ["preflighting", "preflighting"]
+    assert observed[0][1] >= started
+    assert observed[1][1] == observed[0][1]
+
+
+@pytest.mark.asyncio
 async def test_cancel_is_refused_once_the_predecessor_is_retiring(pipeline_database):
     async with pipeline_database() as session:
         activation = await _submit(session, "retired-cancel")

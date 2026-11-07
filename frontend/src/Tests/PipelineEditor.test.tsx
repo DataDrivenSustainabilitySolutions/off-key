@@ -132,7 +132,6 @@ const props = () => ({
   onBack: vi.fn(),
   onManage: vi.fn(),
   onRevision: vi.fn(),
-  onOperation: vi.fn(),
   onStarted: vi.fn(),
 });
 

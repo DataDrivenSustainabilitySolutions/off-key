@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { DatasetPoint, DatasetSeriesView, RunResult } from "@/types/dojo.generated";
@@ -22,7 +23,7 @@ export function useSeriesPoints(datasetId: string, series: DatasetSeriesView[]) 
     void Promise.all(missing.split(",").map(async id => {
       const { items, truncated } = await readPages<DatasetPoint, string>(after => dojoApi.points(datasetId, id,
         { after, limit: DOJO_LIMITS.pointsPage }, controller.signal), CHART_POINTS);
-      return [id, { points: items.map(item => [Date.parse(item.timestamp), item.value] as ChartPoint), truncated }] as const;
+      return [id, { points: items.map(item => [epochMilliseconds(item.timestamp), item.value] as ChartPoint), truncated }] as const;
     })).then(entries => {
       if (!controller.signal.aborted) { setLoaded(previous => ({ ...previous, ...Object.fromEntries(entries) })); setError(""); }
     }).catch(reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });
@@ -44,7 +45,7 @@ export function useRunAlarms(runIds: string[]) {
     void Promise.all(missing.split(",").map(async id => {
       const { items, truncated } = await readPages<RunResult, number>(after => dojoApi.results(id,
         { after, alarm: true, limit: DOJO_LIMITS.resultsPage }, controller.signal), ALARM_MARKS);
-      return [id, { times: items.map(item => Date.parse(item.timestamp)), truncated }] as const;
+      return [id, { times: items.map(item => epochMilliseconds(item.timestamp)), truncated }] as const;
     })).then(entries => {
       if (!controller.signal.aborted) { setLoaded(previous => ({ ...previous, ...Object.fromEntries(entries) })); setError(""); }
     }).catch(reason => { if (!controller.signal.aborted) setError(getErrorMessage(reason)); });

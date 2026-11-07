@@ -1,5 +1,6 @@
 """Dojo runs: bound at creation, replayed by the worker, read back in pages."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -226,6 +227,26 @@ async def test_more_waiting_runs_than_the_limit_are_refused(sessions, monkeypatc
         await service.create(request(view), created_by=creator)
         with pytest.raises(ConflictError, match="At most 1 runs"):
             await service.create(request(view), created_by=creator)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_cannot_exceed_active_run_limit(
+    sessions, monkeypatch
+):
+    monkeypatch.setattr(runs_module, "MAX_ACTIVE_RUNS", 1)
+    _, factory = sessions
+    creator, view = await dataset(factory, minutes=3)
+
+    async def create():
+        async with factory() as session:
+            return await DojoRuns(session).create(request(view), created_by=creator)
+
+    results = await asyncio.gather(
+        *(create() for _ in range(8)), return_exceptions=True
+    )
+    assert sum(isinstance(result, ConflictError) for result in results) == 7
+    async with factory() as session:
+        assert await session.scalar(select(func.count()).select_from(DojoRun)) == 1
 
 
 def app(factory):

@@ -79,12 +79,21 @@ def _too_many_series() -> ValidationError:
 
 
 def _unique_names(labels: Iterable[str]) -> list[str]:
-    seen: dict[str, int] = {}
+    labels = list(labels)
+    reserved = set(labels)
+    used: set[str] = set()
+    suffixes: dict[str, int] = {}
     names = []
     for label in labels:
-        count = seen.get(label, 0) + 1
-        seen[label] = count
-        names.append(label if count == 1 else f"{label} ({count})")
+        name = label
+        if name in used:
+            suffix = suffixes.get(label, 2)
+            while f"{label} ({suffix})" in reserved or f"{label} ({suffix})" in used:
+                suffix += 1
+            name = f"{label} ({suffix})"
+            suffixes[label] = suffix + 1
+        used.add(name)
+        names.append(name)
     return names
 
 
@@ -303,6 +312,7 @@ class DojoDatasets:
             for position, (name, stream) in enumerate(zip(names, chosen, strict=True))
         ]
         await self._store_series(dataset.id, series)
+        copied = 0
         for item, stream in zip(series, chosen, strict=True):
             await self.session.execute(
                 insert(DojoPoint).from_select(
@@ -311,7 +321,9 @@ class DojoDatasets:
                         literal(item.id, Text),
                         Telemetry.timestamp,
                         Telemetry.value,
-                    ).where(*recorded(stream)),
+                    )
+                    .where(*recorded(stream))
+                    .limit(MAX_DATASET_POINTS - copied + 1),
                 )
             )
             count, start, end = (
@@ -324,6 +336,9 @@ class DojoDatasets:
                 )
             ).one()
             item.point_count, item.start_at, item.end_at = count, start, end
+            copied += count
+            if copied > MAX_DATASET_POINTS:
+                raise _too_many_points()
         return await self._finish(dataset, series)
 
     def _dataset(self, name, description, origin, source, created_by):
@@ -398,6 +413,10 @@ class DojoDatasets:
         )
         filled = [item for item in series if item.point_count]
         dataset.point_count = sum(item.point_count for item in filled)
+        if not filled:
+            raise ValidationError("The dataset contains no values")
+        if dataset.point_count > MAX_DATASET_POINTS:
+            raise _too_many_points()
         dataset.start_at = min(
             (item.start_at for item in filled if item.start_at), default=None
         )

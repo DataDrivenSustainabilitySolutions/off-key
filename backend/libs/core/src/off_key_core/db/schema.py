@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 
 from ..auth.permissions import BUILT_IN_ROLES
+from .evidence_clock import install_evidence_clock
 from .models import Base
 from .retention import reconcile_retention_policies
 
@@ -90,6 +91,7 @@ def bootstrap_schema(connection: Connection) -> None:
     validate_existing_schema(connection)
     connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     Base.metadata.create_all(connection)
+    install_evidence_clock(connection)
     for table in Base.metadata.sorted_tables:
         for index in table.indexes:
             index.create(connection, checkfirst=True)

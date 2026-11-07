@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import type {
   MartingaleAlarmStatistic,
   MartingaleBettingFunction,
@@ -107,7 +108,7 @@ export const collectTelemetryChartDetectors = ({
 
 /** A multivariate result belongs to the aligned observation, not to any one input. */
 export const collectMonitoringChartDetectors = (evidence: readonly MonitoringChartEvidence[]): TelemetryChartDetector[] =>
-  collectChartDetectors(evidence.map(item => ({ item, time: Date.parse(item.timestamp) }))
+  collectChartDetectors(evidence.map(item => ({ item, time: epochMilliseconds(item.timestamp) }))
     .filter(({ time }) => Number.isFinite(time)), true);
 
 function collectChartDetectors(

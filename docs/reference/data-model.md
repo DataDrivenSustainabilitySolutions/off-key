@@ -28,6 +28,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `member_favorites` | `(user_id, kind, item_id)` | Catalogue devices, catalogue readings and monitors each member starred |
 | `anomalies` | `(charger_id, timestamp, telemetry_type, service_id)` | Detected anomaly events and contributing sensor set |
 | `monitoring_evidence` | `(service_id, timestamp, sequence_number)` | Per-inference strategy evidence used by charts and alarms |
+| `monitoring_evidence_clock` | `id = 1` | Durable watermark serializing evidence creation times through commit, so forward cursors cannot skip late commits |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
 | `remembered_sessions` | `token_hash` | Rotating remember-me refresh tokens grouped by session family |
 

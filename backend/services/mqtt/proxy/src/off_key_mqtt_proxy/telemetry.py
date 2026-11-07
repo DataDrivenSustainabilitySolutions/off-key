@@ -11,6 +11,7 @@ from typing import Any, TypeGuard, cast
 
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
+from off_key_core.db.worker_ownership import WorkerOwnership
 from sqlalchemy import CursorResult
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
@@ -67,6 +68,7 @@ class DatabaseWriter:
     ) -> None:
         self.config = config
         self._session_factory = session_factory
+        self.ownership: WorkerOwnership | None = None
 
         # Batching configuration
         self.batch_size = config.batch_size
@@ -394,6 +396,8 @@ class DatabaseWriter:
 
             async with self._session_factory() as session:
                 try:
+                    if self.ownership is not None:
+                        await self.ownership.fence(session)
                     insert_result = cast(CursorResult[Any], await session.execute(stmt))
                     rowcount = insert_result.rowcount
                     records_written = (

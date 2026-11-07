@@ -128,6 +128,7 @@ class SystemCollectionStream:
             self.definition.topic,
             self.definition.payload_pointer,
             self.value_type,
+            self.definition.unit,
             self.policy.mode,
             self.policy.cadence,
             self.endpoint,

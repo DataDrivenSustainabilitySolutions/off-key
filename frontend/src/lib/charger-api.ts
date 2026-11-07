@@ -2,6 +2,7 @@ import { apiUtils } from "@/lib/api-client";
 import { API_CONFIG } from "@/lib/api-config";
 import { drainForward, TELEMETRY_PAGE_SIZE } from "@/lib/forward-pages";
 import { clientLogger } from "@/lib/logger";
+import { compareTimestamps, epochMicroseconds } from "@/lib/timestamps";
 import type {
   Alarm,
   AlarmPage,
@@ -19,15 +20,13 @@ export const getTelemetryCursor = (
 ): TelemetryCursor | undefined =>
   points.reduce<TelemetryCursor | undefined>((latest, point) => {
     if (!point.created) return latest;
-    const createdTime = Date.parse(point.created);
-    const eventTime = Date.parse(point.timestamp);
-    if (!Number.isFinite(createdTime) || !Number.isFinite(eventTime)) return latest;
+    if (epochMicroseconds(point.created) === undefined || epochMicroseconds(point.timestamp) === undefined) return latest;
     const cursor = { created: point.created, timestamp: point.timestamp };
     if (!latest) return cursor;
-    const createdDifference = createdTime - Date.parse(latest.created);
+    const createdDifference = compareTimestamps(point.created, latest.created);
     if (createdDifference > 0) return cursor;
     if (createdDifference < 0) return latest;
-    return eventTime > Date.parse(latest.timestamp)
+    return compareTimestamps(point.timestamp, latest.timestamp) > 0
       ? cursor
       : latest;
   }, undefined);
@@ -111,12 +110,9 @@ export const mergeTelemetryData = (
     series.data.forEach((point) => points.set(point.timestamp, point));
     return {
       ...series,
-      // Parse each timestamp once instead of twice per comparison.
       data: [...points.values()]
-        .map((point) => ({ point, time: Date.parse(point.timestamp) }))
-        .sort((left, right) => right.time - left.time)
-        .slice(0, limit)
-        .map(({ point }) => point),
+        .sort((left, right) => compareTimestamps(right.timestamp, left.timestamp))
+        .slice(0, limit),
     };
   });
   merged.push(...incomingByType.values());

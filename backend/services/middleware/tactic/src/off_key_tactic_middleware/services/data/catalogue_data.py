@@ -1,9 +1,10 @@
 """Devices, measurements and evidence addressed by catalogue id."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from off_key_core.db.models import Charger
+from off_key_core.schemas.collection_activity import reading_is_receiving
 from off_key_core.schemas.system import SystemSnapshot, SystemStream
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,7 @@ class CatalogueDataService:
     def __init__(self, session: AsyncSession, snapshot: SystemSnapshot):
         self._session = session
         self._ids = CatalogueIds(snapshot)
+        self._runtime = snapshot.runtime
         self._telemetry = TelemetryQueryService(TelemetryRepository(session))
         self._evidence = MonitoringEvidenceRepository(session)
 
@@ -39,11 +41,15 @@ class CatalogueDataService:
         }
         statuses = await self._statuses(set().union(*entities.values()))
         listed = []
+        now = datetime.now(UTC)
         for device in devices:
             recorded = [
                 statuses[entity] for entity in entities[device.id] if entity in statuses
             ]
-            online = any(charger.online for charger in recorded)
+            online = any(
+                reading_is_receiving(self._runtime, stream.id, now)
+                for stream in readings[device.id]
+            )
             if active is not None and online != active:
                 continue
             seen = [charger.last_seen for charger in recorded if charger.last_seen]

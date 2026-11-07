@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import {
@@ -37,7 +38,7 @@ const getTimelineExtent = (
   let endMs = Number.NEGATIVE_INFINITY;
   telemetryData.forEach((series) => {
     series.data.forEach((point) => {
-      const time = Date.parse(point.timestamp);
+      const time = epochMilliseconds(point.timestamp);
       if (!Number.isFinite(time)) return;
       startMs = Math.min(startMs, time);
       endMs = Math.max(endMs, time);

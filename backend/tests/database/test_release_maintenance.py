@@ -220,10 +220,9 @@ def test_device_favorites_migration_names_catalogue_devices(disposable_database)
             )
         rewind_ledger(connection, "023_device_favorites.sql")
     with disposable_database.begin() as connection:
-        assert apply_migrations(connection)["applied"] == [
-            "023_device_favorites.sql",
-            "024_lifecycle_states.sql",
-        ]
+        assert apply_migrations(connection)["applied"] == migrations_from(
+            "023_device_favorites.sql"
+        )
         assert connection.execute(
             text("SELECT kind, item_id FROM member_favorites ORDER BY kind, item_id")
         ).all() == [

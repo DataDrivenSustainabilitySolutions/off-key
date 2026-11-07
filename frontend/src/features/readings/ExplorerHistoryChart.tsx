@@ -1,3 +1,4 @@
+import { epochMilliseconds, isoTimestamp } from "@/lib/timestamps";
 import { useNow } from "@/hooks/use-now";
 import { useCallback, useMemo, type KeyboardEvent } from "react";
 import { Minus, Plus, Radio, RotateCcw } from "lucide-react";
@@ -37,15 +38,15 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const stored = useStoredRange(monitoring.binding, range.spanMs, inspection);
 
   const history = useMemo(() => {
-    const lastStored = stored.length ? Date.parse(stored[stored.length - 1]!.timestamp) : -Infinity;
+    const lastStored = stored.length ? epochMilliseconds(stored[stored.length - 1]!.timestamp) : -Infinity;
     // Stored history is downsampled; collected timestamps are the actual detector
     // inputs; live arrivals extend both. Each source only adds what lies beyond
     // the one before it, rather than plotting the same value twice.
-    const collected = monitoring.telemetry.filter((point) => Date.parse(point.timestamp) > lastStored);
-    const lastCollected = collected.length ? Date.parse(collected[collected.length - 1]!.timestamp) : lastStored;
+    const collected = monitoring.telemetry.filter((point) => epochMilliseconds(point.timestamp) > lastStored);
+    const lastCollected = collected.length ? epochMilliseconds(collected[collected.length - 1]!.timestamp) : lastStored;
     return [...stored, ...collected, ...(snapshot?.samples ?? [])
       .filter((sample) => sample.timestamp > lastCollected)
-      .map((sample) => ({ timestamp: new Date(sample.timestamp).toISOString(), value: sample.value }))];
+      .map((sample) => ({ timestamp: isoTimestamp(sample.timestamp), value: sample.value }))];
   }, [stored, monitoring.telemetry, snapshot?.samples]);
   const normalizedHistory = useMemo(() => normalizeTelemetry(history), [history]);
   const latestTime = normalizedHistory[normalizedHistory.length - 1]?.[0] ?? now;
@@ -62,7 +63,7 @@ export function ExplorerHistoryChart({ stream, connection, snapshot, binding, hi
   const anomalies = useMemo(() => filterServiceAnomalies(monitoring.anomalies, evidence, service?.id, readingId),
     [service?.id, monitoring.anomalies, evidence, readingId]);
   const telemetryTimes = useMemo(() => normalizedHistory.map(([time]) => time), [normalizedHistory]);
-  const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => Date.parse(point.timestamp))
+  const collectedTimes = useMemo(() => monitoring.telemetry.map((point) => epochMilliseconds(point.timestamp))
     .filter((time) => time >= cutoff), [monitoring.telemetry, cutoff]);
   const panes = useDetectorPanes({ telemetryType: readingId, evidence, telemetryTimes, pendingCandidateTimes: collectedTimes,
     service, selectionKey: `${stream.id}\u0000${service?.id ?? ""}` });

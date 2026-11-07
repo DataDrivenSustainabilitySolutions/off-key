@@ -16,6 +16,7 @@ from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.locks import COLLECTION_PROXY_LOCK
 from off_key_core.db.models import Charger, CollectionState
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.db.worker_ownership import WorkerOwnership
 from off_key_core.schemas.collection_status import (
     COLLECTION_APPLIED,
     COLLECTION_APPLYING,
@@ -59,6 +60,7 @@ class MQTTProxyService:
         self.mqtt_client.set_message_handler(self.buffer.receive)
         self.session_factory = get_async_session_local()
         self.database_writer = DatabaseWriter(self.config, self.session_factory)
+        self.ownership: WorkerOwnership | None = None
         self.shutdown_event = asyncio.Event()
         self.is_running = False
         self.revision = -1
@@ -85,6 +87,8 @@ class MQTTProxyService:
         # This is a cache, not history. Rebuild it from the selected bindings so
         # removed or remapped sensors cannot expose values from an earlier revision.
         async with self.session_factory() as session:
+            if self.ownership is not None:
+                await self.ownership.fence(session)
             await session.execute(delete(CollectionState))
             await session.commit()
         subscriptions = self.mqtt_client.subscription_manager
@@ -121,6 +125,7 @@ class MQTTProxyService:
         if not self.mqtt_client.is_connected:
             self.buffer.pause()
             self.revision = self._prepared_revision = -1
+            self.mqtt_client.set_message_handler(self.buffer.receive)
             if self.mqtt_client.state.value != "connecting":
                 await self.mqtt_client.connect()
             if not self.mqtt_client.is_connected:
@@ -172,6 +177,8 @@ class MQTTProxyService:
             connected=self.mqtt_client.is_connected
         )
         async with self.session_factory() as session:
+            if self.ownership is not None:
+                await self.ownership.fence(session)
             await session.execute(
                 update(SystemCollectionConfiguration)
                 .where(
@@ -184,6 +191,25 @@ class MQTTProxyService:
 
     async def _emit(self) -> None:
         observations = self.buffer.take()
+        if not observations:
+            return
+        async with self.session_factory() as session:
+            if self.ownership is not None:
+                await self.ownership.fence(session)
+            try:
+                await self._emit_observations(session, observations)
+                async with asyncio.timeout(self.config.graceful_shutdown_timeout):
+                    await self.mqtt_client.drain_publishes()
+                await session.commit()
+            except BaseException:
+                # Close transport before releasing the fence if an acknowledgement
+                # is uncertain, so an abandoned publisher cannot keep sending.
+                if self.ownership is not None:
+                    await self.mqtt_client.disconnect()
+                raise
+        self.diagnostics.last_state_write_at = datetime.now(UTC)
+
+    async def _emit_observations(self, session, observations) -> None:
         states = {}
         live_seen = {}
         for observation in observations:
@@ -204,6 +230,7 @@ class MQTTProxyService:
                     message.topic, message.payload, qos=1
                 ):
                     self.buffer.count("publish_failed")
+                    raise RuntimeError("Broker refused accepted telemetry")
             states[(observation.stream.charger_id, observation.stream.key)] = {
                 "charger_id": observation.stream.charger_id,
                 "sensor_key": observation.stream.key,
@@ -221,49 +248,44 @@ class MQTTProxyService:
                 },
                 where=statement.excluded.received_at >= CollectionState.received_at,
             )
-            async with self.session_factory() as session:
-                await session.execute(statement)
-                if live_seen:
-                    # State-only observations establish contact too. Retained
-                    # snapshots and older observations must not refresh liveness.
-                    timestamp = case(live_seen, value=Charger.charger_id)
-                    await session.execute(
-                        update(Charger)
-                        .where(
-                            Charger.charger_id.in_(live_seen),
-                            Charger.mqtt_last_message.is_(None)
-                            | (Charger.mqtt_last_message <= timestamp),
-                        )
-                        .values(
-                            online=True,
-                            mqtt_connected=True,
-                            mqtt_last_message=timestamp,
-                            last_seen=case(
-                                {
-                                    key: value.isoformat()
-                                    for key, value in live_seen.items()
-                                },
-                                value=Charger.charger_id,
-                            ),
-                        )
+            await session.execute(statement)
+            if live_seen:
+                # State-only observations establish contact too. Retained
+                # snapshots and older observations must not refresh liveness.
+                timestamp = case(live_seen, value=Charger.charger_id)
+                await session.execute(
+                    update(Charger)
+                    .where(
+                        Charger.charger_id.in_(live_seen),
+                        Charger.mqtt_last_message.is_(None)
+                        | (Charger.mqtt_last_message <= timestamp),
                     )
-                await session.commit()
-            self.diagnostics.last_state_write_at = datetime.now(UTC)
+                    .values(
+                        online=True,
+                        mqtt_connected=True,
+                        mqtt_last_message=timestamp,
+                        last_seen=case(
+                            {
+                                key: value.isoformat()
+                                for key, value in live_seen.items()
+                            },
+                            value=Charger.charger_id,
+                        ),
+                    )
+                )
 
     async def _collect(self) -> None:
         if not self.config.enabled:
             self.state = {"status": COLLECTION_DISABLED}
             await self.shutdown_event.wait()
             return
-        # Losing this DB connection terminates the worker; it cannot continue as
-        # an unfenced second collector after a replacement acquires the lock.
+        # Effect transactions share this lock and validate the leader PID.
+        # Takeover waits for them, even if the leader connection disappears.
         async with get_async_engine().connect() as ownership:
-            if not await ownership.scalar(
-                text("SELECT pg_try_advisory_lock(:key)"),
-                {"key": COLLECTION_PROXY_LOCK},
-            ):
+            lease = await WorkerOwnership.acquire(ownership, COLLECTION_PROXY_LOCK)
+            if lease is None:
                 raise RuntimeError("Another collection worker owns this database")
-            await ownership.commit()
+            self.ownership = self.database_writer.ownership = lease
             completed = False
             try:
                 await self.database_writer.start()
@@ -277,10 +299,7 @@ class MQTTProxyService:
                 if not completed:
                     await self.mqtt_client.disconnect()
                 with suppress(Exception):
-                    await ownership.execute(
-                        text("SELECT pg_advisory_unlock(:key)"),
-                        {"key": COLLECTION_PROXY_LOCK},
-                    )
+                    await lease.release(ownership)
 
     async def _collect_owned(self, ownership) -> None:
         next_poll = 0.0

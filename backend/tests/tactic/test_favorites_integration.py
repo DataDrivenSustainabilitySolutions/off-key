@@ -1,5 +1,7 @@
 """Member favorites through TACTIC's routes against real PostgreSQL."""
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -89,3 +91,23 @@ async def test_a_member_at_the_limit_is_told_to_remove_one_first(favorites_app):
     assert full.status_code == 409
     assert "Remove one first" in full.json()["detail"]
     assert kept.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_concurrent_additions_share_the_members_last_slot(favorites_app):
+    app, sessions = favorites_app
+    async with sessions() as session:
+        session.add_all(
+            MemberFavorite(user_id=1, kind="device", item_id=f"c{i}")
+            for i in range(255)
+        )
+        await session.commit()
+    async with asgi_client(app) as client:
+        replies = await asyncio.gather(
+            *(
+                client.post(PATH.format(1), json={"kind": "monitor", "id": f"m{i}"})
+                for i in range(8)
+            )
+        )
+        assert sorted(reply.status_code for reply in replies) == [200, *([409] * 7)]
+        assert len((await client.get(PATH.format(1))).json()) == 256

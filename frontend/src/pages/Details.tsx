@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -66,7 +67,7 @@ const getLatestTelemetryTimestamp = (
   let latest: number | undefined;
   for (const telemetry of telemetryData) {
     for (const point of telemetry.data) {
-      const timestamp = Date.parse(point.timestamp);
+      const timestamp = epochMilliseconds(point.timestamp);
       if (Number.isFinite(timestamp) && (latest === undefined || timestamp > latest)) {
         latest = timestamp;
       }
@@ -327,8 +328,8 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
     if (!source.id) return new Map<string, ActiveService>();
     const newestRelevantFirst = [...monitoringServices].sort((left, right) => {
       if (left.active !== right.active) return left.active ? -1 : 1;
-      const rightCreated = Date.parse(right.created_at ?? "") || 0;
-      const leftCreated = Date.parse(left.created_at ?? "") || 0;
+      const rightCreated = epochMilliseconds(right.created_at ?? "") || 0;
+      const leftCreated = epochMilliseconds(left.created_at ?? "") || 0;
       return rightCreated - leftCreated;
     });
     return buildSensorClaims(allTelemetryData, newestRelevantFirst);

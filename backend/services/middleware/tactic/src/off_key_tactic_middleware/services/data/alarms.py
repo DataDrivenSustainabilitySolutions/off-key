@@ -12,6 +12,7 @@ from off_key_core.schemas.alarms import (
     AlarmPage,
     AlarmQuery,
     AlarmSummary,
+    resolve_alarm_value_type,
 )
 from off_key_core.schemas.system import SystemSnapshot
 from sqlalchemy.exc import IntegrityError
@@ -139,7 +140,7 @@ class AlarmService:
             service_id="",
             anomaly_type=payload.alarm_type,
             anomaly_value=payload.value,
-            value_type=self._resolve_value_type(
+            value_type=resolve_alarm_value_type(
                 alarm_type=payload.alarm_type, value_type=payload.value_type
             ),
             sensor_set=keys if len(keys) > 1 else None,
@@ -163,16 +164,6 @@ class AlarmService:
             alarm.alarm_type,
         )
         return alarm
-
-    @staticmethod
-    def _resolve_value_type(*, alarm_type: str, value_type: str | None) -> str:
-        if value_type is not None:
-            return value_type
-        if alarm_type.lower().startswith("ml_tailprob_"):
-            return "tail_pvalue"
-        if alarm_type.lower().startswith("ml_conformal_static_"):
-            return "conformal_pvalue"
-        return "zscore"
 
     async def delete_alarm(self, *, alarm_id: str) -> None:
         row = await self._repository.get_by_anomaly_id(anomaly_id=alarm_id)

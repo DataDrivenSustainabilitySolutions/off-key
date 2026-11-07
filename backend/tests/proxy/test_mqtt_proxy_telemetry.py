@@ -2,9 +2,11 @@
 
 import asyncio
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from off_key_core.db.worker_ownership import WorkerOwnershipLost
 from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
 from off_key_mqtt_proxy.telemetry_models import (
     HealthStatus,
@@ -51,6 +53,16 @@ def _database_error(sqlstate, message="database failure") -> DBAPIError:
 
 async def test_process_batch_returns_true_for_empty_batch():
     assert await _writer()._process_batch(WriteBatch()) is True
+
+
+async def test_lost_owner_cannot_write_queued_history():
+    writer = _writer()
+    session = _use_session(writer)
+    writer.ownership = SimpleNamespace(fence=AsyncMock(side_effect=WorkerOwnershipLost))
+    assert not await writer._process_batch(WriteBatch(records=[_record()]))
+    session.execute.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    assert writer.total_records_written == 0
 
 
 @pytest.mark.parametrize(

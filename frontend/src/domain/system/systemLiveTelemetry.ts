@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { ApiRequestError, apiUtils } from "@/lib/api-client";
 import type { SystemDocument } from "@/types/system";
 import type { Sample, LiveTelemetryStore, TelemetryMessage } from "@/types/system-live";
@@ -55,7 +56,7 @@ const transport: Transport = {
 };
 const timestamp = (value: string | null): number | null => {
   if (!value) return null;
-  const time = Date.parse(value);
+  const time = epochMilliseconds(value);
   return Number.isFinite(time) ? time : null;
 };
 const numeric = (value: LiveSample["value"]): number | undefined =>

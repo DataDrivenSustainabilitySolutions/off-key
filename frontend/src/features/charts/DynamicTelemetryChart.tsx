@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import React, {
   useCallback,
   useEffect,
@@ -61,7 +62,7 @@ const formatOperationalStage = (stage: string): string =>
 
 const getLatestFiniteTime = (telemetryData: TelemetryTypeData): number | undefined => {
   const times = telemetryData.data
-    .map(({ timestamp }) => Date.parse(timestamp))
+    .map(({ timestamp }) => epochMilliseconds(timestamp))
     .filter(Number.isFinite);
   return times.length > 0 ? Math.max(...times) : undefined;
 };

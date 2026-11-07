@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
@@ -76,6 +76,54 @@ beforeEach(() => {
 });
 
 describe("Dojo workspace", () => {
+  it("loads older runs without dropping the runs already shown", async () => {
+    vi.mocked(dojoApi.runs).mockImplementation(async query => query?.offset === 100
+      ? { items: [run("older", "Older run")], next_offset: null }
+      : { items: [run("newer", "Newer run")], next_offset: 100 });
+    mount("/dojo?dataset=d1&tab=runs");
+    await screen.findByText("Newer run");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more runs" }));
+    await screen.findByText("Older run");
+    expect(screen.getByText("Newer run")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more runs" })).toBeNull();
+  });
+
+  it("loads designs beyond the first page", async () => {
+    vi.mocked(pipelinesApi.catalog).mockResolvedValue({ templates: [] } as never);
+    vi.mocked(pipelinesApi.list).mockImplementation(async query => (query?.offset === 100
+      ? { items: [{ id: "older", name: "Older design" }], next_offset: null }
+      : { items: [{ id: "newer", name: "Newer design" }], next_offset: 100 }) as never);
+    mount("/dojo?dataset=d1&tab=runs");
+    fireEvent.click(await screen.findByRole("button", { name: "New run" }));
+    await screen.findByRole("option", { name: "Newer design" });
+    fireEvent.click(await screen.findByRole("button", { name: "Load more designs" }));
+    await screen.findByRole("option", { name: "Older design" });
+    expect(screen.getByRole("option", { name: "Newer design" })).toBeTruthy();
+  });
+
+  it("ignores a superseded design response even when it arrives last", async () => {
+    vi.mocked(pipelinesApi.catalog).mockResolvedValue({ templates: [] } as never);
+    vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [{ id: "a", name: "A" }, { id: "b", name: "B" }], next_offset: null } as never);
+    const design = (id: string) => ({ strategy: "adaptive_stream", input_slots: [{ id: "value", label: "Voltage" }], nodes: [{ id }], edges: [], settings: {} });
+    const a = design("a"), b = design("b");
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    vi.mocked(pipelinesApi.get).mockImplementation(id => new Promise(resolve => {
+      if (id === "a") resolveA = resolve; else resolveB = resolve;
+    }) as never);
+    vi.mocked(dojoApi.createRun).mockResolvedValue({} as never);
+    mount("/dojo?dataset=d1&tab=runs");
+    fireEvent.click(await screen.findByRole("button", { name: "New run" }));
+    await screen.findByRole("option", { name: "A" });
+    const chooser = screen.getByLabelText("Design");
+    fireEvent.change(chooser, { target: { value: "design:a" } });
+    fireEvent.change(chooser, { target: { value: "design:b" } });
+    await act(async () => { resolveB({ draft: b }); });
+    await act(async () => { resolveA({ draft: a }); });
+    fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalledWith(expect.objectContaining({ definition: b, name: "B" })));
+  });
+
   it("lists datasets and copies the selected entity's numeric readings", async () => {
     vi.mocked(dojoApi.importHistory).mockResolvedValue({ ...dataset, id: "d2", name: "Pump 1" });
     const router = mount("/dojo");

@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from off_key_core.schemas.collection_activity import reading_is_receiving
 from off_key_core.schemas.devices import ChartEvidence
-from off_key_core.schemas.system import SystemSnapshot
+from off_key_core.schemas.system import SystemRuntime, SystemSnapshot
 from off_key_tactic_middleware.domain import NotFoundError, ValidationError
 from off_key_tactic_middleware.repositories.data import MonitoringEvidenceRepository
 from off_key_tactic_middleware.services.data.catalogue_data import (
@@ -134,7 +135,7 @@ def test_device_readings_are_the_catalogue_readings_of_that_device():
 
 
 @pytest.mark.asyncio
-async def test_devices_report_whether_their_entity_is_sending():
+async def test_devices_report_whether_their_entity_is_sending(monkeypatch):
     session = AsyncMock()
     result = MagicMock()
     result.scalars.return_value.all.return_value = [
@@ -142,6 +143,32 @@ async def test_devices_report_whether_their_entity_is_sending():
     ]
     session.execute.return_value = result
     data = service(session)
+    from off_key_tactic_middleware.services.data import catalogue_data
+
+    class Clock:
+        @staticmethod
+        def now(_):
+            return NOW
+
+    monkeypatch.setattr(catalogue_data, "datetime", Clock)
+    data._runtime.mode = "collection"
+    data._runtime.collection = {
+        "revision": 0,
+        "status": "applied",
+        "checked_at": NOW.isoformat(),
+    }
+    data._runtime.ingress = {
+        "revision": 0,
+        "status": "applied",
+        "checked_at": NOW.isoformat(),
+        "sources": {"broker": {"state": "connected"}},
+        "readings": {
+            "flow": {"fresh_received_at": (NOW - timedelta(seconds=60)).isoformat()}
+        },
+    }
+    data._runtime.bindings["flow"].update(
+        broker_id="broker", policy={"mode": "original"}
+    )
 
     devices = await data.devices(active=None)
 
@@ -168,6 +195,60 @@ async def test_devices_report_whether_their_entity_is_sending():
         },
     ]
     assert [device["id"] for device in await data.devices(active=False)] == ["idle"]
+    data._runtime.ingress["readings"]["flow"]["fresh_received_at"] = (
+        NOW - timedelta(minutes=3)
+    ).isoformat()
+    assert await data.devices(active=True) == []
+    assert (await data.devices(active=False))[0]["online"] is False
+
+
+@pytest.mark.parametrize(
+    ("age", "typical", "receiving"),
+    [
+        (119, None, True),
+        (120, None, False),
+        (500, 180, True),
+        (540, 180, False),
+        (1800, 86400, False),
+        (-301, 1, False),
+    ],
+)
+def test_receiving_window_is_fresh_bounded_and_requires_current_workers(
+    age, typical, receiving
+):
+    runtime = SystemRuntime(
+        mode="collection",
+        collection_revision=2,
+        bindings={
+            "r": {"broker_id": "b", "policy": {"mode": "original"}},
+        },
+        collection={"status": "applied", "revision": 2, "checked_at": NOW.isoformat()},
+        ingress={
+            "status": "applied",
+            "revision": 2,
+            "checked_at": NOW.isoformat(),
+            "sources": {"b": {"state": "connected"}},
+            "readings": {
+                "r": {
+                    "fresh_received_at": (NOW - timedelta(seconds=age)).isoformat(),
+                    "typical_interval_seconds": typical,
+                }
+            },
+        },
+    )
+    assert reading_is_receiving(runtime, "r", NOW) is receiving
+    for state in (runtime.collection, runtime.ingress):
+        state["checked_at"] = (NOW - timedelta(seconds=30)).isoformat()
+        assert not reading_is_receiving(runtime, "r", NOW)
+        state["checked_at"] = NOW.isoformat()
+        state["revision"] = 1
+        assert not reading_is_receiving(runtime, "r", NOW)
+        state["revision"] = 2
+    runtime.ingress["sources"]["b"]["state"] = "error"
+    assert not reading_is_receiving(runtime, "r", NOW)
+    runtime.ingress["sources"]["b"]["state"] = "connected"
+    runtime.bindings["r"]["policy"]["mode"] = "off"
+    assert not reading_is_receiving(runtime, "r", NOW)
 
 
 @pytest.mark.asyncio

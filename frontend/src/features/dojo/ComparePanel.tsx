@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useEffect, useMemo, useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
@@ -73,7 +74,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
   const option = useMemo(() => datasetChartOption({
     series: series.flatMap(item => points.loaded[item.id]
       ? [{ id: item.id, name: item.name, unit: item.unit, points: points.loaded[item.id]!.points }] : []),
-    labels: labels.map(label => ({ id: label.id, start: Date.parse(label.start_at), end: Date.parse(label.end_at), note: label.note })),
+    labels: labels.map(label => ({ id: label.id, start: epochMilliseconds(label.start_at), end: epochMilliseconds(label.end_at), note: label.note })),
     alarms: chosen.flatMap(id => alarms.loaded[id] ? [{ id, name: names.get(id) ?? id, times: alarms.loaded[id]!.times }] : []),
     colors, timeZone,
   }), [series, points.loaded, labels, chosen, alarms.loaded, names, colors]);

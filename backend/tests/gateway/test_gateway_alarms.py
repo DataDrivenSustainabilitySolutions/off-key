@@ -37,6 +37,26 @@ def client():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("value", [-0.1, 1.5, "NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("inferred", [False, True])
+async def test_invalid_probabilities_are_rejected_before_forwarding(
+    remote, value, inferred
+):
+    payload = {
+        "reading_ids": ["r1"],
+        "timestamp": CREATED["timestamp"],
+        "alarm_type": "ml_conformal_static_probe",
+        "value": value,
+    }
+    if not inferred:
+        payload["value_type"] = "conformal_pvalue"
+    async with client() as http:
+        response = await http.post("/v1/alarms", json=payload)
+    assert response.status_code == 422
+    remote.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_alarms_of_a_device_or_of_readings_are_forwarded(remote):
     async with client() as http:
         assert (await http.get("/v1/alarms")).status_code == 200

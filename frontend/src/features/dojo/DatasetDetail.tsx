@@ -6,6 +6,7 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
+import { loadOffsetPages } from "@/lib/offset-pages";
 import type { DatasetView, LabelView, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { ComparePanel } from "./ComparePanel";
@@ -21,6 +22,9 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   const [dataset, setDataset] = useState<DatasetView | null>(null);
   const [labels, setLabels] = useState<LabelView[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [runPages, setRunPages] = useState(1);
+  const [moreRuns, setMoreRuns] = useState(false);
+  const [loadingRuns, setLoadingRuns] = useState(false);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [confirm, confirmation] = useConfirm();
@@ -37,13 +41,16 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   }, [id]);
   const datasetLoop = usePollingLoop(loadDataset, { startImmediately: true });
   const loadRuns = useCallback(async (signal: AbortSignal) => {
+    setLoadingRuns(true);
     try {
-      const page = await dojoApi.runs({ dataset_id: id, limit: 100 }, signal);
-      if (!signal.aborted) setRuns(page.items);
+      const page = await loadOffsetPages(offset => dojoApi.runs({ dataset_id: id, limit: 100, offset }, signal), runPages, signal);
+      if (!signal.aborted) { setRuns(page.items); setMoreRuns(page.next_offset !== null); }
     } catch (reason) {
       if (!signal.aborted) setError(getErrorMessage(reason));
+    } finally {
+      if (!signal.aborted) setLoadingRuns(false);
     }
-  }, [id]);
+  }, [id, runPages]);
   const polling = runs.some(isActive);
   const runLoop = usePollingLoop(loadRuns, {
     startImmediately: true, intervalMs: polling ? RUN_POLL_MS : undefined,
@@ -83,7 +90,7 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
       <div><dt>Series</dt><dd>{dataset.series.length}</dd></div>
       <div><dt>Time span</dt><dd>{formatSpan(dataset.start_at, dataset.end_at)}</dd></div>
       <div><dt>Labels</dt><dd>{labels.length}</dd></div>
-      <div><dt>Runs</dt><dd>{runs.length}</dd></div>
+      <div><dt>Runs</dt><dd>{runs.length}{moreRuns ? "+" : ""}</dd></div>
     </dl>
     <div className="dj-tabs" role="tablist" aria-label="Dataset sections">
       {TABS.map(item => <button key={item.id} type="button" role="tab" id={`dj-tab-${item.id}`} aria-selected={tab === item.id}
@@ -93,6 +100,8 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
       {tab === "values" && <LabelsPanel dataset={dataset} labels={labels} onLabelsChange={reloadLabels} />}
       {tab === "runs" && <RunsPanel dataset={dataset} runs={runs} onRunsChange={runLoop.reload} />}
       {tab === "compare" && <ComparePanel dataset={dataset} runs={runs} labels={labels} />}
+      {tab !== "values" && moreRuns && <button type="button" className="dj-action" disabled={loadingRuns}
+        onClick={() => setRunPages(count => count + 1)}>{loadingRuns ? "Loading runs…" : "Load more runs"}</button>}
     </div>
     {confirmation}
   </section>;

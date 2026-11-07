@@ -3,6 +3,7 @@ import type {
   MonitoringEvidenceCursor,
 } from '@/types/monitoring';
 import type { Alarm } from '@/types/charger';
+import { compareTimestamps, epochMicroseconds, epochMilliseconds } from '@/lib/timestamps';
 
 /** Keep alarm markers in the same monitor scope as the displayed detector result. */
 export function filterServiceAnomalies(
@@ -13,8 +14,14 @@ export function filterServiceAnomalies(
 ): Alarm[] {
   if (!serviceId) return [...anomalies];
   const times = new Set(evidence.filter(row => row.monitor_id === serviceId && row.alarm)
-    .flatMap(row => [Date.parse(row.timestamp), getEvidenceTimeForSensor(row, readingId)]));
-  return anomalies.filter(item => item.monitor_id ? item.monitor_id === serviceId : times.has(Date.parse(item.timestamp)));
+    .flatMap(row => [row.timestamp, row.input_timestamps[readingId]]
+      .filter((time): time is string => time !== undefined).map(epochMicroseconds))
+    .filter((time): time is bigint => time !== undefined));
+  return anomalies.filter(item => {
+    if (item.monitor_id) return item.monitor_id === serviceId;
+    const time = epochMicroseconds(item.timestamp);
+    return time !== undefined && times.has(time);
+  });
 }
 
 export const getEvidenceTimeForSensor = (
@@ -23,7 +30,7 @@ export const getEvidenceTimeForSensor = (
 ): number | undefined => {
   const timestamp = evidence.input_timestamps[readingId];
   if (!timestamp) return undefined;
-  const time = Date.parse(timestamp);
+  const time = epochMilliseconds(timestamp);
   return Number.isFinite(time) ? time : undefined;
 };
 
@@ -31,9 +38,7 @@ export const getMonitoringEvidenceCursor = (
   evidence: MonitoringChartEvidence[]
 ): MonitoringEvidenceCursor | undefined =>
   evidence.reduce<MonitoringEvidenceCursor | undefined>((latest, item) => {
-    const createdTime = Date.parse(item.created);
-    const eventTime = Date.parse(item.timestamp);
-    if (!Number.isFinite(createdTime) || !Number.isFinite(eventTime)) return latest;
+    if (epochMicroseconds(item.created) === undefined || epochMicroseconds(item.timestamp) === undefined) return latest;
     const cursor = {
       created: item.created,
       timestamp: item.timestamp,
@@ -42,8 +47,8 @@ export const getMonitoringEvidenceCursor = (
     };
     if (!latest) return cursor;
     const comparisons = [
-      createdTime - Date.parse(latest.created),
-      eventTime - Date.parse(latest.timestamp),
+      compareTimestamps(item.created, latest.created),
+      compareTimestamps(item.timestamp, latest.timestamp),
       cursor.monitor_id === latest.monitor_id
         ? 0
         : cursor.monitor_id > latest.monitor_id ? 1 : -1,
@@ -70,12 +75,10 @@ export function mergeMonitoringChartEvidence(
   });
 
   return [...rows.values()]
-    .map((item) => ({ item, time: Date.parse(item.timestamp) }))
     .sort((left, right) =>
-      left.time - right.time ||
-      left.item.monitor_id.localeCompare(right.item.monitor_id) ||
-      left.item.sequence_number - right.item.sequence_number
+      compareTimestamps(left.timestamp, right.timestamp) ||
+      left.monitor_id.localeCompare(right.monitor_id) ||
+      left.sequence_number - right.sequence_number
     )
-    .slice(-limit)
-    .map(({ item }) => item);
+    .slice(-limit);
 }

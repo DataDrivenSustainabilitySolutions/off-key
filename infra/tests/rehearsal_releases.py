@@ -1,8 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the member roles head that carries migrations 018 to 021,
-with the reviewed Aberrant 1.4.0 numerics. It is not an eligible production release
-and proves no pre-feature compatibility.
+The reference is the first invariant-enforcement commit, carrying migration 025
+and Aberrant 1.4.0 numerics, before the runtime connection lookup correction.
+It is not an eligible production release and proves no pre-feature compatibility.
 """
 
 import json
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "8db7b5cb9741ae51c3507ce9a5df2b3f940debfb"
+COMPATIBLE_REVISION = "9311f9937e605da9b4be5a9903f08de4da79dade"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

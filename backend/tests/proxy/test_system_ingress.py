@@ -3,9 +3,10 @@
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from off_key_core.db.worker_ownership import WorkerOwnershipLost
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import (
     SystemCollectionDefinition,
@@ -64,7 +65,7 @@ async def test_original_burst_preserves_every_writer_identity(
         envelopes.append(
             MQTTMessage(topic, json.loads(envelope), datetime.now(UTC), 1, False)
         )
-        return SimpleNamespace(rc=0)
+        return SimpleNamespace(rc=0, is_published=lambda: True)
 
     ingress.output = SimpleNamespace(is_connected=lambda: True, publish=publish)
     base_us = int(datetime.now(UTC).timestamp()) * 1_000_000 + 123_456
@@ -74,6 +75,7 @@ async def test_original_burst_preserves_every_writer_identity(
     for value in range(8):
         payload = json.dumps({"temperature": 45 + value, "humidity": 50 + value})
         ingress._receive("test", "broker", "machine/readings", payload.encode(), False)
+        await ingress._forward_pending()
 
     buffer = CollectionBuffer()
     buffer.configure(catalog)
@@ -138,7 +140,10 @@ async def test_arrival_clock_state_is_bounded_by_configured_topics(monkeypatch):
     ingress = system_ingress.SystemIngress()
     ingress._connect = MagicMock()
     ingress.output = SimpleNamespace(
-        is_connected=lambda: True, publish=MagicMock(return_value=SimpleNamespace(rc=0))
+        is_connected=lambda: True,
+        publish=MagicMock(
+            return_value=SimpleNamespace(rc=0, is_published=lambda: True)
+        ),
     )
     catalog = definition()
     await ingress._configure(catalog)
@@ -146,10 +151,12 @@ async def test_arrival_clock_state_is_bounded_by_configured_topics(monkeypatch):
     monkeypatch.setattr(system_ingress.time, "time_ns", lambda: clock)
     payload = b'{"temperature":45,"humidity":50}'
     ingress._receive("test", "broker", "machine/readings", payload, False)
+    await ingress._forward_pending()
     first = ingress._received_at_us[("broker", "machine/readings")]
     assert set(ingress.readings) == {"temperature", "humidity"}
     for value in range(100):
         ingress._receive("test", "broker", f"unselected/{value}", payload, False)
+        await ingress._forward_pending()
     assert len(ingress._received_at_us) == 1
     assert len(ingress.readings) == 2
 
@@ -158,6 +165,7 @@ async def test_arrival_clock_state_is_bounded_by_configured_topics(monkeypatch):
     await ingress._configure(catalog)
     assert ingress.readings == {}
     ingress._receive("next", "broker", "machine/readings", payload, False)
+    await ingress._forward_pending()
     assert ingress._received_at_us[("broker", "machine/readings")] > first
     for stream in catalog.document.streams:
         stream.policy.mode = "off"
@@ -169,7 +177,7 @@ async def test_arrival_clock_state_is_bounded_by_configured_topics(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("retained", "return_code", "active"),
-    [(False, 0, True), (True, 0, False), (False, 1, False)],
+    [(False, 0, True), (True, 0, False), (False, 1, False), (False, 4, False)],
 )
 async def test_activity_requires_a_fresh_successfully_forwarded_message(
     monkeypatch, retained, return_code, active
@@ -181,7 +189,9 @@ async def test_activity_requires_a_fresh_successfully_forwarded_message(
     ingress._connect = MagicMock()
     ingress.output = SimpleNamespace(
         is_connected=lambda: True,
-        publish=MagicMock(return_value=SimpleNamespace(rc=return_code)),
+        publish=MagicMock(
+            return_value=SimpleNamespace(rc=return_code, is_published=lambda: True)
+        ),
     )
     await ingress._configure(definition())
     ingress._receive(
@@ -191,6 +201,15 @@ async def test_activity_requires_a_fresh_successfully_forwarded_message(
         b'{"temperature":45,"humidity":50}',
         retained,
     )
+    if return_code:
+        close = AsyncMock()
+        monkeypatch.setattr(system_ingress, "close_client", close)
+        with pytest.raises(RuntimeError, match="refused"):
+            await ingress._forward_pending()
+        close.assert_awaited_once()
+        assert ingress.output is None
+    else:
+        await ingress._forward_pending()
     assert bool(ingress.readings) is active
     if active:
         assert set(ingress.readings) == {"temperature", "humidity"}
@@ -210,7 +229,10 @@ async def test_activity_reports_each_readings_typical_arrival_interval(monkeypat
     ingress = system_ingress.SystemIngress()
     ingress._connect = MagicMock()
     ingress.output = SimpleNamespace(
-        is_connected=lambda: True, publish=MagicMock(return_value=SimpleNamespace(rc=0))
+        is_connected=lambda: True,
+        publish=MagicMock(
+            return_value=SimpleNamespace(rc=0, is_published=lambda: True)
+        ),
     )
     await ingress._configure(definition())
     start = int(datetime.now(UTC).timestamp()) * 1_000_000_000
@@ -221,6 +243,7 @@ async def test_activity_reports_each_readings_typical_arrival_interval(monkeypat
             system_ingress.time, "time_ns", lambda m=minutes: start + m * 60 * 10**9
         )
         ingress._receive("test", "broker", "machine/readings", payload, False)
+        await ingress._forward_pending()
     assert ingress.readings["temperature"]["typical_interval_seconds"] == 180
     assert ingress.readings["humidity"]["typical_interval_seconds"] == 180
 
@@ -256,6 +279,7 @@ class FakeWorker:
         self.credential = credential
         self.proxy = proxy
         self.on_state = on_state
+        self.on_message = on_message
         self.started = False
         self.stopped = False
         FakeWorker.created.append(self)
@@ -479,3 +503,99 @@ def test_ingress_reports_applied_only_for_the_configured_generation(
     ingress.output = SimpleNamespace(is_connected=lambda: connected)
     ingress.generation = generation
     assert ingress._status(catalog) == status
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upstream_retained", [False, True])
+async def test_latest_value_survives_activation_and_reconnect_without_new_history(
+    monkeypatch, upstream_retained
+):
+    ingress, _ = recording_ingress(monkeypatch)
+    retained = {}
+    buffer = CollectionBuffer()
+
+    def publish(topic, envelope, **options):
+        assert options["retain"] is True
+        if envelope:
+            retained[topic] = json.loads(envelope)
+            buffer.receive(
+                MQTTMessage(topic, retained[topic], datetime.now(UTC), 1, False)
+            )
+        else:
+            retained.pop(topic, None)
+        return SimpleNamespace(rc=0, is_published=lambda: True)
+
+    ingress.output = SimpleNamespace(is_connected=lambda: True, publish=publish)
+    catalog = definition()
+    await ingress._configure(catalog)
+    FakeWorker.created[0].on_message(
+        "machine/readings", b'{"temperature":45,"humidity":50}', upstream_retained
+    )
+    await ingress._forward_pending()
+    assert buffer.take(now=2) == []  # Collector is still preparing.
+    for _ in range(2):  # Activation, then a collector reconnect.
+        buffer.configure(catalog, now=0)
+        for topic, payload in retained.items():
+            buffer.receive(MQTTMessage(topic, payload, datetime.now(UTC), 1, True))
+        observations = buffer.take(now=2)
+        assert [item.value for item in observations] == [45, 50]
+        assert all(item.snapshot for item in observations)
+        assert buffer.metrics()["original_queue"] == 0
+        buffer.pause()
+    catalog.generation = "next"
+    await ingress._configure(catalog)
+    assert retained == {}
+
+
+@pytest.mark.asyncio
+async def test_retired_client_cannot_forward_queued_or_late_messages(monkeypatch):
+    ingress, _ = recording_ingress(monkeypatch)
+    ingress.output.publish = MagicMock(
+        return_value=SimpleNamespace(rc=0, is_published=lambda: True)
+    )
+    await ingress._configure(definition())
+    retired = FakeWorker.created[0]
+    retired.on_message("machine/readings", b'{"temperature":45}', False)
+    assert await ingress.reconnect("broker")
+    retired.on_message("machine/readings", b'{"temperature":46}', False)
+    await ingress._forward_pending()
+    ingress.output.publish.assert_not_called()
+    assert ingress.readings == {}
+    FakeWorker.created[1].on_message("machine/readings", b'{"temperature":47}', False)
+    await ingress._forward_pending()
+    assert ingress.output.publish.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_pending_ingress_is_bounded_by_bytes_and_count(monkeypatch):
+    ingress, _ = recording_ingress(monkeypatch)
+    await ingress._configure(definition())
+    monkeypatch.setattr(system_ingress, "MAX_PENDING_MESSAGES", 2)
+    worker = FakeWorker.created[0]
+    for _ in range(3):
+        worker.on_message("machine/readings", b'{"temperature":45}', False)
+    assert len(ingress.pending) == 2 and ingress.dropped == 1
+    monkeypatch.setattr(system_ingress, "MAX_PENDING_BYTES", ingress.pending_bytes)
+    monkeypatch.setattr(system_ingress, "MAX_PENDING_MESSAGES", 10)
+    worker.on_message("machine/readings", b'{"temperature":45}', False)
+    assert len(ingress.pending) == 2 and ingress.dropped == 2
+    await ingress._stop_workers()
+    assert not ingress.pending and ingress.pending_bytes == 0
+
+
+@pytest.mark.asyncio
+async def test_lost_owner_cannot_publish_pending_ingress(monkeypatch):
+    ingress, _ = recording_ingress(monkeypatch)
+    ingress.output.publish = MagicMock()
+    await ingress._configure(definition())
+    FakeWorker.created[0].on_message("machine/readings", b'{"temperature":45}', False)
+    ingress.ownership = SimpleNamespace(
+        fence=AsyncMock(side_effect=WorkerOwnershipLost)
+    )
+    monkeypatch.setattr(
+        system_ingress, "get_async_session_local", lambda: lambda: AsyncMock()
+    )
+    with pytest.raises(WorkerOwnershipLost):
+        await ingress._forward_pending()
+    ingress.output.publish.assert_not_called()
+    assert ingress.readings == {}

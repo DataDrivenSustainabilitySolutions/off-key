@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Box, Check, Copy, Cpu, Folder, Pencil, Radio, Star } from "lucide-react";
 import { InlineName } from "@/components/InlineName";
@@ -118,9 +119,9 @@ export default function ExplorerPreview({
   const Title = pageTitle ? "h1" : "h2";
   const editable = canEdit && !saving && !!node.entityKind && !!node.objectId;
   const recorded = stream ? runtime?.latest_readings?.[stream.id] : undefined;
-  const useRecorded = recorded && (!snapshot?.receivedAt || Date.parse(recorded.received_at) > snapshot.receivedAt);
-  const received = useRecorded ? Date.parse(recorded.received_at) : snapshot?.receivedAt;
-  const sampleTime = lastSample ? Date.parse(lastSample.timestamp) : undefined;
+  const useRecorded = recorded && (!snapshot?.receivedAt || epochMilliseconds(recorded.received_at) > snapshot.receivedAt);
+  const received = useRecorded ? epochMilliseconds(recorded.received_at) : snapshot?.receivedAt;
+  const sampleTime = lastSample ? epochMilliseconds(lastSample.timestamp) : undefined;
   const useStoredSample = sampleTime !== undefined && Number.isFinite(sampleTime) && (received == null || sampleTime > received);
   const latest = useStoredSample ? lastSample!.value : useRecorded ? recorded.value : snapshot?.latestValue;
   const receivedAt = useStoredSample ? sampleTime : received;

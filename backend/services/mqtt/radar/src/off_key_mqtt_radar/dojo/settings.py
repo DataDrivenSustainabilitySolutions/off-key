@@ -1,6 +1,6 @@
 import socket
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .worker import WorkerOptions
@@ -17,6 +17,12 @@ class DojoWorkerSettings(BaseSettings):
     DOJO_HEARTBEAT_SECONDS: float = Field(default=10.0, gt=0, le=60)
     # A run whose heartbeat is older than this is failed by the next poll.
     DOJO_STALE_SECONDS: float = Field(default=120.0, ge=30, le=3600)
+
+    @model_validator(mode="after")
+    def validate_heartbeat_window(self) -> "DojoWorkerSettings":
+        if self.DOJO_HEARTBEAT_SECONDS >= self.DOJO_STALE_SECONDS:
+            raise ValueError("DOJO_HEARTBEAT_SECONDS must be below DOJO_STALE_SECONDS")
+        return self
 
     def options(self) -> WorkerOptions:
         return WorkerOptions(

@@ -8,12 +8,22 @@ behind them.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # How storage marks an alarm a monitor raised over several readings together.
 MULTIVARIATE_TELEMETRY_TYPE = "__multivariate__"
 PROBABILITY_VALUE_TYPES = ("tail_pvalue", "conformal_pvalue")
 MAX_ALARM_READINGS = 200
+
+
+def resolve_alarm_value_type(alarm_type: str, value_type: str | None) -> str:
+    if value_type is not None:
+        return value_type
+    if alarm_type.lower().startswith("ml_tailprob_"):
+        return "tail_pvalue"
+    if alarm_type.lower().startswith("ml_conformal_static_"):
+        return "conformal_pvalue"
+    return "zscore"
 
 
 class Alarm(BaseModel):
@@ -135,11 +145,21 @@ class AlarmCreate(BaseModel):
     )
     timestamp: datetime
     alarm_type: str = Field(min_length=1, max_length=200)
-    value: float
+    value: float = Field(allow_inf_nan=False)
     value_type: str | None = Field(
         default=None,
         description="How to read `value`; derived from `alarm_type` when omitted.",
     )
+
+    @model_validator(mode="after")
+    def validate_probability(self) -> "AlarmCreate":
+        if (
+            resolve_alarm_value_type(self.alarm_type, self.value_type)
+            in PROBABILITY_VALUE_TYPES
+            and not 0 <= self.value <= 1
+        ):
+            raise ValueError("An alarm p-value must be between 0 and 1")
+        return self
 
 
 class AlarmCount(BaseModel):

@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 /**
  * Anomaly processing utilities for matching anomalies with telemetry data
  * and creating visual overlays
@@ -74,7 +75,7 @@ export const createAnomalyMarkers = (
 
   const samplesByTime = new Map<number, AnomalySample>();
   telemetry.forEach((point) => {
-    const time = Date.parse(point.timestamp);
+    const time = epochMilliseconds(point.timestamp);
     if (!Number.isFinite(time) || !Number.isFinite(point.value)) return;
     samplesByTime.set(time, { ...point, time });
   });
@@ -82,7 +83,7 @@ export const createAnomalyMarkers = (
 
   const eventsByIdentity = new Map<string, { anomaly: Alarm; time: number }>();
   anomalies.forEach((anomaly, index) => {
-    const time = Date.parse(anomaly.timestamp);
+    const time = epochMilliseconds(anomaly.timestamp);
     if (!Number.isFinite(time)) return;
     const identity = anomaly.alarm_id ? `id:${anomaly.alarm_id}` : `row:${index}`;
     eventsByIdentity.set(identity, { anomaly, time });
@@ -136,7 +137,7 @@ export const filterAnomalies = (
 
     // Filter by time range if provided
     if (fromDate || toDate) {
-      const anomalyTime = new Date(anomaly.timestamp).getTime();
+      const anomalyTime = epochMilliseconds(anomaly.timestamp);
       const fromTime = fromDate?.getTime() ?? -Infinity;
       const toTime = toDate?.getTime() ?? Infinity;
 

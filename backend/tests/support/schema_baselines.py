@@ -29,6 +29,7 @@ EXPECTED_MIGRATIONS = (
     "022_dojo_labels.sql",
     "023_device_favorites.sql",
     "024_lifecycle_states.sql",
+    "025_evidence_cursor.sql",
 )
 
 

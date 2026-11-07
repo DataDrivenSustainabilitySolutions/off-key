@@ -13,13 +13,16 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from off_key_core.db.models import DojoRunResult
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 from pydantic import ValidationError
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from ..execution_errors import FatalExecutionError
@@ -27,7 +30,6 @@ from .replay import Replay, ReplayResult, detection_config
 
 logger = logging.getLogger(__name__)
 
-RESULT_COLUMNS = ("run_id", "sequence", "timestamp", "phase", "score", "threshold")
 STALE_ERROR = "The Dojo worker stopped during the run"
 
 FAIL_STALE = text(
@@ -49,15 +51,24 @@ PROGRESS = text(
     "WHERE id = :id AND worker = :worker AND status = 'running' "
     "RETURNING cancel_requested"
 )
+HEARTBEAT = text(
+    "UPDATE dojo_runs SET heartbeat_at = clock_timestamp() "
+    "WHERE id = :id AND worker = :worker AND status = 'running' "
+    "RETURNING cancel_requested"
+)
 FINISH = text(
-    "UPDATE dojo_runs SET status = :status, error = :error, finished_at = now(), "
+    "UPDATE dojo_runs SET status = CASE WHEN cancel_requested THEN 'cancelled' "
+    "ELSE :status END, error = CASE WHEN cancel_requested THEN NULL ELSE :error END, "
+    "finished_at = now(), "
     "heartbeat_at = now(), points_read = :points_read, "
     "result_count = :result_count, alarm_count = :alarm_count, "
     "stats = CAST(:stats AS jsonb) "
     "WHERE id = :id AND worker = :worker AND status = 'running'"
 )
 RELEASE = text(
-    "UPDATE dojo_runs SET status = 'queued', worker = NULL, started_at = NULL, "
+    "UPDATE dojo_runs SET status = CASE WHEN cancel_requested THEN 'cancelled' "
+    "ELSE 'queued' END, finished_at = CASE WHEN cancel_requested THEN now() "
+    "ELSE NULL END, worker = NULL, started_at = NULL, "
     "heartbeat_at = NULL, points_read = 0, result_count = 0, alarm_count = 0, "
     "stats = '{}'::jsonb "
     "WHERE id = :id AND worker = :worker AND status = 'running'"
@@ -81,6 +92,14 @@ class WorkerOptions:
     stale_seconds: float = 120.0
     poll_seconds: float = 2.0
 
+    def __post_init__(self) -> None:
+        if not 0 < self.heartbeat_seconds < self.stale_seconds:
+            raise ValueError(
+                "Heartbeat interval must be positive and below stale timeout"
+            )
+        if self.read_batch < 1 or self.write_batch < 1:
+            raise ValueError("Read and write batches must be positive")
+
 
 class RunStopped(Exception):
     """The run ended outside this worker: cancelled, deleted or taken over."""
@@ -92,6 +111,9 @@ class _Run:
     points_read: int = 0
     pending: list[ReplayResult] = field(default_factory=list)
     replay: Replay | None = None
+    mutations: asyncio.Lock = field(default_factory=asyncio.Lock)
+    cancel_requested: bool = False
+    heartbeat_error: Exception | None = None
 
     def progress(self, worker: str) -> dict:
         replay = self.replay
@@ -178,6 +200,8 @@ class DojoWorker:
 
     async def execute(self, run_id: str, config: dict) -> None:
         run = _Run(run_id)
+        finished = asyncio.Event()
+        heartbeat = asyncio.create_task(self._keep_alive(run, finished))
         logger.info("event=dojo.run_started run_id=%s", run_id)
         try:
             await self._replay(run, config)
@@ -199,8 +223,10 @@ class DojoWorker:
             )
             return
         finally:
+            finished.set()
+            await heartbeat
             if run.replay is not None:
-                run.replay.close()
+                await asyncio.to_thread(run.replay.close)
         logger.info(
             "event=dojo.run_finished run_id=%s points=%s results=%s",
             run_id,
@@ -211,19 +237,25 @@ class DojoWorker:
     async def _replay(self, run: _Run, config: dict) -> None:
         execution = PipelineExecutionConfig.model_validate(config["execution"])
         alignment = RunAlignment.model_validate(config["alignment"])
-        run.replay = Replay(
-            detection_config(execution, alignment, self.options.memory_limit_mb)
-        )
+
+        def initialize():
+            # Install the resource in the worker thread so cancellation while
+            # joining that thread still leaves it visible to execute's cleanup.
+            run.replay = Replay(
+                detection_config(execution, alignment, self.options.memory_limit_mb)
+            )
+
+        await _compute(initialize)
         beat = time.monotonic()
-        async for topic, stamp, value in merged_points(
-            self.engine, config["series"], self.options.read_batch
-        ):
-            if self.should_stop():
-                raise _Interrupted
-            run.points_read += 1
-            result = run.replay.step(topic, stamp, value)
-            if result is not None:
-                run.pending.append(result)
+        points = merged_points(self.engine, config["series"], self.options.read_batch)
+        async for batch in _batches(points):
+            # Fitting and scoring must not block the independent heartbeat.
+            await _compute(self._advance, run, batch)
+            if run.heartbeat_error is not None:
+                raise run.heartbeat_error
+            if run.cancel_requested:
+                await self._finish(run, "cancelled", None)
+                return
             if (
                 len(run.pending) >= self.options.write_batch
                 or time.monotonic() - beat >= self.options.heartbeat_seconds
@@ -234,42 +266,91 @@ class DojoWorker:
                 beat = time.monotonic()
         await self._finish(run, "succeeded", None)
 
-    async def _write(self, connection, run: _Run) -> None:
+    def _advance(self, run: _Run, batch: list[tuple[str, float, float]]) -> None:
+        assert run.replay is not None
+        for topic, stamp, value in batch:
+            if self.should_stop():
+                raise _Interrupted
+            if run.cancel_requested or run.heartbeat_error is not None:
+                return
+            run.points_read += 1
+            result = run.replay.step(topic, stamp, value)
+            if result is not None:
+                run.pending.append(result)
+
+    async def _keep_alive(self, run: _Run, finished: asyncio.Event) -> None:
+        try:
+            while not finished.is_set():
+                # Our own result transaction locks the run too. Wait outside
+                # the heartbeat timeout so a slow commit is not mistaken for
+                # a dead worker; flush refreshes its heartbeat before commit.
+                async with (
+                    run.mutations,
+                    asyncio.timeout(self.options.heartbeat_seconds),
+                ):
+                    async with self.engine.begin() as connection:
+                        row = (
+                            await connection.execute(
+                                HEARTBEAT,
+                                {"id": run.id, "worker": self.options.worker_id},
+                            )
+                        ).first()
+                    if row is None:
+                        raise RunStopped
+                    run.cancel_requested = bool(row.cancel_requested)
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        finished.wait(), self.options.heartbeat_seconds
+                    )
+        except Exception as error:
+            run.heartbeat_error = error
+
+    async def _write(self, connection, run: _Run) -> int:
         if not run.pending:
-            return
-        raw = await connection.get_raw_connection()
-        await raw.driver_connection.copy_records_to_table(
-            "dojo_run_results",
-            records=[
-                (
-                    run.id,
-                    item.sequence,
-                    item.timestamp,
-                    item.phase,
-                    item.score,
-                    item.threshold,
-                    item.alarm,
-                )
-                for item in run.pending
-            ],
-            columns=[*RESULT_COLUMNS, "alarm"],
+            return 0
+        records = [
+            dict(
+                run_id=run.id,
+                sequence=item.sequence,
+                timestamp=item.timestamp,
+                phase=item.phase,
+                score=item.score,
+                threshold=item.threshold,
+                alarm=item.alarm,
+            )
+            for item in run.pending
+        ]
+        # A connection can fail after the server commits. Retrying the same
+        # numbered results must not duplicate them or prevent saving the rest.
+        await connection.execute(
+            insert(DojoRunResult).on_conflict_do_nothing(
+                index_elements=["run_id", "sequence"]
+            ),
+            records,
         )
-        run.pending.clear()
+        return len(records)
 
     async def _flush(self, run: _Run) -> bool:
         """Store pending results and refresh the heartbeat; True if cancelled."""
-        async with self.engine.begin() as connection:
+        async with run.mutations, self.engine.begin() as connection:
             row = (
                 await connection.execute(PROGRESS, run.progress(self.options.worker_id))
             ).first()
             if row is None:
                 raise RunStopped
-            await self._write(connection, run)
+            written = await self._write(connection, run)
+            row = (
+                await connection.execute(
+                    HEARTBEAT, {"id": run.id, "worker": self.options.worker_id}
+                )
+            ).first()
+        del run.pending[:written]
         return bool(row.cancel_requested)
 
     async def _finish(self, run: _Run, status: str, error: str | None) -> None:
         # Results before a failure stay, so the run shows how far it came.
-        async with self.engine.begin() as connection:
+        written = 0
+        async with run.mutations, self.engine.begin() as connection:
             outcome = await connection.execute(
                 FINISH,
                 {
@@ -279,10 +360,11 @@ class DojoWorker:
                 },
             )
             if outcome.rowcount:
-                await self._write(connection, run)
+                written = await self._write(connection, run)
+        del run.pending[:written]
 
     async def _release(self, run: _Run) -> None:
-        async with self.engine.begin() as connection:
+        async with run.mutations, self.engine.begin() as connection:
             outcome = await connection.execute(
                 RELEASE, {"id": run.id, "worker": self.options.worker_id}
             )
@@ -292,6 +374,28 @@ class DojoWorker:
 
 class _Interrupted(Exception):
     """The worker is shutting down mid-run."""
+
+
+async def _batches(points, size: int = 256):
+    batch = []
+    async for point in points:
+        batch.append(point)
+        if len(batch) == size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+async def _compute(function, *args):
+    task = asyncio.create_task(asyncio.to_thread(function, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # A running thread cannot be cancelled. Join it before closing its
+        # detector or relinquishing this run to another worker.
+        await task
+        raise
 
 
 def _bounded(message: str, limit: int = 2000) -> str:

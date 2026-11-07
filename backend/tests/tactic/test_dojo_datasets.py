@@ -55,6 +55,16 @@ def points(body: str, **query):
     return declared, list(rows)
 
 
+def test_history_series_names_preserve_labels_that_already_contain_suffixes():
+    labels = ["Temperature", "Temperature", "Temperature (2)", "Temperature"]
+    assert dataset_module._unique_names(labels) == [
+        "Temperature",
+        "Temperature (3)",
+        "Temperature (2)",
+        "Temperature (4)",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # CSV parsing
 # ---------------------------------------------------------------------------
@@ -305,6 +315,7 @@ async def test_history_copy_rejects_unknown_readings_and_empty_windows(dojo_data
                 ),
                 created_by=None,
             )
+
         with pytest.raises(ValidationError, match="recorded nothing"):
             await service.import_history(
                 DatasetFromHistory(
@@ -315,6 +326,47 @@ async def test_history_copy_rejects_unknown_readings_and_empty_windows(dojo_data
                 ),
                 created_by=None,
             )
+
+
+@pytest.mark.asyncio
+async def test_history_budget_is_checked_against_actual_copied_points(
+    dojo_database, monkeypatch
+):
+    await seed_history(dojo_database)
+    monkeypatch.setattr(dataset_module, "MAX_DATASET_POINTS", 10)
+    async with dojo_database() as session:
+        service = DojoDatasets(session)
+        store = service._store_series
+
+        async def store_after_late_arrival(*args):
+            async with dojo_database() as writer:
+                existing = await writer.scalar(select(Telemetry).limit(1))
+                writer.add(
+                    Telemetry(
+                        charger_id=existing.charger_id,
+                        type=existing.type,
+                        timestamp=T0 + timedelta(seconds=1),
+                        value=42,
+                        data_source="test",
+                    )
+                )
+                await writer.commit()
+            await store(*args)
+
+        monkeypatch.setattr(service, "_store_series", store_after_late_arrival)
+        with pytest.raises(ValidationError, match="at most 10"):
+            await service.import_history(
+                DatasetFromHistory(
+                    name="x",
+                    reading_ids=["temperature-1"],
+                    start=T0,
+                    end=T0 + timedelta(hours=1),
+                ),
+                created_by=None,
+            )
+        await session.rollback()
+    async with dojo_database() as session:
+        assert await session.scalar(select(func.count()).select_from(DojoDataset)) == 0
 
 
 @pytest.mark.asyncio

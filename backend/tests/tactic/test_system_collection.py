@@ -211,7 +211,13 @@ async def test_stale_policy_change_cannot_overwrite_a_newer_decision(session):
 
 
 @pytest.mark.asyncio
-async def test_collection_and_structure_changes_protect_active_monitor_inputs(session):
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [("payload_pointer", "/readings/other"), ("unit", "°F")],
+)
+async def test_collection_and_structure_changes_protect_active_monitor_inputs(
+    session, attribute, value
+):
     snapshot = await SystemService(session).save(
         SystemChange(expected_revision=0, document=document()), actor="test@example.com"
     )
@@ -232,7 +238,7 @@ async def test_collection_and_structure_changes_protect_active_monitor_inputs(se
             change(snapshot, "off"), actor="test@example.com"
         )
     draft = snapshot.document.model_copy(deep=True)
-    draft.streams[0].payload_pointer = "/readings/other"
+    setattr(draft.streams[0], attribute, value)
     with pytest.raises(ConflictError, match="running monitors"):
         await SystemService(session).save(
             SystemChange(expected_revision=snapshot.revision, document=draft),

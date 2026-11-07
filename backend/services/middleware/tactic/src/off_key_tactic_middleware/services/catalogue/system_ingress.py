@@ -6,7 +6,9 @@ owned by mqtt-proxy. No view lease or browser connection controls this worker.
 
 import asyncio
 import time
+from collections import deque
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import RLock
 from uuid import uuid4
@@ -15,6 +17,7 @@ from off_key_core.config.logs import logger
 from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
+from off_key_core.db.worker_ownership import WorkerOwnership
 from off_key_core.schemas.collection_status import (
     INGRESS_APPLIED,
     INGRESS_CONNECTING,
@@ -38,6 +41,20 @@ from .system_live_mqtt import LiveMqttWorker
 # A deadline that has always passed: the broker's client gave up after a refusal.
 REFUSED = float("-inf")
 RETRY_HINT = "It is retried automatically; reconnect to try again now."
+MAX_PENDING_MESSAGES = 512
+MAX_PENDING_BYTES = 8 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class PendingMessage:
+    generation: str
+    connection_id: str
+    attempt: object
+    topic: str
+    envelope: str
+    size: int
+    received_at: float
+    retained: bool
 
 
 class SystemIngress:
@@ -69,6 +86,11 @@ class SystemIngress:
         self.task = None
         self.last_publish = None
         self.dropped = 0
+        self.ownership: WorkerOwnership | None = None
+        self.pending: deque[PendingMessage] = deque()
+        self.pending_bytes = 0
+        self.retained_topics: set[str] = set()
+        self.effects = asyncio.Lock()
 
     async def start(self):
         if self.settings.SYSTEM_COLLECTION_ENABLED:
@@ -122,12 +144,26 @@ class SystemIngress:
             self.quiet = set()
             self.readings = {}
             self.cadences = {}
+            self.pending.clear()
+            self.pending_bytes = 0
         await asyncio.gather(
             *(asyncio.to_thread(item.stop) for item in workers), return_exceptions=True
         )
 
     async def _configure(self, definition):
         await self._stop_workers()
+        desired = {
+            stream.ingress_topic for stream in definition.streams(selected_only=True)
+        }
+        obsolete = self.retained_topics - desired
+        if obsolete:
+            output = self.output
+            if output is None:
+                raise RuntimeError("Internal broker is disconnected")
+            await self._acknowledge(
+                [output.publish(topic, b"", qos=1, retain=True) for topic in obsolete]
+            )
+            self.retained_topics.difference_update(obsolete)
         with self.guard:
             self.generation = definition.generation
             for stream in definition.streams(selected_only=True):
@@ -177,7 +213,7 @@ class SystemIngress:
                 list(topics),
                 resolved.credential,
                 lambda topic, payload, retained: self._receive(
-                    generation, connection.id, topic, payload, retained
+                    generation, connection.id, topic, payload, retained, attempt
                 ),
                 lambda phase, message: self._state(
                     generation, connection.id, phase, message, attempt
@@ -296,10 +332,13 @@ class SystemIngress:
             await asyncio.to_thread(worker.stop)
         return True
 
-    def _receive(self, generation, connection_id, topic, payload, retained):
+    def _receive(
+        self, generation, connection_id, topic, payload, retained, attempt=None
+    ):
         with self.guard:
             if (
                 generation != self.generation
+                or self.attempts.get(connection_id) is not attempt
                 or self.output is None
                 or not self.output.is_connected()
             ):
@@ -326,31 +365,125 @@ class SystemIngress:
             except UnicodeError:
                 self.dropped += 1
                 return
-            received_at = received_at_us / 1_000_000
-            fresh_received_at = datetime.fromtimestamp(received_at, UTC).isoformat()
-            for stream in streams:
-                result = self.output.publish(
-                    stream.ingress_topic, envelope, qos=1, retain=False
+            size = len(envelope.encode("utf-8"))
+            if (
+                len(self.pending) >= MAX_PENDING_MESSAGES
+                or self.pending_bytes + size > MAX_PENDING_BYTES
+            ):
+                self.dropped += 1
+                return
+            self.pending.append(
+                PendingMessage(
+                    generation,
+                    connection_id,
+                    attempt,
+                    topic,
+                    envelope,
+                    size,
+                    received_at_us / 1_000_000,
+                    retained,
                 )
+            )
+            self.pending_bytes += size
+
+    async def _acknowledge(self, publications):
+        try:
+            if any(info.rc != MQTT_ERR_SUCCESS for info in publications):
+                raise RuntimeError("Internal broker refused a publication")
+            async with asyncio.timeout(10):
+                # Paho exposes a synchronous completion flag, not an async event.
+                while not all(info.is_published() for info in publications):  # noqa: ASYNC110
+                    await asyncio.sleep(0.01)
+        except BaseException:
+            # No queued publication may outlive its ownership fence.
+            if self.output is not None:
+                await close_client(self.output)
+                self.output = None
+            raise
+
+    async def _publish_pending(self):
+        output = self.output
+        if output is None:
+            return
+        publications = []
+        accepted = []
+        for _ in range(32):
+            with self.guard:
+                if not self.pending:
+                    break
+                item = self.pending.popleft()
+                self.pending_bytes -= item.size
+                if (
+                    item.generation != self.generation
+                    or self.attempts.get(item.connection_id) is not item.attempt
+                ):
+                    continue
+                streams = list(
+                    self.bindings.get(item.connection_id, {}).get(item.topic, [])
+                )
+            for stream in streams:
+                result = output.publish(
+                    stream.ingress_topic, item.envelope, qos=1, retain=True
+                )
+                # Paho may queue a QoS publication even when returning NO_CONN.
+                # An error therefore needs the same fenced transport teardown.
+                publications.append(result)
                 if result.rc == MQTT_ERR_SUCCESS:
-                    self.last_publish = datetime.now(UTC).isoformat()
-                    if not retained:
-                        # setdefault would build a throwaway cadence per message.
-                        cadence = self.cadences.get(stream.definition.id)
-                        if cadence is None:
-                            cadence = ArrivalCadence()
-                            self.cadences[stream.definition.id] = cadence
-                        cadence.add(received_at)
-                        self.readings[stream.definition.id] = {
-                            "fresh_received_at": fresh_received_at,
-                            "typical_interval_seconds": cadence.typical_seconds,
-                        }
+                    accepted.append((item, stream))
+                    self.retained_topics.add(stream.ingress_topic)
                 else:
                     self.dropped += 1
+        await self._acknowledge(publications)
+        with self.guard:
+            for item, stream in accepted:
+                self.last_publish = datetime.now(UTC).isoformat()
+                if (
+                    item.retained
+                    or item.generation != self.generation
+                    or self.attempts.get(item.connection_id) is not item.attempt
+                ):
+                    continue
+                cadence = self.cadences.get(stream.definition.id)
+                if cadence is None:
+                    cadence = ArrivalCadence()
+                    self.cadences[stream.definition.id] = cadence
+                cadence.add(item.received_at)
+                self.readings[stream.definition.id] = {
+                    "fresh_received_at": datetime.fromtimestamp(
+                        item.received_at, UTC
+                    ).isoformat(),
+                    "typical_interval_seconds": cadence.typical_seconds,
+                }
+
+    async def _forward_pending(self):
+        async with self.effects:
+            if (
+                not self.pending
+                or self.output is None
+                or not self.output.is_connected()
+            ):
+                return
+            if self.ownership is None:
+                await self._publish_pending()
+                return
+            async with get_async_session_local()() as session:
+                await self.ownership.fence(session)
+                try:
+                    await self._publish_pending()
+                    await session.commit()
+                except BaseException:
+                    if self.output is not None:
+                        await close_client(self.output)
+                        self.output = None
+                    raise
+
+    async def _forward_forever(self):
+        while True:
+            await self._forward_pending()
+            await asyncio.sleep(0.02)
 
     async def _run(self):
-        # The ownership connection is held for the whole worker lifetime. Losing
-        # it stops subscriptions before a replacement can ingest concurrently.
+        # Publications are fenced separately from the ownership health poll.
         while True:
             try:
                 await self._run_owned()
@@ -361,27 +494,32 @@ class SystemIngress:
 
     async def _run_owned(self):
         async with get_async_engine().connect() as ownership:
-            if not await ownership.scalar(
-                text("SELECT pg_try_advisory_lock(:key)"), {"key": SYSTEM_INGRESS_LOCK}
-            ):
+            lease = await WorkerOwnership.acquire(ownership, SYSTEM_INGRESS_LOCK)
+            if lease is None:
                 return
-            await ownership.commit()
+            self.ownership = lease
             try:
-                await self._poll_owned(ownership)
+                async with asyncio.TaskGroup() as tasks:
+                    tasks.create_task(self._forward_forever())
+                    tasks.create_task(self._poll_owned(ownership))
             finally:
                 await self._stop_workers()
+                if self.output is not None:
+                    await close_client(self.output)
+                    self.output = None
                 with suppress(Exception):
-                    await ownership.execute(
-                        text("SELECT pg_advisory_unlock(:key)"),
-                        {"key": SYSTEM_INGRESS_LOCK},
-                    )
+                    await lease.release(ownership)
 
     async def _poll_owned(self, ownership):
+        lease = self.ownership
+        if lease is None:
+            raise RuntimeError("Ingress has no ownership lease")
         sessions = get_async_session_local()
         while True:
             await ownership.execute(text("SELECT 1"))
             await ownership.commit()
-            async with sessions() as session:
+            async with self.effects, sessions() as session:
+                await lease.fence(session)
                 row = await session.scalar(
                     select(SystemCollectionConfiguration).where(
                         SystemCollectionConfiguration.id == 1

@@ -63,12 +63,19 @@ applying; their settings remain available for restart.
   history or the detector feed.
 - **Retained snapshots:** update latest state without becoming fresh history or
   detector input. Only fresh admitted observations update entity contact status.
+  Ingress retains the latest envelope per selected input inside EMQX. Activation
+  and reconnect replay it as a snapshot, including when its original delivery
+  arrived while the collector was paused. Retired generation topics are cleared
+  when ingress applies the next configuration.
 
 The initial definition limits are 128 brokers, 2,048 entities, 4,096 readings,
 128 groups and 1 MiB. The original-rate queue defaults to 10,000 observations.
 Decode, coalescing and overload counters are visible in diagnostics. Database
 backpressure retains bounded pending batches. Process loss can lose memory queues;
 accepted MQTT output is not transactionally coupled to a database commit.
+Ingress also bounds its forwarding queue to 512 messages and 8 MiB. Device online
+status requires current collection workers and recent fresh receipts; stored
+contact timestamps alone do not keep a silent device online.
 
 ## Applying configuration
 
@@ -83,6 +90,12 @@ broker subscriptions for that configuration generation. After matching ingress
 is applied, the collector enables admission. Failure remains visible and retries;
 an empty selection is healthy idle. Old queued generations cannot enter a new
 mapping. Turning an input Off preserves previously recorded history.
+
+Ingress and collection each retain a database ownership connection. Every write
+and publication batch takes a transaction fence and verifies that owner; takeover
+waits for outstanding fences. MQTT fences remain held through acknowledgement,
+and uncertain publications close their transport before releasing the fence.
+Callbacks and queued messages from replaced upstream clients are rejected.
 
 The collector's reconciliation loop is the only reconnect owner for the local
 broker. When the connection drops it pauses admission, reports `error` and

@@ -605,17 +605,19 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`8db7b5cb9741ae51c3507ce9a5df2b3f940debfb`, a head of the lifecycle state
-change that carries migrations 018 (`member_favorites`) to 023
-(`device_favorites`) and 024 (`lifecycle_states`). It shares the current
+`9311f9937e605da9b4be5a9903f08de4da79dade`, the first invariant-enforcement
+commit that carries migration 025 (`evidence_cursor`), before the runtime
+connection lookup correction. It shares the current
 migration ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
 names, so the rehearsal calls and reads both releases the same way.
+The test uses the current API directly, without compatibility adapters or
+response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `f916370`, carried migrations 018 to 023; it cannot be a
-reference any more, because releases before migration 024 refuse a database that
-has applied it. Rolling back past migration 024 means restoring a verified
+The previous reference, `8db7b5cb`, carried migrations through 024; it cannot be a
+reference any more, because releases before migration 025 refuse a database that
+has applied it. Rolling back past migration 025 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

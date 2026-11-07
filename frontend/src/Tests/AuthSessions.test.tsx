@@ -194,8 +194,8 @@ describe("remembered session recovery", () => {
     expect(screen.getByText(member.email)).toBeTruthy();
   });
 
-  it("observes logout in another tab", async () => {
-    tokenManager.setToken(token(), true);
+  it.each([false, true])("observes logout in another tab with remembered=%s", async (remembered) => {
+    tokenManager.setToken(token(), remembered);
     render(<AuthProvider><Consumer /></AuthProvider>);
     await screen.findByText(member.email);
     act(() => {

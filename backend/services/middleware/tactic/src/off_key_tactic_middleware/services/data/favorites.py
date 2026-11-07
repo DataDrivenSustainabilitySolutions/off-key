@@ -1,12 +1,14 @@
 """Use cases for the favorites each member keeps."""
 
 from off_key_core.config.logs import logger
+from off_key_core.db.models import User
 from off_key_core.schemas.favorites import (
     MAX_FAVORITES,
     Favorite,
     FavoriteKind,
     FavoriteRef,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import ConflictError, InfrastructureError
@@ -31,6 +33,10 @@ class FavoriteService:
         return [_favorite(row) for row in rows]
 
     async def add_favorite(self, *, user_id: int, ref: FavoriteRef) -> Favorite:
+        # Serialize additions for this member through the count and commit.
+        await self._session.execute(
+            select(User.id).where(User.id == user_id).with_for_update()
+        )
         key = {"user_id": user_id, "kind": ref.kind, "item_id": ref.id}
         existing = await self._repository.get(**key)
         if existing is not None:

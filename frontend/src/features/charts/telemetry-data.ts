@@ -1,16 +1,19 @@
 import type { TelemetryDataPoint } from "@/types/charger";
+import { epochMicroseconds } from "@/lib/timestamps";
 
 export type TimeValue = [epochMilliseconds: number, value: number];
 
 /** Keep the last finite sample at each valid timestamp, in chronological order. */
 export const normalizeTelemetry = (points: readonly TelemetryDataPoint[]): TimeValue[] => {
-  const valuesByTime = new Map<number, number>();
+  const valuesByTime = new Map<bigint, number>();
   for (const point of points) {
-    const time = Date.parse(point.timestamp);
-    if (!Number.isFinite(time) || !Number.isFinite(point.value)) continue;
+    const time = epochMicroseconds(point.timestamp);
+    if (time === undefined || !Number.isFinite(point.value)) continue;
     valuesByTime.set(time, point.value);
   }
-  return [...valuesByTime.entries()].sort((left, right) => left[0] - right[0]);
+  return [...valuesByTime.entries()]
+    .sort(([left], [right]) => left === right ? 0 : left < right ? -1 : 1)
+    .map(([time, value]) => [Number(time) / 1000, value]);
 };
 
 /** A pause this many times the usual spacing, such as one a Gate holds back, breaks a line. */

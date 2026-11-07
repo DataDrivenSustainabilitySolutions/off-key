@@ -85,6 +85,7 @@ export const subscribeToSession = (onChange: () => void): (() => void) => {
       // Another tab signed out or switched accounts; drop this tab's copy so
       // it restores the current member from the shared cookie.
       if (!tokenManager.isRemembered() || event.key === MEMBER_KEY || event.key === null) rememberedToken = null;
+      sessionStorage.removeItem(TOKEN_KEY);
       invalidateRenewal();
       onChange();
     }

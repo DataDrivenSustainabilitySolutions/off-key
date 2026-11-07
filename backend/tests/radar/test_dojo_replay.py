@@ -1,7 +1,10 @@
 """Dojo replays: historical points through the live processing path."""
 
+import asyncio
 import math
+import threading
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -15,11 +18,13 @@ from off_key_core.db.models import (
 from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import RunAlignment
-from off_key_mqtt_radar.dojo.replay import Replay, detection_config
+from off_key_mqtt_radar.dojo.replay import Replay, ReplayResult, detection_config
+from off_key_mqtt_radar.dojo.settings import DojoWorkerSettings
 from off_key_mqtt_radar.dojo.worker import (
     STALE_ERROR,
     DojoWorker,
     WorkerOptions,
+    _Run,
     merged_points,
 )
 from sqlalchemy import func, select, update
@@ -53,6 +58,27 @@ def replay(strategy="adaptive_stream", alignment=None, definition=None):
 
 def wave(index, slot):
     return math.sin(index / 7 + slot)
+
+
+def test_default_design_seed_reproduces_adaptive_scores():
+    def scores():
+        run = replay()
+        try:
+            rows = []
+            for index in range(250):
+                for slot in range(3):
+                    row = run.step(
+                        series_topic(slot), START.timestamp() + index, wave(index, slot)
+                    )
+                    if row is not None and row.score is not None:
+                        rows.append((row.score, row.alarm))
+            return rows
+        finally:
+            run.close()
+
+    first, second = scores(), scores()
+    assert first
+    assert first == second
 
 
 @pytest.mark.parametrize("strategy", ["adaptive_stream", "static_baseline"])
@@ -219,7 +245,184 @@ async def test_a_cancelled_run_stops_at_the_next_heartbeat(dojo_engine):
     await worker.run_once()
     run, results = await stored_run(sessions)
     assert run.status == "cancelled"
-    assert 0 < run.points_read < 360 and results == run.result_count
+    assert 0 <= run.points_read < 360 and results == run.result_count
+
+
+@pytest.mark.asyncio
+async def test_cancellation_committed_just_before_finish_wins(dojo_engine):
+    engine, sessions = dojo_engine
+    await seed(sessions, points=2)
+    worker = DojoWorker(engine, WorkerOptions(worker_id="w1"))
+    finish = worker._finish
+
+    async def cancel_then_finish(run, status, error):
+        async with sessions() as session:
+            await session.execute(update(DojoRun).values(cancel_requested=True))
+            await session.commit()
+        await finish(run, status, error)
+
+    worker._finish = cancel_then_finish
+    await worker.run_once()
+    run, results = await stored_run(sessions)
+    assert run.status == "cancelled"
+    assert run.result_count == results
+
+
+def test_heartbeat_must_precede_expiration():
+    with pytest.raises(ValueError, match="below"):
+        DojoWorkerSettings(DOJO_HEARTBEAT_SECONDS=60, DOJO_STALE_SECONDS=30)
+    with pytest.raises(ValueError, match="below"):
+        WorkerOptions(worker_id="w", heartbeat_seconds=30, stale_seconds=30)
+
+
+@pytest.mark.asyncio
+async def test_fitting_keeps_heartbeating_while_another_replica_polls(
+    dojo_engine, monkeypatch
+):
+    engine, sessions = dojo_engine
+    await seed(sessions, points=2)
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def slow_step(*args):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(15):
+            raise RuntimeError("test did not release fitting")
+        return
+
+    monkeypatch.setattr(Replay, "step", slow_step)
+    worker = DojoWorker(
+        engine,
+        WorkerOptions(worker_id="w1", heartbeat_seconds=1, stale_seconds=3),
+    )
+    task = asyncio.create_task(worker.run_once())
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        await asyncio.sleep(worker.options.stale_seconds + 0.5)
+        other = DojoWorker(
+            engine,
+            WorkerOptions(worker_id="w2", heartbeat_seconds=1, stale_seconds=3),
+        )
+        assert not await other.run_once()
+        run, _ = await stored_run(sessions)
+        assert run.status == "running"
+    finally:
+        release.set()
+        await task
+    run, _ = await stored_run(sessions)
+    assert run.status == "succeeded"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("committed", [False, True])
+async def test_flush_retains_results_until_commit_and_retries_idempotently(
+    dojo_engine, committed
+):
+    engine, sessions = dojo_engine
+    await seed(sessions, status="running")
+    async with sessions() as session:
+        await session.execute(update(DojoRun).values(worker="w1"))
+        await session.commit()
+
+    class FailedCommit:
+        async def __aenter__(self):
+            self.transaction = engine.begin()
+            return await self.transaction.__aenter__()
+
+        async def __aexit__(self, kind, value, trace):
+            error = RuntimeError("commit response lost")
+            if committed:
+                await self.transaction.__aexit__(kind, value, trace)
+            else:
+                await self.transaction.__aexit__(RuntimeError, error, None)
+            raise error
+
+    worker = DojoWorker(
+        SimpleNamespace(begin=FailedCommit), WorkerOptions(worker_id="w1")
+    )
+    run = _Run("run", pending=[ReplayResult(1, START, "ready", 0.1, None, False)])
+    run.replay = SimpleNamespace(sequence=1, alarm_count=0, stats=dict)
+    with pytest.raises(RuntimeError, match="commit response"):
+        await worker._flush(run)
+    assert len(run.pending) == 1
+    worker.engine = engine
+    await worker._flush(run)
+    assert not run.pending
+    stored, count = await stored_run(sessions)
+    assert count == stored.result_count == 1
+
+
+@pytest.mark.asyncio
+async def test_slow_result_write_does_not_fail_its_own_heartbeat(
+    dojo_engine, monkeypatch
+):
+    engine, sessions = dojo_engine
+    await seed(sessions, status="running")
+    async with sessions() as session:
+        await session.execute(update(DojoRun).values(worker="w1"))
+        await session.commit()
+    worker = DojoWorker(
+        engine,
+        WorkerOptions(worker_id="w1", heartbeat_seconds=1, stale_seconds=3),
+    )
+    run = _Run("run", pending=[ReplayResult(1, START, "ready", 0.1, None, False)])
+    run.replay = SimpleNamespace(sequence=1, alarm_count=0, stats=dict)
+    entered, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    write = worker._write
+
+    async def slow_write(connection, state):
+        entered.set()
+        await release.wait()
+        return await write(connection, state)
+
+    monkeypatch.setattr(worker, "_write", slow_write)
+    flushing = asyncio.create_task(worker._flush(run))
+    await asyncio.wait_for(entered.wait(), 10)
+    heartbeat = asyncio.create_task(worker._keep_alive(run, finished))
+    try:
+        await asyncio.sleep(worker.options.stale_seconds + 0.5)
+        assert run.heartbeat_error is None
+    finally:
+        release.set()
+        await flushing
+        finished.set()
+        await heartbeat
+    assert run.heartbeat_error is None
+    assert not await DojoWorker(engine, worker.options).run_once()
+    stored, count = await stored_run(sessions)
+    assert stored.status == "running" and count == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_initialization_closes_the_late_replay(
+    dojo_engine, monkeypatch
+):
+    from off_key_mqtt_radar.dojo import worker as worker_module
+
+    engine, sessions = dojo_engine
+    await seed(sessions)
+    entered, release, closed = asyncio.Event(), threading.Event(), threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def initialize(_):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(15):
+            raise RuntimeError("test did not release initialization")
+        return SimpleNamespace(close=closed.set)
+
+    monkeypatch.setattr(worker_module, "Replay", initialize)
+    task = asyncio.create_task(
+        DojoWorker(engine, WorkerOptions(worker_id="w1")).run_once()
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        task.cancel()
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert closed.is_set()
 
 
 @pytest.mark.asyncio

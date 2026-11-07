@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import type { TelemetryDataPoint } from "@/types/charger";
 import type { MonitoringChartEvidence } from "@/types/monitoring";
 import type { MonitoringChartModel } from "@/features/charts/telemetry-chart";
@@ -36,7 +37,7 @@ export function buildServiceHistoryModel({
     let lastScore: number | undefined;
     const alarmTimes = new Set<number>();
     for (const row of rows) {
-      const time = Date.parse(row.input_timestamps[stream.id] ?? "");
+      const time = epochMilliseconds(row.input_timestamps[stream.id] ?? "");
       if (!Number.isFinite(time)) continue;
       if (lastScore === undefined || time > lastScore) lastScore = time;
       if (row.alarm) alarmTimes.add(time);
@@ -59,7 +60,7 @@ export function buildServiceHistoryModel({
     if (start !== undefined && (first === undefined || start < first)) first = start;
     if (end !== undefined && (last === undefined || end > last)) last = end;
   }
-  const detectorInputs = buildDetectorInputSeries(rows, row => Date.parse(row.timestamp));
+  const detectorInputs = buildDetectorInputSeries(rows, row => epochMilliseconds(row.timestamp));
   const model: MonitoringChartModel = { readings, detectorInputs, secondarySeries, range: {},
     extent: first === undefined || last === undefined ? undefined : [first, last] };
   return { model, detectors };

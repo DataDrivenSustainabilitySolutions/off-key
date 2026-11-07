@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import type { MonitoringChartReading } from "./types";
 import type { DetectionObservation } from "./telemetry-detectors";
 
@@ -21,7 +22,7 @@ export function formatMonitoringObservationTooltip(
     ?? readings.find(reading => reading.name === anchor?.seriesName);
   const anchorTime = Array.isArray(anchor?.value) ? Number(anchor.value[0]) : undefined;
   if (anchorReading?.inputKey && anchorTime !== undefined
-    && Date.parse(observation.inputTimestamps[anchorReading.inputKey] ?? "") !== anchorTime) {
+    && epochMilliseconds(observation.inputTimestamps[anchorReading.inputKey] ?? "") !== anchorTime) {
     const point = anchorReading.data.find(([time]) => time === anchorTime);
     return [formatTime(anchorTime), `${anchorReading.name}: ${point ? `${formatValue(point[1])}${anchorReading.unit ? ` ${anchorReading.unit}` : ""}` : "unavailable"}`,
       "No evaluated result for this input sample."].join("\n");
@@ -29,7 +30,7 @@ export function formatMonitoringObservationTooltip(
   const lines = [formatTime(observation.timeMs)];
   for (const reading of readings) {
     const timestamp = reading.inputKey ? observation.inputTimestamps[reading.inputKey] : undefined;
-    const inputTime = timestamp ? Date.parse(timestamp) : undefined;
+    const inputTime = timestamp ? epochMilliseconds(timestamp) : undefined;
     const point = inputTime === undefined ? undefined : reading.data.find(([time]) => time === inputTime);
     lines.push(`${reading.name}: ${point ? `${formatValue(point[1])}${reading.unit ? ` ${reading.unit}` : ""}` : "input not loaded"}`);
     if (inputTime !== undefined && inputTime !== observation.timeMs) lines.push(`  Input time: ${formatTime(inputTime)} (${inputTime - observation.timeMs} ms)`);

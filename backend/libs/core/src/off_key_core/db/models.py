@@ -34,6 +34,7 @@ from .dojo import DojoPoint as DojoPoint
 from .dojo import DojoRun as DojoRun
 from .dojo import DojoRunResult as DojoRunResult
 from .dojo import DojoSeries as DojoSeries
+from .evidence_clock import MonitoringEvidenceClock as MonitoringEvidenceClock
 from .pipelines import (
     MonitoringPipeline as MonitoringPipeline,
 )

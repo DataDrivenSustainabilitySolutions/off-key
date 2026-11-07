@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
+from off_key_core.db.worker_ownership import WorkerOwnershipLost
 from off_key_core.schemas.system import SystemDocument
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_mqtt_proxy import proxy as proxy_module
@@ -32,6 +33,7 @@ def proxy(monkeypatch):
     service.database_writer.drain = AsyncMock()
     service.mqtt_client = SimpleNamespace(
         is_connected=True,
+        set_message_handler=MagicMock(),
         subscribe=AsyncMock(return_value=True),
         unsubscribe=AsyncMock(return_value=True),
         drain_publishes=AsyncMock(),
@@ -214,6 +216,7 @@ async def test_collection_loop_owns_reconnection_after_the_client_gives_up(
         await proxy._refresh_configuration()
 
     proxy.mqtt_client.connect.assert_awaited_once()
+    proxy.mqtt_client.set_message_handler.assert_called_once_with(proxy.buffer.receive)
     proxy.buffer.pause.assert_called_once()
     assert proxy.revision == -1
 
@@ -279,6 +282,21 @@ async def test_state_commit_timestamp_advances_only_after_commit(proxy):
     with pytest.raises(RuntimeError, match="database unavailable"):
         await proxy._emit()
     assert proxy.diagnostics.last_state_write_at == committed_at
+
+
+@pytest.mark.asyncio
+async def test_lost_owner_cannot_publish_or_queue_observations(proxy):
+    configuration = catalog("original")
+    proxy.buffer.configure(configuration, now=0)
+    proxy.buffer.receive(message(configuration, 42))
+    proxy.ownership = SimpleNamespace(fence=AsyncMock(side_effect=WorkerOwnershipLost))
+    proxy.database_writer.write_record = AsyncMock()
+    proxy.mqtt_client.publish = AsyncMock()
+    with pytest.raises(WorkerOwnershipLost):
+        await proxy._emit()
+    proxy.database_writer.write_record.assert_not_awaited()
+    proxy.mqtt_client.publish.assert_not_awaited()
+    assert proxy.diagnostics.last_state_write_at is None
 
 
 @pytest.mark.asyncio

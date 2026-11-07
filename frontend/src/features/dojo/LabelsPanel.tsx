@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useMemo, useState } from "react";
 import { Tag, Trash2 } from "lucide-react";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -31,7 +32,7 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
   const [confirm, confirmation] = useConfirm();
   const option = useMemo(() => datasetChartOption({
     series: series.flatMap(item => loaded[item.id] ? [{ id: item.id, name: item.name, unit: item.unit, points: loaded[item.id]!.points }] : []),
-    labels: labels.map(label => ({ id: label.id, start: Date.parse(label.start_at), end: Date.parse(label.end_at), note: label.note })),
+    labels: labels.map(label => ({ id: label.id, start: epochMilliseconds(label.start_at), end: epochMilliseconds(label.end_at), note: label.note })),
     colors, timeZone,
   }), [series, loaded, labels, colors]);
   const truncated = series.filter(item => loaded[item.id]?.truncated);

@@ -6,7 +6,6 @@ The next identical deployment checks that retries do not duplicate workers.
 
 import json
 import os
-import re
 import subprocess
 import time
 from copy import deepcopy
@@ -32,66 +31,6 @@ pytestmark = [
         reason="requires the disposable production Swarm rehearsal",
     ),
 ]
-
-
-# While the rollback reference (COMPATIBLE_REVISION in
-# infra/tests/rehearsal_releases.py) runs, the rehearsal calls its paths and reads
-# its answers under the current field names. The reference serves the current
-# REST paths and field names, so nothing is renamed or dropped.
-COMPATIBLE_RELEASE_PATHS: tuple[tuple[str | None, re.Pattern[str], str], ...] = ()
-COMPATIBLE_RELEASE_PARAMS: dict[str, str] = {}
-COMPATIBLE_RELEASE_FIELDS: dict[str, str] = {}
-COMPATIBLE_RELEASE_DROPPED: frozenset[str] = frozenset()
-
-
-def current_field_names(value):
-    if isinstance(value, list):
-        return [current_field_names(item) for item in value]
-    if isinstance(value, dict):
-        return {
-            COMPATIBLE_RELEASE_FIELDS.get(key, key): current_field_names(item)
-            for key, item in value.items()
-            if key not in COMPATIBLE_RELEASE_DROPPED
-        }
-    return value
-
-
-class RehearsalClient(httpx.Client):
-    """One client for both releases; ``compatible`` selects the older API."""
-
-    compatible = False
-
-    def build_request(self, method, url, **kwargs):
-        request = super().build_request(method, url, **kwargs)
-        if self.compatible:
-            path = request.url.path
-            for only, pattern, replacement in COMPATIBLE_RELEASE_PATHS:
-                if only in (None, request.method):
-                    path = pattern.sub(replacement, path)
-            params = [
-                (COMPATIBLE_RELEASE_PARAMS.get(key, key), value)
-                for key, value in request.url.params.multi_items()
-            ]
-            request.url = request.url.copy_with(path=path, params=params)
-        return request
-
-    def send(self, request, **kwargs):
-        response = super().send(request, **kwargs)
-        if not self.compatible or "json" not in response.headers.get(
-            "content-type", ""
-        ):
-            return response
-        headers = [
-            (key, value)
-            for key, value in response.headers.multi_items()
-            if key.lower() not in {"content-encoding", "content-length"}
-        ]
-        return httpx.Response(
-            response.status_code,
-            headers=headers,
-            json=current_field_names(response.json()),
-            request=request,
-        )
 
 
 def get_measurements(client, entity, key="temperature"):
@@ -457,7 +396,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
-    with RehearsalClient(
+    with httpx.Client(
         base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"),
         headers=headers,
         timeout=210,
@@ -543,7 +482,6 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 if restore:
                     command.append("--restore")
                 subprocess.run(command, cwd=root, check=True, timeout=1200)
-                client.compatible = target == "compatible"
                 refresh_authentication(client)
                 assert get_json(client, "/v1/me") == member
                 assert {

@@ -90,6 +90,9 @@ APPLIED_CHECKSUMS = {
     "024_lifecycle_states.sql": (
         "d05b0588175a1f775ca54db11d844297a0b51b4fd6dad0138f968a258d01dbd7"
     ),
+    "025_evidence_cursor.sql": (
+        "361c8f1c85ac7046ff9ff0e90cdb88502156a7617e9f17bbc030e3fd829cf4f9"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new
@@ -114,6 +117,7 @@ LEDGER_TABLES = {
     "020_dojo_runs.sql": {"dojo_runs", "dojo_run_results"},
     "021_member_roles.sql": {"member_roles"},
     "022_dojo_labels.sql": {"dojo_dataset_labels"},
+    "025_evidence_cursor.sql": {"monitoring_evidence_clock"},
 }
 # Pre-ledger tables a later migration dropped.
 RETIRED_TABLES = {

@@ -23,6 +23,10 @@ def resolved_detector_config(
     params = bind_detector_parameters(
         definition["bound_parameters"], node.params, features
     )
+    # A null detector seed inherits the saved design's default, as feature
+    # transforms do. Resolve it here to preserve existing graph fingerprints.
+    if "seed" in params and params["seed"] is None:
+        params["seed"] = plan.compiled.definition.settings.seed
     config = DetectorConfig.from_mapping(
         {
             "version": 1,

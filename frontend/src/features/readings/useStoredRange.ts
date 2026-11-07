@@ -1,3 +1,4 @@
+import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getTelemetryRange } from "@/lib/charger-api";
@@ -62,10 +63,10 @@ export function useStoredRange(binding: ReadingMonitoringBinding | undefined, sp
     if (!detail || detail.key !== overviewKey || startMs === undefined) return base;
     // The finer points replace the overview only across the window they cover.
     const inside = (point: TelemetryDataPoint) => {
-      const time = Date.parse(point.timestamp);
+      const time = epochMilliseconds(point.timestamp);
       return time >= detail.startMs && time <= detail.endMs;
     };
     return [...base.filter((point) => !inside(point)), ...detail.points]
-      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+      .sort((left, right) => epochMilliseconds(left.timestamp) - epochMilliseconds(right.timestamp));
   }, [overview, detail, overviewKey, startMs]);
 }

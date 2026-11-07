@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/errors";
+import { loadOffsetPages } from "@/lib/offset-pages";
 import type { DatasetView, RunView } from "@/types/dojo.generated";
 import { pipelinesApi } from "../pipelines/api";
 import type { PipelineDefinition } from "../pipelines/contracts";
@@ -24,11 +25,19 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   const [skew, setSkew] = useState("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const selection = useRef<AbortController | null>(null);
+  const [designPages, setDesignPages] = useState(1);
+  const [moreDesigns, setMoreDesigns] = useState(false);
+  const [loadingDesigns, setLoadingDesigns] = useState(true);
+
+  useEffect(() => () => selection.current?.abort(), [open, dataset.id]);
 
   useEffect(() => {
-    if (!open || choices) return;
+    if (!open) return;
     const controller = new AbortController();
-    void Promise.all([pipelinesApi.catalog(controller.signal), pipelinesApi.list({ limit: 100 }, controller.signal)])
+    void Promise.all([pipelinesApi.catalog(controller.signal), loadOffsetPages(
+      offset => pipelinesApi.list({ limit: 100, offset }, controller.signal), designPages, controller.signal,
+    )])
       .then(([catalog, library]) => {
         if (controller.signal.aborted) return;
         setChoices([
@@ -36,26 +45,36 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
             definition: item.definition })),
           ...library.items.map(item => ({ key: `design:${item.id}`, name: item.name, group: "design" as const })),
         ]);
+        setMoreDesigns(library.next_offset !== null);
       })
-      .catch(reason => { if (!controller.signal.aborted) setLoadError(getErrorMessage(reason)); });
+      .catch(reason => { if (!controller.signal.aborted) setLoadError(getErrorMessage(reason)); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingDesigns(false); });
     return () => controller.abort();
-  }, [open, choices]);
+  }, [open, designPages]);
 
   const choose = async (next: string) => {
+    selection.current?.abort();
+    const controller = new AbortController();
+    selection.current = controller;
     setKey(next); setDefinition(null); setError("");
     const choice = choices?.find(item => item.key === next);
     if (!choice) return;
     try {
-      const chosen = choice.definition ?? (await pipelinesApi.get(next.slice("design:".length))).draft;
+      const chosen = choice.definition ?? (await pipelinesApi.get(next.slice("design:".length), controller.signal)).draft;
+      if (controller.signal.aborted) return;
       setDefinition(chosen);
       setBindings(suggestBindings(chosen.input_slots, dataset.series));
       setName(choice.name);
     } catch (reason) {
-      setError(getErrorMessage(reason));
+      if (!controller.signal.aborted) setError(getErrorMessage(reason));
     }
   };
   const close = (next: boolean) => {
-    if (!next) { setKey(""); setDefinition(null); setError(""); }
+    if (!next) {
+      selection.current?.abort();
+      setKey(""); setDefinition(null); setError("");
+      setLoadingDesigns(true); setLoadError("");
+    }
     onOpenChange(next);
   };
   const slots = useMemo(() => definition?.input_slots ?? [], [definition]);
@@ -99,6 +118,9 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
                 <option key={item.key} value={item.key}>{item.name}</option>)}</optgroup>}
             </select>
           </label>
+          {moreDesigns && <Button type="button" variant="outline" disabled={busy || loadingDesigns}
+            onClick={() => { setLoadingDesigns(true); setLoadError(""); setDesignPages(count => count + 1); }}>
+            {loadingDesigns ? "Loading designs…" : "Load more designs"}</Button>}
           {definition && <>
             <p className="dj-help">{strategyLabel(definition.strategy)} · {slots.length} {slots.length === 1 ? "input" : "inputs"}</p>
             <fieldset className="dj-field"><legend>Inputs</legend>

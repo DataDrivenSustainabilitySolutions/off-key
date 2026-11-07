@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import uuid4
 
+from off_key_core.db.locks import DOJO_QUEUE_LOCK
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import DojoDataset, DojoRun, DojoRunResult, DojoSeries
 from off_key_core.models.dojo_runs import BoundSeries, bind_dataset
@@ -32,7 +33,7 @@ from off_key_core.schemas.dojo import (
 )
 from off_key_core.schemas.pipelines import PipelineCreate, PipelineDefinition
 from off_key_core.utils.json_budget import bounded_utf8_text
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from ..pipelines.library import PipelineLibrary
@@ -86,6 +87,9 @@ class DojoRuns:
             )
         except ValueError as exc:
             raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": DOJO_QUEUE_LOCK}
+        )
         active = await self.session.scalar(
             select(func.count()).where(DojoRun.status.in_(ACTIVE))
         )

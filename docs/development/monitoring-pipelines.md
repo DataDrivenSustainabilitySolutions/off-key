@@ -612,6 +612,8 @@ migration ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catal
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
 names, so the rehearsal calls and reads both releases the same way.
+The test uses the current API directly, without compatibility adapters or
+response rewriting.
 Monitors are started on the current release, by reading id.
 The previous reference, `8db7b5cb`, carried migrations through 024; it cannot be a
 reference any more, because releases before migration 025 refuse a database that

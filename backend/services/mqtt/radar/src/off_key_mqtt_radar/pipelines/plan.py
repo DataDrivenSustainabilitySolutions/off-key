@@ -39,10 +39,6 @@ class ExecutionPlan:
     def nodes(self):
         return self._nodes
 
-    @property
-    def feature_nodes(self):
-        return self._feature_nodes
-
     def parents(self, identifier: str) -> list[str]:
         return self._parents[identifier]
 

@@ -375,7 +375,9 @@ The compiler checks schema 2 designs by learning mode instead of by lane
   of it may keep learning after calibration (no online step).
 
 `PipelineDefinition.lane` is the runtime that runs a design until then: its
-stored strategy, or the one all its learned steps share.
+stored strategy, or the one all its learned steps share. A schema 2 design may
+use only that lane's components (`strategy`), so the score threshold needs
+online detectors for now.
 
 `fusion.RankFusion` combines detectors by rank, so detectors on different scales
 need no tuning. A detector's surprise for a score s is the share of its n

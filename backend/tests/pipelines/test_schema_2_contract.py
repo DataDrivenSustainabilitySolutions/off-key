@@ -168,6 +168,13 @@ def test_the_martingale_needs_detectors_that_stop_learning():
     assert issues(design(IFOREST, policy="policy.martingale")) == []
 
 
+def test_a_policy_runs_only_where_its_detectors_learn():
+    found = issues(design(IFOREST, policy="policy.quantile"))
+
+    assert ("strategy", "policy") in found
+    assert issues(design(MAD, policy="policy.quantile")) == []
+
+
 def test_every_detector_gives_scores_and_the_calibration_step_p_values():
     components = {item.id: item for item in pipeline_components()}
 

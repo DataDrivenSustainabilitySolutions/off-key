@@ -190,6 +190,14 @@ def _parameter_message(issue) -> str:
     return issue["msg"].removeprefix("Value error, ")
 
 
+# Until one runtime runs every design, a schema 2 design runs in the lane its
+# learned steps share, and only that lane's components can run there.
+_LEARNS = {
+    "static_baseline": "are fitted once",
+    "adaptive_stream": "learn continuously",
+}
+
+
 def _validate_components(compilation: _Compilation) -> None:
     for node in compilation.definition.nodes:
         component = compilation.components.get(node.component)
@@ -198,13 +206,15 @@ def _validate_components(compilation: _Compilation) -> None:
                 "component", "Unknown component or incompatible node kind", node.id
             )
             continue
-        if (
-            compilation.legacy
-            and compilation.definition.strategy not in component.strategies
-        ):
+        lane = compilation.definition.lane
+        if lane is not None and lane not in component.strategies:
             compilation.error(
                 "strategy",
-                "Component does not support this monitoring strategy",
+                "Component does not support this monitoring strategy"
+                if compilation.legacy
+                else f"{component.label} can't run with detectors that "
+                + _LEARNS[lane]
+                + " yet.",
                 node.id,
             )
             continue

@@ -57,6 +57,7 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
     },
     "aberrant_knn": {"k": 1, "window_size": 8, "warm_up": 1},
     "aberrant_local_outlier_factor": {"k": 1, "window_size": 8},
+    "aberrant_seasonal_residual_detector": {"season_length": 4},
 }
 
 
@@ -149,7 +150,7 @@ def _record(detector, scores: list[float]) -> list[float]:
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 26
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 27
     for definition in ADAPTIVE_MODELS_BY_TYPE.values():
         spec = get_model_spec(definition["catalog_id"])
         assert spec.load()
@@ -229,6 +230,7 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
         "aberrant_half_space_trees",
         "aberrant_rolling_matrix_profile",
         "aberrant_multivariate_rolling_matrix_profile",
+        "aberrant_seasonal_residual_detector",
     ],
 )
 def test_native_pipeline_checkpoint_preserves_future_scores(model_type: str) -> None:
@@ -281,6 +283,38 @@ def test_runtime_validates_parameter_dependent_warmup_before_learning():
                 _features(2),
             )
         )
+
+
+def test_seasonal_warmup_of_two_seasons_must_fit_the_training_window():
+    with pytest.raises(ValueError, match="at least 48 updates"):
+        AdaptiveStreamDetectionService(
+            _config(
+                AdaptiveStreamConfig(
+                    model_type="aberrant_seasonal_residual_detector",
+                    model_params={"season_length": 24},
+                    training_window_size=47,
+                ),
+                _features(1),
+            )
+        )
+
+
+def test_seasonal_residual_scores_a_break_in_the_cycle_above_the_cycle():
+    pattern = [0.0, 10.0, 0.0, -10.0]
+    config = _runtime_config(
+        "aberrant_seasonal_residual_detector", training=8, calibration=4
+    )
+    detector = AdaptiveStreamDetectionService(config)
+    scores = [
+        detector.process_data_point({"x0": 100.0 + pattern[index % 4]}).anomaly_score
+        for index in range(40)
+    ]
+    # The reading arrives where the cycle expects its trough.
+    spike = detector.process_data_point({"x0": 110.0})
+
+    assert detector.state is AdaptiveStreamState.OPERATIONAL
+    assert max(scores[12:]) < 0.5
+    assert spike.anomaly_score > 10 * max(scores[12:], default=0.0) + 1
 
 
 def test_pca_initialization_cannot_be_shortened_by_model_warmup():

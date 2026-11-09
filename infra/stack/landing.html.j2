@@ -868,7 +868,8 @@
     .header-statement { color:#d6d6d3; font-size:10px; letter-spacing:.04em; }
     .wordmark { font-size:22px; }
     .hero { color:#141615; background:#e5e5e2; overflow:hidden; }
-    .hero-photo { position:relative; margin:0; aspect-ratio:8 / 5; min-height:0; }
+    /* Clear the header reflection on wide screens without lifting mobile connectors into it. */
+    .hero-photo { position:relative; margin:clamp(-16px, calc(40px - 4vw), 0px) 0 0; aspect-ratio:8 / 5; min-height:0; }
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:50% 45%; }
     .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:24px; background:linear-gradient(transparent, #e5e5e2); }
     .photo-caption { position:absolute; z-index:1; left:32px; bottom:24px; font-size:8px; letter-spacing:.08em; color:#515451; }

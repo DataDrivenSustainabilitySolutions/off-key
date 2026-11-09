@@ -29,7 +29,7 @@ function mount() {
     </div>;
   }
   const view = render(<Dock />);
-  const edge = screen.getByRole("separator", { name: "Resize explorer sidebar" });
+  const edge = screen.getByRole("separator", { name: "Resize sidebar" });
   edge.setPointerCapture = vi.fn(); edge.hasPointerCapture = vi.fn(() => true); edge.releasePointerCapture = vi.fn();
   const shell = edge.closest<HTMLElement>(".ex-shell")!;
   const pointer = { pointerId: 1, isPrimary: true, button: 0 };
@@ -41,14 +41,14 @@ describe("desktop sidebar resize", () => {
     const { edge, shell, committed, pointer } = mount();
     fireEvent.pointerDown(edge, { ...pointer, clientX: 288 });
     expect(edge.setPointerCapture).toHaveBeenCalledWith(1);
-    fireEvent.pointerMove(edge, { ...pointer, clientX: 340 });
-    fireEvent.pointerMove(edge, { ...pointer, clientX: 410 });
+    fireEvent.pointerMove(edge, { ...pointer, clientX: 300 });
+    fireEvent.pointerMove(edge, { ...pointer, clientX: 330 });
     expect(committed).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(16));
-    expect(edge.getAttribute("aria-valuenow")).toBe("410");
-    fireEvent.pointerUp(edge, { ...pointer, clientX: 420 });
-    expect(committed).toHaveBeenCalledExactlyOnceWith(420);
-    expect(shell.style.getPropertyValue("--ex-sidebar-width")).toBe("420px");
+    expect(edge.getAttribute("aria-valuenow")).toBe("330");
+    fireEvent.pointerUp(edge, { ...pointer, clientX: 344 });
+    expect(committed).toHaveBeenCalledExactlyOnceWith(344);
+    expect(shell.style.getPropertyValue("--ex-sidebar-width")).toBe("344px");
     expect(shell.classList.contains("is-resizing")).toBe(false);
     expect(edge.releasePointerCapture).toHaveBeenCalledWith(1);
     act(() => vi.runAllTimers());
@@ -90,12 +90,12 @@ describe("desktop sidebar resize", () => {
     fireEvent.keyDown(edge, { key: "ArrowLeft" });
     expect(edge.getAttribute("aria-valuenow")).toBe("336");
     fireEvent.keyDown(edge, { key: "Home" });
-    expect(edge.getAttribute("aria-valuenow")).toBe("240");
+    expect(edge.getAttribute("aria-valuenow")).toBe("224");
     fireEvent.keyDown(edge, { key: "End" });
-    expect(edge.getAttribute("aria-valuenow")).toBe("480");
+    expect(edge.getAttribute("aria-valuenow")).toBe("360");
     fireEvent.doubleClick(edge);
-    expect(committed).toHaveBeenLastCalledWith(288);
-    expect(edge.getAttribute("aria-valuenow")).toBe("288");
+    expect(committed).toHaveBeenLastCalledWith(264);
+    expect(edge.getAttribute("aria-valuenow")).toBe("264");
   });
 
   it("releases pointer capture and pending animation work when the desktop sidebar unmounts", () => {

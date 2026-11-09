@@ -2,79 +2,97 @@ import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSPr
 import * as Dialog from "@radix-ui/react-dialog";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
-import { AppHeader } from "./AppHeader";
-import { CatalogueToggle } from "../features/workspace/CatalogueToggle";
-import { WorkspaceNavigation } from "./WorkspaceNavigation";
-import { WORKSPACE_PATHS } from "../features/workspace/application-navigation";
+import { BrandHome } from "@/components/BrandHome";
 import { CatalogueProvider } from "@/features/workspace/CatalogueProvider";
 import { CatalogueDialogs } from "@/features/workspace/CatalogueDialogs";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
-import { WorkspaceCatalogue } from "@/features/workspace/WorkspaceCatalogue";
 import { ExplorerSidebarResize } from "@/features/workspace/ExplorerSidebarResize";
 import { DEFAULT_SIDEBAR_WIDTH } from "@/features/workspace/sidebarSizing";
 import "@/features/explorer/explorer.css";
 import "@/features/workspace/workspace.css";
 import { MonitoringServicesProvider } from "@/domain/monitoring/MonitoringServicesProvider";
 import { settingsSectionOf } from "@/lib/settings-navigation";
+import { AppSidebar } from "./AppSidebar";
 import { SettingsOverlay } from "./SettingsOverlay";
+import { SidebarToggle } from "./SidebarToggle";
 
+const MOBILE_QUERY = "(max-width: 760px)";
 const subscribeMobile = (listener: () => void) => {
-  const media = window.matchMedia("(max-width: 760px)");
+  const media = window.matchMedia(MOBILE_QUERY);
   media.addEventListener("change", listener);
   return () => media.removeEventListener("change", listener);
 };
-const isMobile = () => window.matchMedia("(max-width: 760px)").matches;
+const isMobile = () => window.matchMedia(MOBILE_QUERY).matches;
+/** Runs after the sidebar has rendered open, two frames later. */
+const afterLayout = (action: () => void) => requestAnimationFrame(() => requestAnimationFrame(action));
 
 function WorkspaceFrame() {
-  const { preferences, setPreferences, sectionHref, dialog, stored, favouritesError } = useCatalogue();
+  const { preferences, setPreferences, dialog, stored, favouritesError } = useCatalogue();
   const { pathname, search } = useLocation();
   const mobile = useSyncExternalStore(subscribeMobile, isMobile, () => false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const toggle = useRef<HTMLButtonElement>(null);
-  const mobileDrawer = useRef<HTMLDivElement>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const open = mobile ? drawerOpen : preferences.sidebarOpen;
+  const show = useRef<HTMLButtonElement>(null);
+  const hide = useRef<HTMLButtonElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLDivElement>(null);
   useEffect(() => { if (main.current) main.current.scrollTop = 0; }, [pathname]);
+
+  const setDesktopOpen = (sidebarOpen: boolean) => {
+    setPreferences(previous => ({ ...previous, sidebarOpen }));
+    // Keep focus on the control that now toggles the sidebar.
+    afterLayout(() => (sidebarOpen ? hide : show).current?.focus());
+  };
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
-      if (mobile ? mobileOpen : preferences.sidebarOpen) return;
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k" || event.altKey || event.shiftKey) return;
       event.preventDefault();
-      if (mobile) setMobileOpen(true);
-      else setPreferences(previous => ({ ...previous, sidebarOpen: true }));
-      requestAnimationFrame(() => requestAnimationFrame(() => window.document.querySelector<HTMLInputElement>(".ex-search input")?.focus()));
+      if (mobile) setDrawerOpen(true);
+      else if (!preferences.sidebarOpen) setPreferences(previous => ({ ...previous, sidebarOpen: true }));
+      const focus = () => { searchInput.current?.focus(); searchInput.current?.select(); };
+      if (open) focus();
+      else afterLayout(focus);
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [mobile, mobileOpen, preferences.sidebarOpen, setPreferences]);
-  return <div className={`ex-shell app-catalogue-shell${!mobile && !preferences.sidebarOpen ? " ex-sidebar-hidden" : ""}`}
-    style={{ "--ex-sidebar-width": `${preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}px` } as CSSProperties}>
-    <AppHeader navigation={<WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} />} />
-    <div className="app-catalogue-workspace">
-      {!mobile && <aside className="ex-sidebar-dock app-catalogue-sidebar" inert={!preferences.sidebarOpen} aria-hidden={!preferences.sidebarOpen}>
-        <div className="app-catalogue-sidebar-content"><WorkspaceCatalogue /></div>
-        {preferences.sidebarOpen && <ExplorerSidebarResize width={preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH}
-          onCommit={sidebarWidth => setPreferences(previous => ({ ...previous, sidebarWidth }))} />}
-      </aside>}
-      <CatalogueToggle ref={toggle} className="catalogue-workspace-toggle" open={mobile ? mobileOpen : preferences.sidebarOpen}
-        hidden={mobile && mobileOpen} onClick={() => mobile ? setMobileOpen(true)
-          : setPreferences(previous => ({ ...previous, sidebarOpen: !previous.sidebarOpen }))} />
-      <div ref={main} className="ex-main app-catalogue-main">
+  }, [mobile, open, preferences.sidebarOpen, setPreferences]);
+
+  const width = preferences.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
+  return <div className={`ex-shell app-shell${!mobile && !preferences.sidebarOpen ? " is-sidebar-hidden" : ""}`}
+    style={{ "--ex-sidebar-width": `${width}px` } as CSSProperties}>
+    {!mobile && <aside className="ex-sidebar-dock app-sidebar-dock" aria-label="Sidebar" inert={!preferences.sidebarOpen}>
+      <AppSidebar onHide={() => setDesktopOpen(false)} hideRef={hide} searchRef={searchInput} />
+      {preferences.sidebarOpen && <ExplorerSidebarResize width={width}
+        onCommit={sidebarWidth => setPreferences(previous => ({ ...previous, sidebarWidth }))} />}
+    </aside>}
+    <div className="app-main-column">
+      {(mobile || !preferences.sidebarOpen) && <header className="app-topbar" data-testid="application-topbar">
+        <SidebarToggle ref={show} open={false} onClick={() => mobile ? setDrawerOpen(true) : setDesktopOpen(true)} />
+        <BrandHome />
+      </header>}
+      <div ref={main} className="ex-main app-main">
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}
         <Suspense fallback={<p className="workspace-loading" role="status">Loading page…</p>}><Outlet /></Suspense>
       </div>
     </div>
-    <Dialog.Root open={mobile && mobileOpen} onOpenChange={setMobileOpen}><Dialog.Portal><Dialog.Overlay className="ex-dialog-overlay app-catalogue-mobile-overlay" />
-      <Dialog.Content ref={mobileDrawer} className="ex-mobile-sidebar app-catalogue-mobile-sidebar"
-        onOpenAutoFocus={event => { event.preventDefault(); mobileDrawer.current?.focus(); }}
-        onCloseAutoFocus={event => { event.preventDefault(); setMobileOpen(false); if (!dialog && !settingsSectionOf(search)) toggle.current?.focus(); }}>
-        <Dialog.Title className="ex-sr-only">MQTT catalogue</Dialog.Title>
-        <Dialog.Description className="ex-sr-only">Browse brokers, devices, topics and readings for the current section.</Dialog.Description>
-        <WorkspaceCatalogue onDismiss={() => setMobileOpen(false)} />
+    <Dialog.Root open={mobile && drawerOpen} onOpenChange={setDrawerOpen}><Dialog.Portal>
+      <Dialog.Overlay className="ex-dialog-overlay app-drawer-overlay" />
+      <Dialog.Content ref={drawer} className="ex-mobile-sidebar app-drawer"
+        onOpenAutoFocus={event => { event.preventDefault(); drawer.current?.focus(); }}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          // A settings overlay or editor opened from the drawer takes focus instead.
+          if (!dialog && !settingsSectionOf(search)) show.current?.focus();
+        }}>
+        <Dialog.Title className="ex-sr-only">Navigation</Dialog.Title>
+        <Dialog.Description className="ex-sr-only">Workspaces, favourites, collections and the catalogue of brokers, devices, topics and readings.</Dialog.Description>
+        <AppSidebar drawer onHide={() => setDrawerOpen(false)} onNavigate={() => setDrawerOpen(false)} searchRef={searchInput} />
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>
     <SettingsOverlay />
-    <CatalogueDialogs toggle={toggle} />
+    <CatalogueDialogs toggle={show} />
   </div>;
 }
 

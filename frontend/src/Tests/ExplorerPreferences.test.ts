@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createDefaultExplorerPreferences,
   loadExplorerPreferences,
+  MAX_EXPANDED_NODES,
   MAX_EXPLORER_PREFERENCE_BYTES,
   saveExplorerPreferences,
   type ExplorerPreferences,
@@ -11,8 +12,8 @@ const key = (account: string | number | null = "alice") =>
   `aberration:explorer:v1:${account ?? "local"}`;
 const preferences = (): ExplorerPreferences => ({
   version: 1,
-  scopeKey: 'topic:["broker:one","telemetry/0"]',
   sidebarOpen: false,
+  expanded: ['["connection","broker:one"]', '["topic","[\\"connection\\",\\"broker:one\\"]","telemetry"]'],
 });
 describe("explorer preference persistence", () => {
   it("reads favourites an earlier version kept, per account, so they can move to the server", () => {
@@ -31,7 +32,7 @@ describe("explorer preference persistence", () => {
   });
 
   it("persists sidebar width per account without replacing existing navigation", () => {
-    const saved = { ...preferences(), sidebarWidth: 416 };
+    const saved = { ...preferences(), sidebarWidth: 344 };
     expect(saveExplorerPreferences("alice", saved)).toBe(true);
     expect(loadExplorerPreferences("alice")).toEqual(saved);
     expect(loadExplorerPreferences("bob").sidebarWidth).toBeUndefined();
@@ -56,7 +57,7 @@ describe("explorer preference persistence", () => {
     expect(loadExplorerPreferences("alice")).toEqual(preferences());
   });
 
-  it.each([[20, 240], [900, 480], [333.4, 333]])("bounds stored sidebar widths without losing the rest of the preferences", (width, expected) => {
+  it.each([[20, 224], [900, 360], [333.4, 333]])("bounds stored sidebar widths without losing the rest of the preferences", (width, expected) => {
     localStorage.setItem(key(), JSON.stringify({ ...preferences(), sidebarWidth: width }));
     expect(loadExplorerPreferences("alice")).toEqual({ ...preferences(), sidebarWidth: expected });
   });
@@ -73,7 +74,7 @@ describe("explorer preference persistence", () => {
     expect(loadExplorerPreferences("bob")).toEqual(createDefaultExplorerPreferences());
     expect(loadExplorerPreferences(null)).toEqual(createDefaultExplorerPreferences());
 
-    const local = { ...createDefaultExplorerPreferences(), scopeKey: "local-scope" };
+    const local = { ...createDefaultExplorerPreferences(), expanded: ["local-branch"] };
     expect(saveExplorerPreferences(null, local)).toBe(true);
     expect(localStorage.getItem(key(null))).not.toBeNull();
     expect(loadExplorerPreferences("alice")).toEqual(alice);
@@ -104,9 +105,32 @@ describe("explorer preference persistence", () => {
     JSON.stringify({ ...preferences(), scopeKey: "" }),
     JSON.stringify({ ...preferences(), scopeKey: "path\ncontrol" }),
     JSON.stringify({ ...preferences(), scopeKey: "x".repeat(4097) }),
+    JSON.stringify({ version: 1 }),
   ])("recovers a usable default from invalid storage", (saved) => {
     localStorage.setItem(key(), saved);
     expect(loadExplorerPreferences("alice")).toEqual(createDefaultExplorerPreferences());
+  });
+
+  it("remembers open branches, the applied collection and folded categories, dropping malformed entries", () => {
+    localStorage.setItem(key(), JSON.stringify({ ...preferences(), expanded: ["one", "", "one", "bad\ncontrol", 4, "two"],
+      collection: "building-a", collapsedSections: ["collections", "unknown", "favourites"] }));
+    expect(loadExplorerPreferences("alice")).toEqual({ ...preferences(), expanded: ["one", "two"], collection: "building-a",
+      collapsedSections: ["favourites", "collections"] });
+  });
+
+  it("bounds the open branches it keeps to the most recent ones", () => {
+    const expanded = Array.from({ length: MAX_EXPANDED_NODES + 10 }, (_, position) => `branch-${position}`);
+    expect(saveExplorerPreferences("alice", { ...preferences(), expanded })).toBe(true);
+    const saved = loadExplorerPreferences("alice").expanded!;
+    expect(saved).toHaveLength(MAX_EXPANDED_NODES);
+    expect(saved[saved.length - 1]).toBe(`branch-${MAX_EXPANDED_NODES + 9}`);
+  });
+
+  it("reads where the earlier drill-down sidebar stood so the tree can reveal it", () => {
+    localStorage.setItem(key(), JSON.stringify({ version: 1, sidebarOpen: true, scopeKey: '["device",null,"pump"]' }));
+    expect(loadExplorerPreferences("alice")).toEqual({ version: 1, sidebarOpen: true, scopeKey: '["device",null,"pump"]' });
+    localStorage.setItem(key(), JSON.stringify({ version: 1, sidebarOpen: true, scopeKey: "catalogue:building-a" }));
+    expect(loadExplorerPreferences("alice")).toEqual({ version: 1, sidebarOpen: true, collection: "building-a" });
   });
 
   it("bounds reads by UTF-8 bytes before parsing", () => {
@@ -122,7 +146,7 @@ describe("explorer preference persistence", () => {
   it("does not overwrite good preferences when an invalid save is rejected", () => {
     const original = preferences();
     saveExplorerPreferences("alice", original);
-    expect(saveExplorerPreferences("alice", { ...original, scopeKey: "" })).toBe(false);
+    expect(saveExplorerPreferences("alice", { ...original, sidebarOpen: "yes" as unknown as boolean })).toBe(false);
     expect(loadExplorerPreferences("alice")).toEqual(original);
   });
 

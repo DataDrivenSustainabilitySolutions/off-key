@@ -1,119 +1,151 @@
 import { useNow } from "@/hooks/use-now";
-import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Box, ChevronRight, Circle, Cpu, Folder } from "lucide-react";
+import { Box, ChevronRight, Circle, Cpu, Folder, FolderInput } from "lucide-react";
 import type { ExplorerNode } from "@/domain/system/navigationIndex";
 import { isReadingLeaf, readingActivity, type ReadingActivitySource } from "@/domain/system/readingActivity";
+import type { CatalogueRow } from "./catalogue-tree";
 
-export type ExplorerRow = { node: ExplorerNode; label: string; detail?: string; color?: string };
-export type ListPosition = { offset: number; focused?: string };
+export type ListPosition = { offset: number };
 type Props = {
-  rows: ExplorerRow[];
+  rows: CatalogueRow[];
+  /** Identifies what the list shows (the tree, a collection, a search); each keeps its own scroll position. */
   viewKey: string;
   positions: Map<string, ListPosition>;
+  /** The source the page shows, which is not necessarily the focused or expanded row. */
   selectedKey: string | null;
   onOpen: (node: ExplorerNode) => void;
-  onBack: () => void;
-  onBrowse?: (node: ExplorerNode) => void;
+  /** Shows or hides a row's children. Expanding never changes the selected source. */
+  onToggle?: (row: CatalogueRow) => void;
   activity?: ReadingActivitySource;
   emptyMessage?: string;
   emptyAction?: { label: string; onClick: () => void };
 };
 
+const TREE_ROW = 32;
+const SEARCH_ROW = 48;
 const subscribeNothing = () => () => {};
 const noStatus = () => undefined;
-export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onBack, onBrowse, activity, emptyMessage = "No items here.", emptyAction }: Props) {
+const icons = { connection: Box, device: Cpu, unassigned: FolderInput } as const;
+
+/**
+ * The sidebar's catalogue rows, virtualized for large catalogues. Rows are a
+ * list of buttons with one tab stop; arrow keys move between them and open or
+ * close branches like a file tree, while Enter shows the row's source.
+ */
+export function ExplorerList({ rows, viewKey, positions, selectedKey, onOpen, onToggle, activity, emptyMessage = "No items here.", emptyAction }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
   const activityId = useId();
   const liveStatus = useSyncExternalStore(activity?.telemetry.subscribeUpdates ?? subscribeNothing, activity?.telemetry.getStatus ?? noStatus);
-  const position = positions.get(viewKey);
+  const search = viewKey.startsWith("search:");
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   // Keep this imperative viewport adapter outside React Compiler memoization.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length, getScrollElement: () => scroll.current,
-    estimateSize: () => 72, overscan: 6, initialOffset: position?.offset ?? 0,
+    estimateSize: () => search ? SEARCH_ROW : TREE_ROW, overscan: 8, initialOffset: positions.get(viewKey)?.offset ?? 0,
     getItemKey: (index) => rows[index]!.node.key,
   });
   const items = virtualizer.getVirtualItems();
   const hasIndicators = !!activity && items.some(item => isReadingLeaf(rows[item.index]!.node));
   const now = useNow(1000, hasIndicators);
+
+  // Each view returns to where it was left: clearing a search restores the tree
+  // as it was, unless the search chose a source, which the tree then reveals.
   const previousKey = useRef(viewKey);
-  // Pending restoration survives re-renders of the same view (new rows, a clock
-  // tick) and is cancelled only by the next view change or unmount.
-  const restoration = useRef<number[]>([]);
-  useEffect(() => () => restoration.current.forEach(cancelAnimationFrame), []);
+  const frame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
   useLayoutEffect(() => {
-    if (previousKey.current !== viewKey) {
-      restoration.current.forEach(cancelAnimationFrame);
-      const reveal = previousKey.current.startsWith("search:") || previousKey.current.startsWith("catalogue:");
-      const revealIndex = reveal ? rows.findIndex((row) => row.node.key === selectedKey) : -1;
-      previousKey.current = viewKey;
-      const saved = positions.get(viewKey);
-      const focusOrigin = document.activeElement;
-      restoration.current = [requestAnimationFrame(() => {
-        if (revealIndex >= 0) virtualizer.scrollToIndex(revealIndex, { align: "auto" });
-        else virtualizer.scrollToOffset(saved?.offset ?? 0);
-        if (viewKey.startsWith("search:")) return;
-        restoration.current = [requestAnimationFrame(() => {
-          // A later focus choice takes precedence over deferred restoration.
-          if (document.activeElement !== focusOrigin && document.activeElement !== document.body) return;
-          const focusedIndex = revealIndex >= 0 ? revealIndex : rows.findIndex((row) => row.node.key === saved?.focused);
-          const offset = scroll.current?.scrollTop ?? saved?.offset ?? 0;
-          const visible = virtualizer.getVirtualItems().filter((item) => item.start + item.size > offset
-            && item.start < offset + (scroll.current?.clientHeight || 360));
-          const targetIndex = visible.some((item) => item.index === focusedIndex) ? focusedIndex : visible[0]?.index;
-          const target = targetIndex !== undefined ? scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${targetIndex}"]`) : null;
-          target?.focus({ preventScroll: true });
-        })];
-      })];
-    }
+    if (previousKey.current === viewKey) return;
+    const fromSearch = previousKey.current.startsWith("search:");
+    previousKey.current = viewKey;
+    cancelAnimationFrame(frame.current);
+    const offset = positions.get(viewKey)?.offset ?? 0;
+    const revealIndex = fromSearch ? rows.findIndex(row => row.node.key === selectedKey) : -1;
+    frame.current = requestAnimationFrame(() => {
+      virtualizer.scrollToOffset(offset);
+      if (revealIndex >= 0) virtualizer.scrollToIndex(revealIndex, { align: "auto" });
+    });
   }, [viewKey, virtualizer, positions, rows, selectedKey]);
+
+  // A source chosen elsewhere (a deep link, the page, a favourite) is revealed
+  // once its branch is open, without moving focus.
+  const revealed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedKey || revealed.current === selectedKey) return;
+    const index = rows.findIndex(row => row.node.key === selectedKey);
+    if (index < 0) return;
+    revealed.current = selectedKey;
+    virtualizer.scrollToIndex(index, { align: "auto" });
+  }, [selectedKey, rows, virtualizer]);
+
   const focusRow = (index: number) => {
     const bounded = Math.max(0, Math.min(rows.length - 1, index));
     virtualizer.scrollToIndex(bounded, { align: "auto" });
+    setActiveKey(rows[bounded]?.node.key ?? null);
     requestAnimationFrame(() => scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${bounded}"]`)?.focus());
   };
   const keyboard = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const row = rows[index]!;
     const movements: Record<string, number> = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: rows.length - 1 };
     if (event.key in movements) {
       event.preventDefault(); focusRow(movements[event.key]!);
-    } else if (event.key === "ArrowLeft") {
-      event.preventDefault(); onBack();
-    } else if (event.key === "ArrowRight") {
+    } else if (event.key === "ArrowRight" && row.expandable) {
       event.preventDefault();
-      const node = rows[index]!.node;
-      (onBrowse && node.children.length ? onBrowse : onOpen)(node);
+      if (row.expanded) focusRow(index + 1);
+      else onToggle?.(row);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      if (row.expanded) { onToggle?.(row); return; }
+      for (let parent = index - 1; parent >= 0; parent -= 1) {
+        if (rows[parent]!.depth < row.depth) { focusRow(parent); return; }
+      }
     }
   };
+  // One tab stop: the row last focused, else the selected row, else the first one shown.
+  const shown = items.map(item => rows[item.index]!.node.key);
+  const tabbable = [activeKey, selectedKey].find(key => key && shown.includes(key)) ?? shown[0];
+
   return <div className="ex-list-scroll" ref={scroll} onScroll={(event) => {
     if (positions.size > 256 && !positions.has(viewKey)) positions.delete(positions.keys().next().value!);
-    positions.set(viewKey, { ...positions.get(viewKey), offset: event.currentTarget.scrollTop });
+    positions.set(viewKey, { offset: event.currentTarget.scrollTop });
   }}>
-    <ul key={viewKey} className={`ex-list${viewKey.startsWith("search:") ? " is-search" : ""}`} aria-label="Catalogue items" style={{ height: virtualizer.getTotalSize() }}>
+    <ul key={viewKey} className={`ex-list${search ? " is-search" : ""}`} aria-label={search ? "Search results" : "Catalogue items"}
+      style={{ height: virtualizer.getTotalSize() }}>
       {items.map((item) => {
         const row = rows[item.index]!;
         const node = row.node;
-        const Icon = node.kind === "connection" ? Box : node.kind === "device" ? Cpu : Folder;
+        const Icon = node.kind in icons ? icons[node.kind as keyof typeof icons] : Folder;
         const indicator = isReadingLeaf(node) ? readingActivity(node, activity, liveStatus, now) : undefined;
         const descriptionId = `${activityId}-${item.index}`;
-        return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement}
+        const selected = selectedKey === node.key;
+        return <li key={item.key} data-index={item.index} ref={virtualizer.measureElement} aria-level={row.depth + 1}
           style={{ position: "absolute", width: "100%", transform: `translateY(${item.start}px)` }}>
-          <div className="ex-row-container"><button className={`ex-row${selectedKey === node.key ? " is-selected" : ""}`} data-row={item.index}
-            aria-current={selectedKey === node.key ? "true" : undefined}
-            aria-label={`${row.label}${node.children.length ? ", open" : ", preview"}`}
-            aria-describedby={indicator ? descriptionId : undefined}
-            title={row.label} onClick={() => onOpen(node)} onKeyDown={(event) => keyboard(event, item.index)}
-            onFocus={() => positions.set(viewKey, { offset: scroll.current?.scrollTop ?? 0, focused: node.key })}>
-            <span className={`ex-row-icon${indicator ? " ex-reading-activity" : ""}`} title={indicator?.label}
-              style={!indicator && row.color ? { color: row.color } : undefined}>
-              {indicator ? <><Circle size={16} strokeWidth={1.6} fill={indicator.receiving ? "currentColor" : "none"} aria-hidden="true" />
-                <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></> : <Icon size={16} strokeWidth={1.6} />}
-            </span>
-            <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
-              <span className="ex-row-detail">{row.detail ?? (node.kind === "connection" || node.kind === "device" ? `${node.streamIds.length} readings` : node.children.length ? `${node.children.length} items` : "Reading")}</span>
-            </span>
-            {!onBrowse && node.children.length > 0 && <ChevronRight className="ex-row-arrow" size={14} />}
-          </button>{onBrowse && node.children.length > 0 && <button className="ex-browse" aria-label={`Browse children of ${row.label}`} onClick={() => onBrowse(node)}><ChevronRight size={16} /></button>}</div>
+          <div className={`ex-row-container${selected ? " is-selected" : ""}`} style={{ "--ex-depth": row.depth } as CSSProperties}>
+            {row.expandable && onToggle
+              ? <button type="button" className="ex-disclosure" tabIndex={-1} aria-expanded={row.expanded}
+                aria-label={`${row.expanded ? "Collapse" : "Expand"} ${row.label}`} onClick={() => onToggle(row)}>
+                <ChevronRight size={14} aria-hidden="true" />
+              </button>
+              : <span className="ex-disclosure" aria-hidden="true" />}
+            <button type="button" className={`ex-row${selected ? " is-selected" : ""}`} data-row={item.index}
+              tabIndex={node.key === tabbable ? 0 : -1}
+              aria-current={selected ? "true" : undefined}
+              aria-expanded={row.expandable && onToggle ? row.expanded : undefined}
+              aria-label={`${row.label}${node.children.length ? ", open" : ", preview"}`}
+              aria-describedby={indicator ? descriptionId : undefined}
+              title={row.path} onClick={() => { setActiveKey(node.key); onOpen(node); }} onKeyDown={(event) => keyboard(event, item.index)}
+              onFocus={() => setActiveKey(node.key)}>
+              <span className={`ex-row-icon${indicator ? " ex-reading-activity" : ""}`} title={indicator?.label}
+                style={!indicator && row.color ? { color: row.color } : undefined}>
+                {indicator ? <><Circle size={16} strokeWidth={1.6} fill={indicator.receiving ? "currentColor" : "none"} aria-hidden="true" />
+                  <span id={descriptionId} className="ex-sr-only">{indicator.label}</span></> : <Icon size={16} strokeWidth={1.6} aria-hidden="true" />}
+              </span>
+              <span className="ex-row-text"><span className="ex-row-label">{row.label}</span>
+                {row.detail && <span className="ex-row-detail">{row.detail}</span>}
+              </span>
+            </button>
+          </div>
         </li>;
       })}
     </ul>

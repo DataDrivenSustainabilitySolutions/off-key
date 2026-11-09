@@ -31,33 +31,81 @@ Use this page for account, device, favourites, monitoring-service, and anomaly w
 
 ## Workspace navigation
 
-The catalogue opens and closes from the small handle on its upper edge. Desktop
-collapse restores the full content width while preserving search, navigation and
-the saved panel width. On mobile the catalogue overlays the page below the header;
-its edge handle, Escape or the backdrop closes it and restores focus. Ctrl/Cmd+K
-opens the catalogue and focuses search in either layout.
+All navigation lives in one sidebar on the left; there is no top navigation bar.
+From top to bottom it holds:
 
-**Monitoring**, **Sources**, and **Reporting** are always available in the navbar,
-including on mobile. The left sidebar contains one MQTT catalogue of brokers,
-devices, topics and readings. Selecting a row scopes the current section; its
-chevron browses the next level. Switching sections keeps the source selected and
-retains the catalogue's search, branch and scroll position.
+- **Aberration** (the logo), which returns to dashboard home, and the
+  **Hide sidebar** control.
+- **Workspace**: **Monitoring**, **Sources**, **Reporting** and, for roles with
+  the Dojo permission, **Dojo**. The current workspace is highlighted. Device
+  details opened from a report keep **Reporting** highlighted. Pipelines and
+  datasets stay where they were: in Monitoring and in Dojo.
+- **Favourites**: your starred readings and devices, when you have any.
+- **Collections**: the catalogue's shared collections, when it has any.
+- **Catalogue**: search and a tree of brokers, devices, MQTT topic levels and
+  readings.
+- **Settings** and your account at the bottom. They stay in view however long the
+  catalogue is.
 
-Monitoring shows services for the selected source and previews selected readings.
-Sources shows source metadata and recording configuration. Selecting a device
-there lists its readings; choose one to configure recording. Reporting shows
-events involving the selected source. **All sources** clears this filter without
-moving the sidebar. The folder-and-hierarchy icon beside the sidebar count,
-**Back to catalogue**, returns to the root and clears the search and source filter.
-At the root it also scrolls the broker list to the top.
+Favourites and Collections fold away from their headings, and the sidebar
+remembers which are folded.
 
-**Collections** opens named sets of related brokers, devices and readings in the
-same sidebar. Collections are shared parts of the catalogue. Inside a branch,
-the heading still opens the current path so you can jump to an ancestor.
+![The sidebar beside Monitoring: Workspace links with Monitoring highlighted, Favourites with the chosen Air temperature reading highlighted, Collections with Lab benches applied, the Catalogue narrowed to that collection, and Settings and the account at the bottom.](../assets/web-app/sidebar-desktop-light.png)
 
-The logo returns to dashboard home. The catalogue button beside it hides/reopens the desktop sidebar or
-opens the mobile drawer. The section links remain in the navbar. A selected source
-is included in the URL, so links and browser back/forward retain that context.
+### Choosing a source
+
+Selecting a catalogue row, or a favourite, chooses that broker, device, topic or
+reading as the source for the current workspace. Monitoring shows its services
+and previews a reading. Sources shows its metadata and recording configuration;
+a selected device lists its readings so you can configure one. Reporting shows
+events involving it. The chosen row is highlighted in the sidebar.
+**Show all sources** on the page clears the choice.
+
+Choosing a branch also opens it. Opening or closing a branch with its chevron
+changes only what the tree shows, never the chosen source. The source is part of
+the URL, so links, reloads and the browser's Back and Forward buttons keep it.
+Workspace links carry it from one workspace to the next.
+
+### Browsing the catalogue
+
+Brokers contain their devices, and devices may contain other devices. Below them
+come MQTT topic levels. A level without branches is shown as one row, such as
+`weather/roof`. Readings show their display name and unit; hover a row for its
+full name and MQTT address. Readings a broker receives without a device sit
+directly under the broker. Readings that have not received anything recently
+stay in the tree.
+
+Search matches names, identifiers, units and full MQTT paths. Results are a flat
+list, each with its topic and the device or broker it belongs to. Typing never
+changes the chosen source. Clear the search (Escape in the field) to return to the
+tree as you left it, with the same open branches and scroll position.
+Ctrl+K (Cmd+K on a Mac) opens the sidebar if needed and focuses search.
+
+In the tree, Up and Down move between rows, Home and End jump to the first and
+last row, Right opens a branch or moves into it, Left closes it or moves to its
+parent, and Enter chooses the row. **Collapse all** closes every branch.
+
+Choosing a collection narrows the tree to that collection's members. The tree
+then shows **In** followed by the collection's name, and **Show every source**
+(×) returns to the whole catalogue. Choosing a collection does not change the
+chosen source.
+
+### Showing and hiding the sidebar
+
+**Hide sidebar** gives the page the full width; **Show sidebar** at the top left
+brings the sidebar back. Drag the sidebar's right edge to resize it, or focus the
+edge and use the arrow keys. Double-click the edge to restore the default width.
+The width, whether the sidebar is shown, open branches, folded categories, the
+chosen collection and the **Recently active** filter are remembered for your
+account in this browser. If browser storage is unavailable, they last for the
+session.
+
+On phones, **Show sidebar** opens the same sidebar as a drawer. Choosing a
+workspace or source closes it. **Close navigation**, Escape or a tap outside also
+closes it, and focus returns to **Show sidebar**.
+
+![The dark theme with a broker and a long topic branch open in the catalogue tree.](../assets/web-app/sidebar-desktop-dark.png){ width="640" }
+![The phone drawer with the catalogue scrolled into view and Settings and the account still at the bottom.](../assets/web-app/sidebar-mobile-light.png){ width="240" }
 
 ## Authentication workflow
 
@@ -80,8 +128,8 @@ holds all of them. Controls a role does not cover stay hidden.
 
 ## Settings and system status
 
-Open **Menu → Settings → Appearance** to choose **Light**, **Dark**, or
-**Follow system**. Changes apply immediately and are saved in this browser on
+Open **Settings** at the bottom of the sidebar (or **Preferences** in the account
+menu) to choose **Light**, **Dark**, or **Follow system** under **Appearance**. Changes apply immediately and are saved in this browser on
 this device. Follow system also responds to changes in the device's appearance.
 Settings opens over the current page, preserving your workspace and unsaved input.
 Close it with the close button or Escape to return to the page.
@@ -93,15 +141,17 @@ you to that page as you left it. The open section is part of the address, for
 example `/sources?settings=status`, so it can be linked to and survives a reload.
 Switching sections does not add browser history.
 
-Open **Menu → System status** for live collection diagnostics, database size and
+Open **System status** from the account menu for live collection diagnostics, database size and
 retention information. Collection status refreshes automatically every three
 seconds; **Refresh storage** requests updated database measurements. The former
 `/system/status` and `/account/settings` links open this section above Monitoring.
 
-**Menu → Account** shows who is signed in and, for members who manage members, member access and roles.
-Catalogue configuration opens from **Catalogue settings** at the bottom of the
-catalogue sidebar as the overlay's Catalogue section; adding or editing an entry
-opens the editor on top of it.
+Select your email at the bottom of the sidebar to open the account menu with
+**Account**, **Preferences**, **Catalogue**, **System status** and **Log out**.
+**Account** shows who is signed in and, for members who manage members, member
+access and roles. **Catalogue** opens catalogue configuration; adding or editing
+an entry opens the editor on top of it. An empty catalogue also offers **Open
+catalogue settings** in the sidebar.
 
 ## Readings and telemetry workflow
 
@@ -123,14 +173,14 @@ background recording. A filled circle means a fresh message arrived in the last
 listening; hover or focus the row to see its description. Retained snapshots and
 stored history do not count as fresh traffic. Browsing alone starts no collection.
 
-The **Recently active** filter icon beside **Back to catalogue** keeps filled-circle
-readings and the paths leading to them. It also filters search, collections and reading
-favourites, updates as traffic starts or becomes stale, and remembers your choice in
-this browser. Turn it off to show the full catalogue again. Filtering keeps the
-current source selected and does not start a connection or change recording.
-An empty filtered list shows **No active topics** with an underlined **Show all
-topics** action beneath it. This turns off the online filter and keeps your
-current folder, search and source selection.
+The **Recently active** filter icon beside the **Catalogue** heading keeps
+filled-circle readings and the paths leading to them. It also filters search and
+the members of a chosen collection, updates as traffic starts or becomes stale, and
+remembers your choice in this browser. Favourites stay listed. Turn it off to show
+the full catalogue again. Filtering keeps the current source selected and does not
+start a connection or change recording. An empty filtered tree shows **No recently
+active topics.** with an underlined **Show all topics** action beneath it. This
+turns off the filter and keeps your open branches, search and source selection.
 
 Configure recording under **Sources**. Broker and topic policies can cover several
 readings; review the affected scope before applying changes. Including readings
@@ -142,7 +192,8 @@ that preview. Previewing does not enable background recording.
 
 1. Star a service in Monitoring or a reading in its preview.
 2. Select **Favourites** in the Monitoring service filters to show starred services.
-3. Starred readings appear as source shortcuts in the catalogue sidebar.
+3. Starred readings and devices appear under **Favourites** in the sidebar;
+   select one to choose it as the source.
 
 Favourites belong to your account and follow you to every browser. Agents and
 scripts read and change the same list through `/v1/favorites`.

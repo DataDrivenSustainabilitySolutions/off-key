@@ -46,8 +46,9 @@ test("selects only AC1 and AC3 and preserves named template mappings on desktop 
     const editor = page.getByRole("region", { name: "Pipeline editor", exact: true });
     await openPipelineInput(editor);
     await editor.getByRole("button", { name: "Choose monitoring inputs", exact: true }).click();
-    await page.getByRole("searchbox", { name: "Search entities", exact: true }).fill(deviceId);
-    await page.getByRole("button", { name: new RegExp(deviceId) }).click();
+    const choices = page.getByRole("dialog", { name: "Choose monitoring inputs", exact: true });
+    await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(deviceId);
+    await choices.getByRole("button", { name: new RegExp(deviceId) }).click();
     await expect(editor.getByRole("combobox", { name: "Reading for AC1", exact: true })).toHaveValue(`${deviceId}:AC1`);
     await expect(editor.getByRole("combobox", { name: "Reading for AC3", exact: true })).toHaveValue(`${deviceId}:AC3`);
     await editor.getByRole("combobox", { name: "Add reading", exact: true }).selectOption(`${deviceId}:AC2`);

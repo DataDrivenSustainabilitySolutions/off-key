@@ -36,7 +36,7 @@ const enabledReadings = (document: SystemDocument, runtime: SystemRuntime | unde
 export function SourcesWorkspace() {
   const [params] = useSearchParams();
   const { system, document, index, selected, selectionMissing, streamIds, liveStreamIds, telemetry, history,
-    openEditor, selectSource, browse } = useCatalogue();
+    openEditor, selectSource, setExpanded } = useCatalogue();
   const runtime = system.snapshot?.runtime;
   const scope = useMemo(() => scopeForNode(selected), [selected]);
   // MQTT topic policies apply across the whole broker, even when reached through an entity.
@@ -145,7 +145,7 @@ export function SourcesWorkspace() {
         const reason = status.reason ?? reconnects[item.id]?.error;
         const node = index.nodes.get(index.objectKeys.get(item.id)![0]!)!;
         return <div key={item.id} className={`source-broker source-broker--${status.tone}`}>
-          <button type="button" className="source-broker-open" onClick={() => { selectSource(node); browse(node.key); }}>
+          <button type="button" className="source-broker-open" onClick={() => { selectSource(node); setExpanded(node.key, true); }}>
             <strong>{item.label}{check && <BrokerCheckMark check={check} visibleReason={reason} />}</strong></button>
           <span>{readings} {readings === 1 ? "reading" : "readings"}{enabled > 0 && readings > 1 ? ` · ${enabled} enabled` : ""}</span>
           {reason && <span className="source-broker-reason">{reason}</span>}

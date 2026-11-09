@@ -1,0 +1,16 @@
+Edited with the built-in image_gen tool from hero-engineering-v8.png. Concept photograph of a supported mixed-sensor fixture and a wireless data module.
+
+Use case: precise-object-edit
+Edit the supplied high-quality industrial photograph. Make ONE localized change: replace the FAR-RIGHT temperature probe (sixth instrument, around x71%, y70–80%) with a credible compact industrial wireless I/O radio module and its articulated antenna.
+Everything else is LOCKED: the wide upper enclosure, central controller, two support struts, lower rail, first five instruments, all their corrected perspectives, existing cable routes, light handling wear, materials, lighting, camera position, crop, pale background and overall balanced composition. Preserve the photorealistic industrial photography.
+
+Replacement at the sixth station:
+- A small slim satin-graphite wireless I/O transceiver housing, approximately the visual mass of a small industrial sensor, physically mounted to the existing rail with a modest two-screw bracket. No floating module, no support by its cable.
+- The existing sixth black signal cable enters a plausible M12 power/data connector at the TOP of the module, retaining its naturally asymmetric service loop.
+- A separate real RF connector at the BOTTOM of this module accepts a slender black rubber-duck whip antenna. Show a physically recognizable threaded SMA-style metal coupling and a proper articulated hinge at the antenna base.
+- Tilt this antenna outward to the RIGHT by approximately 20–25 degrees in the picture plane, pointing generally downward and slightly outward. The tilt comes from the mechanical hinge. The antenna shaft itself remains straight; do not snap, kink, deform, or damage it.
+- Keep the antenna slim, about the length of the original rightmost probe. Its tip should end close to, but slightly outside, the right support strut's horizontal position. Keep it inside the existing overall image margins. It should add a small intentional asymmetry, not dominate the composition.
+- The housing must look like genuine industrial radio equipment rather than a futuristic gadget. Small assembly seams and a subtle natural polymer finish; no decorative lights, oversized fins, giant logos or invented specifications.
+
+This photograph now juxtaposes real sensor forms and wireless data connectivity. It is a physically plausible assembled test fixture with a mechanically supported radio module, data/power cable and separate articulated RF antenna. The other five sensor forms remain unchanged.
+Maintain premium hyperrealistic industrial product photography: consistent metal reflections, believable contact shadows, actual machining texture, minor handling wear, natural focus. Keep symmetry in the overall framing, asymmetry in individual hardware details. No text, diagrams, labels, logos, watermark or glowing effects.

@@ -1,17 +1,33 @@
 import { constrainSidebarWidth } from "./sidebarSizing";
 import type { LegacyFavourite } from "./favourites";
 
+/** Sidebar categories that can be folded away. */
+const SIDEBAR_SECTIONS = ["favourites", "collections"] as const;
+export type SidebarSection = typeof SIDEBAR_SECTIONS[number];
+
 export interface ExplorerPreferences {
   version: 1;
-  scopeKey: string;
   sidebarOpen: boolean;
   sidebarWidth?: number;
   onlineOnly?: boolean;
+  /** Catalogue nodes whose children the sidebar tree shows. */
+  expanded?: string[];
+  /** The shared collection the catalogue tree is narrowed to. */
+  collection?: string;
+  /** Sidebar categories the member folded away. */
+  collapsedSections?: SidebarSection[];
+  /**
+   * Where an earlier, drill-down version of the sidebar stood. Read once to
+   * reveal the same place in the tree, and never written again.
+   */
+  scopeKey?: string;
   /** Favourites an earlier version kept here; they move to the account once. */
   favourites?: LegacyFavourite[];
 }
 
 export const MAX_EXPLORER_PREFERENCE_BYTES = 1_048_576;
+/** More open branches than anyone browses; keeps saved preferences small. */
+export const MAX_EXPANDED_NODES = 512;
 
 const INVALID_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -27,22 +43,35 @@ const isScopeKey = (value: unknown): value is string =>
   !/\p{Cc}/u.test(value);
 
 export function createDefaultExplorerPreferences(): ExplorerPreferences {
-  return { version: 1, scopeKey: "system", sidebarOpen: true };
+  return { version: 1, sidebarOpen: true };
 }
+
+const LEGACY_COLLECTION = "catalogue:";
 
 function validatedPreferences(value: unknown): ExplorerPreferences | undefined {
   if (
     !isRecord(value) ||
     value.version !== 1 ||
-    !isScopeKey(value.scopeKey) ||
+    (value.scopeKey !== undefined && !isScopeKey(value.scopeKey)) ||
     typeof value.sidebarOpen !== "boolean"
   )
     return;
+  // The drill-down sidebar kept a collection as its location.
+  const legacyCollection = typeof value.scopeKey === "string" && value.scopeKey.startsWith(LEGACY_COLLECTION)
+    ? value.scopeKey.slice(LEGACY_COLLECTION.length) : undefined;
+  const collection = isId(value.collection) ? value.collection : isId(legacyCollection) ? legacyCollection : undefined;
   return {
     version: 1,
-    scopeKey: value.scopeKey,
     sidebarOpen: value.sidebarOpen,
     ...(typeof value.onlineOnly === "boolean" ? { onlineOnly: value.onlineOnly } : {}),
+    ...(Array.isArray(value.expanded) ? {
+      expanded: [...new Set(value.expanded.filter(isScopeKey))].slice(-MAX_EXPANDED_NODES),
+    } : {}),
+    ...(collection ? { collection } : {}),
+    ...(Array.isArray(value.collapsedSections) ? {
+      collapsedSections: SIDEBAR_SECTIONS.filter(section => (value.collapsedSections as unknown[]).includes(section)),
+    } : {}),
+    ...(typeof value.scopeKey === "string" && legacyCollection === undefined ? { scopeKey: value.scopeKey } : {}),
     ...(typeof value.sidebarWidth === "number" && Number.isFinite(value.sidebarWidth)
       ? { sidebarWidth: constrainSidebarWidth(value.sidebarWidth) } : {}),
     ...(Array.isArray(value.favourites) && value.favourites.length <= 256 ? {

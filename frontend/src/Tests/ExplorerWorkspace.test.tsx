@@ -68,18 +68,18 @@ async function loaded() {
 }
 async function enterReadings() {
   await loaded();
-  fireEvent.click(screen.getByRole("button", { name: "Browse children of Building broker" }));
-  fireEvent.click(screen.getByRole("button", { name: "Browse children of Room station" }));
-  fireEvent.click(screen.getByRole("button", { name: "Browse children of weather" }));
+  fireEvent.click(screen.getByRole("button", { name: "Expand Building broker" }));
+  fireEvent.click(screen.getByRole("button", { name: "Expand Room station" }));
+  fireEvent.click(screen.getByRole("button", { name: "Expand weather" }));
 }
 async function selectTemperature() {
   await enterReadings();
-  fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
+  fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
   return screen.findByRole("region", { name: "Reading preview" });
 }
 /** Catalogue settings open from the application menu. */
 async function openCatalogueSettings() {
-  fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Account menu" }), { key: "Enter" });
   fireEvent.click(await screen.findByRole("menuitem", { name: "Catalogue" }));
 }
 function fileFor(document: SystemDocument) {
@@ -214,19 +214,19 @@ describe("service-centred monitoring workspace", () => {
       : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     mount("/?reading=humidity");
     await loaded();
-    const sidebar = within(screen.getByRole("navigation", { name: "System explorer" }));
-    await sidebar.findByRole("button", { name: "humidity, preview" });
+    const sidebar = within(screen.getByRole("navigation", { name: "Catalogue" }));
+    await sidebar.findByRole("button", { name: "Relative humidity, preview" });
     const location = screen.getByTestId("location").textContent;
     const toggle = sidebar.getByRole("button", { name: "Recently active" });
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(sidebar.getByRole("button", { name: "temperature, preview" })).toBeTruthy();
-    expect(sidebar.queryByRole("button", { name: "humidity, preview" })).toBeNull();
+    expect(sidebar.getByRole("button", { name: "Air temperature, preview" })).toBeTruthy();
+    expect(sidebar.queryByRole("button", { name: "Relative humidity, preview" })).toBeNull();
     expect(screen.getByTestId("location").textContent).toBe(location);
     await waitFor(() => expect(loadExplorerPreferences(1).onlineOnly).toBe(true));
     const search = sidebar.getByRole("searchbox", { name: "Search catalogue" });
     fireEvent.change(search, { target: { value: "Relative humidity" } });
-    await sidebar.findByText("No active topics");
+    await sidebar.findByText("No recently active matches.");
     fireEvent.click(sidebar.getByRole("button", { name: "Show all topics" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect((search as HTMLInputElement).value).toBe("Relative humidity");
@@ -284,21 +284,21 @@ describe("service-centred monitoring workspace", () => {
     withServices([service(), { ...service("other", "Other service"), reading_ids: [] }]);
     const { router } = mount();
     await loaded();
-    const sidebar = screen.getByRole("navigation", { name: "System explorer" });
+    const sidebar = screen.getByRole("navigation", { name: "Catalogue" });
     const search = within(sidebar).getByRole("searchbox", { name: "Search catalogue" });
     fireEvent.change(search, { target: { value: "Room station" } });
     fireEvent.click(await within(sidebar).findByRole("button", { name: "Room station, open" }));
     await screen.findByRole("link", { name: "Room climate" });
     expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
-    const list = within(sidebar).getByRole("list", { name: "Catalogue items" });
+    const list = within(sidebar).getByRole("list", { name: "Search results" });
     fireEvent.scroll(list.parentElement!, { target: { scrollTop: 72 } });
     const selection = new URLSearchParams(router.state.location.search).get("source");
     // With a source selected, its preview carries the Sources page heading.
     for (const [section, heading] of [["Sources", "Room station"], ["Reporting", "Reporting"], ["Monitoring", "Monitoring"]]) {
       fireEvent.click(screen.getByRole("link", { name: section }));
       await screen.findByRole("heading", { name: heading, level: 1 });
-      expect(screen.getByRole("navigation", { name: "System explorer" })).toBe(sidebar);
-      expect(within(sidebar).getByRole("list", { name: "Catalogue items" })).toBe(list);
+      expect(screen.getByRole("navigation", { name: "Catalogue" })).toBe(sidebar);
+      expect(within(sidebar).getByRole("list", { name: "Search results" })).toBe(list);
       expect((search as HTMLInputElement).value).toBe("Room station");
       expect(list.parentElement!.scrollTop).toBe(72);
       expect(new URLSearchParams(router.state.location.search).get("source")).toBe(selection);
@@ -313,11 +313,11 @@ describe("service-centred monitoring workspace", () => {
     const router = makeRouter("/?service=service-one");
     render(<RouterProvider router={router} />);
     await screen.findByRole("region", { name: "Monitoring service details" });
-    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    const workspaces = within(screen.getByRole("navigation", { name: "Workspace" }));
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(workspaces.getByRole("link", { name: "Sources" }));
     await screen.findByRole("main", { name: "Sources workspace" });
-    const sourcesNavigation = within(screen.getByRole("group", { name: "Workspaces" }));
+    const sourcesNavigation = within(screen.getByRole("navigation", { name: "Workspace" }));
     expect(sourcesNavigation.getByRole("link", { name: "Sources" }).getAttribute("aria-current")).toBe("page");
     const back = sourcesNavigation.getByRole("link", { name: "Monitoring" });
     expect(back.getAttribute("href")).toBe("/?service=service-one");
@@ -376,11 +376,13 @@ describe("service-centred monitoring workspace", () => {
     expect(screen.getByRole("link", { name: "Room climate" })).toBeTruthy(); expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search monitoring services" }), { target: { value: "" } });
     await enterReadings();
-    fireEvent.click(screen.getByRole("button", { name: "Inspect current item" }));
+    // Choosing a branch row scopes the page; opening it alone did not.
+    expect(screen.getByRole("link", { name: "Other service" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "weather, open" }));
     expect(screen.queryByRole("link", { name: "Other service" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
     expect(await screen.findByRole("link", { name: "Other service" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
   });
 
   it("lists services needing attention first and counts each filter", async () => {
@@ -435,21 +437,21 @@ describe("hierarchical explorer workspace", () => {
   it("remembers sidebar width across reloads while keeping the selected reading and catalogue intact", async () => {
     const first = mount();
     const preview = await selectTemperature();
-    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize explorer sidebar" }), { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize sidebar" }), { key: "ArrowRight", shiftKey: true });
     expect(screen.getByRole("region", { name: "Reading preview" })).toBe(preview);
-    await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(352));
+    await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(328));
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([endpoint]) => endpoint === "/v1/catalogue")).toHaveLength(1);
     expect(apiUtils.put).not.toHaveBeenCalled();
     first.unmount();
     mount();
-    await screen.findByRole("button", { name: "temperature, preview" });
-    const edge = screen.getByRole("separator", { name: "Resize explorer sidebar" });
-    expect(edge.getAttribute("aria-valuenow")).toBe("352");
-    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
+    await screen.findByRole("button", { name: "Air temperature, preview" });
+    const edge = screen.getByRole("separator", { name: "Resize sidebar" });
+    expect(edge.getAttribute("aria-valuenow")).toBe("328");
+    fireEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
     expect(screen.queryByRole("separator")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show catalogue" }));
-    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize explorer sidebar" }));
-    await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(288));
+    fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize sidebar" }));
+    await waitFor(() => expect(loadExplorerPreferences(1).sidebarWidth).toBe(264));
   });
 
   it("opens a generic entity from its stable-ID directory link and clears the link when selecting a reading", async () => {
@@ -457,8 +459,8 @@ describe("hierarchical explorer workspace", () => {
     expect(await screen.findByRole("region", { name: "Entity preview" })).toBeTruthy();
     expect(screen.getByText("Entity ID").nextElementSibling?.textContent).toBe("station");
     expect(screen.getByTestId("location").textContent).toBe("?entity=station");
-    fireEvent.click(await screen.findByRole("button", { name: "Browse children of weather" }));
-    fireEvent.click(await screen.findByRole("button", { name: "temperature, preview" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand weather" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Air temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Entity preview" })).toBeNull();
     expect(new URLSearchParams(screen.getByTestId("location").textContent ?? "").has("entity")).toBe(false);
@@ -481,12 +483,12 @@ describe("hierarchical explorer workspace", () => {
   it("provides application and account navigation without leaving catalogue changes or starting telemetry", async () => {
     mount(); await loaded();
     expect(screen.queryByRole("link", { name: /Dashboard/ })).toBeNull();
-    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    const workspaces = within(screen.getByRole("navigation", { name: "Workspace" }));
     for (const [label, path] of [["Monitoring", "/"], ["Sources", "/sources"], ["Reporting", "/anomalies"]]) {
       expect(workspaces.getByRole("link", { name: label }).getAttribute("href")).toBe(path);
     }
     expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
-    fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Account menu" }), { key: "Enter" });
     for (const label of ["Account", "Preferences", "Catalogue", "System status"]) {
       expect(screen.getByRole("menuitem", { name: label }).getAttribute("aria-haspopup")).toBe("dialog");
     }
@@ -501,14 +503,16 @@ describe("hierarchical explorer workspace", () => {
     await enterReadings();
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
-    expect(screen.getByRole("button", { name: "humidity, preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
     expect(vi.mocked(apiUtils.get).mock.calls.filter(([path]) => path === "/v1/catalogue")).toHaveLength(1);
     expect(apiUtils.get).toHaveBeenCalledWith("/v1/monitors/overview", expect.objectContaining({ redirectOnUnauthorized: false }));
     expect(apiUtils.put).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back one level" }));
-    expect(screen.getByRole("button", { name: "weather, open" })).toBeTruthy();
+    // Folding a branch away changes what the tree shows, not what the page shows.
+    fireEvent.click(screen.getByRole("button", { name: "Collapse weather" }));
+    expect(screen.getByRole("button", { name: "weather, open" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Air temperature, preview" })).toBeNull();
     expect(screen.getByRole("region", { name: "Reading preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all sources" }));
     expect(screen.queryByRole("region", { name: "Reading preview" })).toBeNull();
@@ -542,17 +546,25 @@ describe("hierarchical explorer workspace", () => {
     mount(); await loaded();
     expect(screen.queryByText("Favorites")).toBeNull();
     expect(screen.getByRole("button", { name: "Building broker, open" }).querySelector<HTMLElement>(".ex-row-icon")?.style.color).toBe("");
-    fireEvent.click(screen.getByRole("button", { name: "Browse collections" }));
     expect(screen.queryByText("Personal groups")).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage personal groups" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show collection Roof" }));
+    const location = screen.getByTestId("location").textContent;
+    const roof = within(screen.getByRole("region", { name: "Collections" })).getByRole("button", { name: "Show collection Roof" });
+    fireEvent.click(roof);
+    // Applying a collection narrows the tree to its members; it does not choose a source.
+    expect(roof.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("location").textContent).toBe(location);
+    expect(screen.queryByRole("button", { name: "Building broker, open" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Room station, open" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Air temperature, preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
     const preview = await screen.findByRole("region", { name: "Reading preview" });
     expect(within(preview).queryByText("Personal groups")).toBeNull();
     expect(within(preview).queryByRole("button", { name: "Create personal group" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Air temperature, preview" }).getAttribute("aria-current")).toBe("true");
-    await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).not.toBe("personal:watch"));
+    // The reading is a member itself and also inside its member station, which opens to reveal it.
+    expect(screen.getAllByRole("button", { name: "Air temperature, preview" }).map(row => row.getAttribute("aria-current"))).toEqual(["true", "true"]);
+    await waitFor(() => expect(loadExplorerPreferences(1).collection).toBe("roof"));
+    expect(loadExplorerPreferences(1).scopeKey).toBeUndefined();
     expect(apiUtils.put).not.toHaveBeenCalled();
 
     await openCatalogueSettings();
@@ -564,26 +576,27 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(await screen.findByLabelText("Catalogue file"), { target: { files: [file] } });
     fireEvent.click(await screen.findByRole("button", { name: "Replace saved catalogue" }));
     await screen.findByText("Catalogue imported and saved.");
-    await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(buildNavigationIndex(fixture()).rootKey));
+    await waitFor(() => expect(loadExplorerPreferences(1)).toMatchObject({ expanded: [] }));
+    expect(loadExplorerPreferences(1).collection).toBeUndefined();
     expect(apiUtils.put).toHaveBeenCalledOnce();
   });
 
   it("restores navigation after reload and isolates it when the account changes", async () => {
     const first = mount(); await enterReadings();
     const topic = Array.from(buildNavigationIndex(fixture()).nodes.values()).find((node) => node.topic === "weather")!;
-    await waitFor(() => expect(loadExplorerPreferences(1).scopeKey).toBe(topic.key));
+    await waitFor(() => expect(loadExplorerPreferences(1).expanded).toContain(topic.key));
     first.unmount();
     const second = mount();
-    expect(await screen.findByRole("button", { name: "temperature, preview" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Building broker, open" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Air temperature, preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Building broker, open" }).getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByRole("heading", { name: "No monitoring services" })).toBeTruthy();
     auth.userId = 2;
     vi.mocked(apiUtils.get).mockImplementation(async endpoint => endpoint === "/v1/catalogue" ? snapshot({ ...fixture(), label: "Other account" }) : endpoint.startsWith("/v1/monitors/overview") ? { monitors: [], authoring_enabled: false } : []);
     second.rerender(<RouterProvider router={makeRouter()} />);
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
-    expect(loadExplorerPreferences(1).scopeKey).toBe(topic.key);
-    expect(loadExplorerPreferences(2).scopeKey).not.toBe(topic.key);
+    expect(screen.queryByRole("button", { name: "Air temperature, preview" })).toBeNull();
+    expect(loadExplorerPreferences(1).expanded).toContain(topic.key);
+    expect(loadExplorerPreferences(2).expanded ?? []).not.toContain(topic.key);
   });
 
   it("shows an honest signed-out state and does not fetch or enable catalogue changes", async () => {
@@ -626,51 +639,73 @@ describe("hierarchical explorer workspace", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     mount();
     expect(screen.queryByRole("separator")).toBeNull();
-    expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
-    const trigger = screen.getByRole("button", { name: "Show catalogue" });
+    expect(screen.queryByRole("navigation", { name: "Catalogue" })).toBeNull();
+    const trigger = screen.getByRole("button", { name: "Show sidebar" });
     fireEvent.click(trigger);
     await enterReadings();
-    expect(screen.getByRole("dialog", { name: "MQTT catalogue" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "temperature, preview" }));
+    expect(screen.getByRole("dialog", { name: "Navigation" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Air temperature, preview" }));
     expect(await screen.findByRole("region", { name: "Reading preview" })).toBeTruthy();
-    expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Catalogue" })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     fireEvent.click(trigger);
-    expect(await screen.findByRole("button", { name: "humidity, preview" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "temperature, preview" }).getAttribute("aria-current")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
+    expect(await screen.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Air temperature, preview" }).getAttribute("aria-current")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Close navigation" }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it("retains keyboard focus when entering and returning through hierarchy levels", async () => {
+  it("moves through the tree with arrow keys, opening and closing branches without choosing them", async () => {
     mount(); await loaded();
+    const location = screen.getByTestId("location").textContent;
     const broker = screen.getByRole("button", { name: "Building broker, open" });
-    broker.focus();
+    act(() => broker.focus());
+    fireEvent.keyDown(broker, { key: "ArrowRight" });
+    expect(broker.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(broker);
     fireEvent.keyDown(broker, { key: "ArrowRight" });
     const station = screen.getByRole("button", { name: "Room station, open" });
     await waitFor(() => expect(document.activeElement).toBe(station));
     fireEvent.keyDown(station, { key: "ArrowRight" });
+    fireEvent.keyDown(station, { key: "ArrowRight" });
     const branch = screen.getByRole("button", { name: "weather, open" });
     await waitFor(() => expect(document.activeElement).toBe(branch));
     fireEvent.keyDown(branch, { key: "ArrowRight" });
-    const reading = screen.getByRole("button", { name: "humidity, preview" });
+    fireEvent.keyDown(branch, { key: "ArrowDown" });
+    const reading = screen.getByRole("button", { name: "Relative humidity, preview" });
     await waitFor(() => expect(document.activeElement).toBe(reading));
+    expect(reading.closest("li")?.getAttribute("aria-level")).toBe("4");
+    // Only the focused row is a tab stop.
+    expect(reading.tabIndex).toBe(0);
+    expect(branch.tabIndex).toBe(-1);
     fireEvent.keyDown(reading, { key: "ArrowLeft" });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "weather, open" })));
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(screen.getByRole("button", { name: "weather, open" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Relative humidity, preview" })).toBeNull();
+    expect(screen.getByTestId("location").textContent).toBe(location);
     const search = screen.getByRole("searchbox", { name: "Search catalogue" });
     search.focus();
     fireEvent.change(search, { target: { value: "Air temperature" } });
     await screen.findByRole("button", { name: "Air temperature, preview" });
     expect(document.activeElement).toBe(search);
+    expect(screen.getByTestId("location").textContent).toBe(location);
+    // Clearing the search restores the tree as it was left.
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(await screen.findByRole("button", { name: "weather, open" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Relative humidity, preview" })).toBeNull();
+    expect(apiUtils.put).not.toHaveBeenCalled(); expect(apiUtils.post).not.toHaveBeenCalled();
   });
 
   it("opens and focuses global search when the desktop explorer is hidden", async () => {
     mount(); await loaded();
-    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
-    expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
+    const sidebar = screen.getByRole("complementary", { name: "Sidebar" });
+    expect(sidebar.hasAttribute("inert")).toBe(true);
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     const search = await screen.findByRole("searchbox", { name: "Search catalogue" });
     await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(sidebar.hasAttribute("inert")).toBe(false);
     fireEvent.change(search, { target: { value: "Relative humidity" } });
     expect(await screen.findByRole("button", { name: "Relative humidity, preview" })).toBeTruthy();
   });
@@ -681,7 +716,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     const search = await screen.findByRole("searchbox", { name: "Search catalogue" });
     await waitFor(() => expect(document.activeElement).toBe(search));
-    expect(screen.getByRole("dialog", { name: "MQTT catalogue" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Navigation" })).toBeTruthy();
   });
 
   it("imports a reviewed definition with its selected revision and resets navigation after acknowledgement", async () => {
@@ -694,7 +729,7 @@ describe("hierarchical explorer workspace", () => {
     expect(apiUtils.put).toHaveBeenCalledExactlyOnceWith("/v1/catalogue", { expected_revision: 7, document: imported }, expect.objectContaining({ redirectOnUnauthorized: false }));
     fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(await screen.findByRole("button", { name: "Building broker, open" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "temperature, preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Air temperature, preview" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Imported building" })).toBeNull();
     await openCatalogueSettings();
     const settings = await screen.findByRole("dialog", { name: "Settings" });

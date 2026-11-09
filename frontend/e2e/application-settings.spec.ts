@@ -49,11 +49,11 @@ test("changes appearance without replacing the workspace and follows the device 
   await expect(dialog.getByRole("button", { name: "Close settings" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeFocused();
   await expect(search).toHaveValue("settings keeps this search");
   expect(await originalSearch!.evaluate(element => element.isConnected)).toBe(true);
   await expect(page).toHaveURL(location);
-  await expect(page.getByTestId("navbar-actions").getByRole("button", { name: "Theme", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "Sidebar", exact: true }).getByRole("button", { name: "Theme", exact: true })).toHaveCount(0);
 
   await page.reload();
   await expect(page.locator("html")).toHaveClass("dark");
@@ -91,7 +91,7 @@ test("keeps settings usable on small screens and across workspaces", async ({ pa
 
 test("shows real system diagnostics above the current page and keeps old links working", async ({ page }) => {
   await page.goto("/anomalies");
-  await page.getByRole("button", { name: "Application menu", exact: true }).click();
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
   const storageReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/storage");
   const healthReady = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/recording/health");
   await page.getByRole("menuitem", { name: "System status", exact: true }).click();

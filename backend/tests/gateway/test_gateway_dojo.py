@@ -135,6 +135,29 @@ async def test_run_creation_is_forwarded_as_json(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_label_suggestions_forward_the_gap(monkeypatch):
+    recorded = []
+
+    async def request(method, endpoint, **kwargs):
+        recorded.append((method, endpoint, kwargs))
+        return {"items": [], "truncated": False}
+
+    monkeypatch.setattr(dojo.tactic, "request", request)
+    async with asgi_client(gateway_app(member_profile("admin"))) as client:
+        response = await client.get(
+            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=60", headers=TOKEN
+        )
+        refused = await client.get(
+            "/v1/dojo/datasets/d1/label-suggestions?gap_seconds=-1", headers=TOKEN
+        )
+    assert response.status_code == 200, response.text
+    [(method, endpoint, kwargs)] = recorded
+    assert (method, endpoint) == ("GET", "/api/v1/dojo/datasets/d1/label-suggestions")
+    assert kwargs["params"] == {"gap_seconds": 60.0}
+    assert refused.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_a_comparison_forwards_each_run_id(monkeypatch):
     recorded = []
 

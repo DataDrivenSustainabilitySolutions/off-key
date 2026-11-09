@@ -314,6 +314,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
+| `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Alarms live monitors recorded on the readings the dataset was copied from, inside its span, grouped into episodes as candidate labels; nothing is stored, and an upload gets none | Optional `gap_seconds` (default 600): alarms closer together form one suggestion |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
@@ -412,6 +413,7 @@ Health and readiness remain available without this service credential.
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | List a dataset's labels |
+| `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Suggest labels from recorded alarms |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Add a label, refusing overlaps |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move or annotate a label |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label |

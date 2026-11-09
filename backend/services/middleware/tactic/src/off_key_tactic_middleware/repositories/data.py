@@ -351,6 +351,27 @@ class AnomalyRepository:
         )
         return [(entity, key, count) for entity, key, count in result.all()]
 
+    async def timeline(
+        self, filters: AnomalyFilters, *, limit: int
+    ) -> list[tuple[datetime, str, str, str, object]]:
+        """Matching alarms oldest first: when, by which monitor, about what."""
+        result = await self._session.execute(
+            select(
+                Anomaly.timestamp,
+                Anomaly.service_id,
+                Anomaly.charger_id,
+                Anomaly.telemetry_type,
+                Anomaly.sensor_set,
+            )
+            .where(*_matching(filters))
+            .order_by(Anomaly.timestamp, Anomaly.service_id)
+            .limit(limit)
+        )
+        return [
+            (timestamp, monitor, entity, key, sensor_set)
+            for timestamp, monitor, entity, key, sensor_set in result.all()
+        ]
+
     async def count_since(self, *, since: datetime | None = None) -> int:
         query = select(func.count()).select_from(Anomaly)
         if since is not None:

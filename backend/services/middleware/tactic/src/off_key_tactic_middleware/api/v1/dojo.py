@@ -23,6 +23,8 @@ from off_key_core.schemas.dojo import (
     LabelChange,
     LabelCreate,
     LabelList,
+    LabelSuggestionList,
+    LabelSuggestionQuery,
     LabelView,
     RunCreate,
     RunListPage,
@@ -130,6 +132,17 @@ async def list_dataset_labels(
     dataset_id: str, labels: DojoLabels = Depends(get_dojo_labels)
 ):
     return await labels.list(dataset_id)
+
+
+@router.get(
+    "/datasets/{dataset_id}/label-suggestions", response_model=LabelSuggestionList
+)
+async def suggest_dataset_labels(
+    dataset_id: str,
+    query: Annotated[LabelSuggestionQuery, Query()],
+    labels: DojoLabels = Depends(get_dojo_labels),
+):
+    return await labels.suggestions(dataset_id, query)
 
 
 @router.post("/datasets/{dataset_id}/labels", response_model=LabelView, status_code=201)

@@ -23,6 +23,8 @@ from off_key_core.schemas.dojo import (
     LabelChange,
     LabelCreate,
     LabelList,
+    LabelSuggestionList,
+    LabelSuggestionQuery,
     LabelView,
     RunCreate,
     RunListPage,
@@ -235,6 +237,31 @@ async def list_dojo_labels(
     return await tactic.request(
         "GET",
         f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.get(
+    "/datasets/{dataset_id}/label-suggestions", response_model=LabelSuggestionList
+)
+@read_limit
+async def suggest_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    query: Annotated[LabelSuggestionQuery, Query()],
+    authorization: str = Depends(member_authorization),
+):
+    """Alarms live monitors recorded on the readings the dataset was copied
+    from, inside its time span, as candidate labels.
+
+    Alarms closer together than `gap_seconds` form one suggestion. Nothing is
+    stored: add a suggestion with `POST .../labels`. An uploaded dataset has
+    no recorded readings and gets none.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/label-suggestions",
+        params=_query(query),
         headers={"Authorization": authorization},
     )
 

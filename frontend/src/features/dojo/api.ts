@@ -12,6 +12,8 @@ import type {
   LabelChange,
   LabelCreate,
   LabelList,
+  LabelSuggestionList,
+  LabelSuggestionQuery,
   LabelView,
   RunCreate,
   RunListPage,
@@ -52,6 +54,8 @@ export const dojoApi = {
 
   labels: (datasetId: string, signal?: AbortSignal) =>
     apiUtils.get<LabelList>(`${dataset(datasetId)}/labels`, { ...read, signal }),
+  labelSuggestions: (datasetId: string, query: LabelSuggestionQuery = {}, signal?: AbortSignal) =>
+    apiUtils.get<LabelSuggestionList>(`${dataset(datasetId)}/label-suggestions`, { ...read, signal, params: query }),
   createLabel: (datasetId: string, label: LabelCreate) =>
     apiUtils.post<LabelView>(`${dataset(datasetId)}/labels`, label),
   changeLabel: (datasetId: string, labelId: string, change: LabelChange) =>

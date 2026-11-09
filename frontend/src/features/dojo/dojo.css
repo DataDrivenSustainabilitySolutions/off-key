@@ -50,6 +50,8 @@
 .dj-labels li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--ex-line); }
 .dj-labels input { width: 100%; border: 1px solid transparent; background: transparent; color: var(--ex-ink); border-radius: 5px; padding: 4px 6px; font: inherit; font-size: var(--text-caption); }
 .dj-labels input:hover,.dj-labels input:focus { border-color: var(--ex-line); }
+.dj-suggestion-list li { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; }
+.dj-suggestion-actions { display: inline-flex; gap: 8px; }
 .dj-label-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; }
 .dj-label-form .dj-field { margin: 0; }
 .dj-outcome { display: inline-flex; gap: 6px; align-items: center; }

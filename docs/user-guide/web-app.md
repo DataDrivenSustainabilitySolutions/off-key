@@ -231,7 +231,12 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    never change it.
 2. Open a dataset. **Values and labels** shows its series; zoom the chart to a
    known problem and choose **Use the zoomed range**, or type the window, then
-   **Add label**. Labels may touch but not overlap.
+   **Add label**. Labels may touch but not overlap. For a dataset copied from
+   recorded readings, **Recorded alarms** lists the alarms live monitors
+   raised on those readings during its time span, grouped when they came less
+   than ten minutes apart; **Add as label** keeps one as it is, **Adjust**
+   puts it into the form first, and **Add all as labels** takes every one no
+   label covers yet.
 3. **Runs** starts a run: choose a template or a design from the library, check
    which series feeds each input, and start it. The run replays the dataset in
    time order through the same alignment, learning and scoring as a live

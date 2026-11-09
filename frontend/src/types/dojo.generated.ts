@@ -127,6 +127,23 @@ export type LabelOutcome = {
   delay_seconds: number | null;
 };
 
+export type LabelSuggestion = {
+  start_at: string;
+  end_at: string;
+  alarm_count: number;
+  monitor_ids: Array<string>;
+  reading_ids: Array<string>;
+};
+
+export type LabelSuggestionList = {
+  items: Array<LabelSuggestion>;
+  truncated: boolean;
+};
+
+export type LabelSuggestionQuery = {
+  gap_seconds?: number;
+};
+
 export type LabelView = {
   id: string;
   dataset_id: string;

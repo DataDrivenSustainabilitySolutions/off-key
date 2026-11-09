@@ -16,6 +16,9 @@ MAX_POINTS_PAGE = 10_000
 MAX_ACTIVE_RUNS = 20
 MAX_RESULTS_PAGE = 10_000
 MAX_DATASET_LABELS = 500
+# Recorded alarms read for label suggestions, and suggestions returned.
+MAX_SUGGESTION_ALARMS = 50_000
+MAX_LABEL_SUGGESTIONS = 200
 # A comparison puts this many runs on one dataset side by side; each run keeps
 # its own colour in the chart beside two series of values.
 MAX_COMPARED_RUNS = 6
@@ -329,6 +332,46 @@ class LabelView(DojoModel):
 class LabelList(DojoModel):
     items: list[LabelView] = Field(
         max_length=MAX_DATASET_LABELS, description="Ordered by start_at."
+    )
+
+
+class LabelSuggestionQuery(DojoModel):
+    gap_seconds: float = Field(
+        default=600.0,
+        ge=0,
+        le=7 * 86400,
+        description="Recorded alarms closer together than this form one suggestion.",
+    )
+
+
+class LabelSuggestion(DojoModel):
+    """Recorded alarms of live monitors that could mark a known problem."""
+
+    start_at: datetime = Field(description="The first alarm of the episode.")
+    end_at: datetime = Field(
+        description="The last alarm, or one second after a lone alarm, so the "
+        "interval can become a label as it is."
+    )
+    alarm_count: int
+    monitor_ids: list[str] = Field(
+        description="Monitors that raised the alarms; empty for alarms "
+        "recorded without one."
+    )
+    reading_ids: list[str] = Field(
+        description="The dataset's catalogue readings the alarms were about."
+    )
+
+
+class LabelSuggestionList(DojoModel):
+    """Alarms that live monitors recorded on the readings a dataset was copied
+    from, inside its time span, grouped into episodes. Empty for uploads."""
+
+    items: list[LabelSuggestion] = Field(
+        max_length=MAX_LABEL_SUGGESTIONS, description="Ordered by start_at."
+    )
+    truncated: bool = Field(
+        description="More alarms or episodes were recorded than are suggested; "
+        "the earliest are returned."
     )
 
 

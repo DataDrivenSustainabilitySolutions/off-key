@@ -20,17 +20,21 @@ The root deploy command dispatches GitHub Actions. Direct Ansible commands under
 
 The public page at `aberration.app` is the self-contained
 [`stack/landing.html.j2`](stack/landing.html.j2) template, served separately from
-the dashboard. Its system font, light/dark colour tokens, and controls mirror
-`frontend/src/App.css`; update both when the application palette changes.
-The page follows the visitor's system colour scheme using CSS and needs no
-scripts, external assets, or backend access. Dashboard links use the configured
-`frontend_base_url`; legacy account/API forwarding remains in Traefik.
+the dashboard. The landing page leads with a photographic industrial sensor
+assembly on a light studio background, followed by dark technical sections.
+Its generated concept image is embedded from `landing-hero.b64.j2`; the source
+asset and generation prompt live in `../assets/landing/`. Regenerate the embedded
+image with `python3 assets/landing/export.py` after updating the selected JPEG.
+Keep rendered HTML below the 500 KB Swarm config limit. The page needs no
+scripts, external assets, or backend access, and respects reduced-motion settings.
+Dashboard links use the configured `frontend_base_url`; legacy account/API
+forwarding remains in Traefik.
 The monochrome mark and favicon come from [`../assets/brand/`](../assets/brand/);
 run `python assets/brand/export.py` from the repository root after editing the
 master SVG. The export preserves the page's surrounding design.
 
-The header's Humans / Agents switch shows an `#agents` view for people handing
-Aberration to their own agent. Behind it, the same nginx service serves
+The header's For agents link and footer's Humans / Agents links show an `#agents`
+view for people handing Aberration to their own agent. Behind it, the same nginx service serves
 [`landing-llms.txt.j2`](stack/landing-llms.txt.j2) at `/llms.txt` (the
 [llmstxt.org](https://llmstxt.org/) index) and
 [`landing.md.j2`](stack/landing.md.j2) at `/index.md`, which `/` also returns

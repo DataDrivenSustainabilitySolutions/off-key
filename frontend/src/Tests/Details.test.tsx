@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,11 @@ import { createEmptySystem } from "../domain/system/systemDocument";
 import type { SystemDocument, SystemRuntime } from "../types/system";
 import type { ChartNavigationState } from "../features/charts/telemetry-chart";
 import { mqttConnection } from "./support/fixtures/system";
+import { dojoApi } from "../features/dojo/api";
+
+const access = vi.hoisted(() => ({ dojo: false }));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ can: (permission: string) => access.dojo && permission === "use_dojo" }) }));
+vi.mock("../features/dojo/api", () => ({ dojoApi: { importHistory: vi.fn() } }));
 
 const mockLoadAllTelemetryTypes = vi.fn<
   (...args: unknown[]) => Promise<unknown[]>
@@ -91,6 +96,7 @@ function renderDetails(initialEntry = "/details/123") {
 
 describe("<Details />", () => {
   beforeEach(() => {
+    access.dojo = false;
     mockChartAnomalyProps.length = 0;
     mockApiGet.mockResolvedValue([]);
     mockLoadAllTelemetryTypes.mockResolvedValue([
@@ -239,6 +245,33 @@ describe("<Details />", () => {
     expect(new URL(evidence!, "http://app.test").searchParams.get("device_id")).toBe("station");
     // Monitor setup opens on the device's readings.
     expect(screen.getByRole("link", { name: /monitoring/i }).getAttribute("href")).toBe("/?create=monitoring&target=device%3Astation");
+  });
+
+  it("offers no Dojo copy without the Dojo permission", async () => {
+    const { value } = stationCatalogue();
+    renderWithCatalogue(value, "/details/station");
+    await screen.findByRole("heading", { level: 1, name: "Room station" });
+    expect(screen.queryByRole("button", { name: "Copy to Dojo" })).toBeNull();
+  });
+
+  it("opens the new dataset after copying from the device page", async () => {
+    access.dojo = true;
+    vi.mocked(dojoApi.importHistory).mockResolvedValue({ id: "d9" } as never);
+    const { value } = stationCatalogue();
+    render(<CatalogueContext.Provider value={value}>
+      <MemoryRouter initialEntries={["/details/station"]}><Routes>
+        <Route path="/details/:deviceId" element={<Details />} />
+        <Route path="/dojo" element={<p>Dojo dataset</p>} />
+      </Routes></MemoryRouter>
+    </CatalogueContext.Provider>);
+    fireEvent.click(await screen.findByRole("button", { name: "Copy to Dojo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Copy recorded readings" });
+    within(dialog).getByRole("checkbox", { name: "Air temperature" });
+    expect(within(dialog).queryByRole("checkbox", { name: "Wind" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(dojoApi.importHistory).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Room station", reading_ids: ["temperature"] })));
+    expect(await screen.findByText("Dojo dataset")).toBeTruthy();
   });
 
   it("shows a broker's readings without a device, named one by one", async () => {

@@ -224,8 +224,11 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
 1. Open **Dojo** at `/dojo`. **Upload CSV** copies a file into a new dataset;
    **Copy recorded readings** copies the numeric readings of the device or
    reading selected in the catalogue: everything still stored, the last 30
-   days, 7 days or 24 hours, or a window you type. A dataset is frozen:
-   retention and catalogue edits never change it.
+   days, 7 days or 24 hours, or a window you type. **Copy to Dojo** on a
+   device's Reporting page, and on a reading or device preview in Monitoring,
+   does the same for that device or reading without a catalogue selection and
+   opens the new dataset. A dataset is frozen: retention and catalogue edits
+   never change it.
 2. Open a dataset. **Values and labels** shows its series; zoom the chart to a
    known problem and choose **Use the zoomed range**, or type the window, then
    **Add label**. Labels may touch but not overlap.

@@ -51,6 +51,7 @@ import {
 } from "@/features/workspace/reporting-scope";
 import type { SystemSnapshot } from "@/types/system";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { CopyToDojo } from "@/features/dojo/CopyToDojo";
 
 const RECENT_TELEMETRY_WINDOW_MS = INTERVALS.DETAILS_UPDATE * 6;
 const EMPTY_EVIDENCE: MonitoringChartEvidence[] = [];
@@ -347,6 +348,7 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
     ?? `${source.kind === "device" ? "Device" : "Broker"} ${source.id}`;
   const sourcesHref = selectedSourceHref("/sources", catalogue && sourceNode(catalogue.index, source));
   const monitoringTarget = monitoringTargetId(source);
+  const recordedReadings = useMemo(() => sourceReadings(snapshot?.document, source).readings, [snapshot?.document, source]);
   useDocumentTitle(label, "Reporting");
 
   return (
@@ -359,6 +361,7 @@ const SourceDetails: React.FC<{ source: ReadingSource; sourceKey: string }> = ({
               <Button variant="ghost" asChild>
                 <Link to={sourcesHref}>View in Sources</Link>
               </Button>
+              <CopyToDojo scope={label} readings={recordedReadings} />
               <LiveTelemetryIndicator
                 hasRecentTelemetry={hasRecentTelemetry}
                 hasTelemetry={latestTelemetryTimestamp !== undefined}

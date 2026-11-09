@@ -317,7 +317,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
-| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to three finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
+| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to six finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
 | `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
 | `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |

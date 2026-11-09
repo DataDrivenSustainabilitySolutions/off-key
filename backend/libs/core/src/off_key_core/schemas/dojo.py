@@ -16,8 +16,9 @@ MAX_POINTS_PAGE = 10_000
 MAX_ACTIVE_RUNS = 20
 MAX_RESULTS_PAGE = 10_000
 MAX_DATASET_LABELS = 500
-# A comparison puts this many runs on one dataset side by side.
-MAX_COMPARED_RUNS = 3
+# A comparison puts this many runs on one dataset side by side; each run keeps
+# its own colour in the chart beside two series of values.
+MAX_COMPARED_RUNS = 6
 DatasetOrigin = Literal["csv", "history"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]

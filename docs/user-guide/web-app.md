@@ -232,7 +232,8 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    which series feeds each input, and start it. The run replays the dataset in
    time order through the same alignment, learning and scoring as a live
    monitor; its progress updates while it runs.
-4. **Compare** puts up to three finished runs side by side: their alarms under
+4. **Compare** puts up to six finished runs side by side (the three newest are
+   ticked when it opens): their alarms under
    the values, how many labels each detected and how soon, and how many false
    alarms each raised per day outside the labels. The best value of a metric is
    bold. Editing a label re-scores every run at once.

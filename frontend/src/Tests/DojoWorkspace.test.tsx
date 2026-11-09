@@ -5,6 +5,7 @@ import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
 import { dojoApi } from "@/features/dojo/api";
 import { pipelinesApi } from "@/features/pipelines/api";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
+import { DOJO_LIMITS } from "@/types/dojo.generated";
 
 const access = vi.hoisted(() => ({ allowed: true, monitors: false }));
 vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ userId: 1, isAuthenticated: true,
@@ -189,6 +190,24 @@ describe("Dojo workspace", () => {
     within(outcomes).getByText("after 2 min");
     within(outcomes).getByText("Missed");
     expect(dojoApi.results).toHaveBeenCalledWith("r1", expect.objectContaining({ alarm: true }), expect.any(AbortSignal));
+  });
+
+  it("starts with three runs and lets more join up to the limit", async () => {
+    const finished = Array.from({ length: DOJO_LIMITS.comparedRuns + 1 }, (_, index) => run(`r${index}`, `Run ${index}`));
+    vi.mocked(dojoApi.runs).mockResolvedValue({ items: finished, next_offset: null });
+    vi.mocked(dojoApi.compare).mockImplementation(async (_, ids) => ({ dataset_id: "d1", labels: [label],
+      runs: ids.map(id => metrics(id, id, 1, 0)) }));
+    mount("/dojo?dataset=d1&tab=compare");
+    await screen.findByRole("table", { name: "Run metrics" });
+    expect(dojoApi.compare).toHaveBeenLastCalledWith("d1", ["r0", "r1", "r2"], expect.any(AbortSignal));
+    for (let index = 3; index < DOJO_LIMITS.comparedRuns; index++) {
+      fireEvent.click(screen.getByRole("checkbox", { name: `Run ${index}` }));
+    }
+    const all = finished.slice(0, DOJO_LIMITS.comparedRuns).map(item => item.id);
+    await waitFor(() => expect(dojoApi.compare).toHaveBeenLastCalledWith("d1", all, expect.any(AbortSignal)));
+    expect(DOJO_LIMITS.comparedRuns).toBeGreaterThan(3);
+    expect((screen.getByRole("checkbox", { name: `Run ${DOJO_LIMITS.comparedRuns}` }) as HTMLInputElement).disabled).toBe(true);
+    screen.getByText(`${DOJO_LIMITS.comparedRuns} of at most ${DOJO_LIMITS.comparedRuns} compared`);
   });
 
   it("saves a finished run as a template and opens Monitoring with its recorded readings", async () => {

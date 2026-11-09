@@ -305,7 +305,7 @@ async def compare_dojo_runs(
     query: Annotated[ComparisonQuery, Query()],
     authorization: str = Depends(member_authorization),
 ):
-    """Up to three finished runs of the dataset, scored against its labels.
+    """Up to six finished runs of the dataset, scored against its labels.
 
     Repeat `run_ids` for each run, for example
     `?run_ids=a&run_ids=b`. Each run carries the metrics of

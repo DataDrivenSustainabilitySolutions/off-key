@@ -264,4 +264,4 @@ export type RunView = {
   stats: Record<string, number>;
 };
 
-export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, labels: 500, comparedRuns: 3 } as const;
+export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, labels: 500, comparedRuns: 6 } as const;

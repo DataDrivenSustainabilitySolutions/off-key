@@ -1,11 +1,35 @@
 import { mkdir } from "node:fs/promises";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
-import { setAppearance } from "./helpers/appearance";
+import { openPreferences, setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 import { installSidebarMockApi } from "./helpers/sidebarMockApi";
 
 // Route-mocked: the sidebar journeys need only the frontend and change no stored data.
 test.use({ storageState: { cookies: [], origins: [] }, contextOptions: { reducedMotion: "reduce" } });
+
+test("settings open after session loading, reloads and sidebar breakpoint changes", async ({ page }) => {
+  await installSidebarMockApi(page);
+  // A delayed session exposes the gap between navigation finishing and the
+  // account control rendering, as in the production deployment journeys.
+  await page.route("**/v1/me", async route => {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await route.fallback();
+  });
+  await page.goto("/sources");
+  await setAppearance(page, "Dark");
+  await page.reload();
+  await setAppearance(page, "Light");
+  for (const width of [390, 1600, 320, 844]) {
+    await page.setViewportSize({ width, height: 844 });
+    await setAppearance(page, "Dark");
+    await expect(page.locator("html")).toHaveClass("dark");
+  }
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  const settings = await openPreferences(page);
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Close settings", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeFocused();
+});
 
 async function bounds(locator: Locator) {
   const box = await locator.boundingBox();

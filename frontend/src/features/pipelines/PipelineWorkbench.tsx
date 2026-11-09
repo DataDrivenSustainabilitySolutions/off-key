@@ -143,18 +143,6 @@ export function PipelineWorkbench({
     if (id) setPanel("component");
     props.onSelect(id);
   };
-  // Rename from a card's menu: its settings open with the title ready to type over.
-  const [renaming, setRenaming] = useState(0);
-  useEffect(() => {
-    if (!renaming) return;
-    const frame = requestAnimationFrame(() => {
-      const title = settingsPanel.current?.querySelector<HTMLInputElement>("input[data-step-title]");
-      title?.focus({ preventScroll: true });
-      title?.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [renaming]);
-  const rename = (id: string) => { setView("graph"); select(id); setRenaming((value) => value + 1); };
   const add: Props["onAdd"] = (...args) => {
     addedFromMenu.current = adding;
     setMenu(false);
@@ -260,7 +248,7 @@ export function PipelineWorkbench({
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
       features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} insets={insets}
-      onRename={rename} onConfigure={select} />;
+      onConfigure={select} />;
   const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();

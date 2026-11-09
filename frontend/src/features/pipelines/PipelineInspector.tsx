@@ -167,7 +167,6 @@ export function PipelineInspector({
     <label className="pl-field">
       <span>Step title</span>
       <input
-        data-step-title
         maxLength={120}
         value={document.layout.nodes[node.id]?.label ?? ""}
         placeholder={component?.label ?? node.component}

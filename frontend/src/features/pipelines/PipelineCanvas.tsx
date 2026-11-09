@@ -14,7 +14,7 @@ import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import {
   addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
-  duplicateNode, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements,
+  duplicateNode, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements, setNodeLabel,
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
@@ -29,6 +29,7 @@ import { PipelineEdge, type RoutedEdge } from "./PipelineEdge";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { routeConnections, routeHandles, type ConnectionRoute } from "./routing";
 import { WireActionsContext, type WireActions } from "./wireActions";
+import { CardActionsContext, type CardActions } from "./cardActions";
 import "@xyflow/react/dist/style.css";
 
 const nodeTypes = { component: PipelineNodeCard };
@@ -71,8 +72,7 @@ type Props = {
   onBeginMove?: () => void;
   /** Edges that floating controls cover; fitting and revealing keep cards out from under them. */
   insets?: CoveredEdges;
-  /** A card's menu asks to rename or configure that step. */
-  onRename?: (id: string) => void;
+  /** A card's menu asks for that step's settings. */
   onConfigure?: (id: string) => void;
 };
 
@@ -102,11 +102,12 @@ export default function PipelineCanvas({
   onAdd,
   onBeginMove,
   insets,
-  onRename,
   onConfigure,
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
+  // The card whose title is being typed on the card itself.
+  const [renaming, setRenaming] = useState<string>();
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasNode>>();
   const [zoom, setZoom] = useState(1);
@@ -242,9 +243,10 @@ export default function PipelineCanvas({
       ...node,
       selected: node.id === selected,
       measured: measurements[node.id],
-      data: { ...node.data, ...emitted(node.id, node.data.outputType), ...hints(node.id) },
+      data: { ...node.data, ...emitted(node.id, node.data.outputType), ...hints(node.id),
+        ...(node.id === renaming ? { renaming: true } : {}) },
     }));
-  }, [graph.nodes, selected, connecting, document, components, measurements, features, featuresStale]);
+  }, [graph.nodes, selected, connecting, document, components, measurements, features, featuresStale, renaming]);
   const connectingNode = graph.nodes.find((node) => node.id === connecting?.nodeId);
   const connectingType = connecting?.handleType === "source"
     ? connectingNode?.data.outputType : connectingNode?.data.inputType;
@@ -293,6 +295,21 @@ export default function PipelineCanvas({
     onChange(result.document);
     onSelect(result.id);
     setInserted(result.id);
+  };
+  const cardElement = (id: string) =>
+    surface.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+  const cardActions: CardActions = {
+    finishRename: (id, title) => {
+      setRenaming(undefined);
+      // Back on the card, so the keyboard carries on where the rename started.
+      requestAnimationFrame(() => cardElement(id)?.focus({ preventScroll: true }));
+      if (title === undefined) return;
+      const node = document.definition.nodes.find((item) => item.id === id);
+      const operation = node && components.find((item) => item.id === node.component)?.label;
+      // A title equal to the step's own name, or none, shows that name again.
+      const next = title.trim() === operation ? "" : title.trim();
+      if (next !== (document.layout.nodes[id]?.label ?? "")) onChange(setNodeLabel(document, id, next), true);
+    },
   };
   const wireActions: WireActions = {
     open: openWire?.definition === document.definition ? openWire.id : undefined,
@@ -347,7 +364,7 @@ export default function PipelineCanvas({
     const after = strategyComponents.filter((component) => !afterBlocker(document, id, component, components));
     const node = document.definition.nodes.find((item) => item.id === id);
     return { label: nodeName(document, components, id), items: [
-      { key: "rename", label: "Rename", icon: Pencil, run: () => onRename?.(id) },
+      { key: "rename", label: "Rename", icon: Pencil, run: () => setRenaming(id) },
       { key: "configure", label: "Configure", icon: SlidersHorizontal, run: () => (onConfigure ?? onSelect)(id) },
       { key: "after", label: "Add after", icon: Plus, separated: true,
         blocked: node?.kind === "output" ? "Evidence output is the last step."
@@ -394,6 +411,13 @@ export default function PipelineCanvas({
       className="pl-canvas-wrap"
       aria-label="Pipeline graph"
       onKeyDown={(event) => {
+        // F2 renames a focused card, as it renames a file.
+        const card = (event.target as Element).closest?.(".react-flow__node");
+        if (!readOnly && event.key === "F2" && card === event.target) {
+          const id = card.getAttribute("data-id");
+          if (id) { event.preventDefault(); setRenaming(id); }
+          return;
+        }
         // The menu key, or Shift+F10, opens a focused card's or wire's menu.
         if (readOnly || !(event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey))) return;
         const element = event.target as Element;
@@ -433,6 +457,7 @@ export default function PipelineCanvas({
       onDrop={drop}
     >
       <div className="pl-flow-surface" ref={surface}>
+        <CardActionsContext.Provider value={cardActions}>
         <WireActionsContext.Provider value={wireActions}>
         <ReactFlow<CanvasNode>
           nodes={nodes}
@@ -444,6 +469,10 @@ export default function PipelineCanvas({
           minZoom={0.01}
           maxZoom={2}
           onMoveStart={() => { setOpenWire(undefined); setContextMenu(undefined); }}
+          onNodeDoubleClick={readOnly ? undefined : (event, node) => {
+            // A double-click on the title renames the step in place.
+            if ((event.target as Element).closest(".pl-node-title > strong")) setRenaming(node.id);
+          }}
           onPaneContextMenu={readOnly ? undefined : (event) => contextMenuAt(event, { kind: "pane", position: placeAt(event.clientX, event.clientY) })}
           onNodeContextMenu={readOnly ? undefined : (event, node) => contextMenuAt(event, { kind: "node", id: node.id })}
           onEdgeContextMenu={readOnly ? undefined : (event, edge) => contextMenuAt(event, { kind: "edge", link: { source: edge.source, target: edge.target } })}
@@ -614,6 +643,7 @@ export default function PipelineCanvas({
           </Controls>
         </ReactFlow>
         </WireActionsContext.Provider>
+        </CardActionsContext.Provider>
       </div>
       {shownMenu && <PipelineContextMenu x={shownMenu.x} y={shownMenu.y} menu={menuFor(shownMenu.target)}
         onClose={(restore) => {

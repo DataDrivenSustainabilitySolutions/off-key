@@ -168,6 +168,31 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+/* The title typed on the card keeps the title's type, inside the card's clipped column. */
+.pl-node-rename {
+  min-width: 0;
+  width: calc(100% - 6px);
+  margin: 3px;
+  padding: 1px 6px;
+  border: 1px solid var(--pl-node-accent);
+  border-radius: 8px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-node-accent) 22%, transparent);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: text;
+}
+.pl-node .pl-node-rename:is(:focus, :focus-visible) {
+  outline: none;
+}
+.pl-node-rename::placeholder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
 .pl-node-operation {
   font-size: var(--text-caption);
   line-height: 16px;

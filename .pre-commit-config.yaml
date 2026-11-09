@@ -10,6 +10,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(assets/brand/|frontend/public/(brand/|favicon\.svg)|docs/(assets/brand/|overrides/\.icons/brand/)|infra/stack/landing\.html\.j2)
+      - id: landing-assets
+        name: Check landing hero export
+        entry: python assets/landing/export.py --check
+        language: system
+        pass_filenames: false
+        files: ^(assets/landing/|infra/stack/landing-hero\.b64\.j2)
       # Ruff comes from backend/uv.lock, the same pin local runs and Dependabot use.
       - id: ruff
         name: ruff (linter)

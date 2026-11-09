@@ -1,6 +1,6 @@
 # Aberration
 
-> Aberration is a continuous anomaly-detection platform for connected systems. It ingests MQTT sensor telemetry, runs streaming detection pipelines, calibrates anomaly scores with conformal methods and accumulates evidence until a change is flagged. Results are reviewable in a web dashboard and through an HTTP API.
+> Aberration is a continuous anomaly-detection platform for connected systems. It ingests MQTT data streams, runs streaming detection pipelines, calibrates anomaly scores with conformal methods and accumulates evidence until a change is flagged. Results are reviewable in a web dashboard and through an HTTP API.
 
 One installation serves one organization. The dashboard and its API live at {{ frontend_base_url }}; the API is mounted under `/api`, so an OpenAPI path such as `/v1/alarms` is called as `{{ frontend_base_url }}/api/v1/alarms` with an `Authorization: Bearer <token>` header from `POST /api/v1/auth/login`. Accounts are invitation-only.
 

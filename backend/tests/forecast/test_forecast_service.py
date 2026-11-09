@@ -13,7 +13,7 @@ from off_key_core.schemas.forecast import (
 )
 from off_key_forecast.api import create_app
 from off_key_forecast.config.config import ForecastSettings
-from off_key_forecast.providers import default_providers
+from off_key_forecast.providers import naive_providers
 from off_key_forecast.providers.base import ModelSpec
 from off_key_forecast.providers.naive import SeasonalNaive
 from off_key_forecast.registry import ModelNotReady, ModelRegistry
@@ -63,7 +63,7 @@ def _client(registry: ModelRegistry, token: str | None = None) -> TestClient:
 
 
 def _naive_registry(tmp_path: Path) -> ModelRegistry:
-    return ModelRegistry(default_providers([1, 4]), tmp_path)
+    return ModelRegistry(naive_providers([1, 4]), tmp_path)
 
 
 def test_seasonal_naive_repeats_the_season_and_widens_with_the_horizon():

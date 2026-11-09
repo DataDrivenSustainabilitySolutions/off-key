@@ -25,6 +25,8 @@ dependencies = [
     "uvicorn>=0.25.0",
     "numpy>=1.24.0",
     "pydantic-settings>=2.7.1",
+    # Fetches and caches model weights; the models themselves are optional extras.
+    "huggingface-hub>=0.23,<2",
 ]
 
 [build-system]

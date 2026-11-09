@@ -26,9 +26,7 @@ def main() -> None:
     config = get_forecast_settings().config
     if config.api_token is None:
         logger.warning("event=forecast.no_token the API accepts unauthenticated calls")
-    registry = ModelRegistry(
-        default_providers(config.naive_season_lengths), config.cache_dir
-    )
+    registry = ModelRegistry(default_providers(config), config.cache_dir)
     app = create_app(registry, config.api_token)
     logger.info(
         "event=forecast.start host=%s port=%s models=%s",

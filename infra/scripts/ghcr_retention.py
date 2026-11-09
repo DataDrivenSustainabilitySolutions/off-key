@@ -27,6 +27,7 @@ from pathlib import Path
 
 PACKAGES = (
     "off-key-frontend",
+    "off-key-docs",
     "off-key-api-gateway",
     "off-key-tactic-middleware",
     "off-key-mqtt-radar",

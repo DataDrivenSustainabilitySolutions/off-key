@@ -2,7 +2,7 @@
 """Remove superseded application images from a Swarm node after a verified release.
 
 Swarm pulls each release's images by digest and never removes the old ones, so
-every release leaves six images behind on the nodes that ran them. `services`
+every release leaves application images behind on the nodes that ran them. `services`
 runs on the manager and prints every image a Swarm service still names, which
 covers both stacks and TACTIC's runtime RADAR services. `prune` runs on each
 node and removes only images of the application repositories that neither the

@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 
-from support import run
+from support import ROOT, run
 
 COMPATIBLE_REVISION = "9311f9937e605da9b4be5a9903f08de4da79dade"
 REGISTRY = "offkey-smoke-registry"
@@ -30,6 +30,7 @@ BUILDS = {
     "mqtt_radar": ("off-key-mqtt-radar", "services/mqtt/radar"),
     "db_sync": ("off-key-db-sync", "services/db/sync"),
     "frontend": ("off-key-frontend", None),
+    "docs": ("off-key-docs", "docs"),
 }
 MODEL_SERVICES = {
     "api": "api",
@@ -38,6 +39,7 @@ MODEL_SERVICES = {
     "mqtt_radar": "mqtt-radar",
     "db_sync": "db-sync",
     "frontend": "frontend",
+    "docs": "docs",
 }
 
 
@@ -108,6 +110,10 @@ def build_arguments(service, source, revision, project):
         "-t",
         image_reference(service, revision),
     ]
+    if source == "docs":
+        # The rollback source predates this hosting recipe but contains its own
+        # docs, generator and requirements. Build only that revision's content.
+        return args + ["-f", str(ROOT.parent / "dev/docs/Dockerfile"), str(project)]
     if source is None:
         return args + ["--target", "production", str(Path(project) / "frontend")]
     return args + [

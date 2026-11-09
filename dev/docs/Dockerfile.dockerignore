@@ -1,0 +1,8 @@
+**
+!requirements-docs.txt
+!zensical.toml
+!docs
+!docs/**
+!dev
+!dev/docs
+!dev/docs/llms.py

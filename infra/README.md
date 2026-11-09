@@ -40,8 +40,10 @@ view for people handing Aberration to their own agent. Behind it, the same nginx
 [`landing.md.j2`](stack/landing.md.j2) at `/index.md`, which `/` also returns
 for `Accept: text/markdown` ([`landing-nginx.conf`](stack/landing-nginx.conf)).
 Keep the Markdown in step with the page copy. The documentation build publishes
-the matching `llms.txt`, `llms-full.txt` and per-page Markdown on GitHub Pages
-(`dev/docs/llms.py`).
+the matching `llms.txt`, `llms-full.txt` and per-page Markdown at
+`https://docs.aberration.app` (`dev/docs/llms.py`). The docs image is built,
+verified and deployed with the production release; see
+[documentation hosting](../docs/operations/production.md#documentation-hosting).
 
 The footer opens self-contained Impressum, Privacy, and Contact sections using
 fragment links. Their bracketed fields are intentional templates; replace them

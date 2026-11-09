@@ -1,0 +1,15 @@
+# Public static documentation, built and pinned with the application release.
+services:
+  docs:
+    image: "${DOCS_IMAGE:?Set the resolved documentation image}"
+    networks:
+      - public-network
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.frontend == true]
+      restart_policy:
+        condition: any
+      update_config:
+        order: start-first
+        failure_action: rollback

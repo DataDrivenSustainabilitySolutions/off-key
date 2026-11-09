@@ -11,7 +11,17 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 import yaml
-from support import CLIENTS, ROOT, TOKEN, ansible, discovery, load_script, render, run
+from support import (
+    CLIENTS,
+    ROOT,
+    TOKEN,
+    ansible,
+    discovery,
+    fixture_release,
+    load_script,
+    render,
+    run,
+)
 
 compiler = load_script("compile_stack")
 
@@ -233,11 +243,26 @@ class DeploymentTests(unittest.TestCase):
             & set(services["tactic"]["networks"])
         )
 
+    def test_docs_are_public_and_isolated_from_application_credentials(self):
+        result = self.results["prod"]
+        docs = result["config"]["services"]["docs"]
+        self.assertEqual(set(docs["networks"]), {"public-network"})
+        self.assertFalse(docs.get("environment"))
+        self.assertFalse(docs.get("secrets"))
+        self.assertFalse(docs.get("ports"))
+        self.assertEqual(docs["image"], fixture_release()["images"]["docs"])
+        route = result["routes"]["routers"]["docs"]
+        self.assertEqual(route["rule"], "Host(`docs.aberration.app`)")
+        self.assertEqual(route["service"], "docs")
+        self.assertFalse(route.get("middlewares"))
+        self.assertEqual(
+            result["routes"]["services"]["docs"]["loadBalancer"]["servers"],
+            [{"url": "http://off-key_docs:80"}],
+        )
+
     def test_every_production_image_is_immutable_and_radar_matches_runtime(self):
         config = self.results["prod"]["config"]
-        release = yaml.safe_load(
-            (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
-        )["release"]
+        release = fixture_release()
         for name, service in config["services"].items():
             with self.subTest(service=name):
                 self.assertRegex(service["image"], r"@sha256:[0-9a-f]{64}$")
@@ -759,7 +784,7 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn("demo", text.lower())
         self.assertIn("(https://aberration.app/index.md)", llms)
         self.assertIn(
-            "https://datadrivensustainabilitysolutions.github.io/off-key/llms.txt",
+            "https://docs.aberration.app/llms.txt",
             llms,
         )
         html = result["landing_html"]

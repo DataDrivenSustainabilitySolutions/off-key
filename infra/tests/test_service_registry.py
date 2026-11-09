@@ -31,7 +31,9 @@ def matrix_builds():
         args = dict(
             line.split("=", 1) for line in entry["build_args"].split("\n") if line
         )
-        if entry["context"] == "./frontend":
+        if entry["file"] == "./dev/docs/Dockerfile":
+            builds[entry["image_name"]] = "docs"
+        elif entry["context"] == "./frontend":
             builds[entry["image_name"]] = None
         else:
             assert args["SERVICE_NAME"] == entry["image_name"], entry

@@ -20,6 +20,7 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    LabelBatch,
     LabelChange,
     LabelCreate,
     LabelList,
@@ -284,6 +285,30 @@ async def create_dojo_label(
         "POST",
         f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels",
         json_data=label.model_dump(mode="json"),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post(
+    "/datasets/{dataset_id}/labels/batch", response_model=LabelList, status_code=201
+)
+@write_limit
+async def create_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    batch: LabelBatch,
+    authorization: str = Depends(member_authorization),
+):
+    """Add up to 200 labels at once, as one write.
+
+    All of them are added, or none when one is refused: labels may not
+    overlap each other or the dataset's labels, and a dataset holds at most
+    500. Returns the new labels in the order given.
+    """
+    return await tactic.request(
+        "POST",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels/batch",
+        json_data=batch.model_dump(mode="json"),
         headers={"Authorization": authorization},
     )
 

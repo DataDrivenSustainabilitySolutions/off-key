@@ -102,6 +102,10 @@ export type DatasetView = {
 
 export type DojoModel = Record<string, unknown>;
 
+export type LabelBatch = {
+  labels: Array<LabelCreate>;
+};
+
 export type LabelChange = {
   start_at?: string | null;
   end_at?: string | null;

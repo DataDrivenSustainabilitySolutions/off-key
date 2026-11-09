@@ -316,6 +316,7 @@ change it. A run replays one design over one dataset. Every route needs
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Alarms live monitors recorded on the readings the dataset was copied from, inside its span, grouped into episodes as candidate labels; nothing is stored, and an upload gets none | Optional `gap_seconds` (default 600): alarms closer together form one suggestion |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
+| `POST` | `/dojo/datasets/{dataset_id}/labels/batch` | Add up to 200 labels in one write: all of them, or none when one overlaps or the dataset would hold more than 500; 201 with the new labels | Body: `labels`, each with `start_at`, `end_at`, optional `note` |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to six finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
@@ -415,6 +416,7 @@ Health and readiness remain available without this service credential.
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | List a dataset's labels |
 | `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Suggest labels from recorded alarms |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Add a label, refusing overlaps |
+| `POST` | `/dojo/datasets/{dataset_id}/labels/batch` | Add several labels as one write |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move or annotate a label |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label |
 | `GET` | `/dojo/datasets/{dataset_id}/comparison` | Score runs of one dataset side by side |

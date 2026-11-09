@@ -31,7 +31,7 @@ vi.mock("@/features/workspace/catalogue-context", () => ({
 }));
 vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), importCsv: vi.fn(), importHistory: vi.fn(), changeDataset: vi.fn(), deleteDataset: vi.fn(),
-  points: vi.fn(), labels: vi.fn(), labelSuggestions: vi.fn(), createLabel: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
+  points: vi.fn(), labels: vi.fn(), labelSuggestions: vi.fn(), createLabel: vi.fn(), createLabels: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
   createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), promoteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
@@ -194,7 +194,7 @@ describe("Dojo workspace", () => {
       suggestion("00:35:00", "00:36:00", 2),
       suggestion("01:10:00", "01:10:01", 1),
     ] });
-    vi.mocked(dojoApi.createLabel).mockResolvedValue({ ...label, id: "l2" });
+    vi.mocked(dojoApi.createLabels).mockResolvedValue({ items: [] });
     mount("/dojo?dataset=d1");
     const list = await screen.findByRole("list", { name: "Suggested labels" });
     expect(dojoApi.labelSuggestions).toHaveBeenCalledWith("d1", {}, expect.any(AbortSignal));
@@ -209,13 +209,20 @@ describe("Dojo workspace", () => {
     expect((screen.getByRole("textbox", { name: /Note/ }) as HTMLInputElement).value).toBe("3 recorded alarms");
 
     fireEvent.click(within(items[1]!).getByRole("button", { name: "Add as label" }));
-    await waitFor(() => expect(dojoApi.createLabel).toHaveBeenCalledWith("d1",
-      { start_at: "2024-01-01T01:10:00Z", end_at: "2024-01-01T01:10:01Z", note: "Recorded alarm" }));
+    await waitFor(() => expect(dojoApi.createLabels).toHaveBeenCalledWith("d1", { labels: [
+      { start_at: "2024-01-01T01:10:00Z", end_at: "2024-01-01T01:10:01Z", note: "Recorded alarm" }] }));
     expect(dojoApi.labels).toHaveBeenCalledTimes(2);
 
-    vi.mocked(dojoApi.createLabel).mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Add all as labels" }));
-    await waitFor(() => expect(dojoApi.createLabel).toHaveBeenCalledTimes(2));
+    const addAll = screen.getByRole("button", { name: "Add all as labels" }) as HTMLButtonElement;
+    await waitFor(() => expect(addAll.disabled).toBe(false));
+    fireEvent.click(addAll);
+    // One write for all of them, so a long list stays within the write rate limit.
+    await waitFor(() => expect(dojoApi.createLabels).toHaveBeenLastCalledWith("d1", { labels: [
+      { start_at: "2024-01-01T00:05:00Z", end_at: "2024-01-01T00:09:00Z", note: "3 recorded alarms" },
+      { start_at: "2024-01-01T01:10:00Z", end_at: "2024-01-01T01:10:01Z", note: "Recorded alarm" },
+    ] }));
+    expect(dojoApi.createLabels).toHaveBeenCalledTimes(2);
+    expect(dojoApi.createLabel).not.toHaveBeenCalled();
   });
 
   it("looks for no recorded alarms on an uploaded dataset", async () => {

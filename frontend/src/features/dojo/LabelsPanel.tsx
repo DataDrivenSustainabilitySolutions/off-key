@@ -51,17 +51,9 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     }
   };
   const loadSuggestions = useCallback((signal: AbortSignal) => dojoApi.labelSuggestions(dataset.id, {}, signal), [dataset.id]);
-  const addSuggested = (items: LabelSuggestion[]) => void act(async () => {
-    try {
-      for (const item of items) {
-        await dojoApi.createLabel(dataset.id, { start_at: item.start_at, end_at: item.end_at, note: suggestionNote(item) });
-      }
-    } catch (reason) {
-      // Labels added before the refusal stay, so show them with the error.
-      await onLabelsChange().catch(() => undefined);
-      throw reason;
-    }
-  });
+  // All or nothing: a refused suggestion leaves the labels as they were.
+  const addSuggested = (items: LabelSuggestion[]) => void act(() => dojoApi.createLabels(dataset.id, {
+    labels: items.map(item => ({ start_at: item.start_at, end_at: item.end_at, note: suggestionNote(item) })) }));
   const adjust = (item: LabelSuggestion) => {
     setStart(toLocalInput(item.start_at)); setEnd(toLocalInput(item.end_at)); setNote(suggestionNote(item));
   };

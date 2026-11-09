@@ -21,6 +21,7 @@ from off_key_core.schemas.alarms import MULTIVARIATE_TELEMETRY_TYPE
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
     DatasetFromHistory,
+    LabelCreate,
     LabelSuggestionQuery,
 )
 from off_key_core.schemas.system import SystemDocument
@@ -29,7 +30,7 @@ from off_key_core.schemas.system_collection import (
     build_bindings,
 )
 from off_key_tactic_middleware.api.v1.dojo import router
-from off_key_tactic_middleware.domain import NotFoundError
+from off_key_tactic_middleware.domain import ConflictError, NotFoundError
 from off_key_tactic_middleware.services.dojo import labels as labels_module
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
 from off_key_tactic_middleware.services.dojo.labels import DojoLabels
@@ -253,3 +254,33 @@ async def test_route_suggests_labels_to_members_who_may_use_the_dojo(sessions):
     assert listed.status_code == 200, listed.text
     assert [item["alarm_count"] for item in listed.json()["items"]] == [1]
     assert anonymous.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_batch_adds_every_label_or_none(sessions, monkeypatch):
+    factory, _ = sessions
+    view = await copied(factory)
+
+    def label(start, end):
+        return LabelCreate(start_at=at(start), end_at=at(end), note="Recorded alarm")
+
+    async with factory() as session:
+        service = DojoLabels(session)
+        added = await service.create_many(
+            view.id, [label(1, 2), label(2, 3), label(10, 12)], created_by=None
+        )
+        assert [item.start_at for item in added] == [at(1), at(2), at(10)]
+        # One label overlapping another of the same batch refuses all of them.
+        with pytest.raises(ConflictError, match="may not overlap"):
+            await service.create_many(
+                view.id, [label(20, 22), label(21, 23)], created_by=None
+            )
+        await session.rollback()
+        monkeypatch.setattr(labels_module, "MAX_DATASET_LABELS", 4)
+        with pytest.raises(ConflictError, match="at most 4"):
+            await service.create_many(
+                view.id, [label(30, 31), label(40, 41)], created_by=None
+            )
+        await session.rollback()
+        stored = await service.list(view.id)
+    assert [item.start_at for item in stored.items] == [at(1), at(2), at(10)]

@@ -4,6 +4,8 @@ Labels of one dataset never overlap. Writes lock the dataset row, so two
 members labelling at once cannot slip overlapping intervals past the check.
 """
 
+import builtins
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -162,25 +164,41 @@ class DojoLabels:
     async def create(
         self, dataset_id: str, request: LabelCreate, *, created_by: int | None
     ) -> LabelView:
+        [view] = await self.create_many(dataset_id, [request], created_by=created_by)
+        return view
+
+    async def create_many(
+        self,
+        dataset_id: str,
+        requests: Sequence[LabelCreate],
+        *,
+        created_by: int | None,
+    ) -> builtins.list[LabelView]:
+        """Add labels in one transaction: all of them, or none when one is refused."""
         await require_application_writes(self.session)
         dataset = await self._dataset(dataset_id, lock=True)
         count = await self.session.scalar(
             select(func.count()).where(DojoLabel.dataset_id == dataset.id)
         )
-        if count >= MAX_DATASET_LABELS:
+        if count + len(requests) > MAX_DATASET_LABELS:
             raise ConflictError(f"A dataset holds at most {MAX_DATASET_LABELS} labels")
-        await self._check(dataset, request.start_at, request.end_at, None)
-        row = DojoLabel(
-            id=str(uuid4()),
-            dataset_id=dataset.id,
-            start_at=request.start_at,
-            end_at=request.end_at,
-            note=request.note.strip(),
-            created_by=created_by,
-        )
-        self.session.add(row)
+        rows = []
+        for request in requests:
+            # The session flushes earlier rows before this query, so labels of
+            # one batch may not overlap each other either.
+            await self._check(dataset, request.start_at, request.end_at, None)
+            row = DojoLabel(
+                id=str(uuid4()),
+                dataset_id=dataset.id,
+                start_at=request.start_at,
+                end_at=request.end_at,
+                note=request.note.strip(),
+                created_by=created_by,
+            )
+            self.session.add(row)
+            rows.append(row)
         await self.session.commit()
-        return label_view(await self._row(dataset_id, row.id))
+        return [label_view(await self._row(dataset_id, row.id)) for row in rows]
 
     async def change(
         self, dataset_id: str, label_id: str, change: LabelChange

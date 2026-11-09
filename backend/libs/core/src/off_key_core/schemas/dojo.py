@@ -307,6 +307,12 @@ class LabelCreate(DojoModel):
         return self
 
 
+class LabelBatch(DojoModel):
+    """Add several labels at once, for example every suggestion of a dataset."""
+
+    labels: list[LabelCreate] = Field(min_length=1, max_length=MAX_LABEL_SUGGESTIONS)
+
+
 class LabelChange(DojoModel):
     start_at: datetime | None = None
     end_at: datetime | None = None

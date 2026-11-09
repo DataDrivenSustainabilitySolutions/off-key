@@ -20,6 +20,7 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    LabelBatch,
     LabelChange,
     LabelCreate,
     LabelList,
@@ -153,6 +154,19 @@ async def create_dataset_label(
     labels: DojoLabels = Depends(get_dojo_labels),
 ):
     return await labels.create(dataset_id, request, created_by=user.id)
+
+
+@router.post(
+    "/datasets/{dataset_id}/labels/batch", response_model=LabelList, status_code=201
+)
+async def create_dataset_labels(
+    dataset_id: str,
+    request: LabelBatch,
+    user: User = Depends(use_dojo),
+    labels: DojoLabels = Depends(get_dojo_labels),
+):
+    created = await labels.create_many(dataset_id, request.labels, created_by=user.id)
+    return LabelList(items=created)
 
 
 @router.patch("/datasets/{dataset_id}/labels/{label_id}", response_model=LabelView)

@@ -8,7 +8,9 @@ import { accessToken } from "./helpers/auth";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.setTimeout(300_000);
-test.use({ locale: "en-US" });
+// A missing UI control should fail with a trace before the enclosing CI step
+// times out; infrastructure readiness keeps its explicit, longer assertions.
+test.use({ locale: "en-US", actionTimeout: 30_000 });
 
 test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }, testInfo) => {
   const deviceId = randomUUID();
@@ -22,18 +24,21 @@ test("records only an opted-in reading and restores its history in the mobile wo
   let serviceId: string | undefined;
   try {
     await page.goto("/");
-    const workspaces = page.getByRole("group", { name: "Workspaces", exact: true });
+    const workspaces = page.getByRole("navigation", { name: "Workspace", exact: true });
     await expect(workspaces.getByRole("link", { name: "Monitoring", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(workspaces.getByRole("link", { name: "Sources", exact: true })).toBeVisible();
     await workspaces.getByRole("link", { name: "Reporting", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Reporting", exact: true })).toBeVisible();
     await expect(workspaces.getByRole("link", { name: "Reporting", exact: true })).toHaveAttribute("aria-current", "page");
-    await page.getByRole("button", { name: "Application menu", exact: true }).click();
+    await page.getByRole("button", { name: "Account menu", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Monitoring", exact: true })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Entities", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
+    // Phones open the same sidebar as a drawer, which closes once a workspace is chosen.
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Navigation", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
     token = await accessToken(page);
@@ -51,6 +56,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(initial.runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -58,7 +64,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await expect(page.getByRole("button", { name: "Import JSON", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Export JSON", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
-    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
+    await page.keyboard.press("ControlOrMeta+k");
     await page.getByRole("searchbox", { name: "Search catalogue", exact: true }).fill(`${deviceId} temperature`);
     await page.getByRole("button", { name: "temperature, preview", exact: true }).click();
     const preview = page.getByRole("region", { name: "Reading preview", exact: true });
@@ -99,11 +105,12 @@ test("records only an opted-in reading and restores its history in the mobile wo
       const status = await response.json();
       return status.runtime.latest_readings[stream.id]?.value;
     }).toEqual(26);
-    await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
+    await page.keyboard.press("ControlOrMeta+k");
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
     await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
     await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 2 minutes)");
-    await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
+    await page.getByRole("button", { name: "Close navigation", exact: true }).click();
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
 
     // Background collection continues after the page has been left.
     await page.goto("/anomalies");
@@ -127,6 +134,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const allHistory = page.getByRole("group", { name: "Chart time range", exact: true }).getByRole("button", { name: "All", exact: true });
     await allHistory.click();
     await expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(collection.getByRole("radio", { name: /^At intervals/ })).toBeChecked();
     const stored = await api.get(`/api/v1/readings/${encodeURIComponent(stream.id)}/measurements/buckets`, { headers });
@@ -141,6 +149,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
     await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");
@@ -166,7 +175,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.reload();
     await expect(page.getByRole("button", { name: "Remove service from favourites", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 1000 });
-    const catalogue = await page.getByRole("navigation", { name: "System explorer", exact: true }).elementHandle();
+    const catalogue = await page.getByRole("navigation", { name: "Catalogue", exact: true }).elementHandle();
     const source = new URL(page.url()).searchParams.get("source");
     for (const section of ["Sources", "Reporting", "Monitoring"]) {
       await workspaces.getByRole("link", { name: section, exact: true }).click();

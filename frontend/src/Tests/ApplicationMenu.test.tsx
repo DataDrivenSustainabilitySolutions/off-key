@@ -16,7 +16,7 @@ function Location() {
 }
 function mount(path = "/") {
   render(<ThemeProvider defaultTheme="light"><MemoryRouter initialEntries={[path]}><BrandHome /><ApplicationMenu /><SettingsOverlay /><Location /></MemoryRouter></ThemeProvider>);
-  fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Account menu" }), { key: "Enter" });
 }
 
 describe("shared application menu", () => {
@@ -35,7 +35,7 @@ describe("shared application menu", () => {
   it("shows who is signed in on the menu trigger", () => {
     auth.member = { email: "jane.doe@example.com" };
     mount();
-    const trigger = screen.getByRole("button", { name: "Application menu", hidden: true });
+    const trigger = screen.getByRole("button", { name: "Account menu", hidden: true });
     expect(trigger.textContent).toBe("JD");
     expect(trigger.getAttribute("title")).toBe("jane.doe@example.com");
     expect(screen.getByText("jane.doe@example.com", { selector: ".app-menu-account" })).toBeTruthy();
@@ -45,7 +45,7 @@ describe("shared application menu", () => {
     auth.isAuthenticated = false;
     render(<MemoryRouter><ApplicationMenu /></MemoryRouter>);
     expect(screen.getByRole("link", { name: "Log in" }).getAttribute("href")).toBe("/login");
-    expect(screen.queryByRole("button", { name: "Application menu" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Account menu" })).toBeNull();
   });
 
   it.each([["Account", "account"], ["System status", "status"]])("opens %s as a settings section above the current page", async (label, section) => {
@@ -90,7 +90,7 @@ describe("shared application menu", () => {
     expect(localStorage.getItem("vite-ui-theme")).toBe("dark");
     expect((within(dialog).getByRole("radio", { name: "Dark" }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Account menu" })));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(await screen.findByText(path)).toBeTruthy();
   });
@@ -120,8 +120,8 @@ describe("shared application menu", () => {
     expect(localStorage.getItem("vite-ui-theme")).toBe("system");
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Application menu" })));
-    fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Account menu" })));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Account menu" }), { key: "Enter" });
     fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
     const reopened = await screen.findByRole("dialog", { name: "Settings" });
     expect((within(reopened).getByRole("radio", { name: "Follow system" }) as HTMLInputElement).checked).toBe(true);

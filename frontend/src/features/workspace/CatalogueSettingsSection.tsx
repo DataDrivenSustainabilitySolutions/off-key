@@ -6,7 +6,7 @@ import "./catalogue-settings.css";
 
 /** Sources, import and export for the shared catalogue, shown in the settings overlay. */
 export default function CatalogueSettingsSection() {
-  const { system, document, index, editingLocked, openEditor, browse, selectSource, positions } = useCatalogue();
+  const { system, document, editingLocked, openEditor, collapseAll, showCollection, selectSource, positions } = useCatalogue();
   const [notice, setNotice] = useState("");
   const exportCatalogue = async () => {
     setNotice("");
@@ -24,7 +24,7 @@ export default function CatalogueSettingsSection() {
       onImport={async (next, revision) => {
         setNotice("");
         if (editingLocked || !await system.save(next, revision)) return false;
-        browse(index.rootKey); positions.clear(); selectSource(null);
+        collapseAll(); showCollection(null); positions.clear(); selectSource(null);
         setNotice("Catalogue imported and saved.");
         return true;
       }} />

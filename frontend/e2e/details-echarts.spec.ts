@@ -117,35 +117,33 @@ test.describe("Details telemetry ECharts", () => {
     storageState: { cookies: [], origins: [] },
   });
 
-  test("pins global navbar actions to the right edge on wide screens", async ({
+  test("anchors account controls in the sidebar footer beside the full-height chart workspace", async ({
     page,
   }) => {
     await installDetailsApi(page);
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`/details/${DEVICE_ID}`);
 
-    const navbar = page.getByTestId("application-header");
-    const primaryLinks = page.getByRole("group", { name: "Workspaces", exact: true });
-    const navbarActions = page.getByTestId("navbar-actions");
-    await expect(navbarActions).toBeVisible();
+    const sidebar = page.getByRole("complementary", { name: "Sidebar", exact: true });
+    const workspaces = sidebar.getByRole("navigation", { name: "Workspace", exact: true });
+    const account = sidebar.getByRole("button", { name: "Account menu", exact: true });
+    const chart = page.getByTestId("telemetry-echart");
+    await expect(account).toBeVisible();
+    await expect(chart).toBeVisible();
+    await expect(page.getByTestId("application-header")).toHaveCount(0);
+    // Device details are opened from Reporting events.
+    await expect(workspaces.getByRole("link", { name: "Reporting", exact: true })).toHaveAttribute("aria-current", "page");
 
-    const [navbarBox, primaryLinksBox, navbarActionsBox] = await Promise.all([
-      navbar.boundingBox(),
-      primaryLinks.boundingBox(),
-      navbarActions.boundingBox(),
+    const [sidebarBox, accountBox, chartBox] = await Promise.all([
+      sidebar.boundingBox(), account.boundingBox(), chart.boundingBox(),
     ]);
-    expect(navbarBox).not.toBeNull();
-    expect(primaryLinksBox).not.toBeNull();
-    expect(navbarActionsBox).not.toBeNull();
-    expect(primaryLinksBox!.x).toBeGreaterThanOrEqual(navbarBox!.x);
-    expect(primaryLinksBox!.x + primaryLinksBox!.width).toBeLessThanOrEqual(navbarActionsBox!.x);
-    expect(navbarActionsBox!.x).toBeGreaterThan(
-      navbarBox!.x + navbarBox!.width / 2,
-    );
-    expect(
-      navbarBox!.x + navbarBox!.width -
-        (navbarActionsBox!.x + navbarActionsBox!.width),
-    ).toBeLessThanOrEqual(40);
+    expect(sidebarBox).not.toBeNull();
+    expect(accountBox).not.toBeNull();
+    expect(chartBox).not.toBeNull();
+    // The account sits at the bottom of the sidebar, and the chart starts beside it.
+    expect(900 - (accountBox!.y + accountBox!.height)).toBeLessThanOrEqual(24);
+    expect(chartBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width);
+    expect(chartBox!.width).toBeGreaterThan(600);
   });
 
   test("renders linked panes, themes, accessibility, and responsive Canvas", async ({

@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 /** Catalogue settings open from the application menu. */
 async function openCatalogueSettings() {
-  fireEvent.keyDown(screen.getByRole("button", { name: "Application menu" }), { key: "Enter" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Account menu" }), { key: "Enter" });
   fireEvent.click(await screen.findByRole("menuitem", { name: "Catalogue" }));
 }
 
@@ -111,7 +111,7 @@ describe("dedicated Sources configuration", () => {
     rememberNavigation("monitoring:1:url", "/?service=retained-service&tab=evidence&stream=temperature");
     const router = mount();
     await screen.findByRole("heading", { name: "Sources" });
-    const link = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
+    const link = within(screen.getByRole("navigation", { name: "Workspace" })).getByRole("link", { name: "Monitoring" });
     fireEvent.click(link);
     await waitFor(() => expect(router.state.location.search).toBe("?service=retained-service&tab=evidence&stream=temperature"));
   });
@@ -121,7 +121,7 @@ describe("dedicated Sources configuration", () => {
     const returnTo = "/?create=monitoring&reading=temperature";
     const router = mount(`/sources?broker=broker&returnTo=${encodeURIComponent(returnTo)}`);
     await screen.findByRole("heading", { name: "Sources" });
-    const monitoring = within(screen.getByRole("group", { name: "Workspaces" })).getByRole("link", { name: "Monitoring" });
+    const monitoring = within(screen.getByRole("navigation", { name: "Workspace" })).getByRole("link", { name: "Monitoring" });
     const target = new URL(monitoring.getAttribute("href")!, "https://workspace.invalid");
     expect(target.searchParams.get("create")).toBe("monitoring");
     expect(target.searchParams.get("reading")).toBe("temperature");

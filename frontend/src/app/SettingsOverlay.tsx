@@ -81,7 +81,8 @@ export function SettingsOverlay() {
         onCloseAutoFocus={event => {
           event.preventDefault();
           if (document.activeElement && document.activeElement !== document.body) return;
-          (settingsReturnFocus() ?? document.querySelector<HTMLElement>(".app-menu-trigger"))?.focus();
+          // The account menu, or on phones the control that reopens the navigation drawer.
+          (settingsReturnFocus() ?? document.querySelector<HTMLElement>(".app-menu-trigger, .app-topbar .app-sidebar-toggle"))?.focus();
         }}>
         <aside className="app-settings-sidebar">
           <Dialog.Title className="app-settings-title">Settings</Dialog.Title>

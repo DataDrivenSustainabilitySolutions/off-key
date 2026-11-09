@@ -69,7 +69,7 @@ export function ExplorerSidebarResize({ width, onCommit }: { width: number; onCo
   };
 
   return <div ref={handle} className="ex-sidebar-resize" role="separator" tabIndex={0}
-    aria-label="Resize explorer sidebar" aria-orientation="vertical" aria-controls="system-explorer"
+    aria-label="Resize sidebar" aria-orientation="vertical" aria-controls="system-explorer"
     aria-valuemin={MIN_SIDEBAR_WIDTH} aria-valuemax={maximum} aria-valuenow={displayedWidth}
     onPointerDown={(event) => {
       if (event.button !== 0 || !event.isPrimary || gesture.current) return;

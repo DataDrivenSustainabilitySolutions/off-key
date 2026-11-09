@@ -9,6 +9,10 @@ import { useSettingsNavigation, type SettingsSection } from "@/lib/settings-navi
 
 type Props = {
   trigger?: ReactElement;
+  side?: "top" | "bottom";
+  align?: "start" | "end";
+  /** Called as a settings section opens, before the overlay takes focus. */
+  onSettings?: () => void;
 };
 
 const items = [
@@ -18,8 +22,8 @@ const items = [
   { section: "status", label: "System status", icon: Activity },
 ] as const satisfies ReadonlyArray<{ section: SettingsSection; label: string; icon: typeof UserCircle }>;
 
-/** Account actions; each entry opens the settings overlay above the current page. */
-export function ApplicationMenu({ trigger }: Props) {
+/** The account menu; each settings entry opens the settings overlay above the current page. */
+export function ApplicationMenu({ trigger, side = "bottom", align = "end", onSettings }: Props) {
   const { isAuthenticated, member, logout } = useAuth();
   const navigate = useNavigate();
   const settings = useSettingsNavigation();
@@ -32,11 +36,11 @@ export function ApplicationMenu({ trigger }: Props) {
 
   return <DropdownMenu>
     <DropdownMenuTrigger asChild ref={menuTrigger}>
-      {trigger ?? <button className="app-menu-trigger app-avatar-trigger" aria-label="Application menu" title={member?.email}>
+      {trigger ?? <button className="app-menu-trigger app-avatar-trigger" aria-label="Account menu" title={member?.email}>
         <span className="app-avatar" aria-hidden="true">{memberInitials(member?.email)}</span>
       </button>}
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" sideOffset={8} className="app-popover app-menu"
+    <DropdownMenuContent side={side} align={align} sideOffset={8} className="app-popover app-menu z-[90]"
       onCloseAutoFocus={event => {
         // Let the settings overlay take focus as the menu closes.
         if (openingSettings.current) {
@@ -48,6 +52,7 @@ export function ApplicationMenu({ trigger }: Props) {
       {items.map(({ section, label, icon: Icon }) => (
         <DropdownMenuItem key={section} className="app-menu-item" aria-haspopup="dialog" onSelect={() => {
           openingSettings.current = true;
+          onSettings?.();
           settings.open(section, menuTrigger.current);
         }}><Icon className="size-4" />{label}</DropdownMenuItem>
       ))}

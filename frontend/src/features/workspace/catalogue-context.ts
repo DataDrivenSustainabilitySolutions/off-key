@@ -1,10 +1,10 @@
 import { createContext, useContext, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { useSystemDocument } from "@/domain/system/useSystemDocument";
-import type { SystemEntityKind, SystemDocument } from "@/types/system";
+import type { SystemEntityKind, SystemDocument, SystemGroup } from "@/types/system";
 import type { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
-import type { ExplorerPreferences } from "./preferences";
+import type { ExplorerPreferences, SidebarSection } from "./preferences";
 import type { Favourite, FavouriteKind } from "./favourites";
 import type { ListPosition } from "./ExplorerList";
 
@@ -27,12 +27,18 @@ export type CatalogueContextValue = {
   preferences: ExplorerPreferences;
   setPreferences: Dispatch<SetStateAction<ExplorerPreferences>>;
   stored: boolean;
-  scopeKey: string;
+  /** Catalogue branches open in the sidebar tree. Opening one never changes the selected source. */
+  expanded: ReadonlySet<string>;
+  setExpanded: (key: string, open: boolean) => void;
+  collapseAll: () => void;
+  /** The shared collection the sidebar tree is narrowed to. Choosing one does not change the selected source either. */
+  collection?: SystemGroup;
+  showCollection: (id: string | null) => void;
+  sectionOpen: (section: SidebarSection) => boolean;
+  setSectionOpen: (section: SidebarSection, open: boolean) => void;
   query: string;
   setQuery: (value: string) => void;
   positions: Map<string, ListPosition>;
-  browse: (key: string) => void;
-  back: () => void;
   selectSource: (node?: ExplorerNode | null) => void;
   sectionHref: (path: string) => string;
   /** The signed-in member's favourites, from the server. */

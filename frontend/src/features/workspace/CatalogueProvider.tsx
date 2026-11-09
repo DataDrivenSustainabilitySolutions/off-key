@@ -9,7 +9,8 @@ import { scopeReadingIds, safeServiceReturn } from "@/domain/system/collectionRu
 import { SystemLiveTelemetry } from "@/domain/system/systemLiveTelemetry";
 import { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
 import { buildNavigationIndex } from "@/domain/system/navigationIndex";
-import { loadExplorerPreferences, saveExplorerPreferences } from "./preferences";
+import { loadExplorerPreferences, MAX_EXPANDED_NODES, saveExplorerPreferences } from "./preferences";
+import { ancestorKeys } from "./catalogue-tree";
 import { useFavourites } from "./favourites";
 import type { ListPosition } from "./ExplorerList";
 import { CatalogueContext, type CatalogueContextValue, type CatalogueDialog } from "./catalogue-context";
@@ -46,36 +47,58 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
   }, [streamIds, streamsById, document.readings, system.snapshot?.runtime]);
   const [telemetry] = useState(() => new SystemLiveTelemetry());
   const history = useMemo(() => navigationDraft(`history:${userId}`, () => new ReadingHistoryCache(userId)), [userId]);
-  const [rawPreferences, setPreferences] = useState(() => loadExplorerPreferences(userId ?? null));
-  const preferences = useMemo(() => !system.document || index.nodes.has(rawPreferences.scopeKey)
-    || document.groups.some(group => rawPreferences.scopeKey === `catalogue:${group.id}`)
-    ? rawPreferences : { ...rawPreferences, scopeKey: index.rootKey }, [rawPreferences, system.document, index, document.groups]);
+  const [preferences, setPreferences] = useState(() => loadExplorerPreferences(userId ?? null));
   const [stored, setStored] = useState(true);
   const dropLegacyFavourites = useCallback(() => setPreferences(previous => {
     const next = { ...previous };
     delete next.favourites;
     return next;
   }), []);
-  const favourites = useFavourites(isAuthenticated ? userId ?? null : null, rawPreferences.favourites, dropLegacyFavourites);
+  const favourites = useFavourites(isAuthenticated ? userId ?? null : null, preferences.favourites, dropLegacyFavourites);
   const [query, setQuery] = useNavigationDraft(`catalogue:${userId}:query`, "");
   const [positions] = useNavigationDraft(`catalogue:${userId}:positions`, () => new Map<string, ListPosition>());
-  const browseHistory = useRef<string[]>([]);
-  const scopeKey = index.nodes.has(preferences.scopeKey) || document.groups.some(group => preferences.scopeKey === `catalogue:${group.id}`)
-    ? preferences.scopeKey : index.rootKey;
+  const expanded = useMemo(() => new Set(preferences.expanded ?? []), [preferences.expanded]);
+  const collection = document.groups.find(group => group.id === preferences.collection);
   const [editingLocked, setEditingLocked] = useState(false);
   const [dialog, setDialog] = useState<CatalogueDialog>(null);
   const dialogOrigin = useRef<HTMLElement | null>(null);
-  const initialReveal = useRef(false);
 
+  /** Opens `keys` in the tree, keeping the most recently opened when the list is full. */
+  const expand = useCallback((keys: string[]) => setPreferences(previous => {
+    const current = previous.expanded ?? [];
+    const added = keys.filter(key => !current.includes(key));
+    return added.length ? { ...previous, expanded: [...current, ...added].slice(-MAX_EXPANDED_NODES) } : previous;
+  }), []);
+
+  // Reveal the selected source in the tree: on a deep link, on Back and Forward,
+  // and when a row, page or favourite chooses it. An earlier sidebar's location is
+  // revealed the same way once, then forgotten.
+  const revealed = useRef<string | null>(null);
+  const selectedKey = selected?.key;
+  const legacyScope = preferences.scopeKey;
   useEffect(() => {
-    if (!system.document || initialReveal.current) return;
-    initialReveal.current = true;
-    if (!selected) return;
+    if (!system.document) return;
+    const reveal = selectedKey && revealed.current !== selectedKey ? selectedKey : undefined;
+    if (!reveal && legacyScope === undefined) return;
     let active = true;
-    const scopeKey = selected.entityKind === "stream" ? selected.parentKey ?? index.rootKey : selected.key;
-    queueMicrotask(() => { if (active) setPreferences(previous => ({ ...previous, scopeKey })); });
+    queueMicrotask(() => {
+      if (!active) return;
+      revealed.current = selectedKey ?? null;
+      if (legacyScope !== undefined) {
+        setPreferences(previous => {
+          const next = { ...previous };
+          delete next.scopeKey;
+          return next;
+        });
+        if (index.nodes.has(legacyScope)) expand([...ancestorKeys(index, legacyScope), legacyScope]);
+      }
+      // A chosen branch opens too, so its contents are in view. Opening a branch
+      // never chooses it.
+      const node = reveal ? index.nodes.get(reveal) : undefined;
+      if (node) expand([...ancestorKeys(index, node.key), ...(node.entityKind !== "stream" && node.children.length ? [node.key] : [])]);
+    });
     return () => { active = false; };
-  }, [system.document, selected, index]);
+  }, [system.document, index, selectedKey, legacyScope, expand]);
 
   useEffect(() => {
     if (!system.document) return;
@@ -101,14 +124,6 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
     };
   }, [telemetry]);
 
-  const browse = (key: string, remember = true) => {
-    if (remember && key !== scopeKey) {
-      if (browseHistory.current.length >= 128) browseHistory.current.shift();
-      browseHistory.current.push(scopeKey);
-    }
-    setPreferences(previous => ({ ...previous, scopeKey: key }));
-    setQuery("");
-  };
   const selectSource: CatalogueContextValue["selectSource"] = node => {
     const path = isWorkspacePath(location.pathname) ? location.pathname : "/sources";
     const returnTo = path === "/sources" ? safeServiceReturn(params.get("returnTo")) : "/";
@@ -138,9 +153,22 @@ export function CatalogueProvider({ children }: { children: ReactNode }) {
 
   return <CatalogueContext.Provider value={{
     system, document, index, selected, selectionRequested, selectionMissing, streamIds,
-    liveStreamIds, previewStreamIds, telemetry, history, preferences, setPreferences, stored, scopeKey,
-    query, setQuery, positions, browse,
-    back: () => query ? setQuery("") : browse(browseHistory.current.pop() ?? index.nodes.get(scopeKey)?.parentKey ?? index.rootKey, false),
+    liveStreamIds, previewStreamIds, telemetry, history, preferences, setPreferences, stored,
+    expanded, collection,
+    setExpanded: (key, open) => open ? expand([key])
+      : setPreferences(previous => ({ ...previous, expanded: (previous.expanded ?? []).filter(other => other !== key) })),
+    collapseAll: () => setPreferences(previous => ({ ...previous, expanded: [] })),
+    showCollection: id => setPreferences(previous => {
+      const next = { ...previous };
+      if (id) next.collection = id;
+      else delete next.collection;
+      return next;
+    }),
+    sectionOpen: section => !preferences.collapsedSections?.includes(section),
+    setSectionOpen: (section, open) => setPreferences(previous => ({ ...previous,
+      collapsedSections: open ? (previous.collapsedSections ?? []).filter(other => other !== section)
+        : [...new Set([...(previous.collapsedSections ?? []), section])] })),
+    query, setQuery, positions,
     selectSource, sectionHref,
     favourites: favourites.favourites, toggleFavourite: favourites.toggle, favouritesError: favourites.error,
     editingLocked, setEditingLocked, dialog, dialogOrigin,

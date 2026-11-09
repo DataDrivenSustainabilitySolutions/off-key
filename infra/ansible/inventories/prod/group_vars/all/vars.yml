@@ -54,7 +54,8 @@ ingress_base_domain:                  "aberration.app"
 frontend_base_url:                    "https://dashboard.aberration.app"
 cors_allowed_origins:                 '["https://dashboard.aberration.app"]'
 # Public documentation, linked from the landing page's llms.txt and Markdown view.
-docs_base_url:                        "https://datadrivensustainabilitysolutions.github.io/off-key"
+docs_hostname:                        "docs.aberration.app"
+docs_base_url:                        "https://{{ docs_hostname }}"
 
 # ── oauth2-proxy (ingress auth) ───────────────────────────────────────────────
 # GitHub OAuth gate in front of emqx./traefik. Secrets (client id/secret, cookie secret)

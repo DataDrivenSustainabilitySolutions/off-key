@@ -118,7 +118,7 @@ def deploy(directory, phase, **overrides):
         | {
             "rehearsal_phase": phase,
             "ansible_become": False,
-            "release_public_urls": ["http://localhost:5173"],
+            "release_public_urls": ["http://localhost:5173", "http://localhost:8087"],
             "persistence_backup_dir": str(directory / "backups"),
         }
     )
@@ -209,6 +209,8 @@ def prepare(directory):
         or run("git", "rev-parse", "HEAD", cwd=PROJECT).stdout.strip()
     )
     images(release, revision)
+    # Probe the current release on main as well as validation builds.
+    run("python3", PROJECT / "dev/docs/check_image.py", release["images"]["docs"])
     release["application_revision"] = revision
     (directory / "production-release.json").write_text(
         json.dumps({"release": release}, indent=2)
@@ -354,6 +356,7 @@ def prepare(directory):
         "networks": ["app-network"],
     }
     for service, port, published in (
+        ("docs", 80, 8087),
         ("frontend", 5173, 5173),
         ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
         ("tactic", 8001, 8001),

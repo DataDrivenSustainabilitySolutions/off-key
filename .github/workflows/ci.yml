@@ -5,7 +5,7 @@ name: CI
 # success on a main push plus the release evidence only a rehearsal keeps, so
 # adding, renaming or re-versioning a job never changes a required check.
 #
-# The changes job plans the run (.github/scripts/ci_plan.py): documentation-only
+# The changes job plans the run (.github/scripts/ci_plan.py): root-Markdown-only
 # and frontend-only changes skip suites whose inputs did not change; everything
 # else, and anything uncertain, runs every job. Cheap checks run first, so a
 # lint failure stops the image builds and disposable Swarms before they start.
@@ -448,6 +448,9 @@ jobs:
 
       - name: Verify production frontend survives delayed API discovery
         run: python3 frontend/check_nginx_startup.py "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["images"]["frontend"]["reference"])' "$RUNNER_TEMP/ci-images.json")"
+
+      - name: Verify documentation pages, assets and Markdown exports
+        run: python3 dev/docs/check_image.py "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["images"]["docs"]["reference"])' "$RUNNER_TEMP/ci-images.json")"
 
       - name: Keep the image archive for this run's rehearsals
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

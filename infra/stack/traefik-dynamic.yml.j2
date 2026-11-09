@@ -20,6 +20,11 @@
 
 http:
   routers:
+    docs:
+      rule: "Host(`{{ docs_hostname }}`)"
+      entryPoints: [web]
+      service: docs
+
     landing:
       rule: "Host(`{{ ingress_base_domain }}`)"
       entryPoints: [web]
@@ -79,6 +84,10 @@ http:
 {% endif %}
 
   services:
+    docs:
+      loadBalancer:
+        servers:
+          - url: "http://{{ stack_name }}_docs:80"
     landing:
       loadBalancer:
         servers:

@@ -2,6 +2,7 @@
   "release": {
     "application_revision": "ed893dff68a7c2d32ebfb09c84a413f84a2d8387",
     "images": {
+      "docs": "ghcr.io/datadrivensustainabilitysolutions/off-key-docs:latest",
       "api": "ghcr.io/datadrivensustainabilitysolutions/off-key-api-gateway:sha-ed893df@sha256:bb399ecd66d9b25644beb9792833b2e272cd91a6e5b23c94a6e36928e98542fe",
       "frontend": "ghcr.io/datadrivensustainabilitysolutions/off-key-frontend:sha-ed893df@sha256:dca1a11afaa5c11e1c8e45f629db1bf311e08bafe17a6d944c785e053aa1bd0f",
       "mqtt_proxy": "ghcr.io/datadrivensustainabilitysolutions/off-key-mqtt-proxy:sha-ed893df@sha256:3e63104d1e3ecad8fb47a22375f3517bcd0bda12c7c1f89e7b81364b0609820a",

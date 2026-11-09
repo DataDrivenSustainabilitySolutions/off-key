@@ -15,7 +15,7 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    and test changes do not deploy; intervening undeployed runtime changes remain visible.
 4. Deployment uses the exact immutable image digests saved by that SHA's successful
    production rehearsal. OCI revision labels must match the SHA; a missing or expired
-   rehearsal artifact blocks deployment, so a documentation-only `main` run, which
+   rehearsal artifact blocks deployment, so a root-Markdown-only `main` run, which
    rehearses nothing, is never selected. The control checkout must be clean and match
    that same commit.
 5. A durable database operation fences monitor start/stop/delete and catalog writes.
@@ -112,8 +112,8 @@ cutover with a persistence flip. Recover state first using [Recovery](recovery.m
 
 ## Image retention
 
-Each main push publishes six application images and their attestations to GHCR,
-and each release pulls six new images onto the nodes. Neither place keeps them all.
+Each main push publishes seven application images and their attestations to GHCR,
+and each release pulls seven new images onto the nodes. Neither place keeps them all.
 
 - **Nodes:** after a release is verified and recorded, `deploy.yml` removes the
   application images on every node that neither the release nor any Swarm service
@@ -155,6 +155,49 @@ Production email uses the configured Resend SMTP account with TLS and verified
 sender DNS. Save its key as `email_password` in the encrypted vault. First-admin
 invitation runs after readiness; `make -C infra invite-admin-prod` can resend it.
 Local Compose uses Mailpit. No production Mailpit service remains.
+
+## Documentation hosting
+
+`https://docs.aberration.app` serves the public Zensical documentation from the
+`docs` service on the existing production Swarm. CI builds `off-key-docs` with
+`dev/docs/Dockerfile`, runs a strict build and checks the resulting HTTP server,
+then publishes and attests it alongside the other application images. Deployment
+uses the tested image digest. Documentation-only changes trigger deployment too.
+The image includes `llms.txt`, `llms-full.txt` and per-page Markdown exports.
+
+The committed release manifest initially names `off-key-docs:latest` because the
+new package has not been published yet. CI replaces that seed with a verified
+commit-specific digest in its `production-release` artifact. Production rejects
+unpinned images; do not deploy the seed manifest directly or invent a digest.
+Offline rendering tests substitute a synthetic digest only in their fixtures.
+
+Before deploying the first release with this service, configure Cloudflare:
+
+1. Open **Networking → Tunnels**, select the existing production tunnel, and add
+   a **Published application** route (called **Public Hostname** in some views).
+2. Set the hostname to **docs.aberration.app**, leaving the path unrestricted.
+3. Set the service to **HTTP**, URL **traefik:80** (`http://traefik:80`). Keep
+   **HTTP Host Header** unset so the original `docs.aberration.app` host reaches
+   Traefik; an explicit override must be `docs.aberration.app`.
+4. Verify the dashboard created the proxied DNS record for `docs` targeting this
+   tunnel's `<tunnel-id>.cfargotunnel.com`. Remove a conflicting `docs` record if
+   one already exists. This uses the existing tunnel token and edge HTTPS.
+5. Keep this hostname public: it must not inherit a Cloudflare Access login
+   requirement from a wildcard application.
+
+See Cloudflare's [published application setup](https://developers.cloudflare.com/tunnel/get-started/)
+and [DNS routing](https://developers.cloudflare.com/tunnel/concepts/routing/).
+The route may return an error until the first docs service deployment. The
+production release checks the docs hostname, so configure the route before that
+release runs. After deployment, verify `/`, `/getting-started/`, `/llms.txt` and
+`/getting-started.md` at the new hostname.
+
+The separate GitHub Pages workflow has been removed. After verifying the new
+hostname, unpublish the old site in the repository's **Settings → Pages**; deleting
+the workflow alone does not remove an already published site. The old
+`github.io/off-key/` links will stop working after unpublishing; they cannot be
+redirected by the production stack. The README, canonical URLs and landing-page
+links now use the new hostname. Local preview remains `zensical serve`.
 
 ## Logs and Grafana
 

@@ -10,12 +10,18 @@ export const VIEW_MARGIN = 32;
 /** Canvas edges covered by floating controls, in screen pixels. */
 export type CoveredEdges = { top?: number; right?: number; bottom?: number };
 
+/** Uncovered room kept on a canvas whose floating controls cover nearly all of it. */
+const MIN_VISIBLE = 96;
+const clampCover = (cover: number | undefined, room: number) =>
+  Math.max(0, Math.min(cover ?? 0, room - MIN_VISIBLE));
+
 /** The part of the surface no floating control covers, relative to its top left corner. */
 function visibleArea(surface: HTMLElement, covered?: CoveredEdges) {
   const { width, height } = surface.getBoundingClientRect();
-  const top = Math.min(covered?.top ?? 0, height / 2);
-  const right = Math.min(covered?.right ?? 0, width / 2);
-  const bottom = Math.min(covered?.bottom ?? 0, (height - top) / 2);
+  // Covers count as measured, so a tall bottom sheet keeps revealed cards above it.
+  const top = clampCover(covered?.top, height);
+  const right = clampCover(covered?.right, width);
+  const bottom = clampCover(covered?.bottom, height - top);
   return { top, width: width - right, height: height - top - bottom, empty: !width || !height };
 }
 

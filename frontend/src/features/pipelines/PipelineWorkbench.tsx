@@ -10,6 +10,7 @@ import { isWarning } from "./scope";
 import { startupSentence, startupSummary, type Startup } from "./startup";
 import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
+import { usePlaceToasts } from "@/hooks/use-toast-position";
 
 export type InspectorPanel = "service" | "component" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale" | "insets"> & {
@@ -112,6 +113,8 @@ export function PipelineWorkbench({
   const settingsPanel = useRef<HTMLDivElement>(null);
   const stageCanvas = useRef<HTMLDivElement>(null);
   const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
+  // The stage's own actions sit at the top right, where toasts would cover them.
+  usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
   const finishDrag = () => {
     if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current);

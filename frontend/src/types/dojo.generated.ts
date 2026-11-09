@@ -32,7 +32,7 @@ export type DatasetFromHistory = {
   name: string;
   description?: string;
   reading_ids: Array<string>;
-  start: string;
+  start?: string | null;
   end: string;
 };
 

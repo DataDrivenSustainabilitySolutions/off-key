@@ -137,8 +137,9 @@ async def import_dojo_history(
     """Create a dataset by copying recorded readings for one time window.
 
     `reading_ids` are reading ids from `GET /v1/catalogue`. Each becomes
-    one series named after the reading. The copy is frozen: later retention
-    or catalogue edits do not change it.
+    one series named after the reading. Without `start`, everything still
+    stored up to `end` is copied. The copy is frozen: later retention or
+    catalogue edits do not change it.
     """
     return await tactic.request(
         "POST",

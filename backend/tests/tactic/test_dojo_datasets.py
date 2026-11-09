@@ -39,6 +39,7 @@ from off_key_tactic_middleware.services.dojo.csv_import import (
     read_points,
 )
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from pydantic import ValidationError as SchemaError
 from sqlalchemy import MetaData, func, select
 
 from tests.support.env import set_auth_env
@@ -298,6 +299,37 @@ async def test_history_copy_is_frozen_and_keeps_its_reading(dojo_database):
             view.id, series.id, DatasetPointsQuery()
         )
     assert [item.value for item in page.items] == [2, 3, 4, 5]
+
+
+@pytest.mark.asyncio
+async def test_history_copy_without_a_start_takes_everything_stored(dojo_database):
+    await seed_history(dojo_database)
+    request = DatasetFromHistory(
+        name="All of it", reading_ids=["temperature-1"], end=T0 + timedelta(days=1)
+    )
+    async with dojo_database() as session:
+        view = await DojoDatasets(session).import_history(request, created_by=None)
+    assert view.point_count == 10
+    assert (view.start_at, view.end_at) == (T0, T0 + timedelta(minutes=9))
+    assert view.source["start"] is None
+    # The end still bounds the copy.
+    async with dojo_database() as session:
+        early = await DojoDatasets(session).import_history(
+            DatasetFromHistory(
+                name="Early",
+                reading_ids=["temperature-1"],
+                end=T0 + timedelta(minutes=3),
+            ),
+            created_by=None,
+        )
+    assert early.point_count == 3
+
+
+def test_history_window_needs_an_aware_end_after_its_start():
+    with pytest.raises(SchemaError, match="time zone"):
+        DatasetFromHistory(name="x", reading_ids=["a"], end=datetime(2026, 3, 1))
+    with pytest.raises(SchemaError, match="end must be after start"):
+        DatasetFromHistory(name="x", reading_ids=["a"], start=T0, end=T0)
 
 
 @pytest.mark.asyncio

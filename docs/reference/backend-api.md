@@ -308,7 +308,7 @@ change it. A run replays one design over one dataset. Every route needs
 | --- | --- | --- | --- |
 | `GET` | `/dojo/datasets` | List datasets, newest first | `limit`, `offset` |
 | `POST` | `/dojo/datasets/csv` | Create a dataset from a CSV request body (`text/csv`, at most 100 MB) | Query: `name`, `layout` (`wide` or `long`), optional `timestamp_column`, `series_column`, `value_column`, `delimiter`, `filename`, `description` |
-| `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `start`, `end` |
+| `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `end`, optional `start` (omitted: from the first stored value) |
 | `GET` | `/dojo/datasets/{dataset_id}` | One dataset with its series | Path: `dataset_id` |
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |

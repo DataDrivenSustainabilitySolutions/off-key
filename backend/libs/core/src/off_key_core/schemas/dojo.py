@@ -96,20 +96,28 @@ class CsvImportQuery(DojoModel):
     )
 
 
+def _aware(value: datetime | None, name: str) -> None:
+    if value is not None and value.tzinfo is None:
+        raise ValueError(f"{name} needs a time zone, for example Z")
+
+
 class DatasetFromHistory(DojoModel):
     """Copy recorded readings for one time window into a new dataset."""
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     reading_ids: list[str] = Field(min_length=1, max_length=MAX_DATASET_SERIES)
-    start: datetime
+    start: datetime | None = Field(
+        default=None,
+        description="Omit to copy everything stored, from the first recorded value.",
+    )
     end: datetime
 
     @model_validator(mode="after")
     def window(self):
-        if self.start.tzinfo is None or self.end.tzinfo is None:
-            raise ValueError("start and end need a time zone, for example Z")
-        if self.end <= self.start:
+        _aware(self.start, "start")
+        _aware(self.end, "end")
+        if self.start is not None and self.end <= self.start:
             raise ValueError("end must be after start")
         if len(set(self.reading_ids)) != len(self.reading_ids):
             raise ValueError("Each reading may appear only once")
@@ -274,11 +282,6 @@ class RunPromotion(DojoModel):
     pipeline_id: str = Field(description="The new template in the library.")
     pipeline_name: str
     bindings: list[PromotedBinding] = Field(max_length=MAX_DATASET_SERIES)
-
-
-def _aware(value: datetime | None, name: str) -> None:
-    if value is not None and value.tzinfo is None:
-        raise ValueError(f"{name} needs a time zone, for example Z")
 
 
 class LabelCreate(DojoModel):

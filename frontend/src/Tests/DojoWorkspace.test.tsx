@@ -138,6 +138,38 @@ describe("Dojo workspace", () => {
     await waitFor(() => expect(router.state.location.search).toBe("?dataset=d2"));
   });
 
+  it("copies everything stored by default and a chosen window on request", async () => {
+    vi.mocked(dojoApi.importHistory).mockResolvedValue({ ...dataset, id: "d2", name: "Pump 1" });
+    const copy = async (choose: (dialog: HTMLElement) => void) => {
+      cleanup();
+      const router = mount("/dojo");
+      fireEvent.click(await screen.findByRole("button", { name: "Copy recorded readings" }));
+      const dialog = await screen.findByRole("dialog", { name: "Copy recorded readings" });
+      expect((within(dialog).getByRole("radio", { name: "Everything stored" }) as HTMLInputElement).checked).toBe(true);
+      choose(dialog);
+      const calls = vi.mocked(dojoApi.importHistory).mock.calls.length;
+      fireEvent.click(within(dialog).getByRole("button", { name: "Copy" }));
+      await waitFor(() => expect(dojoApi.importHistory).toHaveBeenCalledTimes(calls + 1));
+      router.dispose();
+      return vi.mocked(dojoApi.importHistory).mock.calls[calls]![0];
+    };
+    const before = Date.now();
+    const everything = await copy(dialog => expect(within(dialog).queryByLabelText("From")).toBeNull());
+    expect(everything.start).toBeUndefined();
+    expect(Date.parse(everything.end)).toBeGreaterThanOrEqual(before);
+
+    const day = await copy(dialog => fireEvent.click(within(dialog).getByRole("radio", { name: "Last 24 hours" })));
+    expect(Date.parse(day.end) - Date.parse(day.start!)).toBe(86_400_000 + 1000);
+
+    const custom = await copy(dialog => {
+      fireEvent.click(within(dialog).getByRole("radio", { name: "Custom" }));
+      fireEvent.change(within(dialog).getByLabelText("From"), { target: { value: "2024-01-01T00:00:00" } });
+      fireEvent.change(within(dialog).getByLabelText("To"), { target: { value: "2024-01-02T00:00:00" } });
+    });
+    expect(custom).toMatchObject({ start: new Date("2024-01-01T00:00:00").toISOString(),
+      end: new Date("2024-01-02T00:00:00").toISOString() });
+  });
+
   it("marks the zoomed range of the chart as a label", async () => {
     vi.mocked(dojoApi.createLabel).mockResolvedValue({ ...label, id: "l2" });
     mount("/dojo?dataset=d1");

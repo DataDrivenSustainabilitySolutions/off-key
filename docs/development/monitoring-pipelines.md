@@ -605,9 +605,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`9311f9937e605da9b4be5a9903f08de4da79dade`, the first invariant-enforcement
-commit that carries migration 025 (`evidence_cursor`), before the runtime
-connection lookup correction. It shares the current
+`b03157ece337fd42a427e8eb26b4364b67942a53`, the commit that adds the seasonal
+forecast detector to the generated catalog, on top of migration 025
+(`evidence_cursor`). It shares the current
 migration ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -615,9 +615,10 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `8db7b5cb`, carried migrations through 024; it cannot be a
-reference any more, because releases before migration 025 refuse a database that
-has applied it. Rolling back past migration 025 means restoring a verified
+The previous reference, `9311f993`, has the same schema but a catalog without
+the seasonal forecast detector, so the rehearsal no longer accepts it; the one
+before, `8db7b5cb`, carried migrations through 024, and releases before
+migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

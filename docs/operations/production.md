@@ -15,7 +15,8 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    and test changes do not deploy; intervening undeployed runtime changes remain visible.
 4. Deployment uses the exact immutable image digests saved by that SHA's successful
    production rehearsal. OCI revision labels must match the SHA; a missing or expired
-   rehearsal artifact blocks deployment. The control checkout must be clean and match
+   rehearsal artifact blocks deployment, so a documentation-only `main` run, which
+   rehearses nothing, is never selected. The control checkout must be clean and match
    that same commit.
 5. A durable database operation fences monitor start/stop/delete and catalog writes.
    Normal requests receive HTTP 503 during release maintenance.

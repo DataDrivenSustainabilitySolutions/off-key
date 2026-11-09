@@ -20,6 +20,7 @@ from support import ROOT, ansible, load_script, run
 application = load_script("check_application")
 swarm = load_script("check_swarm")
 release = load_script("pin_release")
+EVIDENCE = {"artifacts": [{"name": "production-release", "expired": False}]}
 
 
 class ReleaseTests(unittest.TestCase):
@@ -65,17 +66,71 @@ class ReleaseTests(unittest.TestCase):
         responses = [
             [{"sha": sha} for sha in (newest, eligible, older)],
             {"workflow_runs": runs},
+            EVIDENCE,
         ]
         with (
             patch.object(release, "github", side_effect=responses) as github,
             redirect_stderr(StringIO()),
         ):
             self.assertEqual(release.select_revision("latest"), eligible)
-        self.assertEqual(github.call_count, 2)
+        self.assertEqual(github.call_count, 3)
         self.assertIn(
             f"actions/workflows/{release.RELEASE_WORKFLOW}/runs?branch=main&event=push",
             github.call_args_list[1].args[0],
         )
+        self.assertEqual(
+            github.call_args_list[2].args[0],
+            "actions/runs/2/artifacts?name=production-release",
+        )
+
+    def test_a_successful_run_without_release_evidence_is_not_a_release(self):
+        # A documentation-only CI run succeeds without rehearsing or publishing.
+        docs_only, released = "a" * 40, "b" * 40
+        runs = [
+            {
+                "id": number,
+                "run_attempt": 1,
+                "head_sha": sha,
+                "head_branch": "main",
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+            }
+            for number, sha in ((2, docs_only), (1, released))
+        ]
+        for missing in (
+            {"artifacts": []},
+            {"artifacts": [{"name": "production-release", "expired": True}]},
+            {"artifacts": [{"name": "other", "expired": False}]},
+        ):
+            with self.subTest(artifacts=missing):
+                with (
+                    patch.object(
+                        release,
+                        "github",
+                        side_effect=[
+                            [{"sha": docs_only}, {"sha": released}],
+                            {"workflow_runs": runs},
+                            missing,
+                            EVIDENCE,
+                        ],
+                    ),
+                    redirect_stderr(StringIO()),
+                ):
+                    self.assertEqual(release.select_revision("latest"), released)
+                with (
+                    patch.object(
+                        release,
+                        "github",
+                        side_effect=[
+                            {"status": "ahead"},
+                            {"workflow_runs": runs[:1]},
+                            missing,
+                        ],
+                    ),
+                    self.assertRaisesRegex(ValueError, "release evidence"),
+                ):
+                    release.select_revision(docs_only)
 
     def test_explicit_rollback_requires_a_successful_main_push_run(self):
         revision = "a" * 40
@@ -91,10 +146,14 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(
             release,
             "github",
-            return_value={"status": "ahead", "workflow_runs": [successful_run]},
+            side_effect=[
+                {"status": "ahead"},
+                {"workflow_runs": [successful_run]},
+                EVIDENCE,
+            ],
         ) as github:
             self.assertEqual(release.select_revision(revision), revision)
-        self.assertEqual(github.call_count, 2)
+        self.assertEqual(github.call_count, 3)
         self.assertIn(f"head_sha={revision}", github.call_args_list[1].args[0])
         for changes in (
             {"status": "in_progress", "conclusion": None},

@@ -19,17 +19,20 @@ This table is the single inventory of GitHub workflows. `infra/tests/test_docs.p
 fails when a workflow file is missing here or the release gate is not marked.
 
 Every check that gates a merge or a release is a job in `ci.yml`. Its `ci-gate` job
-needs all other jobs and succeeds only when each of them succeeded, so it is the one
-check the branch rule requires. Job names may carry matrix values such as a Python
-or EMQX version; a version bump renames such a job without touching the rule, and
-`infra/tests/test_ci_workflow.py` fails if a new job is left out of `ci-gate`.
+needs all other jobs, so it is the one check the branch rule requires. It succeeds
+only when the `changes` job wrote a plan, every job the plan selected succeeded and
+every job it did not select was skipped; a failed, cancelled or unplanned result
+fails it. Job names may carry matrix values such as a Python or EMQX version; a
+version bump renames such a job without touching the rule, and
+`infra/tests/test_ci_workflow.py` fails if a new job is left out of `ci-gate` or the
+plan.
 
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `backend (3.12)`, `backend (3.14)` (pre-commit, backend tests, generated contracts; the 3.12 leg also runs the `ty` type check); `frontend` (lint, tests, build, route-mocked journeys); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with the production image); `images` on pull requests (builds the image matrix) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (browser journeys, then backup restore and binary rollback on a production Swarm) and `deployment-smoke (pipelines)` (adaptive monitor and visual pipelines on a second Swarm). On `main` both smoke lanes start after `publish` and test the images it pushed | yes |
-| `docker-images.yml` | Docker Images | Called by CI | Reusable image matrix | no |
+| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests, build, route-mocked journeys); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (browser journeys, then backup restore and binary rollback on a production Swarm) and `deployment-smoke (pipelines)` (adaptive monitor and visual pipelines on a second Swarm). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
+| `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix | no |
 | `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**`, `zensical.toml` or `requirements-docs.txt`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
-| `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded ([Production releases](../operations/production.md)) | no |
+| `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded and kept its `production-release` evidence ([Production releases](../operations/production.md)) | no |
 | `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
 | `pr-triage.yml` | PR triage | Pull requests opened, reopened or marked ready | Assigns a human author and requests the maintainer's review; never fails | no |
 | CodeQL default setup | CodeQL | Repository settings | `CodeQL` | no |
@@ -38,13 +41,54 @@ Shared steps live in `.github/actions/setup-backend` (Python, the pinned uv rele
 and the locked backend sync). Test lanes select their tests by pytest marker; see
 [Testing and debugging](testing-debugging.md#radar-production-integration).
 
-Validation builds, RADAR and local deployment-smoke builds read the validation
-cache and the publishing cache on main. BuildKit still checks the Dockerfile,
-build arguments and input files; a cache hit does not skip any test. The jobs keep
-their existing dependencies and isolated disposable environments. The compatible
-rollback release is still built from its separately reviewed source revision,
-with an additional cache scoped to that revision and service. Current-image cache
-writes remain owned by the image matrix, avoiding competing exports from lanes.
+### Planned runs
+
+`.github/scripts/ci_plan.py` narrows only two kinds of change; every other path,
+and anything it cannot classify, runs every job:
+
+| Changed paths | Jobs that run |
+| --- | --- |
+| Only `docs/**`, `dev/docs/**`, `zensical.toml` or root-level `*.md` | `lint`, `contracts` (the documentation build is `docs.yml`) |
+| Those plus `frontend/**`, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
+| Anything else: backend and shared core, lockfiles and dependency manifests (including `requirements-docs.txt`), Dockerfiles, `infra/**`, `.github/**`, unknown files | every job |
+
+Pull requests compare their merge commit with its base parent, the merge queue
+compares the group with its base, and manual runs always run every job. A `main`
+push compares with the newest ancestor whose CI run kept the `production-release`
+artifact, so a cancelled or superseded run never hides a change. Deletions and
+renames count both paths. An empty or unreadable diff, an unexpected checkout or
+an API failure selects every job. `infra/tests/test_ci_plan.py` covers these
+cases and fails when a backend or infrastructure test outside the `contracts` job
+starts reading documentation or frontend sources.
+
+A documentation-only `main` run succeeds without publishing or rehearsing images,
+so it keeps no release evidence; [production release selection](../operations/production.md)
+skips it. Cheap checks run first: backend, infrastructure, collection,
+observability, image and RADAR jobs wait for `lint`, and the deployment rehearsals
+also wait for `frontend`.
+
+### Image builds
+
+On pull requests, the merge queue and manual runs, the `images` job builds each
+application image once with the inputs the rehearsals test (the `production`
+frontend target, the service build arguments, `GIT_COMMIT` and the
+`org.opencontainers.image.revision` label, all from
+`infra/tests/rehearsal_releases.py`). It exports them as one zstd archive, kept as
+a one-day artifact of that run only, and passes the archive digest and every image
+ID as job outputs. RADAR and both rehearsal lanes load the archive only after the
+digest, image IDs and revision labels match those outputs, then push it to their
+own disposable registry; CI never rebuilds a current image elsewhere. Pull
+requests never receive registry write credentials and their archive is never
+promoted. On `main`, `publish` pushes and attests the images with the same build
+inputs, and RADAR and the rehearsals test those published digests, which the
+release then deploys.
+
+Image builds read the validation cache and the publishing cache on main. BuildKit
+still checks the Dockerfile, build arguments and input files; a cache hit does not
+skip any test. The compatible rollback release is still built from its separately
+reviewed source revision, with an additional cache scoped to that revision and
+service. Current-image cache writes remain owned by the `images` and `publish`
+jobs, avoiding competing exports from lanes.
 
 `.github/actions/run-with-build-cache` gives CLI builds the cache runtime
 credentials GitHub supplies to JavaScript actions. They are inherited only by that

@@ -25,6 +25,8 @@ REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
 # CI runs every release gate, publishes the images and rehearses them, so its
 # success on a main push is what makes a commit releasable.
 RELEASE_WORKFLOW = "ci.yml"
+# The tested image manifest only a rehearsed, published run keeps.
+EVIDENCE = "production-release"
 
 
 def github(path):
@@ -52,6 +54,14 @@ def main_runs(workflow, revision=None):
     return latest
 
 
+def has_release_evidence(run):
+    artifacts = github(f"actions/runs/{run['id']}/artifacts?name={EVIDENCE}")
+    return any(
+        artifact["name"] == EVIDENCE and not artifact["expired"]
+        for artifact in artifacts["artifacts"]
+    )
+
+
 def select_revision(requested):
     if requested != "latest" and not re.fullmatch(r"[0-9a-f]{40}", requested):
         raise ValueError("revision must be 'latest' or a full lowercase commit SHA")
@@ -69,12 +79,14 @@ def select_revision(requested):
         RELEASE_WORKFLOW, None if requested == "latest" else requested
     )
     successful = {
-        sha
+        sha: run
         for sha, run in latest_runs.items()
         if run["status"] == "completed" and run["conclusion"] == "success"
     }
     for revision in candidates:
-        if revision in successful:
+        # A documentation-only run succeeds without rehearsing or publishing
+        # images; only a run that kept the tested release manifest is a release.
+        if revision in successful and has_release_evidence(successful[revision]):
             if requested == "latest" and revision != candidates[0]:
                 print(
                     f"Main {candidates[0]} is not eligible; selecting {revision}.",
@@ -83,7 +95,8 @@ def select_revision(requested):
             return revision
     scope = "the latest 100 main commits/runs" if requested == "latest" else requested
     raise ValueError(
-        f"No eligible release in {scope}: CI must succeed on a main push of the commit."
+        f"No eligible release in {scope}: CI must succeed on a main push of the "
+        "commit and keep its rehearsed release evidence."
     )
 
 
@@ -147,7 +160,7 @@ def tested_release(revision):
                 "--repo",
                 REPOSITORY,
                 "--name",
-                "production-release",
+                EVIDENCE,
                 "--dir",
                 directory,
             ],

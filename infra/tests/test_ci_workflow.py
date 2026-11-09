@@ -1,5 +1,6 @@
 """CI is one workflow whose single, stable gate job stands for every check."""
 
+import importlib.util
 import unittest
 
 import yaml
@@ -11,6 +12,15 @@ GATE = "ci-gate"
 
 def workflow(name):
     return yaml.load((WORKFLOWS / name).read_text(), Loader=yaml.BaseLoader)
+
+
+def load_plan():
+    spec = importlib.util.spec_from_file_location(
+        "ci_plan", ROOT.parent / ".github/scripts/ci_plan.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def needs(job):
@@ -33,28 +43,135 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual(self.jobs[GATE]["name"], GATE)
         self.assertNotIn("strategy", self.jobs[GATE])
 
-    def test_the_gate_expects_exactly_one_image_job_per_event(self):
-        step = self.jobs[GATE]["steps"][0]
-        self.assertEqual(step["env"]["NEEDS"], "${{ toJSON(needs) }}")
+    def test_the_gate_enforces_the_plan_not_a_blanket_skip(self):
+        steps = self.jobs[GATE]["steps"]
+        gate = steps[-1]
+        self.assertEqual(gate["env"]["NEEDS"], "${{ toJSON(needs) }}")
+        self.assertEqual(gate["env"]["PLAN"], "${{ needs.changes.outputs.plan }}")
+        self.assertEqual(gate["run"], "python3 .github/scripts/ci_gate.py")
+        self.assertNotIn("if", gate)
+        self.assertNotIn("continue-on-error", gate)
+
+    def test_every_planned_job_is_selected_by_its_own_plan_entry(self):
+        plan = load_plan()
+        self.assertEqual(set(plan.JOBS), set(self.jobs) - {GATE, "changes"})
+        for name in plan.JOBS:
+            with self.subTest(job=name):
+                condition = self.jobs[name]["if"]
+                self.assertTrue(
+                    f"fromJSON(needs.changes.outputs.plan).{name}" in condition
+                    or f"fromJSON(needs.changes.outputs.plan)['{name}']" in condition
+                )
+                self.assertIn("changes", needs(self.jobs[name]))
+        self.assertNotIn("if", self.jobs["changes"])
+        self.assertEqual(needs(self.jobs["changes"]), [])
+
+    def test_exactly_one_image_job_runs_per_event(self):
         self.assertEqual(
-            step["env"]["NOT_RUN"],
-            "${{ github.event_name == 'push' && 'images' || 'publish' }}",
+            self.jobs["publish"]["if"],
+            "github.event_name == 'push' && fromJSON(needs.changes.outputs.plan).publish",
         )
-        self.assertEqual(self.jobs["publish"]["if"], "github.event_name == 'push'")
-        self.assertEqual(self.jobs["images"]["if"], "github.event_name != 'push'")
-        self.assertEqual(self.jobs["publish"]["with"]["publish"], "true")
-        self.assertEqual(self.jobs["images"]["with"]["publish"], "false")
+        self.assertTrue(
+            self.jobs["images"]["if"].startswith("github.event_name != 'push' && ")
+        )
+        self.assertNotIn("with", self.jobs["images"])
+        self.assertNotIn("publish", self.jobs["publish"]["with"])
+
+    def test_cheap_checks_gate_the_costly_jobs(self):
+        for name in (
+            "backend",
+            "contracts",
+            "infrastructure",
+            "collection",
+            "observability",
+            "images",
+            "publish",
+            "radar",
+            "deployment-smoke",
+        ):
+            with self.subTest(job=name):
+                self.assertIn("lint", needs(self.jobs[name]))
+        self.assertIn("frontend", needs(self.jobs["deployment-smoke"]))
+        # Independent suites do not wait for each other.
+        for name in ("backend", "infrastructure", "collection", "observability"):
+            self.assertEqual(needs(self.jobs[name]), ["changes", "lint"])
+        self.assertEqual(needs(self.jobs["lint"]), ["changes"])
+        self.assertEqual(needs(self.jobs["frontend"]), ["changes"])
+
+    def test_version_independent_checks_run_once(self):
+        lint = [step.get("run", "") for step in self.jobs["lint"]["steps"]]
+        backend = [step.get("run", "") for step in self.jobs["backend"]["steps"]]
+        for command in ("pre-commit run", "ty check", "generate_pipeline_types.py"):
+            self.assertTrue(any(command in run for run in lint), command)
+            self.assertFalse(any(command in run for run in backend), command)
+        self.assertEqual(
+            self.jobs["backend"]["strategy"]["matrix"]["python"], ["3.12", "3.14"]
+        )
+        self.assertEqual(
+            self.jobs["collection"]["strategy"]["matrix"]["emqx"], ["5.8.7", "6.3.2"]
+        )
 
     def test_main_rehearses_the_images_this_run_published(self):
         smoke = self.jobs["deployment-smoke"]
-        self.assertEqual(needs(smoke), ["publish"])
-        self.assertIn("needs.publish.result == 'success'", smoke["if"])
-        # Only events that never publish may run without a successful publish job.
-        self.assertIn(
-            "needs.publish.result == 'skipped' && github.event_name != 'push'",
-            smoke["if"],
+        self.assertIn("publish", needs(smoke))
+        self.assertIn("images", needs(smoke))
+        for job in (smoke, self.jobs["radar"]):
+            self.assertIn(
+                "github.event_name == 'push' && needs.publish.result == 'success'",
+                job["if"],
+            )
+            self.assertIn(
+                "github.event_name != 'push' && needs.images.result == 'success'",
+                job["if"],
+            )
+            self.assertNotIn("actions", job["permissions"])
+            self.assertEqual(job["permissions"]["packages"], "read")
+        prepare = next(
+            step
+            for step in smoke["steps"]
+            if step["name"] == "Prepare disposable production Swarm"
         )
-        self.assertNotIn("actions", smoke["permissions"])
+        self.assertNotIn("uses", prepare)
+        self.assertEqual(
+            prepare["env"]["OFFKEY_REHEARSAL_IMAGES"],
+            "${{ github.event_name != 'push' && 'loaded' || 'published' }}",
+        )
+
+    def test_other_events_reuse_one_verified_image_build(self):
+        images = self.jobs["images"]
+        self.assertNotIn("permissions", images)
+        build = next(step for step in images["steps"] if step.get("id") == "build")
+        self.assertIn("build-ci-images", build["with"]["run"])
+        upload = images["steps"][-1]
+        self.assertEqual(upload["with"]["name"], "ci-images")
+        self.assertEqual(upload["with"]["retention-days"], "1")
+        self.assertTrue(
+            any(
+                "check_nginx_startup.py" in step.get("run", "")
+                for step in images["steps"]
+            )
+        )
+        for name in ("radar", "deployment-smoke"):
+            load = next(
+                step
+                for step in self.jobs[name]["steps"]
+                if step.get("uses") == "./.github/actions/load-ci-images"
+            )
+            self.assertEqual(load["if"], "github.event_name != 'push'")
+            self.assertEqual(
+                load["with"],
+                {
+                    "manifest": "${{ needs.images.outputs.manifest }}",
+                    "archive-sha256": "${{ needs.images.outputs.archive-sha256 }}",
+                },
+            )
+        # No job other than the images job builds a current application image.
+        for name, job in self.jobs.items():
+            for step in job.get("steps", []):
+                text = step.get("run", "") + step.get("with", {}).get("run", "")
+                if name != "images":
+                    self.assertNotIn("build-ci-images", text)
+                    self.assertNotIn("backend/Dockerfile", text)
 
     def test_only_the_publish_job_can_write_packages(self):
         self.assertEqual(workflow("ci.yml")["permissions"], {"contents": "read"})
@@ -64,13 +181,26 @@ class CiWorkflowTests(unittest.TestCase):
             if job.get("permissions", {}).get("packages") == "write"
         ]
         self.assertEqual(writers, ["publish"])
+        published = workflow("docker-images.yml")
+        self.assertEqual(list(published["on"]), ["workflow_call"])
+        self.assertNotIn("publish", published["on"]["workflow_call"]["inputs"])
 
-    def test_build_cache_reuse_does_not_serialize_independent_test_jobs(self):
-        self.assertEqual(needs(self.jobs["radar"]), [])
-        self.assertEqual(needs(self.jobs["deployment-smoke"]), ["publish"])
+    def test_published_and_tested_images_share_their_build_inputs(self):
+        matrix = workflow("docker-images.yml")["jobs"]["build-images"]["strategy"][
+            "matrix"
+        ]["include"]
+        for entry in matrix:
+            with self.subTest(service=entry["service"]):
+                if entry["service"] == "frontend":
+                    self.assertEqual(entry["target"], "production")
+                    continue
+                self.assertEqual(entry["target"], "")
+                self.assertIn("GIT_COMMIT=${{ github.sha }}", entry["build_args"])
+
+    def test_build_cache_credentials_reach_only_image_builds(self):
         self.assertEqual(
-            self.jobs["images"]["with"]["cache-fallback-scope-prefix"],
-            self.jobs["publish"]["with"]["cache-scope-prefix"],
+            self.jobs["publish"]["with"]["cache-fallback-scope-prefix"],
+            "docker-validate",
         )
         cached = {
             step["name"]
@@ -81,8 +211,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual(
             cached,
             {
-                "Build the current production RADAR Dockerfile",
-                "Prepare disposable production Swarm",
+                "Build every application image once",
                 "Build the reviewed compatible binary rollback reference",
             },
         )

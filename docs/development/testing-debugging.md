@@ -42,8 +42,9 @@ attributes are typed.
 ### RADAR production integration
 
 The `radar` job of the [CI workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/ci.yml)
-runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It builds the
-current production `backend/Dockerfile`, uses Python 3.14 and frozen dependencies,
+runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It tests
+this run's production RADAR image (the `images` job's verified build, or the digest
+`publish` pushed on `main`), uses Python 3.14 and frozen dependencies,
 and selects the TimescaleDB image pinned by the production release manifest.
 Its isolated Ubuntu runner initializes Swarm, runs real MQTT/database/task
 replacement regressions and cleans labelled fixtures within a 45 minute job.

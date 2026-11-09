@@ -1,9 +1,14 @@
 name: CI
 
 # Every check that gates a merge or a release runs in this one workflow. Branch
-# rules require only `ci-gate`, and Deploy Production requires only this
-# workflow's success on a main push, so adding, renaming or re-versioning a job
-# never changes a required check.
+# rules require only `ci-gate`, and Deploy Production requires this workflow's
+# success on a main push plus the release evidence only a rehearsal keeps, so
+# adding, renaming or re-versioning a job never changes a required check.
+#
+# The changes job plans the run (.github/scripts/ci_plan.py): documentation-only
+# and frontend-only changes skip suites whose inputs did not change; everything
+# else, and anything uncertain, runs every job. Cheap checks run first, so a
+# lint failure stops the image builds and disposable Swarms before they start.
 on:
   pull_request:
   push:
@@ -22,8 +27,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # A main push compares against the newest run that kept release evidence.
+      actions: read
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # History without file contents: enough to diff any base and head.
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Plan the jobs this change needs
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_plan.py
+
+  # Interpreter-independent repository checks, once, ahead of every costly job.
+  lint:
+    name: lint
+    needs: changes
+    if: fromJSON(needs.changes.outputs.plan).lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
+
+      - name: Run pre-commit
+        run: uv run --project backend pre-commit run --all-files --show-diff-on-failure
+
+      - name: Type check backend
+        # ty checks against Python 3.12 ([tool.ty.environment]) whichever interpreter runs it.
+        run: uv run --project backend ty check --project backend
+
+      - name: Check generated monitoring contracts and catalog
+        run: |
+          uv run --project backend python backend/scripts/generate_pipeline_types.py --check
+          uv run --project backend python -m off_key_mqtt_radar.catalog --check
+
+  # Tests that read documentation or frontend sources, for plans that skip the
+  # full backend and infrastructure suites, which include them.
+  contracts:
+    name: contracts
+    needs: [changes, lint]
+    if: fromJSON(needs.changes.outputs.plan).contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the backend toolchain
+        uses: ./.github/actions/setup-backend
+
+      - name: Test documentation and source contracts
+        run: uv run --project backend python -m pytest backend/tests/contracts -q --timeout=300 --timeout-method=thread
+
+      - name: Test infrastructure documentation contracts
+        working-directory: infra
+        run: |
+          uv sync --frozen
+          uv run --frozen python -m unittest -v test_docs test_service_registry
+        env:
+          PYTHONPATH: tests
+
   backend:
     name: backend (${{ matrix.python }})
+    needs: [changes, lint]
+    if: fromJSON(needs.changes.outputs.plan).backend
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -42,24 +131,13 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Type check backend
-        # ty checks against Python 3.12 whichever interpreter runs it.
-        if: matrix.python == '3.12'
-        run: uv run --project backend ty check --project backend
-
       - name: Test backend
         run: uv run --project backend python -m pytest -q --timeout=300 --timeout-method=thread
 
-      - name: Check generated monitoring contracts and catalog
-        run: |
-          uv run --project backend python backend/scripts/generate_pipeline_types.py --check
-          uv run --project backend python -m off_key_mqtt_radar.catalog --check
-
-      - name: Run pre-commit
-        run: uv run --project backend pre-commit run --all-files --show-diff-on-failure
-
   frontend:
     name: frontend
+    needs: changes
+    if: fromJSON(needs.changes.outputs.plan).frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -109,6 +187,8 @@ jobs:
 
   infrastructure:
     name: infrastructure
+    needs: [changes, lint]
+    if: fromJSON(needs.changes.outputs.plan).infrastructure
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -125,6 +205,8 @@ jobs:
 
   collection:
     name: collection (${{ matrix.emqx }})
+    needs: [changes, lint]
+    if: fromJSON(needs.changes.outputs.plan).collection
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -176,8 +258,19 @@ jobs:
 
   radar:
     name: radar
+    # RADAR tests this run's one RADAR image: the published one on a main push,
+    # the images job's verified build otherwise.
+    needs: [changes, lint, images, publish]
+    if: >-
+      ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).radar &&
+      needs.lint.result == 'success' &&
+      ((github.event_name == 'push' && needs.publish.result == 'success') ||
+       (github.event_name != 'push' && needs.images.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
     env:
       TEST_RADAR_DOCKER: "1"
       UV_PYTHON: "3.14"
@@ -194,27 +287,43 @@ jobs:
       - name: Set up the production Docker Engine
         uses: ./.github/actions/setup-docker-engine
 
+      - name: Load the images this run built
+        if: github.event_name != 'push'
+        uses: ./.github/actions/load-ci-images
+        with:
+          manifest: ${{ needs.images.outputs.manifest }}
+          archive-sha256: ${{ needs.images.outputs.archive-sha256 }}
+
       - name: Set up Docker Buildx
+        # Pins the published RADAR digest with imagetools on a main push.
+        if: github.event_name == 'push'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Select the production database and current RADAR image
+      - name: Read published application images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Select the production database and this run's RADAR image
+        env:
+          MANIFEST: ${{ needs.images.outputs.manifest }}
         run: |
+          set -euo pipefail
           image="$(python3 .github/scripts/release_image.py postgres)"
           echo "TEST_RADAR_DATABASE_IMAGE=$image" >> "$GITHUB_ENV"
-          echo "TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:${GITHUB_SHA}" >> "$GITHUB_ENV"
-
-      - name: Build the current production RADAR Dockerfile
-        uses: ./.github/actions/run-with-build-cache
-        with:
-          run: |
-            docker pull "$TEST_RADAR_DATABASE_IMAGE"
-            docker pull eclipse-mosquitto:2.0
-            docker buildx build --load --file backend/Dockerfile --tag "$TEST_RADAR_SWARM_IMAGE" \
-              --cache-from type=gha,version=2,scope=docker-validate-mqtt-radar \
-              --cache-from type=gha,version=2,scope=docker-publish-mqtt-radar \
-              --build-arg SERVICE_NAME=off-key-mqtt-radar \
-              --build-arg SERVICE_ROOT=services/mqtt/radar \
-              --build-arg GIT_COMMIT="$GITHUB_SHA" backend
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            # The digest this run's publish job pushed, checked against its revision label.
+            radar="$(python3 -c 'import os, sys; sys.path.insert(0, "infra/scripts"); from pin_release import pin; print(pin(sys.argv[1], os.environ["GITHUB_SHA"]))' "$(python3 .github/scripts/release_image.py mqtt_radar)")"
+            docker pull --quiet "$radar"
+          else
+            radar="$(python3 -c 'import json, os; print(json.loads(os.environ["MANIFEST"])["images"]["mqtt_radar"]["reference"])')"
+          fi
+          echo "TEST_RADAR_SWARM_IMAGE=$radar" >> "$GITHUB_ENV"
+          docker pull --quiet "$TEST_RADAR_DATABASE_IMAGE"
+          docker pull --quiet eclipse-mosquitto:2.0
 
       - name: Start an isolated Swarm and disposable schema fixture
         run: |
@@ -301,20 +410,60 @@ jobs:
           fi
           docker network ls --quiet --filter label=off-key.integration-owner | xargs -r docker network rm || true
 
-  # Pull requests, the merge queue and manual runs build every image without pushing.
+  # Pull requests, the merge queue and manual runs build every image once, with
+  # the inputs the rehearsals test, and never push. Both rehearsal lanes and RADAR
+  # load this run-scoped archive after checking its digest and image IDs.
   images:
-    if: github.event_name != 'push'
-    uses: ./.github/workflows/docker-images.yml
-    with:
-      publish: false
-      cache-scope-prefix: docker-validate
-      # PR caches can read main; main cannot read a PR's merge-ref cache.
-      cache-fallback-scope-prefix: docker-publish
+    name: images
+    needs: [changes, lint]
+    if: github.event_name != 'push' && fromJSON(needs.changes.outputs.plan).images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      manifest: ${{ steps.build.outputs.manifest }}
+      archive-sha256: ${{ steps.build.outputs.archive-sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-  # A main push publishes the images that deployment smoke then tests and that a
-  # release deploys by digest.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build every application image once
+        id: build
+        uses: ./.github/actions/run-with-build-cache
+        with:
+          run: |
+            mkdir -p "$RUNNER_TEMP/ci-images"
+            python3 infra/tests/rehearsal_releases.py build-ci-images --revision "$GITHUB_SHA" \
+              --archive "$RUNNER_TEMP/ci-images/images.tar.zst" --manifest "$RUNNER_TEMP/ci-images.json"
+            archive_sha256="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["archive_sha256"])' "$RUNNER_TEMP/ci-images.json")"
+            {
+              echo "manifest=$(cat "$RUNNER_TEMP/ci-images.json")"
+              echo "archive-sha256=$archive_sha256"
+            } >> "$GITHUB_OUTPUT"
+            echo "CI image archive: $(du -h "$RUNNER_TEMP/ci-images/images.tar.zst" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production frontend survives delayed API discovery
+        run: python3 frontend/check_nginx_startup.py "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["images"]["frontend"]["reference"])' "$RUNNER_TEMP/ci-images.json")"
+
+      - name: Keep the image archive for this run's rehearsals
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-images
+          path: ${{ runner.temp }}/ci-images/images.tar.zst
+          if-no-files-found: error
+          # Already zstd-compressed.
+          compression-level: 0
+          retention-days: 1
+
+  # A main push publishes the images that RADAR and deployment smoke then test
+  # and that a release deploys by digest.
   publish:
-    if: github.event_name == 'push'
+    needs: [changes, lint]
+    if: github.event_name == 'push' && fromJSON(needs.changes.outputs.plan).publish
     permissions:
       contents: read
       packages: write
@@ -322,7 +471,6 @@ jobs:
       id-token: write
     uses: ./.github/workflows/docker-images.yml
     with:
-      publish: true
       cache-scope-prefix: docker-publish
       cache-fallback-scope-prefix: docker-validate
 
@@ -331,9 +479,14 @@ jobs:
   # they leave); the pipelines lane runs the adaptive monitor and visual pipelines.
   deployment-smoke:
     name: deployment-smoke (${{ matrix.lane }})
-    needs: publish
-    # A main push tests the images its publish job pushed; other events build them locally.
-    if: ${{ !cancelled() && (needs.publish.result == 'success' || (needs.publish.result == 'skipped' && github.event_name != 'push')) }}
+    needs: [changes, lint, frontend, images, publish]
+    # A main push tests the images its publish job pushed; other events test the
+    # images this run's images job built. Both wait for the cheap checks.
+    if: >-
+      ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan)['deployment-smoke'] &&
+      needs.lint.result == 'success' && needs.frontend.result == 'success' &&
+      ((github.event_name == 'push' && needs.publish.result == 'success') ||
+       (github.event_name != 'push' && needs.images.result == 'success')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     permissions:
@@ -393,14 +546,22 @@ jobs:
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           nohup docker pull --quiet "mcr.microsoft.com/playwright:v${playwright_version}-noble" > /dev/null 2>&1 &
 
+      - name: Load the images this run built
+        if: github.event_name != 'push'
+        uses: ./.github/actions/load-ci-images
+        with:
+          manifest: ${{ needs.images.outputs.manifest }}
+          archive-sha256: ${{ needs.images.outputs.archive-sha256 }}
+
       - name: Prepare disposable production Swarm
         timeout-minutes: 35
-        uses: ./.github/actions/run-with-build-cache
-        with:
-          run: |
-            set -euo pipefail
-            docker swarm init > /dev/null
-            uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
+        env:
+          # Other events rehearse the verified images loaded above, never a rebuild.
+          OFFKEY_REHEARSAL_IMAGES: ${{ github.event_name != 'push' && 'loaded' || 'published' }}
+        run: |
+          set -euo pipefail
+          docker swarm init > /dev/null
+          uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
 
       - name: Run existing browser journeys against the production frontend
         if: matrix.lane == 'rehearsal'
@@ -578,6 +739,8 @@ jobs:
 
   observability:
     name: worker observability
+    needs: [changes, lint]
+    if: fromJSON(needs.changes.outputs.plan).observability
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -604,27 +767,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # The one required status check. It needs every other job, so it passes only
-  # when all of them pass; its name never changes.
+  # The one required status check. It needs every other job and passes only when
+  # the changes job planned the run, every job it selected succeeded and every
+  # job it did not select was skipped; its name never changes.
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
+    needs: [changes, lint, contracts, backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every job to succeed
+      - name: Checkout the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Require every planned job to succeed and every other job to be planned out
         env:
           NEEDS: ${{ toJSON(needs) }}
-          # A push publishes the images; every other event only builds them.
-          NOT_RUN: ${{ github.event_name == 'push' && 'images' || 'publish' }}
-        run: |
-          python3 - <<'PY'
-          import json, os, sys
-          needs, not_run = json.loads(os.environ["NEEDS"]), os.environ["NOT_RUN"]
-          expected = {job: "skipped" if job == not_run else "success" for job in needs}
-          wrong = {job: need["result"] for job, need in needs.items() if need["result"] != expected[job]}
-          for job, result in sorted(wrong.items()):
-              print(f"::error::{job} {result}, expected {expected[job]}")
-          sys.exit(1 if wrong else 0)
-          PY
+          PLAN: ${{ needs.changes.outputs.plan }}
+        run: python3 .github/scripts/ci_gate.py

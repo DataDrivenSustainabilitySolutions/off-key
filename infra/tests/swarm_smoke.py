@@ -2,7 +2,8 @@
 
 The production render, MQTT TLS/secrets, migration, persistence and verification
 tasks are reused. External VPN/Cloudflare/email dependencies are local fixtures.
-Main uses published immutable images; PRs build the same runtime targets locally.
+Main uses published immutable images; other CI events rehearse the images this
+run's image job built and verified once; local runs build the same targets.
 """
 
 import argparse
@@ -19,6 +20,7 @@ import yaml
 from rehearsal_releases import (
     build_local_images,
     compatible_release,
+    push_loaded_images,
     record_cutover,
     release_model,
     selected_release,
@@ -152,7 +154,13 @@ def images(release, revision):
                 timeout=60,
             )
         return
-
+    if os.getenv("OFFKEY_REHEARSAL_IMAGES") == "loaded":
+        # This run's image job built and exported them; the lane loaded and
+        # verified their IDs before preparing the Swarm.
+        push_loaded_images(release, revision)
+        return
+    if os.getenv("CI"):
+        raise ValueError("CI rehearses the run's shared images; load them first")
     build_local_images(release, revision, PROJECT)
 
 

@@ -219,3 +219,220 @@ class RehearsalReleaseTests(unittest.TestCase):
             ).write_text("new schema")
             with self.assertRaisesRegex(ValueError, "different migration ledger"):
                 validate_compatible_source(source, current)
+
+
+REVISION = "c" * 40
+
+
+def fake_docker(image_ids, labels=None):
+    """A `run` stand-in that answers docker image inspect for loaded images."""
+
+    def run(*args, **kwargs):
+        if args[:3] == ("docker", "image", "inspect") and len(args) == 4:
+            reference = args[3]
+            service = reference.split("/", 1)[1].split(":", 1)[0]
+            return SimpleNamespace(
+                stdout=json.dumps(
+                    [
+                        {
+                            "Id": image_ids[service],
+                            "Config": {
+                                "Labels": {
+                                    "org.opencontainers.image.revision": (
+                                        labels or {}
+                                    ).get(service, REVISION)
+                                }
+                            },
+                        }
+                    ]
+                )
+            )
+        if args[:3] == ("docker", "image", "inspect"):
+            reference = args[3]
+            return SimpleNamespace(
+                stdout=json.dumps([reference.rsplit(":", 1)[0] + "@sha256:" + "d" * 64])
+            )
+        return SimpleNamespace(stdout="")
+
+    return run
+
+
+class CiImageTests(unittest.TestCase):
+    """One build per run; consumers use only the exact images that build produced."""
+
+    def setUp(self):
+        self.ids = {
+            service: "sha256:" + format(index, "x") * 64
+            for index, (service, _) in enumerate(
+                rehearsal_releases.BUILDS.values(), start=1
+            )
+        }
+        self.directory = tempfile.TemporaryDirectory()
+        self.archive = Path(self.directory.name) / "images.tar.zst"
+        self.archive.write_bytes(b"archive")
+        self.digest = rehearsal_releases.sha256_file(self.archive)
+        self.manifest = {
+            "revision": REVISION,
+            "archive_sha256": self.digest,
+            "images": {
+                name: {
+                    "reference": rehearsal_releases.image_reference(service, REVISION),
+                    "image_id": self.ids[service],
+                }
+                for name, (service, _) in rehearsal_releases.BUILDS.items()
+            },
+        }
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def load(self, manifest=None, digest=None, run=None):
+        process = SimpleNamespace(stdout=SimpleNamespace(close=lambda: None))
+        process.wait = lambda: 0
+        with (
+            patch.object(rehearsal_releases, "run", run or fake_docker(self.ids)),
+            patch.object(rehearsal_releases.subprocess, "Popen", return_value=process),
+            patch.object(
+                rehearsal_releases.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0),
+            ) as loader,
+        ):
+            result = rehearsal_releases.load_ci_images(
+                self.archive,
+                manifest or self.manifest,
+                digest or self.digest,
+                REVISION,
+            )
+        return result, loader
+
+    def test_the_tested_images_load_with_their_recorded_identities(self):
+        loaded, loader = self.load()
+        self.assertEqual(loaded, self.manifest["images"])
+        self.assertEqual(loader.call_args.args[0], ["docker", "load", "-q"])
+
+    def test_any_identity_mismatch_rejects_the_images(self):
+        other = deepcopy(self.manifest)
+        other["revision"] = "e" * 40
+        with self.assertRaisesRegex(ValueError, "belong to"):
+            self.load(manifest=other)
+        # The digest travels as a job output, apart from the artifact.
+        with self.assertRaisesRegex(ValueError, "recorded digest"):
+            self.load(digest="0" * 64)
+        self.archive.write_bytes(b"replaced archive")
+        with self.assertRaisesRegex(ValueError, "differs from the one"):
+            self.load()
+        self.archive.write_bytes(b"archive")
+        partial = deepcopy(self.manifest)
+        del partial["images"]["mqtt_radar"]
+        with self.assertRaisesRegex(ValueError, "every application image"):
+            self.load(manifest=partial)
+        changed = dict(self.ids, **{"off-key-mqtt-radar": "sha256:" + "f" * 64})
+        with self.assertRaisesRegex(ValueError, "mqtt_radar image differs"):
+            self.load(run=fake_docker(changed))
+        wrong_label = fake_docker(self.ids, {"off-key-frontend": "e" * 40})
+        with self.assertRaisesRegex(ValueError, "frontend image belongs to"):
+            self.load(run=wrong_label)
+
+    def test_ci_and_rehearsal_builds_share_every_input(self):
+        commands = []
+
+        def run(*args, **kwargs):
+            commands.append(args)
+            return fake_docker(self.ids)(*args, **kwargs)
+
+        process = SimpleNamespace(stdout=SimpleNamespace(close=lambda: None))
+        process.wait = lambda: 0
+        with (
+            patch.object(rehearsal_releases, "run", run),
+            patch.object(rehearsal_releases.shutil, "which", return_value="zstd"),
+            patch.object(rehearsal_releases.subprocess, "Popen", return_value=process),
+            patch.object(
+                rehearsal_releases.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0),
+            ),
+        ):
+            manifest = rehearsal_releases.build_ci_images(
+                REVISION, Path("/source"), self.archive
+            )
+        builds = [
+            args for args in commands if args[:3] == ("docker", "buildx", "build")
+        ]
+        self.assertEqual(len(builds), len(rehearsal_releases.BUILDS))
+        for service, source in rehearsal_releases.BUILDS.values():
+            expected = rehearsal_releases.build_arguments(
+                service, source, REVISION, Path("/source")
+            )
+            (build,) = [
+                args for args in builds if args[-len(expected) :] == tuple(expected)
+            ]
+            destinations = [
+                build[index + 1]
+                for index, value in enumerate(build)
+                if value == "--cache-to"
+            ]
+            suffix = service.removeprefix("off-key-")
+            self.assertEqual(
+                destinations,
+                [
+                    f"type=gha,version=2,scope=docker-validate-{suffix},mode=max,ignore-error=true"
+                ],
+            )
+        self.assertEqual(manifest["revision"], REVISION)
+        self.assertEqual(
+            manifest["archive_sha256"], rehearsal_releases.sha256_file(self.archive)
+        )
+        self.assertEqual(
+            {name: item["image_id"] for name, item in manifest["images"].items()},
+            {
+                name: self.ids[service]
+                for name, (service, _) in rehearsal_releases.BUILDS.items()
+            },
+        )
+
+    def test_the_rehearsal_registry_serves_the_loaded_images(self):
+        with (
+            patch.object(rehearsal_releases, "start_registry"),
+            patch.object(rehearsal_releases, "run", fake_docker(self.ids)),
+        ):
+            release = {"images": {}}
+            rehearsal_releases.push_loaded_images(release, REVISION)
+        self.assertEqual(set(release["images"]), set(rehearsal_releases.BUILDS))
+        for reference in release["images"].values():
+            self.assertRegex(reference, r"^localhost:5010/off-key-[\w-]+@sha256:d{64}$")
+
+    def test_ci_rehearsals_never_rebuild_the_current_images(self):
+        import swarm_smoke
+
+        release = {"images": {}}
+        for environment, expected in (
+            ({"CI": "true", "OFFKEY_REHEARSAL_IMAGES": "loaded"}, "push_loaded_images"),
+            ({"CI": "", "OFFKEY_REHEARSAL_IMAGES": ""}, "build_local_images"),
+        ):
+            with (
+                self.subTest(environment=environment),
+                patch.dict(
+                    swarm_smoke.os.environ,
+                    environment | {"GITHUB_EVENT_NAME": "pull_request"},
+                ),
+                patch.object(swarm_smoke, "push_loaded_images") as loaded,
+                patch.object(swarm_smoke, "build_local_images") as built,
+            ):
+                swarm_smoke.images(release, REVISION)
+                self.assertEqual(loaded.called, expected == "push_loaded_images")
+                self.assertEqual(built.called, expected == "build_local_images")
+        with (
+            patch.dict(
+                swarm_smoke.os.environ,
+                {
+                    "CI": "true",
+                    "OFFKEY_REHEARSAL_IMAGES": "",
+                    "GITHUB_EVENT_NAME": "pull_request",
+                },
+            ),
+            patch.object(swarm_smoke, "build_local_images") as built,
+            self.assertRaisesRegex(ValueError, "load them first"),
+        ):
+            swarm_smoke.images(release, REVISION)
+        built.assert_not_called()

@@ -1,12 +1,10 @@
 name: Docker Images
 
-# Called by CI: pull requests build every image, a main push publishes them.
+# Called by CI on a main push: publishes and attests every application image.
+# Other events build the same images once in CI's images job and never push.
 on:
   workflow_call:
     inputs:
-      publish:
-        required: true
-        type: boolean
       cache-scope-prefix:
         required: true
         type: string
@@ -19,8 +17,6 @@ jobs:
   build-images:
     name: build-${{ matrix.service }}
     runs-on: ubuntu-latest
-    env:
-      PUBLISH: ${{ inputs.publish }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +26,7 @@ jobs:
             context: ./frontend
             file: ./frontend/Dockerfile
             build_args: ""
+            target: production
           - service: api-gateway
             image_name: off-key-api-gateway
             context: ./backend
@@ -37,6 +34,8 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-api-gateway
               SERVICE_ROOT=services/api/gateway
+              GIT_COMMIT=${{ github.sha }}
+            target: ""
           - service: tactic-middleware
             image_name: off-key-tactic-middleware
             context: ./backend
@@ -44,6 +43,8 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-tactic-middleware
               SERVICE_ROOT=services/middleware/tactic
+              GIT_COMMIT=${{ github.sha }}
+            target: ""
           - service: mqtt-radar
             image_name: off-key-mqtt-radar
             context: ./backend
@@ -51,6 +52,8 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-mqtt-radar
               SERVICE_ROOT=services/mqtt/radar
+              GIT_COMMIT=${{ github.sha }}
+            target: ""
           - service: mqtt-proxy
             image_name: off-key-mqtt-proxy
             context: ./backend
@@ -58,6 +61,8 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-mqtt-proxy
               SERVICE_ROOT=services/mqtt/proxy
+              GIT_COMMIT=${{ github.sha }}
+            target: ""
           - service: db-sync
             image_name: off-key-db-sync
             context: ./backend
@@ -65,6 +70,8 @@ jobs:
             build_args: |
               SERVICE_NAME=off-key-db-sync
               SERVICE_ROOT=services/db/sync
+              GIT_COMMIT=${{ github.sha }}
+            target: ""
 
     steps:
       - name: Checkout
@@ -74,7 +81,6 @@ jobs:
 
       - name: Normalize registry owner
         id: owner
-        if: ${{ env.PUBLISH == 'true' }}
         shell: bash
         run: echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
@@ -82,7 +88,6 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
-        if: ${{ env.PUBLISH == 'true' }}
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
@@ -91,7 +96,6 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        if: ${{ env.PUBLISH == 'true' }}
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}
@@ -110,25 +114,20 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          # The same target, build arguments and revision label as CI's images job.
+          target: ${{ matrix.target }}
           build-args: ${{ matrix.build_args }}
-          push: ${{ env.PUBLISH == 'true' }}
-          # Validation loads only the frontend, for the nginx startup check below.
-          load: ${{ !inputs.publish && matrix.service == 'frontend' }}
+          push: true
           provenance: false
           sbom: false
-          tags: ${{ env.PUBLISH == 'true' && steps.meta.outputs.tags || format('off-key-{0}:validation', matrix.service) }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
             type=gha,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
             ${{ inputs.cache-fallback-scope-prefix && format('type=gha,scope={0}-{1}', inputs.cache-fallback-scope-prefix, matrix.service) || '' }}
           cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope-prefix }}-${{ matrix.service }}
 
-      - name: Verify production frontend survives delayed API discovery
-        if: ${{ !inputs.publish && matrix.service == 'frontend' }}
-        run: python3 frontend/check_nginx_startup.py off-key-frontend:validation
-
       - name: Attest build provenance
-        if: ${{ env.PUBLISH == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.owner.outputs.value }}/${{ matrix.image_name }}

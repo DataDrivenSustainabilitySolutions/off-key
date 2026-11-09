@@ -66,16 +66,14 @@ class ServiceRegistryTests(unittest.TestCase):
     def test_image_workflow_builds_every_release_image_from_its_root(self):
         self.assertEqual(matrix_builds(), dict(BUILDS.values()))
 
-    def test_every_built_image_is_published_through_one_switch(self):
+    def test_the_image_workflow_only_publishes_and_every_step_runs(self):
+        # Validation builds live in CI's images job, from rehearsal_releases.BUILDS.
         job = workflow("docker-images.yml")["jobs"]["build-images"]
-        self.assertEqual(job["env"]["PUBLISH"], "${{ inputs.publish }}")
-        publishing = [
-            step
-            for step in job["steps"]
-            if "inputs.publish" in json.dumps(step)
-            and "!inputs.publish" not in json.dumps(step)
-        ]
-        self.assertEqual(publishing, [])
+        self.assertNotIn("env", job)
+        self.assertEqual([step for step in job["steps"] if "if" in step], [])
+        build = next(step for step in job["steps"] if step.get("id") == "build")
+        self.assertEqual(build["with"]["push"], "true")
+        self.assertNotIn("load", build["with"])
 
     def test_compose_builds_match_the_image_workflow(self):
         matrix = matrix_builds()

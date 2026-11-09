@@ -1,8 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the first invariant-enforcement commit, carrying migration 025
-and Aberrant 1.4.0 numerics, before the runtime connection lookup correction.
-It is not an eligible production release and proves no pre-feature compatibility.
+The reference is the initial Aberration identity migration, carrying migration 026
+and Aberrant 1.4.0 numerics. It proves binary replacement within the renamed
+schema; returning to a pre-rename release requires restoring its state backup.
 """
 
 import argparse
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from support import run
 
-COMPATIBLE_REVISION = "9311f9937e605da9b4be5a9903f08de4da79dade"
+COMPATIBLE_REVISION = "1bfe0e05a4883c89ab674ecee8066dc9ed779ab1"
 REGISTRY = "aberration-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

@@ -605,23 +605,18 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`9311f9937e605da9b4be5a9903f08de4da79dade`, the first invariant-enforcement
-commit that carries migration 025 (`evidence_cursor`), before the runtime
-connection lookup correction. It shares the current
-migration ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog
-and field discovery metadata, so an already-open new browser keeps its controls
-while the backend rolls back. It also serves the current REST paths and field
-names, so the rehearsal calls and reads both releases the same way.
-The test uses the current API directly, without compatibility adapters or
-response rewriting.
-Monitors are started on the current release, by reading id.
-The previous reference, `8db7b5cb`, carried migrations through 024; it cannot be a
-reference any more, because releases before migration 025 refuse a database that
-has applied it. Rolling back past migration 025 means restoring a verified
-backup, as
-[recovery](../operations/recovery.md) describes.
-The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0
-is checked separately and incompatible checkpoints relearn. Its migration ledger, numerical
+`1bfe0e05a4883c89ab674ecee8066dc9ed779ab1`, the initial Aberration
+identity migration with schema migration 026. It shares the renamed migration
+ledger, published ABERRANT 1.4.0 pin, generated catalog and API contracts. The
+rehearsal uses the current API directly without compatibility adapters or response
+rewriting. Monitors are started on the current release by reading id.
+
+Pre-rename releases are outside the binary rollback boundary: the old package,
+authentication and database identities cannot operate against the renamed schema.
+Returning to them requires the verified pre-cutover state backup and old deployment
+configuration, as [rename cutover](../operations/rename-cutover.md) describes.
+The binary rollback floor is migration 026 and ABERRANT 1.4.0. Historical 1.3.0
+checkpoints are rejected before deserialization and detectors relearn. The ledger,
 catalog and locked Aberrant version must match the current source before it can
 build. Other locked dependencies may differ, as they would in a real rollback:
 each release calibrates its own run, and detector checkpoints refuse a changed

@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -16,6 +16,7 @@ members = [
     "off-key-api-gateway",
     "off-key-core",
     "off-key-db-sync",
+    "off-key-forecast",
     "off-key-mqtt-proxy",
     "off-key-mqtt-radar",
     "off-key-tactic-middleware",
@@ -1988,6 +1989,27 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.8" },
     { name = "off-key-core", extras = ["web"], editable = "libs/core" },
+    { name = "uvicorn", specifier = ">=0.25.0" },
+]
+
+[[package]]
+name = "off-key-forecast"
+version = "0.1.0"
+source = { editable = "services/forecast/service" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "numpy" },
+    { name = "off-key-core", extra = ["web"] },
+    { name = "pydantic-settings" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.8" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "off-key-core", extras = ["web"], editable = "libs/core" },
+    { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
 

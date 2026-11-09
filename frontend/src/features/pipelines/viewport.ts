@@ -7,17 +7,36 @@ import type { CanvasNode } from "./types";
  */
 export const VIEW_MARGIN = 32;
 
+/** Canvas edges covered by floating controls, in screen pixels. */
+export type CoveredEdges = { top?: number; right?: number; bottom?: number };
+
+/** The part of the surface no floating control covers, relative to its top left corner. */
+function visibleArea(surface: HTMLElement, covered?: CoveredEdges) {
+  const { width, height } = surface.getBoundingClientRect();
+  const top = Math.min(covered?.top ?? 0, height / 2);
+  const right = Math.min(covered?.right ?? 0, width / 2);
+  const bottom = Math.min(covered?.bottom ?? 0, (height - top) / 2);
+  return { top, width: width - right, height: height - top - bottom, empty: !width || !height };
+}
+
 /** Fit small graphs; start larger ones at the input without shrinking the type. */
 export async function fitReadableView(
   flow: ReactFlowInstance<CanvasNode>,
   surface: HTMLElement,
   selected?: string,
+  covered?: CoveredEdges,
 ) {
   if (!(await flow.fitView({ minZoom: 1, maxZoom: 1, padding: 0.08 }))) return;
   const nodes = flow.getNodes();
   const bounds = flow.getNodesBounds(nodes);
-  const { width, height } = surface.getBoundingClientRect();
-  if (!width || !height || (bounds.width + 48 <= width && bounds.height + 48 <= height)) return;
+  const { top, width, height, empty } = visibleArea(surface, covered);
+  if (empty) return;
+  if (bounds.width + 48 <= width && bounds.height + 48 <= height) {
+    // A graph that fits is centred in the part of the canvas left uncovered.
+    if (top || covered?.right || covered?.bottom) await flow.setViewport({
+      x: width / 2 - bounds.x - bounds.width / 2, y: top + height / 2 - bounds.y - bounds.height / 2, zoom: 1 });
+    return;
+  }
   const anchor = nodes.find((node) => node.id === selected)
     ?? nodes.find((node) => node.data.kind === "source") ?? nodes[0];
   if (!anchor) return;
@@ -25,7 +44,7 @@ export async function fitReadableView(
   // Graphs read from the left, so centring a selection never pans past the graph's start.
   await flow.setViewport({
     x: Math.min(VIEW_MARGIN - bounds.x, selected ? width / 2 - focus.x - focus.width / 2 : VIEW_MARGIN - focus.x),
-    y: height / 2 - focus.y - focus.height / 2,
+    y: top + height / 2 - focus.y - focus.height / 2,
     zoom: 1,
   });
 }
@@ -36,15 +55,17 @@ export async function revealNode(
   surface: HTMLElement,
   id: string,
   margin = VIEW_MARGIN,
+  covered?: CoveredEdges,
 ) {
   const node = flow.getNode(id);
   if (!node) return;
   const bounds = flow.getNodesBounds([node]);
   const { x, y, zoom } = flow.getViewport();
-  const { width, height } = surface.getBoundingClientRect();
-  if (!width || !height) return;
+  const area = visibleArea(surface, covered);
+  if (area.empty) return;
+  const { width, height } = area;
   const left = bounds.x * zoom + x;
-  const top = bounds.y * zoom + y;
+  const top = bounds.y * zoom + y - area.top;
   const right = left + bounds.width * zoom;
   const bottom = top + bounds.height * zoom;
   const shift = (start: number, end: number, size: number) =>

@@ -1,0 +1,35 @@
+name: Load this run's CI images
+description: >-
+  Download the images CI's images job built once for this run, and load them only
+  if the archive digest and every image ID match that job's outputs.
+
+inputs:
+  manifest:
+    description: The images job's manifest output (revision, archive digest, image IDs).
+    required: true
+  archive-sha256:
+    description: The images job's archive digest output.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download the run's image archive
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: ci-images
+        path: ${{ runner.temp }}/ci-images
+
+    - name: Verify and load the tested images
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+        ARCHIVE_SHA256: ${{ inputs.archive-sha256 }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-images/expected-manifest.json"
+        python3 infra/tests/rehearsal_releases.py load-ci-images \
+          --revision "$GITHUB_SHA" \
+          --archive "$RUNNER_TEMP/ci-images/images.tar.zst" \
+          --manifest "$RUNNER_TEMP/ci-images/expected-manifest.json" \
+          --sha256 "$ARCHIVE_SHA256"

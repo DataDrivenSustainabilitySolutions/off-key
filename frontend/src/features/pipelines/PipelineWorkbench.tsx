@@ -11,6 +11,7 @@ import { startupSentence, startupSummary, type Startup } from "./startup";
 import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
 import { usePlaceToasts } from "@/hooks/use-toast-position";
+import { useAnchoredPanel, useSettingsSheet } from "./anchoredPanel";
 
 export type InspectorPanel = "service" | "component" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale" | "insets"> & {
@@ -112,7 +113,12 @@ export function PipelineWorkbench({
   const top = useRef<HTMLDivElement>(null);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const stageCanvas = useRef<HTMLDivElement>(null);
-  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
+  const stageRoot = useRef<HTMLDivElement>(null);
+  // On a stage, a step's settings sit beside its card instead of covering the canvas edge.
+  const sheet = useSettingsSheet();
+  const anchored = stage && !sheet && view === "graph" && panel === "component" && !!props.selected;
+  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel && !anchored);
+  useAnchoredPanel(anchored, stageRoot, settingsPanel, props.selected, insets?.top ?? 0);
   // The stage's own actions sit at the top right, where toasts would cover them.
   usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
@@ -265,7 +271,7 @@ export function PipelineWorkbench({
       </div>}
       content={panel === "service" ? settings : undefined} />
   </div>;
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`}
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`} ref={stageRoot}
     style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>

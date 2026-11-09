@@ -204,6 +204,13 @@
   box-shadow: var(--pl-float-shadow);
   overflow: hidden;
 }
+/* Step settings beside their card: placed by the workbench, which writes left and top. */
+.pl-stage {
+  position: relative;
+}
+.pl-stage .pl-settings-panel[data-anchored] {
+  position: absolute;
+}
 .pl-stage .pl-settings-panel .pl-inspector {
   flex: 1 1 auto;
   height: auto;

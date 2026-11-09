@@ -1,6 +1,11 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { setAppearance } from "./helpers/appearance";
 import { expectNoHorizontalScroll } from "./helpers/layout";
+import { installSidebarMockApi } from "./helpers/sidebarMockApi";
+
+// Route-mocked: the sidebar journeys need only the frontend and change no stored data.
+test.use({ storageState: { cookies: [], origins: [] }, contextOptions: { reducedMotion: "reduce" } });
 
 async function bounds(locator: Locator) {
   const box = await locator.boundingBox();
@@ -8,147 +13,235 @@ async function bounds(locator: Locator) {
   return box!;
 }
 
-test("the catalogue edge follows resizing and restores the full workspace when collapsed", async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto("/");
-  const header = page.getByTestId("application-header");
-  const main = page.locator(".app-catalogue-main");
-  const sidebar = page.locator(".app-catalogue-sidebar");
-  const search = page.getByRole("searchbox", { name: "Search catalogue", exact: true });
-  const hide = page.getByRole("button", { name: "Hide catalogue", exact: true });
-  const show = page.getByRole("button", { name: "Show catalogue", exact: true });
-  const heading = page.getByRole("heading", { name: "Monitoring", exact: true });
-  const navigation = page.getByRole("navigation", { name: "Primary navigation", exact: true });
-  await expect(hide).toBeVisible();
-  const initialHeader = await bounds(header);
-  expect(initialHeader.height).toBe(64);
-  await expect(header.locator(".catalogue-edge-toggle")).toHaveCount(0);
-  expect((await bounds(main)).y).toBe(initialHeader.y + initialHeader.height);
+/** Saves a screenshot with the test, and also in SIDEBAR_SCREENSHOT_DIR when that is set. */
+async function capture(page: Page, testInfo: TestInfo, name: string) {
+  await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: "disabled" });
+  const directory = process.env.SIDEBAR_SCREENSHOT_DIR;
+  if (directory) {
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: `${directory}/${name}.png`, animations: "disabled" });
+  }
+}
 
-  const edge = page.getByRole("separator", { name: "Resize explorer sidebar", exact: true });
+/** Neither the page nor the sidebar scrolls sideways. */
+async function expectNoSidebarOverflow(page: Page) {
+  await expectNoHorizontalScroll(page);
+  for (const element of await page.locator(".app-sidebar, .app-sidebar-body, .ex-list-scroll").all()) {
+    if (!await element.isVisible()) continue;
+    expect(await element.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  }
+}
+
+test("one sidebar holds workspaces, saved items, the catalogue tree and account controls", async ({ page }, testInfo) => {
+  const api = await installSidebarMockApi(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/sources");
+  const sidebar = page.getByRole("complementary", { name: "Sidebar", exact: true });
+  const workspaces = sidebar.getByRole("navigation", { name: "Workspace", exact: true });
+  const catalogue = sidebar.getByRole("navigation", { name: "Catalogue", exact: true });
+  const main = page.locator(".app-main");
+  const footer = sidebar.locator(".app-sidebar-footer");
+  await expect(catalogue.getByRole("button", { name: "Building broker, open", exact: true })).toBeVisible();
+
+  // No horizontal navigation bar competes with the sidebar.
+  await expect(page.getByTestId("application-header")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Primary navigation", exact: true })).toHaveCount(0);
+  expect(await workspaces.getByRole("link").allTextContents()).toEqual(["Monitoring", "Sources", "Reporting", "Dojo"]);
+  await expect(workspaces.getByRole("link", { name: "Sources", exact: true })).toHaveAttribute("aria-current", "page");
+  for (const category of ["Favourites", "Collections"]) await expect(sidebar.getByRole("region", { name: category, exact: true })).toBeVisible();
+  expect((await bounds(sidebar)).width).toBe(264);
+  expect((await bounds(main)).x).toBe(264);
+  const sidebarRow = await bounds(workspaces.getByRole("link", { name: "Monitoring", exact: true }));
+  expect(sidebarRow.height).toBeGreaterThanOrEqual(32);
+  expect(sidebarRow.height).toBeLessThanOrEqual(36);
+
+  // A long branch scrolls inside the catalogue; the footer stays in view.
+  await catalogue.getByRole("button", { name: "Expand Laboratory broker with a deliberately long name for truncation", exact: true }).click();
+  await catalogue.getByRole("button", { name: "Expand lab/benches", exact: true }).click();
+  const list = catalogue.locator(".ex-list-scroll");
+  const last = catalogue.getByRole("button", { name: "Bench 240 supply voltage, preview", exact: true });
+  // Measured rows can change the list's height while it scrolls; keep going to the end.
+  await expect.poll(async () => {
+    await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    return last.isVisible();
+  }).toBe(true);
+  expect(await catalogue.locator("li").count()).toBeLessThan(60);
+  const footerBox = await bounds(footer);
+  expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(800);
+  await expect(footer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
+  await expect(footer.getByRole("button", { name: "Account menu", exact: true })).toBeInViewport();
+  await expectNoSidebarOverflow(page);
+
+  // Search finds the full MQTT path, shows where each result sits and leaves the selection alone.
+  const url = page.url();
+  await page.keyboard.press("ControlOrMeta+k");
+  const search = catalogue.getByRole("searchbox", { name: "Search catalogue", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("lab/benches/120");
+  const result = catalogue.getByRole("button", { name: "Bench 120 supply voltage, preview", exact: true });
+  await expect(result).toContainText("lab/benches/120/supply/voltage");
+  expect(page.url()).toBe(url);
+  await page.keyboard.press("ArrowDown");
+  await expect(result).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/source=/);
+  await expect(search).toHaveValue("lab/benches/120");
+  await search.focus();
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveValue("");
+  // The tree returns as it was left, with the chosen reading revealed among its siblings.
+  await expect(catalogue.getByRole("list", { name: "Catalogue items", exact: true })).toBeVisible();
+  await expect(catalogue.getByRole("button", { name: "Bench 120 supply voltage, preview", exact: true })).toHaveAttribute("aria-current", "true");
+  await expect(catalogue.getByRole("button", { name: "Bench 119 supply voltage, preview", exact: true })).toBeVisible();
+
+  // Back restores the earlier selection; the sidebar stays mounted.
+  const sidebarHandle = await sidebar.elementHandle();
+  await page.goBack();
+  await expect(page).toHaveURL(url);
+  expect(await sidebarHandle!.evaluate(element => element.isConnected)).toBe(true);
+
+  // Width and visibility persist for the account.
+  const edge = page.getByRole("separator", { name: "Resize sidebar", exact: true });
   await edge.focus();
   await page.keyboard.press("Shift+ArrowRight");
-  await expect(edge).toHaveAttribute("aria-valuenow", "352");
-  await expect.poll(async () => (await bounds(sidebar)).width).toBe(352);
-  const panel = await bounds(sidebar);
-  const control = await bounds(hide);
-  expect(control.x + control.width / 2).toBeCloseTo(panel.x + panel.width, 0);
-  expect(control.width).toBeGreaterThanOrEqual(44);
-  expect(control.height).toBeGreaterThanOrEqual(44);
-  expect((await bounds(heading)).x - control.x - control.width).toBeGreaterThanOrEqual(24);
-
-  await search.fill("preserve this catalogue search");
-  const originalSearch = await search.elementHandle();
-  await hide.click();
-  await expect(show).toHaveAttribute("aria-expanded", "false");
-  await expect(search).toBeHidden();
-  await expect(sidebar).toHaveAttribute("inert", "");
-  await expect.poll(async () => (await bounds(main)).width).toBe(1280);
-  expect((await bounds(main)).x).toBe(0);
-  expect(await bounds(header)).toEqual(initialHeader);
-  for (const name of ["Monitoring", "Sources", "Reporting"]) {
-    await expect(navigation.getByRole("link", { name, exact: true })).toBeVisible();
-  }
-  await show.focus();
-  await page.keyboard.press("Enter");
-  await expect(search).toHaveValue("preserve this catalogue search");
-  expect(await originalSearch!.evaluate(element => element.isConnected)).toBe(true);
-  await search.clear();
-  await originalSearch!.dispose();
-  await hide.click();
+  await expect.poll(async () => (await bounds(sidebar)).width).toBe(328);
   await page.reload();
-  await expect(show).toBeVisible();
-  await show.focus();
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await bounds(sidebar)).width).toBe(352);
+  await expect.poll(async () => (await bounds(sidebar)).width).toBe(328);
+  await expect(catalogue.getByRole("button", { name: "Collapse lab/benches", exact: true })).toBeAttached();
+  await edge.focus();
+  await page.keyboard.press("Home");
+  await expect.poll(async () => (await bounds(sidebar)).width).toBe(224);
+  await edge.dblclick();
+  await expect.poll(async () => (await bounds(sidebar)).width).toBe(264);
 
   for (const appearance of ["Light", "Dark"] as const) {
     await setAppearance(page, appearance);
-    await page.screenshot({ path: testInfo.outputPath(`catalogue-desktop-${appearance.toLowerCase()}.png`), animations: "disabled" });
-    await hide.click();
-    await expect.poll(async () => (await bounds(main)).width).toBe(1280);
-    await page.screenshot({ path: testInfo.outputPath(`catalogue-collapsed-${appearance.toLowerCase()}.png`), animations: "disabled" });
-    await show.click();
-    await expect(search).toBeVisible();
+    await catalogue.locator(".ex-list-scroll").evaluate(element => { element.scrollTop = 0; });
+    await capture(page, testInfo, `sidebar-desktop-${appearance.toLowerCase()}`);
   }
-  await edge.focus();
-  await page.keyboard.press("Home");
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(await page.locator(".app-catalogue-workspace").evaluate(element => parseFloat(getComputedStyle(element).transitionDuration))).toBeLessThanOrEqual(0.001);
-  await setAppearance(page, "Follow system");
+
+  await sidebar.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  const show = page.getByRole("button", { name: "Show sidebar", exact: true });
+  await expect(show).toBeFocused();
+  await expect(sidebar).toHaveAttribute("inert", "");
+  await expect.poll(async () => (await bounds(main)).x).toBe(0);
+  expect((await bounds(main)).width).toBe(1280);
+  await capture(page, testInfo, "sidebar-collapsed-dark");
+  await page.reload();
+  await expect(show).toBeVisible();
+  await show.click();
+  await expect(sidebar.getByRole("button", { name: "Hide sidebar", exact: true })).toBeFocused();
+  await setAppearance(page, "Light");
+  // Browsing, searching and expanding never wrote anything.
+  expect(api.writes).toEqual([]);
 });
 
-test("mobile drawers leave the header and content geometry intact and restore keyboard focus", async ({ page }, testInfo) => {
-  for (const width of [320, 390, 760]) {
+test("a chosen source scopes the page while the chart keeps its full workspace", async ({ page }, testInfo) => {
+  const api = await installSidebarMockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const sidebar = page.getByRole("complementary", { name: "Sidebar", exact: true });
+  await sidebar.getByRole("region", { name: "Favourites", exact: true }).getByRole("button", { name: "Air temperature", exact: true }).click();
+  const preview = page.getByRole("region", { name: "Reading preview", exact: true });
+  await expect(preview).toBeVisible();
+  // The favourite and its tree row both show the selection; the workspace link keeps its own state.
+  await expect(sidebar.getByRole("button", { name: "Air temperature, preview", exact: true })).toHaveAttribute("aria-current", "true");
+  await expect(sidebar.getByRole("link", { name: "Monitoring", exact: true })).toHaveAttribute("aria-current", "page");
+  const sidebarBox = await bounds(sidebar);
+  expect((await bounds(preview)).x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width);
+  await expectNoSidebarOverflow(page);
+  // Collections narrow the tree without changing what the page shows.
+  const url = page.url();
+  await sidebar.getByRole("button", { name: "Show collection Lab benches", exact: true }).click();
+  await expect(sidebar.getByText("In Lab benches")).toBeVisible();
+  expect(page.url()).toBe(url);
+  await capture(page, testInfo, "sidebar-selection-collection");
+  await sidebar.getByRole("button", { name: "Show every source", exact: true }).click();
+  // Workspace links carry the selected source to the next page.
+  await sidebar.getByRole("link", { name: "Reporting", exact: true }).click();
+  await expect(page).toHaveURL(/\/anomalies\?source=/);
+  await sidebar.getByRole("link", { name: "Dojo", exact: true }).click();
+  await expect(page.getByRole("main", { name: "Dojo workspace", exact: true })).toBeVisible();
+  expect((await bounds(page.getByRole("main", { name: "Dojo workspace", exact: true }))).x).toBeGreaterThanOrEqual(sidebarBox.width);
+  expect(api.writes).toEqual([]);
+});
+
+test("phones use one focus-trapped drawer that closes on navigation and returns focus", async ({ page }, testInfo) => {
+  await installSidebarMockApi(page);
+  for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
-    const header = page.getByTestId("application-header");
-    const main = page.locator(".app-catalogue-main");
-    const show = page.getByRole("button", { name: "Show catalogue", exact: true });
-    const heading = page.getByRole("heading", { name: "Monitoring", exact: true });
+    const show = page.getByRole("button", { name: "Show sidebar", exact: true });
     await expect(show).toBeVisible();
-    const initialMain = await bounds(main);
-    const initialHeader = await bounds(header);
-    expect(initialHeader.height).toBe(112);
-    expect(initialMain.y).toBe(initialHeader.y + initialHeader.height);
-    expect(initialMain.width).toBe(width);
-    const face = await bounds(show.locator(".catalogue-edge-face"));
-    expect((await bounds(heading)).x - face.x - face.width).toBeGreaterThanOrEqual(16);
-    await expect(page.getByRole("separator", { name: "Resize explorer sidebar", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("complementary", { name: "Sidebar", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("separator", { name: "Resize sidebar", exact: true })).toHaveCount(0);
+    const showBox = await bounds(show);
+    expect(showBox.width).toBeGreaterThanOrEqual(44);
+    await expectNoHorizontalScroll(page);
 
     await show.click();
-    const drawer = page.getByRole("dialog", { name: "MQTT catalogue", exact: true });
-    const close = drawer.getByRole("button", { name: "Hide catalogue", exact: true });
+    const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
     await expect(drawer).toBeFocused();
-    expect((await bounds(drawer)).y).toBe(initialHeader.y + initialHeader.height);
-    expect(await bounds(main)).toEqual(initialMain);
-    expect(await bounds(header)).toEqual(initialHeader);
-    const closeBounds = await bounds(close);
-    // Drawer translation can introduce subpixel rounding in bounding boxes.
-    expect(closeBounds.width).toBeCloseTo(44, 2);
-    expect(closeBounds.height).toBeCloseTo(44, 2);
-    expect(closeBounds.x + closeBounds.width).toBeLessThanOrEqual(width);
+    const drawerBox = await bounds(drawer);
+    expect(drawerBox.x + drawerBox.width).toBeLessThan(width);
+    await expect(drawer.getByRole("button", { name: "Account menu", exact: true })).toBeInViewport();
+    const close = drawer.getByRole("button", { name: "Close navigation", exact: true });
     await close.focus();
-    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     expect(await drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
-
-    for (const appearance of ["Light", "Dark"] as const) {
-      await page.keyboard.press("Escape");
-      await expect(drawer).toHaveCount(0);
-      await expect(show).toBeFocused();
-      await setAppearance(page, appearance);
-      await show.click();
-      await expect(drawer).toBeVisible();
-      if (width === 390) await page.screenshot({ path: testInfo.outputPath(`catalogue-mobile-${appearance.toLowerCase()}.png`), animations: "disabled" });
-    }
-    await close.click();
-    await expect(drawer).toHaveCount(0);
-    await expect(show).toBeFocused();
-    await page.keyboard.press("ControlOrMeta+k");
-    await expect(drawer.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
     await expect(show).toBeFocused();
-    await show.click();
-    await expect(drawer).toBeFocused();
-    await page.locator(".app-catalogue-mobile-overlay").click({ position: { x: width - 4, y: 80 } });
-    await expect(drawer).toHaveCount(0);
-    await expect(show).toBeFocused();
-    await expectNoHorizontalScroll(page);
-    await setAppearance(page, "Follow system");
-  }
 
-  await page.setViewportSize({ width: 1024, height: 800 });
-  await expect(page.getByRole("button", { name: "Hide catalogue", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Hide catalogue", exact: true }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Show catalogue", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "MQTT catalogue", exact: true })).toBeVisible();
-  await page.setViewportSize({ width: 1024, height: 800 });
-  await expect(page.getByRole("dialog", { name: "MQTT catalogue", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Show catalogue", exact: true })).toBeFocused();
-  await expect(page.getByRole("navigation", { name: "System explorer", exact: true })).toBeHidden();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("dialog", { name: "MQTT catalogue", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Show catalogue", exact: true })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(drawer.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeFocused();
+    await drawer.getByRole("link", { name: "Reporting", exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page).toHaveURL(/\/anomalies/);
+    await expectNoHorizontalScroll(page);
+  }
+  for (const appearance of ["Light", "Dark"] as const) {
+    await setAppearance(page, appearance);
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+    const drawer = page.getByRole("dialog", { name: "Navigation", exact: true });
+    const expand = drawer.getByRole("button", { name: "Expand Building broker", exact: true });
+    if (await expand.count()) await expand.click();
+    // The drawer's middle scrolls as one, bringing the catalogue up under saved items.
+    await drawer.locator(".app-sidebar-body").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await expect(drawer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
+    await capture(page, testInfo, `sidebar-mobile-${appearance.toLowerCase()}`);
+    await page.keyboard.press("Escape");
+  }
+  await setAppearance(page, "Light");
+});
+
+test("read-only, empty and unavailable catalogues keep a coherent sidebar", async ({ page, browser }, testInfo) => {
+  await installSidebarMockApi(page, { role: "viewer", favourites: [] });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/sources");
+  const sidebar = page.getByRole("complementary", { name: "Sidebar", exact: true });
+  await expect(sidebar.getByRole("button", { name: "Building broker, open", exact: true })).toBeVisible();
+  expect(await sidebar.getByRole("navigation", { name: "Workspace", exact: true }).getByRole("link").allTextContents())
+    .toEqual(["Monitoring", "Sources", "Reporting"]);
+  await expect(sidebar.getByRole("region", { name: "Favourites", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add broker", exact: true })).toHaveCount(0);
+
+  const empty = await browser.newPage();
+  await installSidebarMockApi(empty, { catalogue: null, favourites: [] });
+  await empty.setViewportSize({ width: 1280, height: 720 });
+  await empty.goto("/");
+  const emptySidebar = empty.getByRole("complementary", { name: "Sidebar", exact: true });
+  await expect(emptySidebar.getByText("No sources yet.")).toBeVisible();
+  await expect(emptySidebar.getByRole("region", { name: "Collections", exact: true })).toHaveCount(0);
+  await capture(empty, testInfo, "sidebar-empty-catalogue");
+  await emptySidebar.getByRole("button", { name: "Open catalogue settings", exact: true }).click();
+  await expect(empty.getByRole("dialog", { name: "Settings", exact: true }).getByRole("heading", { name: "Catalogue", level: 2 })).toBeVisible();
+  await empty.close();
+
+  const failing = await browser.newPage();
+  await installSidebarMockApi(failing, { catalogueError: true });
+  await failing.goto("/");
+  await expect(failing.getByRole("complementary", { name: "Sidebar", exact: true }).getByRole("alert")).toContainText("could not be loaded");
+  await expect(failing.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+  await failing.close();
 });

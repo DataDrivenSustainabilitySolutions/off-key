@@ -47,7 +47,7 @@ test("reviews a real catalogue export before replacement", async ({ page }) => {
   expect((await afterResponse.json() as SystemSnapshot).revision).toBe(before.revision);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeFocused();
 });
 
 test("saves a source from settings and supports both themes and mobile entry points", async ({ page }, testInfo) => {

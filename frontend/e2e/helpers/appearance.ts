@@ -1,15 +1,22 @@
 import { expect, type Page } from "@playwright/test";
 
-/** Opens Preferences from the application menu and returns the settings overlay. */
+/** The account menu sits in the sidebar footer; a hidden sidebar or a closed phone drawer is opened first. */
+async function openAccountMenu(page: Page) {
+  const menu = page.getByRole("button", { name: "Account menu", exact: true });
+  if (!await menu.isVisible()) await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await menu.click();
+}
+
+/** Opens Preferences from the account menu and returns the settings overlay. */
 export async function openPreferences(page: Page) {
-  await page.getByRole("button", { name: "Application menu", exact: true }).click();
+  await openAccountMenu(page);
   await page.getByRole("menuitem", { name: "Preferences", exact: true }).click();
   return page.getByRole("dialog", { name: "Settings", exact: true });
 }
 
-/** Opens the catalogue section from the application menu and returns the settings overlay. */
+/** Opens the catalogue section from the account menu and returns the settings overlay. */
 export async function openCatalogueSettings(page: Page) {
-  await page.getByRole("button", { name: "Application menu", exact: true }).click();
+  await openAccountMenu(page);
   await page.getByRole("menuitem", { name: "Catalogue", exact: true }).click();
   return page.getByRole("dialog", { name: "Settings", exact: true });
 }

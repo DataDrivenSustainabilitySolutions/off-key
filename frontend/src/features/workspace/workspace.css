@@ -1,47 +1,91 @@
-.app-catalogue-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--app-header-height) minmax(0, 1fr); }
-.app-catalogue-shell > .app-header { grid-column: 1 / -1; grid-row: 1; gap: 28px; }
-.app-catalogue-workspace {
-  --catalogue-width: min(var(--ex-sidebar-width, 288px), max(240px, calc(100% - 480px)));
-  position: relative; grid-column: 1 / -1; grid-row: 2; min-width: 0; min-height: 0;
-  display: grid; grid-template-columns: var(--catalogue-width) minmax(0, 1fr);
+/* The application shell: one full-height sidebar beside the workspace. */
+.app-shell {
+  --app-sidebar-width: min(var(--ex-sidebar-width, 264px), max(224px, calc(100% - 480px)));
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
   transition: grid-template-columns 180ms ease;
 }
-.ex-sidebar-hidden > .app-catalogue-workspace { --catalogue-width: 0px; }
-.app-catalogue-sidebar { grid-column: 1; grid-row: 1; }
-.app-catalogue-sidebar-content { height: 100%; min-height: 0; overflow: clip; }
-.app-catalogue-sidebar-content > .ex-sidebar { min-width: 240px; }
-.app-catalogue-main { grid-column: 2; grid-row: 1; }
-.app-catalogue-main :is(.ex-main-content, .app-page-content) { padding-inline: 48px; }
-.catalogue-edge-toggle {
-  position: absolute; top: 9px; z-index: 35; width: 44px; height: 44px; padding: 0;
-  display: flex; align-items: center; justify-content: center; border-radius: 6px;
+.app-shell.is-sidebar-hidden { grid-template-columns: 0px minmax(0, 1fr); }
+.ex-shell.is-resizing { transition: none; }
+.app-sidebar-dock { grid-column: 1; grid-row: 1; height: 100%; }
+.app-shell.is-sidebar-hidden .app-sidebar-dock { overflow: hidden; }
+.app-main-column { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.app-main { flex: 1; }
+.app-main :is(.ex-main-content, .app-page-content) { padding-inline: 48px; }
+.app-topbar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 12px;
+  border-bottom: 1px solid var(--ex-line); background: var(--ex-bg);
 }
-.catalogue-edge-toggle[hidden] { display: none; }
-.catalogue-workspace-toggle { left: max(0px, calc(var(--catalogue-width) - 22px)); transition: left 180ms ease; }
-.catalogue-edge-face {
-  display: flex; align-items: center; justify-content: center; width: 24px; height: 30px;
-  color: var(--ex-muted); background: var(--ex-side); border: 1px solid var(--ex-line); border-radius: 6px;
+.app-topbar .brand-home { width: 32px; height: 32px; }
+.app-topbar .brand-mark { width: 26px; height: 26px; }
+
+/* Sidebar */
+.app-sidebar {
+  --app-sidebar-bg: color-mix(in srgb, hsl(var(--muted)) 72%, hsl(var(--background)));
+  display: flex; flex-direction: column; width: 100%; min-width: 224px; height: 100%; min-height: 0;
+  background: var(--app-sidebar-bg); border-right: 1px solid var(--ex-line);
+  font-size: var(--text-body); color: var(--ex-ink);
 }
-.catalogue-edge-face svg { transition: transform 180ms ease; }
-.catalogue-edge-toggle[aria-expanded="false"] { justify-content: flex-start; border-radius: 0 6px 6px 0; }
-.catalogue-edge-toggle[aria-expanded="false"] .catalogue-edge-face { width: 26px; border-left: 0; border-radius: 0 6px 6px 0; }
-.catalogue-edge-toggle[aria-expanded="false"] svg { transform: rotate(180deg); }
-.catalogue-edge-toggle:hover .catalogue-edge-face,.catalogue-edge-toggle:focus-visible .catalogue-edge-face {
-  color: var(--ex-ink); background: var(--ex-hover); border-color: var(--ex-muted);
+.app-sidebar-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 52px; padding: 0 8px 0 12px; }
+.app-sidebar .brand-home-wordmark { width: auto; min-height: 32px; height: 32px; padding: 0 6px; }
+.app-sidebar .brand-wordmark { width: auto; height: 18px; }
+.app-sidebar-toggle {
+  flex-shrink: 0; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; color: var(--ex-muted);
 }
-/* Unmount a blurred hint immediately so its closing layer cannot consume Escape in the drawer. */
-.catalogue-toggle-tooltip[data-state="closed"] { animation: none; }
-.catalogue-drawer-toggle { left: calc(100% - 22px); }
-.app-catalogue-mobile-overlay,.app-catalogue-mobile-sidebar { top: 112px; }
-.app-catalogue-mobile-sidebar { width: min(320px, calc(100vw - 44px)); }
-.ex-shell.is-resizing :is(.app-catalogue-workspace, .catalogue-workspace-toggle) { transition: none; }
-.app-primary-nav { min-width: 0; height: 100%; }
-.app-primary-nav .app-workspace-links { display: flex; align-items: stretch; height: 100%; gap: 4px; }
-.app-primary-nav .app-workspace-link { position: relative; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; border-radius: 0; font-size: var(--text-body); white-space: nowrap; }
-.app-primary-nav .app-workspace-link[aria-current="page"] { box-shadow: none; background: transparent; }
-.app-primary-nav .app-workspace-link[aria-current="page"]::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; background: hsl(var(--primary)); }
-.app-primary-nav .app-workspace-link:hover { background: hsl(var(--accent)); }
-.app-primary-nav .app-workspace-link:focus-visible { outline-offset: -4px; border-radius: 6px; }
+.app-sidebar-toggle:hover { color: var(--ex-ink); background: var(--ex-hover); }
+.ex-shell .app-sidebar-toggle:focus-visible,.ex-mobile-sidebar .app-sidebar-toggle:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 0; }
+/* Unmount a blurred hint immediately so its closing layer cannot consume Escape. */
+.app-sidebar-tooltip[data-state="closed"] { animation: none; }
+
+.app-sidebar-heading { margin: 0; font-size: var(--text-caption); font-weight: 500; line-height: 16px; color: var(--ex-muted); }
+.app-sidebar-heading-row { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 8px 0 16px; }
+.app-sidebar-heading-row > .app-sidebar-heading { flex: 1; }
+.app-sidebar-workspaces { flex-shrink: 0; padding: 4px 0 12px; }
+.app-sidebar-workspaces > .app-sidebar-heading { padding: 6px 16px 6px; }
+.app-sidebar-items { margin: 0; padding: 0 8px; list-style: none; display: grid; gap: 1px; }
+.app-sidebar-items[hidden] { display: none; }
+.app-sidebar-item {
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-width: 0; height: 32px; padding: 0 8px;
+  border-radius: 6px; color: var(--ex-ink); font-size: var(--text-body); line-height: 20px; text-align: left; text-decoration: none;
+}
+.app-sidebar-item > svg { flex-shrink: 0; color: var(--ex-muted); }
+.app-sidebar-item > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-sidebar-item > small { flex-shrink: 0; color: var(--ex-muted); font-size: var(--text-caption); }
+.app-sidebar-item:hover { background: var(--ex-hover); }
+.app-sidebar-item:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: -2px; }
+/* The current workspace, a shown source and an applied collection share one quiet highlight. */
+.app-sidebar-item:is([aria-current="page"], [aria-current="true"], [aria-pressed="true"]) { background: var(--ex-active); font-weight: 550; }
+.app-sidebar-item:is([aria-current="page"], [aria-current="true"], [aria-pressed="true"]) > svg { color: var(--ex-accent); }
+
+.app-sidebar-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--ex-line); padding-top: 8px; scrollbar-width: thin; }
+.app-sidebar-category { flex: 0 1 auto; min-height: 0; max-height: 32%; display: flex; flex-direction: column; padding-bottom: 12px; }
+.app-sidebar-category > .app-sidebar-items { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+.app-sidebar-category-toggle { display: flex; align-items: center; gap: 6px; min-height: 28px; margin: 0 8px; padding: 0 8px; border-radius: 6px; text-align: left; }
+.app-sidebar-category-toggle:hover { background: var(--ex-hover); }
+.app-sidebar-category-toggle > .app-sidebar-heading { flex: 1; }
+.app-sidebar-count { color: var(--ex-muted); font-size: var(--text-caption); }
+.app-sidebar-chevron { color: var(--ex-muted); transition: transform 120ms ease; }
+.app-sidebar-category-toggle[aria-expanded="true"] .app-sidebar-chevron { transform: rotate(90deg); }
+.app-sidebar-catalogue { flex: 1 0 160px; }
+.app-sidebar-tool { flex-shrink: 0; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--ex-muted); }
+.app-sidebar-tool:hover { color: var(--ex-ink); background: var(--ex-hover); }
+.app-sidebar-tool[aria-pressed="true"] { color: var(--ex-accent); background: var(--ex-active); }
+.app-sidebar-filter { display: flex; align-items: center; gap: 4px; margin: 0 8px 4px; padding: 0 0 0 8px; min-height: 28px; border-radius: 6px; background: var(--ex-active); font-size: var(--text-caption); }
+.app-sidebar-filter > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-sidebar-footer { flex-shrink: 0; display: grid; gap: 1px; padding: 8px; border-top: 1px solid var(--ex-line); }
+.app-sidebar-footer > a[data-slot="button"] { justify-self: start; }
+.app-sidebar-account { height: 40px; padding: 0 6px; }
+.app-sidebar-account > .app-avatar { flex: 0 0 26px; width: 26px; height: 26px; }
+.app-sidebar-account > span:not(.app-avatar) { color: var(--ex-ink); }
+.app-sidebar-account > svg { flex-shrink: 0; color: var(--ex-muted); }
+.app-sidebar-account[data-state="open"] { background: var(--ex-hover); }
+
+/* Mobile drawer */
+.app-drawer { width: min(320px, calc(100vw - 44px)); }
+.app-drawer > .app-sidebar { min-width: 0; box-shadow: 0 16px 48px rgb(16 24 32 / .18); }
+
+/* Pages */
 .workspace-source-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; font-size: var(--text-caption); }
 .workspace-source-scope > small { margin-right: -6px; color: var(--ex-muted); font-size: var(--text-caption); }
 .workspace-source-scope > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-weight: 500; }
@@ -49,32 +93,25 @@
 .workspace-source-scope button:hover { background: var(--ex-hover); }
 .workspace-source-scope.is-compact { margin: 0; }
 .workspace-loading { padding: 40px 48px; color: var(--ex-muted); }
-.app-catalogue-shell .mn-sidebar-favourites { margin: 0 18px 20px; display: grid; gap: 4px; }
-.app-catalogue-shell .mn-sidebar-favourites > span { padding: 0 5px 6px; font-size: var(--text-caption); color: var(--ex-muted); }
-.app-catalogue-shell .mn-sidebar-favourites button { display: flex; gap: 8px; align-items: center; padding: 7px; text-align: left; border-radius: 6px; font-size: var(--text-caption); }
-.app-catalogue-shell .mn-sidebar-favourites button:hover { background: var(--ex-hover); }
-.app-catalogue-shell .mn-sidebar-favourites button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 1050px) {
-  .app-catalogue-shell > .app-header { gap: 16px; }
-  .app-primary-nav .app-workspace-link { padding-right: 10px; padding-left: 10px; }
+  .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 28px; }
 }
 @media (max-width: 760px) {
-  .app-catalogue-shell { --app-header-height: 112px; grid-template-columns: minmax(0, 1fr); }
-  .app-catalogue-shell > .app-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 64px 48px; gap: 0; padding: 0 12px; height: 112px; }
-  .app-catalogue-shell .app-header-leading { grid-column: 1; grid-row: 1; }
-  .app-catalogue-shell .app-header-actions { grid-column: 2; grid-row: 1; }
-  .app-catalogue-shell .app-primary-nav { grid-column: 1 / -1; grid-row: 2; margin: 0 -4px; }
-  .app-primary-nav .app-workspace-links { gap: 0; }
-  .app-primary-nav .app-workspace-link { flex: 1; gap: 6px; padding: 10px 6px; font-size: var(--text-caption); }
-  .app-catalogue-workspace { --catalogue-width: 0px; grid-template-columns: minmax(0, 1fr); }
-  .app-catalogue-main { grid-column: 1; }
-  .app-catalogue-main :is(.ex-main-content, .app-page-content) { padding-inline: 20px; }
-  .app-catalogue-main :is(.ex-workspace-heading, .app-page-heading, .ex-breadcrumb) { padding-inline-start: 24px; }
+  .app-shell, .app-shell.is-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  .app-main-column { grid-column: 1; }
+  .app-topbar { height: 52px; padding: 0 8px; }
+  .app-sidebar-toggle, .app-topbar .brand-home { width: 44px; height: 44px; }
+  .app-sidebar-item, .app-sidebar-category-toggle { min-height: 44px; }
+  .app-sidebar-tool { width: 44px; height: 44px; }
+  /* In the drawer the whole middle scrolls, so the catalogue keeps a usable height below saved items. */
+  .app-sidebar-category { max-height: none; flex-shrink: 0; }
+  .app-sidebar-catalogue { flex: 1 0 max(320px, 60dvh); }
+  .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 20px; }
   .workspace-source-scope { margin: 18px 0; }
   .workspace-loading { padding: 28px 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-catalogue-workspace,.catalogue-workspace-toggle,.catalogue-edge-face svg { transition: none; }
+  .app-shell, .app-sidebar-chevron { transition: none; }
 }

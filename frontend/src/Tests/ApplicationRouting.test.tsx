@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadExplorerPreferences } from "@/features/workspace/preferences";
 
 const { captureRouter, auth } = vi.hoisted(() => ({
   captureRouter: vi.fn<(routes: RouteObject[]) => unknown>(),
@@ -35,6 +36,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   auth.isAuthenticated = true; auth.isLoading = false;
+  localStorage.clear();
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
 
@@ -93,41 +95,76 @@ describe("application home", () => {
     expect(router.state.location.pathname).toBe("/sources");
   });
 
-  it("keeps the primary navigation on Reporting and provides a way back to Monitoring", async () => {
+  it("lists the workspaces in the sidebar instead of a top navigation bar and marks the current one", async () => {
     const router = visit("/anomalies");
     await screen.findByRole("heading", { name: "Reporting" });
-    const workspaces = within(screen.getByRole("group", { name: "Workspaces" }));
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).toBeNull();
+    expect(screen.queryByTestId("application-header")).toBeNull();
+    const sidebar = within(screen.getByRole("complementary", { name: "Sidebar" }));
+    const workspaces = within(sidebar.getByRole("navigation", { name: "Workspace" }));
+    // Dojo stays hidden from a member without the Dojo permission.
     expect(workspaces.getAllByRole("link").map(link => link.textContent)).toEqual(["Monitoring", "Sources", "Reporting"]);
     expect(workspaces.getByRole("link", { name: "Reporting" }).getAttribute("aria-current")).toBe("page");
+    expect(sidebar.getByRole("navigation", { name: "Catalogue" })).toBeTruthy();
+    expect(sidebar.getByRole("button", { name: "Settings" })).toBeTruthy();
     fireEvent.click(workspaces.getByRole("link", { name: "Monitoring" }));
     await screen.findByRole("heading", { name: "Monitoring home" });
     expect(router.state.location.pathname).toBe("/");
+    expect(workspaces.getByRole("link", { name: "Monitoring" }).getAttribute("aria-current")).toBe("page");
+    expect(workspaces.getByRole("link", { name: "Reporting" }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("keeps navbar navigation visible when the catalogue is hidden", async () => {
+  it("leaves an obvious way back when the sidebar is hidden and remembers the choice", async () => {
     visit("/anomalies");
     await screen.findByRole("heading", { name: "Reporting" });
-    fireEvent.click(screen.getByRole("button", { name: "Hide catalogue" }));
-    expect(screen.queryByRole("navigation", { name: "System explorer" })).toBeNull();
-    expect(screen.getByRole("group", { name: "Workspaces" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Show catalogue" }));
-    expect(screen.getByRole("navigation", { name: "System explorer" })).toBeTruthy();
+    const sidebar = screen.getByRole("complementary", { name: "Sidebar" });
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Hide sidebar" }));
+    expect(sidebar.hasAttribute("inert")).toBe(true);
+    const show = await screen.findByRole("button", { name: "Show sidebar" });
+    await waitFor(() => expect(document.activeElement).toBe(show));
+    await waitFor(() => expect(loadExplorerPreferences(null).sidebarOpen).toBe(false));
+    fireEvent.click(show);
+    expect(sidebar.hasAttribute("inert")).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(within(sidebar).getByRole("button", { name: "Hide sidebar" })));
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+    await waitFor(() => expect(loadExplorerPreferences(null).sidebarOpen).toBe(true));
   });
 
-  it("keeps mobile section navigation in the navbar and uses the drawer for MQTT entities", async () => {
+  it("opens settings from the sidebar footer above the current page without remounting it", async () => {
+    const router = visit("/anomalies?source=kept");
+    const page = await screen.findByRole("heading", { name: "Reporting" });
+    const settings = within(screen.getByRole("complementary", { name: "Sidebar" })).getByRole("button", { name: "Settings" });
+    fireEvent.click(settings);
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByRole("heading", { name: "Appearance", level: 2 })).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/anomalies");
+    expect(new URLSearchParams(router.state.location.search).get("source")).toBe("kept");
+    expect(new URLSearchParams(router.state.location.search).get("settings")).toBe("preferences");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
+    expect(screen.getByRole("heading", { name: "Reporting" })).toBe(page);
+    expect(router.state.location.search).toBe("?source=kept");
+    await waitFor(() => expect(document.activeElement).toBe(settings));
+  });
+
+  it("uses one focus-trapped drawer on phones, closes it on navigation and returns focus to its trigger", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     const router = visit("/sources");
     await screen.findByRole("heading", { name: "Sources" });
-    const trigger = screen.getByRole("button", { name: "Show catalogue" });
+    expect(screen.queryByRole("complementary", { name: "Sidebar" })).toBeNull();
+    const trigger = screen.getByRole("button", { name: "Show sidebar" });
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole("dialog", { name: "MQTT catalogue" });
-    expect(within(dialog).queryByRole("link", { name: "Reporting" })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Hide catalogue" }));
+    let drawer = await screen.findByRole("dialog", { name: "Navigation" });
+    expect(within(drawer).getByRole("navigation", { name: "Catalogue" })).toBeTruthy();
+    fireEvent.keyDown(drawer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
-    fireEvent.click(screen.getByRole("link", { name: "Reporting" }));
+    fireEvent.click(trigger);
+    drawer = await screen.findByRole("dialog", { name: "Navigation" });
+    fireEvent.click(within(drawer).getByRole("link", { name: "Reporting" }));
     await screen.findByRole("heading", { name: "Reporting" });
     expect(router.state.location.pathname).toBe("/anomalies");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("preserves the selected catalogue entity when opening the monitoring workspace", async () => {

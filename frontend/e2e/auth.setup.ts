@@ -20,7 +20,7 @@ setup(
 
     await expect(page.getByRole("heading", { name: "Monitoring", exact: true })).toBeVisible();
     await expect(page.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Application menu", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "No monitoring services", exact: true })).toBeVisible();
 
     const sessionState = await page.evaluate(() => ({

@@ -1,10 +1,16 @@
 """CI is one workflow whose single, stable gate job stands for every check."""
 
 import importlib.util
+import json
+import os
+import stat
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
-from support import ROOT
+from support import ROOT, run
 
 WORKFLOWS = ROOT.parent / ".github/workflows"
 GATE = "ci-gate"
@@ -21,6 +27,22 @@ def load_plan():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+# Stand-ins for the runner's docker and python3: record every pull, resolve image
+# names locally and hand anything else to the real interpreter.
+DOCKER_STUB = """#!/bin/sh
+echo "$*" >> "$DOCKER_LOG"
+"""
+PYTHON_STUB = f"""#!/bin/sh
+if [ "$1" = .github/scripts/release_image.py ]; then
+  echo "ghcr.io/example/$2:release"
+elif [ "$1" = -c ] && [ "$3" = ghcr.io/example/mqtt_radar:release ]; then
+  echo "ghcr.io/example/mqtt_radar@sha256:pinned"
+else
+  exec {sys.executable} "$@"
+fi
+"""
 
 
 def needs(job):
@@ -215,6 +237,54 @@ class CiWorkflowTests(unittest.TestCase):
                 "Build the reviewed compatible binary rollback reference",
             },
         )
+
+    def test_radar_image_selection_runs_on_push_and_pull_request(self):
+        step = next(
+            step
+            for step in self.jobs["radar"]["steps"]
+            if step.get("name")
+            == "Select the production database and this run's RADAR image"
+        )
+        manifest = {
+            "images": {"mqtt_radar": {"reference": "off-key/mqtt-radar:ci-loaded"}}
+        }
+        for event, radar in (
+            ("push", "ghcr.io/example/mqtt_radar@sha256:pinned"),
+            ("pull_request", "off-key/mqtt-radar:ci-loaded"),
+        ):
+            with self.subTest(event=event), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                for name, body in (("docker", DOCKER_STUB), ("python3", PYTHON_STUB)):
+                    (tmp / name).write_text(body)
+                    (tmp / name).chmod(stat.S_IRWXU)
+                (tmp / "step.sh").write_text(step["run"])
+                # Only what the runner provides; values the step writes to
+                # GITHUB_ENV reach later steps, never this one.
+                env = {
+                    "PATH": f"{tmp}:{os.environ['PATH']}",
+                    "GITHUB_ENV": str(tmp / "github_env"),
+                    "GITHUB_EVENT_NAME": event,
+                    "GITHUB_SHA": "0" * 40,
+                    "MANIFEST": json.dumps(manifest),
+                    "DOCKER_LOG": str(tmp / "docker.log"),
+                }
+                run(
+                    "bash", "--noprofile", "--norc", "-e", "-o", "pipefail",
+                    tmp / "step.sh", cwd=ROOT.parent, env=env,
+                )  # fmt: skip
+                self.assertEqual(
+                    (tmp / "github_env").read_text().splitlines(),
+                    [
+                        "TEST_RADAR_DATABASE_IMAGE=ghcr.io/example/postgres:release",
+                        f"TEST_RADAR_SWARM_IMAGE={radar}",
+                    ],
+                )
+                pulls = (tmp / "docker.log").read_text().splitlines()
+                self.assertIn("pull --quiet ghcr.io/example/postgres:release", pulls)
+                self.assertIn("pull --quiet eclipse-mosquitto:2.0", pulls)
+                self.assertEqual(
+                    f"pull --quiet {radar}" in pulls, event == "push", pulls
+                )
 
     def test_a_manual_run_cannot_cancel_the_releasing_push_run(self):
         group = workflow("ci.yml")["concurrency"]["group"]

@@ -54,6 +54,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     expect(initial.runtime.bindings?.[stream.id]?.policy.mode).toBe("off");
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -131,6 +132,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const allHistory = page.getByRole("group", { name: "Chart time range", exact: true }).getByRole("button", { name: "All", exact: true });
     await allHistory.click();
     await expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Sources", exact: true }).click();
     await expect(collection.getByRole("radio", { name: /^At intervals/ })).toBeChecked();
     const stored = await api.get(`/api/v1/readings/${encodeURIComponent(stream.id)}/measurements/buckets`, { headers });
@@ -145,6 +147,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     await page.getByLabel("Calibration samples", { exact: true }).fill("2");
     await page.getByRole("link", { name: "Review recording in Sources", exact: true }).click();
     await expect(page.getByRole("main", { name: "Sources workspace", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
     await workspaces.getByRole("link", { name: "Monitoring", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Service name", exact: true })).toHaveValue("Workspace monitor");
     await expect(page.getByLabel("Warm-up samples", { exact: true })).toHaveValue("2");

@@ -73,7 +73,9 @@ test("narrows the tree to a collection, collapses every branch and restores the 
     const run = fixture.broker.slice(-8);
     const brokerRow = tree.getByRole("button", { name: "Navigation broker " + run + ", open", exact: true });
     const northRow = tree.getByRole("button", { name: "North room " + run + ", open", exact: true });
-    await expect(tree.getByRole("button", { name: "Root navigation broker 01, open", exact: true })).toBeVisible();
+    // The extra brokers have no children, so their row action is preview.
+    const emptyBroker = tree.getByRole("button", { name: "Root navigation broker 01, preview", exact: true });
+    await expect(emptyBroker).toBeVisible();
     await openCatalogueSettings(page);
     await page.getByRole("button", { name: "Add collection", exact: true }).click();
     const collectionName = "Collection check " + run;
@@ -98,7 +100,7 @@ test("narrows the tree to a collection, collapses every branch and restores the 
     await choose.click();
     await expect(choose).toHaveAttribute("aria-pressed", "true");
     await expect(tree.getByText("In North site", { exact: true })).toBeVisible();
-    await expect(tree.getByRole("button", { name: "Root navigation broker 01, open", exact: true })).toHaveCount(0);
+    await expect(emptyBroker).toHaveCount(0);
     expect(page.url()).toBe(before);
     await northRow.first().click();
     const source = new URL(page.url()).searchParams.get("source");

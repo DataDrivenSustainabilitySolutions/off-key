@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import rehearsal_releases
+import yaml
 from rehearsal_releases import (
     MODEL_SERVICES,
     release_model,
@@ -426,6 +427,26 @@ class CiImageTests(unittest.TestCase):
         self.assertEqual(set(release["images"]), set(rehearsal_releases.BUILDS))
         for reference in release["images"].values():
             self.assertRegex(reference, r"^localhost:5010/off-key-[\w-]+@sha256:d{64}$")
+
+    def test_a_host_port_never_keeps_an_update_one_node_cannot_finish(self):
+        import swarm_smoke
+
+        docs = yaml.safe_load(
+            (rehearsal_releases.ROOT / "stack/docker-compose.docs.yml").read_text()
+        )["services"]["docs"]
+        # Production starts the next documentation task before stopping the old
+        # one. With a host port the single rehearsal node can never place it.
+        self.assertEqual(docs["deploy"]["update_config"]["order"], "start-first")
+        expected = deepcopy(docs["deploy"])
+        expected["update_config"]["order"] = "stop-first"
+        swarm_smoke.publish(docs, 80, 8087)
+        port = {"target": 80, "published": 8087, "mode": "host"}
+        self.assertEqual(docs["ports"], [port])
+        self.assertEqual(docs["deploy"], expected)
+        # A service without an update order gains nothing but its port.
+        plain = {"image": "example"}
+        swarm_smoke.publish(plain, 80, 8087)
+        self.assertEqual(plain, {"image": "example", "ports": [port]})
 
     def test_ci_rehearsals_never_rebuild_the_current_images(self):
         import swarm_smoke

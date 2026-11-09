@@ -322,7 +322,7 @@ jobs:
             radar="$(python3 -c 'import json, os; print(json.loads(os.environ["MANIFEST"])["images"]["mqtt_radar"]["reference"])')"
           fi
           echo "TEST_RADAR_SWARM_IMAGE=$radar" >> "$GITHUB_ENV"
-          docker pull --quiet "$TEST_RADAR_DATABASE_IMAGE"
+          docker pull --quiet "$image"
           docker pull --quiet eclipse-mosquitto:2.0
 
       - name: Start an isolated Swarm and disposable schema fixture

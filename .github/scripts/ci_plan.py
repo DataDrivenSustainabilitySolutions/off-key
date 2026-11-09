@@ -2,7 +2,7 @@
 
 Only two narrow kinds of change run less than everything:
 
-- docs: documentation sources that no image, service or deployment reads. The
+- docs: root-level Markdown that no image, service or deployment reads. The
   repository checks and the tests that read documentation still run.
 - frontend: frontend sources other than its Dockerfile and dependency
   manifests. The frontend image, both deployment rehearsals and the tests that
@@ -46,8 +46,6 @@ SELECTED = {
     "frontend": {"lint", "frontend", "contracts", "images", "deployment-smoke"},
     "docs": {"lint", "contracts"},
 }
-DOCS_PREFIXES = ("docs/", "dev/docs/")
-DOCS_FILES = {"zensical.toml"}
 # Frontend files that change the image or its dependencies select everything.
 FRONTEND_BROAD = {
     "frontend/Dockerfile",
@@ -62,9 +60,8 @@ def classify(path):
     """docs, frontend or full for one changed (added, deleted or renamed) path."""
     if not path or path.startswith("/") or ".." in PurePosixPath(path).parts:
         return "full"
-    if path.startswith(DOCS_PREFIXES) or path in DOCS_FILES:
-        return "docs"
-    # Root-level Markdown sits outside every build context.
+    # Published documentation is a production image and must run the full plan.
+    # Root-level Markdown is excluded from every image build.
     if "/" not in path and path.endswith(".md"):
         return "docs"
     if path.startswith("frontend/") and path not in FRONTEND_BROAD:

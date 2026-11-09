@@ -190,6 +190,7 @@ stack_interpolation_environment:
   STACK_NAME: "{{ stack_name }}"
   API_IMAGE: "{{ api_image }}"
   FRONTEND_IMAGE: "{{ frontend_image }}"
+  DOCS_IMAGE: "{{ release.images.docs }}"
   MQTT_PROXY_IMAGE: "{{ mqtt_proxy_image }}"
   TACTIC_IMAGE: "{{ tactic_image }}"
   MQTT_RADAR_IMAGE: "{{ mqtt_radar_image }}"

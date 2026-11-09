@@ -27,6 +27,7 @@ from pathlib import Path
 
 PACKAGES = (
     "aberration-frontend",
+    "aberration-docs",
     "aberration-api-gateway",
     "aberration-tactic-middleware",
     "aberration-mqtt-radar",

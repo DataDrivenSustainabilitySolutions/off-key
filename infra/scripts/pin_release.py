@@ -16,6 +16,7 @@ RELEASE = (
 APPLICATION_IMAGES = {
     "api",
     "frontend",
+    "docs",
     "tactic",
     "mqtt_proxy",
     "mqtt_radar",
@@ -84,7 +85,7 @@ def select_revision(requested):
         if run["status"] == "completed" and run["conclusion"] == "success"
     }
     for revision in candidates:
-        # A documentation-only run succeeds without rehearsing or publishing
+        # A root-Markdown-only run succeeds without rehearsing or publishing
         # images; only a run that kept the tested release manifest is a release.
         if revision in successful and has_release_evidence(successful[revision]):
             if requested == "latest" and revision != candidates[0]:

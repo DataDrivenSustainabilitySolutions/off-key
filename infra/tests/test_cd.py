@@ -343,6 +343,7 @@ class CDTests(unittest.TestCase):
             (root / "docs/guide.md").write_text("Documentation change\n")
             run("git", "add", ".", cwd=root)
             run(*commit, "documentation change", cwd=root)
+            docs_revision = run("git", "rev-parse", "HEAD", cwd=root).stdout.strip()
             for test in (
                 "backend/tests/test_runtime.py",
                 "frontend/src/Tests/Runtime.test.tsx",
@@ -375,7 +376,8 @@ class CDTests(unittest.TestCase):
             )
             for verified, decision in [
                 (initial, "yes"),
-                (runtime_revision, "no"),
+                (runtime_revision, "yes"),
+                (docs_revision, "no"),
                 (None, "yes"),
             ]:
                 with self.subTest(verified=verified):

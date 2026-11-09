@@ -27,6 +27,10 @@
           - --
           - backend
           - frontend
+          - docs
+          - dev/docs
+          - requirements-docs.txt
+          - zensical.toml
           - infra/ansible
           - infra/stack
           - infra/scripts

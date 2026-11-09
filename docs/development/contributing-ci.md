@@ -30,8 +30,7 @@ plan.
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
 | `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests, build, route-mocked journeys); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (browser journeys, then backup restore and binary rollback on a production Swarm) and `deployment-smoke (pipelines)` (adaptive monitor and visual pipelines on a second Swarm). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
-| `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix | no |
-| `docs.yml` | Documentation | Pull requests and `main` that touch `docs/**`, `zensical.toml` or `requirements-docs.txt`, manual | `Build documentation` (strict build); `main` also deploys GitHub Pages | no |
+| `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix, including the strict Zensical docs build | no |
 | `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded and kept its `production-release` evidence ([Production releases](../operations/production.md)) | no |
 | `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
 | `pr-triage.yml` | PR triage | Pull requests opened, reopened or marked ready | Assigns a human author and requests the maintainer's review; never fails | no |
@@ -48,9 +47,9 @@ and anything it cannot classify, runs every job:
 
 | Changed paths | Jobs that run |
 | --- | --- |
-| Only `docs/**`, `dev/docs/**`, `zensical.toml` or root-level `*.md` | `lint`, `contracts` (the documentation build is `docs.yml`) |
+| Only root-level `*.md` | `lint`, `contracts` |
 | Those plus `frontend/**`, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
-| Anything else: backend and shared core, lockfiles and dependency manifests (including `requirements-docs.txt`), Dockerfiles, `infra/**`, `.github/**`, unknown files | every job |
+| Published docs (`docs/**`, `dev/docs/**`, `zensical.toml`) and anything else: backend and shared core, lockfiles and dependency manifests (including `requirements-docs.txt`), Dockerfiles, `infra/**`, `.github/**`, unknown files | every job |
 
 Pull requests compare their merge commit with its base parent, the merge queue
 compares the group with its base, and manual runs always run every job. A `main`
@@ -61,7 +60,7 @@ an API failure selects every job. `infra/tests/test_ci_plan.py` covers these
 cases and fails when a backend or infrastructure test outside the `contracts` job
 starts reading documentation or frontend sources.
 
-A documentation-only `main` run succeeds without publishing or rehearsing images,
+A root-Markdown-only `main` run succeeds without publishing or rehearsing images,
 so it keeps no release evidence; [production release selection](../operations/production.md)
 skips it. Cheap checks run first: backend, infrastructure, collection,
 observability, image and RADAR jobs wait for `lint`, and the deployment rehearsals

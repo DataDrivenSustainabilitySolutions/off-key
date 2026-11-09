@@ -41,14 +41,15 @@ of the old commit, exact images, service specifications, mounts and backup locat
    `tag:aberration-ci`, give it the existing narrowly scoped deployment permissions,
    and authorize the identity to issue this tag. Retire `tag:offkey-ci` after success.
 5. Merge the rename PR with automatic deployment still disabled. Wait for the
-   **main push** CI to publish and rehearse all six `aberration-*` application images.
+   **main push** CI to publish and rehearse all seven `aberration-*` application images.
    Verify package Actions access for the renamed repository. The committed manifest
    uses `unpublished`/`:latest` as repository selectors until this happens; they are
    deliberately not fabricated digest pins. Deployment resolves the successful
    main run's `production-release` artifact and requires actual immutable digests.
-6. Preserve the custom GitHub Pages domain and verify its next publish. Public
-   `aberration.app`, `dashboard.aberration.app`, `docs.aberration.app`, DNS, Cloudflare
-   Tunnel and the OAuth callback URL already match and need no branding change.
+6. Documentation now deploys as the seventh production image, `aberration-docs`.
+   Follow the production documentation-routing cutover if GitHub Pages still serves
+   the docs domain. The rename itself does not change public `aberration.app`,
+   `dashboard.aberration.app`, `docs.aberration.app`, or the OAuth callback URL.
 
 Do not repurpose the old GitHub repository name while redirects are needed.
 

@@ -9,9 +9,8 @@
     - "../ansible/inventories/{{ validation_environment }}/group_vars/all/vault.yml.example"
     - ../ansible/group_vars/all.yml
   tasks:
-    - name: Use synthetic immutable pins for offline rendering
-      set_fact:
-        release: "{{ validation_release }}"
+    - name: Load the production release
+      include_vars: ../ansible/inventories/prod/group_vars/all/release.yml
 
     - name: Validate the discovered NFS client addresses
       include_role:

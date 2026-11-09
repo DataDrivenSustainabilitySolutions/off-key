@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import yaml
 from jinja2 import Environment
-from support import ROOT, ansible, load_script, run, validation_release
+from support import ROOT, ansible, fixture_release, load_script, run
 
 application = load_script("check_application")
 swarm = load_script("check_swarm")
@@ -231,7 +231,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_tested_artifact_requires_matching_images_and_latest_main_run(self):
         revision = "a" * 40
-        document = {"release": validation_release()}
+        document = {"release": fixture_release()}
         document["release"]["application_revision"] = revision
         successful = {
             "id": 10,
@@ -270,6 +270,10 @@ class ReleaseTests(unittest.TestCase):
             original = deepcopy(document)
             changes = [
                 ("revision", "b" * 40),
+                (
+                    "docs",
+                    "ghcr.io/datadrivensustainabilitysolutions/aberration-docs:latest",
+                ),
                 ("api", "ghcr.io/attacker/api@sha256:" + "b" * 64),
                 (
                     "api",

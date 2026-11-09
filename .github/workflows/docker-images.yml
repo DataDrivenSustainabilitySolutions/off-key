@@ -21,6 +21,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - service: docs
+            image_name: aberration-docs
+            context: .
+            file: ./dev/docs/Dockerfile
+            build_args: ""
+            target: ""
           - service: frontend
             image_name: aberration-frontend
             context: ./frontend

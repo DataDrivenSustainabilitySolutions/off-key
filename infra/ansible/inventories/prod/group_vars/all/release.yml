@@ -2,6 +2,7 @@
   "release": {
     "application_revision": "unpublished",
     "images": {
+      "docs": "ghcr.io/datadrivensustainabilitysolutions/aberration-docs:latest",
       "api": "ghcr.io/datadrivensustainabilitysolutions/aberration-api-gateway:latest",
       "frontend": "ghcr.io/datadrivensustainabilitysolutions/aberration-frontend:latest",
       "mqtt_proxy": "ghcr.io/datadrivensustainabilitysolutions/aberration-mqtt-proxy:latest",

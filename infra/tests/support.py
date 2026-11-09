@@ -53,18 +53,6 @@ CLIENTS = ("100.100.10.2", "100.100.10.3")
 TOKEN = "eyJ" + "validation-only-not-a-real-token-" * 3
 
 
-def validation_release():
-    """Synthetic immutable application pins; never claim unpublished digests exist."""
-    release = json.loads(
-        (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
-    )["release"]
-    release["application_revision"] = "a" * 40
-    for key in ("api", "frontend", "mqtt_proxy", "tactic", "mqtt_radar", "db_sync"):
-        repository = release["images"][key].split("@", 1)[0].rsplit(":", 1)[0]
-        release["images"][key] = repository + "@sha256:" + "a" * 64
-    return release
-
-
 def discovery(addresses):
     return {
         "results": [
@@ -78,9 +66,33 @@ def discovery(addresses):
     }
 
 
+def fixture_release():
+    """Offline rendering uses a synthetic digest for not-yet-published images.
+
+    CI replaces every application image with a real built/published digest before
+    rehearsing or deploying. Never put invented registry digests in release.yml.
+    """
+    release = json.loads(
+        (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
+    )["release"]
+    release["application_revision"] = "a" * 40
+    for key in (
+        "api",
+        "frontend",
+        "mqtt_proxy",
+        "tactic",
+        "mqtt_radar",
+        "db_sync",
+        "docs",
+    ):
+        repository = release["images"][key].split("@", 1)[0].rsplit(":", 1)[0]
+        release["images"][key] = repository + "@sha256:" + "a" * 64
+    return release
+
+
 def render(directory, environment, **overrides):
     variables = {
-        "validation_release": validation_release(),
+        "release": fixture_release(),
         "validation_environment": environment,
         "internal_api_secret": "validation-internal-service-secret-123456789",
         "stack_dir": str(directory / "stack"),

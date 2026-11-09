@@ -217,6 +217,11 @@ class CiWorkflowTests(unittest.TestCase):
                     self.assertEqual(entry["target"], "production")
                     continue
                 self.assertEqual(entry["target"], "")
+                if entry["service"] == "docs":
+                    self.assertEqual(entry["context"], ".")
+                    self.assertEqual(entry["file"], "./dev/docs/Dockerfile")
+                    self.assertEqual(entry["build_args"], "")
+                    continue
                 self.assertIn("GIT_COMMIT=${{ github.sha }}", entry["build_args"])
 
     def test_build_cache_credentials_reach_only_image_builds(self):

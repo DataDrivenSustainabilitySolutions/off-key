@@ -1,8 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the initial Aberration identity migration, carrying migration 026
-and Aberrant 1.4.0 numerics. It proves binary replacement within the renamed
-schema; returning to a pre-rename release requires restoring its state backup.
+The reference carries the Aberration identity migration and Aberrant 1.4.0.
+It proves binary replacement within the renamed schema. Returning to a pre-rename
+release requires restoring its state backup.
 """
 
 import argparse
@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 
-from support import run
+from support import ROOT, run
 
 COMPATIBLE_REVISION = "1bfe0e05a4883c89ab674ecee8066dc9ed779ab1"
 REGISTRY = "aberration-smoke-registry"
@@ -30,6 +30,7 @@ BUILDS = {
     "mqtt_radar": ("aberration-mqtt-radar", "services/mqtt/radar"),
     "db_sync": ("aberration-db-sync", "services/db/sync"),
     "frontend": ("aberration-frontend", None),
+    "docs": ("aberration-docs", "docs"),
 }
 MODEL_SERVICES = {
     "api": "api",
@@ -38,6 +39,7 @@ MODEL_SERVICES = {
     "mqtt_radar": "mqtt-radar",
     "db_sync": "db-sync",
     "frontend": "frontend",
+    "docs": "docs",
 }
 
 
@@ -108,6 +110,10 @@ def build_arguments(service, source, revision, project):
         "-t",
         image_reference(service, revision),
     ]
+    if source == "docs":
+        # The rollback source predates this hosting recipe but contains its own
+        # docs, generator and requirements. Build only that revision's content.
+        return args + ["-f", str(ROOT.parent / "dev/docs/Dockerfile"), str(project)]
     if source is None:
         return args + ["--target", "production", str(Path(project) / "frontend")]
     return args + [

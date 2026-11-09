@@ -17,10 +17,10 @@ from support import (
     TOKEN,
     ansible,
     discovery,
+    fixture_release,
     load_script,
     render,
     run,
-    validation_release,
 )
 
 compiler = load_script("compile_stack")
@@ -193,8 +193,6 @@ class DeploymentTests(unittest.TestCase):
         # These values decide which node identity production uses and how it
         # joins the source network. A change re-registers or strands the live
         # node, so update the digest only together with a planned migration.
-        # The rename changes the environment variable reference and state root;
-        # the cutover guide preserves the existing tailnet node identity.
         values = yaml.safe_load(
             (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()
         )
@@ -245,9 +243,26 @@ class DeploymentTests(unittest.TestCase):
             & set(services["tactic"]["networks"])
         )
 
+    def test_docs_are_public_and_isolated_from_application_credentials(self):
+        result = self.results["prod"]
+        docs = result["config"]["services"]["docs"]
+        self.assertEqual(set(docs["networks"]), {"public-network"})
+        self.assertFalse(docs.get("environment"))
+        self.assertFalse(docs.get("secrets"))
+        self.assertFalse(docs.get("ports"))
+        self.assertEqual(docs["image"], fixture_release()["images"]["docs"])
+        route = result["routes"]["routers"]["docs"]
+        self.assertEqual(route["rule"], "Host(`docs.aberration.app`)")
+        self.assertEqual(route["service"], "docs")
+        self.assertFalse(route.get("middlewares"))
+        self.assertEqual(
+            result["routes"]["services"]["docs"]["loadBalancer"]["servers"],
+            [{"url": "http://aberration_docs:80"}],
+        )
+
     def test_every_production_image_is_immutable_and_radar_matches_runtime(self):
         config = self.results["prod"]["config"]
-        release = validation_release()
+        release = fixture_release()
         for name, service in config["services"].items():
             with self.subTest(service=name):
                 self.assertRegex(service["image"], r"@sha256:[0-9a-f]{64}$")
@@ -320,7 +335,9 @@ class DeploymentTests(unittest.TestCase):
                 self.assertNotIn("mailpit", routes["services"])
                 self.assertEqual(result["mailpit_files"], [])
                 self.assertNotIn("mailpit_data", config.get("volumes", {}))
-        release = validation_release()
+        release = yaml.safe_load(
+            (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
+        )["release"]
         self.assertNotIn("mailpit", release["images"])
 
     def test_deployment_retires_only_named_production_services_and_can_repeat(self):
@@ -767,7 +784,7 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn("demo", text.lower())
         self.assertIn("(https://aberration.app/index.md)", llms)
         self.assertIn(
-            "https://datadrivensustainabilitysolutions.github.io/aberration/llms.txt",
+            "https://docs.aberration.app/llms.txt",
             llms,
         )
         html = result["landing_html"]

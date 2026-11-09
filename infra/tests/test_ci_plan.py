@@ -39,7 +39,7 @@ class Repository:
         self.root = Path(directory)
         self.git("init", "-q", "-b", "main")
         self.write("backend/app.py", "print('a')\n")
-        self.write("docs/guide.md", "Guide\n")
+        self.write("README.md", "Guide\n")
         self.write("frontend/src/App.tsx", "export {}\n")
         self.write("frontend/package-lock.json", "{}\n")
         self.base = self.commit("base")
@@ -81,16 +81,18 @@ class Repository:
 class ClassificationTests(unittest.TestCase):
     def test_paths_select_the_narrowest_safe_mode(self):
         cases = {
-            ("docs/guide.md",): "docs",
-            ("dev/docs/llms.py", "zensical.toml", "README.md"): "docs",
-            ("frontend/src/App.tsx", "docs/guide.md"): "frontend",
+            ("README.md",): "docs",
+            ("dev/docs/llms.py", "zensical.toml", "README.md"): "full",
+            ("docs/guide.md",): "full",
+            ("dev/docs/Dockerfile",): "full",
+            ("frontend/src/App.tsx", "README.md"): "frontend",
             (
                 "frontend/e2e/journey.spec.ts",
                 "frontend/nginx.conf.template",
             ): "frontend",
             # Shared core and services.
             ("backend/libs/core/src/aberration_core/db/models.py",): "full",
-            ("backend/services/api/gateway/main.py", "docs/guide.md"): "full",
+            ("backend/services/api/gateway/main.py", "README.md"): "full",
             # Lockfiles and dependency manifests.
             ("frontend/package-lock.json",): "full",
             ("frontend/package.json",): "full",
@@ -173,16 +175,27 @@ class ComparisonTests(unittest.TestCase):
 
     def test_pull_request_diffs_its_merge_commit_against_the_base(self):
         merge, event = self.pull_request(
-            lambda: self.repo.write("docs/guide.md", "New guide\n")
+            lambda: self.repo.write("README.md", "New guide\n")
         )
         mode, jobs, _ = self.repo.plan("pull_request", event, merge)
         self.assertEqual(mode, "docs")
         self.assertEqual(selected(jobs), {"lint", "contracts"})
 
+    def test_published_documentation_runs_the_release_pipeline(self):
+        self.repo.write("docs/guide.md", "Published documentation change\n")
+        head = self.repo.commit("published docs")
+        evidence = [{"name": "production-release", "expired": False}]
+        api = self.main_push([self.run_for(1, self.repo.base)], {1: evidence})
+        mode, jobs, _ = self.repo.plan(
+            "push", {"ref": "refs/heads/main"}, head, api=api
+        )
+        self.assertEqual(mode, "full")
+        self.assertTrue(jobs["publish"] and jobs["deployment-smoke"])
+
     def test_deletions_and_renames_classify_both_paths(self):
         # Renaming a backend file into the docs tree still touches the backend.
         merge, event = self.pull_request(
-            lambda: self.repo.git("mv", "backend/app.py", "docs/app.py")
+            lambda: self.repo.git("mv", "backend/app.py", "APP.md")
         )
         self.assertEqual(self.repo.plan("pull_request", event, merge)[0], "full")
         self.repo.git("reset", "-q", "--hard", self.repo.base)
@@ -200,7 +213,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_an_unexpected_pull_request_checkout_runs_everything(self):
         merge, event = self.pull_request(
-            lambda: self.repo.write("docs/guide.md", "New guide\n")
+            lambda: self.repo.write("README.md", "New guide\n")
         )
         stale = {"pull_request": {"head": {"sha": "f" * 40}}}
         mode, jobs, reason = self.repo.plan("pull_request", stale, merge)
@@ -227,7 +240,7 @@ class ComparisonTests(unittest.TestCase):
                 self.assertEqual((mode, jobs), ("full", FULL_NON_PUSH))
 
     def test_manual_and_unknown_events_always_run_everything(self):
-        self.repo.write("docs/guide.md", "New guide\n")
+        self.repo.write("README.md", "New guide\n")
         head = self.repo.commit("docs")
         for event_name in ("workflow_dispatch", "schedule", "pull_request_target"):
             with self.subTest(event=event_name):
@@ -258,7 +271,7 @@ class ComparisonTests(unittest.TestCase):
         evidence = [{"name": "production-release", "expired": False}]
         self.repo.write("frontend/src/App.tsx", "export const a = 1\n")
         frontend = self.repo.commit("frontend")
-        self.repo.write("docs/guide.md", "New guide\n")
+        self.repo.write("README.md", "New guide\n")
         docs = self.repo.commit("docs")
         push = {"ref": "refs/heads/main"}
         # The docs-only run kept no release evidence, so the next one still
@@ -278,7 +291,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_main_push_without_trusted_release_evidence_runs_everything(self):
         evidence = [{"name": "production-release", "expired": False}]
-        self.repo.write("docs/guide.md", "New guide\n")
+        self.repo.write("README.md", "New guide\n")
         head = self.repo.commit("docs")
         push = {"ref": "refs/heads/main"}
         full = plan.plan_for("full", "push")
@@ -347,7 +360,7 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual((mode, jobs), ("full", FULL_NON_PUSH))
 
     def test_the_planner_writes_its_plan_for_the_workflow(self):
-        self.repo.write("docs/guide.md", "New guide\n")
+        self.repo.write("README.md", "New guide\n")
         head = self.repo.commit("docs")
         event = Path(self.directory.name) / "event.json"
         event.write_text(

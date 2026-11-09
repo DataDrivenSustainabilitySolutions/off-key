@@ -8,7 +8,9 @@ import { accessToken } from "./helpers/auth";
 import { expectNoHorizontalScroll } from "./helpers/layout";
 
 test.setTimeout(300_000);
-test.use({ locale: "en-US" });
+// A missing UI control should fail with a trace before the enclosing CI step
+// times out; infrastructure readiness keeps its explicit, longer assertions.
+test.use({ locale: "en-US", actionTimeout: 30_000 });
 
 test("records only an opted-in reading and restores its history in the mobile workspace", async ({ page, playwright }, testInfo) => {
   const deviceId = randomUUID();
@@ -107,7 +109,7 @@ test("records only an opted-in reading and restores its history in the mobile wo
     const receivingReading = page.getByRole("button", { name: "temperature, preview", exact: true });
     await expect(receivingReading.locator(".ex-reading-activity svg")).toHaveAttribute("fill", "currentColor", { timeout: 15_000 });
     await expect(receivingReading).toHaveAccessibleDescription("Receiving data (last 2 minutes)");
-    await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+    await page.getByRole("button", { name: "Close navigation", exact: true }).click();
     await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
 
     // Background collection continues after the page has been left.

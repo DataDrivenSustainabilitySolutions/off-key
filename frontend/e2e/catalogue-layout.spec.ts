@@ -219,6 +219,10 @@ test("phones use one focus-trapped drawer that closes on navigation and returns 
 
     await page.keyboard.press("ControlOrMeta+k");
     await expect(drawer.getByRole("searchbox", { name: "Search catalogue", exact: true })).toBeFocused();
+    await close.click();
+    await expect(drawer).toHaveCount(0);
+    await expect(show).toBeFocused();
+    await show.click();
     await drawer.getByRole("link", { name: "Reporting", exact: true }).click();
     await expect(drawer).toHaveCount(0);
     await expect(page).toHaveURL(/\/anomalies/);

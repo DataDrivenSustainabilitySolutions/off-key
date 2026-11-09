@@ -26,7 +26,7 @@ openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
   -aes-256-cbc -pass fd:3 -out "$output/ca.key" 3<<<"$ca_password"
 openssl req -new -x509 -sha256 -days 3650 \
   -key "$output/ca.key" -passin fd:3 -out "$output/ca.crt" \
-  -subj "/CN=Off Key Internal MQTT CA" \
+  -subj "/CN=Aberration Internal MQTT CA" \
   -addext "basicConstraints=critical,CA:TRUE" \
   -addext "keyUsage=critical,keyCertSign,cRLSign" 3<<<"$ca_password"
 

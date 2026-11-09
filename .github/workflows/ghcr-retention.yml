@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   retention:
-    if: github.repository == 'DataDrivenSustainabilitySolutions/off-key'
+    if: github.repository == 'DataDrivenSustainabilitySolutions/aberration'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:

@@ -3,13 +3,13 @@
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.schemas.radar import (
+from aberration_core.schemas.radar import (
     FormMonitorConfig,
     MonitorSetup,
     PerformanceConfig,
 )
-from off_key_tactic_middleware.domain import ConflictError, ValidationError
-from off_key_tactic_middleware.services.pipelines import forms
+from aberration_tactic_middleware.domain import ConflictError, ValidationError
+from aberration_tactic_middleware.services.pipelines import forms
 
 
 def stream(topic, reading_id, value_type="number"):

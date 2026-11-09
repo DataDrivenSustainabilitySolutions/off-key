@@ -5,11 +5,11 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from aberration_mqtt_radar import service as service_module
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.service import RadarService
 from amqtt.client import MQTTClient
-from off_key_mqtt_radar import service as service_module
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.service import RadarService
 
 from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import start_mqtt_broker, tiny_adaptive_monitoring, wait_until

@@ -18,9 +18,9 @@
 </p>
 
 <p align="center">
-  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/"><strong>Documentation</strong></a> ·
-  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/getting-started/">Getting started</a> ·
-  <a href="https://datadrivensustainabilitysolutions.github.io/off-key/development/contributing-ci/">Contributing</a>
+  <a href="https://datadrivensustainabilitysolutions.github.io/aberration/"><strong>Documentation</strong></a> ·
+  <a href="https://datadrivensustainabilitysolutions.github.io/aberration/getting-started/">Getting started</a> ·
+  <a href="https://datadrivensustainabilitysolutions.github.io/aberration/development/contributing-ci/">Contributing</a>
 </p>
 
 ## Quick start
@@ -34,18 +34,21 @@ docker compose up -d --build
 ```
 
 The app is then at <http://localhost:5173>. Create the first user and verify the
-stack with [Getting started](https://datadrivensustainabilitysolutions.github.io/off-key/getting-started/).
+stack with [Getting started](https://datadrivensustainabilitysolutions.github.io/aberration/getting-started/).
 Never deploy with the example credentials; see
-[Deployment modes](https://datadrivensustainabilitysolutions.github.io/off-key/operations/deployment-modes/).
+[Deployment modes](https://datadrivensustainabilitysolutions.github.io/aberration/operations/deployment-modes/).
 
 ## Documentation
 
+Existing installations: follow the [Aberration rename cutover](docs/operations/rename-cutover.md)
+before deploying this release or deleting old runtime resources.
+
 | | |
 | --- | --- |
-| **Use** | [Web app](https://datadrivensustainabilitysolutions.github.io/off-key/user-guide/web-app/) · [Monitoring](https://datadrivensustainabilitysolutions.github.io/off-key/user-guide/monitoring/) |
-| **Develop** | [Setup](https://datadrivensustainabilitysolutions.github.io/off-key/development/setup/) · [Architecture](https://datadrivensustainabilitysolutions.github.io/off-key/development/architecture/) · [Testing](https://datadrivensustainabilitysolutions.github.io/off-key/development/testing-debugging/) · [Contributing and CI](https://datadrivensustainabilitysolutions.github.io/off-key/development/contributing-ci/) |
-| **Operate** | [Deployment modes](https://datadrivensustainabilitysolutions.github.io/off-key/operations/deployment-modes/) · [Production releases](https://datadrivensustainabilitysolutions.github.io/off-key/operations/production/) · [Recovery](https://datadrivensustainabilitysolutions.github.io/off-key/operations/recovery/) |
-| **Reference** | [Environment variables](https://datadrivensustainabilitysolutions.github.io/off-key/reference/environment-variables/) · [Backend API](https://datadrivensustainabilitysolutions.github.io/off-key/reference/backend-api/) · [Brand assets](https://datadrivensustainabilitysolutions.github.io/off-key/reference/brand/) |
+| **Use** | [Web app](https://datadrivensustainabilitysolutions.github.io/aberration/user-guide/web-app/) · [Monitoring](https://datadrivensustainabilitysolutions.github.io/aberration/user-guide/monitoring/) |
+| **Develop** | [Setup](https://datadrivensustainabilitysolutions.github.io/aberration/development/setup/) · [Architecture](https://datadrivensustainabilitysolutions.github.io/aberration/development/architecture/) · [Testing](https://datadrivensustainabilitysolutions.github.io/aberration/development/testing-debugging/) · [Contributing and CI](https://datadrivensustainabilitysolutions.github.io/aberration/development/contributing-ci/) |
+| **Operate** | [Deployment modes](https://datadrivensustainabilitysolutions.github.io/aberration/operations/deployment-modes/) · [Production releases](https://datadrivensustainabilitysolutions.github.io/aberration/operations/production/) · [Recovery](https://datadrivensustainabilitysolutions.github.io/aberration/operations/recovery/) |
+| **Reference** | [Environment variables](https://datadrivensustainabilitysolutions.github.io/aberration/reference/environment-variables/) · [Backend API](https://datadrivensustainabilitysolutions.github.io/aberration/reference/backend-api/) · [Brand assets](https://datadrivensustainabilitysolutions.github.io/aberration/reference/brand/) |
 
 The site is built from [`docs/`](docs/index.md); preview it locally with `zensical serve`.
 

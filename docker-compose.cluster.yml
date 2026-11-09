@@ -2,7 +2,7 @@ services:
   emqx-main:
     environment:
       EMQX_NODE_NAME: emqx@emqx-main
-      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:-aberration-emqx-cookie-change-me}
       EMQX_CLUSTER__DISCOVERY_STRATEGY: static
       EMQX_CLUSTER__STATIC__SEEDS: "[emqx@emqx-main,emqx@emqx-worker]"
 
@@ -14,7 +14,7 @@ services:
         condition: service_healthy
     environment:
       EMQX_NODE_NAME: emqx@emqx-worker
-      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:-aberration-emqx-cookie-change-me}
       EMQX_CLUSTER__DISCOVERY_STRATEGY: static
       EMQX_CLUSTER__STATIC__SEEDS: "[emqx@emqx-main,emqx@emqx-worker]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761

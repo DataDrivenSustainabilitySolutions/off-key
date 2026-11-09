@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_mqtt_radar import state_cache as state_cache_module
-from off_key_mqtt_radar.message_processor import MessageProcessor
-from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
-from off_key_mqtt_radar.state_cache import AlignmentUpdate, SensorStateCache
+from aberration_mqtt_radar import state_cache as state_cache_module
+from aberration_mqtt_radar.message_processor import MessageProcessor
+from aberration_mqtt_radar.models import AnomalyResult, MQTTMessage
+from aberration_mqtt_radar.state_cache import AlignmentUpdate, SensorStateCache
 
 
 def _build_processor(

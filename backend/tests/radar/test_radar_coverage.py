@@ -5,13 +5,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from off_key_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
-from off_key_mqtt_radar.coverage import CoverageTracker
-from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
-from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.message_processor import MessageProcessor
-from off_key_mqtt_radar.models import MQTTMessage
-from off_key_tactic_middleware.config.config import RadarDefaultsConfig
+from aberration_mqtt_radar.config.config import MQTTRadarConfig, RadarSettings
+from aberration_mqtt_radar.coverage import CoverageTracker
+from aberration_mqtt_radar.feature_validation import TelemetryFeatureValidator
+from aberration_mqtt_radar.health_monitor import HealthMonitor
+from aberration_mqtt_radar.message_processor import MessageProcessor
+from aberration_mqtt_radar.models import MQTTMessage
+from aberration_tactic_middleware.config.config import RadarDefaultsConfig
 from pydantic import ValidationError
 
 from tests.support.form_pipeline import form_radar_config, set_pipeline_environment

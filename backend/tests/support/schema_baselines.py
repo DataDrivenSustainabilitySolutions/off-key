@@ -30,6 +30,7 @@ EXPECTED_MIGRATIONS = (
     "023_device_favorites.sql",
     "024_lifecycle_states.sql",
     "025_evidence_cursor.sql",
+    "026_aberration_identity.sql",
 )
 
 
@@ -44,10 +45,10 @@ def rewind_ledger(connection, first_pending: str | None = None) -> None:
     Without a version the database looks like one created before the ledger.
     """
     if first_pending is None:
-        connection.execute(text("DROP TABLE off_key_schema_migrations"))
+        connection.execute(text("DROP TABLE aberration_schema_migrations"))
     else:
         connection.execute(
-            text("DELETE FROM off_key_schema_migrations WHERE version >= :version"),
+            text("DELETE FROM aberration_schema_migrations WHERE version >= :version"),
             {"version": first_pending},
         )
 

@@ -48,7 +48,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "count(sum by (node) (count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m]))) or vector(0)",
+          "expr": "count(sum by (node) (count_over_time({stack=\"aberration\",service=\"aberration_log-canary\"} |= \"observability_canary\" [2m]))) or vector(0)",
           "queryType": "instant"
         }
       ],
@@ -111,7 +111,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({stack=\"off-key\",service=~\".+\",service!=\"off-key_log-canary\"} | detected_level=~\"error|critical|fatal\" [$__auto])) or (0 * sum(count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m])))",
+          "expr": "sum(count_over_time({stack=\"aberration\",service=~\".+\",service!=\"aberration_log-canary\"} | detected_level=~\"error|critical|fatal\" [$__auto])) or (0 * sum(count_over_time({stack=\"aberration\",service=\"aberration_log-canary\"} |= \"observability_canary\" [2m])))",
           "queryType": "instant"
         }
       ],
@@ -174,7 +174,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({stack=\"off-key\",service=~\"radar(-preflight)?|off-key_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\" [$__auto])) or (0 * sum(count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m])))",
+          "expr": "sum(count_over_time({stack=\"aberration\",service=~\"radar(-preflight)?|aberration_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\" [$__auto])) or (0 * sum(count_over_time({stack=\"aberration\",service=\"aberration_log-canary\"} |= \"observability_canary\" [2m])))",
           "queryType": "instant"
         }
       ],
@@ -237,7 +237,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (node) (count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [5m]))",
+          "expr": "sum by (node) (count_over_time({stack=\"aberration\",service=\"aberration_log-canary\"} |= \"observability_canary\" [5m]))",
           "queryType": "range",
           "legendFormat": "{{node}}"
         }
@@ -290,7 +290,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (service) (count_over_time({stack=\"off-key\",service=~\".+\",service!=\"off-key_log-canary\"} | detected_level=~\"warn|warning|error|critical|fatal\" [$__auto]))",
+          "expr": "sum by (service) (count_over_time({stack=\"aberration\",service=~\".+\",service!=\"aberration_log-canary\"} | detected_level=~\"warn|warning|error|critical|fatal\" [$__auto]))",
           "queryType": "range",
           "legendFormat": "{{service}}"
         }
@@ -343,7 +343,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{stack=\"off-key\",service=~\"radar(-preflight)?|off-key_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\"",
+          "expr": "{stack=\"aberration\",service=~\"radar(-preflight)?|aberration_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\"",
           "queryType": "range",
           "maxLines": 100
         }

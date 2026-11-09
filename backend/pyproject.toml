@@ -1,5 +1,5 @@
 [project]
-name = "off-key"
+name = "aberration"
 version = "0.1.0"
 description = "Real-time Anomaly Detection Platform"
 authors = [
@@ -54,8 +54,8 @@ members = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
-"Bugs" = "https://github.com/DataDrivenSustainabilitySolutions/off-key/issues"
+"Homepage" = "https://github.com/DataDrivenSustainabilitySolutions/aberration"
+"Bugs" = "https://github.com/DataDrivenSustainabilitySolutions/aberration/issues"
 
 [tool.ruff]
 line-length = 88
@@ -92,9 +92,9 @@ exclude = [
 # Migration 005's ledger checksum hashes these modules byte for byte, so no
 # formatter or autofix may touch them (see tests/test_migration_ledger.py).
 extend-exclude = [
-    "libs/core/src/off_key_core/db/catalogue_upgrade.py",
-    "libs/core/src/off_key_core/db/catalogue_v1.py",
-    "libs/core/src/off_key_core/db/catalogue_v1_models.py",
+    "libs/core/src/aberration_core/db/catalogue_upgrade.py",
+    "libs/core/src/aberration_core/db/catalogue_v1.py",
+    "libs/core/src/aberration_core/db/catalogue_v1_models.py",
 ]
 force-exclude = true
 
@@ -142,9 +142,9 @@ include = [
     "services/mqtt/proxy/src",
 ]
 exclude = [
-    "libs/core/src/off_key_core/db/catalogue_upgrade.py",
-    "libs/core/src/off_key_core/db/catalogue_v1.py",
-    "libs/core/src/off_key_core/db/catalogue_v1_models.py",
+    "libs/core/src/aberration_core/db/catalogue_upgrade.py",
+    "libs/core/src/aberration_core/db/catalogue_v1.py",
+    "libs/core/src/aberration_core/db/catalogue_v1_models.py",
 ]
 
 [tool.ty.rules]

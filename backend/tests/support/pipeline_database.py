@@ -1,22 +1,22 @@
 """Real PostgreSQL pipeline fixture with an applied fixture catalogue."""
 
 import pytest_asyncio
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import (
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import (
     SystemCollectionConfiguration,
 )
-from off_key_core.models.pipelines import pipeline_catalog
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import pipeline_catalog
+from aberration_core.schemas.pipelines import (
     PipelineCreate,
     PipelinePublish,
 )
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_tactic_middleware.config.config import get_tactic_settings
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_tactic_middleware.config.config import get_tactic_settings
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from tests.support.tokens import access_token

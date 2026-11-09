@@ -2,9 +2,8 @@
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import (
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
     DojoPoint,
@@ -16,12 +15,13 @@ from off_key_core.db.models import (
     PipelineRevision,
     User,
 )
-from off_key_core.schemas.dojo import CsvImportQuery, RunCreate, RunPromote
-from off_key_tactic_middleware.api.v1.dojo import router
-from off_key_tactic_middleware.domain import ConflictError, NotFoundError
-from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
-from off_key_tactic_middleware.services.dojo.runs import DojoRuns
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_core.schemas.dojo import CsvImportQuery, RunCreate, RunPromote
+from aberration_tactic_middleware.api.v1.dojo import router
+from aberration_tactic_middleware.domain import ConflictError, NotFoundError
+from aberration_tactic_middleware.services.dojo.datasets import DojoDatasets
+from aberration_tactic_middleware.services.dojo.runs import DojoRuns
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
+from fastapi import FastAPI
 from sqlalchemy import select
 
 from tests.support.env import set_auth_env
@@ -114,7 +114,7 @@ async def test_promotion_needs_a_run_and_pipeline_authoring(sessions, monkeypatc
         with pytest.raises(NotFoundError):
             await DojoRuns(session).promote("missing", RunPromote(name="x"))
     monkeypatch.setattr(
-        "off_key_tactic_middleware.services.pipelines.library.require_authoring",
+        "aberration_tactic_middleware.services.pipelines.library.require_authoring",
         lambda: (_ for _ in ()).throw(ConflictError("Pipeline authoring is disabled")),
     )
     async with factory() as session:

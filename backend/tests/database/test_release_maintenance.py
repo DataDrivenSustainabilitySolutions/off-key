@@ -7,19 +7,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
-from off_key_core.db import collection_runtime
-from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.maintenance import (
+from aberration_core.db import collection_runtime
+from aberration_core.db.collection import lock_collection_configuration
+from aberration_core.db.maintenance import (
     DeploymentInProgressError,
     require_application_writes,
 )
-from off_key_core.db.migrate import (
+from aberration_core.db.migrate import (
     MIGRATION_LOCK,
     apply_migrations,
     migration_files,
     migration_status,
 )
-from off_key_core.db.models import (
+from aberration_core.db.models import (
     Charger,
     CollectionConfiguration,
     DeploymentMaintenance,
@@ -29,17 +29,17 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from off_key_core.schemas.system_collection import stable_key
-from off_key_tactic_middleware import deployment
-from off_key_tactic_middleware.services.accounts.members import MemberService
-from off_key_tactic_middleware.services.catalogue.system_ingress import (
+from aberration_core.schemas.system_collection import stable_key
+from aberration_tactic_middleware import deployment
+from aberration_tactic_middleware.services.accounts.members import MemberService
+from aberration_tactic_middleware.services.catalogue.system_ingress import (
     SYSTEM_INGRESS_LOCK,
 )
-from off_key_tactic_middleware.services.orchestration import radar
-from off_key_tactic_middleware.services.orchestration.radar import (
+from aberration_tactic_middleware.services.orchestration import radar
+from aberration_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from off_key_tactic_middleware.services.pipelines import release
+from aberration_tactic_middleware.services.pipelines import release
 from sqlalchemy import insert, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -82,7 +82,7 @@ def test_template_migration_preserves_existing_designs(disposable_database):
         )
         connection.execute(
             text(
-                "DELETE FROM off_key_schema_migrations "
+                "DELETE FROM aberration_schema_migrations "
                 "WHERE version >= '013_pipeline_templates.sql'"
             )
         )
@@ -591,7 +591,7 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
     )
     monkeypatch.setattr(radar, "get_async_docker", Docker)
     monkeypatch.setattr(
-        "off_key_tactic_middleware.services.orchestration.radar_environment."
+        "aberration_tactic_middleware.services.orchestration.radar_environment."
         "validate_model_params",
         lambda *args, **kwargs: {},
     )
@@ -797,7 +797,7 @@ async def test_task_removal_requires_actual_shutdown(monkeypatch):
 
 
 def test_maintenance_docker_socket_url_has_no_tcp_port():
-    from off_key_tactic_middleware.config.config import DockerConfig
+    from aberration_tactic_middleware.config.config import DockerConfig
 
     assert (
         DockerConfig(api_url="unix:///var/run/docker.sock").base_url

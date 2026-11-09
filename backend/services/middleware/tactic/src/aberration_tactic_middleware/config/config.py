@@ -1,0 +1,474 @@
+"""
+TACTIC Middleware Configuration
+
+Configuration for the TACTIC
+(Timely Anomaly Communication / Task Instance Control) service
+including Docker API configuration,
+RADAR orchestration settings, and service-specific parameters.
+"""
+
+from enum import StrEnum
+from functools import cached_property, lru_cache
+from typing import Annotated, Any
+
+from aberration_core.config.database import DatabaseSettings
+from aberration_core.config.radar import DEVELOPMENT_CHECKPOINT_SECRET
+from aberration_core.config.resource_budget import (
+    DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+    DEFAULT_RADAR_MEMORY_MB,
+    MEBIBYTE,
+    RadarResourceBudget,
+    parse_cpu_nanos,
+    parse_memory_bytes,
+    validate_ingress_budget,
+)
+from aberration_core.config.validation import Environment
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _log_level(value: str) -> str:
+    if value.upper() not in LOG_LEVELS:
+        raise ValueError(f"Log level must be one of: {list(LOG_LEVELS)}")
+    return value.upper()
+
+
+LogLevel = Annotated[str, AfterValidator(_log_level)]
+
+
+class RadarWorkloadLifecycle(StrEnum):
+    """Lifecycle behavior for TACTIC-managed RADAR workloads."""
+
+    EPHEMERAL = "ephemeral"
+    PERSISTENT = "persistent"
+
+
+class DockerConfig(BaseModel):
+    """
+    Docker API configuration for container orchestration.
+    """
+
+    # Docker API Connection
+    api_url: str = "http://socket-proxy"
+    api_port: int = Field(default=2375, ge=1, le=65535)
+    # Per client: the server shares one across request paths and the activation
+    # supervisor; the reconciliation sweep has its own.
+    max_concurrent_calls: int = Field(default=5, ge=1, le=100)
+
+    # Container Defaults
+    default_network: str = "emqx-network"
+    additional_networks: list[str] = Field(default_factory=list)
+    default_restart_policy: str = "on-failure"
+    default_restart_max_attempts: int = Field(default=3, ge=0, le=10)
+
+    # Resource Limits
+    default_memory_limit: str = "512m"
+    default_cpu_limit: str = "0.5"
+    default_memory_reservation: str | None = None
+    default_cpu_reservation: str | None = None
+    default_constraints: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    @field_validator("default_memory_limit", "default_memory_reservation")
+    @classmethod
+    def validate_memory_quantity(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_memory_bytes(value)
+        return value
+
+    @field_validator("default_cpu_limit", "default_cpu_reservation")
+    @classmethod
+    def validate_cpu_quantity(cls, value: str | None) -> str | None:
+        if value is not None:
+            parse_cpu_nanos(value)
+        return value
+
+    @property
+    def resource_budget(self) -> RadarResourceBudget:
+        return RadarResourceBudget(
+            memory_limit_bytes=parse_memory_bytes(self.default_memory_limit),
+            cpu_limit_nanos=parse_cpu_nanos(self.default_cpu_limit),
+            memory_reservation_bytes=parse_memory_bytes(
+                self.default_memory_reservation or self.default_memory_limit
+            ),
+            cpu_reservation_nanos=parse_cpu_nanos(
+                self.default_cpu_reservation or self.default_cpu_limit
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_resource_budget(self) -> "DockerConfig":
+        _ = self.resource_budget
+        return self
+
+    @property
+    def base_url(self) -> str:
+        """Get Docker API base URL"""
+        if self.api_url.startswith("unix://"):
+            return self.api_url
+        return f"{self.api_url}:{self.api_port}"
+
+
+class RadarDefaultsConfig(BaseModel):
+    """
+    Default configuration values for RADAR services.
+    """
+
+    # Default MQTT Settings
+    mqtt_broker_host: str = "localhost"
+    mqtt_broker_port: int = Field(default=1883, ge=1, le=65535)
+    mqtt_use_tls: bool = False
+    mqtt_client_id_prefix: str = "radar"
+    mqtt_use_auth: bool = False
+    mqtt_username: str = ""
+    mqtt_qos: int = Field(default=0, ge=0, le=2)
+
+    # Default Performance Settings
+    memory_limit_mb: int = Field(default=DEFAULT_RADAR_MEMORY_MB, ge=128, le=16384)
+    checkpoint_interval: int = Field(default=10000, ge=100, le=100000)
+    max_queue_size: int = Field(default=256, gt=0, le=10000)
+    max_payload_bytes: int = Field(default=65536, gt=0, le=1048576)
+
+    # Default Database Settings
+    db_write_enabled: bool = True
+    db_batch_size: int = Field(default=50, ge=1, le=1000)
+    db_batch_timeout: float = Field(default=2.0, ge=0.1, le=3600.0)
+
+    # Default Health Settings
+    health_check_interval: float = Field(default=30.0, ge=0.1, le=3600.0)
+    log_level: LogLevel = "INFO"
+    rate_limit_per_minute: int = Field(default=0, ge=0, le=100000)
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    @model_validator(mode="after")
+    def validate_queued_payload_budget(self) -> "RadarDefaultsConfig":
+        validate_ingress_budget(
+            self.max_queue_size, self.max_payload_bytes, self.memory_limit_mb
+        )
+        return self
+
+
+class TacticConfig(BaseModel):
+    """
+    Complete TACTIC service configuration with business logic validation.
+    """
+
+    # Service Information
+    service_name: str = "tactic-middleware"
+    service_version: str = "0.1.0"
+
+    # API Configuration
+    host: str = "0.0.0.0"
+    port: int = Field(default=8000, ge=1, le=65535)
+
+    # Docker Configuration
+    docker: DockerConfig
+
+    # RADAR Defaults
+    radar_defaults: RadarDefaultsConfig
+    radar_image: str = Field(
+        default="ghcr.io/datadrivensustainabilitysolutions/aberration-mqtt-radar:latest",
+        min_length=1,
+    )
+    radar_startup_grace_seconds: float = Field(default=5.0, ge=0.0, le=120.0)
+    radar_stop_timeout_seconds: float = Field(default=30.0, ge=1.0, le=300.0)
+    radar_max_active_monitors: int = Field(
+        default=DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+        ge=1,
+        le=10000,
+    )
+    pipeline_authoring_enabled: bool = True
+    pipeline_preflight_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
+    pipeline_heartbeat_timeout_seconds: float = Field(default=120.0, ge=10.0, le=600.0)
+    # Any other open activation phase that lasts longer ends as failed.
+    pipeline_phase_timeout_seconds: float = Field(default=900.0, ge=60.0, le=7200.0)
+    pipeline_max_concurrent_preflights: int = Field(default=2, ge=1, le=32)
+    pipeline_max_concurrent_transitions: int = Field(default=8, ge=1, le=64)
+
+    # Logging Configuration
+    log_level: LogLevel = "INFO"
+
+    # Status Reconciliation Configuration
+    reconciliation_enabled: bool = True
+    reconciliation_interval: int = Field(default=60, ge=1, le=86400)
+    terminal_service_retention_hours: int = Field(default=24, ge=0, le=8760)
+
+    # Managed RADAR workload lifecycle behavior
+    radar_workload_lifecycle: RadarWorkloadLifecycle = RadarWorkloadLifecycle.EPHEMERAL
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    @model_validator(mode="after")
+    def validate_worker_resource_budget(self) -> "TacticConfig":
+        budget = self.docker.resource_budget
+        if self.radar_defaults.memory_limit_mb * MEBIBYTE >= budget.memory_limit_bytes:
+            raise ValueError(
+                "RADAR internal memory budget must be below its Docker hard limit"
+            )
+        return self
+
+
+# Defaulted config instances to centralize defaults across settings and runtime
+DEFAULT_DOCKER_CONFIG = DockerConfig()
+DEFAULT_RADAR_DEFAULTS = RadarDefaultsConfig()
+
+
+def _tactic_default(name: str) -> Any:
+    return TacticConfig.model_fields[name].default
+
+
+class TacticSettings(BaseSettings):
+    """Environment-based settings for TACTIC service"""
+
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+
+    @field_validator(
+        "TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION",
+        "TACTIC_DOCKER_DEFAULT_CPU_RESERVATION",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_reservation(cls, value: str | None) -> str | None:
+        return None if value == "" else value
+
+    # Service Configuration
+    TACTIC_SERVICE_NAME: str = Field(default=_tactic_default("service_name"))
+    TACTIC_SERVICE_VERSION: str = Field(default=_tactic_default("service_version"))
+    TACTIC_HOST: str = Field(default=_tactic_default("host"))
+    TACTIC_PORT: int = Field(default=_tactic_default("port"))
+    TACTIC_LOG_LEVEL: str = Field(default=_tactic_default("log_level"))
+    ENVIRONMENT: Environment = Field(default="development")
+
+    # Docker API Configuration
+    TACTIC_DOCKER_API_URL: str = Field(default=DEFAULT_DOCKER_CONFIG.api_url)
+    TACTIC_DOCKER_API_PORT: int = Field(default=DEFAULT_DOCKER_CONFIG.api_port)
+    TACTIC_DOCKER_MAX_CONCURRENT_CALLS: int = Field(
+        default=DEFAULT_DOCKER_CONFIG.max_concurrent_calls
+    )
+    TACTIC_DOCKER_DEFAULT_NETWORK: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_network
+    )
+    # Comma-separated extra networks for RADAR workloads (e.g. the app network so they
+    # can reach Postgres, which is not on the default/EMQX network).
+    TACTIC_DOCKER_ADDITIONAL_NETWORKS: str = Field(default="")
+    TACTIC_DOCKER_DEFAULT_RESTART_POLICY: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_restart_policy
+    )
+    TACTIC_DOCKER_DEFAULT_RESTART_MAX_ATTEMPTS: int = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_restart_max_attempts
+    )
+    TACTIC_DOCKER_DEFAULT_MEMORY_LIMIT: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_memory_limit
+    )
+    TACTIC_DOCKER_DEFAULT_CPU_LIMIT: str = Field(
+        default=DEFAULT_DOCKER_CONFIG.default_cpu_limit
+    )
+    TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION: str | None = None
+    TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: str | None = None
+    TACTIC_RADAR_SECRET_SERVICE: str = ""
+    TACTIC_DOCKER_DEFAULT_CONSTRAINTS: str = Field(default="node.role == worker")
+
+    # RADAR Default Configuration
+    TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_broker_host
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_broker_port
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_USE_TLS: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_use_tls
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_CLIENT_ID_PREFIX: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_client_id_prefix
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.mqtt_use_auth
+    )
+    TACTIC_RADAR_DEFAULT_MQTT_USERNAME: str = DEFAULT_RADAR_DEFAULTS.mqtt_username
+    TACTIC_RADAR_DEFAULT_MQTT_QOS: int = Field(default=DEFAULT_RADAR_DEFAULTS.mqtt_qos)
+    TACTIC_RADAR_DEFAULT_MEMORY_LIMIT_MB: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.memory_limit_mb
+    )
+    TACTIC_RADAR_DEFAULT_CHECKPOINT_INTERVAL: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.checkpoint_interval
+    )
+    TACTIC_RADAR_DEFAULT_MAX_QUEUE_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.max_queue_size, gt=0, le=10000
+    )
+    TACTIC_RADAR_DEFAULT_MAX_PAYLOAD_BYTES: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.max_payload_bytes, gt=0, le=1048576
+    )
+    TACTIC_RADAR_DEFAULT_DB_WRITE_ENABLED: bool = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_write_enabled
+    )
+    TACTIC_RADAR_DEFAULT_DB_BATCH_SIZE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_batch_size
+    )
+    TACTIC_RADAR_DEFAULT_DB_BATCH_TIMEOUT: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.db_batch_timeout
+    )
+    TACTIC_RADAR_DEFAULT_HEALTH_CHECK_INTERVAL: float = Field(
+        default=DEFAULT_RADAR_DEFAULTS.health_check_interval
+    )
+    TACTIC_RADAR_DEFAULT_LOG_LEVEL: str = Field(
+        default=DEFAULT_RADAR_DEFAULTS.log_level
+    )
+    TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE: int = Field(
+        default=DEFAULT_RADAR_DEFAULTS.rate_limit_per_minute
+    )
+    TACTIC_RADAR_IMAGE: str = Field(default=_tactic_default("radar_image"))
+    TACTIC_RADAR_STARTUP_GRACE_SECONDS: float = Field(
+        default=_tactic_default("radar_startup_grace_seconds")
+    )
+    TACTIC_RADAR_STOP_TIMEOUT_SECONDS: float = Field(
+        default=_tactic_default("radar_stop_timeout_seconds"), ge=1.0, le=300.0
+    )
+    TACTIC_RADAR_MAX_ACTIVE_MONITORS: int = Field(
+        default=DEFAULT_RADAR_MAX_ACTIVE_MONITORS,
+        ge=1,
+        le=10000,
+    )
+    TACTIC_PIPELINE_AUTHORING_ENABLED: bool = _tactic_default(
+        "pipeline_authoring_enabled"
+    )
+    TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: float = Field(
+        default=_tactic_default("pipeline_preflight_timeout_seconds"), ge=5.0, le=300.0
+    )
+    TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: float = Field(
+        default=_tactic_default("pipeline_heartbeat_timeout_seconds"), ge=10.0, le=600.0
+    )
+    TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS: float = Field(
+        default=_tactic_default("pipeline_phase_timeout_seconds"), ge=60.0, le=7200.0
+    )
+    TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS: int = Field(
+        default=_tactic_default("pipeline_max_concurrent_preflights"), ge=1, le=32
+    )
+    TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(
+        default=_tactic_default("pipeline_max_concurrent_transitions"), ge=1, le=64
+    )
+
+    # Status Reconciliation Configuration
+    TACTIC_RECONCILIATION_ENABLED: bool = Field(
+        default=_tactic_default("reconciliation_enabled")
+    )
+    TACTIC_RECONCILIATION_INTERVAL: int = Field(
+        default=_tactic_default("reconciliation_interval")
+    )
+    TACTIC_TERMINAL_SERVICE_RETENTION_HOURS: int = Field(
+        default=_tactic_default("terminal_service_retention_hours")
+    )
+    TACTIC_RADAR_WORKLOAD_LIFECYCLE: str | None = Field(default=None)
+
+    @staticmethod
+    def _split_constraints(raw_value: str) -> list[str]:
+        if not raw_value:
+            return []
+        values: list[str] = []
+        for item in raw_value.split(","):
+            cleaned = item.strip()
+            if not cleaned:
+                continue
+            if cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
+                cleaned = cleaned[1:-1].strip()
+            if cleaned:
+                values.append(cleaned)
+        return values
+
+    def _parse_default_constraints(self) -> list[str]:
+        return self._split_constraints(self.TACTIC_DOCKER_DEFAULT_CONSTRAINTS)
+
+    def _parse_additional_networks(self) -> list[str]:
+        return self._split_constraints(self.TACTIC_DOCKER_ADDITIONAL_NETWORKS)
+
+    @staticmethod
+    def _normalize_lifecycle_policy(raw_value: str) -> RadarWorkloadLifecycle:
+        normalized = raw_value.strip().lower()
+        try:
+            return RadarWorkloadLifecycle(normalized)
+        except ValueError as exc:
+            allowed = ", ".join(policy.value for policy in RadarWorkloadLifecycle)
+            raise ValueError(
+                f"TACTIC_RADAR_WORKLOAD_LIFECYCLE must be one of: {allowed}"
+            ) from exc
+
+    def _resolve_radar_workload_lifecycle(self) -> RadarWorkloadLifecycle:
+        if self.TACTIC_RADAR_WORKLOAD_LIFECYCLE:
+            return self._normalize_lifecycle_policy(
+                self.TACTIC_RADAR_WORKLOAD_LIFECYCLE
+            )
+
+        if self.ENVIRONMENT == "production":
+            return RadarWorkloadLifecycle.PERSISTENT
+
+        return RadarWorkloadLifecycle.EPHEMERAL
+
+    def _section[M: BaseModel](self, model: type[M], prefix: str, **derived: Any) -> M:
+        """Build ``model`` from ``<prefix><FIELD>`` settings; ``derived`` fields
+        are computed from settings that do not map one to one."""
+        values = {
+            name: getattr(self, prefix + name.upper())
+            for name in model.model_fields
+            if name not in derived
+        }
+        return model(**values, **derived)
+
+    @cached_property
+    def config(self) -> TacticConfig:
+        """Validated runtime configuration, built once per settings instance."""
+        return self._section(
+            TacticConfig,
+            "TACTIC_",
+            docker=self._section(
+                DockerConfig,
+                "TACTIC_DOCKER_",
+                additional_networks=self._parse_additional_networks(),
+                default_constraints=self._parse_default_constraints(),
+            ),
+            radar_defaults=self._section(RadarDefaultsConfig, "TACTIC_RADAR_DEFAULT_"),
+            radar_workload_lifecycle=self._resolve_radar_workload_lifecycle(),
+        )
+
+
+class RadarContainerRuntimeSettings(DatabaseSettings):
+    """Environment settings used to build RADAR container runtime env vars.
+
+    The database fields and their rules are the shared core ones.
+    """
+
+    ENVIRONMENT: Environment = "development"
+    RADAR_CHECKPOINT_SECRET: SecretStr = SecretStr(DEVELOPMENT_CHECKPOINT_SECRET)
+
+    @property
+    def radar_database_url(self) -> str:
+        return self.async_database_url
+
+
+@lru_cache(maxsize=1)
+def get_tactic_settings() -> TacticSettings:
+    """Return cached TACTIC settings instance."""
+    return TacticSettings()
+
+
+# Cache secret-bearing runtime settings once; test helpers clear this cache explicitly.
+@lru_cache(maxsize=1)
+def get_radar_container_runtime_settings() -> RadarContainerRuntimeSettings:
+    """Return cached runtime settings used for RADAR container env assembly."""
+    return RadarContainerRuntimeSettings()
+
+
+def clear_tactic_settings_caches() -> None:
+    """Clear cached TACTIC settings for deterministic tests and tooling."""
+    get_tactic_settings.cache_clear()
+    get_radar_container_runtime_settings.cache_clear()

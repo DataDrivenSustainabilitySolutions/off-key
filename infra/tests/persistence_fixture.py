@@ -13,15 +13,15 @@ with (root / 'commands.jsonl').open('a') as log:
 def spec(name):
     result = {'Spec': {'Name': name, 'Mode': {'Replicated': {'Replicas': state['replicas'][name]}},
             'TaskTemplate': {'ContainerSpec': {'Image': 'example/' + name,
-              'Mounts': [{'Type': 'volume', 'Source': 'off-key_postgres_data',
+              'Mounts': [{'Type': 'volume', 'Source': 'aberration_postgres_data',
                           'Target': '/var/lib/postgresql/data'}]
-                        if name == 'off-key_postgres' and (state.get('persistent', state['deployed'])
+                        if name == 'aberration_postgres' and (state.get('persistent', state['deployed'])
                             or (state['deployed'] and os.environ.get('CONFIGURED_MOUNT'))) else []}}}}
     if name in state.get('mounts', {}):
         result['Spec']['TaskTemplate']['ContainerSpec']['Mounts'] = state['mounts'][name]
     if name.startswith('radar-'):
         # TACTIC attaches its workers to its own stack's broker network.
-        result['Spec']['TaskTemplate']['Networks'] = [{'Target': 'off-key_emqx-network'}]
+        result['Spec']['TaskTemplate']['Networks'] = [{'Target': 'aberration_emqx-network'}]
     return result
 
 if a[:2] == ['compose', '--env-file']:
@@ -37,12 +37,12 @@ elif a[:2] == ['service', 'inspect']:
         sys.exit(1)
     print(json.dumps([spec(name) for name in names]))
 elif a[:2] == ['service', 'ls']:
-    if 'label=off-key.component=observability' in a:
+    if 'label=aberration.component=observability' in a:
         pass  # This fixture has no observability services.
     elif 'label=managed_by=tactic' in a:
         print('\n'.join(name for name in state['replicas'] if name.startswith('radar-')))
     elif '--quiet' in a:
-        print('off-key_postgres\noff-key_api')
+        print('aberration_postgres\naberration_api')
     else:
         print('fixture services')
 elif a[:2] == ['service', 'scale']:
@@ -77,24 +77,24 @@ elif a[0] == 'inspect':
     assert a[1] == 'replacement'
     mounts = [{'Destination': '/var/lib/postgresql/data', 'Type': 'volume',
                'Name': 'wrong-volume' if os.environ.get('WRONG_MOUNT') else
-                       ('off-key_postgres_data' if state.get('persistent', True) else 'anonymous-volume')}]
+                       ('aberration_postgres_data' if state.get('persistent', True) else 'anonymous-volume')}]
     print(json.dumps({'mounts': json.loads(os.environ.get('CONTAINER_MOUNTS', json.dumps(mounts))),
                       'image_volumes': json.loads(os.environ.get('IMAGE_VOLUMES', '{"/var/lib/postgresql/data":{}}'))}))
 elif a[:2] == ['stack', 'deploy']:
     model = json.loads(Path(a[a.index('-c') + 1]).read_text())
     assert model['services']['api']['deploy']['replicas'] == 0
-    assert state['replicas']['off-key_api'] == state['replicas']['radar-runtime'] == 0
-    assert state['replicas']['off-key_postgres'] == 0
+    assert state['replicas']['aberration_api'] == state['replicas']['radar-runtime'] == 0
+    assert state['replicas']['aberration_postgres'] == 0
     state['deployed'] = True
     state['persistent'] = os.environ.get('PERSIST_POSTGRES', '1') == '1'
-    state['replicas']['off-key_postgres'] = 1
+    state['replicas']['aberration_postgres'] = 1
 elif a[0] == 'exec':
     cid = a[2] if a[1] == '-i' else a[1]
     if 'pg_dumpall' in a or 'pg_dump' in a:
-        assert cid == 'original' and state['replicas']['off-key_api'] == 0
+        assert cid == 'original' and state['replicas']['aberration_api'] == 0
         print('-- fixture backup')
     elif 'pg_restore' in a:
-        assert cid == ('original' if os.environ.get('MANUAL_RESTORE') else 'replacement') and state['replicas']['off-key_api'] == 0
+        assert cid == ('original' if os.environ.get('MANUAL_RESTORE') else 'replacement') and state['replicas']['aberration_api'] == 0
         assert state['replicas']['radar-runtime'] == 0
         if os.environ.get('RESTORE_FAIL'):
             sys.exit(1)
@@ -121,7 +121,7 @@ EMQX_DOCKER = DOCKER.replace(
     elif a[-3:] == ['ctl', 'data', 'export']:
         state['exported'] = True
     elif a[-4:-1] == ['ctl', 'data', 'import']:
-        assert state['replicas']['off-key_api'] == 0
+        assert state['replicas']['aberration_api'] == 0
         state['emqx_restored'] = True
     else:
         sys.exit(2)

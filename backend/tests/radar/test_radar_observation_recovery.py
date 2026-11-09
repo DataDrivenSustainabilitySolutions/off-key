@@ -6,22 +6,22 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from amqtt.client import MQTTClient
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import StaticBaselineConfig
-from off_key_mqtt_radar import database as database_module
-from off_key_mqtt_radar import service as service_module
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.runtime_checkpoint import (
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_core.schemas.radar import StaticBaselineConfig
+from aberration_mqtt_radar import database as database_module
+from aberration_mqtt_radar import service as service_module
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.runtime_checkpoint import (
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar.service import RadarService
+from amqtt.client import MQTTClient
 from pydantic import ValidationError
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

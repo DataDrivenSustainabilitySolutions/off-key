@@ -1,7 +1,7 @@
 """Takeover cannot pass an in-flight effect or admit a retired worker."""
 
 import pytest
-from off_key_core.db.worker_ownership import WorkerOwnership, WorkerOwnershipLost
+from aberration_core.db.worker_ownership import WorkerOwnership, WorkerOwnershipLost
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 

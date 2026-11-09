@@ -3,11 +3,11 @@
 from itertools import pairwise
 
 import pytest
-from off_key_core.models.pipeline_catalog import pipeline_components
-from off_key_core.models.pipeline_combine import Aggregate, Formula, Gate, row_step
-from off_key_core.models.pipeline_prepare import PrepareFailure, stage_split
-from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
-from off_key_core.schemas.pipelines import PipelineDefinition
+from aberration_core.models.pipeline_catalog import pipeline_components
+from aberration_core.models.pipeline_combine import Aggregate, Formula, Gate, row_step
+from aberration_core.models.pipeline_prepare import PrepareFailure, stage_split
+from aberration_core.models.pipelines import compile_pipeline, validate_pipeline
+from aberration_core.schemas.pipelines import PipelineDefinition
 
 DETECTORS = {
     "static_baseline": ("detector:pyod_iforest", "policy.martingale"),

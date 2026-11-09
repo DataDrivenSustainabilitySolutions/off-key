@@ -5,15 +5,15 @@ import os
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.base import Base
-from off_key_core.db.schema import bootstrap_schema
+from aberration_core.db.base import Base
+from aberration_core.db.schema import bootstrap_schema
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 pytestmark = [
     pytest.mark.collection_stack,
     pytest.mark.skipif(
-        os.getenv("OFFKEY_COLLECTION_INTEGRATION") != "1",
+        os.getenv("ABERRATION_COLLECTION_INTEGRATION") != "1",
         reason="Requires the isolated MQTT collection compose fixture",
     ),
 ]

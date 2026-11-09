@@ -10,11 +10,11 @@ compiler = load_script("compile_stack")
 
 class ObservabilityPolicyTests(unittest.TestCase):
     def test_rejects_foreign_storage_paths_and_unsafe_reservations(self):
-        inputs = {"stack_name": "off-key", "data_node": "DDSS-2"}
+        inputs = {"stack_name": "aberration", "data_node": "DDSS-2"}
         for override in (
             {"data_root": "/var/lib/docker"},
-            {"storage_root": "/srv/offkey-observability"},
-            {"data_root": "/srv/offkey-observability/../application"},
+            {"storage_root": "/srv/aberration-observability"},
+            {"data_root": "/srv/aberration-observability/../application"},
             {"data_node": ""},
             {"storage_size_gib": 0},
         ):
@@ -36,7 +36,7 @@ class ObservabilityPolicyTests(unittest.TestCase):
                 },
                 "loki": {
                     "image": "loki",
-                    "deploy": {"labels": {"off-key.component": "observability"}},
+                    "deploy": {"labels": {"aberration.component": "observability"}},
                     "configs": [{"source": "loki-config"}],
                     "volumes": [{"type": "volume", "source": "logs"}],
                 },

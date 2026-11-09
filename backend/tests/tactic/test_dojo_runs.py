@@ -5,9 +5,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import (
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
     DojoPoint,
@@ -16,23 +15,24 @@ from off_key_core.db.models import (
     DojoSeries,
     User,
 )
-from off_key_core.schemas.dojo import (
+from aberration_core.schemas.dojo import (
     CsvImportQuery,
     RunAlignment,
     RunCreate,
     RunListQuery,
     RunResultsQuery,
 )
-from off_key_mqtt_radar.dojo.worker import DojoWorker, WorkerOptions
-from off_key_tactic_middleware.api.v1.dojo import router
-from off_key_tactic_middleware.domain import (
+from aberration_mqtt_radar.dojo.worker import DojoWorker, WorkerOptions
+from aberration_tactic_middleware.api.v1.dojo import router
+from aberration_tactic_middleware.domain import (
     ConflictError,
     NotFoundError,
     ValidationError,
 )
-from off_key_tactic_middleware.services.dojo import runs as runs_module
-from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
-from off_key_tactic_middleware.services.dojo.runs import DojoRuns
+from aberration_tactic_middleware.services.dojo import runs as runs_module
+from aberration_tactic_middleware.services.dojo.datasets import DojoDatasets
+from aberration_tactic_middleware.services.dojo.runs import DojoRuns
+from fastapi import FastAPI
 from sqlalchemy import func, select
 
 from tests.support.env import set_auth_env

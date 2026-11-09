@@ -3,23 +3,25 @@
 from datetime import UTC, datetime
 
 import pytest_asyncio
-from off_key_core.db.models import MonitoringService, PipelineRun
-from off_key_core.schemas.pipelines import (
+from aberration_core.db.models import MonitoringService, PipelineRun
+from aberration_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineExecutionConfig,
 )
-from off_key_mqtt_radar import database as radar_database
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.runtime_checkpoint import (
+from aberration_mqtt_radar import database as radar_database
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.runtime_checkpoint import (
     CoverageCheckpoint,
     ProcessorCheckpoint,
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
 
 from tests.support.pipeline_database import published_design
 

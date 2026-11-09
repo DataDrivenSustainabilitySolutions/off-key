@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_tactic_middleware.domain import ValidationError
-from off_key_tactic_middleware.repositories.data import TelemetryRepository
-from off_key_tactic_middleware.services.data.telemetry import TelemetryQueryService
+from aberration_tactic_middleware.domain import ValidationError
+from aberration_tactic_middleware.repositories.data import TelemetryRepository
+from aberration_tactic_middleware.services.data.telemetry import TelemetryQueryService
 
 
 @pytest.mark.asyncio

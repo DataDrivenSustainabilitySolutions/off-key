@@ -4,26 +4,31 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from off_key_core.db.models import (
+from aberration_core.db.models import (
     MonitoringService,
     PipelineActivation,
     PipelineRun,
     PipelineRunEvent,
 )
-from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
-from off_key_core.db.run_events import (
+from aberration_core.db.pipeline_locks import (
+    complete_stopped_runs,
+    lock_execution_records,
+)
+from aberration_core.db.run_events import (
     INSERT_RUN_EVENT,
     run_event,
     run_event_parameters,
 )
-from off_key_core.schemas.pipelines import MAX_TIMELINE_EVENTS
-from off_key_tactic_middleware.domain import NotFoundError
-from off_key_tactic_middleware.facades.docker import crashed_tasks
-from off_key_tactic_middleware.services.orchestration.reconciliation import (
+from aberration_core.schemas.pipelines import MAX_TIMELINE_EVENTS
+from aberration_tactic_middleware.domain import NotFoundError
+from aberration_tactic_middleware.facades.docker import crashed_tasks
+from aberration_tactic_middleware.services.orchestration.reconciliation import (
     RadarStatusReconciliationService,
 )
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy import delete, func, select
 
 from tests.support.signed_writer import healthy_metrics

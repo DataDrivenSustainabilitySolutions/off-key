@@ -8,7 +8,7 @@ import {
 } from "./telemetry-chart";
 import type { TelemetryTypeData } from "@/types/charger";
 
-const CHART_LINK_PREFERENCE_KEY = "off-key:details:chart-navigation";
+const CHART_LINK_PREFERENCE_KEY = "aberration:details:chart-navigation";
 
 const readChartLinkPreference = (): boolean => {
   if (typeof window === "undefined") return false;

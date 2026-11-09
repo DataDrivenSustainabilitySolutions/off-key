@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_core.schemas.system import SystemConnection
-from off_key_tactic_middleware.services.catalogue.system_live import LiveSessionError
-from off_key_tactic_middleware.services.catalogue.system_live_mqtt import (
+from aberration_core.schemas.system import SystemConnection
+from aberration_tactic_middleware.services.catalogue.system_live import LiveSessionError
+from aberration_tactic_middleware.services.catalogue.system_live_mqtt import (
     LiveMqttWorker,
     refusal_message,
 )

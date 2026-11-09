@@ -19,14 +19,14 @@ services:
         condition: any
 
   api:
-    image: "${API_IMAGE:-off-key-api-gateway:latest}"
+    image: "${API_IMAGE:-aberration-api-gateway:latest}"
     networks:
       app-network:
         aliases:
           - api-gateway
     # Clients reach the API under /api, which the proxy strips; the root path
     # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
-    command: ["uvicorn", "off_key_api_gateway.main:app",
+    command: ["uvicorn", "aberration_api_gateway.main:app",
               "--host", "0.0.0.0", "--port", "8000", "--root-path", "/api"]
     # Liveness only: Swarm replaces a task that stops answering. The long start
     # period covers slow starts such as a migration holding the database lock.
@@ -45,14 +45,14 @@ services:
         condition: any
 
   tactic:
-    image: "${TACTIC_IMAGE:-off-key-tactic-middleware:latest}"
+    image: "${TACTIC_IMAGE:-aberration-tactic-middleware:latest}"
     networks:
       - app-network
       - socket-network
       - emqx-network
     environment:
-      - TACTIC_DOCKER_DEFAULT_NETWORK=off-key_emqx-network
-    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+      - TACTIC_DOCKER_DEFAULT_NETWORK=aberration_emqx-network
+    command: [ "/app/bin/python", "-m", "aberration_tactic_middleware" ]
     # Liveness only: Swarm replaces a task that stops answering. The long start
     # period covers slow starts such as a migration holding the database lock.
     healthcheck:
@@ -115,7 +115,7 @@ services:
         condition: any
 
   frontend:
-    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
+    image: "${FRONTEND_IMAGE:-aberration-frontend:latest}"
     networks:
       - public-network
       - app-network
@@ -128,8 +128,8 @@ services:
         condition: any
 
   db-sync:
-    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
-    command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
+    image: "${DB_SYNC_IMAGE:-aberration-db-sync:latest}"
+    command: [ "/app/bin/python", "-m", "aberration_db_sync" ]
     networks:
       - app-network
     healthcheck:
@@ -147,8 +147,8 @@ services:
         condition: any
 
   mqtt-proxy:
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
-    command: ["/app/bin/python", "-m", "off_key_mqtt_proxy"]
+    image: "${MQTT_PROXY_IMAGE:-aberration-mqtt-proxy:latest}"
+    command: ["/app/bin/python", "-m", "aberration_mqtt_proxy"]
     # Liveness only: Swarm replaces a task that stops answering. The long start
     # period covers slow starts such as a migration holding the database lock.
     healthcheck:
@@ -171,8 +171,8 @@ services:
   # Replays Dojo runs from the RADAR image. Each replica runs one run at a
   # time, so the replica count is the number of runs that execute at once.
   dojo-worker:
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.dojo" ]
+    image: "${MQTT_RADAR_IMAGE:-aberration-mqtt-radar:latest}"
+    command: [ "/app/bin/python", "-m", "aberration_mqtt_radar.dojo" ]
     networks:
       - app-network
     deploy:
@@ -185,8 +185,8 @@ services:
   # Secret template for TACTIC-managed RADAR workers; never scaled. TACTIC finds it
   # through TACTIC_RADAR_SECRET_SERVICE and copies only its secret references.
   mqtt-radar:
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar" ]
+    image: "${MQTT_RADAR_IMAGE:-aberration-mqtt-radar:latest}"
+    command: [ "/app/bin/python", "-m", "aberration_mqtt_radar" ]
     networks:
       - app-network
       - emqx-network

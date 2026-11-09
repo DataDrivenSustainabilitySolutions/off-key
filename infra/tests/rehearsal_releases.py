@@ -20,16 +20,16 @@ from pathlib import Path
 from support import run
 
 COMPATIBLE_REVISION = "9311f9937e605da9b4be5a9903f08de4da79dade"
-REGISTRY = "offkey-smoke-registry"
+REGISTRY = "aberration-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)
 BUILDS = {
-    "api": ("off-key-api-gateway", "services/api/gateway"),
-    "tactic": ("off-key-tactic-middleware", "services/middleware/tactic"),
-    "mqtt_proxy": ("off-key-mqtt-proxy", "services/mqtt/proxy"),
-    "mqtt_radar": ("off-key-mqtt-radar", "services/mqtt/radar"),
-    "db_sync": ("off-key-db-sync", "services/db/sync"),
-    "frontend": ("off-key-frontend", None),
+    "api": ("aberration-api-gateway", "services/api/gateway"),
+    "tactic": ("aberration-tactic-middleware", "services/middleware/tactic"),
+    "mqtt_proxy": ("aberration-mqtt-proxy", "services/mqtt/proxy"),
+    "mqtt_radar": ("aberration-mqtt-radar", "services/mqtt/radar"),
+    "db_sync": ("aberration-db-sync", "services/db/sync"),
+    "frontend": ("aberration-frontend", None),
 }
 MODEL_SERVICES = {
     "api": "api",
@@ -46,7 +46,7 @@ def start_registry():
     if existing.returncode == 0:
         data = json.loads(existing.stdout)[0]
         labels = data["Config"].get("Labels") or {}
-        if labels.get("off-key.ci") != "deployment-smoke":
+        if labels.get("aberration.ci") != "deployment-smoke":
             raise ValueError("The rehearsal registry name belongs to another workload")
         if not data["State"]["Running"]:
             run("docker", "start", REGISTRY)
@@ -58,7 +58,7 @@ def start_registry():
         "--name",
         REGISTRY,
         "--label",
-        "off-key.ci=deployment-smoke",
+        "aberration.ci=deployment-smoke",
         "-p",
         "127.0.0.1:5010:5000",
         "registry:3",
@@ -69,13 +69,13 @@ def stop_registry():
     existing = run("docker", "inspect", REGISTRY, check=False)
     if existing.returncode == 0:
         labels = json.loads(existing.stdout)[0]["Config"].get("Labels") or {}
-        if labels.get("off-key.ci") == "deployment-smoke":
+        if labels.get("aberration.ci") == "deployment-smoke":
             run("docker", "rm", "-f", REGISTRY)
 
 
 def build_cache_options(service, revision, write=False):
     """The CI image job owns current caches; rollback has its own immutable scope."""
-    suffix = service.removeprefix("off-key-")
+    suffix = service.removeprefix("aberration-")
     scopes = [f"docker-validate-{suffix}", f"docker-publish-{suffix}"]
     options = []
     if revision == COMPATIBLE_REVISION:
@@ -147,7 +147,7 @@ def build_local_images(release, revision, project):
     def build(item):
         name, (service, source) = item
         args = ["docker", "build"]
-        if os.getenv("OFFKEY_BUILD_CACHE") == "1":
+        if os.getenv("ABERRATION_BUILD_CACHE") == "1":
             args = ["docker", "buildx", "build", "--load"]
             args += build_cache_options(service, revision)
         args += build_arguments(service, source, revision, project)
@@ -314,10 +314,10 @@ def archive_compatible_source(directory, reference_repository):
 def validate_compatible_source(source, project):
     """A binary rollback never bypasses a changed migration or numeric contract."""
     compatibility = [
-        Path("backend/libs/core/src/off_key_core/models/adaptive_catalog.json"),
+        Path("backend/libs/core/src/aberration_core/models/adaptive_catalog.json"),
         # Migration 005's checksum covers these converter modules too.
         *(
-            Path("backend/libs/core/src/off_key_core/db") / name
+            Path("backend/libs/core/src/aberration_core/db") / name
             for name in (
                 "catalogue_upgrade.py",
                 "catalogue_v1.py",
@@ -325,7 +325,7 @@ def validate_compatible_source(source, project):
             )
         ),
     ]
-    migrations = Path("backend/libs/core/src/off_key_core/db/migrations")
+    migrations = Path("backend/libs/core/src/aberration_core/db/migrations")
     compatibility.extend(
         path.relative_to(project) for path in (project / migrations).glob("*.sql")
     )

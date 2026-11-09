@@ -21,4 +21,4 @@ persistence_switch_confirm: false
 # restore another's data, and under the gitignored stack/state/.
 # NOTE: a prod pg_dump is a different sensitivity class from a tailnet key — same directory,
 # same "never commit, manage out of band" rule.
-persistence_backup_dir: "{{ playbook_dir }}/../stack/state/{{ offkey_env }}"
+persistence_backup_dir: "{{ playbook_dir }}/../stack/state/{{ aberration_env }}"

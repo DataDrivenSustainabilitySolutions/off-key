@@ -5,18 +5,18 @@ import json
 import pytest
 from aberrant import __version__
 from aberrant.catalog import DetectorConfig
-from off_key_api_gateway.api.v1.monitors import _normalize_models_for_gateway
-from off_key_core.models import (
+from aberration_api_gateway.api.v1.monitors import _normalize_models_for_gateway
+from aberration_core.models import (
     ABERRANT_VERSION,
     ADAPTIVE_MODELS_BY_TYPE,
     adaptive_model_metadata,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import CATALOG
-from off_key_core.models.pipeline_fields import component_fields
-from off_key_core.schemas.radar import AdaptiveStreamConfig
-from off_key_mqtt_radar.catalog import generate_catalog
-from off_key_tactic_middleware.api.v1.models import ModelInfo
+from aberration_core.models.adaptive import CATALOG
+from aberration_core.models.pipeline_fields import component_fields
+from aberration_core.schemas.radar import AdaptiveStreamConfig
+from aberration_mqtt_radar.catalog import generate_catalog
+from aberration_tactic_middleware.api.v1.models import ModelInfo
 
 
 def test_generated_catalog_matches_pinned_runtime():

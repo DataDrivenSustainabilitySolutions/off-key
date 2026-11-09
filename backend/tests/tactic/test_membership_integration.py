@@ -7,33 +7,33 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials
-from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
-from off_key_core.db.migrate import migration_files
-from off_key_core.db.models import MemberRole, RememberedSession, User
-from off_key_core.schemas.members import (
+from aberration_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
+from aberration_core.db.migrate import migration_files
+from aberration_core.db.models import MemberRole, RememberedSession, User
+from aberration_core.schemas.members import (
     MemberInvitation,
     MemberUpdate,
     RoleCreate,
     RoleUpdate,
 )
-from off_key_core.utils import mail
-from off_key_tactic_middleware import bootstrap_admin
-from off_key_tactic_middleware.api.collection_auth import current_member
-from off_key_tactic_middleware.api.v1.members import member_service
-from off_key_tactic_middleware.api.v1.members import router as members_router
-from off_key_tactic_middleware.domain import (
+from aberration_core.utils import mail
+from aberration_tactic_middleware import bootstrap_admin
+from aberration_tactic_middleware.api.collection_auth import current_member
+from aberration_tactic_middleware.api.v1.members import member_service
+from aberration_tactic_middleware.api.v1.members import router as members_router
+from aberration_tactic_middleware.domain import (
     AuthenticationError,
     ConflictError,
     ValidationError,
 )
-from off_key_tactic_middleware.repositories import UserRepository
-from off_key_tactic_middleware.services.accounts.members import MemberService
-from off_key_tactic_middleware.services.accounts.remembered_sessions import (
+from aberration_tactic_middleware.repositories import UserRepository
+from aberration_tactic_middleware.services.accounts.members import MemberService
+from aberration_tactic_middleware.services.accounts.remembered_sessions import (
     RememberedSessionService,
 )
-from off_key_tactic_middleware.services.accounts.users import UserService
+from aberration_tactic_middleware.services.accounts.users import UserService
+from fastapi import FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select, text
 
 from tests.support.env import set_auth_env

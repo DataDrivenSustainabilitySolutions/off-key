@@ -3,16 +3,16 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from aberration_api_gateway.api import access
+from aberration_api_gateway.api.rate_limiter import limiter
+from aberration_api_gateway.api.v1 import auth, favorites, monitors
+from aberration_api_gateway.facades.tactic import TacticError
+from aberration_core.auth.permissions import Permission
+from aberration_core.config.service_auth import get_service_auth_settings
+from aberration_core.schemas.favorites import FavoriteRef
+from aberration_core.schemas.members import AcceptInvitation
+from aberration_tactic_middleware.main import create_app
 from fastapi import FastAPI
-from off_key_api_gateway.api import access
-from off_key_api_gateway.api.rate_limiter import limiter
-from off_key_api_gateway.api.v1 import auth, favorites, monitors
-from off_key_api_gateway.facades.tactic import TacticError
-from off_key_core.auth.permissions import Permission
-from off_key_core.config.service_auth import get_service_auth_settings
-from off_key_core.schemas.favorites import FavoriteRef
-from off_key_core.schemas.members import AcceptInvitation
-from off_key_tactic_middleware.main import create_app
 from pydantic import ValidationError
 
 from tests.support.gateway import gateway_app, member_profile
@@ -115,7 +115,7 @@ async def test_admin_can_manage_monitors(gateway, monkeypatch):
 async def test_a_custom_role_changes_only_what_its_permissions_cover(
     gateway, monkeypatch
 ):
-    from off_key_api_gateway.api.v1 import alarms
+    from aberration_api_gateway.api.v1 import alarms
 
     gateway.dependency_overrides[access.current_member] = lambda: PROFILE.model_copy(
         update={"role": "alarm-desk", "permissions": [Permission.manage_alarms]}
@@ -141,7 +141,7 @@ async def test_a_custom_role_changes_only_what_its_permissions_cover(
 
 @pytest.mark.asyncio
 async def test_role_changes_forward_only_the_fields_sent(gateway, monkeypatch):
-    from off_key_api_gateway.api.v1 import roles
+    from aberration_api_gateway.api.v1 import roles
 
     gateway.dependency_overrides[access.current_member] = lambda: ADMIN
     role = {
@@ -209,7 +209,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
             assert (await client.request(method, path, json={})).status_code == 401
             assert (
                 await client.request(
-                    method, path, headers={"X-Off-Key-Service-Key": "wrong"}, json={}
+                    method, path, headers={"X-Aberration-Service-Key": "wrong"}, json={}
                 )
             ).status_code == 401
 
@@ -219,7 +219,7 @@ async def test_tactic_rejects_direct_business_requests_without_service_credentia
 async def test_admin_member_removal_forwards_identity_and_preserves_status(
     gateway, monkeypatch, status
 ):
-    from off_key_api_gateway.api.v1 import members
+    from aberration_api_gateway.api.v1 import members
 
     gateway.dependency_overrides[access.current_member] = lambda: ADMIN
     remote = AsyncMock(return_value="")
@@ -295,8 +295,8 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
-    from off_key_api_gateway.api.v1 import devices
-    from off_key_api_gateway.facades.tactic import Tactic
+    from aberration_api_gateway.api.v1 import devices
+    from aberration_api_gateway.facades.tactic import Tactic
     from yarl import URL
 
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
@@ -336,7 +336,7 @@ async def test_path_identifiers_cannot_escape_service_authenticated_urls(
     )
     assert captured[-1][1] == {
         "Authorization": "Bearer user",
-        "X-Off-Key-Service-Key": "test-private-api-credential-123456789",
+        "X-Aberration-Service-Key": "test-private-api-credential-123456789",
     }
 
 
@@ -431,8 +431,8 @@ async def test_one_client_cannot_spray_guesses_across_accounts(failing_login):
 async def test_invalid_invitation_is_validation_error_and_remains_rate_limited(
     gateway, monkeypatch
 ):
-    from off_key_tactic_middleware.api.v1 import members
-    from off_key_tactic_middleware.domain import (
+    from aberration_tactic_middleware.api.v1 import members
+    from aberration_tactic_middleware.domain import (
         ValidationError as DomainValidationError,
     )
 

@@ -10,39 +10,39 @@ from uuid import uuid4
 import docker
 import pytest
 import pytest_asyncio
-from off_key_core.db.collection import lock_collection_configuration
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.system import SystemChange
-from off_key_core.schemas.system_collection import SystemCollectionChange
-from off_key_mqtt_radar.admission import (
+from aberration_core.db.collection import lock_collection_configuration
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.system import SystemChange
+from aberration_core.schemas.system_collection import SystemCollectionChange
+from aberration_mqtt_radar.admission import (
     RadarAdmissionSettings,
     require_monitor_admission,
 )
-from off_key_tactic_middleware.config.config import DockerConfig
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.facades.docker import AsyncDocker
-from off_key_tactic_middleware.services.catalogue import system_collection
-from off_key_tactic_middleware.services.catalogue.system import SystemService
-from off_key_tactic_middleware.services.orchestration import collection_monitors
-from off_key_tactic_middleware.services.orchestration import radar as radar_module
-from off_key_tactic_middleware.services.orchestration.radar_environment import (
+from aberration_tactic_middleware.config.config import DockerConfig
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.domain import ConflictError
+from aberration_tactic_middleware.facades.docker import AsyncDocker
+from aberration_tactic_middleware.services.catalogue import system_collection
+from aberration_tactic_middleware.services.catalogue.system import SystemService
+from aberration_tactic_middleware.services.orchestration import collection_monitors
+from aberration_tactic_middleware.services.orchestration import radar as radar_module
+from aberration_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_config_fingerprint,
     build_radar_environment,
     build_radar_workload_labels,
 )
-from off_key_tactic_middleware.services.orchestration.radar_lifecycle import (
+from aberration_tactic_middleware.services.orchestration.radar_lifecycle import (
     RadarLifecycleController,
 )
-from off_key_tactic_middleware.services.orchestration.radar_queries import (
+from aberration_tactic_middleware.services.orchestration.radar_queries import (
     RadarServiceQueries,
 )
-from off_key_tactic_middleware.services.orchestration.radar_workloads import (
+from aberration_tactic_middleware.services.orchestration.radar_workloads import (
     RadarWorkloadManager,
 )
-from off_key_tactic_middleware.services.orchestration.reconciliation import (
+from aberration_tactic_middleware.services.orchestration.reconciliation import (
     RadarStatusReconciliationService,
 )
 from sqlalchemy import delete, text, update
@@ -129,7 +129,7 @@ async def pending_monitor(
     # A real external create can finish even though the requesting controller
     # dies before binding its ID. The fixture process just occupies that worker.
     labels = build_radar_workload_labels(environment, "eclipse-mosquitto:2.0") | {
-        "off-key.review": "radar-fixes"
+        "aberration.review": "radar-fixes"
     }
     workload = await workloads.async_docker.run(
         workloads.async_docker.client.services.create,
@@ -442,7 +442,7 @@ async def test_reconciliation_docker_latency_does_not_block_or_overwrite_heartbe
     sessions = lifecycle_database
     workloads, owned = swarm_workloads
     constraints = (
-        [f"node.labels.offkey_readiness_{uuid4().hex} == allowed"]
+        [f"node.labels.aberration_readiness_{uuid4().hex} == allowed"]
         if workload_state == "pending"
         else None
     )
@@ -493,7 +493,7 @@ async def test_reconciliation_revives_inactive_monitor_only_after_real_swarm_rea
         sessions,
         workloads,
         owned,
-        constraints=[f"node.labels.offkey_readiness_{uuid4().hex} == allowed"],
+        constraints=[f"node.labels.aberration_readiness_{uuid4().hex} == allowed"],
     )
     async with sessions() as session:
         await RadarLifecycleController(session, workloads).complete_creation(service_id)

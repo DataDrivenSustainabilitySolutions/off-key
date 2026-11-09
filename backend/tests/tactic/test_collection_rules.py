@@ -3,26 +3,26 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.collection_rules import (
+from aberration_core.db.collection_runtime import CollectionRuntimeSnapshot
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.collection_rules import (
     CollectionRule,
     CollectionRuleEdit,
     CollectionRuleScope,
 )
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_core.utils.collection_rules import CollectionRuleResolver
-from off_key_tactic_middleware.services.catalogue import (
+from aberration_core.utils.collection_rules import CollectionRuleResolver
+from aberration_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
 )
-from off_key_tactic_middleware.services.catalogue.collection_rule_edits import (
+from aberration_tactic_middleware.services.catalogue.collection_rule_edits import (
     apply_rule_edits,
 )
-from off_key_tactic_middleware.services.catalogue.system_collection import (
+from aberration_tactic_middleware.services.catalogue.system_collection import (
     SystemCollectionService,
 )
 

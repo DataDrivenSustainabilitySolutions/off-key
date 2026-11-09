@@ -5,12 +5,12 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.schemas.radar import StaticBaselineConfig
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.detector_handle import DetectorHandle
-from off_key_mqtt_radar.detector_runtime import DetectorRuntime
-from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
+from aberration_core.schemas.radar import StaticBaselineConfig
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.detector_handle import DetectorHandle
+from aberration_mqtt_radar.detector_runtime import DetectorRuntime
+from aberration_mqtt_radar.mqtt_client import RadarMQTTClient
 
 from tests.support.form_pipeline import form_radar_config
 

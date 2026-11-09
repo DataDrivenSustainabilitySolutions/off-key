@@ -114,8 +114,8 @@ def report(failure):
 
 
 async def main():
-    from off_key_core.db.base import get_async_engine, get_async_session_local
-    from off_key_core.db.collection_runtime import read_collection_runtime
+    from aberration_core.db.base import get_async_engine, get_async_session_local
+    from aberration_core.db.collection_runtime import read_collection_runtime
 
     for name, url in probe_endpoints(os.environ).items():
         try:

@@ -4,14 +4,14 @@ import subprocess
 import sys
 
 import pytest
-from off_key_core.models.pipeline_fields import component_fields
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipeline_fields import component_fields
+from aberration_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     pipeline_catalog,
     validate_pipeline,
 )
-from off_key_core.schemas.pipelines import BoundInput, PipelineDefinition
+from aberration_core.schemas.pipelines import BoundInput, PipelineDefinition
 
 from tests.support.pipelines import branched, template
 
@@ -280,8 +280,8 @@ def test_control_plane_import_has_no_scientific_runtime():
             sys.executable,
             "-c",
             "import sys; "
-            "from off_key_core.schemas.radar import AdaptiveStreamConfig; "
-            "from off_key_core.models.pipelines import pipeline_catalog; "
+            "from aberration_core.schemas.radar import AdaptiveStreamConfig; "
+            "from aberration_core.models.pipelines import pipeline_catalog; "
             "AdaptiveStreamConfig(); pipeline_catalog(); "
             "modules = {'aberrant','numpy','scipy','faiss','pyod'}; "
             "assert not modules & sys.modules.keys()",

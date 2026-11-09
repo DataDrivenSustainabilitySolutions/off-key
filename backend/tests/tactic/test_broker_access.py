@@ -3,13 +3,13 @@
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.schemas.system import SystemConnection
-from off_key_tactic_middleware.config.system_live import (
+from aberration_core.schemas.system import SystemConnection
+from aberration_tactic_middleware.config.system_live import (
     LiveCredential,
     LiveSocksProxy,
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.catalogue.broker_access import (
+from aberration_tactic_middleware.services.catalogue.broker_access import (
     BrokerAccess,
     resolve_broker,
 )

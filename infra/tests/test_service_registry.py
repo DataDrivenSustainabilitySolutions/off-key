@@ -84,7 +84,7 @@ class ServiceRegistryTests(unittest.TestCase):
                 with self.subTest(path=path, image=image):
                     self.assertEqual(matrix[image], root)
                     self.assertEqual(
-                        f"off-key-{local_images[variable]}", image, variable
+                        f"aberration-{local_images[variable]}", image, variable
                     )
 
     def test_rollback_revision_is_the_same_everywhere(self):

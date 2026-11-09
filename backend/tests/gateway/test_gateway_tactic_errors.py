@@ -1,14 +1,14 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException, status
-from off_key_api_gateway.api.errors import (
+from aberration_api_gateway.api.errors import (
     raise_tactic_http_error,
     tactic_error_detail,
 )
-from off_key_api_gateway.api.rate_limiter import limiter
-from off_key_api_gateway.facades import tactic as facade
-from off_key_api_gateway.facades.tactic import TacticError
+from aberration_api_gateway.api.rate_limiter import limiter
+from aberration_api_gateway.facades import tactic as facade
+from aberration_api_gateway.facades.tactic import TacticError
+from fastapi import HTTPException, status
 
 from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client

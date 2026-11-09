@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.schemas.favorites import MAX_FAVORITES, FavoriteRef
-from off_key_tactic_middleware.domain import ConflictError, InfrastructureError
-from off_key_tactic_middleware.services.data.favorites import FavoriteService
+from aberration_core.schemas.favorites import MAX_FAVORITES, FavoriteRef
+from aberration_tactic_middleware.domain import ConflictError, InfrastructureError
+from aberration_tactic_middleware.services.data.favorites import FavoriteService
 from pydantic import ValidationError
 
 READING = FavoriteRef(kind="reading", id="line/temperature")

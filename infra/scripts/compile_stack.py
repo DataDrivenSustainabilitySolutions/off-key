@@ -3,7 +3,7 @@
 import json
 import sys
 
-COMPONENT_LABEL = "off-key.component"
+COMPONENT_LABEL = "aberration.component"
 
 
 def is_observability(service):

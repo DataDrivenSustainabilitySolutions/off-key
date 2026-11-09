@@ -361,13 +361,13 @@ describe("<Details />", () => {
     expect(screen.getByTestId("navigation-systemVoltage").textContent).toContain(
       '"startMs":3000',
     );
-    expect(localStorage.getItem("off-key:details:chart-navigation")).toBe(
+    expect(localStorage.getItem("aberration:details:chart-navigation")).toBe(
       "independent",
     );
   });
 
   it("restores the linked-navigation preference", async () => {
-    localStorage.setItem("off-key:details:chart-navigation", "linked");
+    localStorage.setItem("aberration:details:chart-navigation", "linked");
     renderDetails();
 
     const unlinkButton = await screen.findByRole("button", {

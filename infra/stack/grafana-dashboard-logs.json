@@ -173,7 +173,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (detected_level) (count_over_time({stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
+          "expr": "sum by (detected_level) (count_over_time({stack=\"aberration\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
           "queryType": "range",
           "legendFormat": "{{detected_level}}"
         }
@@ -364,7 +364,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (service) (count_over_time({stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
+          "expr": "sum by (service) (count_over_time({stack=\"aberration\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} [$__auto]))",
           "queryType": "range",
           "legendFormat": "{{service}}"
         }
@@ -419,7 +419,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
+          "expr": "{stack=\"aberration\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
           "queryType": "range",
           "maxLines": 500,
           "direction": "backward"
@@ -467,7 +467,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{stack=\"off-key\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} |= \"event=\" |~ \"event=(radar[.](stage_changed|runtime_started|coverage_gap|adaptive_[a-z_]+|static_[a-z_]+|service_start_failed|start_failed|execution_[a-z_]+|final_[a-z_]+|health_degraded|message_processing_failed|run_events_write_failed|fatal_error)|tactic[.]radar_task_crashed)\\\\b\" | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
+          "expr": "{stack=\"aberration\",service=~`${service:regex}`,node=~`${node:regex}`} | detected_level=~${severity:doublequote} |= \"event=\" |~ \"event=(radar[.](stage_changed|runtime_started|coverage_gap|adaptive_[a-z_]+|static_[a-z_]+|service_start_failed|start_failed|execution_[a-z_]+|final_[a-z_]+|health_degraded|message_processing_failed|run_events_write_failed|fatal_error)|tactic[.]radar_task_crashed)\\\\b\" | label_format line_matches=`{{ if or (eq \"${search:percentencode}\" \"\") (contains (lower (urldecode \"${search:percentencode}\")) (lower (__line__))) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches",
           "queryType": "range",
           "maxLines": 200,
           "direction": "backward"

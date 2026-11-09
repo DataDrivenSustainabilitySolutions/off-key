@@ -19,7 +19,7 @@ class PlaybookTests(unittest.TestCase):
             inventory = directory / "hosts.ini"
             inventory.write_text(
                 "[swarm_manager]\nlocalhost ansible_connection=local\n"
-                "[all:vars]\nansible_become=false\nstack_name=off-key\n"
+                "[all:vars]\nansible_become=false\nstack_name=aberration\n"
                 "superuser_mail=admin@example.com\n"
                 f"ansible_python_interpreter={sys.executable}\n"
             )
@@ -76,7 +76,7 @@ else:
                         "tactic-1",
                         "/app/bin/python",
                         "-m",
-                        "off_key_tactic_middleware.bootstrap_admin",
+                        "aberration_tactic_middleware.bootstrap_admin",
                         "--send-email",
                     ]
                     if resend:
@@ -136,7 +136,7 @@ else:
                     "[swarm_manager]\nlocalhost\n"
                     "[swarm_worker]\nworker-one\nworker-two\n"
                     "[all:vars]\nansible_connection=local\n"
-                    "ansible_become=false\nstack_name=off-key\n"
+                    "ansible_become=false\nstack_name=aberration\n"
                     f"ansible_python_interpreter={sys.executable}\n"
                 )
                 docker = directory / "docker"
@@ -157,7 +157,7 @@ node = "worker-two" if replaced else "worker-one"
 with (root / "commands.jsonl").open("a") as log:
     log.write(json.dumps(args) + "\n")
 if args[:2] == ["service", "ps"]:
-    assert args[2] == "off-key_mqtt-proxy"
+    assert args[2] == "aberration_mqtt-proxy"
     print(json.dumps({"ID": task_id, "Node": node, "CurrentState": "Running 1 minute ago"}))
     if replacement == "before_container":
         (root / "replaced").touch()
@@ -283,7 +283,7 @@ else:
                 inventory.write_text(
                     "[swarm_manager]\nlocalhost\n"
                     "[all:vars]\nansible_connection=local\n"
-                    "ansible_become=false\nstack_name=off-key\n"
+                    "ansible_become=false\nstack_name=aberration\n"
                     f"ansible_python_interpreter={sys.executable}\n"
                 )
                 docker = directory / "docker"
@@ -410,7 +410,7 @@ else:
 import json, sys
 args = sys.argv[1:]
 if args[:2] == ["service", "ps"]:
-    service = args[2].removeprefix("off-key_")
+    service = args[2].removeprefix("aberration_")
     if service != "missing-task":
         print(json.dumps({"ID": service + "-task", "Node": "localhost", "CurrentState": "Running 1 minute ago"}))
 elif args[0] == "ps":
@@ -476,7 +476,7 @@ else:
                             "gather_facts": False,
                             "become": False,
                             "vars": {
-                                "stack_name": "off-key",
+                                "stack_name": "aberration",
                                 "ansible_python_interpreter": sys.executable,
                             },
                             "tasks": tasks,
@@ -518,14 +518,14 @@ else:
 import json, sys
 args = sys.argv[1:]
 workers = {
-    "radar-worker": "network-id-off-key",
-    "radar-preflight": "off-key_emqx-network",
+    "radar-worker": "network-id-aberration",
+    "radar-preflight": "aberration_emqx-network",
     # Another stack's worker on the same cluster is not ours.
     "radar-other": "network-id-other-stack",
 }
 if args[:3] == ["network", "inspect", "--format"]:
-    assert args[-1] == "off-key_emqx-network", args
-    print("network-id-off-key")
+    assert args[-1] == "aberration_emqx-network", args
+    print("network-id-aberration")
 elif args[:2] == ["service", "inspect"]:
     print(json.dumps([
         {"ID": name + "-id", "Spec": {"Name": name, "TaskTemplate": {"Networks": [{"Target": workers[name]}]}}}
@@ -533,17 +533,17 @@ elif args[:2] == ["service", "inspect"]:
     ]))
 elif args[:5] == ["service", "ls", "--quiet", "--filter", "label=managed_by=tactic"]:
     print("\n".join(workers))
-elif args[-2:] == ["--filter", "label=off-key.component=observability"]:
-    assert args[:6] == ["service", "ls", "--format", "{{.Name}}", "--filter", "label=com.docker.stack.namespace=off-key"], args
-    print("off-key_grafana\noff-key_alloy")
+elif args[-2:] == ["--filter", "label=aberration.component=observability"]:
+    assert args[:6] == ["service", "ls", "--format", "{{.Name}}", "--filter", "label=com.docker.stack.namespace=aberration"], args
+    print("aberration_grafana\naberration_alloy")
 else:
     assert args[:4] == ["service", "ls", "--format", "{{.Name}}"], args
-    assert args[5] == "label=com.docker.stack.namespace=off-key", args
+    assert args[5] == "label=com.docker.stack.namespace=aberration", args
     print("\n".join([
-        "off-key_postgres", "off-key_emqx-main", "off-key_cloudflared",
-        "off-key_traefik", "off-key_landing", "off-key_frontend", "off-key_api",
-        "off-key_tactic", "off-key_db-sync", "off-key_mqtt-proxy", "off-key_retired",
-        "off-key_grafana", "off-key_alloy",
+        "aberration_postgres", "aberration_emqx-main", "aberration_cloudflared",
+        "aberration_traefik", "aberration_landing", "aberration_frontend", "aberration_api",
+        "aberration_tactic", "aberration_db-sync", "aberration_mqtt-proxy", "aberration_retired",
+        "aberration_grafana", "aberration_alloy",
     ]))
 """
             )
@@ -572,7 +572,7 @@ else:
                             "become": False,
                             "gather_facts": False,
                             "vars": {
-                                "stack_name": "off-key",
+                                "stack_name": "aberration",
                                 "stack_compose_model": {"services": services},
                             },
                             "tasks": [
@@ -609,10 +609,10 @@ else:
             self.assertEqual(
                 sorted(json.loads(output.read_text())),
                 [
-                    "off-key_db-sync",
-                    "off-key_mqtt-proxy",
-                    "off-key_retired",
-                    "off-key_tactic",
+                    "aberration_db-sync",
+                    "aberration_mqtt-proxy",
+                    "aberration_retired",
+                    "aberration_tactic",
                     "radar-preflight",
                     "radar-worker",
                 ],
@@ -645,7 +645,7 @@ else:
                             "become": False,
                             "gather_facts": False,
                             "vars": {
-                                "stack_name": "off-key",
+                                "stack_name": "aberration",
                                 "stack_dir": str(directory),
                                 "stack_compose_model": {"services": {"postgres": {}}},
                             },
@@ -687,7 +687,7 @@ else:
                 "[swarm_manager]\nlocalhost ansible_connection=local\n"
                 "[swarm_backend]\nbackend\n"
                 "[swarm_frontend]\nfrontend\n[swarm_worker:children]\n"
-                "swarm_backend\nswarm_frontend\n[all:vars]\noffkey_env=prod\n"
+                "swarm_backend\nswarm_frontend\n[all:vars]\naberration_env=prod\n"
             )
             for playbook in sorted((ROOT / "ansible").glob("*.yml")):
                 if playbook.name == "requirements.yml":

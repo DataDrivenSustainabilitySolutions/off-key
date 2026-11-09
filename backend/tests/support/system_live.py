@@ -1,10 +1,10 @@
 """System live-session harness."""
 
-from off_key_core.schemas.system import SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.config.system_live import (
+from aberration_core.schemas.system import SystemDocument, SystemSnapshot
+from aberration_tactic_middleware.config.system_live import (
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.catalogue.system_live import (
+from aberration_tactic_middleware.services.catalogue.system_live import (
     SystemLiveService,
 )
 

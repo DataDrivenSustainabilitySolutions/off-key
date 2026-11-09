@@ -4,11 +4,11 @@ A changed digest silently discards every checkpoint written by the previous
 release, so each one is a literal here.
 """
 
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
+from aberration_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
 
 from tests.support.form_pipeline import form_radar_config
 from tests.support.pipelines import minimal_static_execution

@@ -3,11 +3,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from off_key_core.db.base import get_async_engine, reset_db_runtime_caches
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
-from off_key_tactic_middleware.main import create_app
-from off_key_tactic_middleware.services.catalogue.system import SystemService
+from aberration_core.db.base import get_async_engine, reset_db_runtime_caches
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
+from aberration_tactic_middleware.main import create_app
+from aberration_tactic_middleware.services.catalogue.system import SystemService
 from sqlalchemy import event
 
 from tests.support.http import asgi_client
@@ -106,7 +106,7 @@ async def test_reporting_queries_alarms_by_reading_and_recovers_from_busy_pool(
         if statement.startswith("SELECT"):
             selects.append(statement)
 
-    headers = {"X-Off-Key-Service-Key": secret}
+    headers = {"X-Aberration-Service-Key": secret}
     path = "/api/v1/data/alarms/query"
     line = ["temperature", "pressure"]
     try:

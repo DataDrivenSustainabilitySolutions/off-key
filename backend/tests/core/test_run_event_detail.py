@@ -4,7 +4,7 @@ import json
 import math
 from datetime import UTC, datetime
 
-from off_key_core.db.run_events import (
+from aberration_core.db.run_events import (
     MAX_DETAIL_BYTES,
     MAX_ITEMS,
     MAX_TEXT_LENGTH,

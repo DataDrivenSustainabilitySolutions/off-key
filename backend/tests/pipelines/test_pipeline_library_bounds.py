@@ -5,14 +5,17 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from off_key_core.db.models import MonitoringPipeline, PipelineRevision, PipelineRun
-from off_key_core.db.pipeline_locks import complete_stopped_runs, lock_execution_records
-from off_key_core.models.pipelines import (
+from aberration_core.db.models import MonitoringPipeline, PipelineRevision, PipelineRun
+from aberration_core.db.pipeline_locks import (
+    complete_stopped_runs,
+    lock_execution_records,
+)
+from aberration_core.models.pipelines import (
     compile_pipeline,
     pipeline_catalog,
     pipeline_catalog_id,
 )
-from off_key_core.schemas.pipelines import (
+from aberration_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineCreate,
     PipelineDraftSave,
@@ -20,9 +23,11 @@ from off_key_core.schemas.pipelines import (
     PipelineListQuery,
     PipelineRevisionQuery,
 )
-from off_key_tactic_middleware.domain import ConflictError, ValidationError
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_tactic_middleware.domain import ConflictError, ValidationError
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
 from sqlalchemy import event
 
 from tests.support.maximum_pipeline import maximum_definition
@@ -113,8 +118,8 @@ async def test_draft_metadata_and_graph_have_one_atomic_version(pipeline_databas
 async def test_published_compatibility_uses_executable_contracts(
     pipeline_database, monkeypatch
 ):
-    catalog = importlib.import_module("off_key_core.models.pipeline_catalog")
-    compiler = importlib.import_module("off_key_core.models.pipeline_compiler")
+    catalog = importlib.import_module("aberration_core.models.pipeline_catalog")
+    compiler = importlib.import_module("aberration_core.models.pipeline_compiler")
     components = catalog.pipeline_components
     async with pipeline_database() as session:
         _, revision = await published_design(session)

@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.models import (
+from aberration_core.db.collection_runtime import read_collection_runtime
+from aberration_core.db.models import (
     Charger,
     CollectionBinding,
     CollectionConfiguration,
@@ -15,31 +15,31 @@ from off_key_core.db.models import (
     PipelineRevision,
     PipelineRun,
 )
-from off_key_core.db.system import (
+from aberration_core.db.system import (
     SystemCollectionConfiguration,
     SystemConfiguration,
     SystemRevision,
 )
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.system import SystemChange
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.system import SystemChange
+from aberration_core.schemas.system_collection import (
     SystemCollectionChange,
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_core.utils.mqtt_topics import (
+from aberration_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
     normalize_static_monitoring_topics,
 )
-from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.services.catalogue import system as system_module
-from off_key_tactic_middleware.services.catalogue import (
+from aberration_mqtt_proxy.client.models import MQTTMessage
+from aberration_mqtt_proxy.collection_buffer import CollectionBuffer
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.domain import ConflictError
+from aberration_tactic_middleware.services.catalogue import system as system_module
+from aberration_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
 )
-from off_key_tactic_middleware.services.catalogue.system import SystemService
+from aberration_tactic_middleware.services.catalogue.system import SystemService
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -343,7 +343,7 @@ def test_saved_bindings_survive_topic_edits_without_matching_other_catalogues():
 async def test_scope_rules_survive_structure_edits_and_admit_only_approved_additions(
     session,
 ):
-    from off_key_core.schemas.collection_rules import (
+    from aberration_core.schemas.collection_rules import (
         CollectionRuleEdit,
         CollectionRuleScope,
         SystemCollectionRuleChange,
@@ -427,7 +427,7 @@ async def test_scope_rules_survive_structure_edits_and_admit_only_approved_addit
 async def test_future_rule_metadata_advances_revision_without_restarting_ingestion(
     session,
 ):
-    from off_key_core.schemas.collection_rules import (
+    from aberration_core.schemas.collection_rules import (
         CollectionRuleEdit,
         CollectionRuleScope,
         SystemCollectionRuleChange,
@@ -469,7 +469,7 @@ async def test_future_rule_metadata_advances_revision_without_restarting_ingesti
 async def test_moving_an_admitted_reading_requires_review_and_keeps_overrides(
     session, operation
 ):
-    from off_key_core.schemas.collection_rules import (
+    from aberration_core.schemas.collection_rules import (
         CollectionRuleEdit,
         CollectionRuleScope,
         SystemCollectionRuleChange,

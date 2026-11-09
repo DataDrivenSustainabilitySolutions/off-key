@@ -7,22 +7,22 @@ import pickle
 import numpy as np
 import pytest
 from aberrant.compose import GraphExecutionError, GraphStateUncertainError
-from off_key_core.schemas.pipelines import PipelineDefinition, PipelineRuntimeState
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_core.schemas.pipelines import PipelineDefinition, PipelineRuntimeState
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.detector import (
+from aberration_mqtt_radar.detector import (
     StaticConformalDetectionService,
     StaticConformalState,
 )
-from off_key_mqtt_radar.execution_errors import FatalExecutionError, StepRejected
-from off_key_mqtt_radar.fusion import RankFusion, threshold_count
-from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.resources import estimate_resources
-from off_key_mqtt_radar.preflight import preflight
-from off_key_mqtt_radar.result_records import ResultProjector
+from aberration_mqtt_radar.execution_errors import FatalExecutionError, StepRejected
+from aberration_mqtt_radar.fusion import RankFusion, threshold_count
+from aberration_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.resources import estimate_resources
+from aberration_mqtt_radar.preflight import preflight
+from aberration_mqtt_radar.result_records import ResultProjector
 from scipy import stats
 
 from tests.support.fused_pipeline import bound, fused_definition, reading

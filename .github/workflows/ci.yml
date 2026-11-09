@@ -79,7 +79,7 @@ jobs:
       - name: Check generated monitoring contracts and catalog
         run: |
           uv run --project backend python backend/scripts/generate_pipeline_types.py --check
-          uv run --project backend python -m off_key_mqtt_radar.catalog --check
+          uv run --project backend python -m aberration_mqtt_radar.catalog --check
 
   # Tests that read documentation or frontend sources, for plans that skip the
   # full backend and infrastructure suites, which include them.
@@ -215,7 +215,7 @@ jobs:
         emqx: ["5.8.7", "6.3.2"]
     env:
       EMQX_TEST_IMAGE: emqx/emqx:${{ matrix.emqx }}
-      OFFKEY_COLLECTION_INTEGRATION: "1"
+      ABERRATION_COLLECTION_INTEGRATION: "1"
       COMPOSE_FILE: backend/tests/collection_integration/compose.yml
     steps:
       - name: Checkout
@@ -331,7 +331,7 @@ jobs:
           docker swarm init > /dev/null
           touch "$RUNNER_TEMP/radar-swarm-created"
           database="radar-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          docker run --detach --name "$database" --label off-key.ci=radar-production \
+          docker run --detach --name "$database" --label aberration.ci=radar-production \
             --publish 127.0.0.1::5432 --tmpfs /var/lib/postgresql/data:rw,size=768m \
             --env POSTGRES_USER=radar_ci --env POSTGRES_DB=radar_ci \
             --env POSTGRES_PASSWORD=disposable-radar-ci-password "$TEST_RADAR_DATABASE_IMAGE"
@@ -387,7 +387,7 @@ jobs:
         timeout-minutes: 5
         run: |
           docker service ls
-          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+          for label in aberration.integration-owner aberration.review=radar-fixes aberration.ci=radar-production; do
             for service in $(docker service ls --quiet --filter "label=$label"); do
               timeout 30 docker service ps --no-trunc "$service" || true
               timeout 30 docker service logs --tail 100 "$service" || true
@@ -401,14 +401,14 @@ jobs:
         if: always()
         timeout-minutes: 2
         run: |
-          for label in off-key.integration-owner off-key.review=radar-fixes off-key.ci=radar-production; do
+          for label in aberration.integration-owner aberration.review=radar-fixes aberration.ci=radar-production; do
             docker service ls --quiet --filter "label=$label" | xargs -r docker service rm || true
             docker container ls --all --quiet --filter "label=$label" | xargs -r docker container rm --force || true
           done
           if [ -f "$RUNNER_TEMP/radar-swarm-created" ]; then
             docker swarm leave --force || true
           fi
-          docker network ls --quiet --filter label=off-key.integration-owner | xargs -r docker network rm || true
+          docker network ls --quiet --filter label=aberration.integration-owner | xargs -r docker network rm || true
 
   # Pull requests, the merge queue and manual runs build every image once, with
   # the inputs the rehearsals test, and never push. Both rehearsal lanes and RADAR
@@ -538,7 +538,7 @@ jobs:
 
       - name: Install existing E2E and infrastructure tools
         run: |
-          echo "OFFKEY_REHEARSAL_DIR=$RUNNER_TEMP/offkey-rehearsal" >> "$GITHUB_ENV"
+          echo "ABERRATION_REHEARSAL_DIR=$RUNNER_TEMP/aberration-rehearsal" >> "$GITHUB_ENV"
           npm ci --prefix frontend
           uv sync --project backend --all-packages --all-groups --frozen
           uv sync --project infra --frozen
@@ -557,11 +557,11 @@ jobs:
         timeout-minutes: 35
         env:
           # Other events rehearse the verified images loaded above, never a rebuild.
-          OFFKEY_REHEARSAL_IMAGES: ${{ github.event_name != 'push' && 'loaded' || 'published' }}
+          ABERRATION_REHEARSAL_IMAGES: ${{ github.event_name != 'push' && 'loaded' || 'published' }}
         run: |
           set -euo pipefail
           docker swarm init > /dev/null
-          uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
+          uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$ABERRATION_REHEARSAL_DIR"
 
       - name: Run existing browser journeys against the production frontend
         if: matrix.lane == 'rehearsal'
@@ -569,13 +569,13 @@ jobs:
         run: |
           set -euo pipefail
           # Exercise the operator-disabled compatibility path before the visual lane.
-          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false aberration-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \
-            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
-            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            --volume "$ABERRATION_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$ABERRATION_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
 
       - name: Sign the operator in once for the pipelines lane
@@ -585,13 +585,13 @@ jobs:
           set -euo pipefail
           # auth-setup accepts the operator invitation and saves the remembered session
           # that the deployment tests and every visual journey below reuse.
-          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false aberration-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \
-            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
-            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            --volume "$ABERRATION_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$ABERRATION_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npx playwright test --project=auth-setup
 
       - name: Check out the immutable pipeline-compatible rollback reference
@@ -608,14 +608,14 @@ jobs:
         timeout-minutes: 25
         uses: ./.github/actions/run-with-build-cache
         with:
-          run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
+          run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$ABERRATION_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
 
       # Rehearsal lane: backup restoration and compatible binary rollback; pipelines lane: adaptive monitoring.
       - name: Verify this lane's deployment tests
         timeout-minutes: 25
         env:
           RUN_ADAPTIVE_E2E: "1"
-          OFFKEY_DEPLOYMENT_REHEARSAL: "1"
+          ABERRATION_DEPLOYMENT_REHEARSAL: "1"
           E2E_GATEWAY_URL: http://localhost:8000
           E2E_MQTT_HOST: localhost
           E2E_MQTT_PORT: "8883"
@@ -623,34 +623,34 @@ jobs:
           E2E_AUTH_PASSWORD: PlaywrightPass123!
         run: |
           set -euo pipefail
-          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true aberration-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           # Remembered sessions keep access tokens in memory; mint one from the cookie.
-          E2E_SESSION_COOKIE="$(node -e "const state=require('./frontend/playwright/.auth/user.json'); const cookie=state.cookies.find(({name})=>name==='off_key_remembered_session')?.value; if (!cookie) { console.error('No remembered session cookie in the auth state'); process.exit(1); } process.stdout.write(cookie)")"
+          E2E_SESSION_COOKIE="$(node -e "const state=require('./frontend/playwright/.auth/user.json'); const cookie=state.cookies.find(({name})=>name==='aberration_remembered_session')?.value; if (!cookie) { console.error('No remembered session cookie in the auth state'); process.exit(1); } process.stdout.write(cookie)")"
           echo "::add-mask::$E2E_SESSION_COOKIE"
-          E2E_AUTH_TOKEN="$(curl --fail --silent --show-error -X POST -H 'X-Off-Key-Session: 1' -H "Cookie: off_key_remembered_session=$E2E_SESSION_COOKIE" http://localhost:8000/v1/auth/refresh | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"], end="")')"
+          E2E_AUTH_TOKEN="$(curl --fail --silent --show-error -X POST -H 'X-Aberration-Session: 1' -H "Cookie: aberration_remembered_session=$E2E_SESSION_COOKIE" http://localhost:8000/v1/auth/refresh | python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"], end="")')"
           echo "::add-mask::$E2E_AUTH_TOKEN"
           export E2E_AUTH_TOKEN
-          export E2E_MQTT_CA_FILE="$OFFKEY_REHEARSAL_DIR/ca.crt"
-          export E2E_MQTT_USERNAME=offkey-radar
-          E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
+          export E2E_MQTT_CA_FILE="$ABERRATION_REHEARSAL_DIR/ca.crt"
+          export E2E_MQTT_USERNAME=aberration-radar
+          E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["ABERRATION_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
-          uv run --frozen --project backend python -m pytest -m deployment ${{ matrix.deployment-tests }} -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
-          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment ${{ matrix.lane }}"
+          uv run --frozen --project backend python -m pytest -m deployment ${{ matrix.deployment-tests }} -q --tb=short --junitxml="$ABERRATION_REHEARSAL_DIR/deployment-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$ABERRATION_REHEARSAL_DIR/deployment-results.xml" "deployment ${{ matrix.lane }}"
 
       - name: Verify visual pipelines against the production frontend and worker
         if: matrix.lane == 'pipelines'
         timeout-minutes: 15
         run: |
           set -euo pipefail
-          trap 'docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null' EXIT
-          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
+          trap 'docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false aberration-smoke_tactic > /dev/null' EXIT
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true aberration-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \
-            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
-            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            --volume "$ABERRATION_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$ABERRATION_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
             npm run test:e2e:pipelines
 
@@ -684,7 +684,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: production-release
-          path: ${{ env.OFFKEY_REHEARSAL_DIR }}/production-release.json
+          path: ${{ env.ABERRATION_REHEARSAL_DIR }}/production-release.json
           if-no-files-found: error
           overwrite: true
           retention-days: 90
@@ -695,11 +695,11 @@ jobs:
         with:
           name: compatible-binary-rollback
           path: |
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/binary-rollback-evidence.json
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/browser-cutover-evidence.json
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/route-replacement-events.log
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
-            ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
+            ${{ env.ABERRATION_REHEARSAL_DIR }}/binary-rollback-evidence.json
+            ${{ env.ABERRATION_REHEARSAL_DIR }}/browser-cutover-evidence.json
+            ${{ env.ABERRATION_REHEARSAL_DIR }}/route-replacement-events.log
+            ${{ env.ABERRATION_REHEARSAL_DIR }}/compatible-release.json
+            ${{ env.ABERRATION_REHEARSAL_DIR }}/deployment-results.xml
           if-no-files-found: ignore
           retention-days: 30
 
@@ -709,8 +709,8 @@ jobs:
         timeout-minutes: 5
         run: |
           mkdir -p deployment-smoke-diagnostics
-          timeout 30 docker stack ps --no-trunc offkey-smoke > deployment-smoke-diagnostics/tasks.txt 2>&1 || true
-          for service in $(timeout 30 docker service ls --format '{{.Name}}' --filter label=com.docker.stack.namespace=offkey-smoke); do
+          timeout 30 docker stack ps --no-trunc aberration-smoke > deployment-smoke-diagnostics/tasks.txt 2>&1 || true
+          for service in $(timeout 30 docker service ls --format '{{.Name}}' --filter label=com.docker.stack.namespace=aberration-smoke); do
             timeout 30 docker service logs --tail 100 "$service" > "deployment-smoke-diagnostics/$service.log" 2>&1 || true
           done
           # Release jobs are plain `docker run` containers; a daemon restart or OOM kill
@@ -735,7 +735,7 @@ jobs:
       - name: Remove the disposable stack
         if: always()
         timeout-minutes: 3
-        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py cleanup --directory "$OFFKEY_REHEARSAL_DIR"
+        run: uv run --frozen --project infra python infra/tests/swarm_smoke.py cleanup --directory "$ABERRATION_REHEARSAL_DIR"
 
   observability:
     name: worker observability

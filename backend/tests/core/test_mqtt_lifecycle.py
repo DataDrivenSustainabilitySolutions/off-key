@@ -3,7 +3,7 @@
 import threading
 
 import pytest
-from off_key_core.utils.mqtt_lifecycle import (
+from aberration_core.utils.mqtt_lifecycle import (
     close_client,
     close_client_blocking,
     connack_refusal,

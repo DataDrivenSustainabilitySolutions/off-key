@@ -45,7 +45,7 @@ services:
     build:
       context: ./frontend
       target: development
-    image: "${FRONTEND_IMAGE:-off-key-frontend:latest}"
+    image: "${FRONTEND_IMAGE:-aberration-frontend:latest}"
     environment:
       - "API_PROXY_TARGET=${API_PROXY_TARGET:-${VITE_API_URL:-http://api-gateway:8000}}"
     depends_on:
@@ -64,9 +64,9 @@ services:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-api-gateway
+        SERVICE_NAME: aberration-api-gateway
         SERVICE_ROOT: services/api/gateway
-    image: "${API_GATEWAY_IMAGE:-off-key-api-gateway:latest}"
+    image: "${API_GATEWAY_IMAGE:-aberration-api-gateway:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *auth-env, *email-env]
       TACTIC_SERVICE_SCHEME: "${TACTIC_SERVICE_SCHEME:-http}"
@@ -98,16 +98,16 @@ services:
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
     # Clients reach the API under /api, which the proxy strips; the root path
     # puts that prefix in the OpenAPI `servers` entry and keeps /api/docs working.
-    command: ["uvicorn", "off_key_api_gateway.main:app",
+    command: ["uvicorn", "aberration_api_gateway.main:app",
               "--host", "0.0.0.0", "--port", "8000", "--root-path", "/api"]
 
   tactic-middleware:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-tactic-middleware
+        SERVICE_NAME: aberration-tactic-middleware
         SERVICE_ROOT: services/middleware/tactic
-    image: "${TACTIC_MIDDLEWARE_IMAGE:-off-key-tactic-middleware:latest}"
+    image: "${TACTIC_MIDDLEWARE_IMAGE:-aberration-tactic-middleware:latest}"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -154,9 +154,9 @@ services:
       TACTIC_DOCKER_DEFAULT_CPU_LIMIT: "${TACTIC_DOCKER_DEFAULT_CPU_LIMIT:-0.5}"
       TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION: "${TACTIC_DOCKER_DEFAULT_MEMORY_RESERVATION:-}"
       TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: "${TACTIC_DOCKER_DEFAULT_CPU_RESERVATION:-}"
-      TACTIC_DOCKER_DEFAULT_NETWORK: "${COMPOSE_PROJECT_NAME:-off-key}_app-network"
-      TACTIC_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
-      RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
+      TACTIC_DOCKER_DEFAULT_NETWORK: "${COMPOSE_PROJECT_NAME:-aberration}_app-network"
+      TACTIC_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:-aberration-mqtt-radar:latest}"
+      RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-aberration-development-checkpoints-change-before-production}"
     restart: always
     healthcheck:
       <<: *backend-healthcheck
@@ -165,16 +165,16 @@ services:
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"
-    command: [ "/app/bin/python", "-m", "off_key_tactic_middleware" ]
+    command: [ "/app/bin/python", "-m", "aberration_tactic_middleware" ]
 
   mqtt-radar:
     # Build-only: TACTIC launches every RADAR workload from this image.
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_NAME: aberration-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    image: "${MQTT_RADAR_IMAGE:-aberration-mqtt-radar:latest}"
     profiles:
       - radar-image
 
@@ -183,13 +183,13 @@ services:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-radar
+        SERVICE_NAME: aberration-mqtt-radar
         SERVICE_ROOT: services/mqtt/radar
-    image: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+    image: "${MQTT_RADAR_IMAGE:-aberration-mqtt-radar:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *database-env]
       DOJO_MEMORY_LIMIT_MB: "${DOJO_MEMORY_LIMIT_MB:-1024}"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.dojo" ]
+    command: [ "/app/bin/python", "-m", "aberration_mqtt_radar.dojo" ]
     depends_on:
       db-sync:
         condition: service_healthy
@@ -205,9 +205,9 @@ services:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_NAME: aberration-mqtt-proxy
         SERVICE_ROOT: services/mqtt/proxy
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    image: "${MQTT_PROXY_IMAGE:-aberration-mqtt-proxy:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *database-env]
       MQTT_USERNAME: "${MQTT_USERNAME:-}"
@@ -218,7 +218,7 @@ services:
       MQTT_BROKER_HOST: "${MQTT_BROKER_HOST:-emqx-main}"
       MQTT_BROKER_PORT: "${MQTT_BROKER_PORT:-1883}"
       MQTT_TELEMETRY_ENABLED: "true"
-    command: [ "/app/bin/python", "-m", "off_key_mqtt_proxy" ]
+    command: [ "/app/bin/python", "-m", "aberration_mqtt_proxy" ]
     depends_on:
       db-sync:
         condition: service_healthy
@@ -245,8 +245,8 @@ services:
       context: ./backend/
       args:
         SERVICE_ROOT: services/db/sync
-        SERVICE_NAME: off-key-db-sync
-    image: "${DB_SYNC_IMAGE:-off-key-db-sync:latest}"
+        SERVICE_NAME: aberration-db-sync
+    image: "${DB_SYNC_IMAGE:-aberration-db-sync:latest}"
     environment:
       <<: [*runtime-env, *logging-env, *database-env]
       SYNC_API_HOST: "${SYNC_API_HOST}"
@@ -266,7 +266,7 @@ services:
         - "/app/bin/python"
         - "-c"
         - "import urllib.request; urllib.request.urlopen('http://localhost:8009/ready/schema', timeout=2)"
-    command: [ "/app/bin/python", "-m", "off_key_db_sync" ]
+    command: [ "/app/bin/python", "-m", "aberration_db_sync" ]
 
 ### =============================================== ###
 ###            THIRD-PARTY DEPENDENCIES             ###
@@ -343,7 +343,7 @@ services:
     environment:
       # Local single-node default. See docker-compose.cluster.yml for two-node mode.
       - "EMQX_NODE_NAME=emqx@emqx-main"
-      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-off-key-emqx-cookie-change-me}"
+      - "EMQX_NODE__COOKIE=${EMQX_NODE_COOKIE:-aberration-emqx-cookie-change-me}"
       - "EMQX_CLUSTER__DISCOVERY_STRATEGY=static"
       - "EMQX_CLUSTER__STATIC__SEEDS=[emqx@emqx-main]"
       # See https://github.com/emqx/emqx/issues/8627#issuecomment-2833234761

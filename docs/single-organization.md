@@ -52,7 +52,7 @@ removal are serialized within the same membership transaction lock.
 5. Initialize the first administrator by email:
 
    ```sh
-   docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin --send-email
+   docker compose exec -T tactic-middleware /app/bin/python -m aberration_tactic_middleware.bootstrap_admin --send-email
    ```
 
    The command emails `SUPERUSER_MAIL` and prints status JSON without the token.

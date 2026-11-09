@@ -8,21 +8,21 @@ import time
 from pathlib import Path
 
 import pytest
-from off_key_core.db.migrate import apply_migrations, migration_status
-from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import RadarCheckpointSettings
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.runtime_checkpoint import (
+from aberration_core.db.migrate import apply_migrations, migration_status
+from aberration_core.db.models import MonitoringService
+from aberration_core.schemas.radar import AdaptiveStreamConfig, StaticBaselineConfig
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import RadarCheckpointSettings
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.runtime_checkpoint import (
     CoverageCheckpoint,
     ProcessorCheckpoint,
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar.service import RadarService
 from pydantic import ValidationError
 from sqlalchemy import insert, inspect, text
 from sqlalchemy.exc import IntegrityError
@@ -146,7 +146,7 @@ def test_managed_checkpoint_verifies_before_deserialization(changed, monkeypatch
     else:
         record[changed] = "different"
     monkeypatch.setattr(
-        "off_key_mqtt_radar.runtime_checkpoint.pickle.loads",
+        "aberration_mqtt_radar.runtime_checkpoint.pickle.loads",
         lambda *_args: pytest.fail("Unauthenticated pickle was deserialized"),
     )
     with pytest.raises(ValueError, match="authentication"):
@@ -237,7 +237,7 @@ async def test_real_detector_restores_in_replacement_process(
     )
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setenv("SERVICE_ID", "monitor")
-    from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+    from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 
     clear_radar_runtime_settings_cache()
     config = _config(strategy)
@@ -325,7 +325,7 @@ async def test_checkpoint_and_pending_evidence_roll_back_together(
                 mqtt_topic=["telemetry/entity/x"],
             )
         )
-    from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+    from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
 
     monkeypatch.setenv("SERVICE_ID", "monitor")
     clear_radar_runtime_settings_cache()
@@ -368,7 +368,7 @@ async def test_checkpoint_and_pending_evidence_roll_back_together(
             )
             await session.commit()
         monkeypatch.setattr(
-            "off_key_mqtt_radar.service.get_radar_settings",
+            "aberration_mqtt_radar.service.get_radar_settings",
             lambda: type("Settings", (), {"config": config})(),
         )
         service = RadarService()

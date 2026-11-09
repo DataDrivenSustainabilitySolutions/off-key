@@ -1,0 +1,480 @@
+"""
+State cache for aligning multi-sensor MQTT streams.
+
+Uses strict barrier alignment semantics:
+- emit one aligned sample only after all required sensors have produced at
+  least one new value since the last emit for that charger.
+
+Includes TTL-based cleanup to prevent memory growth from stale entries.
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from threading import Lock
+from typing import Literal
+
+from aberration_core.schemas.radar import PerformanceConfig
+from pydantic import FiniteFloat, TypeAdapter
+
+logger = logging.getLogger(__name__)
+
+# Default TTL: 1 hour in seconds
+DEFAULT_TTL_SECONDS = 3600
+# Default freshness gate for aligned sensor values
+DEFAULT_MAX_SENSOR_AGE_SECONDS = 30.0
+# Default max chargers to prevent unbounded growth
+DEFAULT_MAX_CHARGERS = 10000
+DEFAULT_MAX_SENSOR_KEYS = 100
+
+
+def _extract_numeric_value(values: dict[str, float], sensor_type: str) -> float | None:
+    """
+    Extract a single numeric value to represent this sensor.
+    Preference order:
+    1) Explicit key matching the sensor type
+    2) A "value" key
+    3) The sole value if only one is present
+    """
+    if sensor_type in values and isinstance(values[sensor_type], int | float):
+        return float(values[sensor_type])
+
+    if "value" in values and isinstance(values["value"], int | float):
+        return float(values["value"])
+
+    if len(values) == 1:
+        only_value = next(iter(values.values()))
+        if isinstance(only_value, int | float):
+            return float(only_value)
+
+    return None
+
+
+def _wall_time() -> float:
+    return time.time()
+
+
+def _monotonic_time() -> float:
+    return time.monotonic()
+
+
+@dataclass(frozen=True, slots=True)
+class _SensorReading:
+    """Stored snapshot of the latest reading received for one sensor."""
+
+    values: dict[str, float]
+    received_at: float
+    event_timestamp: float
+    sequence: int
+    received_monotonic: float | None
+
+
+class SensorStateCache:
+    """Caches latest sensor values per charger and emits aligned feature vectors.
+
+    Includes TTL-based cleanup and max chargers limit to prevent memory growth.
+    """
+
+    def __init__(
+        self,
+        required_sensors: set[str],
+        ttl_seconds: float = DEFAULT_TTL_SECONDS,
+        max_sensor_age_seconds: float = DEFAULT_MAX_SENSOR_AGE_SECONDS,
+        max_chargers: int = DEFAULT_MAX_CHARGERS,
+        observation_max_age_seconds: float = 30.0,
+        observation_future_tolerance_seconds: float = 5.0,
+        alignment_max_skew_seconds: float = 5.0,
+        clock: Callable[[], float] | None = None,
+        monotonic: Callable[[], float] | None = None,
+    ):
+        """
+        Initialize the sensor state cache.
+
+        Args:
+            required_sensors: Set of sensor types required for alignment
+            ttl_seconds: Time-to-live for cache entries in seconds (default: 1 hour)
+            max_sensor_age_seconds: Maximum allowed age for each required sensor
+                when emitting aligned vectors
+            max_chargers: Maximum number of chargers to cache (default: 10000)
+            clock, monotonic: Wall and receipt clocks. A Dojo replay passes the
+                event time for both, so historical data ages as it did live.
+        """
+        self._clock = clock or _wall_time
+        self._monotonic = monotonic or _monotonic_time
+        self._lock = Lock()
+        self.required_sensors = set(required_sensors)
+        self.required_sensor_order = tuple(sorted(self.required_sensors))
+        self._max_sensor_keys = max(DEFAULT_MAX_SENSOR_KEYS, len(self.required_sensors))
+        self.ttl_seconds = ttl_seconds
+        self.max_chargers = max_chargers
+        policy = PerformanceConfig(
+            sensor_freshness_seconds=max_sensor_age_seconds,
+            observation_max_age_seconds=observation_max_age_seconds,
+            observation_future_tolerance_seconds=observation_future_tolerance_seconds,
+            alignment_max_skew_seconds=alignment_max_skew_seconds,
+        )
+        self.observation_max_age_seconds = policy.observation_max_age_seconds
+        self.max_sensor_age_seconds = policy.sensor_freshness_seconds
+        self.observation_future_tolerance_seconds = (
+            policy.observation_future_tolerance_seconds
+        )
+        self.alignment_max_skew_seconds = policy.alignment_max_skew_seconds
+        self._readings_by_charger: dict[str, dict[str, _SensorReading]] = {}
+        self._watermarks: dict[str, dict[str, float]] = {}
+        # Tracks last emitted sensor update sequence in strict-barrier mode.
+        self._last_emitted_versions: dict[str, dict[str, int]] = {}
+        self._next_update_seq = 0
+        self._last_cleanup = self._clock()
+        self._cleanup_interval = 300  # Run cleanup every 5 minutes
+
+    def update_with_status(
+        self,
+        charger_id: str,
+        sensor_type: str,
+        values: dict[str, float],
+        *,
+        sample_timestamp: float | None = None,
+        received_monotonic: float | None = None,
+    ) -> AlignmentUpdate:
+        """
+        Update cache with a new sensor reading.
+
+        Returns a full feature vector (latest values for all required sensors)
+        when every required sensor has at least one fresh value.
+
+        Thread-safe: uses internal lock for concurrent access.
+        """
+        current_time = self._clock()
+        event_timestamp = current_time if sample_timestamp is None else sample_timestamp
+
+        with self._lock:
+            if received_monotonic is not None:
+                if not math.isfinite(received_monotonic):
+                    return AlignmentUpdate(
+                        status="observation_rejected",
+                        rejection_reason="receipt_nonfinite",
+                    )
+                if self._monotonic() - received_monotonic > self.max_sensor_age_seconds:
+                    return AlignmentUpdate(
+                        status="observation_rejected",
+                        rejection_reason="receipt_too_old",
+                    )
+            rejection = self._observation_rejection(
+                charger_id, sensor_type, event_timestamp, current_time
+            )
+            if rejection:
+                return AlignmentUpdate(
+                    status="observation_rejected", rejection_reason=rejection
+                )
+            # Periodic cleanup
+            if current_time - self._last_cleanup > self._cleanup_interval:
+                self._cleanup_stale_entries(current_time)
+                self._last_cleanup = current_time
+
+            charger_cache = self._readings_by_charger.setdefault(charger_id, {})
+            self._watermarks.setdefault(charger_id, {})[sensor_type] = event_timestamp
+            self._next_update_seq += 1
+            charger_cache[sensor_type] = _SensorReading(
+                values=dict(values),
+                received_at=current_time,
+                event_timestamp=event_timestamp,
+                sequence=self._next_update_seq,
+                received_monotonic=received_monotonic,
+            )
+
+            if not self.required_sensors:
+                # No alignment requested; emit the incoming values as-is
+                return AlignmentUpdate(
+                    status="aligned_emit",
+                    features=values,
+                    input_timestamps={sensor_type: event_timestamp},
+                    sample_timestamp=event_timestamp,
+                )
+
+            sensor_ages = self._collect_sensor_ages(charger_cache, current_time)
+            blocker = self._alignment_blocker(
+                charger_id,
+                charger_cache,
+                sensor_ages,
+                current_time,
+            )
+            if blocker is not None:
+                return blocker
+
+            aligned, invalid_sensor = self._build_aligned_features(
+                charger_id,
+                charger_cache,
+            )
+            if invalid_sensor is not None:
+                return AlignmentUpdate(
+                    status="waiting_for_all",
+                    missing_sensors=(invalid_sensor,),
+                    sensor_ages=sensor_ages,
+                )
+
+            last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
+            last_emitted.update(
+                {
+                    sensor: charger_cache[sensor].sequence
+                    for sensor in self.required_sensor_order
+                }
+            )
+
+            input_timestamps = {
+                sensor: charger_cache[sensor].event_timestamp
+                for sensor in self.required_sensor_order
+            }
+
+            return AlignmentUpdate(
+                status="aligned_emit",
+                features=aligned,
+                sensor_ages=sensor_ages,
+                input_timestamps=input_timestamps,
+                sample_timestamp=max(input_timestamps.values()),
+            )
+
+    def _alignment_blocker(
+        self,
+        charger_id: str,
+        charger_cache: dict[str, _SensorReading],
+        sensor_ages: dict[str, float],
+        current_time: float,
+    ) -> AlignmentUpdate | None:
+        """Return the first condition preventing a strict-barrier emission."""
+        missing_sensors = tuple(sorted(self.required_sensors - charger_cache.keys()))
+        if missing_sensors:
+            return AlignmentUpdate(
+                status="waiting_for_all",
+                missing_sensors=missing_sensors,
+                sensor_ages=sensor_ages,
+            )
+
+        stale_sensors = tuple(
+            sorted(
+                sensor
+                for sensor, age in sensor_ages.items()
+                if age > self.max_sensor_age_seconds
+                or current_time - charger_cache[sensor].event_timestamp
+                > self.observation_max_age_seconds
+            )
+        )
+        if stale_sensors:
+            return AlignmentUpdate(
+                status="stale_sensor_block",
+                stale_sensors=stale_sensors,
+                sensor_ages=sensor_ages,
+            )
+
+        timestamps = [
+            charger_cache[sensor].event_timestamp
+            for sensor in self.required_sensor_order
+        ]
+        if max(timestamps) - min(timestamps) > self.alignment_max_skew_seconds:
+            return AlignmentUpdate(
+                status="observation_skew_block", sensor_ages=sensor_ages
+            )
+
+        last_emitted = self._last_emitted_versions.setdefault(charger_id, {})
+        pending_sensors = tuple(
+            sensor
+            for sensor in self.required_sensor_order
+            if charger_cache[sensor].sequence <= last_emitted.get(sensor, 0)
+        )
+        if not pending_sensors:
+            return None
+
+        return AlignmentUpdate(
+            status="waiting_for_barrier",
+            pending_sensors=pending_sensors,
+            sensor_ages=sensor_ages,
+        )
+
+    def _observation_rejection(self, charger_id, sensor_type, timestamp, now):
+        if self.required_sensors and sensor_type not in self.required_sensors:
+            return "observation_unexpected_sensor"
+        if not math.isfinite(timestamp):
+            return "observation_nonfinite"
+        if now - timestamp > self.observation_max_age_seconds:
+            return "observation_too_old"
+        if timestamp - now > self.observation_future_tolerance_seconds:
+            return "observation_in_future"
+        charger_watermarks = self._watermarks.get(charger_id, {})
+        previous = charger_watermarks.get(sensor_type)
+        if previous is not None and timestamp <= previous:
+            return (
+                "observation_duplicate"
+                if timestamp == previous
+                else "observation_regression"
+            )
+        if (
+            charger_id not in self._watermarks
+            and len(self._watermarks) >= self.max_chargers
+        ):
+            return "observation_capacity"
+        if (
+            sensor_type not in charger_watermarks
+            and len(charger_watermarks) >= self._max_sensor_keys
+        ):
+            return "observation_capacity"
+        return None
+
+    def _build_aligned_features(
+        self,
+        charger_id: str,
+        charger_cache: dict[str, _SensorReading],
+    ) -> tuple[dict[str, float], str | None]:
+        """Extract the canonical numeric value for each required sensor."""
+        aligned: dict[str, float] = {}
+        for sensor in self.required_sensor_order:
+            latest = charger_cache[sensor].values
+            value = _extract_numeric_value(latest, sensor)
+            if value is None:
+                logger.debug(
+                    "event=radar.sensor_value_extract_failed "
+                    "sensor=%s charger_id=%s values=%s",
+                    sensor,
+                    charger_id,
+                    latest,
+                )
+                return aligned, sensor
+            aligned[sensor] = value
+        return aligned, None
+
+    def _collect_sensor_ages(
+        self, charger_cache: dict[str, _SensorReading], current_time: float
+    ) -> dict[str, float]:
+        """Collect age in seconds for each required sensor that has a cached value."""
+        ages: dict[str, float] = {}
+        for sensor in self.required_sensors:
+            sensor_entry = charger_cache.get(sensor)
+            if not sensor_entry:
+                continue
+            age = (
+                current_time - sensor_entry.received_at
+                if sensor_entry.received_monotonic is None
+                else self._monotonic() - sensor_entry.received_monotonic
+            )
+            ages[sensor] = max(age, 0.0)
+        return ages
+
+    def _cleanup_stale_entries(self, current_time: float) -> None:
+        """Remove stale cache entries based on TTL.
+
+        Must be called while holding the lock.
+        """
+        stale_chargers: list[str] = []
+        stale_sensor_entries = 0
+
+        for charger_id, sensors in self._readings_by_charger.items():
+            stale_sensors = [
+                sensor_name
+                for sensor_name, sensor_data in sensors.items()
+                if current_time - sensor_data.received_at > self.ttl_seconds
+            ]
+            for sensor_name in stale_sensors:
+                stale_sensor_entries += 1
+                del sensors[sensor_name]
+
+            if not sensors:
+                stale_chargers.append(charger_id)
+
+        # Remove stale entries
+        for charger_id in stale_chargers:
+            del self._readings_by_charger[charger_id]
+            self._last_emitted_versions.pop(charger_id, None)
+
+        if stale_sensor_entries or stale_chargers:
+            logger.debug(
+                "Cleaned stale sensor cache entries",
+                extra={
+                    "stale_sensor_entries": stale_sensor_entries,
+                    "stale_chargers": len(stale_chargers),
+                },
+            )
+
+        # Enforce max chargers limit by removing oldest entries
+        if len(self._readings_by_charger) > self.max_chargers:
+            self._evict_oldest_entries()
+
+    def _evict_oldest_entries(self) -> None:
+        """Evict oldest entries when max_chargers limit is exceeded.
+
+        Must be called while holding the lock.
+        """
+        # Build list of (charger_id, latest receipt timestamp)
+        charger_times: list[tuple[str, float]] = []
+        for charger_id, sensors in self._readings_by_charger.items():
+            latest_ts = max(
+                (sensor.received_at for sensor in sensors.values()),
+                default=0,
+            )
+            charger_times.append((charger_id, latest_ts))
+
+        # Sort by timestamp (oldest first)
+        charger_times.sort(key=lambda x: x[1])
+
+        # Remove oldest entries to get under limit
+        entries_to_remove = len(self._readings_by_charger) - self.max_chargers
+        for i in range(entries_to_remove):
+            charger_id = charger_times[i][0]
+            del self._readings_by_charger[charger_id]
+            self._last_emitted_versions.pop(charger_id, None)
+
+        logger.warning(
+            "event=radar.sensor_cache_evicted count=%s max_chargers=%s",
+            entries_to_remove,
+            self.max_chargers,
+        )
+
+    def export_watermarks(self) -> dict[str, dict[str, float]]:
+        with self._lock:
+            return {key: dict(values) for key, values in self._watermarks.items()}
+
+    def restore_watermarks(self, payload: dict[str, dict[str, float]]) -> None:
+        watermarks = TypeAdapter(dict[str, dict[str, FiniteFloat]]).validate_python(
+            payload
+        )
+        with self._lock:
+            merged = {key: dict(values) for key, values in self._watermarks.items()}
+            for charger, sensors in watermarks.items():
+                current = merged.setdefault(charger, {})
+                for sensor, timestamp in sensors.items():
+                    current[sensor] = max(timestamp, current.get(sensor, timestamp))
+            if len(merged) > self.max_chargers or any(
+                len(values) > self._max_sensor_keys for values in merged.values()
+            ):
+                raise ValueError(
+                    "Observation watermark checkpoint exceeds cache capacity"
+                )
+            self._watermarks = merged
+            self._readings_by_charger.clear()
+            self._last_emitted_versions.clear()
+
+
+AlignmentStatus = Literal[
+    "aligned_emit",
+    "stale_sensor_block",
+    "waiting_for_all",
+    "waiting_for_barrier",
+    "observation_rejected",
+    "observation_skew_block",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class AlignmentUpdate:
+    """Structured alignment outcome for observability and flow control."""
+
+    status: AlignmentStatus
+    features: dict[str, float] | None = None
+    missing_sensors: tuple[str, ...] = ()
+    pending_sensors: tuple[str, ...] = ()
+    stale_sensors: tuple[str, ...] = ()
+    sensor_ages: dict[str, float] = field(default_factory=dict)
+    input_timestamps: dict[str, float] = field(default_factory=dict)
+    sample_timestamp: float | None = None
+    rejection_reason: str | None = None

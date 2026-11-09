@@ -6,23 +6,23 @@ import sys
 from pathlib import Path
 
 FILES = {
-    "OFFKEY_PROD_VAULT": "vault.yml",
-    "OFFKEY_VAULT_PASSWORD": "vault-password",
-    "OFFKEY_PROD_INVENTORY": "hosts.yml",
-    "OFFKEY_DEPLOY_SSH_KEY": "deploy-key",
-    "OFFKEY_DEPLOY_KNOWN_HOSTS": "known-hosts",
+    "ABERRATION_PROD_VAULT": "vault.yml",
+    "ABERRATION_VAULT_PASSWORD": "vault-password",
+    "ABERRATION_PROD_INVENTORY": "hosts.yml",
+    "ABERRATION_DEPLOY_SSH_KEY": "deploy-key",
+    "ABERRATION_DEPLOY_KNOWN_HOSTS": "known-hosts",
 }
 
 
 def main():
-    directory = Path(os.environ["OFFKEY_DEPLOY_DIRECTORY"])
+    directory = Path(os.environ["ABERRATION_DEPLOY_DIRECTORY"])
     values = {name: os.environ.get(name, "") for name in FILES}
     if any(not value.strip() for value in values.values()):
         sys.exit(
             "Production environment setup is incomplete; see the GitHub setup guide."
         )
-    if not values["OFFKEY_PROD_VAULT"].startswith("$ANSIBLE_VAULT;"):
-        sys.exit("OFFKEY_PROD_VAULT must contain the encrypted Ansible vault.")
+    if not values["ABERRATION_PROD_VAULT"].startswith("$ANSIBLE_VAULT;"):
+        sys.exit("ABERRATION_PROD_VAULT must contain the encrypted Ansible vault.")
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     directory.chmod(0o700)
     for name, filename in FILES.items():

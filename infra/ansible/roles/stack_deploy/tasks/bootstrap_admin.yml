@@ -9,7 +9,7 @@
   command:
     argv: >-
       {{ ['docker', 'exec', svc_container, '/app/bin/python',
-          '-m', 'off_key_tactic_middleware.bootstrap_admin', '--send-email']
+          '-m', 'aberration_tactic_middleware.bootstrap_admin', '--send-email']
          + (['--resend'] if bootstrap_admin_resend | default(false) | bool else []) }}
   delegate_to: "{{ svc_node }}"
   register: administrator_setup

@@ -2,12 +2,12 @@
 
 from datetime import UTC, datetime
 
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_mqtt_proxy.client.models import MQTTMessage
+from aberration_mqtt_proxy.client.models import MQTTMessage
 
 
 def runtime_catalog(mode="sample", kind="number"):

@@ -4,14 +4,14 @@ import ast
 import re
 from pathlib import Path
 
-import off_key_api_gateway
+import aberration_api_gateway
 import pytest
-from off_key_tactic_middleware.main import create_app
+from aberration_tactic_middleware.main import create_app
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.runtime_cache import reset_runtime_caches_for_tests
 
-GATEWAY = Path(off_key_api_gateway.__file__).parent
+GATEWAY = Path(aberration_api_gateway.__file__).parent
 # Call name -> (index of the method argument, index and keyword of the path
 # argument, default path, TACTIC prefix the helper adds).
 CALL_SHAPES = {
@@ -97,7 +97,7 @@ def tactic_routes():
     with pytest.MonkeyPatch.context() as monkeypatch:
         set_environment(monkeypatch, environment)
         monkeypatch.setattr(
-            "off_key_core.config.env.load_dotenv", lambda *args, **kwargs: False
+            "aberration_core.config.env.load_dotenv", lambda *args, **kwargs: False
         )
         reset_runtime_caches_for_tests()
         app = create_app()

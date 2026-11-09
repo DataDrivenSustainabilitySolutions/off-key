@@ -15,7 +15,7 @@ private recovery files while completing the cutover.
 
 ## 2. Create the production environment
 
-In **off-key → Settings → Environments**, create **production**.
+In **aberration → Settings → Environments**, create **production**.
 Select deployment branches and allow **main only**. Leave required reviewers off
 for the agreed automatic deployment model. Under environment variables add
 `AUTO_DEPLOY_ENABLED` with value `false`. This is the off switch; automatic releases
@@ -27,11 +27,11 @@ Under that environment's **Secrets**, create these exact names:
 
 | Secret | What to paste |
 | --- | --- |
-| `OFFKEY_PROD_VAULT` | The complete existing **encrypted** production `vault.yml`, starting with `$ANSIBLE_VAULT;`. Paste raw text, without base64. |
-| `OFFKEY_VAULT_PASSWORD` | The password that unlocks that vault. |
-| `OFFKEY_PROD_INVENTORY` | A portable production `hosts.yml`, based on the example in `infra/ansible/inventories/prod/`. |
-| `OFFKEY_DEPLOY_SSH_KEY` | A dedicated deployment private SSH key. |
-| `OFFKEY_DEPLOY_KNOWN_HOSTS` | Verified SSH host keys for every inventory address and port. |
+| `ABERRATION_PROD_VAULT` | The complete existing **encrypted** production `vault.yml`, starting with `$ANSIBLE_VAULT;`. Paste raw text, without base64. |
+| `ABERRATION_VAULT_PASSWORD` | The password that unlocks that vault. |
+| `ABERRATION_PROD_INVENTORY` | A portable production `hosts.yml`, based on the example in `infra/ansible/inventories/prod/`. |
+| `ABERRATION_DEPLOY_SSH_KEY` | A dedicated deployment private SSH key. |
+| `ABERRATION_DEPLOY_KNOWN_HOSTS` | Verified SSH host keys for every inventory address and port. |
 | `TS_OAUTH_CLIENT_ID` | The management Tailscale federated identity client ID from step 5. |
 | `TS_AUDIENCE` | Its audience from step 5. |
 
@@ -50,13 +50,13 @@ not a system for downloading secrets back to a new laptop.
 
 The workflow uses its temporary `GITHUB_TOKEN` for GHCR; it does not need a new PAT.
 For existing private packages, check **Package settings → Manage Actions access**
-and grant **off-key** read access. Keep the existing vault registry credential only
+and grant **aberration** read access. Keep the existing vault registry credential only
 for direct local recovery until you deliberately replace it.
 
 ## 4. Authorize SSH and verify the locks on the servers
 
 Generate a dedicated Ed25519 key, for example with `ssh-keygen -t ed25519 -f
-~/.ssh/offkey-deploy`. Store the private key in the environment secret. Add its
+~/.ssh/aberration-deploy`. Store the private key in the environment secret. Add its
 public key to each existing deployment user's `authorized_keys`. These users need
 Docker access and the existing noninteractive sudo privileges used by Ansible.
 Keep your personal recovery key; remove neither working access nor the broker route identity.
@@ -69,7 +69,7 @@ A bare `ssh-keyscan` is insufficient verification. Nondefault SSH ports use
 
 ## 5. Let the robot reach the servers through Tailscale
 
-In the **management** tailnet, create `tag:offkey-ci`. Create a federated identity
+In the **management** tailnet, create `tag:aberration-ci`. Create a federated identity
 using GitHub's OIDC issuer `https://token.actions.githubusercontent.com`, the
 `auth_keys` scope, and permission to create ephemeral devices with that tag.
 Restrict trust to this repository's **production** environment and the deployment
@@ -77,9 +77,9 @@ workflow on **main**. Use GitHub's numeric repository/owner IDs as additional
 immutable claims where supported. Copy the client ID and audience into step 3.
 
 A GitHub environment changes the default subject to
-`repo:DataDrivenSustainabilitySolutions/off-key:environment:production`.
+`repo:DataDrivenSustainabilitySolutions/aberration:environment:production`.
 Also constrain the repository, `ref` (`refs/heads/main`) and `workflow_ref`
-(`DataDrivenSustainabilitySolutions/off-key/.github/workflows/deploy-production.yml@refs/heads/main`)
+(`DataDrivenSustainabilitySolutions/aberration/.github/workflows/deploy-production.yml@refs/heads/main`)
 claims in the federated identity. Do not configure trust for every repository or PR.
 
 Give that tag ordinary network access to **only** the actual deployment addresses:
@@ -88,10 +88,10 @@ merge this into your existing policy using your real destination addresses:
 
 ```json
 {
-  "tagOwners": {"tag:offkey-ci": ["autogroup:admin"]},
+  "tagOwners": {"tag:aberration-ci": ["autogroup:admin"]},
   "grants": [
-    {"src": ["tag:offkey-ci"], "dst": ["100.100.10.1"], "ip": ["tcp:22"]},
-    {"src": ["tag:offkey-ci"], "dst": ["100.100.10.2", "100.100.10.3"], "ip": ["tcp:2222"]}
+    {"src": ["tag:aberration-ci"], "dst": ["100.100.10.1"], "ip": ["tcp:22"]},
+    {"src": ["tag:aberration-ci"], "dst": ["100.100.10.2", "100.100.10.3"], "ip": ["tcp:2222"]}
   ]
 }
 ```
@@ -131,7 +131,7 @@ monitors with fresh calibration. Original telemetry and evidence stay in the dat
 
 Watch the workflow result, then check the website, login, Sources and monitor
 status yourself. Quiet chargers may show waiting for data. On the manager,
-`/opt/stacks/off-key/release.json` must name this commit, and
+`/opt/stacks/aberration/release.json` must name this commit, and
 `release-maintenance.json` must be gone. The runtime database operation must be
 complete. A failure leaves the last verified release unchanged; use the recovery
 runbook and retry the same SHA before attempting another release.
@@ -150,10 +150,10 @@ GHCR versions it would delete. Once a listing looks right, add the repository va
 ([Image retention](production.md#image-retention)).
 
 After this cutover is verified and your independent recovery material is safe,
-archive the old private **off-key-infra** repository. Its history and private
+archive the old private **aberration-infra** repository. Its history and private
 university/vendor notes stay private; they are not imported into public Git history.
 
-For another laptop, clone off-key and use `make deploy-prod REVISION=<tested SHA>`
+For another laptop, clone aberration and use `make deploy-prod REVISION=<tested SHA>`
 to dispatch GitHub. No local production environment files are needed for normal CD.
 Changing live configuration means updating the encrypted vault/inventory environment
 secrets and manually dispatching a tested release; secret edits alone do not trigger CD.

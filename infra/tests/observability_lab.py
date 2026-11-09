@@ -81,7 +81,7 @@ class Lab:
     def __init__(self, identity):
         self.outer = Docker()
         self.identity = identity
-        self.network = f"offkey-obs-{identity}"
+        self.network = f"aberration-obs-{identity}"
         self.containers = []
         self.engines = {}
         self.image_tags = {}
@@ -96,7 +96,7 @@ class Lab:
             "network",
             "create",
             "--label",
-            f"off-key.observability-test={self.identity}",
+            f"aberration.observability-test={self.identity}",
             self.network,
         )
         for suffix, memory, cpus in (
@@ -114,7 +114,7 @@ class Lab:
                 "--hostname",
                 name,
                 "--label",
-                f"off-key.observability-test={self.identity}",
+                f"aberration.observability-test={self.identity}",
                 "--network",
                 self.network,
                 "--memory",
@@ -180,7 +180,7 @@ class Lab:
                 except RuntimeError:
                     self.outer("pull", image, timeout=240)
                     metadata = self.outer.json("image", "inspect", image)[0]
-                tag = f"offkey-observability-test/{self.identity}-{len(self.image_tags)}:verified"
+                tag = f"aberration-observability-test/{self.identity}-{len(self.image_tags)}:verified"
                 self.outer("image", "tag", image, tag)
                 self.image_tags[image] = tag
                 self.content_ids[image] = metadata["Id"]
@@ -219,7 +219,9 @@ class Lab:
         for name in reversed(self.containers):
             metadata = self.outer.json("inspect", name)[0]
             if (
-                metadata["Config"].get("Labels", {}).get("off-key.observability-test")
+                metadata["Config"]
+                .get("Labels", {})
+                .get("aberration.observability-test")
                 != self.identity
             ):
                 raise RuntimeError(

@@ -1,6 +1,21 @@
 ---
 # Runs on the manager node only. Rendering is shared with offline validation.
 
+- name: Reject a second production stack before the identity cutover
+  command:
+    argv: [docker, service, ls, --quiet, --filter, label=com.docker.stack.namespace=off-key]
+  register: legacy_stack_services
+  changed_when: false
+  when: stack_name == 'aberration'
+
+- name: Require the documented offline state migration
+  assert:
+    that: legacy_stack_services.stdout | trim == ''
+    fail_msg: >-
+      The previous production stack still exists. Complete docs/operations/rename-cutover.md
+      before deploying aberration; two stacks must never write the same data.
+  when: stack_name == 'aberration'
+
 - name: Identify the production release before changing the stack
   include_tasks: release.yml
 

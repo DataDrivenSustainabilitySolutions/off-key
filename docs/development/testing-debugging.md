@@ -41,7 +41,7 @@ attributes are typed.
 
 ### RADAR production integration
 
-The `radar` job of the [CI workflow](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/workflows/ci.yml)
+The `radar` job of the [CI workflow](https://github.com/DataDrivenSustainabilitySolutions/aberration/blob/main/.github/workflows/ci.yml)
 runs as listed in [Contributing and CI](contributing-ci.md#current-automated-checks). It tests
 this run's production RADAR image (the `images` job's verified build, or the digest
 `publish` pushed on `main`), uses Python 3.14 and frozen dependencies,
@@ -64,7 +64,7 @@ Lanes select their tests by marker, never by file list:
 | `deployment` | Deployment smoke rehearsal | Module `pytestmark` |
 
 Each lane fails on an empty report or a skipped case
-([`require_executed_tests.py`](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/.github/scripts/require_executed_tests.py)).
+([`require_executed_tests.py`](https://github.com/DataDrivenSustainabilitySolutions/aberration/blob/main/.github/scripts/require_executed_tests.py)).
 `test_suite_layout.py` fails when a module reads a lane's environment gate
 without carrying that lane's marker, so a new integration test cannot silently
 skip everywhere.
@@ -77,11 +77,11 @@ The workflow contains the server bootstrap and readiness commands. Then run:
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen --python 3.14
 export TEST_RADAR_DATABASE_IMAGE="$(python3 .github/scripts/release_image.py postgres)"
-export TEST_RADAR_SWARM_IMAGE=off-key-radar-integration:local
+export TEST_RADAR_SWARM_IMAGE=aberration-radar-integration:local
 export TEST_RADAR_DOCKER=1
 docker pull eclipse-mosquitto:2.0
 docker build -f backend/Dockerfile -t "$TEST_RADAR_SWARM_IMAGE" \
-  --build-arg SERVICE_NAME=off-key-mqtt-radar \
+  --build-arg SERVICE_NAME=aberration-mqtt-radar \
   --build-arg SERVICE_ROOT=services/mqtt/radar backend
 uv run --frozen --project backend python -m pytest -q --tb=short -m radar_integration
 ```

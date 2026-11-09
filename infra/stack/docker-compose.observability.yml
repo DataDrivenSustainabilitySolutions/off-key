@@ -1,7 +1,7 @@
 # Worker-only observability. Application deployment and this component converge separately.
 services:
   alloy-docker:
-    labels: &component {off-key.component: observability}
+    labels: &component {aberration.component: observability}
     image: "${SOCKET_PROXY_IMAGE:?pin the Docker API proxy image}"
     entrypoint: [haproxy, -W, -db, -f, /etc/haproxy/observability.cfg]
     user: "0:0"
@@ -12,14 +12,14 @@ services:
         target: /etc/haproxy/observability.cfg
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - alloy-docker-socket:/run/offkey-docker
+      - alloy-docker-socket:/run/aberration-docker
     networks: [observability-network]
     logging: &bounded-logs
       driver: json-file
       options: {max-size: 5m, max-file: "3"}
     deploy:
       mode: global
-      labels: {off-key.component: observability}
+      labels: {aberration.component: observability}
       placement:
         constraints: [node.role == worker]
       resources:
@@ -57,13 +57,13 @@ services:
       - source: alloy_config
         target: /etc/alloy/config.alloy
     volumes:
-      - alloy-docker-socket:/run/offkey-docker:ro
+      - alloy-docker-socket:/run/aberration-docker:ro
       - alloy-worker-data:/var/lib/alloy/data
     networks: [observability-network]
     logging: *bounded-logs
     deploy:
       mode: global
-      labels: {off-key.component: observability}
+      labels: {aberration.component: observability}
       placement:
         constraints: [node.role == worker]
       resources:
@@ -94,7 +94,7 @@ services:
       # This is a single stateful task. Resolve its address directly inside the
       # overlay; there is no published port or load-balancing requirement.
       endpoint_mode: dnsrr
-      labels: {off-key.component: observability}
+      labels: {aberration.component: observability}
       placement:
         constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]
       resources:
@@ -136,7 +136,7 @@ services:
       start_period: 90s
     deploy:
       replicas: 1
-      labels: {off-key.component: observability}
+      labels: {aberration.component: observability}
       placement:
         constraints: [node.role == worker, "node.hostname == ${OBSERVABILITY_NODE:?select the data worker}"]
       resources:
@@ -156,7 +156,7 @@ services:
       - >-
         while :; do printf '%s\n' '{"event":"observability_canary"}'; sleep 30; done
     hostname: "{{.Node.Hostname}}"
-    labels: {off-key.component: canary}
+    labels: {aberration.component: canary}
     user: "65534:65534"
     read_only: true
     cap_drop: [ALL]

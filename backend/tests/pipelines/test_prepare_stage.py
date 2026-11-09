@@ -7,35 +7,35 @@ from itertools import pairwise
 import numpy as np
 import pytest
 from aberrant.compose import INPUT, GraphNode
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
     PipelineRuntimeState,
 )
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import (
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.detector import (
     StaticConformalDetectionService,
     StaticConformalState,
 )
-from off_key_mqtt_radar.execution_errors import ObservationRejected, StepRejected
-from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
-from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
-from off_key_mqtt_radar.pipelines.components import Prepared
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.prepare import (
+from aberration_mqtt_radar.execution_errors import ObservationRejected, StepRejected
+from aberration_mqtt_radar.health_monitor import HealthMonitor
+from aberration_mqtt_radar.pipelines.adapters import adaptive_graph
+from aberration_mqtt_radar.pipelines.batch import BatchFeatureGraph
+from aberration_mqtt_radar.pipelines.components import Prepared
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.prepare import (
     PrepareRejected,
     PrepareStage,
     Withheld,
 )
-from off_key_mqtt_radar.pipelines.resources import estimate_resources
-from off_key_mqtt_radar.preflight import preflight
+from aberration_mqtt_radar.pipelines.resources import estimate_resources
+from aberration_mqtt_radar.preflight import preflight
 from sklearn.preprocessing import StandardScaler
 
 from tests.support.adaptive_pipeline import adaptive_pipeline_config

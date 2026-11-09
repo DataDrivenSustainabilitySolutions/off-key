@@ -1,8 +1,8 @@
 # ABERRANT 1.4 configuration integration
 
 The cross-repository ExecPlan is maintained in ABERRANT at
-`execplans/aberrant-1.4-off-key.md` (PRs #103 and #104). This coordinated change
-keeps off-key's Python requirements, supported models, presets, resource limits,
+`execplans/aberrant-1.4-aberration.md` (PRs #103 and #104). This coordinated change
+keeps aberration's Python requirements, supported models, presets, resource limits,
 feature binding, calibration and deployment policy. The generated offline catalog
 continues to isolate the control plane from numerical imports.
 
@@ -61,7 +61,7 @@ lane passed all 16 journeys, including nested KNN correction/publication, adjace
 and null/default editing at desktop and mobile widths. Visual review also checks
 the rendered controls: shared editor colours use the app's HSL tokens and browser
 assertions require visible input borders. The final CI status and retained
-browser/cutover evidence are linked from off-key PR #384.
+browser/cutover evidence are linked from aberration PR #384.
 
 The three real restore/rollback/return cutovers passed graph scoring, preserved
 history and binding checks, discovery-field parity and four backend/browser

@@ -3,8 +3,8 @@
 from copy import deepcopy
 
 import pytest
-from off_key_core.db.catalogue_v1 import adapt_ambibox_catalog, legacy_stream_id
-from off_key_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.db.catalogue_v1 import adapt_ambibox_catalog, legacy_stream_id
+from aberration_core.schemas.collection_policy import CollectionPolicy
 from pydantic import ValidationError
 
 from tests.support.legacy_catalogue import LegacyCatalog, legacy_catalog

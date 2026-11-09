@@ -1,6 +1,6 @@
 // Workers only. Discovery is scoped before targets or retained logs are read.
 discovery.docker "stack" {
-  host             = "unix:///run/offkey-docker/docker.sock"
+  host             = "unix:///run/aberration-docker/docker.sock"
   refresh_interval = "15s"
   filter {
     name   = "label"
@@ -11,7 +11,7 @@ discovery.docker "stack" {
 // TACTIC's dynamic services have no stack namespace. Require both this stack's
 // private network and its immutable RADAR image, including for older releases.
 discovery.docker "radar" {
-  host             = "unix:///run/offkey-docker/docker.sock"
+  host             = "unix:///run/aberration-docker/docker.sock"
   refresh_interval = "15s"
   filter {
     name   = "network"
@@ -49,14 +49,14 @@ discovery.relabel "logs" {
   }
   // Do not recursively collect collector error traffic.
   rule {
-    source_labels = ["__meta_docker_container_label_off_key_component"]
+    source_labels = ["__meta_docker_container_label_aberration_component"]
     regex         = "observability"
     action        = "drop"
   }
 }
 
 loki.source.docker "logs" {
-  host          = "unix:///run/offkey-docker/docker.sock"
+  host          = "unix:///run/aberration-docker/docker.sock"
   targets       = discovery.relabel.logs.output
   forward_to    = [loki.write.stack.receiver]
 }

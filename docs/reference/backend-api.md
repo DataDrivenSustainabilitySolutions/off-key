@@ -376,7 +376,7 @@ uploaded series has none. The template has no published revision yet.
 
 ## TACTIC API — `/api/v1`
 
-All business routes require `X-Off-Key-Service-Key`; collection, membership and
+All business routes require `X-Aberration-Service-Key`; collection, membership and
 role routes additionally validate the end-user bearer token and its permissions. TACTIC is private.
 Health and readiness remain available without this service credential.
 
@@ -441,7 +441,7 @@ Health and readiness remain available without this service credential.
 | --- | --- | --- |
 | `GET` | `/models/` | List the detectors shipped in RADAR, optionally filtered by `strategy` |
 
-The catalogue is served from code (`off_key_core.models`). Adding a model means
+The catalogue is served from code (`aberration_core.models`). Adding a model means
 shipping its implementation and catalogue entry.
 
 ### Middleware health

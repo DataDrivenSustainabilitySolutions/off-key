@@ -21,7 +21,7 @@ APPLICATION_IMAGES = {
     "mqtt_radar",
     "db_sync",
 }
-REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
+REPOSITORY = "DataDrivenSustainabilitySolutions/aberration"
 # CI runs every release gate, publishes the images and rehearses them, so its
 # success on a main push is what makes a commit releasable.
 RELEASE_WORKFLOW = "ci.yml"
@@ -150,7 +150,7 @@ def tested_release(revision):
     run = main_runs(RELEASE_WORKFLOW, revision).get(revision)
     if not run or run["status"] != "completed" or run["conclusion"] != "success":
         raise ValueError("No successful production rehearsal for this main revision")
-    with tempfile.TemporaryDirectory(prefix="offkey-tested-release-") as directory:
+    with tempfile.TemporaryDirectory(prefix="aberration-tested-release-") as directory:
         subprocess.run(
             [
                 "gh",

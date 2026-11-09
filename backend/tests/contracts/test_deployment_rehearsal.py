@@ -27,7 +27,7 @@ from tests.support.integration_catalogue import (
 pytestmark = [
     pytest.mark.deployment,
     pytest.mark.skipif(
-        os.getenv("OFFKEY_DEPLOYMENT_REHEARSAL") != "1",
+        os.getenv("ABERRATION_DEPLOYMENT_REHEARSAL") != "1",
         reason="requires the disposable production Swarm rehearsal",
     ),
 ]
@@ -393,7 +393,7 @@ def assert_graph_restored(client, entity, saved, workers, release):
 
 
 def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once():
-    directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
+    directory = Path(os.environ["ABERRATION_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
     with httpx.Client(

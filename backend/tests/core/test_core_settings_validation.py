@@ -1,8 +1,8 @@
 import pytest
-from off_key_core.config.database import DatabaseSettings
-from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.runtime import get_runtime_settings
-from off_key_core.config.validation import validate_environment, validate_settings
+from aberration_core.config.database import DatabaseSettings
+from aberration_core.config.logging import get_logging_settings
+from aberration_core.config.runtime import get_runtime_settings
+from aberration_core.config.validation import validate_environment, validate_settings
 from pydantic import BaseModel, ValidationError
 
 

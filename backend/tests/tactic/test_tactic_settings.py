@@ -1,4 +1,4 @@
-from off_key_tactic_middleware.config import (
+from aberration_tactic_middleware.config import (
     RadarContainerRuntimeSettings,
     RadarWorkloadLifecycle,
     TacticSettings,
@@ -14,12 +14,12 @@ def test_split_constraints_parses_csv():
 
 def test_tactic_settings_expose_radar_workload_image_and_startup_grace():
     settings = TacticSettings(
-        TACTIC_RADAR_IMAGE="registry.example/off-key-radar:2026.05.19",
+        TACTIC_RADAR_IMAGE="registry.example/aberration-radar:2026.05.19",
         TACTIC_RADAR_STARTUP_GRACE_SECONDS=7.5,
         TACTIC_TERMINAL_SERVICE_RETENTION_HOURS=12,
     )
 
-    assert settings.config.radar_image == "registry.example/off-key-radar:2026.05.19"
+    assert settings.config.radar_image == "registry.example/aberration-radar:2026.05.19"
     assert settings.config.radar_startup_grace_seconds == 7.5
     assert settings.config.terminal_service_retention_hours == 12
 
@@ -131,7 +131,7 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
 
 def test_every_tactic_setting_maps_to_one_config_field():
     """Settings follow <prefix><FIELD>; exceptions are named here with a reason."""
-    from off_key_tactic_middleware.config.config import (
+    from aberration_tactic_middleware.config.config import (
         DockerConfig,
         RadarDefaultsConfig,
         TacticConfig,

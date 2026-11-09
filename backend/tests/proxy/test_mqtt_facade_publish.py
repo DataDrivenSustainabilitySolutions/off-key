@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 import paho.mqtt.client as mqtt
 import pytest
-from off_key_mqtt_proxy.client import facade
-from off_key_mqtt_proxy.client.facade import MQTTClient
+from aberration_mqtt_proxy.client import facade
+from aberration_mqtt_proxy.client.facade import MQTTClient
 
 from tests.support.mqtt import proxy_config
 

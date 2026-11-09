@@ -13,7 +13,7 @@
 
 - name: Identify the separately managed observability services
   command:
-    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}", --filter, label=off-key.component=observability]
+    argv: [docker, service, ls, --format, '{% raw %}{{.Name}}{% endraw %}', --filter, "label=com.docker.stack.namespace={{ stack_name }}", --filter, label=aberration.component=observability]
   register: release_observability_services
   changed_when: false
 

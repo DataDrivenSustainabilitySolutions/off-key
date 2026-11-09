@@ -1,6 +1,6 @@
 """Every MQTT_* proxy setting reaches its runtime config field."""
 
-from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
+from aberration_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
 
 OVERRIDES = {
     "MQTT_TELEMETRY_ENABLED": False,

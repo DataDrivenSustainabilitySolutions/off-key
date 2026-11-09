@@ -8,7 +8,7 @@ ROUTERS = (
     / "middleware"
     / "tactic"
     / "src"
-    / "off_key_tactic_middleware"
+    / "aberration_tactic_middleware"
     / "api"
     / "v1"
 )

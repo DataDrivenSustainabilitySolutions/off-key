@@ -1,5 +1,5 @@
 import pytest
-from off_key_mqtt_radar.config.runtime import (
+from aberration_mqtt_radar.config.runtime import (
     RadarCheckpointSettings,
     clear_radar_runtime_settings_cache,
     get_radar_checkpoint_settings,

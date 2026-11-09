@@ -44,7 +44,7 @@ observability_grafana_environment:
   GF_AUTH_ANONYMOUS_ENABLED: 'false'
   GF_USERS_ALLOW_SIGN_UP: 'false'
   GF_USERS_AUTO_ASSIGN_ORG_ROLE: Editor
-  GF_SECURITY_ADMIN_USER: offkey_local_admin
+  GF_SECURITY_ADMIN_USER: aberration_local_admin
   GF_SECURITY_COOKIE_SECURE: 'true'
   GF_SECURITY_DISABLE_GRAVATAR: 'true'
   GF_SERVER_ROOT_URL: "https://grafana.{{ ingress_base_domain }}/"

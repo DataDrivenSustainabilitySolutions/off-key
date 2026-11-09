@@ -3,14 +3,14 @@
 import uuid
 
 import pytest
-from fastapi import FastAPI, Response
-from off_key_core.config.logging import get_logging_settings
-from off_key_core.config.logs import (
+from aberration_core.config.logging import get_logging_settings
+from aberration_core.config.logs import (
     CorrelationIdMiddleware,
     correlation_headers,
     get_correlation_id,
 )
-from off_key_tactic_middleware.main import create_app
+from aberration_tactic_middleware.main import create_app
+from fastapi import FastAPI, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from tests.support.http import asgi_client

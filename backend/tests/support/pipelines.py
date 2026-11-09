@@ -1,12 +1,15 @@
 """Small executable pipelines for tests that need a real bound execution."""
 
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     pipeline_catalog,
 )
-from off_key_core.schemas.pipelines import PipelineDefinition, PipelineExecutionConfig
-from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+from aberration_core.schemas.pipelines import (
+    PipelineDefinition,
+    PipelineExecutionConfig,
+)
+from aberration_core.utils.mqtt_topics import derive_monitoring_sensor_keys
 
 
 def minimal_static_execution(topic="telemetry/entity/a"):

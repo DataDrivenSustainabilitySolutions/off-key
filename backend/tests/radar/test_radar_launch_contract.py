@@ -10,17 +10,20 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from off_key_core.schemas.radar import RadarStartConfig
-from off_key_mqtt_radar.admission import RadarAdmissionSettings
-from off_key_mqtt_radar.config.config import RadarSettings
-from off_key_mqtt_radar.config.runtime import (
+from aberration_core.schemas.radar import RadarStartConfig
+from aberration_mqtt_radar.admission import RadarAdmissionSettings
+from aberration_mqtt_radar.config.config import RadarSettings
+from aberration_mqtt_radar.config.runtime import (
     RadarCheckpointSettings,
     RadarDatabaseSettings,
     RadarRuntimeFileSettings,
 )
-from off_key_mqtt_radar.preflight import PreflightSettings
-from off_key_tactic_middleware.config.config import RadarDefaultsConfig, TacticSettings
-from off_key_tactic_middleware.services.orchestration.radar_environment import (
+from aberration_mqtt_radar.preflight import PreflightSettings
+from aberration_tactic_middleware.config.config import (
+    RadarDefaultsConfig,
+    TacticSettings,
+)
+from aberration_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_config_fingerprint,
     build_radar_environment,
 )
@@ -29,7 +32,7 @@ from pydantic import SecretStr
 from tests.support.form_pipeline import form_launch
 from tests.support.pipelines import minimal_static_execution
 
-MODULE = "off_key_tactic_middleware.services.orchestration.radar_environment"
+MODULE = "aberration_tactic_middleware.services.orchestration.radar_environment"
 RADAR_SETTINGS = (
     RadarSettings,
     RadarDatabaseSettings,

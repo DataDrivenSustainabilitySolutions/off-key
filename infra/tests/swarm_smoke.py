@@ -33,7 +33,7 @@ from compile_stack import compile_stack, select_component
 from pin_release import APPLICATION_IMAGES, pin
 
 PROJECT = ROOT.parent
-STACK = "offkey-smoke"
+STACK = "aberration-smoke"
 
 
 def wait(probe, description, timeout=300):
@@ -154,7 +154,7 @@ def images(release, revision):
                 timeout=60,
             )
         return
-    if os.getenv("OFFKEY_REHEARSAL_IMAGES") == "loaded":
+    if os.getenv("ABERRATION_REHEARSAL_IMAGES") == "loaded":
         # This run's image job built and exported them; the lane loaded and
         # verified their IDs before preparing the Swarm.
         push_loaded_images(release, revision)
@@ -195,7 +195,7 @@ def prepare(directory):
     release = json.loads(
         (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
     )["release"]
-    socket_proxy = os.getenv("OFFKEY_REHEARSAL_SOCKET_PROXY_IMAGE")
+    socket_proxy = os.getenv("ABERRATION_REHEARSAL_SOCKET_PROXY_IMAGE")
     if socket_proxy:
         if os.getenv("CI"):
             raise ValueError(
@@ -224,7 +224,7 @@ def prepare(directory):
         "-days",
         "2",
         "-subj",
-        "/CN=offkey-smoke-ca",
+        "/CN=aberration-smoke-ca",
         "-addext",
         "basicConstraints=critical,CA:TRUE",
         "-addext",
@@ -290,7 +290,7 @@ def prepare(directory):
         mail_ssl_tls="False",
         use_credentials="False",
         validate_certs="False",
-        email_from="offkey@example.com",
+        email_from="aberration@example.com",
         superuser_mail="admin@example.com",
         anomaly_alert_recipients="admin@example.com",
         access_token_expire_minutes="120",
@@ -355,7 +355,7 @@ def prepare(directory):
     }
     for service, port, published in (
         ("frontend", 5173, 5173),
-        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
+        ("api", 8000, int(os.getenv("ABERRATION_REHEARSAL_API_PORT", "8000"))),
         ("tactic", 8001, 8001),
         ("emqx-main", 8883, 8883),
         ("smtp-fixture", 8025, 8025),
@@ -448,14 +448,14 @@ def prepare(directory):
         container("tactic"),
         "/app/bin/python",
         "-m",
-        "off_key_tactic_middleware.bootstrap_admin",
+        "aberration_tactic_middleware.bootstrap_admin",
     ).stdout.splitlines()[-1]
     print(f"::add-mask::{invitation}", flush=True)
     (directory / "smoke.env").write_text(
         f"E2E_BOOTSTRAP_URL={invitation}\nSUPERUSER_MAIL=admin@example.com\n"
         "MQTT_SOURCE_URL=mqtt://localhost:1884\nMQTT_INGRESS_URL=mqtts://localhost:8883\n"
         "MAILPIT_BASE_URL=http://127.0.0.1:8025\n"
-        "E2E_MQTT_CA_FILE=/smoke/ca.crt\nE2E_MQTT_USERNAME=offkey-radar\n"
+        "E2E_MQTT_CA_FILE=/smoke/ca.crt\nE2E_MQTT_USERNAME=aberration-radar\n"
         f"E2E_MQTT_PASSWORD={inputs['mqtt_radar_password']}\nPLAYWRIGHT_BASE_URL=http://localhost:5173\n"
     )
     deploy(directory, "verify")

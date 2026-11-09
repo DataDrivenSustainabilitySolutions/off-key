@@ -3,10 +3,10 @@
 from itertools import pairwise
 
 import pytest
-from off_key_core.models.pipeline_formula import FormulaError, parse, written
-from off_key_core.models.pipeline_reports import bounded_validation_report
-from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
-from off_key_core.schemas.pipelines import PipelineDefinition
+from aberration_core.models.pipeline_formula import FormulaError, parse, written
+from aberration_core.models.pipeline_reports import bounded_validation_report
+from aberration_core.models.pipelines import compile_pipeline, validate_pipeline
+from aberration_core.schemas.pipelines import PipelineDefinition
 
 from tests.support.pipelines import branched
 

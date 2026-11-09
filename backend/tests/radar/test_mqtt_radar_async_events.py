@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import pytest_asyncio
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.models import MQTTMessage
-from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.models import MQTTMessage
+from aberration_mqtt_radar.mqtt_client import RadarMQTTClient
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.reasoncodes import ReasonCode
 
@@ -124,7 +124,9 @@ async def test_connect_completes_from_success_callback(config):
     paho_client.loop_start.side_effect = acknowledge_subscription
     client = RadarMQTTClient(config)
 
-    with patch("off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client):
+    with patch(
+        "aberration_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
+    ):
         await asyncio.wait_for(client._connect(), timeout=0.5)
 
     assert client.is_connected is True
@@ -144,7 +146,7 @@ async def test_connect_fails_from_refusal_callback(config):
 
     with (
         patch(
-            "off_key_mqtt_radar.mqtt_client.mqtt.Client",
+            "aberration_mqtt_radar.mqtt_client.mqtt.Client",
             return_value=paho_client,
         ),
         pytest.raises(RuntimeError, match="not authorized"),
@@ -164,7 +166,9 @@ async def test_local_subscribe_failure_never_marks_ready(config):
     )
     client = RadarMQTTClient(config)
     with (
-        patch("off_key_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client),
+        patch(
+            "aberration_mqtt_radar.mqtt_client.mqtt.Client", return_value=paho_client
+        ),
         pytest.raises(RuntimeError, match="SUBSCRIBE failed locally"),
     ):
         await client._connect()

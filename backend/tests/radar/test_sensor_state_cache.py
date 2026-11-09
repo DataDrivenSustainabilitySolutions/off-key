@@ -1,8 +1,8 @@
 """Tests for sensor alignment cache freshness gating."""
 
 import pytest
-from off_key_mqtt_radar import state_cache as state_cache_module
-from off_key_mqtt_radar.state_cache import SensorStateCache
+from aberration_mqtt_radar import state_cache as state_cache_module
+from aberration_mqtt_radar.state_cache import SensorStateCache
 
 
 def test_sensor_state_cache_blocks_stale_sensor_and_recovers(monkeypatch):

@@ -6,7 +6,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 
-COMPONENT = "off-key.component=observability"
+COMPONENT = "aberration.component=observability"
 
 
 def docker(*args):
@@ -30,7 +30,7 @@ def owned_services(stack):
         if (
             not spec["Name"].startswith(stack + "_")
             or labels.get("com.docker.stack.namespace") != stack
-            or labels.get("off-key.component") != "observability"
+            or labels.get("aberration.component") != "observability"
         ):
             raise ValueError("Refusing a service outside this observability component")
     return services

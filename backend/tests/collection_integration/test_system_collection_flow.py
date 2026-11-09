@@ -7,29 +7,31 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.models import CollectionState, Telemetry
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.collection_rules import (
+from aberration_core.db.collection_runtime import read_collection_runtime
+from aberration_core.db.models import CollectionState, Telemetry
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.collection_rules import (
     CollectionRuleEdit,
     CollectionRuleScope,
     SystemCollectionRuleChange,
 )
-from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_core.schemas.system_collection import SystemCollectionChange
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from off_key_mqtt_proxy import proxy as proxy_module
-from off_key_mqtt_proxy.config.config import MQTTSettings
-from off_key_mqtt_radar.topic_parser import TopicParser
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services.catalogue import (
+from aberration_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
+from aberration_core.schemas.system_collection import SystemCollectionChange
+from aberration_core.utils.mqtt_topics import TopicMetadataExtractor
+from aberration_mqtt_proxy import proxy as proxy_module
+from aberration_mqtt_proxy.config.config import MQTTSettings
+from aberration_mqtt_radar.topic_parser import TopicParser
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.services.catalogue import (
     system_collection as collection_module,
 )
-from off_key_tactic_middleware.services.catalogue import (
+from aberration_tactic_middleware.services.catalogue import (
     system_ingress as ingress_module,
 )
-from off_key_tactic_middleware.services.catalogue.system import SystemService
-from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
+from aberration_tactic_middleware.services.catalogue.system import SystemService
+from aberration_tactic_middleware.services.catalogue.system_live import (
+    SystemLiveService,
+)
 from paho.mqtt.client import CallbackAPIVersion, Client
 from paho.mqtt.publish import multiple, single
 from sqlalchemy import func, select

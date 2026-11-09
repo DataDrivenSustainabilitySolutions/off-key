@@ -226,4 +226,4 @@ stack_omitted_services: >-
   {{ [] if broker_route_enabled | bool else ['broker-route'] }}
 
 # Global Swarm config names; a second stack on the cluster gets its own.
-stack_config_prefix: "{{ '' if stack_name == 'off-key' else stack_name ~ '_' }}"
+stack_config_prefix: "{{ '' if stack_name == 'aberration' else stack_name ~ '_' }}"

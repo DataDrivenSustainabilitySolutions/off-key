@@ -24,7 +24,7 @@ permissions:
 jobs:
   eligibility:
     if: >-
-      github.repository == 'DataDrivenSustainabilitySolutions/off-key' &&
+      github.repository == 'DataDrivenSustainabilitySolutions/aberration' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.event == 'push' &&
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 60
     environment: production
     concurrency:
-      group: offkey-production
+      group: aberration-production
       cancel-in-progress: false
     permissions:
       contents: read
@@ -63,7 +63,7 @@ jobs:
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
-      OFFKEY_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
+      ABERRATION_RELEASE_REVISION: ${{ needs.eligibility.outputs.revision }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Select the private temporary configuration directory
-        run: echo "OFFKEY_DEPLOY_DIRECTORY=$RUNNER_TEMP/offkey-production" >> "$GITHUB_ENV"
+        run: echo "ABERRATION_DEPLOY_DIRECTORY=$RUNNER_TEMP/aberration-production" >> "$GITHUB_ENV"
       - name: Keep this workflow's reporting tools apart from the release checkout
         # The release checkout replaces these files, and a retry or rollback of an
         # older SHA may predate them; the steps below call the ones this workflow knows.
@@ -80,8 +80,8 @@ jobs:
           cp infra/scripts/failed_tasks.py infra/scripts/check_application.py infra/scripts/task_timings.py \
             infra/scripts/release_alert.py infra/ansible/retain-release-log.yml infra/ansible/validate-inventory.yml \
             "$RUNNER_TEMP/release-tools/"
-          echo "OFFKEY_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
-          echo "OFFKEY_RELEASE_OUTCOME=$RUNNER_TEMP/release-outcome" >> "$GITHUB_ENV"
+          echo "ABERRATION_RELEASE_TOOLS=$RUNNER_TEMP/release-tools" >> "$GITHUB_ENV"
+          echo "ABERRATION_RELEASE_OUTCOME=$RUNNER_TEMP/release-outcome" >> "$GITHUB_ENV"
       - name: Recheck eligibility after waiting for the deployment slot
         id: release
         env:
@@ -92,7 +92,7 @@ jobs:
             echo 'ready=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python3 infra/scripts/release_ready.py --revision "$OFFKEY_RELEASE_REVISION"
+          python3 infra/scripts/release_ready.py --revision "$ABERRATION_RELEASE_REVISION"
       - name: Check out the exact tested application and infrastructure commit
         if: steps.release.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,11 +103,11 @@ jobs:
       - name: Create private deployment configuration
         if: steps.release.outputs.ready == 'true'
         env:
-          OFFKEY_PROD_VAULT: ${{ secrets.OFFKEY_PROD_VAULT }}
-          OFFKEY_VAULT_PASSWORD: ${{ secrets.OFFKEY_VAULT_PASSWORD }}
-          OFFKEY_PROD_INVENTORY: ${{ secrets.OFFKEY_PROD_INVENTORY }}
-          OFFKEY_DEPLOY_SSH_KEY: ${{ secrets.OFFKEY_DEPLOY_SSH_KEY }}
-          OFFKEY_DEPLOY_KNOWN_HOSTS: ${{ secrets.OFFKEY_DEPLOY_KNOWN_HOSTS }}
+          ABERRATION_PROD_VAULT: ${{ secrets.ABERRATION_PROD_VAULT }}
+          ABERRATION_VAULT_PASSWORD: ${{ secrets.ABERRATION_VAULT_PASSWORD }}
+          ABERRATION_PROD_INVENTORY: ${{ secrets.ABERRATION_PROD_INVENTORY }}
+          ABERRATION_DEPLOY_SSH_KEY: ${{ secrets.ABERRATION_DEPLOY_SSH_KEY }}
+          ABERRATION_DEPLOY_KNOWN_HOSTS: ${{ secrets.ABERRATION_DEPLOY_KNOWN_HOSTS }}
         run: python3 infra/scripts/prepare_ci_secrets.py
       - name: Connect the ephemeral runner to the management tailnet
         if: steps.release.outputs.ready == 'true'
@@ -115,7 +115,7 @@ jobs:
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
-          tags: tag:offkey-ci
+          tags: tag:aberration-ci
           use-cache: 'false'
       - name: Set up the locked Ansible tooling
         if: steps.release.outputs.ready == 'true'
@@ -127,31 +127,31 @@ jobs:
         if: steps.release.outputs.ready == 'true'
         env:
           BOOTSTRAP: ${{ inputs.bootstrap || false }}
-          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/offkey-production/deploy-key
+          ANSIBLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/aberration-production/deploy-key
           # Replaces ansible.cfg's ssh_args, so it keeps their connection reuse: without it
           # every task opens a new SSH session through the tailnet.
-          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/offkey-production/known-hosts -o IdentitiesOnly=yes
+          ANSIBLE_SSH_ARGS: -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/aberration-production/known-hosts -o IdentitiesOnly=yes
           ANSIBLE_CALLBACKS_ENABLED: ansible.posix.profile_tasks
         run: |
           set -euo pipefail
           umask 077
           cd infra/ansible
           export ANSIBLE_CONFIG="$PWD/ansible.cfg"
-          readiness="$OFFKEY_DEPLOY_DIRECTORY/production-readiness"
+          readiness="$ABERRATION_DEPLOY_DIRECTORY/production-readiness"
           # Logs stay private; a failure prints only the names of the tasks and the
           # readiness check that failed, which the release issue repeats.
           failed() {
-            { echo "$1"; python3 "$OFFKEY_RELEASE_TOOLS/failed_tasks.py" "$2" --readiness "$readiness"; } | tee "$OFFKEY_RELEASE_OUTCOME/production.failed"
+            { echo "$1"; python3 "$ABERRATION_RELEASE_TOOLS/failed_tasks.py" "$2" --readiness "$readiness"; } | tee "$ABERRATION_RELEASE_OUTCOME/production.failed"
           }
           keep() {
-            uv run --frozen ansible-playbook "$OFFKEY_RELEASE_TOOLS/retain-release-log.yml" --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$OFFKEY_RELEASE_REVISION-production.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the manager.'
+            uv run --frozen ansible-playbook "$ABERRATION_RELEASE_TOOLS/retain-release-log.yml" --vault-password-file "$ABERRATION_DEPLOY_DIRECTORY/vault-password" -e "release_log=$1" -e "release_log_name=$(date -u +%Y%m%dT%H%M%SZ)-$ABERRATION_RELEASE_REVISION-production.log" > /dev/null 2>&1 || echo 'The private release log could not be kept on the manager.'
           }
-          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$OFFKEY_DEPLOY_DIRECTORY/deploy-needed" > "$OFFKEY_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { failed "Production preflight failed; check private SSH/configuration and the setup guide." "$OFFKEY_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$OFFKEY_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
-            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$OFFKEY_DEPLOY_DIRECTORY/vault-password" -e "@$OFFKEY_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "readiness_report_file=$readiness" > "$OFFKEY_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
-            python3 "$OFFKEY_RELEASE_TOOLS/task_timings.py" "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
-            keep "$OFFKEY_DEPLOY_DIRECTORY/deploy.log"
-            touch "$OFFKEY_RELEASE_OUTCOME/production.released"
+          uv run --frozen ansible-playbook deployment-needed.yml --vault-password-file "$ABERRATION_DEPLOY_DIRECTORY/vault-password" -e "@$ABERRATION_DEPLOY_DIRECTORY/registry.json" -e "deployment_decision_file=$ABERRATION_DEPLOY_DIRECTORY/deploy-needed" > "$ABERRATION_DEPLOY_DIRECTORY/preflight.log" 2>&1 || { failed "Production preflight failed; check private SSH/configuration and the setup guide." "$ABERRATION_DEPLOY_DIRECTORY/preflight.log"; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$(cat "$ABERRATION_DEPLOY_DIRECTORY/deploy-needed")" = yes ]; then
+            uv run --frozen ansible-playbook deploy.yml --vault-password-file "$ABERRATION_DEPLOY_DIRECTORY/vault-password" -e "@$ABERRATION_DEPLOY_DIRECTORY/registry.json" -e "release_bootstrap=$BOOTSTRAP" -e "readiness_report_file=$readiness" > "$ABERRATION_DEPLOY_DIRECTORY/deploy.log" 2>&1 || { failed "Production release failed; inspect private server records and retry the attempted SHA." "$ABERRATION_DEPLOY_DIRECTORY/deploy.log"; python3 "$ABERRATION_RELEASE_TOOLS/task_timings.py" "$ABERRATION_DEPLOY_DIRECTORY/deploy.log"; keep "$ABERRATION_DEPLOY_DIRECTORY/deploy.log"; exit 1; }
+            python3 "$ABERRATION_RELEASE_TOOLS/task_timings.py" "$ABERRATION_DEPLOY_DIRECTORY/deploy.log"
+            keep "$ABERRATION_DEPLOY_DIRECTORY/deploy.log"
+            touch "$ABERRATION_RELEASE_OUTCOME/production.released"
           else
             echo 'No runtime changes since the last verified release; production is unchanged.'
           fi
@@ -159,10 +159,10 @@ jobs:
         if: always()
         run: |
           rm -f infra/ansible/inventories/prod/hosts.yml infra/ansible/inventories/prod/group_vars/all/vault.yml
-          rm -rf "$OFFKEY_DEPLOY_DIRECTORY"
+          rm -rf "$ABERRATION_DEPLOY_DIRECTORY"
       - name: Keep a failed release visible in an issue until a release completes
         if: always() && steps.release.outputs.ready == 'true'
         env:
           GH_REPO: ${{ github.repository }}
           JOB_STATUS: ${{ job.status }}
-        run: python3 "$OFFKEY_RELEASE_TOOLS/release_alert.py" "$OFFKEY_RELEASE_OUTCOME" --revision "$OFFKEY_RELEASE_REVISION" --job-status "$JOB_STATUS"
+        run: python3 "$ABERRATION_RELEASE_TOOLS/release_alert.py" "$ABERRATION_RELEASE_OUTCOME" --revision "$ABERRATION_RELEASE_REVISION" --job-status "$JOB_STATUS"

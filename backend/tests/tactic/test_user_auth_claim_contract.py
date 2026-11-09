@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import bcrypt
 import pytest
-from off_key_tactic_middleware.domain import AuthenticationError
-from off_key_tactic_middleware.services.accounts.users import UserService
+from aberration_tactic_middleware.domain import AuthenticationError
+from aberration_tactic_middleware.services.accounts.users import UserService
 
 PASSWORD = "correct-password"
 PASSWORD_HASH = bcrypt.hashpw(PASSWORD.encode(), bcrypt.gensalt(rounds=4)).decode()

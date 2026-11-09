@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from off_key_core.config import bootstrap
+from aberration_core.config import bootstrap
 
 
 @pytest.fixture

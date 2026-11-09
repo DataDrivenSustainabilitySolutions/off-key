@@ -4,7 +4,7 @@ The v1 models are frozen with migration 005, so the provider-specific names
 they carry stay; only historical-upgrade tests use this module.
 """
 
-from off_key_core.db.catalogue_v1_models import (
+from aberration_core.db.catalogue_v1_models import (
     AmbiboxCatalog,
     CatalogCharger,
     CatalogSource,

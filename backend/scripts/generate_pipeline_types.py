@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from off_key_core.schemas import dojo, pipelines
+from aberration_core.schemas import dojo, pipelines
 from pydantic import BaseModel
 
 

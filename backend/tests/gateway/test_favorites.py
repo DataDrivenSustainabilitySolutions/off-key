@@ -3,8 +3,8 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_api_gateway.api.rate_limiter import limiter
-from off_key_api_gateway.facades import tactic as facade
+from aberration_api_gateway.api.rate_limiter import limiter
+from aberration_api_gateway.facades import tactic as facade
 
 from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client

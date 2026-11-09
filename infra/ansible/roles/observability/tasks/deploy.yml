@@ -33,7 +33,7 @@
     that: observability_memory_check.rc | default(1) == 0
     fail_msg: Could not verify memory headroom on the observability worker.
 
-- name: Prepare only the bounded Off-key observability filesystem
+- name: Prepare only the bounded Aberration observability filesystem
   command:
     argv: [python3, '-', "{{ observability_settings | to_json }}"]
     stdin: "{{ lookup('file', role_path ~ '/../../../scripts/observability_storage.py') }}"

@@ -3,13 +3,13 @@
 from datetime import UTC, datetime
 
 import pytest
-from off_key_mqtt_radar.activity import ActivityTracker
-from off_key_mqtt_radar.models import (
+from aberration_mqtt_radar.activity import ActivityTracker
+from aberration_mqtt_radar.models import (
     AnomalyResult,
     inference_key,
     strategy_context_key,
 )
-from off_key_mqtt_radar.result_records import ResultProjector
+from aberration_mqtt_radar.result_records import ResultProjector
 
 STATIC = "static_conformal"
 ADAPTIVE = "adaptive_stream"

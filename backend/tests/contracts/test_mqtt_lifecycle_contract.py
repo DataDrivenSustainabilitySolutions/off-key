@@ -20,12 +20,14 @@ from contextlib import suppress
 from unittest.mock import MagicMock
 
 import pytest
+from aberration_core.schemas.system import SystemConnection
+from aberration_mqtt_proxy.client.connection import ConnectionManager
+from aberration_mqtt_proxy.client.facade import MQTTClient
+from aberration_mqtt_proxy.client.models import ConnectionState
+from aberration_tactic_middleware.services.catalogue.system_live_mqtt import (
+    LiveMqttWorker,
+)
 from amqtt.client import MQTTClient as Publisher
-from off_key_core.schemas.system import SystemConnection
-from off_key_mqtt_proxy.client.connection import ConnectionManager
-from off_key_mqtt_proxy.client.facade import MQTTClient
-from off_key_mqtt_proxy.client.models import ConnectionState
-from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
 
 from tests.support.mqtt import (
     mqtt_broker,

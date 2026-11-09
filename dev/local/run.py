@@ -57,7 +57,7 @@ PORTS = {
 
 def default_project(root: Path) -> str:
     suffix = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:10]
-    return f"offkey-local-{suffix}"
+    return f"aberration-local-{suffix}"
 
 
 def read_environment(path: Path) -> dict[str, str]:
@@ -239,7 +239,7 @@ def public_image_environment(environment: dict[str, str]):
     # Resolve the selected context before replacing Docker's config directory.
     # An empty temporary config avoids credential-helper calls for public images.
     endpoint = ensure_local_docker(environment)
-    with TemporaryDirectory(prefix="offkey-local-docker-") as directory:
+    with TemporaryDirectory(prefix="aberration-local-docker-") as directory:
         private_write(Path(directory) / "config.json", "{}\n")
         # Desktop installs Compose/buildx under its config directory. Expose
         # those binaries alone; never copy saved auth or credential settings.
@@ -441,7 +441,7 @@ def main() -> None:
                 "tactic-middleware",
                 "/app/bin/python",
                 "-m",
-                "off_key_tactic_middleware.bootstrap_admin",
+                "aberration_tactic_middleware.bootstrap_admin",
                 "--send-email",
             ]
             + (["--resend"] if args.resend else [])

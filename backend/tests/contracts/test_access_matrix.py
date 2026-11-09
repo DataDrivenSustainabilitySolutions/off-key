@@ -10,14 +10,14 @@ added to its table, so a change to access is always a deliberate, reviewed edit.
 from collections import defaultdict
 
 import pytest
+from aberration_api_gateway.api import access
+from aberration_api_gateway.app import build_app
+from aberration_api_gateway.settings import AppSettings
+from aberration_core.auth.permissions import Permission
+from aberration_tactic_middleware.api import collection_auth
+from aberration_tactic_middleware.api.service_auth import require_gateway
+from aberration_tactic_middleware.main import create_app
 from fastapi.routing import iter_route_contexts
-from off_key_api_gateway.api import access
-from off_key_api_gateway.app import build_app
-from off_key_api_gateway.settings import AppSettings
-from off_key_core.auth.permissions import Permission
-from off_key_tactic_middleware.api import collection_auth
-from off_key_tactic_middleware.api.service_auth import require_gateway
-from off_key_tactic_middleware.main import create_app
 
 TACTIC_ACCESS = {
     "public": {
@@ -303,7 +303,7 @@ def test_tactic_routes_match_the_access_table(monkeypatch):
 
 def test_gateway_routes_match_the_access_table():
     found = _classify(
-        build_app(AppSettings(APP_NAME="off-key-test")),
+        build_app(AppSettings(APP_NAME="aberration-test")),
         [
             *(
                 (permission.value, access.require_permission(permission))
@@ -330,7 +330,7 @@ def test_public_gateway_routes_are_documentation_health_or_sign_in(route):
 
 def test_gateway_openapi_marks_exactly_the_protected_routes_with_bearer():
     """Agents and generated clients learn from the schema which calls need a token."""
-    schema = build_app(AppSettings(APP_NAME="off-key-test")).openapi()
+    schema = build_app(AppSettings(APP_NAME="aberration-test")).openapi()
     scheme = schema["components"]["securitySchemes"]["bearerAuth"]
     assert (scheme["type"], scheme["scheme"]) == ("http", "bearer")
     for path, item in schema["paths"].items():

@@ -4,23 +4,23 @@ import pickle
 
 import numpy as np
 import pytest
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     PipelineDefinition,
     PipelineExecutionConfig,
     PipelineRuntimeState,
 )
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.execution_errors import (
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
     StepRejected,
 )
-from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.resources import estimate_resources
-from off_key_mqtt_radar.preflight import preflight
+from aberration_mqtt_radar.pipelines.batch import BatchFeatureGraph
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.resources import estimate_resources
+from aberration_mqtt_radar.preflight import preflight
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 

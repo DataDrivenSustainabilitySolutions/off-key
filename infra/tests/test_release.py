@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import yaml
 from jinja2 import Environment
-from support import ROOT, ansible, load_script, run
+from support import ROOT, ansible, load_script, run, validation_release
 
 application = load_script("check_application")
 swarm = load_script("check_swarm")
@@ -231,7 +231,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_tested_artifact_requires_matching_images_and_latest_main_run(self):
         revision = "a" * 40
-        document = json.loads(release.RELEASE.read_text())
+        document = {"release": validation_release()}
         document["release"]["application_revision"] = revision
         successful = {
             "id": 10,
@@ -273,7 +273,7 @@ class ReleaseTests(unittest.TestCase):
                 ("api", "ghcr.io/attacker/api@sha256:" + "b" * 64),
                 (
                     "api",
-                    "ghcr.io/datadrivensustainabilitysolutions/off-key-api-gateway:latest",
+                    "ghcr.io/datadrivensustainabilitysolutions/aberration-api-gateway:latest",
                 ),
                 (
                     "postgres",
@@ -346,7 +346,7 @@ class ReleaseTests(unittest.TestCase):
             docker = root / "bin/docker"
             docker.write_text(
                 f"#!{sys.executable}\nimport sys\n"
-                "assert sys.argv[1:4] == ['service', 'inspect', 'off-key_frontend']\n"
+                "assert sys.argv[1:4] == ['service', 'inspect', 'aberration_frontend']\n"
                 f"print({document['release']['images']['frontend']!r})\n"
             )
             docker.chmod(0o755)
@@ -429,7 +429,7 @@ class ReleaseTests(unittest.TestCase):
             env = os.environ | {
                 "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
                 "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
-                "OFFKEY_RELEASE_REVISION": "latest",
+                "ABERRATION_RELEASE_REVISION": "latest",
             }
             ansible("playbook", "-i", str(inventory), str(playbook), env=env)
             self.assertEqual((root / "selections").read_text(), "selected\n")
@@ -550,7 +550,7 @@ class ReleaseTests(unittest.TestCase):
             result = run(
                 sys.executable,
                 str(ROOT / "scripts/check_swarm.py"),
-                "off-key-test",
+                "aberration-test",
                 "{}",
                 env=env,
                 check=False,
@@ -563,24 +563,29 @@ class ReleaseTests(unittest.TestCase):
         image = "example/api@sha256:" + "b" * 64
         service = {
             "Spec": {
-                "Name": "off-key_api",
+                "Name": "aberration_api",
                 "Mode": {"Replicated": {"Replicas": 1}},
                 "TaskTemplate": {"ContainerSpec": {"Image": image}},
             },
             "UpdateStatus": {"State": "completed"},
         }
-        replicas = {"off-key_api": "1/1"}
-        expected = {"off-key_api": {"image": image, "replicas": 1}}
+        replicas = {"aberration_api": "1/1"}
+        expected = {"aberration_api": {"image": image, "replicas": 1}}
         swarm.check_services([service], expected, replicas)
         for changes in ({"UpdateStatus": {"State": "rollback_completed"}},):
             with self.assertRaises(ValueError):
                 swarm.check_services([service | changes], expected, replicas)
         with self.assertRaisesRegex(ValueError, "tasks running"):
-            swarm.check_services([service], expected, {"off-key_api": "0/1"})
+            swarm.check_services([service], expected, {"aberration_api": "0/1"})
         with self.assertRaisesRegex(ValueError, "intended release"):
             swarm.check_services(
                 [service],
-                {"off-key_api": {"image": "other@sha256:" + "c" * 64, "replicas": 1}},
+                {
+                    "aberration_api": {
+                        "image": "other@sha256:" + "c" * 64,
+                        "replicas": 1,
+                    }
+                },
                 replicas,
             )
         with self.assertRaises(ValueError):
@@ -590,20 +595,20 @@ class ReleaseTests(unittest.TestCase):
         image = "example/alloy@sha256:" + "d" * 64
         service = {
             "Spec": {
-                "Name": "off-key_alloy",
+                "Name": "aberration_alloy",
                 "Mode": {"Global": {}},
                 "TaskTemplate": {"ContainerSpec": {"Image": image}},
             }
         }
-        expected = {"off-key_alloy": {"image": image, "replicas": swarm.GLOBAL}}
-        swarm.check_services([service], expected, {"off-key_alloy": "3/3"})
+        expected = {"aberration_alloy": {"image": image, "replicas": swarm.GLOBAL}}
+        swarm.check_services([service], expected, {"aberration_alloy": "3/3"})
         for partial in ("2/3", "0/0"):
             with self.assertRaisesRegex(ValueError, "node tasks running"):
-                swarm.check_services([service], expected, {"off-key_alloy": partial})
+                swarm.check_services([service], expected, {"aberration_alloy": partial})
         replicated = deepcopy(service)
         replicated["Spec"]["Mode"] = {"Replicated": {"Replicas": 1}}
         with self.assertRaisesRegex(ValueError, "node tasks running"):
-            swarm.check_services([replicated], expected, {"off-key_alloy": "1/1"})
+            swarm.check_services([replicated], expected, {"aberration_alloy": "1/1"})
 
     def test_convergence_requires_the_exact_service_image_and_replica_plan(self):
         images = {
@@ -611,7 +616,7 @@ class ReleaseTests(unittest.TestCase):
             "frontend": "example/frontend@sha256:" + "b" * 64,
         }
         expected = {
-            f"off-key_{name}": {"image": image, "replicas": 1}
+            f"aberration_{name}": {"image": image, "replicas": 1}
             for name, image in images.items()
         }
         services = [
@@ -626,19 +631,21 @@ class ReleaseTests(unittest.TestCase):
         ]
         replicas = dict.fromkeys(expected, "1/1")
         swarm.check_services(services, expected, replicas)
-        with self.assertRaisesRegex(ValueError, "missing=.*off-key_frontend"):
+        with self.assertRaisesRegex(ValueError, "missing=.*aberration_frontend"):
             swarm.check_services(services[:1], expected, replicas)
         swapped = deepcopy(services)
         swapped[0]["Spec"]["TaskTemplate"]["ContainerSpec"]["Image"] = images[
             "frontend"
         ]
-        with self.assertRaisesRegex(ValueError, "off-key_api.*image"):
+        with self.assertRaisesRegex(ValueError, "aberration_api.*image"):
             swarm.check_services(swapped, expected, replicas)
         with self.assertRaisesRegex(ValueError, "expected 1"):
-            swarm.check_services(services, expected, replicas | {"off-key_api": "0/0"})
+            swarm.check_services(
+                services, expected, replicas | {"aberration_api": "0/0"}
+            )
         extra = deepcopy(services[0])
-        extra["Spec"]["Name"] = "off-key_orphan"
-        with self.assertRaisesRegex(ValueError, "unexpected=.*off-key_orphan"):
+        extra["Spec"]["Name"] = "aberration_orphan"
+        with self.assertRaisesRegex(ValueError, "unexpected=.*aberration_orphan"):
             swarm.check_services(services + [extra], expected, replicas)
 
     def test_new_database_needs_no_catalog_row_before_the_first_ui_save(self):
@@ -808,7 +815,7 @@ class ReleaseTests(unittest.TestCase):
         image = "example/api@sha256:" + "b" * 64
         service = {
             "Spec": {
-                "Name": "off-key_api",
+                "Name": "aberration_api",
                 "Mode": {"Replicated": {"Replicas": 1}},
                 "TaskTemplate": {"ContainerSpec": {"Image": image}},
             }
@@ -833,7 +840,7 @@ class ReleaseTests(unittest.TestCase):
                 patch.object(
                     swarm.sys,
                     "argv",
-                    ["check_swarm.py", "off-key", "model.json", image],
+                    ["check_swarm.py", "aberration", "model.json", image],
                 ),
                 patch.object(
                     swarm.Path,
@@ -849,7 +856,7 @@ class ReleaseTests(unittest.TestCase):
                             for row in [
                                 {
                                     "ID": "api-id",
-                                    "Name": "off-key_api",
+                                    "Name": "aberration_api",
                                     "Replicas": "1/1",
                                 },
                                 radar_row,

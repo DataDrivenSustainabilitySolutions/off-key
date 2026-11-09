@@ -18,7 +18,7 @@ export const clearNavigationDrafts = () => {
   } catch { /* Storage can be unavailable in private or embedded contexts. */ }
 };
 
-const STORED_PREFIX = "off-key:draft:";
+const STORED_PREFIX = "aberration:draft:";
 /** Tab-scoped copy of a draft that should survive a reload; cleared with the in-memory drafts. */
 export function readStoredDraft(key: string): unknown {
   try {

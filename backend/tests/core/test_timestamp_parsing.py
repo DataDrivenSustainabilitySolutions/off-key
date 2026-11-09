@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta, timezone
 
-from off_key_core.utils.timestamps import as_utc
+from aberration_core.utils.timestamps import as_utc
 
 
 def test_as_utc_reads_naive_values_as_utc():

@@ -12,13 +12,13 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "off-key",
-    "off-key-api-gateway",
-    "off-key-core",
-    "off-key-db-sync",
-    "off-key-mqtt-proxy",
-    "off-key-mqtt-radar",
-    "off-key-tactic-middleware",
+    "aberration",
+    "aberration-api-gateway",
+    "aberration-core",
+    "aberration-db-sync",
+    "aberration-mqtt-proxy",
+    "aberration-mqtt-radar",
+    "aberration-tactic-middleware",
 ]
 
 [[package]]
@@ -1851,7 +1851,7 @@ wheels = [
 ]
 
 [[package]]
-name = "off-key"
+name = "aberration"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
@@ -1912,13 +1912,13 @@ test = [
 typing = [{ name = "ty", specifier = "==0.0.98" }]
 
 [[package]]
-name = "off-key-api-gateway"
+name = "aberration-api-gateway"
 version = "0.1.0"
 source = { editable = "services/api/gateway" }
 dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
-    { name = "off-key-core", extra = ["auth", "mail", "web"] },
+    { name = "aberration-core", extra = ["auth", "mail", "web"] },
     { name = "slowapi" },
     { name = "uvicorn" },
 ]
@@ -1927,13 +1927,13 @@ dependencies = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "off-key-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
+    { name = "aberration-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
 
 [[package]]
-name = "off-key-core"
+name = "aberration-core"
 version = "0.1.0"
 source = { editable = "libs/core" }
 dependencies = [
@@ -1975,41 +1975,41 @@ requires-dist = [
 provides-extras = ["web", "mail", "auth"]
 
 [[package]]
-name = "off-key-db-sync"
+name = "aberration-db-sync"
 version = "0.1.0"
 source = { editable = "services/db/sync" }
 dependencies = [
     { name = "fastapi" },
-    { name = "off-key-core", extra = ["web"] },
+    { name = "aberration-core", extra = ["web"] },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "off-key-core", extras = ["web"], editable = "libs/core" },
+    { name = "aberration-core", extras = ["web"], editable = "libs/core" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
 
 [[package]]
-name = "off-key-mqtt-proxy"
+name = "aberration-mqtt-proxy"
 version = "0.1.0"
 source = { editable = "services/mqtt/proxy" }
 dependencies = [
-    { name = "off-key-core" },
+    { name = "aberration-core" },
     { name = "paho-mqtt" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "off-key-core", editable = "libs/core" },
+    { name = "aberration-core", editable = "libs/core" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "uvicorn", specifier = ">=0.25.0" },
 ]
 
 [[package]]
-name = "off-key-mqtt-radar"
+name = "aberration-mqtt-radar"
 version = "0.1.0"
 source = { editable = "services/mqtt/radar" }
 dependencies = [
@@ -2017,7 +2017,7 @@ dependencies = [
     { name = "janus" },
     { name = "nonconform", extra = ["pyod"] },
     { name = "numpy" },
-    { name = "off-key-core" },
+    { name = "aberration-core" },
     { name = "paho-mqtt" },
     { name = "psutil" },
     { name = "pydantic-settings" },
@@ -2031,7 +2031,7 @@ requires-dist = [
     { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<3" },
     { name = "numpy", specifier = ">=1.24.0" },
-    { name = "off-key-core", editable = "libs/core" },
+    { name = "aberration-core", editable = "libs/core" },
     { name = "paho-mqtt", specifier = ">=2.1,<3" },
     { name = "psutil", specifier = ">=5.9.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
@@ -2040,14 +2040,14 @@ requires-dist = [
 ]
 
 [[package]]
-name = "off-key-tactic-middleware"
+name = "aberration-tactic-middleware"
 version = "0.1.0"
 source = { editable = "services/middleware/tactic" }
 dependencies = [
     { name = "bcrypt" },
     { name = "docker" },
     { name = "fastapi" },
-    { name = "off-key-core", extra = ["auth", "mail", "web"] },
+    { name = "aberration-core", extra = ["auth", "mail", "web"] },
     { name = "paho-mqtt", extra = ["proxy"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
@@ -2059,7 +2059,7 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "docker", specifier = ">=7.0.0" },
     { name = "fastapi", specifier = ">=0.115.8" },
-    { name = "off-key-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
+    { name = "aberration-core", extras = ["web", "mail", "auth"], editable = "libs/core" },
     { name = "paho-mqtt", extras = ["proxy"], specifier = ">=2.1.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "sqlalchemy", specifier = ">=2.0.38" },

@@ -161,7 +161,7 @@ same service scope.
 ## Numerical ownership
 
 Aberrant 1.3 supplies the standalone `aberrant.compose.GraphPipeline` numerical
-API. OFF-KEY compiles into that API and owns bindings, lifecycle, calibration,
+API. ABERRATION compiles into that API and owns bindings, lifecycle, calibration,
 alarm policy, persistence and presentation. Aberrant has no dependency on these
 application services or wire formats. Existing linear Aberrant pipelines retain
 their existing behavior.
@@ -630,7 +630,7 @@ contracts require review of the rollback reference. CI retains nonsecret
 source/image identities and the asserted graph invariants as its
 compatible-binary-rollback artifact.
 
-The [production rollback rehearsal](https://github.com/DataDrivenSustainabilitySolutions/off-key/actions/runs/38897782186)
+The [production rollback rehearsal](https://github.com/DataDrivenSustainabilitySolutions/aberration/actions/runs/38897782186)
 passed both integration tests with zero skips in 625.685 seconds on 2026-10-16.
 Its retained artifact records all three cutovers and verifies the deployed image
 digests and graph invariants; the following browser phase is a separate gate.

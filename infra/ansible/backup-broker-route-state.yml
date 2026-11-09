@@ -25,7 +25,7 @@
     - name: Select a new environment-scoped recovery directory
       set_fact:
         broker_route_backup_directory: >-
-          {{ playbook_dir }}/../stack/state/{{ offkey_env }}/broker-route/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}
+          {{ playbook_dir }}/../stack/state/{{ aberration_env }}/broker-route/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}
 
     - name: Create the private recovery directory
       file:

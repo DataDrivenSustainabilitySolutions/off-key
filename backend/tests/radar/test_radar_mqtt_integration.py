@@ -5,9 +5,9 @@ import socket
 from contextlib import suppress
 
 import pytest
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.mqtt_client import RadarMQTTClient
 from amqtt.client import MQTTClient
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.mqtt_client import RadarMQTTClient
 
 from tests.support.form_pipeline import form_radar_config
 from tests.support.mqtt import (

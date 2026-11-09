@@ -74,7 +74,7 @@ export const accessToken = async (page: Page): Promise<string | null> =>
     const response = await fetch("/api/v1/auth/refresh", {
       method: "POST",
       credentials: "include",
-      headers: { "X-Off-Key-Session": "1" },
+      headers: { "X-Aberration-Session": "1" },
     });
     if (!response.ok) return null;
     const body = (await response.json()) as { access_token?: unknown };

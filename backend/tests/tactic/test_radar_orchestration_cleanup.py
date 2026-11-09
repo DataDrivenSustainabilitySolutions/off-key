@@ -4,19 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
-from off_key_core.db import collection_runtime
-from off_key_tactic_middleware.config.config import DockerConfig
-from off_key_tactic_middleware.facades.docker import get_workload_docker_status
-from off_key_tactic_middleware.services.orchestration import (
+from aberration_core.db import collection_runtime
+from aberration_tactic_middleware.config.config import DockerConfig
+from aberration_tactic_middleware.facades.docker import get_workload_docker_status
+from aberration_tactic_middleware.services.orchestration import (
     radar as radar_module,
 )
-from off_key_tactic_middleware.services.orchestration import (
+from aberration_tactic_middleware.services.orchestration import (
     radar_workloads as workload_module,
 )
-from off_key_tactic_middleware.services.orchestration.radar import (
+from aberration_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from off_key_tactic_middleware.services.orchestration.radar_workloads import (
+from aberration_tactic_middleware.services.orchestration.radar_workloads import (
     RadarWorkloadManager,
 )
 
@@ -179,7 +179,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
         return_value=SimpleNamespace(id="svc-1")
     )
     docker_defaults = DockerConfig(
-        default_network="off-key_emqx-network",
+        default_network="aberration_emqx-network",
         additional_networks=[],
         default_restart_policy="on-failure",
         default_restart_max_attempts=3,
@@ -191,7 +191,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
         workload_module,
         "get_tactic_settings",
         lambda: SimpleNamespace(
-            TACTIC_RADAR_SECRET_SERVICE="off-key_mqtt-radar",
+            TACTIC_RADAR_SECRET_SERVICE="aberration_mqtt-radar",
             config=SimpleNamespace(docker=docker_defaults, radar_image="radar:test"),
         ),
     )
@@ -200,7 +200,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
     workloads = RadarWorkloadManager(fake_docker)
     await workloads.create("svc-1", {"ENVIRONMENT": "production"})
 
-    fake_docker.client.services.get.assert_called_once_with("off-key_mqtt-radar")
+    fake_docker.client.services.get.assert_called_once_with("aberration_mqtt-radar")
     mounted = fake_docker.client.services.create.call_args.kwargs["secrets"]
     assert {secret["File"]["Name"] for secret in mounted} == set(required)
     resources = fake_docker.client.services.create.call_args.kwargs["resources"]

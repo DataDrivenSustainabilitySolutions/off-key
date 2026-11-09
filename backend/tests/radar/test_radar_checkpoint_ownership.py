@@ -5,17 +5,17 @@ from contextlib import suppress
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.database import CheckpointOwnershipLost, DatabaseWriter
-from off_key_mqtt_radar.runtime_checkpoint import (
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.database import CheckpointOwnershipLost, DatabaseWriter
+from aberration_mqtt_radar.runtime_checkpoint import (
     RuntimeCheckpoint,
     RuntimeCheckpointCodec,
 )
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -301,7 +301,7 @@ async def test_detected_ownership_loss_stops_worker_before_model_advancement(
         await writer.commit_checkpoint(snapshot(codec, detector))
     settings = config().model_copy(update={"health_check_interval": 0.1})
     monkeypatch.setattr(
-        "off_key_mqtt_radar.service.get_radar_settings",
+        "aberration_mqtt_radar.service.get_radar_settings",
         lambda: SimpleNamespace(config=settings),
     )
     worker = RadarService()

@@ -3,9 +3,9 @@
 from unittest.mock import MagicMock
 
 import pytest
+from aberration_api_gateway.api import middleware
+from aberration_core.config.logging import get_logging_settings
 from fastapi import FastAPI, HTTPException
-from off_key_api_gateway.api import middleware
-from off_key_core.config.logging import get_logging_settings
 
 from tests.support.http import asgi_client
 

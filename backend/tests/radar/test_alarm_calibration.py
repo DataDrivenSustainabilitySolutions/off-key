@@ -5,15 +5,18 @@ from typing import get_args
 
 import numpy as np
 import pytest
-from off_key_core.schemas.radar import MartingaleTrackerConfig, StaticMartingaleConfig
-from off_key_mqtt_radar.alarm_calibration import (
+from aberration_core.schemas.radar import (
+    MartingaleTrackerConfig,
+    StaticMartingaleConfig,
+)
+from aberration_mqtt_radar.alarm_calibration import (
     _calibrated_threshold,
     _maximum_log_statistic,
     _simulate_split_conformal_p_values,
     resolve_tracker_thresholds,
 )
-from off_key_mqtt_radar.betting import BETTING_FUNCTIONS
-from off_key_mqtt_radar.martingales import MartingaleAlarmController
+from aberration_mqtt_radar.betting import BETTING_FUNCTIONS
+from aberration_mqtt_radar.martingales import MartingaleAlarmController
 
 SCHEMA_BETTING_FUNCTIONS = sorted(
     get_args(tracker.model_fields["betting_function"].annotation)[0]

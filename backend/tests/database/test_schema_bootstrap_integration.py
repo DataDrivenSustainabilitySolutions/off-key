@@ -3,15 +3,15 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from off_key_core.config.telemetry import get_telemetry_settings
-from off_key_core.db.models import (
+from aberration_core.config.telemetry import get_telemetry_settings
+from aberration_core.db.models import (
     Anomaly,
     AnomalyIdentity,
     MonitoringEvidence,
     Telemetry,
 )
-from off_key_core.db.retention import read_storage_status
-from off_key_core.db.schema import bootstrap_schema
+from aberration_core.db.retention import read_storage_status
+from aberration_core.db.schema import bootstrap_schema
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -274,7 +274,7 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
     try:
         await bootstrap(TELEMETRY_RETENTION_DAYS="14", TELEMETRY_STORAGE_CAP_GB="")
         async with engine.begin() as connection:
-            assert await _job_id(connection, "off_key_storage_cap") is None
+            assert await _job_id(connection, "aberration_storage_cap") is None
             intervals = await connection.execute(
                 text(
                     "SELECT hypertable_name, time_interval "
@@ -307,7 +307,7 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
                 ],
             )
 
-        await run("off_key_anomaly_retention")
+        await run("aberration_anomaly_retention")
         async with engine.connect() as connection:
             remaining = await connection.scalars(
                 select(Anomaly.anomaly_value).where(
@@ -330,10 +330,10 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
                     "SELECT alter_job(job_id, config => jsonb_set("
                     "config, '{max_bytes}', '1')) "
                     "FROM timescaledb_information.jobs "
-                    "WHERE proc_name = 'off_key_storage_cap'"
+                    "WHERE proc_name = 'aberration_storage_cap'"
                 )
             )
-        await run("off_key_storage_cap")
+        await run("aberration_storage_cap")
         async with engine.connect() as connection:
             values = await connection.scalars(
                 select(Telemetry.value).where(Telemetry.charger_id == "retention-cap")
@@ -350,7 +350,7 @@ async def test_anomaly_retention_and_storage_cap(disposable_database, monkeypatc
             assert (await read_storage_status(session)).storage_cap_bytes == 100_000_000
         await bootstrap(TELEMETRY_STORAGE_CAP_GB="")
         async with engine.connect() as connection:
-            assert await _job_id(connection, "off_key_storage_cap") is None
+            assert await _job_id(connection, "aberration_storage_cap") is None
     finally:
         async with engine.begin() as connection:
             await connection.execute(

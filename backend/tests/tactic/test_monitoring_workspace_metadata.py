@@ -5,21 +5,21 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import Depends, FastAPI
-from fastapi.testclient import TestClient
-from off_key_api_gateway.api.access import current_member, writes_require
-from off_key_api_gateway.api.v1 import monitors
-from off_key_core.auth.permissions import (
+from aberration_api_gateway.api.access import current_member, writes_require
+from aberration_api_gateway.api.v1 import monitors
+from aberration_core.auth.permissions import (
     ADMIN_ROLE,
     MEMBER_ROLE,
     Permission,
     role_permissions,
 )
-from off_key_core.db.maintenance import DeploymentInProgressError
-from off_key_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
-from off_key_tactic_middleware import deployment
-from off_key_tactic_middleware.api.v1 import radar as radar_api
-from off_key_tactic_middleware.services.orchestration import radar, radar_queries
+from aberration_core.db.maintenance import DeploymentInProgressError
+from aberration_core.schemas.radar import FormMonitorConfig, RadarServiceLabel
+from aberration_tactic_middleware import deployment
+from aberration_tactic_middleware.api.v1 import radar as radar_api
+from aberration_tactic_middleware.services.orchestration import radar, radar_queries
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from tests.support.orchestration import scalars_result
@@ -232,7 +232,7 @@ async def test_maintenance_actions_without_workloads_do_not_need_docker(monkeypa
 def test_status_freshness_without_a_docker_probe(age, stale):
     from datetime import UTC, datetime, timedelta
 
-    from off_key_tactic_middleware.services.orchestration.radar_status import (
+    from aberration_tactic_middleware.services.orchestration.radar_status import (
         derive_operational_status,
     )
 

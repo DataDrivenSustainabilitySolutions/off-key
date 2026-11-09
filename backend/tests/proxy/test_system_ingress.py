@@ -6,21 +6,23 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.worker_ownership import WorkerOwnershipLost
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.db.worker_ownership import WorkerOwnershipLost
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
-from off_key_mqtt_proxy.client.models import MQTTMessage
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer, Observation
-from off_key_mqtt_proxy.config.config import MQTTSettings
-from off_key_mqtt_proxy.telemetry import DatabaseWriter
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services.catalogue import system_ingress
-from off_key_tactic_middleware.services.catalogue.arrival_cadence import ArrivalCadence
-from off_key_tactic_middleware.services.catalogue.broker_access import (
+from aberration_core.utils.mqtt_topics import TopicMetadataExtractor
+from aberration_mqtt_proxy.client.models import MQTTMessage
+from aberration_mqtt_proxy.collection_buffer import CollectionBuffer, Observation
+from aberration_mqtt_proxy.config.config import MQTTSettings
+from aberration_mqtt_proxy.telemetry import DatabaseWriter
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.services.catalogue import system_ingress
+from aberration_tactic_middleware.services.catalogue.arrival_cadence import (
+    ArrivalCadence,
+)
+from aberration_tactic_middleware.services.catalogue.broker_access import (
     BrokerRouteAccess,
 )
 

@@ -86,7 +86,8 @@ def main():
     stack_services = [
         service
         for service in services
-        if service["Spec"].get("Labels", {}).get("off-key.component") != "observability"
+        if service["Spec"].get("Labels", {}).get("aberration.component")
+        != "observability"
         if not (
             service["Spec"].get("Labels", {}).get("managed_by") == "tactic"
             and service["Spec"].get("Labels", {}).get("service_type") == "radar"

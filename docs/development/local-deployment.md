@@ -269,7 +269,7 @@ workloads use the persistent lifecycle and are managed separately from Compose.
 For another set of ports or an explicit project name, set them on the first init:
 
 ```sh
-python3 dev/local/run.py init --project offkey-my-rework --frontend-port 5180 --api-port 8012
+python3 dev/local/run.py init --project aberration-my-rework --frontend-port 5180 --api-port 8012
 ```
 
 The remaining port settings live in the private `dev/local/.env`. Keep the

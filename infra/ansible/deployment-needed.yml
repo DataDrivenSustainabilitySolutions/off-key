@@ -23,7 +23,7 @@
           - diff
           - --quiet
           - "{{ (verified_release.content | b64decode | from_json).application_revision }}"
-          - "{{ lookup('env', 'OFFKEY_RELEASE_REVISION') }}"
+          - "{{ lookup('env', 'ABERRATION_RELEASE_REVISION') }}"
           - --
           - backend
           - frontend

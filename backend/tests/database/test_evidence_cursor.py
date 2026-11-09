@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.models import MonitoringEvidence, MonitoringEvidenceClock
-from off_key_core.db.schema import bootstrap_schema
+from aberration_core.db.models import MonitoringEvidence, MonitoringEvidenceClock
+from aberration_core.db.schema import bootstrap_schema
 from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import create_async_engine
 

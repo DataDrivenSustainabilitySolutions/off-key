@@ -23,19 +23,19 @@ from pathlib import Path
 
 import aberrant
 import numpy as np
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
 )
-from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
-from off_key_mqtt_radar.pipelines.diagnostics import (
+from aberration_mqtt_radar.pipelines.adapters import adaptive_graph
+from aberration_mqtt_radar.pipelines.diagnostics import (
     DiagnosticLimits,
     PipelineDiagnostics,
 )
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.prepare import PrepareStage
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.prepare import PrepareStage
 from pydantic import BaseModel, ConfigDict, Field
 
 

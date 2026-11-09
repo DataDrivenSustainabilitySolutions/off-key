@@ -1,0 +1,9 @@
+version: 1
+disable_existing_loggers: false
+
+# Service-specific logger configurations
+loggers:
+  aberration_mqtt_proxy:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console]
+    propagate: false

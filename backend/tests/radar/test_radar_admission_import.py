@@ -11,8 +11,8 @@ def test_admission_import_needs_only_radar_runtime_environment():
         [
             sys.executable,
             "-c",
-            "from off_key_mqtt_radar.admission import RadarAdmissionSettings; "
-            "import sys; assert 'off_key_core.db.models' not in sys.modules; "
+            "from aberration_mqtt_radar.admission import RadarAdmissionSettings; "
+            "import sys; assert 'aberration_core.db.models' not in sys.modules; "
             "assert RadarAdmissionSettings().RADAR_LIFECYCLE_VERSION is None",
         ],
         env={
@@ -33,8 +33,9 @@ def test_package_import_loads_no_runtime_modules():
         [
             sys.executable,
             "-c",
-            "import sys, off_key_mqtt_radar; "
-            "loaded = [m for m in sys.modules if m.startswith('off_key_mqtt_radar.')]; "
+            "import sys, aberration_mqtt_radar; "
+            "loaded = [m for m in sys.modules "
+            "if m.startswith('aberration_mqtt_radar.')]; "
             "assert not loaded, loaded",
         ],
         cwd=Path(sys.executable).parent,

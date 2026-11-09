@@ -6,28 +6,28 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import catalogue as gateway_system
-from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import (
+from aberration_api_gateway.api.v1 import catalogue as gateway_system
+from aberration_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import (
     Charger,
     CollectionBinding,
     CollectionConfiguration,
     CollectionRevision,
     User,
 )
-from off_key_core.db.system import (
+from aberration_core.db.system import (
     SystemCollectionConfiguration,
     SystemConfiguration,
     SystemRevision,
 )
-from off_key_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
-from off_key_tactic_middleware.api.collection_auth import current_member
-from off_key_tactic_middleware.api.v1 import system as system_api
-from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.services.catalogue import system as system_service
+from aberration_core.schemas.system import SystemChange, SystemDocument, SystemSnapshot
+from aberration_tactic_middleware.api.collection_auth import current_member
+from aberration_tactic_middleware.api.v1 import system as system_api
+from aberration_tactic_middleware.domain import ConflictError
+from aberration_tactic_middleware.services.catalogue import system as system_service
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session

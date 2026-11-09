@@ -4,11 +4,11 @@ from itertools import pairwise
 
 import numpy as np
 import pytest
-from off_key_core.models.pipelines import form_inputs
-from off_key_core.schemas.radar import FormMonitorConfig
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.service import RadarService
-from off_key_tactic_middleware.services.pipelines.library import legacy_definition
+from aberration_core.models.pipelines import form_inputs
+from aberration_core.schemas.radar import FormMonitorConfig
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.service import RadarService
+from aberration_tactic_middleware.services.pipelines.library import legacy_definition
 
 from tests.support.form_pipeline import form_pipeline
 

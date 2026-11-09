@@ -5,24 +5,24 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.config.auth import get_auth_settings
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import PipelineRun, User
-from off_key_core.models.pipeline_reports import MAX_PIPELINE_REPORT_BYTES
-from off_key_core.models.pipelines import execution_fingerprint, pipeline_catalog
-from off_key_core.schemas.pipelines import (
+from aberration_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
+from aberration_core.config.auth import get_auth_settings
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import PipelineRun, User
+from aberration_core.models.pipeline_reports import MAX_PIPELINE_REPORT_BYTES
+from aberration_core.models.pipelines import execution_fingerprint, pipeline_catalog
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineCreate,
     PipelineExecutionConfig,
     PipelinePublish,
 )
-from off_key_core.schemas.radar import RadarStartConfig
-from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
-from off_key_tactic_middleware.api.v1.pipelines import router
-from off_key_tactic_middleware.config.config import get_tactic_settings
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_core.schemas.radar import RadarStartConfig
+from aberration_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+from aberration_tactic_middleware.api.v1.pipelines import router
+from aberration_tactic_middleware.config.config import get_tactic_settings
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
+from fastapi import FastAPI
 
 from tests.support.maximum_pipeline import maximum_definition
 from tests.support.pipeline_database import membership_token

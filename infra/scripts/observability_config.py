@@ -36,8 +36,8 @@ class ObservabilitySettings(BaseModel):
     stack_name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,40}$")
     data_node: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
     storage_size_gib: int = Field(default=20, ge=4, le=100)
-    data_root: str = "/srv/offkey-observability"
-    storage_root: str = "/var/lib/offkey-observability"
+    data_root: str = "/srv/aberration-observability"
+    storage_root: str = "/var/lib/aberration-observability"
     loki: ServiceBudget = ServiceBudget(
         memory_mib=1024, reserved_memory_mib=512, cpus=1, reserved_cpus=0.25
     )
@@ -62,11 +62,11 @@ class ObservabilitySettings(BaseModel):
             raise ValueError("Storage paths must be normalized absolute paths")
         # The host helper owns these dedicated directories, never application data.
         expected = {
-            "data_root": "/srv/offkey-observability",
-            "storage_root": "/var/lib/offkey-observability",
+            "data_root": "/srv/aberration-observability",
+            "storage_root": "/var/lib/aberration-observability",
         }
         if value != expected[info.field_name]:
-            raise ValueError("Use the dedicated Off-key observability directories")
+            raise ValueError("Use the dedicated Aberration observability directories")
         return value
 
     def environment(self):

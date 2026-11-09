@@ -1,12 +1,12 @@
 """Gateway body size and per-client rate limits applied before routing."""
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from off_key_api_gateway.api.request_guards import (
+from aberration_api_gateway.api.request_guards import (
     DEFAULT_MAX_BODY_BYTES,
     BodySizeLimitMiddleware,
     ClientRateLimitMiddleware,
 )
-from off_key_core.schemas.dojo import MAX_UPLOAD_BYTES
+from aberration_core.schemas.dojo import MAX_UPLOAD_BYTES
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from tests.support.http import asgi_client
 

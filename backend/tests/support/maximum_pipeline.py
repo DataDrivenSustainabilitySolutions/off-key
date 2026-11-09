@@ -1,9 +1,9 @@
 """The largest pipeline definition the limits admit."""
 
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipelines import (
     pipeline_catalog,
 )
-from off_key_core.schemas.pipelines import PipelineDefinition
+from aberration_core.schemas.pipelines import PipelineDefinition
 
 
 def maximum_definition():

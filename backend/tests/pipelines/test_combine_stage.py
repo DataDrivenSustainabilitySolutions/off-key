@@ -5,31 +5,31 @@ import pickle
 from itertools import pairwise
 
 import pytest
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
     PipelineRuntimeState,
 )
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.models import is_held_back
-from off_key_mqtt_radar.pipelines.diagnostics import (
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.models import is_held_back
+from aberration_mqtt_radar.pipelines.diagnostics import (
     DiagnosticLimits,
     PipelineDiagnostics,
 )
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.prepare import (
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.prepare import (
     PrepareRejected,
     PrepareStage,
     Withheld,
 )
-from off_key_mqtt_radar.pipelines.resources import estimate_resources
+from aberration_mqtt_radar.pipelines.resources import estimate_resources
 
 pytestmark = pytest.mark.radar_integration
 

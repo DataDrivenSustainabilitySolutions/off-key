@@ -125,7 +125,7 @@ class RecoveryTests(unittest.TestCase):
                 "stack_dir": str(live),
                 "broker_route_state_dir": str(live / "route-data"),
                 "broker_route_backup_directory": str(backup),
-                "offkey_env": "prod",
+                "aberration_env": "prod",
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
             }

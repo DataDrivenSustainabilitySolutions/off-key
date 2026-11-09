@@ -1,4 +1,4 @@
-"""Shared fixtures for Off-Key backend tests: sample results and database access."""
+"""Shared fixtures for Aberration backend tests: sample results and database access."""
 
 import os
 from datetime import UTC, datetime
@@ -44,7 +44,7 @@ def fresh_settings():
 @pytest.fixture
 def sample_anomaly_result():
     """Create a sample anomaly result."""
-    from off_key_mqtt_radar.models import AnomalyResult
+    from aberration_mqtt_radar.models import AnomalyResult
 
     return AnomalyResult(
         anomaly_score=0.85,
@@ -71,7 +71,7 @@ def disposable_database():
     if not value:
         pytest.skip("Requires an explicitly supplied disposable PostgreSQL server")
     url = make_url(value).set(drivername="postgresql+psycopg2")
-    name = "offkey_test_" + uuid4().hex
+    name = "aberration_test_" + uuid4().hex
     admin = create_engine(url, isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
         connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
@@ -88,8 +88,8 @@ def disposable_database():
 @pytest_asyncio.fixture
 async def member_database():
     """Isolate real account lifecycle tests in a disposable PostgreSQL schema."""
-    from off_key_core.auth.permissions import BUILT_IN_ROLES
-    from off_key_core.db.models import MemberRole, RememberedSession, User
+    from aberration_core.auth.permissions import BUILT_IN_ROLES
+    from aberration_core.db.models import MemberRole, RememberedSession, User
     from sqlalchemy import insert, text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

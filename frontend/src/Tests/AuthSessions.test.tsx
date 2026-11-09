@@ -134,7 +134,7 @@ describe("remembered session recovery", () => {
     expect(await screen.findByText(member.email)).toBeTruthy();
     expect(tokenManager.getToken()).toBe(renewed);
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ credentials: "include", headers: { "X-Off-Key-Session": "1" } });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ credentials: "include", headers: { "X-Aberration-Session": "1" } });
   });
 
   it("keeps a saved login after a temporary profile failure and supports retry", async () => {

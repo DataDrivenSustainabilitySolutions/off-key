@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import Event
 
+from aberration_core.schemas.radar import AdaptiveStreamConfig
+from aberration_mqtt_proxy.config.config import MQTTConfig
 from amqtt.broker import Broker
-from off_key_core.schemas.radar import AdaptiveStreamConfig
-from off_key_mqtt_proxy.config.config import MQTTConfig
 
 ANONYMOUS_ACCESS = {
     "amqtt.plugins.authentication.AnonymousAuthPlugin": {"allow_anonymous": True}

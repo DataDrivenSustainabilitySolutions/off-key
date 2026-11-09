@@ -1,9 +1,9 @@
 [project]
 site_name = "aberration"
 site_description = "Documentation for the aberration anomaly-detection platform."
-site_url = "https://datadrivensustainabilitysolutions.github.io/off-key/"
-repo_url = "https://github.com/DataDrivenSustainabilitySolutions/off-key"
-repo_name = "DataDrivenSustainabilitySolutions/off-key"
+site_url = "https://datadrivensustainabilitysolutions.github.io/aberration/"
+repo_url = "https://github.com/DataDrivenSustainabilitySolutions/aberration"
+repo_name = "DataDrivenSustainabilitySolutions/aberration"
 docs_dir = "docs"
 site_dir = "site"
 extra_css = ["assets/brand/brand.css"]
@@ -30,6 +30,7 @@ nav = [
     { "Deployment modes" = "operations/deployment-modes.md" },
     { "GitHub setup" = "operations/github-setup.md" },
     { "Production releases" = "operations/production.md" },
+    { "Rename cutover" = "operations/rename-cutover.md" },
     { "Worker observability" = "operations/observability.md" },
     { "Recovery" = "operations/recovery.md" },
     { "Collection operations" = "operations/system-collection.md" },

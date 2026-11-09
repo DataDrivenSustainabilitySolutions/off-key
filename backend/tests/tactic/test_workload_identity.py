@@ -3,8 +3,8 @@
 from types import SimpleNamespace
 
 import pytest
-from off_key_tactic_middleware.facades import docker as docker_facade
-from off_key_tactic_middleware.services.orchestration import workload_identity
+from aberration_tactic_middleware.facades import docker as docker_facade
+from aberration_tactic_middleware.services.orchestration import workload_identity
 
 
 @pytest.fixture

@@ -13,7 +13,7 @@ import yaml
 from support import ROOT
 
 SCRIPTS = ROOT.parent / ".github/scripts"
-REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
+REPOSITORY = "DataDrivenSustainabilitySolutions/aberration"
 
 
 def load(name):
@@ -89,7 +89,7 @@ class ClassificationTests(unittest.TestCase):
                 "frontend/nginx.conf.template",
             ): "frontend",
             # Shared core and services.
-            ("backend/libs/core/src/off_key_core/db/models.py",): "full",
+            ("backend/libs/core/src/aberration_core/db/models.py",): "full",
             ("backend/services/api/gateway/main.py", "docs/guide.md"): "full",
             # Lockfiles and dependency manifests.
             ("frontend/package-lock.json",): "full",

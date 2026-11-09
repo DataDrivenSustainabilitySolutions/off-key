@@ -3,10 +3,10 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from off_key_core.db.models import Telemetry
-from off_key_core.db.schema import bootstrap_schema
-from off_key_tactic_middleware.repositories.data import TelemetryRepository
-from off_key_tactic_middleware.services.data.telemetry import TelemetryQueryService
+from aberration_core.db.models import Telemetry
+from aberration_core.db.schema import bootstrap_schema
+from aberration_tactic_middleware.repositories.data import TelemetryRepository
+from aberration_tactic_middleware.services.data.telemetry import TelemetryQueryService
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 

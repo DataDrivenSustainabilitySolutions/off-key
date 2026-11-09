@@ -7,17 +7,17 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_mqtt_radar import service as service_module
+from aberration_mqtt_radar.activity import ActivityTracker
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.health_monitor import HealthMonitor
+from aberration_mqtt_radar.models import AnomalyResult, MQTTMessage
+from aberration_mqtt_radar.service import RadarService
 from amqtt.client import MQTTClient
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_mqtt_radar import service as service_module
-from off_key_mqtt_radar.activity import ActivityTracker
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
-from off_key_mqtt_radar.service import RadarService
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

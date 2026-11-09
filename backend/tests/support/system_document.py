@@ -1,6 +1,6 @@
 """System document and SQLite session helpers."""
 
-from off_key_core.schemas.system import SystemDocument
+from aberration_core.schemas.system import SystemDocument
 from sqlalchemy import JSON, MetaData
 from sqlalchemy.dialects.postgresql import JSONB
 

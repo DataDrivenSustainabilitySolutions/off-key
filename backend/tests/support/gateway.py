@@ -2,12 +2,12 @@
 
 from datetime import UTC, datetime
 
+from aberration_api_gateway.api import access
+from aberration_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
+from aberration_api_gateway.api.v1 import routes
+from aberration_core.auth.permissions import role_permissions
+from aberration_core.schemas.members import MemberProfile
 from fastapi import FastAPI
-from off_key_api_gateway.api import access
-from off_key_api_gateway.api.rate_limiter import limiter, rate_limit_exceeded_handler
-from off_key_api_gateway.api.v1 import routes
-from off_key_core.auth.permissions import role_permissions
-from off_key_core.schemas.members import MemberProfile
 from slowapi.errors import RateLimitExceeded
 
 

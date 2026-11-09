@@ -1,6 +1,6 @@
 import pytest
+from aberration_api_gateway.api.v1 import auth as gateway_auth
 from fastapi import HTTPException
-from off_key_api_gateway.api.v1 import auth as gateway_auth
 
 
 @pytest.mark.asyncio

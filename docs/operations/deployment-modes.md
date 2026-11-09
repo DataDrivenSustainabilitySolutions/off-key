@@ -61,7 +61,7 @@ If containers keep resolving stale names or networks after switching between the
 local, ingress and cluster modes, remove the shared networks too:
 
 ```bash
-docker network rm off-key_app-network off-key_emqx-network || true
+docker network rm aberration_app-network aberration_emqx-network || true
 ```
 
 !!! warning

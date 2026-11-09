@@ -1,6 +1,6 @@
 import pytest
-from off_key_core.auth.tokens import AccessClaims, issue_access_token
-from off_key_core.schemas.members import AcceptInvitation, PasswordReset
+from aberration_core.auth.tokens import AccessClaims, issue_access_token
+from aberration_core.schemas.members import AcceptInvitation, PasswordReset
 from pydantic import ValidationError
 
 from tests.support.env import set_auth_env

@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from off_key_core.utils.tasks import run_until_first_exit
+from aberration_core.utils.tasks import run_until_first_exit
 
 
 @pytest.mark.asyncio

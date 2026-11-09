@@ -8,17 +8,17 @@ from typing import Any
 
 import pytest
 from aberrant.catalog import get_model_spec
-from off_key_core.models import (
+from aberration_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.schemas.radar import AdaptiveStreamConfig
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_core.schemas.radar import AdaptiveStreamConfig
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.execution_errors import ObservationRejected
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.execution_errors import ObservationRejected
 from pydantic import ValidationError
 
 from tests.support.form_pipeline import form_radar_config

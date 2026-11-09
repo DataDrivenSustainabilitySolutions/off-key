@@ -7,21 +7,21 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from off_key_api_gateway.api.v1.monitors import (
+from aberration_api_gateway.api.v1.monitors import (
     TacticError,
     create_monitor,
     delete_monitor,
     stop_monitor,
 )
-from off_key_core.schemas.radar import MonitorSetup
-from off_key_core.schemas.radar import (
+from aberration_core.schemas.radar import MonitorSetup
+from aberration_core.schemas.radar import (
     PerformanceConfig as GatewayPerformanceConfig,
 )
-from off_key_tactic_middleware.config.config import TacticSettings
-from off_key_tactic_middleware.services.orchestration.radar_environment import (
+from aberration_tactic_middleware.config.config import TacticSettings
+from aberration_tactic_middleware.services.orchestration.radar_environment import (
     build_radar_environment,
 )
-from off_key_tactic_middleware.services.orchestration.radar_status import (
+from aberration_tactic_middleware.services.orchestration.radar_status import (
     derive_operational_status,
 )
 from pydantic import ValidationError
@@ -70,7 +70,7 @@ async def test_gateway_start_monitor_forwards_static_performance_config():
 
     mock_start = AsyncMock(return_value=expected)
     with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.start_radar_service",
+        "aberration_api_gateway.api.v1.monitors.tactic.start_radar_service",
         mock_start,
     ):
         response = await inspect.unwrap(create_monitor)(
@@ -204,7 +204,8 @@ async def test_gateway_stop_preserves_tactic_error_status():
     )
     with (
         patch(
-            "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
+            "aberration_api_gateway.api.v1.monitors.tactic.stop_radar_service",
+            mock_stop,
         ),
         pytest.raises(TacticError) as exc_info,
     ):
@@ -219,7 +220,7 @@ async def test_gateway_stop_preserves_tactic_error_status():
 async def test_gateway_stop_forwards_the_monitor_id():
     mock_stop = AsyncMock(return_value={"status": "stopped", "service_id": "svc-1"})
     with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
+        "aberration_api_gateway.api.v1.monitors.tactic.stop_radar_service", mock_stop
     ):
         response = await inspect.unwrap(stop_monitor)(
             request=_build_request(), monitor_id="svc-1"
@@ -232,7 +233,8 @@ async def test_gateway_stop_forwards_the_monitor_id():
 async def test_gateway_delete_uses_the_monitor_id_endpoint():
     mock_delete = AsyncMock(return_value={"status": "deleted", "service_id": "svc-1"})
     with patch(
-        "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service", mock_delete
+        "aberration_api_gateway.api.v1.monitors.tactic.delete_radar_service",
+        mock_delete,
     ):
         response = await inspect.unwrap(delete_monitor)(
             request=_build_request(), monitor_id="svc-1"
@@ -250,7 +252,7 @@ async def test_gateway_delete_preserves_tactic_error_status():
     )
     with (
         patch(
-            "off_key_api_gateway.api.v1.monitors.tactic.delete_radar_service",
+            "aberration_api_gateway.api.v1.monitors.tactic.delete_radar_service",
             mock_delete,
         ),
         pytest.raises(TacticError) as exc_info,
@@ -267,7 +269,7 @@ def _validator(monkeypatch, validated_params=None):
         return_value=validated_params or {"n_estimators": 100, "contamination": 0.1}
     )
     monkeypatch.setattr(
-        "off_key_tactic_middleware.services.orchestration.radar_environment."
+        "aberration_tactic_middleware.services.orchestration.radar_environment."
         "validate_model_params",
         validator,
     )
@@ -351,14 +353,14 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
         TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT=8883,
         TACTIC_RADAR_DEFAULT_MQTT_USE_TLS=True,
         TACTIC_RADAR_DEFAULT_MQTT_USE_AUTH=True,
-        TACTIC_RADAR_DEFAULT_MQTT_USERNAME="offkey-radar",
+        TACTIC_RADAR_DEFAULT_MQTT_USERNAME="aberration-radar",
     )
     runtime = SimpleNamespace(
         ENVIRONMENT="production",
         radar_database_url="postgresql+asyncpg://user:pass@postgres/radar",
     )
     config = form_launch(container_name="radar", mqtt_topics=["telemetry/c1/L1"])
-    module = "off_key_tactic_middleware.services.orchestration.radar_environment"
+    module = "aberration_tactic_middleware.services.orchestration.radar_environment"
     with (
         patch(f"{module}.get_tactic_settings", return_value=settings),
         patch(f"{module}.get_radar_container_runtime_settings", return_value=runtime),
@@ -376,7 +378,7 @@ def test_tactic_production_radar_inherits_security_and_rejects_broker_overrides(
     assert env["RADAR_MQTT_BROKER_PORT"] == "8883"
     assert env["RADAR_MQTT_USE_TLS"] == "true"
     assert env["RADAR_MQTT_USE_AUTH"] == "true"
-    assert env["RADAR_MQTT_USERNAME"] == "offkey-radar"
+    assert env["RADAR_MQTT_USERNAME"] == "aberration-radar"
     assert env["RADAR_MQTT_CA_FILE"] == "/run/secrets/EMQX_CA_CERT"
     assert "RADAR_MQTT_API_KEY" not in env
 

@@ -8,10 +8,10 @@ from urllib.parse import urlsplit
 
 import pytest
 import yaml
-from off_key_db_sync import api as db_sync_api
-from off_key_mqtt_proxy.config.config import MQTTSettings
-from off_key_mqtt_proxy.health_api import ProxyHealthApp
-from off_key_tactic_middleware.main import create_app
+from aberration_db_sync import api as db_sync_api
+from aberration_mqtt_proxy.config.config import MQTTSettings
+from aberration_mqtt_proxy.health_api import ProxyHealthApp
+from aberration_tactic_middleware.main import create_app
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.http import asgi_client
@@ -118,16 +118,16 @@ def applications(monkeypatch):
             **AUTH_ENVIRONMENT,
             **EMAIL_ENVIRONMENT,
             "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
-            "APP_NAME": "off-key-test",
+            "APP_NAME": "aberration-test",
             "DEBUG": "false",
             "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
         },
     )
     monkeypatch.setattr(
-        "off_key_core.config.env.load_dotenv", lambda *args, **kwargs: False
+        "aberration_core.config.env.load_dotenv", lambda *args, **kwargs: False
     )
     reset_runtime_caches_for_tests()
-    from off_key_api_gateway.main import app as gateway
+    from aberration_api_gateway.main import app as gateway
 
     proxy = SimpleNamespace(
         is_running=True, get_readiness_status=lambda: {"ready": proxy.ready}

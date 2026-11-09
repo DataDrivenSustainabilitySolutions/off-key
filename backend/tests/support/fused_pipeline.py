@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
 )
-from off_key_core.utils.mqtt_topics import derive_monitoring_sensor_keys
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_core.utils.mqtt_topics import derive_monitoring_sensor_keys
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
 
 TOPICS = {"a": "telemetry/charger/a", "b": "telemetry/charger/b"}
 KEYS = dict(

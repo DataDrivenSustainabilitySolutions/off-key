@@ -1,6 +1,6 @@
 """Environment presets for tests that build settings from the process environment."""
 
-from off_key_core.config.auth import get_auth_settings
+from aberration_core.config.auth import get_auth_settings
 
 AUTH_ENVIRONMENT = {
     "JWT_SECRET": "test-jwt-secret-key-material-123456",

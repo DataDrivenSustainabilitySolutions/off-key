@@ -47,7 +47,7 @@
   vars:
     release_job_service: db-sync
     release_job_image: "{{ db_sync_image }}"
-    release_job_module: off_key_core.db.migrate
+    release_job_module: aberration_core.db.migrate
     release_job_arguments: [status]
 
 - name: Keep the migration preflight result
@@ -137,7 +137,7 @@
       vars:
         release_job_service: db-sync
         release_job_image: "{{ db_sync_image }}"
-        release_job_module: off_key_core.db.migrate
+        release_job_module: aberration_core.db.migrate
         release_job_arguments: [apply]
 
 - name: Adopt and validate the migration ledger when no upgrade is required
@@ -145,7 +145,7 @@
   vars:
     release_job_service: db-sync
     release_job_image: "{{ db_sync_image }}"
-    release_job_module: off_key_core.db.migrate
+    release_job_module: aberration_core.db.migrate
     release_job_arguments: [apply]
   when: release_migration_status.pending | length == 0 and not ((release_bootstrap | default(false) | bool) and release_monitor_phase == 'complete')
 

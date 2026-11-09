@@ -11,7 +11,17 @@ import unittest
 from pathlib import Path, PurePosixPath
 
 import yaml
-from support import CLIENTS, ROOT, TOKEN, ansible, discovery, load_script, render, run
+from support import (
+    CLIENTS,
+    ROOT,
+    TOKEN,
+    ansible,
+    discovery,
+    load_script,
+    render,
+    run,
+    validation_release,
+)
 
 compiler = load_script("compile_stack")
 
@@ -30,7 +40,7 @@ def read_configuration(directory):
         command += ["-f", path]
     # Shell variables outrank --env-file. Keep local credentials/settings out of
     # the rendered model, which must depend only on the supplied example inputs.
-    env = os.environ | {"OFFKEY_REVIEW_SENTINEL": "unexpected-expansion"}
+    env = os.environ | {"ABERRATION_REVIEW_SENTINEL": "unexpected-expansion"}
     for line in (stack / ".env").read_text().splitlines():
         if line and not line.startswith("#") and "=" in line:
             env.pop(line.split("=", 1)[0], None)
@@ -76,7 +86,7 @@ def read_configuration(directory):
 class DeploymentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="offkey-validation-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="aberration-validation-")
         cls.addClassCleanup(cls.temporary.cleanup)
         directory = Path(cls.temporary.name)
         (directory / "stack").mkdir()
@@ -96,12 +106,12 @@ class DeploymentTests(unittest.TestCase):
                 "literal-credentials",
                 "prod",
                 {
-                    "postgres_password": "literal-$OFFKEY_REVIEW_SENTINEL-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-trailing\\",
-                    "jwt_secret": "synthetic-jwt-$OFFKEY_REVIEW_SENTINEL-'\"\\#=\n-tail",
-                    "oauth2_client_secret": "literal-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-tail",
+                    "postgres_password": "literal-$ABERRATION_REVIEW_SENTINEL-${ABERRATION_REVIEW_SENTINEL}-'\"\\#=\n-trailing\\",
+                    "jwt_secret": "synthetic-jwt-$ABERRATION_REVIEW_SENTINEL-'\"\\#=\n-tail",
+                    "oauth2_client_secret": "literal-${ABERRATION_REVIEW_SENTINEL}-'\"\\#=\n-tail",
                     "broker_route_login": {
-                        "username": "route-${OFFKEY_REVIEW_SENTINEL}",
-                        "password": "literal-${OFFKEY_REVIEW_SENTINEL}-'\"\\#=\n-tail",
+                        "username": "route-${ABERRATION_REVIEW_SENTINEL}",
+                        "password": "literal-${ABERRATION_REVIEW_SENTINEL}-'\"\\#=\n-tail",
                     },
                 },
             ),
@@ -183,6 +193,8 @@ class DeploymentTests(unittest.TestCase):
         # These values decide which node identity production uses and how it
         # joins the source network. A change re-registers or strands the live
         # node, so update the digest only together with a planned migration.
+        # The rename changes the environment variable reference and state root;
+        # the cutover guide preserves the existing tailnet node identity.
         values = yaml.safe_load(
             (ROOT / "ansible/inventories/prod/group_vars/all/vars.yml").read_text()
         )
@@ -201,7 +213,7 @@ class DeploymentTests(unittest.TestCase):
         }
         self.assertEqual(
             hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest(),
-            "357272cb54061246f437fd3ffa11854eb334459b15b62787209400e523aa3a72",
+            "4c9d12e2932e99ba91fd9712cb58e19df4343594a36a87ec1d6cee880b6bdc35",
         )
 
     def test_production_route_covers_the_inventory_hosts_through_the_node(self):
@@ -235,9 +247,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_every_production_image_is_immutable_and_radar_matches_runtime(self):
         config = self.results["prod"]["config"]
-        release = yaml.safe_load(
-            (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
-        )["release"]
+        release = validation_release()
         for name, service in config["services"].items():
             with self.subTest(service=name):
                 self.assertRegex(service["image"], r"@sha256:[0-9a-f]{64}$")
@@ -310,9 +320,7 @@ class DeploymentTests(unittest.TestCase):
                 self.assertNotIn("mailpit", routes["services"])
                 self.assertEqual(result["mailpit_files"], [])
                 self.assertNotIn("mailpit_data", config.get("volumes", {}))
-        release = yaml.safe_load(
-            (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
-        )["release"]
+        release = validation_release()
         self.assertNotIn("mailpit", release["images"])
 
     def test_deployment_retires_only_named_production_services_and_can_repeat(self):
@@ -320,11 +328,11 @@ class DeploymentTests(unittest.TestCase):
             root = Path(directory)
             services = root / "services.json"
             original = [
-                "off-key_api",
-                "off-key_mailpit",
-                "off-key_mailpit-other",
-                "off-key_tailscale-dev-proxy",
-                "off-key_tailscale-dev-proxy-other",
+                "aberration_api",
+                "aberration_mailpit",
+                "aberration_mailpit-other",
+                "aberration_tailscale-dev-proxy",
+                "aberration_tailscale-dev-proxy-other",
                 "radar-runtime",
             ]
             services.write_text(json.dumps(original))
@@ -339,7 +347,7 @@ class DeploymentTests(unittest.TestCase):
                 "        print('\\n'.join(json.loads(state.read_text())))\n"
                 "elif args[:2] == ['service', 'rm']:\n"
                 "    assert args[:2] == ['service', 'rm'] and len(args) == 3, args\n"
-                "    assert args[2] in {'off-key_mailpit', 'off-key_tailscale-dev-proxy'}, args\n"
+                "    assert args[2] in {'aberration_mailpit', 'aberration_tailscale-dev-proxy'}, args\n"
                 "    current = json.loads(state.read_text())\n"
                 "    current.remove(args[2])\n"
                 "    state.write_text(json.dumps(current))\n"
@@ -364,7 +372,7 @@ class DeploymentTests(unittest.TestCase):
                             "environment": {"PATH": f"{root}:{os.environ['PATH']}"},
                             "vars": {
                                 "ansible_python_interpreter": sys.executable,
-                                "stack_name": "off-key",
+                                "stack_name": "aberration",
                                 "stack_dir": directory,
                                 "stack_compose_files": ["fixture.yml"],
                             },
@@ -389,13 +397,13 @@ class DeploymentTests(unittest.TestCase):
                         "localhost,",
                         str(playbook),
                         "-e",
-                        "offkey_env=prod",
+                        "aberration_env=prod",
                     )
                     expected = [
                         name
                         for name in original
                         if name
-                        not in {"off-key_mailpit", "off-key_tailscale-dev-proxy"}
+                        not in {"aberration_mailpit", "aberration_tailscale-dev-proxy"}
                     ]
                     self.assertEqual(json.loads(services.read_text()), expected)
 
@@ -514,7 +522,7 @@ class DeploymentTests(unittest.TestCase):
                 self.assertTrue(config["secrets"][secret["source"]]["external"])
                 token = result["inputs"]["cloudflare_tunnel_token"].strip()
                 expected_name = (
-                    "off-key_cloudflared_tunnel_token_"
+                    "aberration_cloudflared_tunnel_token_"
                     + hashlib.sha256(token.encode()).hexdigest()[:12]
                 )
                 self.assertEqual(
@@ -536,7 +544,7 @@ class DeploymentTests(unittest.TestCase):
         material = rendered["deployment_secret_material"]
         names = rendered["deployment_secret_names"]
         expected = {
-            f"off-key_{key}_{hashlib.sha256(value.encode()).hexdigest()[:12]}": value
+            f"aberration_{key}_{hashlib.sha256(value.encode()).hexdigest()[:12]}": value
             for key, value in material.items()
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -689,7 +697,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(router["middlewares"], ["oauth-errors", "oauth-auth"])
         self.assertEqual(
             routes["services"]["grafana"]["loadBalancer"]["servers"],
-            [{"url": "http://off-key_grafana:3000"}],
+            [{"url": "http://aberration_grafana:3000"}],
         )
         # Grafana trusts the user header only oauth-auth sets for Traefik.
         self.assertIn(
@@ -759,7 +767,7 @@ class DeploymentTests(unittest.TestCase):
             self.assertNotIn("demo", text.lower())
         self.assertIn("(https://aberration.app/index.md)", llms)
         self.assertIn(
-            "https://datadrivensustainabilitysolutions.github.io/off-key/llms.txt",
+            "https://datadrivensustainabilitysolutions.github.io/aberration/llms.txt",
             llms,
         )
         html = result["landing_html"]
@@ -796,14 +804,14 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(proxy["environment"]["MQTT_BROKER_PORT"], "8883")
         self.assertEqual(proxy["environment"]["MQTT_USE_TLS"], "true")
         self.assertEqual(proxy["environment"]["MQTT_USE_AUTH"], "true")
-        self.assertEqual(proxy["environment"]["MQTT_USERNAME"], "offkey-proxy")
+        self.assertEqual(proxy["environment"]["MQTT_USERNAME"], "aberration-proxy")
         self.assertNotIn("MQTT_APIKEY", proxy["environment"])
         self.assertEqual(
             proxy["environment"]["MQTT_CA_FILE"], "/run/secrets/EMQX_CA_CERT"
         )
         self.assertNotIn("environment", radar)
         self.assertEqual(
-            tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "offkey-proxy"
+            tactic["environment"]["SYSTEM_COLLECTION_MQTT_USERNAME"], "aberration-proxy"
         )
         self.assertNotIn("SYSTEM_COLLECTION_MQTT_API_KEY", tactic["environment"])
         self.assertEqual(
@@ -939,7 +947,7 @@ class DeploymentTests(unittest.TestCase):
             for name, service in result["routes"]["services"].items()
         }
         for url in urls.values():
-            self.assertTrue(url.startswith("http://off-key_"), url)
+            self.assertTrue(url.startswith("http://aberration_"), url)
         swarm = result["swarm_config"]
         configs = [config["name"] for config in swarm["configs"].values()]
         self.assertTrue(any(name.startswith("emqx_security_cfg_") for name in configs))

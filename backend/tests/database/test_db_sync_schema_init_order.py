@@ -5,9 +5,9 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from off_key_core.db.models import MonitoringEvidence, MonitoringService
-from off_key_core.db.schema import bootstrap_schema, validate_existing_schema
-from off_key_db_sync.service import SyncService
+from aberration_core.db.models import MonitoringEvidence, MonitoringService
+from aberration_core.db.schema import bootstrap_schema, validate_existing_schema
+from aberration_db_sync.service import SyncService
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
@@ -25,7 +25,7 @@ async def test_bootstrap_controls_readiness(failure):
     engine = MagicMock()
     engine.begin = begin
     service = SyncService()
-    with patch("off_key_db_sync.service.get_async_engine", return_value=engine):
+    with patch("aberration_db_sync.service.get_async_engine", return_value=engine):
         assert await service._initialize_database() is (failure is None)
     assert service.schema_ready is (failure is None)
     connection.run_sync.assert_awaited_once_with(bootstrap_schema)
@@ -40,7 +40,7 @@ def test_unsupported_schema_is_rejected_before_any_ddl():
     inspector.get_check_constraints.return_value = []
     inspector.get_foreign_keys.return_value = []
     with (
-        patch("off_key_core.db.schema.inspect", return_value=inspector),
+        patch("aberration_core.db.schema.inspect", return_value=inspector),
         pytest.raises(RuntimeError, match=r"Unsupported schema.*anomalies"),
     ):
         bootstrap_schema(connection)
@@ -50,7 +50,7 @@ def test_unsupported_schema_is_rejected_before_any_ddl():
 def test_empty_schema_is_supported():
     inspector = MagicMock()
     inspector.get_table_names.return_value = []
-    with patch("off_key_core.db.schema.inspect", return_value=inspector):
+    with patch("aberration_core.db.schema.inspect", return_value=inspector):
         validate_existing_schema(MagicMock())
 
 
@@ -105,7 +105,7 @@ async def test_database_wait_retries_until_the_connection_answers(monkeypatch):
     answers = AsyncMock(side_effect=[False, False, True])
     sleep = AsyncMock()
     monkeypatch.setattr(service, "_check_database_connection", answers)
-    monkeypatch.setattr("off_key_db_sync.service.asyncio.sleep", sleep)
+    monkeypatch.setattr("aberration_db_sync.service.asyncio.sleep", sleep)
 
     assert await service._wait_for_database(max_retries=3, delay=2) is True
     assert answers.await_count == 3
@@ -162,7 +162,7 @@ async def test_run_serves_until_shutdown_then_stops(monkeypatch):
 
     monkeypatch.setattr(service, "_wait_for_database", AsyncMock(return_value=True))
     monkeypatch.setattr(service, "_initialize_database", ready)
-    monkeypatch.setattr("off_key_db_sync.service.signal.signal", MagicMock())
+    monkeypatch.setattr("aberration_db_sync.service.signal.signal", MagicMock())
 
     await service.run()
 

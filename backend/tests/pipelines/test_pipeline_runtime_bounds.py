@@ -4,13 +4,13 @@ import json
 
 import pytest
 from aberrant.compose import NodeState, Readiness
+from aberration_mqtt_radar.pipelines.diagnostics import PipelineDiagnostics
 from backend.scripts.benchmark_pipeline_runtime import (
     StreamRunner,
     build_workload,
     observations,
     sustained_bounds,
 )
-from off_key_mqtt_radar.pipelines.diagnostics import PipelineDiagnostics
 
 pytestmark = pytest.mark.radar_integration
 

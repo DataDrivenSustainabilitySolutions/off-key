@@ -7,13 +7,13 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.models import AnomalyResult
-from off_key_mqtt_radar.result_records import (
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.models import AnomalyResult
+from aberration_mqtt_radar.result_records import (
     MULTIVARIATE_TELEMETRY_TYPE,
     ResultProjector,
 )
-from off_key_mqtt_radar.tables import ANOMALY_TABLE
+from aberration_mqtt_radar.tables import ANOMALY_TABLE
 
 
 def _with_input_reference(result, context: dict) -> dict:
@@ -576,7 +576,7 @@ async def test_stop_flushes_remaining_records_when_cancelled(db_config, monkeypa
         raise asyncio.CancelledError
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.asyncio.wait_for",
+        "aberration_mqtt_radar.database.asyncio.wait_for",
         cancelled_wait_for,
     )
 
@@ -616,7 +616,7 @@ async def test_session_factory_failure_retains_snapshot(
     writer = DatabaseWriter(db_config)
     writer.write_queue.append(sample_anomaly_result)
     monkeypatch.setattr(
-        "off_key_mqtt_radar.database.get_radar_async_session_factory",
+        "aberration_mqtt_radar.database.get_radar_async_session_factory",
         MagicMock(side_effect=ValueError("database configuration unavailable")),
     )
     await writer._flush_batch()
@@ -724,7 +724,7 @@ def test_build_records_scopes_alarm_and_identity_to_monitor(monkeypatch, service
 
 @pytest.mark.asyncio
 async def test_retry_batch_persists_value_type(monkeypatch):
-    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("aberration_mqtt_radar.database.asyncio.sleep", AsyncMock())
     session = AsyncMock()
     writer = _retrying_writer(session)
     batch_snapshot = [
@@ -742,7 +742,7 @@ async def test_retry_batch_persists_value_type(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retry_reuses_the_rows_projected_for_the_failed_flush(monkeypatch):
-    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("aberration_mqtt_radar.database.asyncio.sleep", AsyncMock())
     session = AsyncMock()
     writer = _retrying_writer(session)
     results = [
@@ -760,7 +760,7 @@ async def test_retry_reuses_the_rows_projected_for_the_failed_flush(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, caplog):
-    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("aberration_mqtt_radar.database.asyncio.sleep", AsyncMock())
     session = AsyncMock()
     session.execute.side_effect = RuntimeError("db down")
     writer = _retrying_writer(session)
@@ -795,7 +795,7 @@ async def test_retry_batch_logs_exhaustion_and_increments_errors(monkeypatch, ca
 async def test_retry_only_requeues_uncommitted_chunks(
     monkeypatch, chunk_outcomes, raises
 ):
-    monkeypatch.setattr("off_key_mqtt_radar.database.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("aberration_mqtt_radar.database.asyncio.sleep", AsyncMock())
     session = AsyncMock()
     writer = _retrying_writer(session)
     writer._execute_upsert = AsyncMock(
@@ -861,7 +861,7 @@ async def test_flush_batch_requeues_snapshot_when_writing_or_retrying_fails(
 
 
 def test_evidence_keeps_each_combined_detectors_inputs():
-    from off_key_mqtt_radar.result_records import _normalize_detector_inputs
+    from aberration_mqtt_radar.result_records import _normalize_detector_inputs
 
     assert _normalize_detector_inputs(
         {"pca": {"L1_dev": 0.01}, "iforest": {"L1": 16.0, "L2": 15.8}}

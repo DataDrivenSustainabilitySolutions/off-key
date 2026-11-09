@@ -14,8 +14,8 @@ Alloy 256 MiB / 0.5 CPU, each proxy 64 MiB / 0.25 CPU, and each canary 16 MiB /
 0.05 CPU. Every service has a memory and CPU reservation. A data worker must be
 ready, active and have at least 3 GiB actually available RAM before deployment.
 
-The storage role creates only `/var/lib/offkey-observability/storage.ext4` and
-mounts it at `/srv/offkey-observability`. The filesystem has a fixed 20 GiB budget,
+The storage role creates only `/var/lib/aberration-observability/storage.ext4` and
+mounts it at `/srv/aberration-observability`. The filesystem has a fixed 20 GiB budget,
 shared by Loki and Grafana. The image is sparse, so 20 GiB is its maximum growth,
 not an immediate 20 GiB allocation. Creation requires an additional 10 GiB host
 disk reserve. Existing images are never reformatted or silently resized.

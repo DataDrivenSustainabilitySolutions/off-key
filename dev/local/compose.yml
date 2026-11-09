@@ -94,10 +94,10 @@ services:
     build:
       context: ./backend/
       args:
-        SERVICE_NAME: off-key-mqtt-proxy
+        SERVICE_NAME: aberration-mqtt-proxy
         SERVICE_ROOT: services/mqtt/proxy
     # The proxy image supplies Python and Paho for the fixture publisher.
-    image: "${MQTT_PROXY_IMAGE:-off-key-mqtt-proxy:latest}"
+    image: "${MQTT_PROXY_IMAGE:-aberration-mqtt-proxy:latest}"
     command: ["/app/bin/python", "/opt/broker_fixture.py", "--publish"]
     volumes:
       - ./dev/local/broker_fixture.py:/opt/broker_fixture.py:ro

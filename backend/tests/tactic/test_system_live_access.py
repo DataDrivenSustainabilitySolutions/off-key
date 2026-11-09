@@ -4,19 +4,21 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.system import SystemDocument, SystemSnapshot
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.system import SystemDocument, SystemSnapshot
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.domain import ValidationError as DomainValidationError
-from off_key_tactic_middleware.services.catalogue import system_collection
-from off_key_tactic_middleware.services.catalogue.broker_access import (
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.domain import ValidationError as DomainValidationError
+from aberration_tactic_middleware.services.catalogue import system_collection
+from aberration_tactic_middleware.services.catalogue.broker_access import (
     BrokerRouteAccess,
 )
-from off_key_tactic_middleware.services.catalogue.system_live import SystemLiveService
+from aberration_tactic_middleware.services.catalogue.system_live import (
+    SystemLiveService,
+)
 from pydantic import ValidationError
 
 

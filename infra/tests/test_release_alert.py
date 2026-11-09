@@ -8,7 +8,7 @@ from pathlib import Path
 from support import load_script
 
 alert = load_script("release_alert")
-RUN = "https://github.com/example/off-key/actions/runs/7"
+RUN = "https://github.com/example/aberration/actions/runs/7"
 SHA = "a" * 40
 
 

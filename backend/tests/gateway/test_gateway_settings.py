@@ -1,6 +1,6 @@
 """Gateway-only settings: service endpoints the gateway calls."""
 
-from off_key_api_gateway.settings import get_service_endpoints_settings
+from aberration_api_gateway.settings import get_service_endpoints_settings
 
 
 def test_service_endpoints_support_https_overrides(monkeypatch):

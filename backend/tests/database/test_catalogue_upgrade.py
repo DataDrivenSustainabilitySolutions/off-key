@@ -2,9 +2,9 @@
 
 from datetime import UTC, datetime
 
-from off_key_core.db.catalogue_upgrade import upgrade_topics
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import (
+from aberration_core.db.catalogue_upgrade import upgrade_topics
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import (
     Charger,
     CollectionConfiguration,
     MemberFavorite,
@@ -12,9 +12,9 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from off_key_core.db.system import SystemCollectionConfiguration, SystemConfiguration
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import SystemCollectionDefinition
+from aberration_core.db.system import SystemCollectionConfiguration, SystemConfiguration
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import SystemCollectionDefinition
 from sqlalchemy import insert, select, text
 
 from tests.support.collection import runtime_catalog

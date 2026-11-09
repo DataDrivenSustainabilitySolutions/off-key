@@ -4,16 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import docker
 import pytest
-from off_key_tactic_middleware.services.orchestration import (
+from aberration_tactic_middleware.services.orchestration import (
     reconciliation as reconciliation_module,
 )
-from off_key_tactic_middleware.services.orchestration.radar_status import (
+from aberration_tactic_middleware.services.orchestration.radar_status import (
     apply_terminal_operational_status,
 )
-from off_key_tactic_middleware.services.orchestration.reconciliation import (
+from aberration_tactic_middleware.services.orchestration.reconciliation import (
     RadarStatusReconciliationService,
 )
-from off_key_tactic_middleware.services.orchestration.time_utils import coerce_utc
+from aberration_tactic_middleware.services.orchestration.time_utils import coerce_utc
 
 from tests.support.docker import FakeAsyncDocker
 from tests.support.orchestration import purge_results, scalars_result

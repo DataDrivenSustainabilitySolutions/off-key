@@ -1,0 +1,11 @@
+"""
+Aberration Core Library
+
+Shared components for the Aberration telemetry monitoring platform.
+Provides common functionality for database models, schemas, configuration,
+and external API clients.
+"""
+
+__version__ = "0.1.0"
+
+__all__ = ["__version__"]

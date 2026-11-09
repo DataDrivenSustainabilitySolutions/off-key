@@ -4,8 +4,8 @@ import asyncio
 import threading
 from unittest.mock import MagicMock
 
-from off_key_tactic_middleware.config.config import DockerConfig
-from off_key_tactic_middleware.facades.docker import AsyncDocker
+from aberration_tactic_middleware.config.config import DockerConfig
+from aberration_tactic_middleware.facades.docker import AsyncDocker
 
 
 async def test_probes_use_at_most_half_of_the_docker_slots():

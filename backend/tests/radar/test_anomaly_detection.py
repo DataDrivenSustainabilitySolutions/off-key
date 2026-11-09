@@ -4,13 +4,16 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_mqtt_radar.detector_handle import DetectionService, DetectorHandle
-from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
-from off_key_mqtt_radar.feature_validation import TelemetryFeatureValidator
-from off_key_mqtt_radar.memory import MemoryManager
-from off_key_mqtt_radar.models import AnomalyResult
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_mqtt_radar.detector_handle import DetectionService, DetectorHandle
+from aberration_mqtt_radar.execution_errors import (
+    FatalExecutionError,
+    ObservationRejected,
+)
+from aberration_mqtt_radar.feature_validation import TelemetryFeatureValidator
+from aberration_mqtt_radar.memory import MemoryManager
+from aberration_mqtt_radar.models import AnomalyResult
 
 
 def _result(score: float = 0.5, *, is_anomaly: bool = False) -> AnomalyResult:

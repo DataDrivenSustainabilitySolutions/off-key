@@ -2,16 +2,16 @@
 
 from unittest.mock import AsyncMock
 
+from aberration_core.auth.permissions import MEMBER_ROLE
+from aberration_core.db.base import get_db_async
+from aberration_core.db.collection_runtime import CollectionRuntimeSnapshot
+from aberration_core.db.models import User
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import SystemCollectionDefinition
+from aberration_tactic_middleware.api.collection_auth import current_member
+from aberration_tactic_middleware.api.v1 import system as system_api
+from aberration_tactic_middleware.services.catalogue import system as system_service
 from fastapi import FastAPI
-from off_key_core.auth.permissions import MEMBER_ROLE
-from off_key_core.db.base import get_db_async
-from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
-from off_key_core.db.models import User
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import SystemCollectionDefinition
-from off_key_tactic_middleware.api.collection_auth import current_member
-from off_key_tactic_middleware.api.v1 import system as system_api
-from off_key_tactic_middleware.services.catalogue import system as system_service
 
 from tests.support.http import asgi_client
 

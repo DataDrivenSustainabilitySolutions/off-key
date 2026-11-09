@@ -11,9 +11,9 @@ INVENTORY = "infra/ansible/inventories/prod/"
 # Migration 005 hashes these modules into its ledger checksum, so they keep the
 # names of the retired v1 format, as do the tests that exercise that format.
 FROZEN_HISTORY = {
-    "backend/libs/core/src/off_key_core/db/catalogue_upgrade.py",
-    "backend/libs/core/src/off_key_core/db/catalogue_v1.py",
-    "backend/libs/core/src/off_key_core/db/catalogue_v1_models.py",
+    "backend/libs/core/src/aberration_core/db/catalogue_upgrade.py",
+    "backend/libs/core/src/aberration_core/db/catalogue_v1.py",
+    "backend/libs/core/src/aberration_core/db/catalogue_v1_models.py",
     "backend/tests/support/legacy_catalogue.py",
     "backend/tests/tactic/test_legacy_catalogue.py",
 }

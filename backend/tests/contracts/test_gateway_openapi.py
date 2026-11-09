@@ -5,14 +5,14 @@ Authorization parameter.
 """
 
 import pytest
+from aberration_api_gateway.app import build_app
+from aberration_api_gateway.settings import AppSettings
 from fastapi.testclient import TestClient
-from off_key_api_gateway.app import build_app
-from off_key_api_gateway.settings import AppSettings
 
 
 @pytest.fixture(scope="module")
 def schema():
-    return build_app(AppSettings(APP_NAME="off-key-test")).openapi()
+    return build_app(AppSettings(APP_NAME="aberration-test")).openapi()
 
 
 def operations(schema):
@@ -65,7 +65,7 @@ def test_collection_health_documents_its_diagnosis(schema):
 
 def test_the_api_prefix_is_named_as_the_server():
     """Deployments start the gateway with --root-path /api behind the proxy."""
-    app = build_app(AppSettings(APP_NAME="off-key-test"))
+    app = build_app(AppSettings(APP_NAME="aberration-test"))
     client = TestClient(app, root_path="/api")
     assert client.get("/openapi.json").json()["servers"] == [{"url": "/api"}]
     assert "/api/openapi.json" in client.get("/docs").text

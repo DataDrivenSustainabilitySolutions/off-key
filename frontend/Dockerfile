@@ -11,8 +11,8 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000 npm ci
 
 FROM dependencies AS development
 
-LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
-      org.opencontainers.image.description="Development server for the Off-Key frontend" \
+LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/aberration" \
+      org.opencontainers.image.description="Development server for the Aberration frontend" \
       org.opencontainers.image.licenses="MIT"
 
 COPY --chown=node:node . .
@@ -32,8 +32,8 @@ RUN npm run build
 # (njs, xslt, image-filter, geoip, acme) and curl that this config never loads.
 FROM nginx:1.31.8-alpine-slim AS production
 
-LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
-      org.opencontainers.image.description="Production image for the Off-Key frontend" \
+LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/aberration" \
+      org.opencontainers.image.description="Production image for the Aberration frontend" \
       org.opencontainers.image.licenses="MIT"
 
 ENV API_UPSTREAM=api-gateway:8000 \

@@ -4,13 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.collection_runtime import CollectionRuntimeSnapshot
-from off_key_core.db.worker_ownership import WorkerOwnershipLost
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import SystemCollectionDefinition
-from off_key_mqtt_proxy import proxy as proxy_module
-from off_key_mqtt_proxy.config.config import MQTTSettings
-from off_key_mqtt_proxy.health_api import ProxyHealthApp
+from aberration_core.db.collection_runtime import CollectionRuntimeSnapshot
+from aberration_core.db.worker_ownership import WorkerOwnershipLost
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import SystemCollectionDefinition
+from aberration_mqtt_proxy import proxy as proxy_module
+from aberration_mqtt_proxy.config.config import MQTTSettings
+from aberration_mqtt_proxy.health_api import ProxyHealthApp
 
 from tests.support.collection import message
 from tests.support.collection import runtime_catalog as catalog

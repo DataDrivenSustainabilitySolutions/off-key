@@ -6,7 +6,7 @@ const STORAGE_TYPE_KEY = 'token_storage_type';
 const REMEMBERED = 'remembered';
 // Non-secret marker that tells other tabs a different member signed in.
 const MEMBER_KEY = 'session_member';
-const SESSION_CHANGED = 'off-key-session-changed';
+const SESSION_CHANGED = 'aberration-session-changed';
 let generation = 0;
 // Remembered sessions keep the bearer token in memory only; each tab restores
 // it from the HttpOnly cookie, so injected scripts cannot lift it from storage.
@@ -101,7 +101,7 @@ export const subscribeToSession = (onChange: () => void): (() => void) => {
 const sessionRequest = (endpoint: string) => fetch(getApiUrl(endpoint), {
   method: 'POST',
   credentials: 'include',
-  headers: { 'X-Off-Key-Session': '1' },
+  headers: { 'X-Aberration-Session': '1' },
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
 

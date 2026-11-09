@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_api_gateway.api.v1 import alarms as gateway
-from off_key_core.db.models import Anomaly
-from off_key_core.schemas.alarms import AlarmCreate, AlarmQuery
-from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
-from off_key_tactic_middleware.domain import NotFoundError, ValidationError
-from off_key_tactic_middleware.services.data.alarm_catalogue import (
+from aberration_api_gateway.api.v1 import alarms as gateway
+from aberration_core.db.models import Anomaly
+from aberration_core.schemas.alarms import AlarmCreate, AlarmQuery
+from aberration_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
+from aberration_tactic_middleware.domain import NotFoundError, ValidationError
+from aberration_tactic_middleware.services.data.alarm_catalogue import (
     AlarmCatalogue,
     reading_scope,
 )
-from off_key_tactic_middleware.services.data.alarms import AlarmService
+from aberration_tactic_middleware.services.data.alarms import AlarmService
 
 BINDINGS = {
     "line-temperature": {"entity_id": "line", "telemetry_key": "temperature"},

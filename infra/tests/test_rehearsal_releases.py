@@ -20,13 +20,13 @@ from rehearsal_releases import (
 class RehearsalReleaseTests(unittest.TestCase):
     def test_current_builds_only_read_caches_and_rollback_writes_its_own_scope(self):
         current = rehearsal_releases.build_cache_options(
-            "off-key-api-gateway", "a" * 40
+            "aberration-api-gateway", "a" * 40
         )
         self.assertNotIn("--cache-to", current)
         self.assertIn("type=gha,version=2,scope=docker-validate-api-gateway", current)
         self.assertIn("type=gha,version=2,scope=docker-publish-api-gateway", current)
         rollback = rehearsal_releases.build_cache_options(
-            "off-key-api-gateway", rehearsal_releases.COMPATIBLE_REVISION
+            "aberration-api-gateway", rehearsal_releases.COMPATIBLE_REVISION
         )
         destination = rollback[rollback.index("--cache-to") + 1]
         self.assertIn(
@@ -38,7 +38,7 @@ class RehearsalReleaseTests(unittest.TestCase):
 
     def test_cached_and_local_builds_keep_the_same_production_inputs(self):
         revision = "a" * 40
-        service = "off-key-api-gateway"
+        service = "aberration-api-gateway"
         reference = f"localhost:5010/{service}:sha-{revision[:12]}"
         digest = reference.rsplit(":", 1)[0] + "@sha256:" + "b" * 64
         with (
@@ -56,7 +56,7 @@ class RehearsalReleaseTests(unittest.TestCase):
                 with (
                     self.subTest(cache=cache),
                     patch.dict(
-                        rehearsal_releases.os.environ, {"OFFKEY_BUILD_CACHE": cache}
+                        rehearsal_releases.os.environ, {"ABERRATION_BUILD_CACHE": cache}
                     ),
                 ):
                     docker.reset_mock()
@@ -93,7 +93,9 @@ class RehearsalReleaseTests(unittest.TestCase):
     def test_foreign_registry_name_is_never_deleted_even_after_prepare_rejection(self):
         inspected = SimpleNamespace(
             returncode=0,
-            stdout=json.dumps([{"Config": {"Labels": {"off-key.ci": "someone-else"}}}]),
+            stdout=json.dumps(
+                [{"Config": {"Labels": {"aberration.ci": "someone-else"}}}]
+            ),
         )
         with patch.object(rehearsal_releases, "run", return_value=inspected) as docker:
             with self.assertRaisesRegex(ValueError, "belongs to another"):
@@ -111,7 +113,7 @@ class RehearsalReleaseTests(unittest.TestCase):
         inspected = SimpleNamespace(
             returncode=0,
             stdout=json.dumps(
-                [{"Config": {"Labels": {"off-key.ci": "deployment-smoke"}}}]
+                [{"Config": {"Labels": {"aberration.ci": "deployment-smoke"}}}]
             ),
         )
         with patch.object(rehearsal_releases, "run", return_value=inspected) as docker:
@@ -174,11 +176,11 @@ class RehearsalReleaseTests(unittest.TestCase):
         self,
     ):
         paths = [
-            "backend/libs/core/src/off_key_core/models/adaptive_catalog.json",
-            "backend/libs/core/src/off_key_core/db/migrations/010_monitoring_pipelines.sql",
-            "backend/libs/core/src/off_key_core/db/catalogue_upgrade.py",
-            "backend/libs/core/src/off_key_core/db/catalogue_v1.py",
-            "backend/libs/core/src/off_key_core/db/catalogue_v1_models.py",
+            "backend/libs/core/src/aberration_core/models/adaptive_catalog.json",
+            "backend/libs/core/src/aberration_core/db/migrations/010_monitoring_pipelines.sql",
+            "backend/libs/core/src/aberration_core/db/catalogue_upgrade.py",
+            "backend/libs/core/src/aberration_core/db/catalogue_v1.py",
+            "backend/libs/core/src/aberration_core/db/catalogue_v1_models.py",
         ]
 
         def lock(aberrant, fastapi):
@@ -215,7 +217,7 @@ class RehearsalReleaseTests(unittest.TestCase):
             locked.write_text(lock("1.3.0", "0.143.0"))
             (
                 current
-                / "backend/libs/core/src/off_key_core/db/migrations/011_future.sql"
+                / "backend/libs/core/src/aberration_core/db/migrations/011_future.sql"
             ).write_text("new schema")
             with self.assertRaisesRegex(ValueError, "different migration ledger"):
                 validate_compatible_source(source, current)
@@ -327,10 +329,10 @@ class CiImageTests(unittest.TestCase):
         del partial["images"]["mqtt_radar"]
         with self.assertRaisesRegex(ValueError, "every application image"):
             self.load(manifest=partial)
-        changed = dict(self.ids, **{"off-key-mqtt-radar": "sha256:" + "f" * 64})
+        changed = dict(self.ids, **{"aberration-mqtt-radar": "sha256:" + "f" * 64})
         with self.assertRaisesRegex(ValueError, "mqtt_radar image differs"):
             self.load(run=fake_docker(changed))
-        wrong_label = fake_docker(self.ids, {"off-key-frontend": "e" * 40})
+        wrong_label = fake_docker(self.ids, {"aberration-frontend": "e" * 40})
         with self.assertRaisesRegex(ValueError, "frontend image belongs to"):
             self.load(run=wrong_label)
 
@@ -372,7 +374,7 @@ class CiImageTests(unittest.TestCase):
                 for index, value in enumerate(build)
                 if value == "--cache-to"
             ]
-            suffix = service.removeprefix("off-key-")
+            suffix = service.removeprefix("aberration-")
             self.assertEqual(
                 destinations,
                 [
@@ -400,15 +402,20 @@ class CiImageTests(unittest.TestCase):
             rehearsal_releases.push_loaded_images(release, REVISION)
         self.assertEqual(set(release["images"]), set(rehearsal_releases.BUILDS))
         for reference in release["images"].values():
-            self.assertRegex(reference, r"^localhost:5010/off-key-[\w-]+@sha256:d{64}$")
+            self.assertRegex(
+                reference, r"^localhost:5010/aberration-[\w-]+@sha256:d{64}$"
+            )
 
     def test_ci_rehearsals_never_rebuild_the_current_images(self):
         import swarm_smoke
 
         release = {"images": {}}
         for environment, expected in (
-            ({"CI": "true", "OFFKEY_REHEARSAL_IMAGES": "loaded"}, "push_loaded_images"),
-            ({"CI": "", "OFFKEY_REHEARSAL_IMAGES": ""}, "build_local_images"),
+            (
+                {"CI": "true", "ABERRATION_REHEARSAL_IMAGES": "loaded"},
+                "push_loaded_images",
+            ),
+            ({"CI": "", "ABERRATION_REHEARSAL_IMAGES": ""}, "build_local_images"),
         ):
             with (
                 self.subTest(environment=environment),
@@ -427,7 +434,7 @@ class CiImageTests(unittest.TestCase):
                 swarm_smoke.os.environ,
                 {
                     "CI": "true",
-                    "OFFKEY_REHEARSAL_IMAGES": "",
+                    "ABERRATION_REHEARSAL_IMAGES": "",
                     "GITHUB_EVENT_NAME": "pull_request",
                 },
             ),

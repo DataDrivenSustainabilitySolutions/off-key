@@ -25,7 +25,7 @@ Create the ignored local configuration file from the tracked development templat
 cp .env.example .env
 ```
 
-Before using Off-Key outside local development, replace every example credential. At minimum, configure:
+Before using Aberration outside local development, replace every example credential. At minimum, configure:
 
 - `EMQX_DASHBOARD_PASSWORD` with a strong value.
 - `JWT_SECRET` and `INTERNAL_API_SECRET` with distinct values of at least 32 characters.
@@ -81,7 +81,7 @@ curl http://localhost:8001/ready
 
 ## 4. Create the first user
 
-Run `docker compose exec -T tactic-middleware /app/bin/python -m off_key_tactic_middleware.bootstrap_admin`.
+Run `docker compose exec -T tactic-middleware /app/bin/python -m aberration_tactic_middleware.bootstrap_admin`.
 Open the printed invitation URL, choose a password, and log in. The account uses
 `SUPERUSER_MAIL`. Invite colleagues from **Account → Members**.
 See [Single-organization operation](single-organization.md) for upgrades and SMTP.

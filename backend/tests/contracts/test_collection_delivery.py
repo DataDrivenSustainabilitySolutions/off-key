@@ -2,11 +2,11 @@
 
 from unittest.mock import MagicMock
 
-from off_key_core.utils.mqtt_lifecycle import close_client
-from off_key_mqtt_proxy.client.facade import MQTTClient
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_tactic_middleware.config.system_live import SystemLiveSettings
-from off_key_tactic_middleware.services.catalogue import system_ingress
+from aberration_core.utils.mqtt_lifecycle import close_client
+from aberration_mqtt_proxy.client.facade import MQTTClient
+from aberration_mqtt_proxy.collection_buffer import CollectionBuffer
+from aberration_tactic_middleware.config.system_live import SystemLiveSettings
+from aberration_tactic_middleware.services.catalogue import system_ingress
 from paho.mqtt.client import Client
 from paho.mqtt.enums import CallbackAPIVersion
 

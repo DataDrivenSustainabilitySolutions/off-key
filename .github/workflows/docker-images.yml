@@ -22,53 +22,53 @@ jobs:
       matrix:
         include:
           - service: frontend
-            image_name: off-key-frontend
+            image_name: aberration-frontend
             context: ./frontend
             file: ./frontend/Dockerfile
             build_args: ""
             target: production
           - service: api-gateway
-            image_name: off-key-api-gateway
+            image_name: aberration-api-gateway
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
-              SERVICE_NAME=off-key-api-gateway
+              SERVICE_NAME=aberration-api-gateway
               SERVICE_ROOT=services/api/gateway
               GIT_COMMIT=${{ github.sha }}
             target: ""
           - service: tactic-middleware
-            image_name: off-key-tactic-middleware
+            image_name: aberration-tactic-middleware
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
-              SERVICE_NAME=off-key-tactic-middleware
+              SERVICE_NAME=aberration-tactic-middleware
               SERVICE_ROOT=services/middleware/tactic
               GIT_COMMIT=${{ github.sha }}
             target: ""
           - service: mqtt-radar
-            image_name: off-key-mqtt-radar
+            image_name: aberration-mqtt-radar
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
-              SERVICE_NAME=off-key-mqtt-radar
+              SERVICE_NAME=aberration-mqtt-radar
               SERVICE_ROOT=services/mqtt/radar
               GIT_COMMIT=${{ github.sha }}
             target: ""
           - service: mqtt-proxy
-            image_name: off-key-mqtt-proxy
+            image_name: aberration-mqtt-proxy
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
-              SERVICE_NAME=off-key-mqtt-proxy
+              SERVICE_NAME=aberration-mqtt-proxy
               SERVICE_ROOT=services/mqtt/proxy
               GIT_COMMIT=${{ github.sha }}
             target: ""
           - service: db-sync
-            image_name: off-key-db-sync
+            image_name: aberration-db-sync
             context: ./backend
             file: ./backend/Dockerfile
             build_args: |
-              SERVICE_NAME=off-key-db-sync
+              SERVICE_NAME=aberration-db-sync
               SERVICE_ROOT=services/db/sync
               GIT_COMMIT=${{ github.sha }}
             target: ""

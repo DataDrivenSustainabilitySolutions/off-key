@@ -12,21 +12,21 @@ import sys
 
 
 def import_everything_radar_runs():
-    import off_key_mqtt_radar
+    import aberration_mqtt_radar
     from aberrant.catalog import (
         TRANSFORMER_CATALOG,
         get_model_spec,
         get_similarity_engine_spec,
     )
-    from off_key_core.models.adaptive import MODEL_IDS
-    from off_key_core.models.static import STATIC_MODELS
+    from aberration_core.models.adaptive import MODEL_IDS
+    from aberration_core.models.static import STATIC_MODELS
 
     # RADAR imports these lazily, so walking its modules alone does not reach them.
     importlib.import_module("nonconform")
     importlib.import_module("nonconform.martingales")
 
     for module in pkgutil.walk_packages(
-        off_key_mqtt_radar.__path__, f"{off_key_mqtt_radar.__name__}."
+        aberration_mqtt_radar.__path__, f"{aberration_mqtt_radar.__name__}."
     ):
         if not module.name.endswith(".__main__"):
             importlib.import_module(module.name)

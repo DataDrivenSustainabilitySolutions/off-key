@@ -149,20 +149,20 @@ See [Deployment modes](../operations/deployment-modes.md) for operational comman
 
 RADAR pins the `aberrant[faiss]` release in
 `backend/services/mqtt/radar/pyproject.toml`. Shared configuration, Gateway, and TACTIC
-read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
+read `aberration_core/models/adaptive_catalog.json`; they do not import NumPy,
 SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
 library and optional dependencies as RADAR. `models/adaptive.py` owns only the
 supported-model policy, application defaults, resource limits, and compatibility
 translations. Constructor schemas and default capability descriptions come
-from Aberrant. Algorithm family is separate from Offkey's `adaptive_aberrant`
+from Aberrant. Algorithm family is separate from Aberration's `adaptive_aberrant`
 routing family.
 
 After changing the dependency pin or model policy, regenerate and verify:
 
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen
-uv run --project backend python -m off_key_mqtt_radar.catalog --write
-uv run --project backend python -m off_key_mqtt_radar.catalog --check
+uv run --project backend python -m aberration_mqtt_radar.catalog --write
+uv run --project backend python -m aberration_mqtt_radar.catalog --check
 ```
 
 CI compares the snapshot with the installed runtime, and RADAR's Docker build
@@ -181,11 +181,11 @@ configuration, with a feature-schema guard first. Pipeline monitors build the
 same configuration in `pipelines/adapters.py` (see
 [Monitoring pipelines](monitoring-pipelines.md)); both fill the detector's
 feature-bound parameters (`abs_diff`, `key`, `keys`) through
-`bind_detector_parameters` in `off_key_core.models.adaptive`. RADAR constructs the pipeline
-through `DetectorConfig`, then applies Offkey's explicit unit-interval input
+`bind_detector_parameters` in `aberration_core.models.adaptive`. RADAR constructs the pipeline
+through `DetectorConfig`, then applies Aberration's explicit unit-interval input
 policy where required. Checkpoints contain the normalized configuration,
 configuration fingerprint, input keys, package version, and lifecycle state.
-Signed atomic checkpoint I/O remains owned by Offkey. Runtime model information
+Signed atomic checkpoint I/O remains owned by Aberration. Runtime model information
 includes the resolved model identity and capabilities.
 
 Integrated production releases seed the tested RADAR image on backend nodes, stop

@@ -4,9 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import (
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
     DojoPoint,
@@ -17,28 +16,29 @@ from off_key_core.db.models import (
     Telemetry,
     User,
 )
-from off_key_core.schemas.dojo import (
+from aberration_core.schemas.dojo import (
     CsvImportQuery,
     DatasetChange,
     DatasetFromHistory,
     DatasetListQuery,
     DatasetPointsQuery,
 )
-from off_key_core.schemas.members import MemberInvitation
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.members import MemberInvitation
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )
-from off_key_tactic_middleware.api.v1.dojo import router
-from off_key_tactic_middleware.domain import NotFoundError, ValidationError
-from off_key_tactic_middleware.services.accounts.members import MemberService
-from off_key_tactic_middleware.services.dojo import datasets as dataset_module
-from off_key_tactic_middleware.services.dojo.csv_import import (
+from aberration_tactic_middleware.api.v1.dojo import router
+from aberration_tactic_middleware.domain import NotFoundError, ValidationError
+from aberration_tactic_middleware.services.accounts.members import MemberService
+from aberration_tactic_middleware.services.dojo import datasets as dataset_module
+from aberration_tactic_middleware.services.dojo.csv_import import (
     detect_delimiter,
     parse_timestamp,
     read_points,
 )
-from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from aberration_tactic_middleware.services.dojo.datasets import DojoDatasets
+from fastapi import FastAPI
 from sqlalchemy import MetaData, func, select
 
 from tests.support.env import set_auth_env

@@ -5,12 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aberration_api_gateway.api.v1.auth import access_token_response
+from aberration_core.config.auth import get_auth_settings
+from aberration_tactic_middleware.api.collection_auth import current_member
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
-from off_key_api_gateway.api.v1.auth import access_token_response
-from off_key_core.config.auth import get_auth_settings
-from off_key_tactic_middleware.api.collection_auth import current_member
 
 from tests.support.env import set_auth_env
 

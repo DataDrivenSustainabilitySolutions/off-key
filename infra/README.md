@@ -1,6 +1,6 @@
 # Production infrastructure
 
-This directory is the authoritative Ansible and Docker Swarm deployment for Offkey.
+This directory is the authoritative Ansible and Docker Swarm deployment for Aberration.
 Application and infrastructure changes share a tested commit. Local development uses
 root `docker-compose.yml`; VM provisioning and Windows/network setup are retired.
 

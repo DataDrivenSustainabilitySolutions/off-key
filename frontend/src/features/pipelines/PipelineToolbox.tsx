@@ -115,7 +115,7 @@ export function PipelineToolbox({
                   draggable={!link && !choices && !reason}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(
-                      "application/off-key-component",
+                      "application/aberration-component",
                       component.id,
                     );
                     event.dataTransfer.effectAllowed = "copy";

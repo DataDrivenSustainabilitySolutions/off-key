@@ -1,17 +1,17 @@
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_core.models import (
+from aberration_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     ADAPTIVE_MONITORING_STRATEGY,
     STATIC_MODEL_FAMILY,
     STATIC_MONITORING_STRATEGY,
 )
-from off_key_core.models.static import STATIC_MODELS, validate_static_model_params
-from off_key_core.schemas.radar import StaticBaselineConfig
-from off_key_mqtt_radar.detector import StaticConformalDetectionService
-from off_key_tactic_middleware.api.v1.models import router
-from off_key_tactic_middleware.models.catalog import validate_model_params
+from aberration_core.models.static import STATIC_MODELS, validate_static_model_params
+from aberration_core.schemas.radar import StaticBaselineConfig
+from aberration_mqtt_radar.detector import StaticConformalDetectionService
+from aberration_tactic_middleware.api.v1.models import router
+from aberration_tactic_middleware.models.catalog import validate_model_params
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 

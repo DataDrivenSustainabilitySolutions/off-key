@@ -5,12 +5,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aberration_tactic_middleware.config import RadarWorkloadLifecycle
 from fastapi import FastAPI
-from off_key_tactic_middleware.config import RadarWorkloadLifecycle
 
-tactic_main = import_module("off_key_tactic_middleware.main")
+tactic_main = import_module("aberration_tactic_middleware.main")
 radar_workloads = import_module(
-    "off_key_tactic_middleware.services.orchestration.radar_workloads"
+    "aberration_tactic_middleware.services.orchestration.radar_workloads"
 )
 
 

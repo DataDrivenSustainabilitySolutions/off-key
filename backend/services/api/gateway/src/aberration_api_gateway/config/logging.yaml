@@ -1,0 +1,37 @@
+version: 1
+disable_existing_loggers: false
+
+# Service-specific logger configurations
+loggers:
+  aberration_api_gateway:
+    level: ${SERVICE_LOG_LEVEL:${LOG_LEVEL:INFO}}
+    handlers: [console]
+    propagate: false
+
+  # FastAPI/Uvicorn loggers
+  uvicorn:
+    level: ${UVICORN_LOG_LEVEL:INFO}
+    handlers: [console]
+    propagate: false
+
+  uvicorn.access:
+    level: ${UVICORN_ACCESS_LOG_LEVEL:WARNING}
+    handlers: [console]
+    propagate: false
+
+  fastapi:
+    level: ${FASTAPI_LOG_LEVEL:INFO}
+    handlers: [console]
+    propagate: false
+
+  # Security and rate limiting
+  slowapi:
+    level: ${RATE_LIMIT_LOG_LEVEL:WARNING}
+    handlers: [console]
+    propagate: false
+
+  # Authentication logging
+  bcrypt:
+    level: ${AUTH_LOG_LEVEL:WARNING}
+    handlers: [console]
+    propagate: false

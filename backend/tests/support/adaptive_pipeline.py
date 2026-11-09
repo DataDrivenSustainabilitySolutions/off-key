@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import compile_pipeline, execution_fingerprint
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
 )
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
 
 
 def adaptive_pipeline_config(

@@ -26,7 +26,7 @@
     - name: Create an isolated Docker configuration
       tempfile:
         state: directory
-        prefix: off-key-release-
+        prefix: aberration-release-
       register: release_docker_config
 
     - name: Set temporary registry authentication and retain local CLI plugins

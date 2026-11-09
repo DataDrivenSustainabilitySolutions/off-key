@@ -112,7 +112,7 @@ meaning. Feature concatenation must keep its existing same-observation semantics
 These are admission criteria for a future change, not a plan to implement one now.
 
 The numerical boundary stays equally focused: Aberrant's graph remains a
-standalone feature DAG with one terminal model. OFF-KEY owns bindings, strategy
+standalone feature DAG with one terminal model. ABERRATION owns bindings, strategy
 lifecycle, policy, persistence and the visual language. A future application
 execution shape must not silently weaken that numerical API or add application
 infrastructure to Aberrant.

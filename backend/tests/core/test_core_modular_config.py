@@ -1,24 +1,24 @@
 from pathlib import Path
 
-import off_key_core.config as core_config
-from off_key_api_gateway.settings import (
+import aberration_core.config as core_config
+from aberration_api_gateway.settings import (
     get_app_settings,
     get_service_endpoints_settings,
 )
-from off_key_core.config import (
+from aberration_core.config import (
     get_auth_settings,
     get_database_settings,
     get_email_settings,
     get_runtime_settings,
     get_telemetry_settings,
 )
-from off_key_core.config.database import DatabaseSettings
-from off_key_core.config.validation import validate_settings
-from off_key_core.db import base as db_base
-from off_key_mqtt_radar.config.runtime import (
+from aberration_core.config.database import DatabaseSettings
+from aberration_core.config.validation import validate_settings
+from aberration_core.db import base as db_base
+from aberration_mqtt_radar.config.runtime import (
     get_radar_database_settings,
 )
-from off_key_tactic_middleware.config import (
+from aberration_tactic_middleware.config import (
     get_radar_container_runtime_settings,
 )
 
@@ -172,7 +172,7 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
         {
             **AUTH_ENVIRONMENT,
             **EMAIL_ENVIRONMENT,
-            "APP_NAME": "off-key",
+            "APP_NAME": "aberration",
             "DEBUG": "false",
             "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
         },
@@ -196,7 +196,7 @@ def test_gateway_validation_specs_no_longer_require_database(monkeypatch):
 
 
 def test_gateway_validation_specs_exclude_database():
-    from off_key_api_gateway.app import VALIDATION_SPECS
+    from aberration_api_gateway.app import VALIDATION_SPECS
 
     names = [name for name, _ in VALIDATION_SPECS]
     assert "runtime" in names
@@ -211,7 +211,7 @@ def test_no_canonical_config_imports_or_get_settings_calls():
         project_root / "tests",
     ]
 
-    forbidden_module = "off_key_core.config." + "config"
+    forbidden_module = "aberration_core.config." + "config"
     forbidden_get_settings = "get_" + "settings("
 
     violations: list[str] = []

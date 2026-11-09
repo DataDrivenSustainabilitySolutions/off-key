@@ -1,12 +1,12 @@
 """Designs whose policy combines up to four detectors: compiler and settings."""
 
 import pytest
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipelines import (
     derive_monitoring_config,
     pipeline_components,
     validate_pipeline,
 )
-from off_key_core.schemas.pipelines import PipelineDefinition
+from aberration_core.schemas.pipelines import PipelineDefinition
 
 from tests.support.fused_pipeline import fused_definition
 from tests.support.pipelines import template

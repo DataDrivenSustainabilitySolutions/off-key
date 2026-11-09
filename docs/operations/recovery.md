@@ -21,7 +21,7 @@ just to make a newer release run; complete them as described below.
    when the release succeeds and its operation is complete.
 
 Database migration failures roll back their transaction. The pre-upgrade backup is
-`/opt/stacks/off-key/.backup/releases/<SHA>/database.dump` on the database node,
+`/opt/stacks/aberration/.backup/releases/<SHA>/database.dump` on the database node,
 with a checksum alongside it. A retry never overwrites that original backup.
 Backups are mode 0600 in a 0700 directory and are validated before applying SQL.
 Keep independently encrypted off-server backups through your private backup process;
@@ -36,7 +36,7 @@ that release's operation through trusted SSH instead:
 
 1. Set `AUTO_DEPLOY_ENABLED=false`.
 2. On the node running the stack's TACTIC task, run
-   `docker exec <container> /app/bin/python -m off_key_tactic_middleware.deployment status <SHA>`.
+   `docker exec <container> /app/bin/python -m aberration_tactic_middleware.deployment status <SHA>`.
    It must report that SHA in phase `restarted`.
 3. Run the same command with `finish`. It verifies every restarted monitor again,
    then opens catalog and monitor changes.
@@ -53,7 +53,7 @@ catalog and monitor changes blocked:
 
 1. Set `AUTO_DEPLOY_ENABLED=false`.
 2. On the node running the stack's TACTIC task, run
-   `docker exec <container> /app/bin/python -m off_key_tactic_middleware.deployment abort <SHA>`.
+   `docker exec <container> /app/bin/python -m aberration_tactic_middleware.deployment abort <SHA>`.
    Monitors the release restarted keep running as they are; the output lists them
    under `restarted`. Monitors it stopped but did not restart stay stopped and are
    listed under `not_restarted`; start them again from the workbench.
@@ -77,13 +77,13 @@ the new one starts. An older release does not know `broker-route`, keeps it
 running and starts its own node from the same identity. After the first verified
 deploy of that release, remove the identity export group that older releases
 require (named next to `stack_replaced_services`) from the private production
-`hosts.yml` (the `OFFKEY_PROD_INVENTORY` secret). Older releases then stop at
+`hosts.yml` (the `ABERRATION_PROD_INVENTORY` secret). Older releases then stop at
 their inventory check before they change the stack. To roll back past it anyway:
 
 1. Set `AUTO_DEPLOY_ENABLED=false`.
-2. On the manager, run `docker service rm off-key_broker-route`.
+2. On the manager, run `docker service rm aberration_broker-route`.
 3. On every backend node, repeat
-   `docker ps -q --filter label=com.docker.swarm.service.name=off-key_broker-route`
+   `docker ps -q --filter label=com.docker.swarm.service.name=aberration_broker-route`
    until it prints nothing.
 4. On the manager, run
    `rm /etc/exports.d/broker-route.exports && exportfs -ra`; the older release

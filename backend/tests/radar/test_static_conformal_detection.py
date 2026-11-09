@@ -4,17 +4,17 @@ import concurrent.futures
 import pickle
 
 import pytest
-from off_key_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
-from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.detector import (
+from aberration_core.schemas.radar import StaticBaselineConfig, StaticMartingaleConfig
+from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.detector import (
     StaticConformalDetectionService,
     StaticConformalState,
 )
-from off_key_mqtt_radar.detector_handle import DetectorHandle
-from off_key_mqtt_radar.detector_runtime import DetectorRuntime
-from off_key_mqtt_radar.execution_errors import ObservationRejected
-from off_key_mqtt_radar.martingales import MartingaleAlarmController
+from aberration_mqtt_radar.detector_handle import DetectorHandle
+from aberration_mqtt_radar.detector_runtime import DetectorRuntime
+from aberration_mqtt_radar.execution_errors import ObservationRejected
+from aberration_mqtt_radar.martingales import MartingaleAlarmController
 
 from tests.support.form_pipeline import form_radar_config
 

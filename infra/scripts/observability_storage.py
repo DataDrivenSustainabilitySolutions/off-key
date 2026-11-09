@@ -1,4 +1,4 @@
-"""Prepare only Off-key's bounded log filesystem; no Docker/host restarts.
+"""Prepare only Aberration's bounded log filesystem; no Docker/host restarts.
 
 The controller validates settings with ObservabilitySettings before sending them.
 This stdlib-only helper runs on a worker with the existing system Python.
@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 GIB = 1024**3
-HEADER = "# Managed by Off-key observability storage.\n"
+HEADER = "# Managed by Aberration observability storage.\n"
 
 
 def run(*args, check=True):
@@ -34,8 +34,8 @@ def prepare(settings):
     root = pathlib.Path(settings["storage_root"])
     mount = pathlib.Path(settings["data_root"])
     if (
-        str(root) != "/var/lib/offkey-observability"
-        or str(mount) != "/srv/offkey-observability"
+        str(root) != "/var/lib/aberration-observability"
+        or str(mount) != "/srv/aberration-observability"
     ):
         raise ValueError("Refusing storage outside the dedicated observability paths")
     if not 4 <= settings["storage_size_gib"] <= 100:
@@ -82,7 +82,7 @@ def prepare(settings):
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        run("mkfs.ext4", "-F", "-m", "0", "-L", "offkey-observability", str(image))
+        run("mkfs.ext4", "-F", "-m", "0", "-L", "aberration-observability", str(image))
         changed = True
     metadata = image.lstat()
     if (
@@ -106,13 +106,13 @@ def prepare(settings):
             raise ValueError("Refusing to cover existing files with a mount")
         mount.mkdir(mode=0o000, exist_ok=True)
         mount.chmod(0o000)  # Service UIDs fail closed if the filesystem is unavailable.
-    unit = pathlib.Path("/etc/systemd/system/offkey-observability-storage.service")
+    unit = pathlib.Path("/etc/systemd/system/aberration-observability-storage.service")
     if unit.is_symlink():
         raise ValueError("Refusing a symlinked systemd unit")
     content = (
         HEADER
         + f"""[Unit]
-Description=Off-key bounded observability storage
+Description=Aberration bounded observability storage
 After=local-fs.target
 Before=docker.service
 

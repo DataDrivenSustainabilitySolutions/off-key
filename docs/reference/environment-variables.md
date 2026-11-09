@@ -105,7 +105,7 @@ resulting URL as `RADAR_DATABASE_URL` from TACTIC.
 | --- | --- | --- |
 | `POSTGRES_USER` | `postgres` | Database user |
 | `POSTGRES_PASSWORD` | Not documented | Database credential |
-| `POSTGRES_DB` | `off_key` | Database name |
+| `POSTGRES_DB` | `aberration` | Database name |
 | `POSTGRES_HOST` | `timescaledb` | Host reachable from backend containers |
 | `POSTGRES_PORT` | `5432` | Database port, `1–65535` |
 

@@ -7,7 +7,7 @@ _GATEWAY_ENVIRONMENT = {
     **AUTH_ENVIRONMENT,
     **EMAIL_ENVIRONMENT,
     "INTERNAL_API_SECRET": "test-internal-service-secret-123456789",
-    "APP_NAME": "off-key-test",
+    "APP_NAME": "aberration-test",
     "DEBUG": "false",
     "ANOMALY_ALERT_RECIPIENTS": "admin@example.com",
 }
@@ -19,12 +19,12 @@ async def test_health_check_returns_liveness_payload(monkeypatch):
 
     # The test must not inherit configuration from a developer's local .env.
     monkeypatch.setattr(
-        "off_key_core.config.env.load_dotenv", lambda *args, **kwargs: False
+        "aberration_core.config.env.load_dotenv", lambda *args, **kwargs: False
     )
     reset_runtime_caches_for_tests()
 
     try:
-        from off_key_api_gateway.main import health_check
+        from aberration_api_gateway.main import health_check
 
         assert await health_check() == {"status": "healthy", "service": "api-gateway"}
     finally:

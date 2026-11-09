@@ -1,13 +1,13 @@
 """Bound pipelines equivalent to monitors configured with the setup forms."""
 
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     form_inputs,
     lower_form_monitor,
 )
-from off_key_core.schemas.pipelines import BoundInput, PipelineExecutionConfig
-from off_key_core.schemas.radar import FormMonitorConfig, RadarStartConfig
+from aberration_core.schemas.pipelines import BoundInput, PipelineExecutionConfig
+from aberration_core.schemas.radar import FormMonitorConfig, RadarStartConfig
 
 
 def form_pipeline(
@@ -58,7 +58,7 @@ def form_radar_config(
 ):
     """A RADAR configuration running the form-equivalent pipeline."""
     if config_class is None:
-        from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
+        from aberration_mqtt_radar.config.config import AnomalyDetectionConfig
 
         config_class = AnomalyDetectionConfig
     performance = {
@@ -88,7 +88,7 @@ def form_launch(*, runtime_image=None, **fields) -> RadarStartConfig:
 
 def stored_revision(launch: RadarStartConfig) -> list:
     """Design rows that own the revision a test launch runs."""
-    from off_key_core.db.pipelines import MonitoringPipeline, PipelineRevision
+    from aberration_core.db.pipelines import MonitoringPipeline, PipelineRevision
 
     definition = launch.pipeline.definition.model_dump(mode="json")
     return [

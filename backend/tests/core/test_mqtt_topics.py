@@ -1,7 +1,7 @@
 """Tests for shared MQTT topic metadata extraction."""
 
 import pytest
-from off_key_core.utils.mqtt_topics import (
+from aberration_core.utils.mqtt_topics import (
     TopicMetadataExtractor,
     mqtt_topic_filters_overlap,
     normalize_static_monitoring_topics,

@@ -5,20 +5,20 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.db.models import (
+from aberration_core.db.models import (
     MemberFavorite,
     MonitoringService,
     PipelineActivation,
     PipelineRun,
     User,
 )
-from off_key_core.schemas.pipelines import PipelineActivationRequest
-from off_key_tactic_middleware.domain import ConflictError
-from off_key_tactic_middleware.services.pipelines.activation import (
+from aberration_core.schemas.pipelines import PipelineActivationRequest
+from aberration_tactic_middleware.domain import ConflictError
+from aberration_tactic_middleware.services.pipelines.activation import (
     PipelineActivations,
     carry_monitor_favorites,
 )
-from off_key_tactic_middleware.services.pipelines.preflight import PipelinePreflight
+from aberration_tactic_middleware.services.pipelines.preflight import PipelinePreflight
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 

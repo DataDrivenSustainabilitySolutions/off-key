@@ -6,14 +6,14 @@ checksum, so only a deploy onto real data would notice an edited migration, or
 an edited converter module that migration 005 hashes with its SQL.
 """
 
-from off_key_core.db.migrate import (
+from aberration_core.db.migrate import (
     BASELINE_TABLES,
     PRE_LEDGER_TABLES,
     SYSTEM_TABLES,
     migration_checksum,
     migration_files,
 )
-from off_key_core.db.models import Base
+from aberration_core.db.models import Base
 
 APPLIED_CHECKSUMS = {
     "001_membership.sql": (
@@ -92,6 +92,9 @@ APPLIED_CHECKSUMS = {
     ),
     "025_evidence_cursor.sql": (
         "361c8f1c85ac7046ff9ff0e90cdb88502156a7617e9f17bbc030e3fd829cf4f9"
+    ),
+    "026_aberration_identity.sql": (
+        "260b5b42726d6226e7c992b936af2e9e360138149e402b4fc7349e4d53fcb880"
     ),
 }
 

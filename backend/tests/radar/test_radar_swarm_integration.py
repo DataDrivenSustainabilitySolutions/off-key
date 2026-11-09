@@ -1,6 +1,6 @@
 """Opt-in deployment regressions using the current RADAR image and real Swarm.
 
-Build backend/Dockerfile for off-key-mqtt-radar, then set TEST_RADAR_SWARM_IMAGE.
+Build backend/Dockerfile for aberration-mqtt-radar, then set TEST_RADAR_SWARM_IMAGE.
 Only uniquely named resources carrying this test's ownership label are removed.
 """
 
@@ -15,9 +15,9 @@ from uuid import uuid4
 import docker
 import paho.mqtt.client as mqtt
 import pytest
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.radar import StaticBaselineConfig
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_core.schemas.radar import StaticBaselineConfig
 from sqlalchemy import create_engine, insert, text
 from sqlalchemy.exc import OperationalError
 
@@ -37,9 +37,9 @@ import json
 import os
 import time
 
-from off_key_mqtt_radar.config.config import get_radar_settings
-from off_key_mqtt_radar.config.runtime import get_radar_checkpoint_settings
-from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
+from aberration_mqtt_radar.config.config import get_radar_settings
+from aberration_mqtt_radar.config.runtime import get_radar_checkpoint_settings
+from aberration_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -112,7 +112,7 @@ def swarm_runtime():
     client = docker.from_env(timeout=15)
     assert client.info()["Swarm"]["LocalNodeState"] == "active"
     owner = "radar-test-" + uuid4().hex[:12]
-    labels = {"off-key.integration-owner": owner}
+    labels = {"aberration.integration-owner": owner}
     resources = []
     engine = None
     network = client.networks.create(
@@ -203,7 +203,7 @@ def swarm_runtime():
                 actual = resource.attrs.get("Spec", {}).get(
                     "Labels", resource.attrs.get("Config", {}).get("Labels", {})
                 )
-                assert actual.get("off-key.integration-owner") == owner
+                assert actual.get("aberration.integration-owner") == owner
                 if isinstance(resource, docker.models.services.Service):
                     resource.remove()
                 else:
@@ -213,7 +213,7 @@ def swarm_runtime():
         # are not in resources. Remove only this fixture's labelled remnants.
         def remove_owned_tasks():
             owned = client.containers.list(
-                all=True, filters={"label": f"off-key.integration-owner={owner}"}
+                all=True, filters={"label": f"aberration.integration-owner={owner}"}
             )
             for container in owned:
                 # Swarm may already be removing a task container. Its next
@@ -282,7 +282,7 @@ def test_current_image_restores_in_replacement_swarm_task(swarm_runtime):
     worker = client.services.create(
         os.environ["TEST_RADAR_SWARM_IMAGE"],
         name=owner + "-worker",
-        command=["/app/bin/python", "-m", "off_key_mqtt_radar"],
+        command=["/app/bin/python", "-m", "aberration_mqtt_radar"],
         env=environment,
         networks=[network.id],
         labels=labels,

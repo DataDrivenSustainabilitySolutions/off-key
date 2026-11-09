@@ -6,28 +6,30 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_api_gateway.api.v1 import catalogue as gateway
-from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import User
-from off_key_core.schemas.system import SystemStream
-from off_key_core.schemas.system_live import SystemLiveStart
-from off_key_core.utils.payload_decode import decode_value
-from off_key_tactic_middleware.api.collection_auth import current_member
-from off_key_tactic_middleware.api.v1 import system as system_api
-from off_key_tactic_middleware.config.system_live import (
+from aberration_api_gateway.api.v1 import catalogue as gateway
+from aberration_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import User
+from aberration_core.schemas.system import SystemStream
+from aberration_core.schemas.system_live import SystemLiveStart
+from aberration_core.utils.payload_decode import decode_value
+from aberration_tactic_middleware.api.collection_auth import current_member
+from aberration_tactic_middleware.api.v1 import system as system_api
+from aberration_tactic_middleware.config.system_live import (
     LiveCredential,
     LiveSocksProxy,
     SystemLiveSettings,
 )
-from off_key_tactic_middleware.services.catalogue.system import SystemService
-from off_key_tactic_middleware.services.catalogue.system_live import (
+from aberration_tactic_middleware.services.catalogue.system import SystemService
+from aberration_tactic_middleware.services.catalogue.system_live import (
     LiveSessionError,
     SystemLiveService,
 )
-from off_key_tactic_middleware.services.catalogue.system_live_mqtt import LiveMqttWorker
+from aberration_tactic_middleware.services.catalogue.system_live_mqtt import (
+    LiveMqttWorker,
+)
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from socks import SOCKS5
 
 from tests.support.system_live import FakeWorker, manager, snapshot

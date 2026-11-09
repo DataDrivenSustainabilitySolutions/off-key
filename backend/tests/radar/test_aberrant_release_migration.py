@@ -6,13 +6,15 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
-from off_key_tactic_middleware.services.pipelines.release import normalize_saved_launch
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.runtime_checkpoint import RuntimeCheckpointCodec
+from aberration_tactic_middleware.services.pipelines.release import (
+    normalize_saved_launch,
+)
 
 pytestmark = pytest.mark.radar_integration
 
@@ -39,10 +41,11 @@ def test_authentic_1_3_checkpoint_requires_fresh_learning(monkeypatch):
         pytest.fail("The previous runtime's learned state was deserialized")
 
     monkeypatch.setattr(
-        "off_key_mqtt_radar.runtime_checkpoint.pickle.loads", reject_deserialization
+        "aberration_mqtt_radar.runtime_checkpoint.pickle.loads", reject_deserialization
     )
-    # Authentication must succeed before this incompatible-runtime rejection.
-    with pytest.raises(ValueError, match="incompatible"):
+    # The historical fixture predates both the numerical and project-identity
+    # migrations. Reject its original signature before any pickle is loaded.
+    with pytest.raises(ValueError, match="authentication failed"):
         codec.decode(record)
     detector = AdaptiveStreamDetectionService(config)
     assert detector.state == AdaptiveStreamState.WARMUP

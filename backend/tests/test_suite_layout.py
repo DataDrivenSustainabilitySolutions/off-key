@@ -13,8 +13,8 @@ LANES = {
     "TEST_RADAR_DOCKER": "radar_integration",
     "TEST_RADAR_SWARM_IMAGE": "radar_integration",
     "TEST_PIPELINE_DATABASE_CONTAINER": "radar_integration",
-    "OFFKEY_COLLECTION_INTEGRATION": "collection_stack",
-    "OFFKEY_DEPLOYMENT_REHEARSAL": "deployment",
+    "ABERRATION_COLLECTION_INTEGRATION": "collection_stack",
+    "ABERRATION_DEPLOYMENT_REHEARSAL": "deployment",
     "RUN_ADAPTIVE_E2E": "deployment",
 }
 

@@ -4,18 +4,18 @@ import json
 import tracemalloc
 
 import pytest
-from fastapi.encoders import jsonable_encoder
-from off_key_core.models.pipeline_reports import (
+from aberration_core.models.pipeline_reports import (
     MAX_PIPELINE_REPORT_BYTES,
     bounded_validation_report,
 )
-from off_key_core.models.pipelines import (
+from aberration_core.models.pipelines import (
     compile_pipeline,
     pipeline_catalog,
     validate_pipeline,
 )
-from off_key_core.schemas.pipelines import PipelineDefinition
-from off_key_core.utils.json_budget import fits_json_budget
+from aberration_core.schemas.pipelines import PipelineDefinition
+from aberration_core.utils.json_budget import fits_json_budget
+from fastapi.encoders import jsonable_encoder
 from starlette.responses import JSONResponse
 
 from tests.support.maximum_pipeline import maximum_definition

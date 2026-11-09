@@ -8,7 +8,7 @@ BOOTSTRAP ?= false
 CONFIRM ?= false
 SERVICES ?= postgres,emqx
 export ANSIBLE_CONFIG := $(abspath ansible/ansible.cfg)
-export OFFKEY_RELEASE_REVISION := $(REVISION)
+export ABERRATION_RELEASE_REVISION := $(REVISION)
 setup:
 	$(UV) sync --frozen
 check-deploy:

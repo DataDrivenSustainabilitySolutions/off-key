@@ -3,13 +3,13 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.schemas.collection_wire import (
+from aberration_core.schemas.collection_wire import (
     decode_ingress_envelope,
     encode_ingress_envelope,
 )
-from off_key_mqtt_proxy.client.subscriptions import SubscriptionManager
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_tactic_middleware.services.catalogue.system_collection import (
+from aberration_mqtt_proxy.client.subscriptions import SubscriptionManager
+from aberration_mqtt_proxy.collection_buffer import CollectionBuffer
+from aberration_tactic_middleware.services.catalogue.system_collection import (
     SystemCollectionService,
 )
 

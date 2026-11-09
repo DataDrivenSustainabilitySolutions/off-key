@@ -155,7 +155,7 @@ class CiWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("uses", prepare)
         self.assertEqual(
-            prepare["env"]["OFFKEY_REHEARSAL_IMAGES"],
+            prepare["env"]["ABERRATION_REHEARSAL_IMAGES"],
             "${{ github.event_name != 'push' && 'loaded' || 'published' }}",
         )
 
@@ -246,11 +246,11 @@ class CiWorkflowTests(unittest.TestCase):
             == "Select the production database and this run's RADAR image"
         )
         manifest = {
-            "images": {"mqtt_radar": {"reference": "off-key/mqtt-radar:ci-loaded"}}
+            "images": {"mqtt_radar": {"reference": "aberration/mqtt-radar:ci-loaded"}}
         }
         for event, radar in (
             ("push", "ghcr.io/example/mqtt_radar@sha256:pinned"),
-            ("pull_request", "off-key/mqtt-radar:ci-loaded"),
+            ("pull_request", "aberration/mqtt-radar:ci-loaded"),
         ):
             with self.subTest(event=event), tempfile.TemporaryDirectory() as tmp:
                 tmp = Path(tmp)

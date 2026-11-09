@@ -10,30 +10,32 @@ from uuid import uuid4
 import docker
 import pytest
 import pytest_asyncio
-from off_key_core.db.models import MonitoringService, PipelineActivation
-from off_key_core.models.pipelines import pipeline_catalog
-from off_key_core.schemas.pipelines import (
+from aberration_core.db.models import MonitoringService, PipelineActivation
+from aberration_core.models.pipelines import pipeline_catalog
+from aberration_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineCreate,
     PipelineDraftSave,
     PipelinePublish,
 )
-from off_key_core.schemas.radar import RadarStartConfig
-from off_key_tactic_middleware.config.config import (
+from aberration_core.schemas.radar import RadarStartConfig
+from aberration_tactic_middleware.config.config import (
     DockerConfig,
     clear_tactic_settings_caches,
 )
-from off_key_tactic_middleware.facades.docker import AsyncDocker
-from off_key_tactic_middleware.services.orchestration.radar import (
+from aberration_tactic_middleware.facades.docker import AsyncDocker
+from aberration_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from off_key_tactic_middleware.services.orchestration.radar_workloads import (
+from aberration_tactic_middleware.services.orchestration.radar_workloads import (
     RadarWorkloadManager,
 )
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
-from off_key_tactic_middleware.services.pipelines.preflight import PipelinePreflight
-from off_key_tactic_middleware.services.pipelines.preflight_cleanup import (
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_tactic_middleware.services.pipelines.preflight import PipelinePreflight
+from aberration_tactic_middleware.services.pipelines.preflight_cleanup import (
     PreflightOrphans,
 )
 from pydantic import AliasChoices, Field
@@ -46,7 +48,7 @@ class SwarmFixtureSettings(BaseSettings):
     TEST_RADAR_DOCKER: bool = False
     TEST_PIPELINE_DATABASE_CONTAINER: str | None = None
     TEST_PIPELINE_RUNTIME_IMAGE: str = Field(
-        default="offkey-pipelines-control:dev",
+        default="aberration-pipelines-control:dev",
         validation_alias=AliasChoices(
             "TEST_PIPELINE_RUNTIME_IMAGE", "TEST_RADAR_SWARM_IMAGE"
         ),
@@ -58,7 +60,7 @@ def broker_configuration() -> bytes:
     output = io.BytesIO()
     contents = b"listener 1883 0.0.0.0\nallow_anonymous true\npersistence false\n"
     with tarfile.open(fileobj=output, mode="w") as archive:
-        member = tarfile.TarInfo("offkey-pipeline-test.conf")
+        member = tarfile.TarInfo("aberration-pipeline-test.conf")
         member.size = len(contents)
         member.mode = 0o444
         archive.addfile(member, io.BytesIO(contents))
@@ -77,7 +79,7 @@ async def activation_runtime(pipeline_database, monkeypatch):
     assert client.info().get("Swarm", {}).get("ControlAvailable")
     identifier = uuid4().hex[:12]
     network = client.networks.create(
-        f"offkey-pipeline-control-{identifier}",
+        f"aberration-pipeline-control-{identifier}",
         driver="overlay",
         scope="swarm",
         attachable=True,
@@ -92,8 +94,8 @@ async def activation_runtime(pipeline_database, monkeypatch):
         connected = True
         broker = client.containers.create(
             options.TEST_PIPELINE_MQTT_IMAGE,
-            name=f"offkey-pipeline-mqtt-{identifier}",
-            command=["mosquitto", "-c", "/tmp/offkey-pipeline-test.conf"],
+            name=f"aberration-pipeline-mqtt-{identifier}",
+            command=["mosquitto", "-c", "/tmp/aberration-pipeline-test.conf"],
             network=network.name,
         )
         broker.put_archive("/tmp", broker_configuration())
@@ -198,7 +200,7 @@ async def test_preflight_cancellation_preserves_a_foreign_name_collision(
     # Application cancellation must not remove it just because the name matches.
     labels = {
         "managed_by": "foreign-fixture",
-        "off-key.integration-owner": f"foreign-preflight-{activation.id}",
+        "aberration.integration-owner": f"foreign-preflight-{activation.id}",
     }
     foreign = await workloads.async_docker.run(
         workloads.async_docker.client.services.create,
@@ -348,7 +350,7 @@ async def test_real_preflight_handoff_recovery_and_newer_stop(
     # An unschedulable real job must fail boundedly after confirmed cleanup.
     monkeypatch.setenv(
         "TACTIC_DOCKER_DEFAULT_CONSTRAINTS",
-        f"node.labels.offkey_fixture_{uuid4().hex} == true",
+        f"node.labels.aberration_fixture_{uuid4().hex} == true",
     )
     monkeypatch.setenv("TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS", "5")
     clear_tactic_settings_caches()

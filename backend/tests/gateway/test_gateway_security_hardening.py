@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
+from aberration_api_gateway.api import access
+from aberration_api_gateway.api.rate_limiter import client_ip
+from aberration_api_gateway.api.v1 import auth as auth_api
+from aberration_api_gateway.facades.tactic import Tactic, TacticError
+from aberration_core.schemas.user import UserLogin
+from aberration_tactic_middleware.services.accounts import users as users_module
 from fastapi import FastAPI, HTTPException
-from off_key_api_gateway.api import access
-from off_key_api_gateway.api.rate_limiter import client_ip
-from off_key_api_gateway.api.v1 import auth as auth_api
-from off_key_api_gateway.facades.tactic import Tactic, TacticError
-from off_key_core.schemas.user import UserLogin
-from off_key_tactic_middleware.services.accounts import users as users_module
 
 from tests.support.env import set_auth_env
 from tests.support.http import asgi_client
@@ -54,11 +54,13 @@ class _FailingSession:
 
 @pytest.fixture
 def facade(monkeypatch):
-    from off_key_core.config.service_auth import get_service_auth_settings
+    from aberration_core.config.service_auth import get_service_auth_settings
 
     monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
     get_service_auth_settings.cache_clear()
-    monkeypatch.setattr("off_key_api_gateway.facades.tactic.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr(
+        "aberration_api_gateway.facades.tactic.asyncio.sleep", AsyncMock()
+    )
     client = Tactic.__new__(Tactic)
     client.base_url = "http://tactic"
     client._max_retries = 2
@@ -120,7 +122,7 @@ async def test_refresh_replaces_the_cookie_without_extending_its_deadline(
     app.include_router(auth_api.router)
     async with asgi_client(app, base_url="https://test") as client:
         client.cookies.set(auth_api.REMEMBERED_SESSION_COOKIE, "r" * 43)
-        response = await client.post("/refresh", headers={"X-Off-Key-Session": "1"})
+        response = await client.post("/refresh", headers={"X-Aberration-Session": "1"})
     assert response.status_code == 200
     cookie = response.headers["set-cookie"]
     assert cookie.startswith(f"{auth_api.REMEMBERED_SESSION_COOKIE}={'n' * 43}")

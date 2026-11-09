@@ -1,0 +1,48 @@
+"""Entry point for `python -m aberration_mqtt_proxy`."""
+
+import asyncio
+from pathlib import Path
+
+from aberration_core.config.bootstrap import start_service
+from aberration_core.config.logs import logger
+from aberration_core.utils.tasks import run_until_first_exit
+
+from .config.config import get_mqtt_settings
+from .health_api import run_health_api
+from .proxy import MQTTProxyService
+
+
+async def main():
+    """Main entry point for MQTT proxy service"""
+    start_service(
+        "mqtt-proxy",
+        Path(__file__).parent / "config" / "logging.yaml",
+        [
+            ("mqtt_proxy", lambda: get_mqtt_settings().config),
+        ],
+        context="MQTT proxy configuration",
+    )
+    service = MQTTProxyService()
+    settings = get_mqtt_settings()
+
+    service_task = asyncio.create_task(
+        service.run(),
+        name="aberration-mqtt-proxy-service",
+    )
+    tasks = {service_task}
+
+    if settings.MQTT_HEALTH_API_ENABLED:
+        health_task = asyncio.create_task(
+            run_health_api(service),
+            name="aberration-mqtt-proxy-health-api",
+        )
+        tasks.add(health_task)
+
+    try:
+        await run_until_first_exit(tasks)
+    finally:
+        logger.info("MQTT proxy service shutdown complete")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

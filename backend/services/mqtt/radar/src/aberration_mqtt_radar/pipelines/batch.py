@@ -1,0 +1,263 @@
+"""Training-only batch preprocessing, frozen before conformal calibration."""
+
+from __future__ import annotations
+
+import math
+from collections import Counter
+from time import perf_counter_ns
+
+import numpy as np
+from aberration_core.models.pipeline_scope import is_scoped, step_scope
+
+from ..execution_errors import FatalExecutionError
+from .components import BATCH_PASSTHROUGH, batch_component
+from .plan import ExecutionPlan
+
+
+class NonFiniteFeatures(FatalExecutionError):
+    """A learned step returned values that are not finite numbers.
+
+    While fitting this ends the run. While scoring one observation the fitted
+    steps were only read, so the service skips that observation instead.
+    """
+
+
+class BatchFeatureGraph:
+    """A fitted numerical graph owned by one static run.
+
+    A training pass fits each shared component once. Calibration and scoring
+    use transform only; a branch never receives another branch's writable array.
+    Intermediate arrays are released after their final consumer. With a
+    Prepare stage the matrices hold prepared rows, one column per feature
+    crossing the cut, and only the learned stage runs here.
+    """
+
+    def __init__(self, plan: ExecutionPlan):
+        self.plan = plan
+        self.components = {
+            node.id: batch_component(node)
+            for node in plan.learned_nodes
+            if node.component not in BATCH_PASSTHROUGH
+        }
+        self.scopes = {
+            node.id: step_scope(
+                node.component, node.params, plan.names(plan.parents(node.id)[0])
+            )
+            for node in plan.learned_nodes
+            if is_scoped(node.component, node.params)
+        }
+        self.fitted = False
+
+    def fit_transform(self, matrix: np.ndarray) -> np.ndarray:
+        return self.fit_transform_all(matrix)[self.plan.feature_output_id]
+
+    def transform(self, matrix: np.ndarray, observer=None) -> np.ndarray:
+        return self.transform_all(matrix, observer)[self.plan.feature_output_id]
+
+    def fit_transform_all(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
+        """Fit every learned step once and give each detector input's features."""
+        if self.fitted:
+            raise RuntimeError("Static preprocessing is already frozen")
+        transformed = self._execute(matrix, fit=True)
+        self.fitted = True
+        return transformed
+
+    def transform_all(self, matrix: np.ndarray, observer=None) -> dict[str, np.ndarray]:
+        """The features of each node a detector reads, by node id."""
+        if not self.fitted:
+            raise RuntimeError("Static preprocessing has not been fitted")
+        return self._execute(matrix, fit=False, observer=observer)
+
+    def _inputs(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
+        """The learned stage's inputs: the readings, or each prepared node's columns."""
+        stage = self.plan.stage
+        if stage is None:
+            return {self.plan.source_id: matrix}
+        available, start = {}, 0
+        for key in stage.frontier:
+            width = len(self.plan.names(key))
+            available[key] = matrix[:, start : start + width]
+            start += width
+        return available
+
+    def _execute(
+        self, matrix: np.ndarray, *, fit: bool, observer=None
+    ) -> dict[str, np.ndarray]:
+        matrix = np.asarray(matrix, dtype=float)
+        if matrix.ndim != 2 or matrix.shape[1] != len(self.plan.input_columns):
+            raise ValueError("Batch graph input width differs from its compiled schema")
+        if not np.isfinite(matrix).all():
+            raise ValueError("Batch graph requires finite inputs")
+        available = self._inputs(matrix)
+        remaining = Counter(
+            parent
+            for node in self.plan.learned_nodes
+            for parent in self.plan.parents(node.id)
+        )
+        # What the detectors read stays until the pass ends.
+        outputs = list(dict.fromkeys(self.plan.detector_inputs.values()))
+        remaining.update(outputs)
+        for node in self.plan.learned_nodes:
+            started = perf_counter_ns()
+            parents = self.plan.parents(node.id)
+            current = available[parents[0]]
+            input_names = [
+                name for parent in parents for name in self.plan.names(parent)
+            ]
+            result = self._execute_node(node, available, parents, input_names, fit)
+            available[node.id] = result
+            if observer is not None and len(matrix) == 1:
+                inputs = result if node.kind == "merge" else current
+                observer.record(
+                    node.id,
+                    dict(zip(input_names, inputs[0], strict=True)),
+                    dict(zip(self.plan.names(node.id), result[0], strict=True)),
+                    elapsed_ns=perf_counter_ns() - started,
+                )
+            for parent in parents:
+                remaining[parent] -= 1
+                if remaining[parent] == 0:
+                    del available[parent]
+        return {identifier: available[identifier] for identifier in outputs}
+
+    def _execute_node(self, node, available, parents, names, fit):
+        try:
+            current = available[parents[0]]
+            result = (
+                np.concatenate([available[key] for key in parents], axis=1)
+                if node.kind == "merge"
+                else self._transform_node(node, current, names, fit)
+            )
+            result = np.asarray(result, dtype=float)
+            if result.shape != (len(current), len(self.plan.names(node.id))):
+                raise ValueError(f"Component {node.id} returned an incompatible matrix")
+        except Exception as error:
+            raise FatalExecutionError(str(error), node_id=node.id) from error
+        if not np.isfinite(result).all():
+            raise NonFiniteFeatures(
+                f"Component {node.id} returned non-finite features", node_id=node.id
+            )
+        return result
+
+    def _transform_node(self, node, current, names, fit):
+        if node.component == "features.select":
+            return current[:, [names.index(name) for name in node.params["features"]]]
+        if node.component in {"features.rename", "features.passthrough"}:
+            return current.copy()
+        component = self.components[node.id]
+        scope = self.scopes.get(node.id)
+        used = current if scope is None else current[:, scope.indices]
+        result = (
+            component.fit_transform(used.copy())
+            if fit
+            else component.transform(used.copy())
+        )
+        result = result.toarray() if hasattr(result, "toarray") else result
+        if scope is None:
+            return result
+        if scope.elementwise and scope.add:
+            return np.concatenate([current, result], axis=1)
+        if scope.elementwise:
+            replaced = current.copy()
+            replaced[:, scope.indices] = result
+            return replaced
+        return np.concatenate([current[:, scope.kept], result], axis=1)
+
+
+class FittedStaticPipeline:
+    """One preprocessing/conformal inference; diagnostics never replay a model."""
+
+    def __init__(self, graph: BatchFeatureGraph, conformal):
+        self.graph = graph
+        self.conformal = conformal
+        self.observer = None
+        self.last_features: dict[str, float] | None = None
+
+    def __getstate__(self):
+        return {**self.__dict__, "observer": None, "last_features": None}
+
+    def compute_p_values(self, matrix):
+        transformed = self.graph.transform(matrix, observer=self.observer)
+        names = self.graph.plan.output_features
+        self.last_features = (
+            dict(zip(names, transformed[0], strict=True))
+            if len(transformed) == 1
+            else None
+        )
+        started = perf_counter_ns()
+        result = self.conformal.compute_p_values(transformed)
+        if self.observer is not None and len(transformed) == 1:
+            self.observer.record(
+                self.graph.plan.detector_id,
+                self.last_features,
+                float(np.asarray(result).ravel()[0]),
+                elapsed_ns=perf_counter_ns() - started,
+            )
+        return result
+
+
+class FusedStaticPipeline:
+    """Several frozen detectors, each on its own features, as one p-value.
+
+    Each detector scores its features; the rank fusion turns the scores into
+    one conformal p-value, with ties broken by the run's seeded generator,
+    which checkpoints keep.
+    """
+
+    def __init__(self, graph: BatchFeatureGraph, detectors: dict, fusion, seed):
+        self.graph = graph
+        self.detectors = detectors
+        self.fusion = fusion
+        self.rng = np.random.default_rng(seed)
+        self.observer = None
+        self.last_features: dict[str, dict[str, float]] | None = None
+        self.last_detectors: list[dict] | None = None
+
+    def __getstate__(self):
+        return {
+            **self.__dict__,
+            "observer": None,
+            "last_features": None,
+            "last_detectors": None,
+        }
+
+    def compute_p_values(self, matrix):
+        matrix = np.asarray(matrix, dtype=float)
+        if len(matrix) != 1:
+            raise ValueError("Combined detectors score one observation at a time")
+        plan = self.graph.plan
+        outputs = self.graph.transform_all(matrix, observer=self.observer)
+        features, scores, timings = {}, [], []
+        for identifier, conformal in self.detectors.items():
+            row = outputs[plan.detector_inputs[identifier]]
+            features[identifier] = dict(
+                zip(plan.detector_features(identifier), row[0], strict=True)
+            )
+            started = perf_counter_ns()
+            score = float(np.asarray(conformal.score_samples(row), dtype=float)[0])
+            timings.append(perf_counter_ns() - started)
+            if not math.isfinite(score):
+                # Scoring only reads the frozen detector, so the run goes on.
+                raise NonFiniteFeatures(
+                    f"Detector {identifier} returned a non-finite score",
+                    node_id=identifier,
+                )
+            scores.append(score)
+        surprises = self.fusion.surprises(scores)
+        p_value = self.fusion.p_value(scores, self.rng)
+        self.last_features = features
+        self.last_detectors = [
+            {"detector_id": identifier, "score": score, "surprise": surprise}
+            for identifier, score, surprise in zip(
+                self.detectors, scores, surprises, strict=True
+            )
+        ]
+        if self.observer is not None:
+            for identifier, score, elapsed in zip(
+                self.detectors, scores, timings, strict=True
+            ):
+                self.observer.record(
+                    identifier, features[identifier], score, elapsed_ns=elapsed
+                )
+            self.observer.detectors(self.last_detectors)
+        return np.asarray([p_value], dtype=float)

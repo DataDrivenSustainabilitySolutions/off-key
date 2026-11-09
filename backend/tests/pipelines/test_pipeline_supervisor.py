@@ -7,16 +7,18 @@ from unittest.mock import AsyncMock
 
 import docker
 import pytest
-from off_key_core.db.models import MonitoringService, PipelineActivation
-from off_key_core.models.pipelines import pipeline_catalog_id
-from off_key_core.schemas.pipelines import PipelineActivationRequest
-from off_key_tactic_middleware.config.config import clear_tactic_settings_caches
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
-from off_key_tactic_middleware.services.pipelines.preflight import PipelinePreflight
-from off_key_tactic_middleware.services.pipelines.preflight_cleanup import (
+from aberration_core.db.models import MonitoringService, PipelineActivation
+from aberration_core.models.pipelines import pipeline_catalog_id
+from aberration_core.schemas.pipelines import PipelineActivationRequest
+from aberration_tactic_middleware.config.config import clear_tactic_settings_caches
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from aberration_tactic_middleware.services.pipelines.preflight import PipelinePreflight
+from aberration_tactic_middleware.services.pipelines.preflight_cleanup import (
     PreflightOrphans,
 )
-from off_key_tactic_middleware.services.pipelines.supervisor import (
+from aberration_tactic_middleware.services.pipelines.supervisor import (
     PipelineActivationSupervisor,
 )
 

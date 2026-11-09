@@ -5,10 +5,10 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_permission_checks_follow_the_stored_role():
+    from aberration_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
+    from aberration_core.db.models import MemberRole, User
+    from aberration_tactic_middleware.api.collection_auth import require_permission
     from fastapi import HTTPException
-    from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE, Permission
-    from off_key_core.db.models import MemberRole, User
-    from off_key_tactic_middleware.api.collection_auth import require_permission
 
     manage_alarms = require_permission(Permission.manage_alarms)
     assert require_permission(Permission.manage_alarms) is manage_alarms

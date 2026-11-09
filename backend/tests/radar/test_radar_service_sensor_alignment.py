@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from off_key_mqtt_radar import service as service_module
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar import service as service_module
+from aberration_mqtt_radar.service import RadarService
 
 
 def _build_radar_config(subscription_topics):

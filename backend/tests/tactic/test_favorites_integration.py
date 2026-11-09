@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 import pytest_asyncio
+from aberration_core.db.base import get_db_async
+from aberration_core.db.models import MemberFavorite, User
+from aberration_tactic_middleware.api.v1.data_services import router
 from fastapi import FastAPI
-from off_key_core.db.base import get_db_async
-from off_key_core.db.models import MemberFavorite, User
-from off_key_tactic_middleware.api.v1.data_services import router
 from sqlalchemy import delete, select
 
 from tests.support.http import asgi_client

@@ -42,7 +42,7 @@ class RecoveryWriterTests(unittest.TestCase):
             "services": ["postgres"],
             "backup_paths": {"postgres": str(backup)},
             "backup_files": {"postgres": ["fixture_db.dump", "roles.sql"]},
-            "writer_replicas": {"off-key_api": 1, "radar-runtime": 2},
+            "writer_replicas": {"aberration_api": 1, "radar-runtime": 2},
             "flips": [],
             "service_nodes": {},
             "service_tasks": {},
@@ -50,8 +50,8 @@ class RecoveryWriterTests(unittest.TestCase):
         self.original_plan = json.dumps(self.plan)
         self.pending.write_text(self.original_plan)
         self.replicas = {
-            "off-key_postgres": 1,
-            "off-key_api": 1,
+            "aberration_postgres": 1,
+            "aberration_api": 1,
             "radar-runtime": 2,
             "radar-new": 0,
         }
@@ -95,7 +95,7 @@ class RecoveryWriterTests(unittest.TestCase):
             "ansible_python_interpreter": sys.executable,
             "ansible_remote_tmp": str(self.root / "remote-tmp"),
             "persistence_switch_confirm": True,
-            "stack_name": "off-key",
+            "stack_name": "aberration",
             "postgres_user": "fixture",
             "stack_dir": str(self.root / "stack"),
             "persistence_backup_dir": str(self.root / "backups"),

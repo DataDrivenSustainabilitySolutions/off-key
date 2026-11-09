@@ -158,7 +158,7 @@ Local Compose uses Mailpit. No production Mailpit service remains.
 
 ## Logs and Grafana
 
-With `observability_enabled` (production), Alloy collects only Off-key logs on
+With `observability_enabled` (production), Alloy collects only Aberration logs on
 workers, including dynamic RADAR workers. Loki and Grafana run on the explicitly
 selected data worker. Loki keeps seven days on a bounded filesystem. See the
 [worker observability runbook](observability.md) for placement, capacity,
@@ -215,5 +215,5 @@ Do not reset an existing database during an upgrade; see
 Real observations and source registration/recovery notes remain private operator
 material. They are not required for hosted CI.
 
-Previously published catalog identifiers remain in earlier public Offkey commits;
+Previously published catalog identifiers remain in earlier public Aberration commits;
 this integration replaces the current template without rewriting public history.

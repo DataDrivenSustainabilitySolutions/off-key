@@ -4,8 +4,8 @@ emails its catalogue names."""
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_api_gateway.api.v1 import alarms
-from off_key_api_gateway.facades import tactic as facade
+from aberration_api_gateway.api.v1 import alarms
+from aberration_api_gateway.facades import tactic as facade
 
 from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client

@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.schemas.collection_status import (
+from aberration_core.schemas.collection_status import (
     COLLECTION_APPLIED,
     COLLECTION_APPLYING,
     COLLECTION_ERROR,
@@ -21,8 +21,8 @@ from off_key_core.schemas.collection_status import (
     INGRESS_CONNECTING,
     is_applied,
 )
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     SystemCollectionDefinition,
     build_bindings,
 )

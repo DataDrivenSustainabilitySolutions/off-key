@@ -6,9 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.worker_ownership import WorkerOwnershipLost
-from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
-from off_key_mqtt_proxy.telemetry_models import (
+from aberration_core.db.worker_ownership import WorkerOwnershipLost
+from aberration_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
+from aberration_mqtt_proxy.telemetry_models import (
     HealthStatus,
     TelemetryRecord,
     WriteBatch,
@@ -109,7 +109,7 @@ async def test_process_batch_rolls_back_and_reports_failure(error):
 async def test_retry_gives_up_after_max_attempts_and_keeps_the_batch(monkeypatch):
     writer = _writer()
     writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
-    monkeypatch.setattr("off_key_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("aberration_mqtt_proxy.telemetry.asyncio.sleep", AsyncMock())
     batch_id = "test-batch"
     writer.processing_batches[batch_id] = WriteBatch(
         records=[

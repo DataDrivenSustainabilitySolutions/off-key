@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from off_key_core.db import locks
+from aberration_core.db import locks
 
 BACKEND = Path(__file__).resolve().parents[2]
 

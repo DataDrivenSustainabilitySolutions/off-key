@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import docker.errors
 import pytest
-from off_key_core.models.pipelines import pipeline_catalog_id
-from off_key_tactic_middleware.services.orchestration import workload_identity
-from off_key_tactic_middleware.services.pipelines import preflight
-from off_key_tactic_middleware.services.pipelines.preflight import (
+from aberration_core.models.pipelines import pipeline_catalog_id
+from aberration_tactic_middleware.services.orchestration import workload_identity
+from aberration_tactic_middleware.services.pipelines import preflight
+from aberration_tactic_middleware.services.pipelines.preflight import (
     PipelinePreflight,
     PreflightRejected,
 )
@@ -192,7 +192,11 @@ async def test_a_concurrent_create_adopts_the_job_that_won():
     assert job is docker_.existing
     (spec,) = docker_.created
     assert spec["name"] == "radar-preflight-a1"
-    assert spec["command"] == ["/app/bin/python", "-m", "off_key_mqtt_radar.preflight"]
+    assert spec["command"] == [
+        "/app/bin/python",
+        "-m",
+        "aberration_mqtt_radar.preflight",
+    ]
 
 
 def test_report_reading_is_bounded_and_closes_the_stream():

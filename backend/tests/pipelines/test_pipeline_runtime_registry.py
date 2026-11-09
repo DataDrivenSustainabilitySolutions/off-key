@@ -1,22 +1,22 @@
 """Every component core's catalog offers has a RADAR runtime implementation."""
 
 import pytest
-from off_key_core.models.pipeline_catalog import pipeline_components
-from off_key_core.models.pipeline_combine import row_step
-from off_key_core.models.pipeline_features import PROJECTIONS
-from off_key_core.models.pipeline_prepare import (
+from aberration_core.models.pipeline_catalog import pipeline_components
+from aberration_core.models.pipeline_combine import row_step
+from aberration_core.models.pipeline_features import PROJECTIONS
+from aberration_core.models.pipeline_prepare import (
     LANE_COMPONENTS,
     PREPARE_COMPONENTS,
     kernel,
 )
-from off_key_mqtt_radar.pipelines.components import (
+from aberration_mqtt_radar.pipelines.components import (
     BATCH_BUILDERS,
     BATCH_PASSTHROUGH,
     ONLINE_BUILDERS,
     batch_component,
     online_component,
 )
-from off_key_mqtt_radar.pipelines.resources import STATE_ESTIMATORS
+from aberration_mqtt_radar.pipelines.resources import STATE_ESTIMATORS
 
 FEATURE_COMPONENTS = [
     item for item in pipeline_components() if item.kind in {"transform", "merge"}

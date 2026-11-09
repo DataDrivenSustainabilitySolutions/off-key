@@ -3,15 +3,15 @@ from urllib.parse import unquote
 from xml.etree import ElementTree
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from off_key_core.api_docs import (
+from aberration_core.api_docs import (
     DOCS_CONTENT_SECURITY_POLICY,
     REDOC_JS,
     SWAGGER_CSS,
     SWAGGER_JS,
     router,
 )
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.mark.parametrize("root_path", ["", "/api"])

@@ -21,7 +21,7 @@ surface. Keep the mark free of outlines, coloured fills, and visual effects.
 
 The frontend, documentation, and self-contained public page use exports from the
 same master. See the
-[brand asset README](https://github.com/DataDrivenSustainabilitySolutions/off-key/blob/main/assets/brand/README.md)
+[brand asset README](https://github.com/DataDrivenSustainabilitySolutions/aberration/blob/main/assets/brand/README.md)
 for regenerating and checking them.
 
 Reusable SVGs:

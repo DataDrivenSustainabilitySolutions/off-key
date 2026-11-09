@@ -1,11 +1,11 @@
 import pytest
-from off_key_core.schemas.radar import (
+from aberration_core.schemas.radar import (
     AdaptiveStreamConfig,
     StaticBaselineConfig,
     StaticMartingaleConfig,
 )
-from off_key_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
-from off_key_mqtt_radar.config.config import (
+from aberration_mqtt_proxy.config.config import MQTTConfig, MQTTSettings
+from aberration_mqtt_radar.config.config import (
     MQTTRadarConfig,
     RadarSettings,
 )
@@ -361,7 +361,7 @@ def test_radar_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
         ENVIRONMENT="production",
         RADAR_MQTT_USE_TLS=True,
         RADAR_MQTT_USE_AUTH=True,
-        RADAR_MQTT_USERNAME="offkey-radar",
+        RADAR_MQTT_USERNAME="aberration-radar",
         RADAR_MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
         _secrets_dir=tmp_path,
     )
@@ -394,7 +394,7 @@ def test_mqtt_settings_read_swarm_mqtt_password(tmp_path, monkeypatch):
         ENVIRONMENT="production",
         MQTT_USE_TLS=True,
         MQTT_USE_AUTH=True,
-        MQTT_USERNAME="offkey-proxy",
+        MQTT_USERNAME="aberration-proxy",
         MQTT_CA_FILE="/run/secrets/EMQX_CA_CERT",
         _secrets_dir=tmp_path,
     )

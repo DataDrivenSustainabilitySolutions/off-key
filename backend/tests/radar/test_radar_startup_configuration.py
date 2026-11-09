@@ -4,11 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.config import bootstrap
-from off_key_mqtt_radar import __main__ as entrypoint
-from off_key_mqtt_radar.config.config import clear_radar_settings_cache
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.service import RadarService
+from aberration_core.config import bootstrap
+from aberration_mqtt_radar import __main__ as entrypoint
+from aberration_mqtt_radar.config.config import clear_radar_settings_cache
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.service import RadarService
 
 from tests.support.form_pipeline import set_pipeline_environment
 

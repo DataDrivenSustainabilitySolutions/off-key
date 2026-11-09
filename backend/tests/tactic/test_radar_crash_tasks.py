@@ -1,6 +1,6 @@
 """Swarm task history names the crashes that a restarted worker hides."""
 
-from off_key_tactic_middleware.facades.docker import crashed_tasks
+from aberration_tactic_middleware.facades.docker import crashed_tasks
 
 
 def task(task_id, state, timestamp, **status):

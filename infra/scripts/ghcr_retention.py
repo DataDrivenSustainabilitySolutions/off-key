@@ -26,12 +26,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 PACKAGES = (
-    "off-key-frontend",
-    "off-key-api-gateway",
-    "off-key-tactic-middleware",
-    "off-key-mqtt-radar",
-    "off-key-mqtt-proxy",
-    "off-key-db-sync",
+    "aberration-frontend",
+    "aberration-api-gateway",
+    "aberration-tactic-middleware",
+    "aberration-mqtt-radar",
+    "aberration-mqtt-proxy",
+    "aberration-db-sync",
 )
 RELEASE = (
     Path(__file__).resolve().parents[1]

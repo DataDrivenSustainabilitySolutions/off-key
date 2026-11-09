@@ -12,13 +12,13 @@ class RouteReplacementEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "events.log"
             for events in (
-                "2 start offkey-smoke_broker-route\n",
-                "2 die offkey-smoke_old-route\n1 start offkey-smoke_broker-route\n",
+                "2 start aberration-smoke_broker-route\n",
+                "2 die aberration-smoke_old-route\n1 start aberration-smoke_broker-route\n",
             ):
                 path.write_text(events)
                 with self.assertRaises(AssertionError):
                     assert_replaced_stopped_before_successor(path, ["old-route"])
             path.write_text(
-                "1 die offkey-smoke_old-route\n2 start offkey-smoke_broker-route\n"
+                "1 die aberration-smoke_old-route\n2 start aberration-smoke_broker-route\n"
             )
             assert_replaced_stopped_before_successor(path, ["old-route"])

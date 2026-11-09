@@ -1,7 +1,7 @@
 [project]
-name = "off-key-infra"
+name = "aberration-infra"
 version = "0.1.0"
-description = "IaC tooling — Ansible provisioning for the off-key Swarm cluster"
+description = "IaC tooling — Ansible provisioning for the aberration Swarm cluster"
 requires-python = ">=3.11"
 dependencies = [
     "ansible>=10",        # ansible-core 2.17+; bundles community collections

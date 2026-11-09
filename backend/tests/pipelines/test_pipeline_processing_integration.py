@@ -9,28 +9,32 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
-from amqtt.client import MQTTClient
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_core.db.pipelines import MonitoringPipeline, PipelineRevision, PipelineRun
-from off_key_core.models.pipelines import (
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_core.db.pipelines import (
+    MonitoringPipeline,
+    PipelineRevision,
+    PipelineRun,
+)
+from aberration_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     pipeline_catalog_id,
 )
-from off_key_mqtt_radar import database as radar_database
-from off_key_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
-from off_key_mqtt_radar.admission import (
+from aberration_mqtt_radar import database as radar_database
+from aberration_mqtt_radar.adaptive_detector import AdaptiveStreamDetectionService
+from aberration_mqtt_radar.admission import (
     RadarAdmissionSettings,
     require_monitor_admission,
 )
-from off_key_mqtt_radar.config.config import (
+from aberration_mqtt_radar.config.config import (
     AnomalyDetectionConfig,
     clear_radar_settings_cache,
 )
-from off_key_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
-from off_key_mqtt_radar.execution_errors import FatalExecutionError
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar.config.runtime import clear_radar_runtime_settings_cache
+from aberration_mqtt_radar.execution_errors import FatalExecutionError
+from aberration_mqtt_radar.service import RadarService
+from amqtt.client import MQTTClient
 from sqlalchemy import insert, text
 
 from tests.support.adaptive_pipeline import adaptive_pipeline_config

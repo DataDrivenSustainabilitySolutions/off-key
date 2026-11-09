@@ -3,9 +3,9 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from off_key_mqtt_radar.activity import ActivityTracker, evaluate_activity
-from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.models import AnomalyResult, MQTTMessage
+from aberration_mqtt_radar.activity import ActivityTracker, evaluate_activity
+from aberration_mqtt_radar.health_monitor import HealthMonitor
+from aberration_mqtt_radar.models import AnomalyResult, MQTTMessage
 
 
 def _result(phase="ready", **context):

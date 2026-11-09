@@ -1,7 +1,7 @@
 [project]
-name = "off-key-mqtt-radar"
+name = "aberration-mqtt-radar"
 version = "0.1.0"
-description = "MQTT Real-Time Anomaly Detector for Analysis and Reporting in off-key platform"
+description = "MQTT Real-Time Anomaly Detector for Analysis and Reporting in aberration platform"
 authors = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
@@ -10,7 +10,7 @@ maintainers = [
     { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
     { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
 ]
-keywords = ["off-key", "mqtt", "anomaly", "detector", "telemetry", "analysis"]
+keywords = ["aberration", "mqtt", "anomaly", "detector", "telemetry", "analysis"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3.12",
@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "off-key-core",
+    "aberration-core",
     "paho-mqtt>=2.1,<3",
     "psutil>=5.9.0",
     "numpy>=1.24.0",
@@ -37,4 +37,4 @@ requires = ["uv_build>=0.11.32,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
-off-key-core = { workspace = true }
+aberration-core = { workspace = true }

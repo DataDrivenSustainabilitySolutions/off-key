@@ -4,13 +4,13 @@ import math
 import random
 
 import pytest
-from off_key_core.models.pipeline_formula import (
+from aberration_core.models.pipeline_formula import (
     FormulaError,
     analyze,
     evaluator,
     parse,
 )
-from off_key_core.models.pipeline_prepare import PrepareFailure
+from aberration_core.models.pipeline_prepare import PrepareFailure
 
 
 def value(text, **row):

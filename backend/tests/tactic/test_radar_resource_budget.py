@@ -8,26 +8,26 @@ from uuid import uuid4
 
 import docker
 import pytest
-from docker.types import Resources
-from off_key_core.config.resource_budget import (
+from aberration_core.config.resource_budget import (
     MEBIBYTE,
     RadarResourceBudget,
     parse_cpu_nanos,
     parse_memory_bytes,
 )
-from off_key_core.db.migrate import apply_migrations
-from off_key_core.db.models import MonitoringService
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_tactic_middleware.config.config import (
+from aberration_core.db.migrate import apply_migrations
+from aberration_core.db.models import MonitoringService
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_tactic_middleware.config.config import (
     DockerConfig,
     RadarDefaultsConfig,
     TacticConfig,
     TacticSettings,
     clear_tactic_settings_caches,
 )
-from off_key_tactic_middleware.services.orchestration.radar import (
+from aberration_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
+from docker.types import Resources
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -220,7 +220,7 @@ def test_real_swarm_scheduler_respects_cpu_reservations():
             "eclipse-mosquitto:2.0",
             name=owner,
             command=["/bin/sh", "-c", "sleep 60"],
-            labels={"off-key.integration-owner": owner},
+            labels={"aberration.integration-owner": owner},
             resources=Resources(
                 cpu_limit=budget.cpu_limit_nanos,
                 mem_limit=budget.memory_limit_bytes,
@@ -248,7 +248,9 @@ def test_real_swarm_scheduler_respects_cpu_reservations():
     finally:
         if service is not None:
             service.reload()
-            assert service.attrs["Spec"]["Labels"]["off-key.integration-owner"] == owner
+            assert (
+                service.attrs["Spec"]["Labels"]["aberration.integration-owner"] == owner
+            )
             with suppress(docker.errors.NotFound):
                 service.remove()
         client.close()

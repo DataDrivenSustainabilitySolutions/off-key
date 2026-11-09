@@ -3,14 +3,14 @@
 from datetime import UTC, datetime
 
 import pytest
-from off_key_core.db.migrate import apply_migrations, migration_status
-from off_key_core.db.models import Anomaly, AnomalyIdentity, MonitoringEvidence
-from off_key_core.schemas.system import SystemDocument, SystemSnapshot
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.models import AnomalyResult
-from off_key_tactic_middleware.repositories.data import AnomalyRepository
-from off_key_tactic_middleware.services.data.alarms import AlarmService
+from aberration_core.db.migrate import apply_migrations, migration_status
+from aberration_core.db.models import Anomaly, AnomalyIdentity, MonitoringEvidence
+from aberration_core.schemas.system import SystemDocument, SystemSnapshot
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.models import AnomalyResult
+from aberration_tactic_middleware.repositories.data import AnomalyRepository
+from aberration_tactic_middleware.services.data.alarms import AlarmService
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -140,7 +140,7 @@ def test_monitor_identity_migration_preserves_historical_public_ids(
                 FOREIGN KEY (charger_id, timestamp, telemetry_type)
                 REFERENCES anomalies (charger_id, timestamp, telemetry_type)
                 ON DELETE CASCADE;
-            CREATE OR REPLACE FUNCTION off_key_sync_anomaly_identity()
+            CREATE OR REPLACE FUNCTION aberration_sync_anomaly_identity()
             RETURNS TRIGGER AS $$
             BEGIN
                 INSERT INTO anomaly_identity (charger_id, timestamp, telemetry_type)

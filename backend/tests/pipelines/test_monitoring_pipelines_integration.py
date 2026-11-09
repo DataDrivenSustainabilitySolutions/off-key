@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from off_key_core.db.collection_runtime import read_collection_runtime
-from off_key_core.db.models import (
+from aberration_core.db.collection_runtime import read_collection_runtime
+from aberration_core.db.models import (
     DeploymentMaintenance,
     MonitoringPipeline,
     MonitoringService,
@@ -15,9 +15,9 @@ from off_key_core.db.models import (
     PipelineRun,
     RadarRuntimeCheckpoint,
 )
-from off_key_core.models.pipelines import pipeline_catalog
-from off_key_core.schemas.collection_policy import CollectionPolicy
-from off_key_core.schemas.pipelines import (
+from aberration_core.models.pipelines import pipeline_catalog
+from aberration_core.schemas.collection_policy import CollectionPolicy
+from aberration_core.schemas.pipelines import (
     PipelineActivationRequest,
     PipelineApplyRequest,
     PipelineCreate,
@@ -26,24 +26,26 @@ from off_key_core.schemas.pipelines import (
     PipelineLayout,
     PipelinePublish,
 )
-from off_key_mqtt_radar.admission import (
+from aberration_mqtt_radar.admission import (
     RadarAdmissionSettings,
     require_monitor_admission,
 )
-from off_key_mqtt_radar.config.config import MQTTRadarConfig
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_tactic_middleware.config.config import get_tactic_settings
-from off_key_tactic_middleware.deployment import reserve
-from off_key_tactic_middleware.domain import ConflictError, ValidationError
-from off_key_tactic_middleware.services.catalogue.system_collection import (
+from aberration_mqtt_radar.config.config import MQTTRadarConfig
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_tactic_middleware.config.config import get_tactic_settings
+from aberration_tactic_middleware.deployment import reserve
+from aberration_tactic_middleware.domain import ConflictError, ValidationError
+from aberration_tactic_middleware.services.catalogue.system_collection import (
     SystemCollectionService,
 )
-from off_key_tactic_middleware.services.orchestration.radar import (
+from aberration_tactic_middleware.services.orchestration.radar import (
     RadarOrchestrationService,
 )
-from off_key_tactic_middleware.services.pipelines.activation import PipelineActivations
-from off_key_tactic_middleware.services.pipelines.library import PipelineLibrary
-from off_key_tactic_middleware.services.pipelines.preflight import (
+from aberration_tactic_middleware.services.pipelines.activation import (
+    PipelineActivations,
+)
+from aberration_tactic_middleware.services.pipelines.library import PipelineLibrary
+from aberration_tactic_middleware.services.pipelines.preflight import (
     PipelinePreflight,
     PreflightRejected,
 )
@@ -544,8 +546,8 @@ async def test_runtime_failure_cannot_be_overwritten_by_heartbeat_verification(
 async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
     pipeline_database, monkeypatch
 ):
-    from off_key_core.schemas.radar import MonitorSetup
-    from off_key_tactic_middleware.services.pipelines.forms import start_form_monitor
+    from aberration_core.schemas.radar import MonitorSetup
+    from aberration_tactic_middleware.services.pipelines.forms import start_form_monitor
 
     monkeypatch.setenv("TACTIC_PIPELINE_AUTHORING_ENABLED", "false")
     get_tactic_settings.cache_clear()
@@ -603,8 +605,8 @@ async def test_setup_form_starts_a_pipeline_while_the_workbench_is_off(
 
 @pytest.mark.asyncio
 async def test_release_converts_a_saved_form_monitor_or_retires_it(pipeline_database):
-    from off_key_core.db.models import PipelineRevision
-    from off_key_tactic_middleware.services.pipelines.forms import (
+    from aberration_core.db.models import PipelineRevision
+    from aberration_tactic_middleware.services.pipelines.forms import (
         UnconvertibleFormMonitor,
         convert_saved_form_monitor,
     )

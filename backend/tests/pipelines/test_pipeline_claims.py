@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from off_key_core.db.pipeline_claims import claim_owners, first_overlap
+from aberration_core.db.pipeline_claims import claim_owners, first_overlap
 
 
 def test_first_overlap_returns_the_first_matching_filter_pair():

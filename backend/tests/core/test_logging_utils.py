@@ -7,7 +7,7 @@ from contextlib import suppress
 from pathlib import Path
 
 import pytest
-from off_key_core.config.logs import (
+from aberration_core.config.logs import (
     JsonFormatter,
     KeyValueFormatter,
     TruncatingFormatter,
@@ -17,7 +17,7 @@ from off_key_core.config.logs import (
     load_yaml_config,
     redact_query_params,
 )
-from off_key_core.config.logs import (
+from aberration_core.config.logs import (
     logger as core_logger,
 )
 
@@ -141,7 +141,7 @@ def test_expand_env_vars_resolves_nested_fallback_chain(monkeypatch):
 def test_load_yaml_config_applies_root_fallback(monkeypatch):
     service_config = (
         Path(__file__).resolve().parents[2]
-        / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
+        / "services/mqtt/proxy/src/aberration_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()
 
@@ -166,13 +166,13 @@ def test_load_yaml_config_applies_root_fallback(monkeypatch):
 def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch):
     service_config = (
         Path(__file__).resolve().parents[2]
-        / "services/mqtt/proxy/src/off_key_mqtt_proxy/config/logging.yaml"
+        / "services/mqtt/proxy/src/aberration_mqtt_proxy/config/logging.yaml"
     )
     assert service_config.exists()
 
     root_logger = logging.getLogger()
-    service_logger = logging.getLogger("off_key_mqtt_proxy")
-    module_logger = logging.getLogger("off_key_mqtt_proxy.router")
+    service_logger = logging.getLogger("aberration_mqtt_proxy")
+    module_logger = logging.getLogger("aberration_mqtt_proxy.router")
     original_root_handlers = list(root_logger.handlers)
     original_root_level = root_logger.level
     original_service_handlers = list(service_logger.handlers)
@@ -215,7 +215,7 @@ def test_module_logger_and_service_logger_both_emit_when_configured(monkeypatch)
 
 
 def test_bound_process_context_names_every_record_until_cleared():
-    from off_key_core.config.logs import (
+    from aberration_core.config.logs import (
         CorrelationFilter,
         bind_log_context,
         clear_log_context,

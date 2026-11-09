@@ -4,12 +4,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.db.models import Anomaly, AnomalyIdentity
-from off_key_core.schemas.alarms import AlarmCreate
-from off_key_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
-from off_key_tactic_middleware.domain import ConflictError, NotFoundError
-from off_key_tactic_middleware.repositories.data import AnomalyRepository
-from off_key_tactic_middleware.services.data.alarms import AlarmService
+from aberration_core.db.models import Anomaly, AnomalyIdentity
+from aberration_core.schemas.alarms import AlarmCreate
+from aberration_core.schemas.system import SystemDocument, SystemRuntime, SystemSnapshot
+from aberration_tactic_middleware.domain import ConflictError, NotFoundError
+from aberration_tactic_middleware.repositories.data import AnomalyRepository
+from aberration_tactic_middleware.services.data.alarms import AlarmService
 from sqlalchemy.exc import IntegrityError
 
 

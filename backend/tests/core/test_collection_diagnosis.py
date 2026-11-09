@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import get_args
 
 import pytest
-from off_key_core.schemas.collection_health import DiagnosisCode, diagnose_collection
+from aberration_core.schemas.collection_health import DiagnosisCode, diagnose_collection
 
 NOW = datetime(2026, 11, 5, 12, tzinfo=UTC)
 

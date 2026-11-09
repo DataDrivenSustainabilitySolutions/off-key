@@ -1,22 +1,22 @@
 """The production gateway composition: middleware order and error handlers."""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from off_key_api_gateway.api.middleware import RequestLoggingMiddleware
-from off_key_api_gateway.api.request_guards import (
+from aberration_api_gateway.api.middleware import RequestLoggingMiddleware
+from aberration_api_gateway.api.request_guards import (
     BodySizeLimitMiddleware,
     ClientRateLimitMiddleware,
 )
-from off_key_api_gateway.app import build_app
-from off_key_api_gateway.settings import AppSettings
-from off_key_core.config.logs import CorrelationIdMiddleware
+from aberration_api_gateway.app import build_app
+from aberration_api_gateway.settings import AppSettings
+from aberration_core.config.logs import CorrelationIdMiddleware
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 
 def test_middleware_runs_cors_first_and_request_logging_last():
-    app = build_app(AppSettings(APP_NAME="off-key-test"))
+    app = build_app(AppSettings(APP_NAME="aberration-test"))
 
     assert [middleware.cls for middleware in app.user_middleware] == [
         CORSMiddleware,
@@ -30,7 +30,7 @@ def test_middleware_runs_cors_first_and_request_logging_last():
 
 
 def test_only_rate_limits_get_a_custom_exception_handler():
-    app = build_app(AppSettings(APP_NAME="off-key-test"))
+    app = build_app(AppSettings(APP_NAME="aberration-test"))
 
     # TacticError is translated per router, never by an app-level handler.
     assert set(app.exception_handlers) - set(FastAPI().exception_handlers) == {

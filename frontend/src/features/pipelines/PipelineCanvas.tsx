@@ -274,7 +274,7 @@ export default function PipelineCanvas({
     const center = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false });
     const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
     onAdd(
-      event.dataTransfer.getData("application/off-key-component"),
+      event.dataTransfer.getData("application/aberration-component"),
       snapToGrid
         ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
         : position,

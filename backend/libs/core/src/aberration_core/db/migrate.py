@@ -1,0 +1,292 @@
+"""Apply reviewed SQL migrations before the target application starts."""
+
+import argparse
+import json
+from hashlib import sha256
+from importlib.resources import files
+
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
+
+from .base import get_engine
+from .locks import MIGRATION_LOCK
+from .models import DESIRED_STATE_CHECK, Base
+from .schema import bootstrap_schema, validate_existing_schema
+
+LEDGER = "aberration_schema_migrations"
+LEGACY_LEDGER = "off_key_schema_migrations"
+SYSTEM_TABLES = {
+    "system_configuration",
+    "system_revisions",
+    "system_collection_configuration",
+}
+# Tables a database created before the ledger existed must already hold. Frozen
+# here instead of derived from the ORM, so a new table cannot silently change
+# which historical databases are adopted.
+PRE_LEDGER_TABLES = frozenset(
+    {
+        "anomalies",
+        "anomaly_identity",
+        "chargers",
+        "collection_bindings",
+        "collection_configuration",
+        "collection_revisions",
+        "collection_state",
+        "deployment_maintenance",
+        "favorites",
+        "model_registry",
+        "monitoring_evidence",
+        "mqtt_topics",
+        "services",
+        "telemetry",
+        "users",
+    }
+)
+BASELINE_TABLES = PRE_LEDGER_TABLES - {"deployment_maintenance"}
+# Migrations that read the saved catalogue. A database older than migration 005
+# has none until the catalogue conversion below, so they run after it there.
+READS_CONVERTED_CATALOGUE = frozenset({"023_device_favorites.sql"})
+# Columns a historical database may still carry; migration 014 drops them.
+RETIRED_COLUMNS = {"services": {"stateful_set_name"}}
+
+
+def migration_files() -> dict[str, str]:
+    directory = files("aberration_core").joinpath("db/migrations")
+    return {
+        path.name: path.read_text()
+        for path in sorted(directory.iterdir(), key=lambda path: path.name)
+        if path.name.endswith(".sql")
+    }
+
+
+def migration_checksum(version: str, sql: str) -> str:
+    contents = sql
+    if version == "005_generic_runtime.sql":
+        for name in (
+            "catalogue_upgrade.py",
+            "catalogue_v1.py",
+            "catalogue_v1_models.py",
+        ):
+            contents += files("aberration_core").joinpath("db", name).read_text()
+    return sha256(contents.encode()).hexdigest()
+
+
+def pending_columns(
+    connection: Connection, existing: set[str]
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """Declared columns pending migrations add, and old ones they still change."""
+    # Verified pre-ledger databases can predate scoped monitor alarms. Migration
+    # 007 adds these columns without changing their historical public IDs.
+    excluded_columns = {
+        name: {"service_id"}
+        for name in ("anomalies", "anomaly_identity")
+        if name in existing
+        and "service_id"
+        not in {column["name"] for column in inspect(connection).get_columns(name)}
+    }
+    if "services" in existing:
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("services")
+        }
+        excluded_columns["services"] = {
+            "desired_state",
+            "lifecycle_version",
+            "config_fingerprint",
+            "collection_fingerprint",
+        } - columns
+    if "monitoring_pipelines" in existing:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_pipelines")
+        }
+        excluded_columns["monitoring_pipelines"] = {"is_template"} - columns
+    if "monitoring_pipeline_runs" in existing:
+        # Migration 016 keeps each run's last status after its service is gone.
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_pipeline_runs")
+        }
+        excluded_columns["monitoring_pipeline_runs"] = {"final_status"} - columns
+    if "monitoring_evidence" in existing:
+        # Migration 015 adds each detector's results to the evidence, and
+        # migration 017 the features each detector scored.
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("monitoring_evidence")
+        }
+        excluded_columns["monitoring_evidence"] = {
+            "detector_results",
+            "detector_inputs",
+        } - columns
+    retired_columns = dict(RETIRED_COLUMNS)
+    if "users" in existing and "member_roles" not in existing:
+        # Migration 021 turns the former role enum into a member_roles
+        # reference, so neither shape of the column is checked before it runs.
+        excluded_columns["users"] = {"role"}
+        retired_columns["users"] = {"role"}
+    return excluded_columns, retired_columns
+
+
+def adopted_versions(connection: Connection, migrations: dict[str, str]) -> list[str]:
+    """Adopt only the verified pre-integration schema or a fresh current schema."""
+    existing = set(inspect(connection).get_table_names())
+    application_tables = set(Base.metadata.tables)
+    excluded_columns, retired_columns = pending_columns(connection, existing)
+    if not existing.intersection(application_tables):
+        if existing - {LEDGER}:
+            raise ValueError("Cannot initialize a database containing unknown tables")
+        return []
+    if existing >= PRE_LEDGER_TABLES:
+        validate_existing_schema(
+            connection,
+            excluded_columns=excluded_columns,
+            retired_columns=retired_columns,
+            excluded_constraints={DESIRED_STATE_CHECK},
+        )
+        adopted = [
+            "001_membership.sql",
+            "002_monitor_stop_intent.sql",
+            "003_deployment_maintenance.sql",
+        ]
+        if existing >= SYSTEM_TABLES:
+            adopted.append("004_system_catalogue.sql")
+        return adopted
+    baseline = [
+        table for table in Base.metadata.sorted_tables if table.name in BASELINE_TABLES
+    ]
+    if not {table.name for table in baseline} <= existing:
+        raise ValueError("A reviewed baseline is required for this database")
+    validate_existing_schema(
+        connection,
+        tables=baseline,
+        excluded_columns=excluded_columns
+        | {"services": excluded_columns.get("services", set()) | {"launch_config"}},
+        retired_columns=retired_columns,
+        excluded_constraints={DESIRED_STATE_CHECK},
+    )
+    return ["001_membership.sql", "002_monitor_stop_intent.sql"]
+
+
+def migration_status(
+    connection: Connection, migrations: dict[str, str] | None = None
+) -> dict:
+    migrations = migration_files() if migrations is None else migrations
+    ledger = existing_ledger(connection)
+    if ledger is not None:
+        rows = dict(
+            connection.execute(text(f"SELECT version, checksum FROM {ledger}")).all()
+        )
+        for version, checksum in rows.items():
+            if version not in migrations or checksum != migration_checksum(
+                version, migrations[version]
+            ):
+                raise ValueError("Applied migration history differs from this release")
+        applied = [version for version in migrations if version in rows]
+        if applied != list(migrations)[: len(applied)]:
+            raise ValueError(
+                "Applied migrations are not an ordered prefix of this release"
+            )
+    else:
+        applied = adopted_versions(connection, migrations)
+    fresh = not set(inspect(connection).get_table_names()).intersection(
+        Base.metadata.tables
+    )
+    return {
+        "pending": [version for version in migrations if version not in applied],
+        "adopted": applied,
+        "fresh": fresh,
+    }
+
+
+def existing_ledger(connection: Connection) -> str | None:
+    """Read the previous identity without adopting or rewriting its history."""
+    inspector = inspect(connection)
+    found = [name for name in (LEDGER, LEGACY_LEDGER) if inspector.has_table(name)]
+    if len(found) > 1:
+        raise ValueError("Both schema ledgers exist; reconcile before upgrading")
+    return found[0] if found else None
+
+
+def apply_migrations(
+    connection: Connection, migrations: dict[str, str] | None = None
+) -> dict:
+    """Caller owns one transaction covering DDL and its checksum records."""
+    migrations = migration_files() if migrations is None else migrations
+    if not connection.scalar(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK}
+    ):
+        raise ValueError("Another database upgrade is in progress")
+    connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+    connection.execute(text("SET LOCAL statement_timeout = '120s'"))
+    status = migration_status(connection, migrations)
+    if existing_ledger(connection) == LEGACY_LEDGER:
+        connection.execute(text(f"ALTER TABLE {LEGACY_LEDGER} RENAME TO {LEDGER}"))
+        connection.execute(
+            text(
+                f"ALTER TABLE {LEDGER} RENAME CONSTRAINT {LEGACY_LEDGER}_pkey "
+                f"TO {LEDGER}_pkey"
+            )
+        )
+    connection.execute(
+        text(f"""
+        CREATE TABLE IF NOT EXISTS {LEDGER} (
+            version text PRIMARY KEY, checksum text NOT NULL,
+            applied_at timestamptz NOT NULL DEFAULT now()
+        )
+    """)
+    )
+    if status["fresh"]:
+        bootstrap_schema(connection)
+    converting = not status["fresh"] and "005_generic_runtime.sql" in status["pending"]
+    after_conversion = []
+    for version, sql in migrations.items():
+        if not status["fresh"] and version in status["pending"]:
+            if converting and version in READS_CONVERTED_CATALOGUE:
+                after_conversion.append(sql)
+            else:
+                connection.exec_driver_sql(sql)
+        connection.execute(
+            text(f"""
+            INSERT INTO {LEDGER} (version, checksum) VALUES (:version, :checksum)
+            ON CONFLICT (version) DO NOTHING
+        """),
+            {"version": version, "checksum": migration_checksum(version, sql)},
+        )
+    if converting:
+        from .catalogue_upgrade import upgrade_saved_catalogue
+
+        # The frozen compatibility converter projects current runtime tables.
+        # Finish the independent additive DDL before conversion so a pre-ledger
+        # database need not already have columns introduced by later releases.
+        # DDL, data conversion and checksum records still commit atomically.
+        upgrade_saved_catalogue(connection)
+        for sql in after_conversion:
+            connection.exec_driver_sql(sql)
+    bootstrap_schema(connection)
+    return {"applied": status["pending"], "fresh": status["fresh"]}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["status", "apply"])
+    action = parser.parse_args().action
+    try:
+        with get_engine().begin() as connection:
+            result = (
+                migration_status(connection)
+                if action == "status"
+                else apply_migrations(connection)
+            )
+        print(json.dumps(result))
+    except Exception:
+        # SQL/driver errors can embed passwords and user data; keep them off CI logs.
+        print(
+            json.dumps(
+                {"error": "Database migration failed; its transaction was rolled back."}
+            )
+        )
+        raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

@@ -25,7 +25,7 @@
       - "'RADAR_MQTT_BROKER_PORT=8883' in radar_env"
       - "'RADAR_MQTT_USE_TLS=true' in radar_env"
       - "'RADAR_MQTT_USE_AUTH=true' in radar_env"
-      - "'RADAR_MQTT_USERNAME=offkey-radar' in radar_env"
+      - "'RADAR_MQTT_USERNAME=aberration-radar' in radar_env"
       - "'RADAR_MQTT_CA_FILE=/run/secrets/EMQX_CA_CERT' in radar_env"
       - "radar_env | select('match', '^RADAR_MQTT_API_KEY=') | list | length == 0"
       - "radar_env | select('match', '^RADAR_CHECKPOINT_SECRET=') | list | length == 0"

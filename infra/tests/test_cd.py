@@ -89,8 +89,8 @@ class CDTests(unittest.TestCase):
             config = root / "infra/ansible/inventories/prod/group_vars/all"
             config.mkdir(parents=True)
             values = dict.fromkeys(secrets.FILES, "synthetic-value") | {
-                "OFFKEY_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
-                "OFFKEY_DEPLOY_DIRECTORY": str(root / "private"),
+                "ABERRATION_PROD_VAULT": "$ANSIBLE_VAULT;1.1;AES256\nfixture",
+                "ABERRATION_DEPLOY_DIRECTORY": str(root / "private"),
                 "GITHUB_ACTOR": "fixture-owner",
                 "GH_TOKEN": "fixture-short-lived-token",
             }
@@ -131,7 +131,7 @@ class CDTests(unittest.TestCase):
     def test_missing_or_plaintext_vault_writes_no_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
             values = dict.fromkeys(secrets.FILES, "fixture") | {
-                "OFFKEY_DEPLOY_DIRECTORY": str(Path(directory) / "private")
+                "ABERRATION_DEPLOY_DIRECTORY": str(Path(directory) / "private")
             }
             with patch.dict(os.environ, values), self.assertRaises(SystemExit):
                 secrets.main()
@@ -159,7 +159,7 @@ class CDTests(unittest.TestCase):
                             "gather_facts": False,
                             "become": False,
                             "vars": {
-                                "stack_name": "off-key",
+                                "stack_name": "aberration",
                                 "tactic_image": "fixture/tactic@sha256:abc",
                                 "release": {"application_revision": "a" * 40},
                                 "stack_compose_model": {
@@ -214,7 +214,7 @@ class CDTests(unittest.TestCase):
             )
             self.assertEqual(
                 arguments[-4:],
-                ["-m", "off_key_tactic_middleware.deployment", "status", "a" * 40],
+                ["-m", "aberration_tactic_middleware.deployment", "status", "a" * 40],
             )
             self.assertNotIn(password, result.stdout + result.stderr)
 
@@ -245,7 +245,7 @@ class CDTests(unittest.TestCase):
                     "ansible.posix.profile_tasks",
                 )
                 self.assertEqual(
-                    step["run"].count('"$OFFKEY_RELEASE_TOOLS/task_timings.py"'), 2
+                    step["run"].count('"$ABERRATION_RELEASE_TOOLS/task_timings.py"'), 2
                 )
 
     def test_releases_report_with_this_workflows_tools_for_any_revision(self):
@@ -272,11 +272,12 @@ class CDTests(unittest.TestCase):
             run = step.get("run", "")
             with self.subTest(step=step.get("name")):
                 self.assertNotIn("../scripts/", run)
-                used |= set(re.findall(r"\$OFFKEY_RELEASE_TOOLS/([\w.-]+)", run))
+                used |= set(re.findall(r"\$ABERRATION_RELEASE_TOOLS/([\w.-]+)", run))
                 for tool in copied:
                     if tool in run:
                         self.assertEqual(
-                            run.count(tool), run.count(f"$OFFKEY_RELEASE_TOOLS/{tool}")
+                            run.count(tool),
+                            run.count(f"$ABERRATION_RELEASE_TOOLS/{tool}"),
                         )
         # The retention playbook imports the inventory validation from beside it.
         self.assertEqual(
@@ -295,12 +296,12 @@ class CDTests(unittest.TestCase):
             for step in job["steps"]
             if step.get("name", "").startswith("Deploy only runtime changes")
         )["run"]
-        self.assertIn('tee "$OFFKEY_RELEASE_OUTCOME/production.failed"', script)
-        self.assertIn('touch "$OFFKEY_RELEASE_OUTCOME/production.released"', script)
+        self.assertIn('tee "$ABERRATION_RELEASE_OUTCOME/production.failed"', script)
+        self.assertIn('touch "$ABERRATION_RELEASE_OUTCOME/production.released"', script)
         self.assertIn('--readiness "$readiness"', script)
         self.assertIn('-e "readiness_report_file=$readiness"', script)
         # A release's private log is kept after success and after failure.
-        self.assertEqual(script.count('keep "$OFFKEY_DEPLOY_DIRECTORY/'), 2)
+        self.assertEqual(script.count('keep "$ABERRATION_DEPLOY_DIRECTORY/'), 2)
         alert = job["steps"][-1]
         self.assertEqual(
             alert["if"], "always() && steps.release.outputs.ready == 'true'"
@@ -392,7 +393,7 @@ class CDTests(unittest.TestCase):
                         env=os.environ
                         | {
                             "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
-                            "OFFKEY_RELEASE_REVISION": target,
+                            "ABERRATION_RELEASE_REVISION": target,
                         },
                     )
                     self.assertEqual((root / "decision").read_text(), decision)

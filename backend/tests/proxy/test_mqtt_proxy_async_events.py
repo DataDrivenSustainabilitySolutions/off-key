@@ -8,15 +8,15 @@ from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from off_key_core.schemas.collection_wire import (
+from aberration_core.schemas.collection_wire import (
     MAX_ENVELOPE_BYTES,
     encode_ingress_envelope,
 )
-from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
-from off_key_mqtt_proxy.client.connection import ConnectionManager
-from off_key_mqtt_proxy.client.messaging import MessageHandler
-from off_key_mqtt_proxy.client.models import ConnectionState, MQTTMessage
-from off_key_mqtt_proxy.config.config import MQTTSettings
+from aberration_core.utils.payload_decode import MAX_PAYLOAD_BYTES
+from aberration_mqtt_proxy.client.connection import ConnectionManager
+from aberration_mqtt_proxy.client.messaging import MessageHandler
+from aberration_mqtt_proxy.client.models import ConnectionState, MQTTMessage
+from aberration_mqtt_proxy.config.config import MQTTSettings
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.reasoncodes import ReasonCode
 
@@ -168,7 +168,7 @@ async def test_connect_clears_stale_connection_event(connection_manager):
 
     with (
         patch(
-            "off_key_mqtt_proxy.client.connection.mqtt.Client",
+            "aberration_mqtt_proxy.client.connection.mqtt.Client",
             return_value=mock_client,
         ),
         patch("asyncio.wait_for", side_effect=fake_wait_for),
@@ -194,7 +194,7 @@ async def test_connect_presents_configured_broker_credentials(use_auth):
 
     with (
         patch(
-            "off_key_mqtt_proxy.client.connection.mqtt.Client",
+            "aberration_mqtt_proxy.client.connection.mqtt.Client",
             return_value=mock_client,
         ),
         patch("asyncio.wait_for", side_effect=fake_wait_for),

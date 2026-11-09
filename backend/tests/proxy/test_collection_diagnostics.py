@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-from off_key_mqtt_proxy import collection_diagnostics as diagnostics_module
-from off_key_mqtt_proxy.collection_buffer import CollectionBuffer
-from off_key_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
-from off_key_mqtt_proxy.telemetry import DatabaseWriter
-from off_key_mqtt_proxy.telemetry_models import WriteBatch, WriteStatus
+from aberration_mqtt_proxy import collection_diagnostics as diagnostics_module
+from aberration_mqtt_proxy.collection_buffer import CollectionBuffer
+from aberration_mqtt_proxy.collection_diagnostics import CollectionDiagnostics
+from aberration_mqtt_proxy.telemetry import DatabaseWriter
+from aberration_mqtt_proxy.telemetry_models import WriteBatch, WriteStatus
 
 from tests.support.collection import message
 from tests.support.collection import runtime_catalog as catalog

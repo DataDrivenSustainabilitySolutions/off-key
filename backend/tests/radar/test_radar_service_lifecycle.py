@@ -5,11 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_mqtt_radar import service as radar_service_module
-from off_key_mqtt_radar.database import DatabaseWriter
-from off_key_mqtt_radar.execution_errors import FatalExecutionError
-from off_key_mqtt_radar.health_monitor import HealthMonitor
-from off_key_mqtt_radar.service import RadarService
+from aberration_mqtt_radar import service as radar_service_module
+from aberration_mqtt_radar.database import DatabaseWriter
+from aberration_mqtt_radar.execution_errors import FatalExecutionError
+from aberration_mqtt_radar.health_monitor import HealthMonitor
+from aberration_mqtt_radar.service import RadarService
 
 
 class _FakeMessageProcessor:

@@ -1,8 +1,8 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from off_key_core.config.email import get_email_settings
-from off_key_core.utils import mail
+from aberration_core.config.email import get_email_settings
+from aberration_core.utils import mail
 from pydantic import ValidationError
 
 from tests.support.env import EMAIL_ENVIRONMENT, set_environment

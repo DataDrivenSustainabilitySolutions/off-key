@@ -4,23 +4,23 @@ import pickle
 
 import numpy as np
 import pytest
-from off_key_core.models import pipeline_compiler
-from off_key_core.models.pipelines import (
+from aberration_core.models import pipeline_compiler
+from aberration_core.models.pipelines import (
     compile_pipeline,
     execution_fingerprint,
     pipeline_catalog,
     validate_pipeline,
 )
-from off_key_core.schemas.pipelines import (
+from aberration_core.schemas.pipelines import (
     BoundInput,
     PipelineDefinition,
     PipelineExecutionConfig,
 )
-from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
-from off_key_mqtt_radar.pipelines.batch import BatchFeatureGraph
-from off_key_mqtt_radar.pipelines.components import ScopedStep
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
-from off_key_mqtt_radar.pipelines.resources import estimate_resources
+from aberration_mqtt_radar.pipelines.adapters import adaptive_graph
+from aberration_mqtt_radar.pipelines.batch import BatchFeatureGraph
+from aberration_mqtt_radar.pipelines.components import ScopedStep
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines.resources import estimate_resources
 
 from tests.support.pipelines import branched
 

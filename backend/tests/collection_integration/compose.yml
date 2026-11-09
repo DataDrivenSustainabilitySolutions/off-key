@@ -1,4 +1,4 @@
-name: offkey-collection-test
+name: aberration-collection-test
 services:
   emqx:
     image: ${EMQX_TEST_IMAGE:-emqx/emqx:5.8.7}

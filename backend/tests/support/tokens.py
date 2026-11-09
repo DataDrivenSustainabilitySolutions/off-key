@@ -1,6 +1,6 @@
 """Access tokens for tests, issued through the production claim contract."""
 
-from off_key_core.auth.tokens import AccessClaims, issue_access_token
+from aberration_core.auth.tokens import AccessClaims, issue_access_token
 
 
 def access_token(user, *, session_version=None) -> str:

@@ -45,7 +45,7 @@ def current_tasks(manager, name):
 
 def run_rehearsal(evidence_path):
     identity = uuid.uuid4().hex[:10]
-    stack = f"offkey-obs-{identity}"
+    stack = f"aberration-obs-{identity}"
     images = json.loads(
         (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
     )["release"]["images"]
@@ -65,8 +65,8 @@ def run_rehearsal(evidence_path):
             node_names[0],
             "mkdir",
             "-p",
-            "/srv/offkey-observability/loki",
-            "/srv/offkey-observability/grafana",
+            "/srv/aberration-observability/loki",
+            "/srv/aberration-observability/grafana",
         )
         for directory, owner in (("loki", "10001:10001"), ("grafana", "472:0")):
             lab.outer(
@@ -74,7 +74,7 @@ def run_rehearsal(evidence_path):
                 node_names[0],
                 "chown",
                 owner,
-                f"/srv/offkey-observability/{directory}",
+                f"/srv/aberration-observability/{directory}",
             )
         manager(
             "network",
@@ -140,7 +140,7 @@ def run_rehearsal(evidence_path):
             lambda: local_container(worker, f"unrelated-{identity}"),
             "unrelated fixture",
         )
-        with tempfile.TemporaryDirectory(prefix="offkey-obs-render-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="aberration-obs-render-") as temporary:
             directory = Path(temporary)
             with engine_environment(manager):
                 result, _ = render(
@@ -196,7 +196,7 @@ def run_rehearsal(evidence_path):
                         proxy,
                         "socat",
                         "-",
-                        "UNIX-CONNECT:/run/offkey-docker/docker.sock",
+                        "UNIX-CONNECT:/run/aberration-docker/docker.sock",
                         input=request,
                     )
                     assert response.startswith("HTTP/1.1 403"), (

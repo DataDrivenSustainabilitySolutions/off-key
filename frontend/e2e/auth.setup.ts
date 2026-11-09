@@ -48,7 +48,7 @@ setup(
     expect(persistentState.sessionAuthToken).toBeNull();
     expect(
       (await page.context().cookies()).some(
-        (cookie) => cookie.name === "off_key_remembered_session" && cookie.httpOnly,
+        (cookie) => cookie.name === "aberration_remembered_session" && cookie.httpOnly,
       ),
     ).toBe(true);
 

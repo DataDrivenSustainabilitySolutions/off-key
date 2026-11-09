@@ -7,21 +7,21 @@ from datetime import UTC, datetime
 
 import pytest
 from aberrant.catalog import ComponentSpec
-from off_key_core.schemas.pipelines import PipelineRuntimeState
-from off_key_mqtt_radar import adaptive_detector as adaptive_module
-from off_key_mqtt_radar.adaptive_detector import (
+from aberration_core.schemas.pipelines import PipelineRuntimeState
+from aberration_mqtt_radar import adaptive_detector as adaptive_module
+from aberration_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
-from off_key_mqtt_radar.execution_errors import (
+from aberration_mqtt_radar.execution_errors import (
     FatalExecutionError,
     ObservationRejected,
     StepRejected,
 )
-from off_key_mqtt_radar.pipelines import adapters
-from off_key_mqtt_radar.pipelines.adapters import adaptive_graph
-from off_key_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
-from off_key_mqtt_radar.pipelines.plan import ExecutionPlan
+from aberration_mqtt_radar.pipelines import adapters
+from aberration_mqtt_radar.pipelines.adapters import adaptive_graph
+from aberration_mqtt_radar.pipelines.diagnostics import DiagnosticLimits
+from aberration_mqtt_radar.pipelines.plan import ExecutionPlan
 
 from tests.support.adaptive_pipeline import adaptive_pipeline_config
 
@@ -366,7 +366,7 @@ def test_live_values_come_from_real_score_pass_with_original_metadata(monkeypatc
     # Windows Python 3.12's monotonic clock may repeat within a sampling tick.
     clock = [0.0]
     monkeypatch.setattr(
-        "off_key_mqtt_radar.pipelines.diagnostics.time.monotonic", lambda: clock[0]
+        "aberration_mqtt_radar.pipelines.diagnostics.time.monotonic", lambda: clock[0]
     )
     service = AdaptiveStreamDetectionService(adaptive_pipeline_config())
     service.diagnostics.limits = DiagnosticLimits(sample_interval_seconds=1e-12)

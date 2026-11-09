@@ -63,9 +63,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # - The packages' own test suites (directories named "tests"), which nothing imports.
 # - For RADAR, matplotlib and the packages that only it needs, as uv.lock resolves them.
 #   PyOD declares matplotlib for its plotting helpers and for detectors RADAR does not
-#   offer (off_key_core.models.static).
+#   offer (aberration_core.models.static).
 RUN find /app/lib -depth -type d -name tests -path '*/site-packages/*' -exec rm -rf {} + \
-    && if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then \
+    && if [ "$SERVICE_NAME" = "aberration-mqtt-radar" ]; then \
         export_args="--frozen --no-dev --package $SERVICE_NAME --no-emit-workspace --no-header --no-hashes --no-annotate" \
         && uv export $export_args > /tmp/locked.txt \
         && uv export $export_args --prune matplotlib > /tmp/kept.txt \
@@ -76,8 +76,8 @@ RUN find /app/lib -depth -type d -name tests -path '*/site-packages/*' -exec rm 
 # import every RADAR module and offered component from it, so a change that needs a
 # package the image leaves out fails this build instead of a running monitor.
 RUN --mount=type=bind,source=scripts/check_radar_image.py,target=/tmp/check_radar_image.py \
-    if [ "$SERVICE_NAME" = "off-key-mqtt-radar" ]; then \
-        /app/bin/python -m off_key_mqtt_radar.catalog --check \
+    if [ "$SERVICE_NAME" = "aberration-mqtt-radar" ]; then \
+        /app/bin/python -m aberration_mqtt_radar.catalog --check \
         && /app/bin/python /tmp/check_radar_image.py; \
     fi
 
@@ -103,9 +103,9 @@ ARG SERVICE_NAME
 ARG IMAGE_VERSION=dev
 ARG GIT_COMMIT=unknown
 
-LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/off-key" \
+LABEL org.opencontainers.image.source="https://github.com/DataDrivenSustainabilitySolutions/aberration" \
       org.opencontainers.image.title="${SERVICE_NAME}" \
-      org.opencontainers.image.description="Runtime image for the ${SERVICE_NAME} service in the Off-Key platform" \
+      org.opencontainers.image.description="Runtime image for the ${SERVICE_NAME} service in the Aberration platform" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${GIT_COMMIT}"

@@ -23,14 +23,14 @@ services:
     container_name: api_gateway
     ports:
       - "${BACKEND_PORT}:8000"
-    command: ["uvicorn", "off_key_api_gateway.main:app",
-              "--reload", "--reload-dir", "/app/lib/python3.14/site-packages/off_key_api_gateway",
+    command: ["uvicorn", "aberration_api_gateway.main:app",
+              "--reload", "--reload-dir", "/app/lib/python3.14/site-packages/aberration_api_gateway",
               "--host", "0.0.0.0", "--port", "8000"]
     develop:
       watch:
         - action: sync
-          path: backend/services/api/gateway/src/off_key_api_gateway
-          target: /app/lib/python3.14/site-packages/off_key_api_gateway
+          path: backend/services/api/gateway/src/aberration_api_gateway
+          target: /app/lib/python3.14/site-packages/aberration_api_gateway
         - action: rebuild
           path: ./backend/uv.lock
 
@@ -47,8 +47,8 @@ services:
     develop:
       watch:
         - action: sync
-          path: backend/services/db/sync/src/off_key_db_sync
-          target: /app/lib/python3.14/site-packages/off_key_db_sync
+          path: backend/services/db/sync/src/aberration_db_sync
+          target: /app/lib/python3.14/site-packages/aberration_db_sync
         - action: rebuild
           path: ./backend/uv.lock
 

@@ -89,7 +89,10 @@ class GhcrRetentionTests(unittest.TestCase):
     def test_the_committed_release_pins_are_kept(self):
         pinned = retention.pinned_digests()
         images = json.loads(retention.RELEASE.read_text())["release"]["images"]
-        self.assertEqual(pinned, {image.split("@", 1)[1] for image in images.values()})
+        self.assertEqual(
+            pinned,
+            {image.split("@", 1)[1] for image in images.values() if "@" in image},
+        )
 
     def test_every_published_image_is_covered(self):
         workflow = yaml.safe_load(
@@ -118,8 +121,8 @@ def image(identifier, tags=(), digests=()):
 
 class NodeImagePruneTests(unittest.TestCase):
     def test_removes_only_application_images_nothing_names(self):
-        radar = f"{OWNER}/off-key-mqtt-radar"
-        api = f"{OWNER}/off-key-api-gateway"
+        radar = f"{OWNER}/aberration-mqtt-radar"
+        api = f"{OWNER}/aberration-api-gateway"
         application = [
             f"{radar}:sha-0000002@sha256:{'2' * 64}",
             f"{api}:sha-0000002@sha256:{'b' * 64}",
@@ -134,7 +137,7 @@ class NodeImagePruneTests(unittest.TestCase):
             image("old-radar", digests=[f"{radar}@sha256:{'0' * 64}"]),
             image("old-api", [f"{api}:sha-0000001"], [f"{api}@sha256:{'a' * 64}"]),
             image("emqx", digests=["emqx/emqx@sha256:" + "f" * 64]),
-            image("local-build", ["off-key-frontend:validation"]),
+            image("local-build", ["aberration-frontend:validation"]),
             image("dangling-layer"),
         ]
         self.assertEqual(
@@ -143,8 +146,8 @@ class NodeImagePruneTests(unittest.TestCase):
 
     def test_repository_names_ignore_tags_digests_and_registry_ports(self):
         self.assertEqual(
-            prune.repository(f"{OWNER}/off-key-db-sync:sha-1@sha256:{'c' * 64}"),
-            f"{OWNER}/off-key-db-sync",
+            prune.repository(f"{OWNER}/aberration-db-sync:sha-1@sha256:{'c' * 64}"),
+            f"{OWNER}/aberration-db-sync",
         )
         self.assertEqual(
             prune.repository("registry:5000/team/app"), "registry:5000/team/app"

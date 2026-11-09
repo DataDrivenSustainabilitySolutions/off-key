@@ -5,15 +5,15 @@ from array import array
 from itertools import pairwise
 
 import pytest
-from off_key_core.models.pipeline_prepare import (
+from aberration_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
     kernel,
     stage_split,
 )
-from off_key_core.models.pipeline_reports import bounded_validation_report
-from off_key_core.models.pipelines import compile_pipeline, validate_pipeline
-from off_key_core.schemas.pipelines import PipelineDefinition
+from aberration_core.models.pipeline_reports import bounded_validation_report
+from aberration_core.models.pipelines import compile_pipeline, validate_pipeline
+from aberration_core.schemas.pipelines import PipelineDefinition
 
 DETECTORS = {
     "static_baseline": ("detector:pyod_iforest", "policy.martingale"),

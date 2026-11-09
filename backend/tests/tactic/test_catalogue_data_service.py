@@ -6,12 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from off_key_core.schemas.collection_activity import reading_is_receiving
-from off_key_core.schemas.devices import ChartEvidence
-from off_key_core.schemas.system import SystemRuntime, SystemSnapshot
-from off_key_tactic_middleware.domain import NotFoundError, ValidationError
-from off_key_tactic_middleware.repositories.data import MonitoringEvidenceRepository
-from off_key_tactic_middleware.services.data.catalogue_data import (
+from aberration_core.schemas.collection_activity import reading_is_receiving
+from aberration_core.schemas.devices import ChartEvidence
+from aberration_core.schemas.system import SystemRuntime, SystemSnapshot
+from aberration_tactic_middleware.domain import NotFoundError, ValidationError
+from aberration_tactic_middleware.repositories.data import MonitoringEvidenceRepository
+from aberration_tactic_middleware.services.data.catalogue_data import (
     CatalogueDataService,
 )
 from pydantic import ValidationError as SchemaError
@@ -143,7 +143,7 @@ async def test_devices_report_whether_their_entity_is_sending(monkeypatch):
     ]
     session.execute.return_value = result
     data = service(session)
-    from off_key_tactic_middleware.services.data import catalogue_data
+    from aberration_tactic_middleware.services.data import catalogue_data
 
     class Clock:
         @staticmethod

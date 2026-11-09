@@ -1,12 +1,12 @@
 """A monitor names the catalogue readings it watches, not only MQTT filters."""
 
-from off_key_core.db.models import MonitoringService
-from off_key_core.schemas.system import SystemDocument
-from off_key_core.schemas.system_collection import (
+from aberration_core.db.models import MonitoringService
+from aberration_core.schemas.system import SystemDocument
+from aberration_core.schemas.system_collection import (
     ReadingBinding,
     SystemCollectionDefinition,
 )
-from off_key_tactic_middleware.services.orchestration.radar_queries import (
+from aberration_tactic_middleware.services.orchestration.radar_queries import (
     service_summary,
 )
 

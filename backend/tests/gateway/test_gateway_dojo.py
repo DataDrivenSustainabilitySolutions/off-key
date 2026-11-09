@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from off_key_api_gateway.api.v1 import dojo
+from aberration_api_gateway.api.v1 import dojo
 
 from tests.support.gateway import gateway_app, member_profile
 from tests.support.http import asgi_client
@@ -88,7 +88,7 @@ async def test_members_without_the_administrator_role_are_refused(calls):
 
 @pytest.mark.asyncio
 async def test_run_creation_is_forwarded_as_json(monkeypatch):
-    from off_key_core.schemas.dojo import RunAlignment
+    from aberration_core.schemas.dojo import RunAlignment
 
     from tests.support.pipelines import quick
 

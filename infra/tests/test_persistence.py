@@ -25,8 +25,8 @@ class PersistenceTests(unittest.TestCase):
                 json.dumps(
                     {
                         "replicas": {
-                            "off-key_postgres": 1,
-                            "off-key_api": 1,
+                            "aberration_postgres": 1,
+                            "aberration_api": 1,
                             "radar-runtime": 2,
                         },
                         "deployed": False,
@@ -77,7 +77,7 @@ class PersistenceTests(unittest.TestCase):
             "ansible_become": False,
             "ansible_python_interpreter": sys.executable,
             "persistence_switch_confirm": True,
-            "stack_name": "off-key",
+            "stack_name": "aberration",
             "stack_dir": str(root / "stack"),
             "stack_compose_files": [str(root / "stack/compose.yml")],
             "postgres_user": "fixture",
@@ -123,7 +123,7 @@ class PersistenceTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(
                     state["replicas"],
-                    {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
+                    {"aberration_postgres": 1, "aberration_api": 1, "radar-runtime": 2},
                 )
                 restore = next(
                     command for command in commands if "pg_restore" in command
@@ -171,7 +171,7 @@ class PersistenceTests(unittest.TestCase):
                         {
                             "Destination": "/var/lib/postgresql/data",
                             "Type": "volume",
-                            "Name": "off-key_postgres_data",
+                            "Name": "aberration_postgres_data",
                         }
                     ]
                 )
@@ -186,7 +186,7 @@ class PersistenceTests(unittest.TestCase):
                     directory, persistent=False, **environment
                 )
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(state["replicas"]["off-key_api"], 0)
+                self.assertEqual(state["replicas"]["aberration_api"], 0)
                 self.assertEqual(state["replicas"]["radar-runtime"], 0)
                 self.assertFalse(any("pg_restore" in command for command in commands))
                 self.assertTrue(
@@ -201,7 +201,7 @@ class PersistenceTests(unittest.TestCase):
             ):
                 result, state, commands = self.run_cutover(directory, **{failure: "1"})
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertEqual(state["replicas"]["off-key_api"], 0)
+                self.assertEqual(state["replicas"]["aberration_api"], 0)
                 self.assertEqual(state["replicas"]["radar-runtime"], 0)
                 self.assertTrue(
                     (Path(directory) / "stack/recovery-pending.json").exists()
@@ -209,7 +209,7 @@ class PersistenceTests(unittest.TestCase):
                 retried, retry_state, retry_commands = self.run_cutover(directory)
                 self.assertNotEqual(retried.returncode, 0)
                 self.assertIn("interrupted recovery", retried.stdout)
-                self.assertEqual(retry_state["replicas"]["off-key_api"], 0)
+                self.assertEqual(retry_state["replicas"]["aberration_api"], 0)
                 self.assertEqual(
                     sum(
                         command[:2] == ["stack", "deploy"] for command in retry_commands
@@ -231,7 +231,7 @@ class PersistenceTests(unittest.TestCase):
                 (root / "state.json").write_text(
                     json.dumps(
                         {
-                            "replicas": {"off-key_emqx-main": 1},
+                            "replicas": {"aberration_emqx-main": 1},
                             "deployed": False,
                         }
                     )
@@ -260,7 +260,7 @@ class PersistenceTests(unittest.TestCase):
                     "ansible_become": False,
                     "ansible_python_interpreter": sys.executable,
                     "persistence_switch_confirm": True,
-                    "stack_name": "off-key",
+                    "stack_name": "aberration",
                     "stack_dir": str(root / "stack"),
                     "persistence_run_ts": "fixture",
                     "persistence_backup_dir": str(root / "backups"),
@@ -315,8 +315,8 @@ class PersistenceTests(unittest.TestCase):
                 json.dumps(
                     {
                         "replicas": {
-                            "off-key_postgres": 1,
-                            "off-key_api": 1,
+                            "aberration_postgres": 1,
+                            "aberration_api": 1,
                             "radar-runtime": 2,
                         },
                         "deployed": False,
@@ -342,9 +342,9 @@ class PersistenceTests(unittest.TestCase):
             variables = {
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
-                "offkey_env": "prod",
+                "aberration_env": "prod",
                 "persistence_switch_confirm": True,
-                "stack_name": "off-key",
+                "stack_name": "aberration",
                 "postgres_user": "fixture",
                 "postgres_db": "fixture_db",
                 "stack_dir": str(root / "live-stack"),
@@ -427,7 +427,7 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(
                 json.loads((root / "state.json").read_text())["replicas"],
-                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
+                {"aberration_postgres": 1, "aberration_api": 1, "radar-runtime": 2},
             )
             # The node keeps no copy of the restored dumps.
             self.assertEqual(
@@ -475,7 +475,7 @@ class PersistenceTests(unittest.TestCase):
             )
             self.assertEqual(
                 state["replicas"],
-                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
+                {"aberration_postgres": 1, "aberration_api": 1, "radar-runtime": 2},
             )
             self.assertFalse((root / "stack/recovery-pending.json").exists())
             verified = run(
@@ -573,11 +573,11 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(plan["phase"], "backup")
             self.assertEqual(plan["timestamp"], timestamp)
             self.assertEqual(
-                plan["writer_replicas"], {"off-key_api": 1, "radar-runtime": 2}
+                plan["writer_replicas"], {"aberration_api": 1, "radar-runtime": 2}
             )
             self.assertEqual(
                 state["replicas"],
-                {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 0},
+                {"aberration_postgres": 1, "aberration_api": 1, "radar-runtime": 0},
             )
             self.assertFalse(
                 any(command[:2] == ["stack", "deploy"] for command in commands)
@@ -591,9 +591,9 @@ class PersistenceTests(unittest.TestCase):
             (root / "docker").chmod(0o755)
             initial = {
                 "replicas": {
-                    "off-key_postgres": 1,
-                    "off-key_emqx-main": 1,
-                    "off-key_api": 1,
+                    "aberration_postgres": 1,
+                    "aberration_emqx-main": 1,
+                    "aberration_api": 1,
                     "radar-runtime": 2,
                 },
                 "deployed": False,
@@ -619,7 +619,7 @@ class PersistenceTests(unittest.TestCase):
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
                 "persistence_switch_confirm": True,
-                "stack_name": "off-key",
+                "stack_name": "aberration",
                 "postgres_user": "fixture",
                 "stack_dir": str(root / "stack"),
                 "persist_postgres": True,
@@ -669,17 +669,17 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(sorted(plan["backup_paths"]), ["emqx", "postgres"])
             self.assertEqual(plan["phase"], "restore")
             mounts = {
-                "off-key_postgres": [
+                "aberration_postgres": [
                     {
                         "Type": "volume",
-                        "Source": "off-key_postgres_data",
+                        "Source": "aberration_postgres_data",
                         "Target": "/var/lib/postgresql/data",
                     }
                 ],
-                "off-key_emqx-main": [
+                "aberration_emqx-main": [
                     {
                         "Type": "volume",
-                        "Source": "off-key_emqx_data",
+                        "Source": "aberration_emqx_data",
                         "Target": "/opt/emqx/data",
                     }
                 ],
@@ -688,7 +688,7 @@ class PersistenceTests(unittest.TestCase):
                 "deployed": True,
                 "mounts": mounts,
                 "replicas": initial["replicas"]
-                | {"off-key_api": 0, "radar-runtime": 0},
+                | {"aberration_api": 0, "radar-runtime": 0},
             }
             (root / "state.json").write_text(json.dumps(replacement))
             restore = root / "restore.yml"
@@ -739,7 +739,7 @@ class PersistenceTests(unittest.TestCase):
                 self.assertIn("entire service set", rejected.stdout)
                 self.assertEqual(pending.read_text(), original_plan)
                 self.assertEqual((root / "commands.jsonl").read_text(), before)
-            replacement["replicas"].update({"off-key_api": 1, "radar-new": 1})
+            replacement["replicas"].update({"aberration_api": 1, "radar-new": 1})
             (root / "state.json").write_text(json.dumps(replacement))
             commands = root / "commands.jsonl"
             before = len(commands.read_text().splitlines())
@@ -758,7 +758,7 @@ class PersistenceTests(unittest.TestCase):
             )
             self.assertEqual(
                 json.loads((root / "state.json").read_text())["replicas"][
-                    "off-key_api"
+                    "aberration_api"
                 ],
                 1,
             )
@@ -769,7 +769,7 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(pending.read_text(), original_plan)
             self.assertEqual(
                 json.loads((root / "state.json").read_text())["replicas"][
-                    "off-key_api"
+                    "aberration_api"
                 ],
                 0,
             )
@@ -786,17 +786,18 @@ class PersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixture = EMQX_DOCKER.replace(
-                "off-key_postgres\\noff-key_api", "off-key_emqx-main\\noff-key_api"
-            ).replace("name == 'off-key_postgres'", "name == 'off-key_emqx-main'")
+                "aberration_postgres\\naberration_api",
+                "aberration_emqx-main\\naberration_api",
+            ).replace("name == 'aberration_postgres'", "name == 'aberration_emqx-main'")
             fixture = fixture.replace(
                 "/var/lib/postgresql/data", "/opt/emqx/log"
-            ).replace("off-key_postgres_data", "off-key_emqx_log")
+            ).replace("aberration_postgres_data", "aberration_emqx_log")
             (root / "docker").write_text(f"#!{sys.executable}\n" + fixture)
             (root / "docker").chmod(0o755)
             initial = {
                 "replicas": {
-                    "off-key_emqx-main": 1,
-                    "off-key_api": 1,
+                    "aberration_emqx-main": 1,
+                    "aberration_api": 1,
                     "radar-runtime": 2,
                 },
                 "deployed": False,
@@ -804,8 +805,8 @@ class PersistenceTests(unittest.TestCase):
             (root / "state.json").write_text(json.dumps(initial))
             replacement = {
                 "replicas": {
-                    "off-key_emqx-main": 1,
-                    "off-key_api": 0,
+                    "aberration_emqx-main": 1,
+                    "aberration_api": 0,
                     "radar-runtime": 0,
                 },
                 "deployed": True,
@@ -841,7 +842,7 @@ class PersistenceTests(unittest.TestCase):
                 "ansible_become": False,
                 "ansible_python_interpreter": sys.executable,
                 "persistence_switch_confirm": True,
-                "stack_name": "off-key",
+                "stack_name": "aberration",
                 "stack_dir": str(root / "stack"),
                 "persist_emqx_log": True,
                 "persistence_backup_dir": str(root / "backups"),

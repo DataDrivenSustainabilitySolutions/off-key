@@ -1,5 +1,5 @@
 import pytest
-from off_key_core.config.auth import get_auth_settings
+from aberration_core.config.auth import get_auth_settings
 from pydantic import ValidationError
 
 from tests.support.env import set_auth_env

@@ -5,11 +5,11 @@ Retry safety for failed connections lives in test_gateway_security_hardening.py.
 
 import pytest
 import pytest_asyncio
+from aberration_api_gateway.facades.tactic import Tactic, TacticError, path_segment
+from aberration_core.config.logs import correlation_id
+from aberration_core.config.service_auth import get_service_auth_settings
 from aiohttp import web
 from aiohttp.test_utils import TestServer
-from off_key_api_gateway.facades.tactic import Tactic, TacticError, path_segment
-from off_key_core.config.logs import correlation_id
-from off_key_core.config.service_auth import get_service_auth_settings
 
 SERVICE_KEY = "test-internal-service-secret-123456789"
 
@@ -30,7 +30,7 @@ async def serve(monkeypatch):
                 method=request.method,
                 path=request.path,
                 query=dict(request.query),
-                service_key=request.headers.get("X-Off-Key-Service-Key"),
+                service_key=request.headers.get("X-Aberration-Service-Key"),
                 authorization=request.headers.get("Authorization"),
                 correlation_id=request.headers.get("X-Correlation-ID"),
                 body=await request.json() if request.can_read_body else None,

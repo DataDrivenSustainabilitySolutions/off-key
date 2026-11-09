@@ -8,19 +8,19 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from off_key_core.db.models import (
+from aberration_core.db.models import (
     DojoDataset,
     DojoPoint,
     DojoRun,
     DojoRunResult,
     DojoSeries,
 )
-from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
-from off_key_core.models.pipelines import compile_pipeline
-from off_key_core.schemas.dojo import RunAlignment
-from off_key_mqtt_radar.dojo.replay import Replay, ReplayResult, detection_config
-from off_key_mqtt_radar.dojo.settings import DojoWorkerSettings
-from off_key_mqtt_radar.dojo.worker import (
+from aberration_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
+from aberration_core.models.pipelines import compile_pipeline
+from aberration_core.schemas.dojo import RunAlignment
+from aberration_mqtt_radar.dojo.replay import Replay, ReplayResult, detection_config
+from aberration_mqtt_radar.dojo.settings import DojoWorkerSettings
+from aberration_mqtt_radar.dojo.worker import (
     STALE_ERROR,
     DojoWorker,
     WorkerOptions,
@@ -398,7 +398,7 @@ async def test_slow_result_write_does_not_fail_its_own_heartbeat(
 async def test_cancelled_initialization_closes_the_late_replay(
     dojo_engine, monkeypatch
 ):
-    from off_key_mqtt_radar.dojo import worker as worker_module
+    from aberration_mqtt_radar.dojo import worker as worker_module
 
     engine, sessions = dojo_engine
     await seed(sessions)

@@ -1,18 +1,18 @@
 from datetime import UTC, datetime
 
 import pytest
+from aberration_api_gateway.api.v1 import auth as auth_api
+from aberration_api_gateway.facades.tactic import TacticError
+from aberration_core.config.auth import get_auth_settings
 from fastapi import FastAPI
 from jose import jwt
-from off_key_api_gateway.api.v1 import auth as auth_api
-from off_key_api_gateway.facades.tactic import TacticError
-from off_key_core.config.auth import get_auth_settings
 
 from tests.support.env import set_auth_env
 from tests.support.http import asgi_client
 
 TOKEN = "r" * 43
 COOKIE = auth_api.REMEMBERED_SESSION_COOKIE
-HEADERS = {"X-Off-Key-Session": "1"}
+HEADERS = {"X-Aberration-Session": "1"}
 LOGIN = {"email": "member@example.com", "password": "synthetic-test-password"}
 
 

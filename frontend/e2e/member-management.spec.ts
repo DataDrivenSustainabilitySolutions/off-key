@@ -158,7 +158,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     await acceptInvitation(memberPage, firstLink, fixture.email);
     const oldToken = await accessToken(memberPage);
     const oldHeaders = { Authorization: `Bearer ${oldToken}` };
-    expect((await memberContext.cookies()).some(cookie => cookie.name === "off_key_remembered_session")).toBe(true);
+    expect((await memberContext.cookies()).some(cookie => cookie.name === "aberration_remembered_session")).toBe(true);
     await memberPage.goto(new URL("/account", page.url()).href);
     await expect(memberPage.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
     await expect(memberPage.getByRole("region", { name: "Signed in", exact: true })).toContainText("Member");
@@ -182,7 +182,7 @@ test("enforces current access during removal and keeps previous sessions invalid
     await expect(fixture.row).toHaveCount(0);
     const denied = await memberPage.request.get(new URL("/api/v1/me", page.url()).href, { headers: oldHeaders });
     expect(denied.status()).toBe(401);
-    const refresh = await memberPage.request.post(new URL("/api/v1/auth/refresh", page.url()).href, { headers: { "X-Off-Key-Session": "1" } });
+    const refresh = await memberPage.request.post(new URL("/api/v1/auth/refresh", page.url()).href, { headers: { "X-Aberration-Session": "1" } });
     expect(refresh.status()).toBe(401);
     const replacement = await fixture.invite();
     expect(replacement.id).not.toBe(initial.id);

@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
+from ..schemas.pipeline_versions import FIXED_SPLIT, component_learning
 from ..schemas.pipelines import (
     FusionMode,
     MinMaxScalerParameters,
@@ -68,9 +69,19 @@ class ThresholdPolicyParameters(AdaptiveThresholdConfig):
     fusion: Fusion = "max"
 
 
+class CalibrationParameters(PipelineModel):
+    """How a calibration step combines the detectors that feed it."""
+
+    fusion: Fusion = "max"
+
+
 POLICY_MODELS = {
     "policy.martingale": MartingalePolicyParameters,
     "policy.quantile": ThresholdPolicyParameters,
+}
+# The policies' schemas lose fusion when the editor shows the calibration step.
+CALIBRATION_MODELS: dict[str, type[PipelineModel]] = {
+    FIXED_SPLIT: CalibrationParameters,
 }
 
 
@@ -88,14 +99,22 @@ def normalized_parameters(
 ) -> dict[str, Any]:
     if node.kind == "detector":
         identifier = node.component.removeprefix("detector:")
-        if definition.strategy == "adaptive_stream":
+        if component_learning(node.component) == "online":
             return validate_adaptive_model_params(identifier, node.params)
         return validate_static_model_params(
             identifier, node.params, include_defaults=True
         )
-    model = POLICY_MODELS.get(node.component) or PARAMETER_MODELS[node.component]
+    model = (
+        POLICY_MODELS.get(node.component)
+        or CALIBRATION_MODELS.get(node.component)
+        or PARAMETER_MODELS[node.component]
+    )
     params = model.model_validate(node.params).model_dump(mode="json")
-    if node.component in POLICY_MODELS and (
+    if node.component in POLICY_MODELS:
+        # The calibration step combines detectors now; schema 1 designs move
+        # their setting there when they are read.
+        del params["fusion"]
+    if node.component in CALIBRATION_MODELS and (
         params["fusion"] == "max"
         or sum(item.kind == "detector" for item in definition.nodes) < 2
     ):

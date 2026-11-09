@@ -59,6 +59,9 @@ class PipelineDiagnostics:
                 blocked_by=[],
             )
             for node in execution.definition.nodes
+            # The policy still calibrates in this runtime; the calibration step
+            # gets its own status with the runtime that runs it.
+            if node.kind != "calibration"
         }
         self.phase = "waiting_for_data"
         self.sequence_number = 0

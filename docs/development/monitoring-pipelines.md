@@ -343,6 +343,40 @@ designs keep their fingerprints. The compiler reports a design without a
 detector, one with more than four and a detector the policy does not read.
 `derive_monitoring_config` describes the first detector.
 
+### Schema 2: learning modes and calibration
+
+Schema 2 (`pipeline_versions.py`) describes a design without a lane. Each component
+says how it learns (`PipelineComponent.learning`: `none`, `batch`, `online` or
+`pretrained`), and a `calibration` step sits between the detectors and the alarm
+policy. Detectors give `scores`; the calibration step turns them into `p_values`
+for the policy. The only calibration step today is `calibrate.fixed_split`: the
+learned steps freeze and the calibration window gives conformal ranks, which is
+what both lanes did. It owns `fusion`; the policy keeps its own parameters,
+including the quantile. A `forecasts` port type is reserved for forecasters.
+
+Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
+a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
+and edge limits are checked on the stored form before the step is added. The
+serializer writes `downgrade()`, the schema 1 form, whenever a design has one: a
+single fixed split in front of the policy and learned steps that all learn one
+way. Stored designs, the editor's wire format and fingerprints therefore do not
+change, and the editor catalog (`editor_components()`) keeps the schema 1 ports
+and leaves the calibration step out. Validation reports hide that step too: its
+features are omitted and lineage passes through it.
+
+The compiler checks schema 2 designs by learning mode instead of by lane
+(`_validate_learning`):
+
+- `learning`: a step reads a learned step that learns differently. A batch
+  detector reads batch or stateless steps, an online one online or stateless steps.
+- `learning_mix`: the learned steps learn in different ways. This stays an error
+  until one runtime runs both modes.
+- `calibration`: the martingale policy needs exact p-values, so no step in front
+  of it may keep learning after calibration (no online step).
+
+`PipelineDefinition.lane` is the runtime that runs a design until then: its
+stored strategy, or the one all its learned steps share.
+
 `fusion.RankFusion` combines detectors by rank, so detectors on different scales
 need no tuning. A detector's surprise for a score s is the share of its n
 calibration scores strictly below it, u = #{i : c_i < s} / n. Strongest combines

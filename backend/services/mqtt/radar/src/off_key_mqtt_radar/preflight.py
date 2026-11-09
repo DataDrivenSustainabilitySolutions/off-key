@@ -61,7 +61,7 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
         PrepareStage(plan)
     readiness = []
     capabilities = None
-    if execution.definition.strategy == "adaptive_stream":
+    if execution.definition.lane == "adaptive_stream":
         readiness, capabilities = _adaptive_preflight(plan)
     else:
         from .detector import StaticConformalDetectionService

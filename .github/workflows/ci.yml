@@ -706,6 +706,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # Task names and durations only, as the production deployment log prints them.
+      - name: Report where this lane's deployments spent their time
+        if: always()
+        run: cat "$OFFKEY_REHEARSAL_DIR/deployment-timings.txt" 2>/dev/null || echo "No deployment was timed."
+
       - name: Collect rehearsal diagnostics
         if: failure()
         # A hung log read must not hold the runner until the job timeout.

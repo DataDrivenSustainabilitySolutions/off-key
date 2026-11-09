@@ -31,9 +31,17 @@ from support import ROOT, render, run
 sys.path.insert(0, str(ROOT / "scripts"))
 from compile_stack import compile_stack, select_component
 from pin_release import APPLICATION_IMAGES, pin
+from task_timings import summary
 
 PROJECT = ROOT.parent
 STACK = "offkey-smoke"
+# Where each deployment of this lane spent its time; the workflow prints it.
+TIMINGS = "deployment-timings.txt"
+
+
+def report(directory, *lines):
+    with (directory / TIMINGS).open("a") as timings:
+        timings.write("\n".join(lines) + "\n")
 
 
 def wait(probe, description, timeout=300):
@@ -64,6 +72,7 @@ def container(service):
 
 
 def ready(directory):
+    started = time.monotonic()
     wait(
         lambda: run(
             sys.executable,
@@ -89,6 +98,7 @@ def ready(directory):
         "application readiness",
     )
     verify_browser_cutover(directory)
+    report(directory, f"Readiness checks took {time.monotonic() - started:.0f}s.")
 
 
 def verify_browser_cutover(directory):
@@ -124,7 +134,7 @@ def deploy(directory, phase, **overrides):
     )
     variables = directory / "deployment-inputs.json"
     variables.write_text(json.dumps(values))
-    run(
+    result = run(
         "uv",
         "run",
         "--frozen",
@@ -136,8 +146,17 @@ def deploy(directory, phase, **overrides):
         ROOT / "tests/rehearse-deployment.yml",
         "-e",
         f"@{variables}",
+        env=os.environ
+        | {
+            "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+            "ANSIBLE_NOCOLOR": "1",
+            "ANSIBLE_DUPLICATE_YAML_DICT_KEY": "error",
+            # The production deployment times its tasks with the same callback.
+            "ANSIBLE_CALLBACKS_ENABLED": "ansible.posix.profile_tasks",
+        },
         timeout=900,
     )
+    report(directory, f"Ansible {phase}:", *summary(result.stdout.splitlines()))
 
 
 def publish(service, port, published):
@@ -443,6 +462,7 @@ def prepare(directory):
             "socks5://:1055",
             timeout=180,
         )
+    report(directory, "Initial deployment")
     with route_replacement_events(directory) as replacement_events:
         deploy(directory, "apply", release_bootstrap=True)
     services = run(
@@ -488,6 +508,11 @@ def redeploy(directory, restore, target="current"):
     if restore:
         model["services"]["postgres"].pop("volumes", None)
     model_path.write_text(json.dumps(model))
+    report(
+        directory,
+        f"Redeployment of the {target} release"
+        + (" with a PostgreSQL restore" if restore else ""),
+    )
     deploy(
         directory,
         "apply",

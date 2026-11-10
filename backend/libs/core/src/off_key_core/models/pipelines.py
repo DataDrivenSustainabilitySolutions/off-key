@@ -15,6 +15,7 @@ from ..utils.mqtt_topics import (
     normalize_static_monitoring_topics,
 )
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .pipeline_calibration import EXCEEDANCE_RULE
 from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
 from .pipeline_compiler import compile_pipeline, validate_pipeline
 from .pipeline_digest import digest
@@ -37,28 +38,26 @@ __all__ = [
 def derive_monitoring_config(definition: PipelineDefinition):
     """The run's monitoring settings: its first detector and the policy's own.
 
-    A design that combines detectors reads the others from its graph. The
-    policy picks the settings: the conformal alarm policy runs on p-values,
-    the score threshold on scores. A threshold run names its first detector
-    that learns continuously, which detectors fitted once sit beside.
+    A design that combines detectors reads the others from its graph, and a
+    calibration step that adapts is read from there too. The policy picks the
+    settings: the conformal alarm policy runs on p-values, the score threshold
+    and the exceedance rule on scores. A run on scores names its first detector
+    that takes in every observation, which detectors fitted once sit beside;
+    when every detector is fitted once, it names the first of those.
     """
     compiled = compile_pipeline(definition)
     nodes = {node.id: node for node in compiled.definition.nodes}
     policy_node = nodes[compiled.policy_id]
-    threshold = policy_node.component == "policy.quantile"
-    detector = nodes[
-        next(
-            (
-                identifier
-                for identifier in compiled.detector_ids
-                if component_learning(nodes[identifier].component) == "online"
-            ),
-            compiled.detector_id,
-        )
-        if threshold
-        else compiled.detector_id
+    boundary = policy_node.component == EXCEEDANCE_RULE
+    on_scores = boundary or policy_node.component == "policy.quantile"
+    streaming = [
+        identifier
+        for identifier in compiled.detector_ids
+        if component_learning(nodes[identifier].component) != "batch"
     ]
-    policy = policy_settings(policy_node.params)
+    detector = nodes[streaming[0] if on_scores and streaming else compiled.detector_id]
+    # The exceedance rule's own settings stay in the graph.
+    policy = None if boundary else policy_settings(policy_node.params)
     settings = compiled.definition.settings
     common: dict[str, Any] = dict(
         model_type=detector.component.removeprefix("detector:"),
@@ -66,13 +65,14 @@ def derive_monitoring_config(definition: PipelineDefinition):
         training_window_size=settings.training_window_size,
         calibration_window_size=settings.calibration_window_size,
     )
-    if threshold:
-        return AdaptiveStreamConfig(**common, threshold_config=policy)
+    if on_scores and streaming:
+        if policy is not None:
+            common["threshold_config"] = policy
+        return AdaptiveStreamConfig(**common)
+    if policy is not None:
+        common["martingale_config"] = policy
     return StaticBaselineConfig(
-        **common,
-        seed=settings.seed,
-        conformal_strategy=settings.conformal_strategy,
-        martingale_config=policy,
+        **common, seed=settings.seed, conformal_strategy=settings.conformal_strategy
     )
 
 

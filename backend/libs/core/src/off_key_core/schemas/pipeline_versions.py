@@ -14,11 +14,15 @@ from pydantic import BaseModel
 
 Learning = Literal["none", "batch", "online", "pretrained"]
 Strategy = Literal["static_baseline", "adaptive_stream"]
-FIXED_SPLIT = "calibrate.fixed_split"
+CALIBRATION_PREFIX = "calibrate."
+FIXED_SPLIT = f"{CALIBRATION_PREFIX}fixed_split"
 CALIBRATION_ID = "calibrate"
+# A pretrained step scores and then takes in every observation, as an online
+# one does, so both run in the adaptive lane.
 _STRATEGY_BY_LEARNING: dict[str, Strategy] = {
     "batch": "static_baseline",
     "online": "adaptive_stream",
+    "pretrained": "adaptive_stream",
 }
 
 
@@ -50,8 +54,8 @@ def learning_modes(nodes: list[dict[str, Any]]) -> set[Learning]:
 
 def derived_strategy(nodes: list[dict[str, Any]]) -> Strategy | None:
     """Today's lane of a design whose learned steps all learn the same way."""
-    modes = learning_modes(nodes)
-    return _STRATEGY_BY_LEARNING.get(next(iter(modes))) if len(modes) == 1 else None
+    lanes = {_STRATEGY_BY_LEARNING[mode] for mode in learning_modes(nodes)}
+    return next(iter(lanes)) if len(lanes) == 1 else None
 
 
 def _plain(items) -> list[dict[str, Any]]:

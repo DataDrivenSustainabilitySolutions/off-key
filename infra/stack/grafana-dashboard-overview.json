@@ -1,170 +1,175 @@
 {
+  "id": null,
   "uid": "aberration-system-overview",
-  "title": "Aberration system overview",
-  "description": "Production operations from worker logs in Loki. Check delivery first, then investigate service errors and RADAR failures.",
+  "title": "01 · Operations overview",
+  "description": "Operational triage for the MQTT → collection → database → RADAR pipeline.",
   "tags": [
     "aberration",
-    "operations"
+    "operations",
+    "provisioned"
   ],
-  "schemaVersion": 41,
+  "timezone": "browser",
+  "schemaVersion": 39,
   "version": 1,
   "editable": false,
-  "timezone": "browser",
+  "graphTooltip": 1,
+  "refresh": "1m",
   "time": {
-    "from": "now-3h",
+    "from": "now-1h",
     "to": "now"
   },
-  "refresh": "1m",
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "24h",
+      "2d",
+      "7d"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "stack",
+          "type": 1,
+          "label": "stack",
+          "stream": ""
+        },
+        "definition": "label_values(stack)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "allValue": null,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "node",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "node",
+          "type": 1,
+          "label": "node",
+          "stream": "{stack=~`${stack:regex}`}"
+        },
+        "definition": "label_values({stack=~`${stack:regex}`}, node)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      }
+    ]
+  },
   "links": [
     {
       "type": "link",
-      "title": "Open detailed logs",
-      "url": "/d/aberration-logs/aberration-logs",
-      "includeVars": false,
-      "keepTime": true
+      "title": "02 · Collection & persistence",
+      "url": "/d/aberration-collection",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "03 · RADAR & Dojo",
+      "url": "/d/aberration-radar",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "04 · HTTP & access",
+      "url": "/d/aberration-access",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "05 · Log investigation",
+      "url": "/d/aberration-logs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
     }
   ],
+  "annotations": {
+    "list": []
+  },
   "panels": [
     {
       "id": 1,
-      "type": "stat",
-      "title": "Workers delivering logs",
-      "description": "Workers with a canary in the two minutes before the selected end time. Compare with the number of active Swarm workers.",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "type": "text",
+      "title": "Reading this dashboard",
+      "description": "",
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 8,
+        "w": 24,
         "h": 5
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "editorMode": "code",
-          "expr": "count(sum by (node) (count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m]))) or vector(0)",
-          "queryType": "instant"
-        }
-      ],
       "options": {
-        "graphMode": "none",
-        "colorMode": "value",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
+        "mode": "markdown",
+        "content": "**Start with log delivery, then investigate the affected service.** MQTT sources → TACTIC ingress → MQTT proxy → TimescaleDB / accepted MQTT → RADAR. Dojo replays stored datasets. Use the dashboard links above for detail.\n\nThese are **log observations**, not uptime, desired replica counts, queue depth, or an SLO. A quiet service may be healthy or unavailable. No observations stays empty; zero only means no matching events in a source that emitted logs. Retention: seven days."
       },
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "noValue": "No signal",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "blue",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      }
+      "transparent": true
     },
     {
       "id": 2,
-      "type": "stat",
-      "title": "Error log lines",
-      "description": "Error, critical and fatal lines in the selected range. Zero requires a fresh worker canary at the end of the range.",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "type": "row",
+      "title": "Log delivery · check this before trusting silence",
+      "description": "",
       "gridPos": {
-        "x": 8,
-        "y": 0,
-        "w": 8,
-        "h": 5
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "editorMode": "code",
-          "expr": "sum(count_over_time({stack=\"off-key\",service=~\".+\",service!=\"off-key_log-canary\"} | detected_level=~\"error|critical|fatal\" [$__auto])) or (0 * sum(count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m])))",
-          "queryType": "instant"
-        }
-      ],
-      "options": {
-        "graphMode": "none",
-        "colorMode": "value",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "noValue": "No signal",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      }
+      "collapsed": false,
+      "panels": []
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "RADAR failure signals",
-      "description": "Selected crash, startup, execution, processing and persistence events in the selected range. The count can include multiple lines from the same run.",
+      "title": "Fresh workers",
+      "description": "Observed canary senders at the selected end time; compare with active Swarm workers. This is not an expected-worker inventory.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
       "datasource": {
         "type": "loki",
         "uid": "loki"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 0,
-        "w": 8,
-        "h": 5
       },
       "targets": [
         {
@@ -174,26 +179,18 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({stack=\"off-key\",service=~\"radar(-preflight)?|off-key_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\" [$__auto])) or (0 * sum(count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [2m])))",
-          "queryType": "instant"
+          "expr": "count(sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" [2m]))) or (0 * count(sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" [24h]))))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
         }
       ],
-      "options": {
-        "graphMode": "none",
-        "colorMode": "value",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
+      "interval": "1m",
+      "maxDataPoints": 180,
       "fieldConfig": {
         "defaults": {
-          "decimals": 0,
-          "noValue": "No signal",
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
           "color": {
             "mode": "thresholds"
           },
@@ -201,33 +198,43 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "blue",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
       }
     },
     {
       "id": 4,
-      "type": "timeseries",
-      "title": "Log delivery by worker",
-      "description": "Canary records per worker over a rolling five-minute window. Each active worker emits a canary every 30 seconds.",
+      "type": "stat",
+      "title": "Silent workers",
+      "description": "Workers seen in the preceding 24h with no canary in 2m. Includes deliberately drained/removed nodes; cannot detect a worker never seen by Loki.",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
       "datasource": {
         "type": "loki",
         "uid": "loki"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 5,
-        "w": 12,
-        "h": 10
       },
       "targets": [
         {
@@ -237,50 +244,66 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (node) (count_over_time({stack=\"off-key\",service=\"off-key_log-canary\"} |= \"observability_canary\" [5m]))",
-          "queryType": "range",
-          "legendFormat": "{{node}}"
+          "expr": "count((sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" [24h]))) unless (sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" [2m])))) or (0 * count(sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" [24h]))))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
         }
       ],
-      "maxDataPoints": 240,
+      "interval": "1m",
+      "maxDataPoints": 180,
       "fieldConfig": {
         "defaults": {
+          "unit": "short",
           "min": 0,
-          "decimals": 0,
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never"
-          }
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
         },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
       }
     },
     {
       "id": 5,
-      "type": "timeseries",
-      "title": "Warnings and errors by service",
-      "description": "Warning, error, critical and fatal log lines in each time bucket.",
+      "type": "stat",
+      "title": "Error records",
+      "description": "Error/critical/fatal/panic lines during the selected range. Zero is an observed log count, not proof of service health.",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
       "datasource": {
         "type": "loki",
         "uid": "loki"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 5,
-        "w": 12,
-        "h": 10
       },
       "targets": [
         {
@@ -290,29 +313,189 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "sum by (service) (count_over_time({stack=\"off-key\",service=~\".+\",service!=\"off-key_log-canary\"} | detected_level=~\"warn|warning|error|critical|fatal\" [$__auto]))",
-          "queryType": "range",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} [$__range])))",
+          "queryType": "instant",
           "legendFormat": "{{service}}"
         }
       ],
-      "maxDataPoints": 240,
+      "interval": "1m",
+      "maxDataPoints": 180,
       "fieldConfig": {
         "defaults": {
+          "unit": "short",
           "min": 0,
-          "decimals": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "RADAR failures",
+      "description": "Startup, crash, degradation, processing and persistence events. Multiple signals can describe the same failure; this is not a failed-run count.",
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(tactic[.]radar_(task_crashed|worker_abandoned)|radar[.](service_start_failed|start_failed|fatal_error|execution_state_uncertain|health_degraded|message_processing_failed|model_error|db_batch_write_failed|db_retry_exhausted|db_checkpoint_ownership_lost|run_events_write_failed|checkpoint_loop_failed|final_checkpoint_failed))( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Canary arrivals by worker · rolling 5m",
+      "description": "Each active worker emits every 30s (roughly ten records per window). Gaps remain visible. Collector and manager logs are intentionally excluded.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (node) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(log-canary)`} |= \"observability_canary\" | drop msg [5m]))",
+          "queryType": "range",
+          "legendFormat": "{{node}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
           "custom": {
-            "drawStyle": "bars",
-            "lineWidth": 2,
-            "fillOpacity": 50,
-            "showPoints": "never"
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
           }
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
         },
         "tooltip": {
           "mode": "multi",
@@ -321,19 +504,19 @@
       }
     },
     {
-      "id": 6,
-      "type": "logs",
-      "title": "Recent RADAR failure signals",
-      "description": "Start here for the failure context. Expand a line for its fields or open the detailed log dashboard to follow a run.",
+      "id": 8,
+      "type": "timeseries",
+      "title": "Warnings and errors by service",
+      "description": "Observed lines per bucket, at least one minute wide. Compare services before opening their focused dashboard.",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
       "datasource": {
         "type": "loki",
         "uid": "loki"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 15,
-        "w": 24,
-        "h": 10
       },
       "targets": [
         {
@@ -343,19 +526,277 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{stack=\"off-key\",service=~\"radar(-preflight)?|off-key_(mqtt-radar|tactic)\"} |~ \"event=(tactic[.]radar_task_crashed|radar[.](service_start_failed|start_failed|execution_state_uncertain|health_degraded|message_processing_failed|db_batch_write_failed))\\\\b\"",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
           "queryType": "range",
-          "maxLines": 100
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Application signals · follow the evidence",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "Recent application errors",
+      "description": "Expand a record for its correlation ID, monitor ID or exception. Copy an ID into Log investigation. Newest 200 matching lines.",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} | detected_level=~\"error|critical|fatal|panic\"",
+          "queryType": "range",
+          "legendFormat": "",
+          "maxLines": 200,
+          "direction": "backward"
         }
       ],
       "options": {
         "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
         "wrapLogMessage": true,
-        "sortOrder": "Descending",
+        "prettifyLogMessage": true,
         "enableLogDetails": true,
         "dedupStrategy": "none",
-        "prettifyLogMessage": false
+        "sortOrder": "Descending"
       }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Logging volume · expand when investigating noisy sources",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Log lines per second",
+          "description": "Log traffic only, not application throughput. Loki's ingestion budget is shared by the stack.",
+          "gridPos": {
+            "x": 0,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (service) (rate({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} [$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Log payload bytes per second",
+          "description": "Uncompressed log-line bytes as observed by Loki. This excludes protocol overhead and does not measure filesystem use.",
+          "gridPos": {
+            "x": 12,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (service) (bytes_rate({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`.+`,service!~`${stack:regex}_log-canary`} [$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
     }
   ]
 }

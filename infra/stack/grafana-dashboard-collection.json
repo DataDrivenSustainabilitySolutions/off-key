@@ -1,0 +1,888 @@
+{
+  "id": null,
+  "uid": "aberration-collection",
+  "title": "02 · Collection & persistence",
+  "description": "Source collection, MQTT transport and persistence diagnostics.",
+  "tags": [
+    "aberration",
+    "operations",
+    "provisioned"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "24h",
+      "2d",
+      "7d"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "stack",
+          "type": 1,
+          "label": "stack",
+          "stream": ""
+        },
+        "definition": "label_values(stack)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "allValue": null,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "node",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "node",
+          "type": 1,
+          "label": "node",
+          "stream": "{stack=~`${stack:regex}`}"
+        },
+        "definition": "label_values({stack=~`${stack:regex}`}, node)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "01 · Operations overview",
+      "url": "/d/aberration-system-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "03 · RADAR & Dojo",
+      "url": "/d/aberration-radar",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "04 · HTTP & access",
+      "url": "/d/aberration-access",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "05 · Log investigation",
+      "url": "/d/aberration-logs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Reading this dashboard",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Follow the data path:** source broker → TACTIC ingress → internal EMQX → MQTT proxy → TimescaleDB and accepted topics. Source retry logs, broker warnings and writer errors identify the failing hop.\n\nCollection counters and storage capacity are not exported to Loki. Successful write detail is DEBUG-only; these panels report **failure signals and slow-write samples**, not ingest throughput, data completeness or disk space."
+      },
+      "transparent": true
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Selected failure signals · selected time range",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Collector errors",
+      "description": "Observed collector/ingress exception records; retries can create several records for one outage.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy|tactic)`} |~ `Collection failed|System ingress interrupted; retrying` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy|tactic)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Rejected writes",
+      "description": "Batch retries exhausted, invalid records or unwritten shutdown records. A log record is not a count of lost readings.",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(db_writer[.](batch_failed|shutdown_unwritten|record_rejected))( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Broker errors",
+      "description": "Error-level messages from EMQX or the source broker route. Worker collection excludes manager-hosted services.",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Database errors",
+      "description": "PostgreSQL and db-sync error records; this does not poll database availability.",
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(postgres|db-sync)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(postgres|db-sync)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Source and MQTT transport",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Collection interruptions by service",
+      "description": "Observed interruption records per bucket.",
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy|tactic)`} |~ `Collection failed|System ingress interrupted; retrying` | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "MQTT / route warnings and errors",
+      "description": "Transport diagnostics by service. Unexpected disconnects are relevant even when no readings were selected.",
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(emqx-main|emqx-worker|broker-route)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\" | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "Collection interruption context",
+      "description": "Includes original exception and correlation context. Cross-check the application's Collection view for selected readings and readiness.",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy|tactic)`} |~ `Collection failed|System ingress interrupted; retrying`",
+          "queryType": "range",
+          "legendFormat": "",
+          "maxLines": 200,
+          "direction": "backward"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Persistence · expand for retry and storage diagnostics",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Writer retry and failure signals",
+          "description": "Retry attempts, database errors and exhausted batches can describe the same batch; do not sum this as lost batches.",
+          "gridPos": {
+            "x": 0,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (event) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(db_writer[.](batch_retry|batch_attempt_failed|batch_failed|batch_db_error|batch_unexpected_error))( .*|$)` | line_format `{{.msg}}` | logfmt event | __error__=\"\" | drop msg | drop msg [$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{event}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "Reported slow-write latency · maximum",
+          "description": "Maximum of emitted slow-write warnings per bucket, in seconds. Normal writes are absent; this is not overall database latency.",
+          "gridPos": {
+            "x": 12,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "max_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(db_writer[.]batch_slow)( .*|$)` | line_format `{{.msg}}` | logfmt write_latency_s | __error__=\"\" | drop msg | unwrap write_latency_s | __error__=\"\" [$__interval]) by (service)",
+              "queryType": "range",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 14,
+          "type": "logs",
+          "title": "Writer failures and retries",
+          "description": "Original log records, including batch context. A retry warning alone does not prove data loss.",
+          "gridPos": {
+            "x": 0,
+            "y": 37,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(mqtt-proxy)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(db_writer[.](batch_retry|batch_attempt_failed|batch_failed|batch_db_error|batch_unexpected_error))( .*|$)`",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        },
+        {
+          "id": 15,
+          "type": "logs",
+          "title": "Database and schema warnings / errors",
+          "description": "For retention or initialization context, open Log investigation and select postgres or db-sync with Level = All.",
+          "gridPos": {
+            "x": 0,
+            "y": 46,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(postgres|db-sync)`} | detected_level=~\"warn|warning|error|critical|fatal|panic\"",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -52,55 +52,18 @@ def _bounded_issues(issues):
     return bounded, truncated
 
 
-def _hidden(result: PipelineValidation) -> set[str]:
-    """Steps the editor does not show yet: a schema 1 design's calibration step,
-    which it draws as part of the policy."""
-    if result.definition.strategy is None:
-        return set()
-    return {node.id for node in result.definition.nodes if node.kind == "calibration"}
-
-
-def _shown_features(result: PipelineValidation, hidden: set[str]):
-    """Feature tables without hidden steps, whose lineage skips over them."""
-    through = {
-        f"{identifier}.{column.name}": column.previous
-        for identifier in hidden
-        for column in result.features.get(identifier, [])
-    }
-
-    def previous(name):
-        while name in through:
-            name = through[name]
-        return name
-
-    return {
-        identifier: [
-            column
-            if column.previous not in through
-            else column.model_copy(update={"previous": previous(column.previous)})
-            for column in columns
-        ]
-        for identifier, columns in result.features.items()
-        if identifier not in hidden
-    }
-
-
-def _parents(result, identifier, hidden):
-    parents = []
-    for edge in sorted(result.definition.edges, key=lambda item: item.order):
-        if edge.target != identifier:
-            continue
-        if edge.source in hidden:
-            parents.extend(_parents(result, edge.source, hidden))
-        else:
-            parents.append(edge.source)
-    return parents
+def _parents(result, identifier):
+    return [
+        edge.source
+        for edge in sorted(result.definition.edges, key=lambda item: item.order)
+        if edge.target == identifier
+    ]
 
 
 def _priority_nodes(result, selected):
     if selected is None:
         return []
-    parents = _parents(result, selected, _hidden(result))
+    parents = _parents(result, selected)
     return list(dict.fromkeys([selected, *parents]))
 
 
@@ -133,14 +96,13 @@ def bounded_validation_report(
 ) -> PipelineValidationReport:
     issues, truncated = _bounded_issues(result.issues)
     preparation, ready_after = _warm_up(result)
-    hidden = _hidden(result)
     report = PipelineValidationReport(
         valid=result.valid,
         issues=issues,
         definition=result.definition if include_definition else None,
         definition_omitted=not include_definition,
-        order=[identifier for identifier in result.order if identifier not in hidden],
-        features=_shown_features(result, hidden),
+        order=result.order,
+        features=result.features,
         fingerprint=result.fingerprint,
         selected_node_id=selected_node_id,
         issues_truncated=truncated,

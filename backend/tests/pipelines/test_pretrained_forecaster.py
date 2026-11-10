@@ -89,10 +89,7 @@ def test_timestral_is_a_pretrained_forecaster_step_of_its_own():
 
     assert detector_component(TIMESTRAL) == TIMESTRAL
     assert (component.kind, component.learning) == ("detector", "pretrained")
-    assert (component.strategies, component.output_type) == (
-        ["adaptive_stream"],
-        "scores",
-    )
+    assert component.output_type == "scores"
     assert "forecast" in component.description
     assert {field.name for field in component.fields} == {
         "checkpoint",
@@ -148,7 +145,7 @@ def test_timestral_rejects_settings_it_does_not_have(params):
         validate_adaptive_model_params(TIMESTRAL, params)
 
 
-def test_timestral_in_a_lane_design_runs_as_an_adaptive_stream():
+def test_timestral_in_a_stored_design_runs_as_an_adaptive_stream():
     data = template("adaptive_stream").model_dump(mode="json")
     detector = next(node for node in data["nodes"] if node["kind"] == "detector")
     detector["component"] = TIMESTRAL
@@ -163,8 +160,11 @@ def test_timestral_in_a_lane_design_runs_as_an_adaptive_stream():
     )
     assert monitoring.model_params["lead"] == 2
 
+    # A strategy written with an older design is read and then ignored.
     data["strategy"] = "static_baseline"
-    assert not validate_pipeline(PipelineDefinition.model_validate(data)).valid
+    relabelled = PipelineDefinition.model_validate(data)
+    assert validate_pipeline(relabelled).valid
+    assert derive_monitoring_config(relabelled) == monitoring
 
 
 def test_timestral_reads_one_feature_and_sits_beside_other_detectors():
@@ -193,9 +193,10 @@ def test_timestral_reads_no_step_that_learns(scaler):
 
 def test_the_conformal_alarm_policy_does_not_run_on_timestral():
     [(code, node, message)] = _issues(_design(TIMESTRAL, policy="policy.martingale"))
-    assert (code, node) == ("strategy", "policy")
+    assert (code, node) == ("calibration", "policy")
     assert message == (
-        "Conformal alarm policy can't run with detectors that are pretrained yet."
+        "The conformal alarm policy does not run on a pretrained forecaster. "
+        "Use the calibrated score threshold."
     )
 
     # Beside a detector fitted once the design has no lane to say so.

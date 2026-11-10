@@ -1,7 +1,6 @@
 """Designs whose policy combines up to four detectors: compiler and settings."""
 
 import pytest
-from off_key_core.models.pipeline_catalog import editor_components
 from off_key_core.models.pipelines import (
     derive_monitoring_config,
     pipeline_components,
@@ -67,7 +66,7 @@ def test_a_design_needs_a_detector():
     ) in _issues(PipelineDefinition.model_validate(data))
 
 
-def test_every_detector_connects_to_the_policy():
+def test_every_detector_connects_to_the_calibration_step():
     data = fused_definition().model_dump(mode="json")
     data["edges"] = [edge for edge in data["edges"] if edge["source"] != "detector_2"]
 
@@ -75,8 +74,8 @@ def test_every_detector_connects_to_the_policy():
 
     assert (
         "input_count",
-        "policy",
-        "policy requires one incoming connection from each of the 2 detectors",
+        "calibrate",
+        "calibration requires one incoming connection from each of the 2 detectors",
     ) in issues
     assert (
         "disconnected",
@@ -115,7 +114,7 @@ def test_combine_is_left_out_at_its_default_and_with_one_detector():
 def test_combine_accepts_strongest_or_average_only():
     issues = _issues(fused_definition(fusion="median"))
 
-    assert [code for code, node, _ in issues if node == "policy"] == ["parameters"]
+    assert [(code, node) for code, node, _ in issues] == [("parameters", "calibrate")]
 
 
 @pytest.mark.parametrize("strategy", ["static_baseline", "adaptive_stream"])
@@ -137,16 +136,14 @@ def test_run_settings_hold_the_first_detector_and_the_policy_without_combine(
     assert "fusion" not in policy.model_dump()
 
 
-def test_both_policies_offer_combine_in_the_catalog():
-    # The editor's catalog keeps the setting on the policies until it shows
-    # the calibration step, which holds it in the compiler's catalog.
-    calibrations = [
-        item for item in pipeline_components() if item.kind == "calibration"
-    ]
-    for component in [
-        *calibrations,
-        *(item for item in editor_components() if item.kind == "policy"),
-    ]:
+def test_every_calibration_step_offers_combine_in_the_catalog():
+    components = pipeline_components()
+    for component in components:
+        names = [item.name for item in component.fields]
+        if component.kind != "calibration":
+            # The calibration step combines detectors; no policy does.
+            assert "fusion" not in names
+            continue
         field = next(item for item in component.fields if item.name == "fusion")
         assert (field.label, field.type, field.options, field.default) == (
             "Combine detectors",

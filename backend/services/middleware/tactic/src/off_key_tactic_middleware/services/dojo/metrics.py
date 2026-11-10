@@ -13,6 +13,7 @@ from datetime import datetime
 from statistics import median
 
 from off_key_core.db.models import DojoDataset, DojoLabel, DojoRun, DojoRunResult
+from off_key_core.models.dojo_runs import result_kind
 from off_key_core.schemas.dojo import (
     Comparison,
     ComparisonQuery,
@@ -191,7 +192,7 @@ class DojoMetrics:
         return RunMetrics(
             run_id=run.id,
             run_name=run.name,
-            strategy=run.config["execution"]["definition"]["strategy"],
+            strategy=result_kind(run.config["execution"]["definition"]),
             scored_from=scored_from,
             scored_to=scored_to,
             labels_total=len(labels),

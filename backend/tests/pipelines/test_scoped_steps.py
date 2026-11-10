@@ -186,7 +186,7 @@ def test_designs_without_scope_keep_their_fingerprints(fixture, strategy):
         next(
             item.definition
             for item in pipeline_catalog().templates
-            if item.definition.strategy == strategy
+            if item.id == strategy
         )
         if fixture == "template"
         else branched(strategy)

@@ -81,11 +81,13 @@ def test_maximum_report_preserves_complete_selected_feature_choices(
 def test_normal_reports_preserve_full_metadata():
     result = compile_pipeline(pipeline_catalog().templates[1].definition)
     report = bounded_validation_report(result, "detector")
-    # The editor draws the calibration step as part of the policy.
-    shown = {key: value for key, value in result.features.items() if key != "calibrate"}
-    assert report.features.keys() == shown.keys()
-    assert [column.previous for column in report.features["policy"]] == [
+    # The editor draws the calibration step between the detector and the policy.
+    assert report.features.keys() == result.features.keys()
+    assert [column.previous for column in report.features["calibrate"]] == [
         "detector.value"
+    ]
+    assert [column.previous for column in report.features["policy"]] == [
+        "calibrate.value"
     ]
     assert report.features_complete and report.provenance_complete
     assert not report.definition_omitted and not report.issues_truncated

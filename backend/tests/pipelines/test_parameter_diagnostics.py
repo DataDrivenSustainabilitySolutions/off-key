@@ -47,7 +47,7 @@ def test_pydantic_variant_diagnostics_address_submitted_object_keys():
     definition = next(
         item.definition.model_copy(deep=True)
         for item in pipeline_catalog().templates
-        if item.definition.strategy == "static_baseline"
+        if item.id == "static_baseline"
     )
     policy = next(node for node in definition.nodes if node.kind == "policy")
     policy.params = {
@@ -172,7 +172,7 @@ def test_nested_adaptive_form_and_graph_keep_all_field_locations():
     definition = next(
         item.definition.model_copy(deep=True)
         for item in pipeline_catalog().templates
-        if item.definition.strategy == "adaptive_stream"
+        if item.id == "adaptive_stream"
     )
     node = next(node for node in definition.nodes if node.kind == "detector")
     node.component = "detector:aberrant_knn"

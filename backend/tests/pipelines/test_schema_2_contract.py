@@ -5,7 +5,7 @@ designs, the editor's wire format and fingerprints stay as they were.
 """
 
 import pytest
-from off_key_core.models.pipeline_catalog import editor_components
+from off_key_core.models.pipeline_catalog import pipeline_catalog
 from off_key_core.models.pipelines import pipeline_components, validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition
 
@@ -165,11 +165,12 @@ def test_the_martingale_needs_detectors_that_stop_learning():
     assert issues(design(IFOREST, policy="policy.martingale")) == []
 
 
-def test_a_policy_runs_only_where_its_detectors_learn():
-    found = issues(design(IFOREST, policy="policy.quantile"))
-
-    assert ("strategy", "policy") in found
+def test_the_score_threshold_needs_a_detector_that_takes_in_every_observation():
+    assert issues(design(IFOREST, policy="policy.quantile")) == [
+        ("calibration", "policy")
+    ]
     assert issues(design(MAD, policy="policy.quantile")) == []
+    assert issues(design(IFOREST, MAD, policy="policy.quantile")) == []
 
 
 def test_every_detector_gives_scores_and_the_calibration_step_p_values():
@@ -189,10 +190,21 @@ def test_every_detector_gives_scores_and_the_calibration_step_p_values():
     } == {"p_values"}
 
 
-def test_the_editor_catalog_keeps_schema_1_ports_until_it_shows_calibration():
-    editor = {item.id: item for item in editor_components()}
+def test_the_editor_reads_schema_2_templates_with_their_calibration_step():
+    catalog = pipeline_catalog().model_dump(mode="json")
 
-    assert "calibrate.fixed_split" not in editor
-    assert editor[IFOREST].output_type == "p_values"
-    assert editor["policy.quantile"].input_type == "scores"
-    assert editor["policy.martingale"].input_type == "p_values"
+    assert {item["id"] for item in catalog["components"]} >= {
+        "calibrate.fixed_split",
+        "calibrate.aci",
+        "policy.exceedance",
+    }
+    for item in catalog["templates"]:
+        definition = item["definition"]
+        identifiers = [node["id"] for node in definition["nodes"]]
+        assert definition["schema_version"] == 2 and "strategy" not in definition
+        assert identifiers == ["input", "detector", "calibrate", "policy", "output"]
+        # Every step has a place on the canvas, in the order it runs.
+        columns = [
+            item["layout"]["nodes"][identifier]["x"] for identifier in identifiers
+        ]
+        assert columns == sorted(set(columns))

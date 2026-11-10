@@ -1,12 +1,13 @@
 """Versioned monitoring designs; safe to import in the control plane."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    WrapSerializer,
     field_validator,
     model_serializer,
     model_validator,
@@ -15,7 +16,14 @@ from pydantic import (
 from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
-from .pipeline_versions import Learning, Strategy, derived_strategy, downgrade, upgrade
+from .pipeline_versions import (
+    Learning,
+    Strategy,
+    derived_strategy,
+    downgrade,
+    editor_form,
+    upgrade,
+)
 from .public_names import public
 
 # The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
@@ -76,8 +84,11 @@ class PipelineSettings(PipelineModel):
 class PipelineDefinition(PipelineModel):
     """A monitoring design; held as schema 2, written as schema 1 when it can be.
 
-    ``strategy`` is the lane a schema 1 design was made in. It stays checked
-    until the editor stops offering lanes; a schema 2 design leaves it unset.
+    A design has no lane of its own: how it runs follows from how its steps
+    learn. ``strategy`` is read from schema 1 designs and then dropped. The
+    schema 1 form that is written carries the lane the steps share, which is
+    what a schema 1 design stored, so stored designs and fingerprints stay as
+    they were.
     """
 
     schema_version: Literal[1, 2] = 1
@@ -93,25 +104,17 @@ class PipelineDefinition(PipelineModel):
         """Read a schema 1 design as schema 2, after its own limits held."""
         if self.schema_version == 1:
             data = upgrade(
-                {
-                    "schema_version": 1,
-                    "strategy": self.strategy or "static_baseline",
-                    "nodes": self.nodes,
-                    "edges": self.edges,
-                }
+                {"schema_version": 1, "nodes": self.nodes, "edges": self.edges}
             )
             self.schema_version = 2
-            self.strategy = data["strategy"]
             self.nodes = [PipelineNode.model_validate(item) for item in data["nodes"]]
             self.edges = [PipelineEdge.model_validate(item) for item in data["edges"]]
+        self.strategy = None
         return self
 
     @property
     def lane(self) -> PipelineStrategy | None:
-        """The runtime that runs this design until one runtime runs them all:
-        its schema 1 lane, or the one all its learned steps share."""
-        if self.strategy is not None:
-            return self.strategy
+        """The lane all the design's learned steps share, if they share one."""
         return derived_strategy([node.model_dump() for node in self.nodes])
 
     @model_serializer(mode="wrap")
@@ -123,6 +126,15 @@ class PipelineDefinition(PipelineModel):
             if data.get("strategy") == "static_baseline":
                 data.pop("strategy")
         return data
+
+
+def _editor_form(definition: "PipelineDefinition", handler):
+    return editor_form(handler(definition))
+
+
+# A design in a response the editor reads: always schema 2, with its
+# calibration step and without a lane.
+EditorDefinition = Annotated[PipelineDefinition, WrapSerializer(_editor_form)]
 
 
 class CanvasPosition(PipelineModel):
@@ -298,7 +310,7 @@ class PipelineValidationReport(PipelineModel):
 
     valid: bool
     issues: list[PipelineIssue] = Field(default_factory=list)
-    definition: PipelineDefinition | None
+    definition: EditorDefinition | None
     order: list[str] = Field(default_factory=list)
     features: dict[str, list[FeatureDescription]] = Field(default_factory=dict)
     fingerprint: str | None = None
@@ -364,18 +376,21 @@ class PipelineComponent(PipelineModel):
     kind: NodeKind
     label: str
     description: str
-    strategies: list[PipelineStrategy]
     learning: Learning = "none"
     parameter_schema: dict[str, Any] = Field(default_factory=dict)
     fields: list[ComponentField] = Field(default_factory=list)
     input_type: PortType | None = "features"
     output_type: PortType = "features"
+    # A calibration step's method: its family, what it holds, and its paper.
+    family: Literal["conformal", "bayesian"] | None = None
+    coverage: Literal["exchangeable", "long_run", "none"] | None = None
+    reference: str | None = None
 
 
 class PipelineTemplate(PipelineModel):
     id: str
     name: str
-    definition: PipelineDefinition
+    definition: EditorDefinition
     layout: PipelineLayout
 
 
@@ -428,7 +443,7 @@ class PipelineRevisionSummary(PipelineModel):
 
 
 class PipelineRevisionView(PipelineRevisionSummary):
-    definition: PipelineDefinition
+    definition: EditorDefinition
 
 
 class PipelineRevisionPage(PipelineModel):
@@ -458,7 +473,6 @@ class PipelineSummary(PipelineModel):
     description: str
     archived: bool
     version: int
-    strategy: PipelineStrategy
     revision_count: int
     created_at: datetime
     updated_at: datetime
@@ -476,7 +490,7 @@ class PipelineView(PipelineModel):
     archived: bool
     is_template: bool = True
     version: int
-    draft: PipelineDefinition
+    draft: EditorDefinition
     layout: PipelineLayout
     revisions: list[PipelineRevisionSummary] = Field(
         default_factory=list, max_length=100
@@ -600,7 +614,7 @@ class PipelineRunExecution(_RunProjection):
     """What a run executes: its definition and the readings bound to it."""
 
     schema_version: Literal[1] = 1
-    definition: PipelineDefinition
+    definition: EditorDefinition
     bindings: list[PipelineRunInput]
     revision_id: str
     run_id: str
@@ -693,7 +707,7 @@ class PipelineServiceView(PipelineModel):
         default=None,
         **public("history_next_monitor_id", "history_next_service_id"),
     )
-    definition: PipelineDefinition
+    definition: EditorDefinition
     layout: PipelineLayout
     legacy: bool = False
     validation: PipelineValidationReport | None = None

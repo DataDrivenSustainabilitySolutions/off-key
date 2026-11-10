@@ -66,7 +66,7 @@ def issues(*steps):
     ]
 
 
-def test_the_catalog_offers_the_steps_to_both_strategies():
+def test_the_catalog_offers_the_steps_as_ones_that_learn_nothing():
     offered = {item.id: item for item in pipeline_components()}
     fields = {
         "prepare.aggregate": ["apply_to", "result", "function", "name"],
@@ -76,7 +76,7 @@ def test_the_catalog_offers_the_steps_to_both_strategies():
     for component, names in fields.items():
         item = offered[component]
         assert item.kind == "transform"
-        assert set(item.strategies) == {"static_baseline", "adaptive_stream"}
+        assert item.learning == "none"
         assert [field.name for field in item.fields] == names
     assert offered["prepare.formula"].fields[0].label == "Formula"
 

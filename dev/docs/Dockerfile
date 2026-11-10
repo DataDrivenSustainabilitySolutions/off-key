@@ -8,7 +8,7 @@ COPY docs ./docs
 COPY dev/docs/llms.py ./dev/docs/llms.py
 RUN zensical build --clean --strict && python dev/docs/llms.py site
 
-FROM nginx:1.30.5-alpine-slim@sha256:32463212baf0e7d91aded2e9b843a4f2b9e017804b8c9d5bae7b51dcef64389c
+FROM nginx:1.31.8-alpine-slim@sha256:9c68ad4f28e7dee4b9484a7859bf451da39ef661bcd038ef62e87593fcd91c86
 COPY --from=build /docs/site /usr/share/nginx/html
 # Keep the server configuration with the build recipe so rollback rehearsals can
 # build older documentation sources with this same static hosting configuration.

@@ -683,7 +683,7 @@
       100% { opacity:0; }
     }
     /* SmoothUI Fade Through (https://smoothui.dev/docs/components/fade-through):
-       260ms exit, then 420ms enter, with no overlapping words.
+       One-second exit, then one-second enter, spanning the image's two-second fade.
        The swap at 9s (22.5%) aligns with the photo crossfade midpoint;
        ten-second phase offsets keep every word on the same forty-second loop. */
     @keyframes hero-word-fade-through {
@@ -691,7 +691,7 @@
         opacity:0; transform:translateY(6px) scale(.99); filter:blur(2px);
         animation-timing-function:cubic-bezier(.2,0,0,1);
       }
-      23.55%,46.85% {
+      25%,45% {
         opacity:1; transform:translateY(0) scale(1); filter:blur(0);
         animation-timing-function:cubic-bezier(.4,0,1,1);
       }

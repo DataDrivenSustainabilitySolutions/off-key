@@ -1,5 +1,5 @@
 import type { InputSlot } from "@/types/pipelines.generated";
-import type { DatasetSeriesView, RunPromotion, RunSummary } from "@/types/dojo.generated";
+import type { DatasetSeriesView, LabelSuggestion, RunPromotion, RunSummary } from "@/types/dojo.generated";
 import { templateHref } from "@/domain/monitoring/monitoringView";
 import { featureName } from "../pipelines/slots";
 
@@ -119,3 +119,8 @@ export const datasetTab = (value: string | null): DatasetTab =>
 /** Monitoring opens the new template with each slot's recorded reading suggested. */
 export const monitoringHandOff = (promotion: RunPromotion) => templateHref(promotion.pipeline_id,
   Object.fromEntries(promotion.bindings.flatMap(item => item.reading_id ? [[item.slot_id, item.reading_id]] : [])));
+
+/** The note a suggested label gets when it is added as it is. */
+export function suggestionNote(item: Pick<LabelSuggestion, "alarm_count">) {
+  return item.alarm_count === 1 ? "Recorded alarm" : `${item.alarm_count.toLocaleString()} recorded alarms`;
+}

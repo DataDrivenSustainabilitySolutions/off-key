@@ -32,6 +32,8 @@ type Props = {
   onFavourite?: (id: string) => void;
   /** Keep the definition one click away where the page is about something else, such as monitoring. */
   collapseDefinition?: boolean;
+  /** Header actions of the hosting page, before the favourite star. */
+  actions?: ReactNode;
 };
 
 const phases: Record<LiveStatus["phase"], string> = {
@@ -70,7 +72,7 @@ function Binding({ label, value }: { label: string; value: string }) {
 
 export default function ExplorerPreview({
   node, index, document, telemetry, historyCache, canEdit, saving, error, onRename, onEdit, collectionControls, runtime, connectionStatusOnly = false, connectionCheck, pageTitle = false, favourite, onFavourite,
-  collapseDefinition = false,
+  collapseDefinition = false, actions,
 }: Props) {
   const status = useSyncExternalStore(telemetry.subscribeUpdates, telemetry.getStatus);
   const streamsById = useMemo(() => new Map(document.readings.map((stream) => [stream.id, stream])), [document.readings]);
@@ -194,7 +196,7 @@ export default function ExplorerPreview({
             </Title>
           </div>
         </div>
-        <div className="mn-detail-actions">{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
+        <div className="mn-detail-actions">{actions}{stream && onFavourite && <button className="mn-favourite ex-icon-button" aria-pressed={!!favourite} aria-label={favourite ? "Remove reading from favourites" : "Add reading to favourites"} onClick={() => onFavourite(stream.id)}><Star size={17} /></button>}</div>
       </header>
       {isReading ? parent && <p className="ex-preview-parent">{parent.label}</p> : trail}
       <div className="ex-preview-status" role="status">

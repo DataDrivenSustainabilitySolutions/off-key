@@ -70,7 +70,7 @@ class _Series:
 def _too_many_points() -> ValidationError:
     return ValidationError(
         f"A dataset holds at most {MAX_DATASET_POINTS:,} points; "
-        "upload a shorter window or fewer series"
+        "use a shorter window or fewer series"
     )
 
 
@@ -267,8 +267,9 @@ class DojoDatasets:
                 f"Not numeric catalogue readings: {', '.join(missing[:5])}"
             )
         chosen = [streams[item] for item in request.reading_ids]
+        # Without a start, everything retention has kept so far is copied.
         window = (
-            Telemetry.timestamp >= request.start,
+            *(() if request.start is None else (Telemetry.timestamp >= request.start,)),
             Telemetry.timestamp < request.end,
             Telemetry.value.is_not(None),
         )
@@ -295,7 +296,7 @@ class DojoDatasets:
             "history",
             {
                 "reading_ids": request.reading_ids,
-                "start": request.start.isoformat(),
+                "start": request.start.isoformat() if request.start else None,
                 "end": request.end.isoformat(),
             },
             created_by,

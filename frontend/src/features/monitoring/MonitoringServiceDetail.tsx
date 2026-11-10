@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatDateTime } from "@/lib/format-time";
 import { InlineName } from "@/components/InlineName";
+import { useDetailDocumentTitle } from "@/hooks/use-document-title";
 import { MonitoringHistory } from "./MonitoringHistory";
 import { chooseTab as withTab } from "@/domain/monitoring/monitoringView";
 import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache";
@@ -39,6 +40,8 @@ export default function MonitoringServiceDetail({ service, inputs, document, his
   const [deleteError, setDeleteError] = useState("");
   const state = serviceState(service);
   const name = serviceName(service, inputs);
+  const tabLabel = tabs.find(item => item.id === tab)!.label;
+  useDetailDocumentTitle(tab === "overview" ? name : `${name} — ${tabLabel}`, "Monitoring");
   const progress = service.operational_status.progress;
   const coverage = service.operational_status.coverage;
   const activity = service.operational_status.activity;

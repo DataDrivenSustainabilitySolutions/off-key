@@ -92,11 +92,10 @@
   include_tasks: save_recovery.yml
 
 - name: Stop writers before taking the backup
-  command:
-    argv: [docker, service, scale, "{{ item.key }}=0"]
-  loop: "{{ persistence_writer_replicas | dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
+  include_role:
+    name: swarm_scale
+  vars:
+    swarm_scale_replicas: "{{ dict(persistence_writer_replicas.keys() | zip([0] * (persistence_writer_replicas | length))) }}"
 
 - name: Confirm all writers have stopped
   include_tasks: wait_stopped.yml

@@ -67,6 +67,7 @@ class RecoveryWriterTests(unittest.TestCase):
         wait[0].update(retries=1, delay=0)
         wait_path.write_text(yaml.safe_dump(wait))
         (roles / "swarm_task").symlink_to(ROOT / "ansible/roles/swarm_task")
+        (roles / "swarm_scale").symlink_to(ROOT / "ansible/roles/swarm_scale")
         # Quiescing reuses the deployment role to find this stack's workers.
         (roles / "stack_deploy").symlink_to(ROOT / "ansible/roles/stack_deploy")
         (self.root / "scripts").symlink_to(ROOT / "scripts")
@@ -174,7 +175,7 @@ class RecoveryWriterTests(unittest.TestCase):
         self.assertFalse(
             any(
                 command[:2] == ["service", "scale"]
-                and command[2].startswith("radar-new=")
+                and any(part.startswith("radar-new=") for part in command[2:])
                 for command in commands
             )
         )

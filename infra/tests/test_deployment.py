@@ -846,7 +846,6 @@ class DeploymentTests(unittest.TestCase):
             llms,
         )
         html = result["landing_html"]
-        self.assertIn('id="agents"', html)
         self.assertIn('href="/llms.txt"', html)
         self.assertIn('type="text/markdown" href="/index.md"', html)
 

@@ -117,156 +117,6 @@
         margin-top: 16px;
       }
     }
-    .mode {
-      display: inline-grid;
-      grid-template-columns: 1fr 1fr;
-      padding: 2px;
-      border: 1px solid var(--line);
-      font-family: var(--mono);
-      font-size: 11px;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-    }
-    .mode a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 32px;
-      padding: 0 14px;
-      color: var(--muted);
-    }
-    .mode a:hover {
-      color: var(--ink);
-    }
-    .mode a:focus-visible {
-      outline-offset: 1px;
-    }
-    .mode .mode-humans, body:has(#agents:target) .mode .mode-agents {
-      background: var(--ink);
-      color: var(--bg);
-    }
-    .mode .mode-humans:hover, body:has(#agents:target) .mode .mode-agents:hover {
-      color: var(--bg);
-    }
-    body:has(#agents:target) .mode .mode-humans {
-      background: none;
-      color: var(--muted);
-    }
-    .mode-glyph {
-      font-weight: 600;
-    }
-    .agent-view {
-      display: none;
-      padding-block: 48px 72px;
-      scroll-margin-top: 100vh;
-    }
-    .agent-view:focus {
-      outline: none;
-    }
-    .agent-view:target {
-      display: block;
-    }
-    main:has(> .agent-view:target) > :not(.agent-view) {
-      display: none;
-    }
-    .agent-view h1 {
-      font-size: clamp(44px, 6.4vw, 96px);
-    }
-    .agent-view h1 em {
-      font-family: var(--mono);
-      font-size: .62em;
-      letter-spacing: -.04em;
-    }
-    .agent-lead {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-      gap: 32px 56px;
-      align-items: end;
-    }
-    .terminal {
-      margin: 40px 0 0;
-      border: 1px solid var(--ink);
-      background: #101113;
-    }
-    .terminal-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
-    }
-    .terminal-head b {
-      color: var(--accent);
-      font-weight: 500;
-    }
-    .terminal pre {
-      margin: 0;
-      padding: 20px 16px;
-      overflow-x: auto;
-      font-family: var(--mono);
-      font-size: 13px;
-      line-height: 1.75;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .terminal .commands {
-      white-space: pre;
-      overflow-wrap: normal;
-    }
-    .terminal pre + pre {
-      border-top: 1px dashed var(--line);
-    }
-    .terminal .select {
-      user-select: all;
-      -webkit-user-select: all;
-    }
-    .terminal .c {
-      color: var(--muted);
-    }
-    .terminal .p {
-      color: var(--accent);
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    .endpoints {
-      margin: 32px 0 0;
-      padding: 0;
-      list-style: none;
-      border-block: 1px solid var(--ink) var(--line);
-    }
-    .endpoint {
-      display: grid;
-      grid-template-columns: 120px minmax(0, 360px) minmax(0, 1fr) auto;
-      gap: 8px 24px;
-      align-items: center;
-      padding-block: 14px;
-    }
-    .endpoint + .endpoint {
-      border-top: 1px solid var(--line);
-    }
-    .endpoint .mono {
-      color: var(--accent);
-    }
-    .endpoint code {
-      font-family: var(--mono);
-      font-size: 13px;
-      overflow-wrap: anywhere;
-    }
-    .endpoint p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .endpoint a {
-      display: inline-flex;
-      align-items: center;
-      min-height: 44px;
-    }
-    .endpoint a:hover {
-      color: var(--accent);
-    }
     :root {
       color-scheme:dark;
       --bg:#08090a;
@@ -395,13 +245,6 @@
     }
     h1 .second {
       color:#a7a8ab;
-    }
-    .description {
-      color:var(--muted);
-      max-width:380px;
-      font-size:15px;
-      line-height:1.75;
-      margin:30px 0;
     }
     .button {
       display:inline-flex;
@@ -643,24 +486,6 @@
       color:var(--muted);
       font-size:9px;
     }
-    .agent-view {
-      min-height:650px;
-    }
-    .agent-view h1 {
-      font-size:72px;
-    }
-    .agent-view .kicker {
-      display:flex;
-      justify-content:space-between;
-      color:var(--muted);
-      margin-bottom:40px;
-    }
-    .agent-view .description {
-      max-width:490px;
-    }
-    .mode {
-      margin-block:25px;
-    }
     .legal-panel h2 {
       font-size:28px;
     }
@@ -705,9 +530,6 @@
       .header-nav {
         gap:0;
       }
-      .header-nav .desktop-link {
-        display:none;
-      }
       .header-nav .nav-cta {
         margin:0;
         padding:0 12px;
@@ -717,11 +539,6 @@
       h1 {
         font-size:clamp(46px,10.8vw,78px);
         letter-spacing:-.067em;
-      }
-      .description {
-        font-size:14px;
-        max-width:330px;
-        margin-block:23px;
       }
       .button {
         padding-inline:17px;
@@ -812,31 +629,6 @@
       .footer-inner {
         gap:15px!important;
       }
-      .agent-view h1 {
-        font-size:47px;
-      }
-      .agent-lead {
-        grid-template-columns:1fr;
-      }
-      .endpoint {
-        grid-template-columns:1fr auto;
-      }
-      .endpoint p,.endpoint code {
-        grid-column:1/-1;
-      }
-      .endpoint a {
-        grid-column:2;
-        grid-row:1;
-      }
-      .terminal pre {
-        font-size:11px;
-      }
-      .agent-view .kicker span:last-child {
-        display:none;
-      }
-      .agent-view .description {
-        margin:0;
-      }
       .signal-head {
         font-size:8px;
         padding-inline:14px;
@@ -869,7 +661,7 @@
     .header-nav { gap:32px; }
     .header-nav a { font-size:12px; }
     .header-nav .nav-cta { margin-left:0; padding:9px 13px; border:1px solid rgba(255,255,255,.34); border-radius:2px; }
-    .header-statement { color:#c3c5c2; font-size:9px; letter-spacing:.06em; }
+    .header-statement { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#c3c5c2; font-size:9px; letter-spacing:.06em; white-space:nowrap; }
     .hero { color:#141615; background:#ededeb; overflow:hidden; }
     .hero-photo { position:relative; margin:0; height:auto; min-height:0; aspect-ratio:1942 / 809; overflow:hidden; background:#ededeb; }
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:center top; }
@@ -890,20 +682,32 @@
       75%,95% { opacity:1; }
       100% { opacity:0; }
     }
+    /* Words fade out, then in, around each photo transition's midpoint.
+       Phase offsets keep them on the same forty-second cycle as the photographs. */
+    @keyframes hero-word-fade {
+      0%,22.5%,47.5%,100% { opacity:0; }
+      23.5%,46.5% { opacity:1; }
+    }
     @media (prefers-reduced-motion:no-preference) {
       .hero-photo--pipes { animation:hero-pipes-crossfade 40s ease-in-out infinite; }
       .hero-photo--conveyor { animation:hero-conveyor-crossfade 40s ease-in-out infinite; }
       .hero-photo--solar { animation:hero-solar-crossfade 40s ease-in-out infinite; }
+      .hero-word { animation:hero-word-fade 40s ease-in-out var(--word-delay) infinite; }
     }
     .hero-title { position:relative; text-align:center; padding:18px 32px 46px; }
     .hero-title > .mono { margin:0 0 17px; color:#656864; font-size:9px; letter-spacing:.12em; }
     .hero h1 { font-size:clamp(42px,4.9vw,72px); font-weight:400; line-height:1.06; letter-spacing:-.05em; }
     .hero-title .hero-promise { font-size:clamp(20px,2vw,27px); line-height:1.3; color:#646762; letter-spacing:-.025em; margin:10px 0 0; }
+    .hero-words { display:inline-grid; vertical-align:baseline; padding:.05em .2em .08em; line-height:1.1; white-space:nowrap; background:#111313; color:#fff; }
+    .hero-word { grid-area:1 / 1; opacity:0; }
+    .hero-word--bridge { --word-delay:-10s; opacity:1; }
+    .hero-word--pipes { --word-delay:0s; }
+    .hero-word--conveyor { --word-delay:10s; }
+    .hero-word--solar { --word-delay:20s; }
+    .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
     .hero-summary { display:flex; justify-content:space-between; align-items:center; gap:40px; max-width:980px; margin:30px auto 0; padding-top:20px; border-top:1px solid #cdd0ca; text-align:left; }
     .hero-summary p { max-width:520px; margin:0; color:#595e57; font-size:14px; line-height:1.6; }
     .hero-summary a { color:#171a17; border-bottom:1px solid #92958e; gap:30px; white-space:nowrap; }
-    body:has(#agents:target) .site-header { position:relative; }
-    .agent-view { padding-top:65px; }
     @media(max-width:1000px) {
       .header-statement { display:none; }
       .hero-summary { gap:32px; }
@@ -912,7 +716,6 @@
       .header-inner { width:calc(100% - 40px); height:72px; }
       .wordmark { font-size:21px; }
       .header-nav { gap:0; }
-      .header-nav .desktop-link { display:none; }
       .header-nav .nav-cta { padding:8px 10px; }
       .hero-photo { height:clamp(340px,48svh,440px); aspect-ratio:auto; }
       .hero-title { padding:16px 22px 36px; }
@@ -928,40 +731,10 @@
 <body><a class="skip-link" href="#main">Skip to content</a>
 <header class="site-header"><div class="container header-inner">
 <a class="wordmark" href="#main" aria-label="Aberration home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg><span>aberration</span></a>
-<span class="header-statement mono">Continuous anomaly detection.</span>
-<nav class="header-nav" aria-label="Main navigation"><a class="desktop-link" href="#platform">Platform</a><a class="desktop-link" href="#agents">For agents <span class="mono" aria-hidden="true">↗</span></a><a class="nav-cta" href="{{ frontend_base_url | e }}/">Dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+<span class="header-statement mono">Real-time decision-making.</span>
+<nav class="header-nav" aria-label="Main navigation"><a class="nav-cta" href="{{ frontend_base_url | e }}/">Dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
 <path d="M7 17 17 7M7 7h10v10"/></svg></a></nav>
 </div></header><main id="main">
-    <section class="container agent-view" id="agents" aria-labelledby="agents-headline" tabindex="-1">
-      <p class="kicker mono"><span>Machine-readable surface</span><span>llms.txt · Markdown · OpenAPI</span></p>
-      <div class="agent-lead">
-        <h1 id="agents-headline">Evidence<br>of <em>change.md</em></h1>
-        <div class="hero-sub">
-          <p class="description">Agents do not need this page. Point yours at <a href="/llms.txt"><code>/llms.txt</code></a>: it indexes plain-Markdown versions of this site and the documentation, and links the OpenAPI contract of the API.</p>
-        </div>
-      </div>
-      <div class="terminal">
-        <div class="terminal-head mono" aria-hidden="true"><span>Hand off — <b>paste into your agent</b></span><span>select · copy</span></div>
-        <pre class="select">Read https://{{ ingress_base_domain | e }}/llms.txt. Then, through the API it links, list my monitors and summarise the most recent anomalies with the telemetry around them.</pre>
-        <pre class="commands"><span class="c"># this page, as Markdown</span>
-<span class="p">$ </span><span class="select">curl -H 'Accept: text/markdown' https://{{ ingress_base_domain | e }}/</span>
-<span class="c"># the API contract</span>
-<span class="p">$ </span><span class="select">curl {{ frontend_base_url | e }}/api/openapi.json</span></pre>
-      </div>
-      <ol class="endpoints" aria-label="Entry points">
-        <li class="endpoint"><span class="mono">Index</span><code>/llms.txt</code><p>Summary and links, per the llms.txt convention.</p><a href="/llms.txt" aria-label="Open llms.txt"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-<path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
-        <li class="endpoint"><span class="mono">Page</span><code>/index.md</code><p>This page as Markdown; also served for <code>Accept: text/markdown</code>.</p><a href="/index.md" aria-label="Open the Markdown page"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-<path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
-        <li class="endpoint"><span class="mono">API</span><code>/api/openapi.json</code><p>OpenAPI contract. Bearer token from <code>/api/v1/auth/login</code>.</p><a href="{{ frontend_base_url | e }}/api/openapi.json" aria-label="Open the OpenAPI schema"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-<path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
-{% if docs_base_url | default('') %}
-        <li class="endpoint"><span class="mono">Docs</span><code>/llms-full.txt</code><p>The full documentation in one Markdown file.</p><a href="{{ docs_base_url | e }}/llms-full.txt" aria-label="Open the full documentation"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-<path d="M7 17 17 7M7 7h10v10"/></svg></a></li>
-{% endif %}
-      </ol>
-    </section>
-
 <section class="hero" aria-labelledby="headline">
   {% from 'landing-hero.b64.j2' import hero_bridge, hero_pipes, hero_conveyor, hero_solar %}
   <figure class="hero-photo">
@@ -973,14 +746,14 @@
   <div class="hero-title">
     <p class="mono">Anomaly detection for physical &amp; digital systems</p>
     <h1 id="headline">Every system has a pattern.</h1>
-    <p class="hero-promise">Detect when it changes.</p>
+    <p class="hero-promise"><span class="visually-hidden">Detect when strain, flow, quality or yield changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words">{% for subject, word in [('bridge', 'strain'), ('pipes', 'flow'), ('conveyor', 'quality'), ('solar', 'yield')] %}<span class="hero-word hero-word--{{ subject }}">{{ word }}</span>{% endfor %}</span><span class="hero-promise-suffix"> changes.</span></span></p>
     <div class="hero-summary">
       <p>Continuous anomaly detection for sensor telemetry<br>and digital data streams.</p>
       <a class="text-link" href="#platform">Explore the platform <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
     </div>
   </div>
 </section>
-<section class="section container" id="platform" aria-labelledby="platform-title"><div class="section-intro"><div class="section-label mono"><b>01 /</b> The platform</div><div><h2 id="platform-title">From raw signal.<br><span class="muted">To meaningful deviation.</span></h2><p>A continuous path from connected telemetry to evidence you can act on. Built around the relationships in your data.</p></div></div>
+<section class="section container" id="platform" aria-labelledby="platform-title"><div class="section-intro"><div class="section-label mono"><b>01 /</b> The platform</div><div><h2 id="platform-title">From raw signal.<br><span class="muted">To informed decision.</span></h2><p>A continuous path from connected telemetry to evidence you can act on. Built around the relationships in your data.</p></div></div>
 <div class="pipeline">
 <article class="step"><div class="step-top mono"><span>01 / Connect</span><span class="plus" aria-hidden="true">↗</span></div><h3>Read the system.</h3><p>Bring your data streams together. Observe measurements in the context of the system they belong to.</p><svg class="step-visual" viewBox="0 0 240 76" aria-hidden="true"><g fill="none" stroke="#62666a">
 <path d="M0 20h50l30 18h55M0 56h50l30-18M135 38h90"/>
@@ -1014,15 +787,15 @@
 <path d="M0,95.0L3,95.0L6,95.0L9,95.0L12,95.0L15,95.0L18,95.0L21,95.0L24,95.0L27,95.0L30,95.0L33,95.0L36,95.0L39,95.0L42,95.0L45,95.0L48,95.0L51,95.0L54,95.0L57,95.0L60,95.0L63,95.0L66,95.0L69,95.0L72,95.0L75,95.0L78,95.0L81,95.0L84,95.0L87,95.0L90,95.0L93,95.0L96,95.0L99,95.0L102,95.0L105,95.0L108,95.0L111,95.0L114,95.0L117,95.0L120,95.0L123,95.0L126,95.0L129,95.0L132,95.0L135,95.0L138,95.0L141,95.0L144,95.0L147,95.0L150,95.0L153,95.0L156,95.0L159,95.0L162,95.0L165,95.0L168,95.0L171,95.0L174,95.0L177,95.0L180,95.0L183,95.0L186,95.0L189,95.0L192,95.0L195,95.0L198,95.0L201,95.0L204,95.0L207,95.0L210,95.0L213,95.0L216,95.0L219,95.0L222,95.0L225,95.0L228,95.0L231,95.0L234,95.0L237,95.0L240,94.8L243,94.7L246,94.4L249,94.1L252,93.8L255,93.4L258,92.9L261,92.5L264,91.9L267,91.4L270,90.8L273,90.2L276,89.5L279,88.8L282,88.1L285,87.3L288,86.5L291,85.6L294,84.8L297,83.9L300,82.9L303,82.0L306,81.0L309,80.0L312,78.9L315,77.8L318,76.7L321,75.6L324,74.4L327,73.2L330,72.0L333,70.8L336,69.5L339,68.2L342,66.9L345,65.5L348,64.1L351,62.7L354,61.3L357,59.9L360,58.4L363,56.9L366,55.3L369,53.8L372,52.2L375,50.6L378,49.0L381,47.3L384,45.6L387,43.9L390,42.2L393,40.5L396,38.7L399,36.9L402,35.1L405,33.2L408,31.4L411,29.5L414,27.6L417,25.6L420,23.7L423,21.7L426,19.7L429,17.7" fill="none" stroke="#d69b7b" stroke-width="1.4"/>
 <path d="M374 0v113" stroke="#d69b7b" stroke-opacity=".65" stroke-dasharray="3 4"/><g font-family="monospace" font-size="8" fill="#858a90"><text x="0" y="133">t − 60s</text><text x="198" y="133">t − 30s</text><text x="423" y="133">t</text></g></svg></div><div class="signal-footer">A deviation, in context.<span>τ / CHANGE POINT</span></div></div><p class="figure-note">Illustrative signal · a stream departs from its calibrated baseline.<br>Evidence accumulates until the change is flagged.</p></div>
 </div></section>
-<section class="section container research" id="method" aria-labelledby="method-title"><div class="section-label mono"><b>03 /</b> The approach</div><div><h2 id="method-title">Statistical rigor.<br><span class="muted">Operational reality.</span></h2><p>Detection is more than an unusual data point. Aberration brings streaming pipelines, conformal calibration, and accumulated evidence into one system. So you can investigate change with a meaningful reference.</p><a class="text-link" href="{% if docs_base_url | default('') %}{{ docs_base_url | e }}/user-guide/monitoring/{% else %}#agents{% endif %}">Explore the documentation <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
-<path d="M7 17 17 7M7 7h10v10"/></svg></a></div></section>
+<section class="section container research" id="method" aria-labelledby="method-title"><div class="section-label mono"><b>03 /</b> The approach</div><div><h2 id="method-title">Statistical rigor.<br><span class="muted">Operational reality.</span></h2><p>Detection is more than an unusual data point. Aberration brings streaming pipelines, conformal calibration, and accumulated evidence into one system. So you can investigate change with a meaningful reference.</p>{% if docs_base_url | default('') %}<a class="text-link" href="{{ docs_base_url | e }}/user-guide/monitoring/">Explore the documentation <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
+<path d="M7 17 17 7M7 7h10v10"/></svg></a>{% endif %}</div></section>
 <section class="closing" aria-labelledby="closing-title"><div class="container closing-inner"><div><p class="mono">04 / See your systems differently</p><h2 id="closing-title">Detect the unexpected.</h2></div><a class="button" href="{{ frontend_base_url | e }}/">Open dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
 <path d="M7 17 17 7M7 7h10v10"/></svg></a></div></section>
 </main>  <footer class="site-footer" id="site-footer" tabindex="-1">
     <div class="container footer-inner">
       <p class="footer-brand">aberration<span class="footer-extra"> &nbsp; / &nbsp; Detection infrastructure.</span></p>
       <nav class="footer-links" aria-label="Legal information">
-        <a href="#main">Humans</a><a href="#agents">Agents ↗</a><a href="#impressum">Impressum</a>
+        <a href="#impressum">Impressum</a>
         <a href="#privacy">Privacy</a>
         <a href="#contact">Contact</a>
       </nav>

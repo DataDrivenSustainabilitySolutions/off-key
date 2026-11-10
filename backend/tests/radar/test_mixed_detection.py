@@ -76,9 +76,7 @@ def mixed_definition(policy="policy.quantile", fusion="max"):
                     "id": "policy",
                     "kind": "policy",
                     "component": policy,
-                    "params": {"quantile": 0.99}
-                    if policy == "policy.quantile"
-                    else {},
+                    "params": {"quantile": 0.99} if policy == "policy.quantile" else {},
                 },
                 {"id": "output", "kind": "output", "component": "output.evidence"},
             ],
@@ -246,9 +244,7 @@ def test_a_dojo_replay_runs_both_kinds_of_detector_end_to_end():
     finally:
         run.close()
 
-    assert [row.sequence for row in rows] == list(
-        range(1, TRAINING + CALIBRATION + 31)
-    )
+    assert [row.sequence for row in rows] == list(range(1, TRAINING + CALIBRATION + 31))
     assert rows[-1].phase == "operational"
     scored = [row for row in rows if row.score is not None]
     assert len(scored) == 30 and all(row.threshold is not None for row in scored)

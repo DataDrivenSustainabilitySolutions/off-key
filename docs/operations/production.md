@@ -14,8 +14,9 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 3. Runtime files are compared against the manager's last verified release. Root-level Markdown
    and test-only changes do not deploy; intervening undeployed runtime changes remain visible.
 4. Deployment uses the exact immutable image digests saved by that SHA's successful
-   production rehearsal. OCI revision labels must match each image's proven source revision in the rehearsal evidence; a missing or expired
-   rehearsal artifact blocks deployment, so a root-Markdown-only `main` run, which
+   CI release evidence: a full rehearsal, or verified reuse of tested images after
+   focused static-content checks. OCI revision labels must match each image's proven
+   source revision; a missing or expired artifact blocks deployment, so a root-Markdown-only `main` run, which
    rehearses nothing, is never selected. The control checkout must be clean and match
    that same commit.
 5. A durable database operation fences monitor start/stop/delete and catalog writes.
@@ -194,7 +195,8 @@ Local Compose uses Mailpit. No production Mailpit service remains.
 `https://docs.aberration.app` serves the public Zensical documentation from the
 `docs` service on the existing production Swarm. CI builds `off-key-docs` with
 `dev/docs/Dockerfile`, runs a strict build and checks the resulting HTTP server,
-then publishes and attests it alongside the other application images. Deployment
+then publishes and attests it. For documentation-only changes, CI reuses verified
+application images and skips unrelated application tests and Swarm rehearsals. Deployment
 uses the tested image digest. Documentation-only changes trigger deployment too.
 The image includes `llms.txt`, `llms-full.txt` and per-page Markdown exports.
 

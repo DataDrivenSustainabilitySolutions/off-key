@@ -868,8 +868,8 @@
     .header-statement { color:#d6d6d3; font-size:10px; letter-spacing:.04em; }
     .wordmark { font-size:22px; }
     .hero { color:#141615; background:#e5e5e2; overflow:hidden; }
-    /* Clear the header reflection on wide screens without lifting mobile connectors into it. */
-    .hero-photo { position:relative; margin:clamp(-16px, calc(40px - 4vw), 0px) 0 0; aspect-ratio:8 / 5; min-height:0; }
+    /* Keep the enclosure seam above the header as the photograph scales. */
+    .hero-photo { position:relative; margin:min(0px, calc(24px - 4.45vw)) 0 0; aspect-ratio:1800 / 874; min-height:0; }
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:50% 45%; }
     .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:24px; background:linear-gradient(transparent, #e5e5e2); }
     .photo-caption { position:absolute; z-index:1; left:32px; bottom:24px; font-size:8px; letter-spacing:.08em; color:#515451; }
@@ -891,7 +891,7 @@
       .header-inner { width:calc(100% - 40px); height:76px; }
       .header-nav .desktop-link { display:none; }
       .header-nav .nav-cta { padding:0; }
-      .hero-photo { height:clamp(360px, 115vw, 500px); aspect-ratio:auto; }
+      .hero-photo { height:clamp(256px, 80vw, 440px); margin-top:0; aspect-ratio:auto; }
       .hero-photo img { object-position:50% 40%; }
       .hero-photo::after { height:24px; }
       .photo-caption { left:20px; bottom:18px; font-size:7px; }
@@ -943,7 +943,7 @@
 
 <section class="hero" aria-labelledby="headline">
   <figure class="hero-photo">
-    <img src="data:image/jpeg;base64,{% include 'landing-hero.b64.j2' %}" width="1536" height="1024" fetchpriority="high" alt="Generated industrial concept photograph of a supported test fixture with distinct physical sensors, individually routed cables and a wireless data module with an outward-angled antenna.">
+    <img src="data:image/jpeg;base64,{% include 'landing-hero.b64.j2' %}" width="1800" height="874" fetchpriority="high" alt="Generated industrial concept photograph of a compact sensor rack with braided cables, visible mounting brackets and a wireless data module with an outward-angled antenna.">
     <figcaption class="photo-caption mono">01 / Connected sensing &nbsp; · &nbsp; Generated concept image</figcaption>
   </figure>
   <div class="hero-title">

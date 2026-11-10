@@ -9,13 +9,16 @@ import {
   type OnConnectEnd,
   type ReactFlowInstance,
 } from "@xyflow/react";
-import { LocateFixed, Magnet } from "lucide-react";
+import { Copy, LocateFixed, Magnet, Pencil, Plus, SlidersHorizontal, Trash2, Unlink } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { PipelineComponent, PipelineValidation } from "./contracts";
 import {
-  connectNodes, connectionIssue, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements,
+  addAfter, addBlocker, afterBlocker, connectNodes, connectionIssue, disconnectEdge, disconnectNode, duplicateBlocker,
+  duplicateNode, insertBlocker, insertOnEdge, nodeOptionLabeler, occupiedInput, removeElements,
   type GraphDocument, type Link,
 } from "./model";
+import { PipelineContextMenu } from "./PipelineContextMenu";
+import { stepMenu, type Menu } from "./contextMenu";
 import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard } from "./PipelineNodeCard";
@@ -68,7 +71,19 @@ type Props = {
   onBeginMove?: () => void;
   /** Edges that floating controls cover; fitting and revealing keep cards out from under them. */
   insets?: CoveredEdges;
+  /** A card's menu asks to rename or configure that step. */
+  onRename?: (id: string) => void;
+  onConfigure?: (id: string) => void;
 };
+
+/** What a right-click, long-press or the menu key was aimed at. */
+type MenuTarget =
+  | { kind: "pane"; position: { x: number; y: number } }
+  | { kind: "node"; id: string }
+  | { kind: "edge"; link: Link };
+/** A touch held this long without moving opens the menu, as a right-click does. */
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP = 10;
 
 export default function PipelineCanvas({
   document,
@@ -87,6 +102,8 @@ export default function PipelineCanvas({
   onAdd,
   onBeginMove,
   insets,
+  onRename,
+  onConfigure,
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
@@ -284,23 +301,131 @@ export default function PipelineCanvas({
     menu: (link) => <PipelineToolbox components={components} document={document} link={link}
       onAdd={(componentId) => insert(link, componentId)} />,
   };
+  // Card centred under the pointer, its corner snapped to the grid as a drop is.
+  const placeAt = (clientX: number, clientY: number) => {
+    const center = flow?.screenToFlowPosition({ x: clientX, y: clientY }, { snapToGrid: false }) ?? { x: clientX, y: clientY };
+    const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
+    return snapToGrid
+      ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
+      : position;
+  };
+  // A menu belongs to the graph it was opened on; any edit closes it, as a wire's menu does.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; target: MenuTarget;
+    definition: GraphDocument["definition"]; returnFocus: Element | null }>();
+  const shownMenu = contextMenu?.definition === document.definition ? contextMenu : undefined;
+  const openMenu = (x: number, y: number, target: MenuTarget) => {
+    if (readOnly || !flow) return;
+    setOpenWire(undefined);
+    setContextMenu({ x, y, target, definition: document.definition, returnFocus: window.document.activeElement });
+  };
+  const applied = (result: { document: GraphDocument; id: string } | undefined) => {
+    if (!result) return;
+    setFeedback("");
+    onChange(result.document);
+    onSelect(result.id);
+    setInserted(result.id);
+  };
+  const strategyComponents = components.filter((component) => component.strategies.includes(document.definition.strategy));
+  const menuFor = (target: MenuTarget): Menu => {
+    if (target.kind === "pane") return stepMenu("Add a step",
+      strategyComponents.filter((component) => !addBlocker(document.definition, component)),
+      (component) => onAdd(component.id, target.position),
+      "No step can be added. The design has reached its limit.");
+    if (target.kind === "edge") {
+      const between = `${nodeName(document, components, target.link.source)} and ${nodeName(document, components, target.link.target)}`;
+      const fitting = strategyComponents.filter((component) => !insertBlocker(document.definition, target.link, component, components));
+      return { label: `Connection between ${between}`, items: [
+        { key: "insert", label: "Insert here", icon: Plus, blocked: fitting.length ? undefined : "No step fits this connection.",
+          submenu: stepMenu("Insert a step", fitting,
+            (component) => applied(insertOnEdge(document, target.link, component, components)), "No step fits this connection.") },
+        { key: "delete", label: "Delete connection", icon: Trash2, destructive: true, separated: true,
+          run: () => { setSelectedEdges([]); onChange({ ...document, definition: disconnectEdge(document.definition, target.link) }); } },
+      ] };
+    }
+    const { id } = target;
+    const connected = document.definition.edges.some((edge) => edge.source === id || edge.target === id);
+    const after = strategyComponents.filter((component) => !afterBlocker(document, id, component, components));
+    const node = document.definition.nodes.find((item) => item.id === id);
+    return { label: nodeName(document, components, id), items: [
+      { key: "rename", label: "Rename", icon: Pencil, run: () => onRename?.(id) },
+      { key: "configure", label: "Configure", icon: SlidersHorizontal, run: () => (onConfigure ?? onSelect)(id) },
+      { key: "after", label: "Add after", icon: Plus, separated: true,
+        blocked: node?.kind === "output" ? "Evidence output is the last step."
+          : after.length ? undefined : "No step takes this step's output.",
+        submenu: stepMenu("Add after", after, (component) => applied(addAfter(document, id, component, components)),
+          "No step takes this step's output.") },
+      { key: "duplicate", label: "Duplicate", icon: Copy, blocked: duplicateBlocker(document.definition, id, components),
+        run: () => applied(duplicateNode(document, id, components)) },
+      { key: "disconnect", label: "Disconnect", icon: Unlink, blocked: connected ? undefined : "This step has no connections.",
+        run: () => onChange(disconnectNode(document, id)) },
+      { key: "delete", label: "Delete", icon: Trash2, destructive: true, separated: true,
+        run: () => { onChange(removeElements(document, { nodeIds: [id] })); onSelect(undefined); } },
+    ] };
+  };
+  // Touch has no right button: holding still on the canvas opens the same menu.
+  const press = useRef<{ timer?: number; x: number; y: number; target: Element; fired: boolean }>(undefined);
+  const targetAt = (element: Element | null, clientX: number, clientY: number): MenuTarget | undefined => {
+    const node = element?.closest(".react-flow__node")?.getAttribute("data-id");
+    if (node) return { kind: "node", id: node };
+    const edge = element?.closest(".react-flow__edge")?.getAttribute("data-id");
+    const link = edge ? document.definition.edges.find((item) => edgeId(item) === edge) : undefined;
+    if (link) return { kind: "edge", link: { source: link.source, target: link.target } };
+    if (element?.closest(".react-flow__pane")) return { kind: "pane", position: placeAt(clientX, clientY) };
+  };
+  const contextMenuAt = (event: { clientX: number; clientY: number; preventDefault: () => void }, target: MenuTarget) => {
+    if (readOnly) return;
+    event.preventDefault();
+    // A touch device may report its own long-press after ours; one gesture opens one menu.
+    if (press.current) {
+      window.clearTimeout(press.current.timer);
+      if (press.current.fired) return;
+      press.current.fired = true;
+    }
+    openMenu(event.clientX, event.clientY, target);
+  };
+  const endPress = () => { if (press.current) window.clearTimeout(press.current.timer); };
   const drop = (event: DragEvent) => {
     event.preventDefault();
     if (readOnly || !flow) return;
-    // Center the card under the exact pointer, then snap only its corner to the grid.
-    const center = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }, { snapToGrid: false });
-    const position = { x: center.x - NODE_SIZE.width / 2, y: center.y - NODE_SIZE.height / 2 };
-    onAdd(
-      event.dataTransfer.getData("application/off-key-component"),
-      snapToGrid
-        ? { x: Math.round(position.x / SNAP_GRID[0]) * SNAP_GRID[0], y: Math.round(position.y / SNAP_GRID[1]) * SNAP_GRID[1] }
-        : position,
-    );
+    onAdd(event.dataTransfer.getData("application/off-key-component"), placeAt(event.clientX, event.clientY));
   };
   return (
     <div
       className="pl-canvas-wrap"
       aria-label="Pipeline graph"
+      onKeyDown={(event) => {
+        // The menu key, or Shift+F10, opens a focused card's or wire's menu.
+        if (readOnly || !(event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey))) return;
+        const element = event.target as Element;
+        const box = element.getBoundingClientRect();
+        const target = targetAt(element, box.left + box.width / 2, box.top + box.height / 2);
+        if (!target || target.kind === "pane") return;
+        event.preventDefault();
+        openMenu(box.left + Math.min(box.width / 2, 48), box.top + Math.min(box.height / 2, 32), target);
+      }}
+      onPointerDown={(event) => {
+        if (readOnly || event.pointerType !== "touch") return;
+        endPress();
+        const target = event.target as Element;
+        const { clientX: x, clientY: y } = event;
+        press.current = { x, y, target, fired: false, timer: window.setTimeout(() => {
+          const aimed = targetAt(target, x, y);
+          if (!aimed || !press.current || press.current.fired) return;
+          press.current.fired = true;
+          openMenu(x, y, aimed);
+        }, LONG_PRESS_MS) };
+      }}
+      onPointerMove={(event) => {
+        const current = press.current;
+        if (current && !current.fired && Math.hypot(event.clientX - current.x, event.clientY - current.y) > LONG_PRESS_SLOP) endPress();
+      }}
+      onPointerUp={endPress}
+      onPointerCancel={endPress}
+      onClickCapture={(event) => {
+        // Lifting the finger after a long-press does not also select or connect.
+        if (press.current?.fired) { event.stopPropagation(); event.preventDefault(); }
+        press.current = undefined;
+      }}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -318,7 +443,10 @@ export default function PipelineCanvas({
           colorMode={resolvedTheme}
           minZoom={0.01}
           maxZoom={2}
-          onMoveStart={() => setOpenWire(undefined)}
+          onMoveStart={() => { setOpenWire(undefined); setContextMenu(undefined); }}
+          onPaneContextMenu={readOnly ? undefined : (event) => contextMenuAt(event, { kind: "pane", position: placeAt(event.clientX, event.clientY) })}
+          onNodeContextMenu={readOnly ? undefined : (event, node) => contextMenuAt(event, { kind: "node", id: node.id })}
+          onEdgeContextMenu={readOnly ? undefined : (event, edge) => contextMenuAt(event, { kind: "edge", link: { source: edge.source, target: edge.target } })}
           onMoveEnd={(_event, viewport) => setZoom(viewport.zoom)}
           snapToGrid={snapToGrid}
           snapGrid={SNAP_GRID}
@@ -487,6 +615,11 @@ export default function PipelineCanvas({
         </ReactFlow>
         </WireActionsContext.Provider>
       </div>
+      {shownMenu && <PipelineContextMenu x={shownMenu.x} y={shownMenu.y} menu={menuFor(shownMenu.target)}
+        onClose={(restore) => {
+          setContextMenu(undefined);
+          if (restore && shownMenu.returnFocus instanceof HTMLElement) shownMenu.returnFocus.focus({ preventScroll: true });
+        }} />}
       {(feedback || blocked) && (
         <p className="pl-canvas-feedback" role="status">
           {feedback || "Space components apart to show blocked connections."}

@@ -66,6 +66,15 @@ skips it. Cheap checks run first: backend, infrastructure, collection,
 observability, image and RADAR jobs wait for `lint`, and the deployment rehearsals
 also wait for `frontend`.
 
+`make -C infra check-deploy` runs each infrastructure test in a worker process of
+its own, one per processor (`infra/tests/run_suite.py`). A class with a shared
+fixture stays whole, and the run fails unless every discovered test ran. From
+`infra`, `python -m unittest discover -s tests` is the serial equivalent.
+
+Each rehearsal lane ends by reporting where its deployments spent their time:
+Ansible task names and durations only, as the production deployment log prints
+them, and the duration of the readiness checks between them.
+
 ### Image builds
 
 On pull requests, the merge queue and manual runs, the `images` job builds each

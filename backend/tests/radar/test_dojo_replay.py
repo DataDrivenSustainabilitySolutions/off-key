@@ -32,6 +32,10 @@ from sqlalchemy import func, select, update
 from tests.support.pipelines import quick
 
 START = datetime(2026, 3, 1, tzinfo=UTC)
+# Above anything a test process holds. Past 80 % of its limit the processor
+# collects garbage on every message, and a whole pytest session is larger than
+# a worker: a worker-sized limit made each replay here take minutes.
+MEMORY_LIMIT_MB = 16384
 
 
 def execution(strategy="adaptive_stream", definition=None):
@@ -51,7 +55,9 @@ def execution(strategy="adaptive_stream", definition=None):
 def replay(strategy="adaptive_stream", alignment=None, definition=None):
     return Replay(
         detection_config(
-            execution(strategy, definition), alignment or RunAlignment(), 512
+            execution(strategy, definition),
+            alignment or RunAlignment(),
+            MEMORY_LIMIT_MB,
         )
     )
 

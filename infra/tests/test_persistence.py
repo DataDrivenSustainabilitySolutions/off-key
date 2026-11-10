@@ -150,6 +150,74 @@ class PersistenceTests(unittest.TestCase):
                     (Path(directory) / "stack/recovery-pending.json").exists()
                 )
 
+    def test_restore_adds_the_foreign_keys_of_ordinary_tables_last(self):
+        # The post-data entries of a backup as `pg_restore --list` prints them.
+        index = "4201; 1259 18001 INDEX public idx_anomaly_timestamp_desc fixture"
+        to_hypertable = (
+            "4202; 2606 18002 FK CONSTRAINT public anomaly_identity "
+            "fk_anomaly_identity_anomaly fixture"
+        )
+        to_table = "4203; 2606 18003 FK CONSTRAINT public users users_role_fkey fixture"
+        of_hypertable = (
+            "4204; 2606 18004 FK CONSTRAINT public samples samples_device_fkey fixture"
+        )
+        of_chunk = (
+            "4205; 2606 18005 FK CONSTRAINT _timescaledb_internal _hyper_4_5_chunk "
+            "5_1_samples_device_fkey fixture"
+        )
+        timescaledb_tables = [
+            "public anomalies",
+            "public samples",
+            "_timescaledb_internal _hyper_4_5_chunk",
+        ]
+        for ordinary in ([to_hypertable, to_table], []):
+            with (
+                self.subTest(ordinary=ordinary),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                as_dumped = ["; Selected TOC Entries:", index, of_hypertable, of_chunk]
+                result, _, commands = self.run_cutover(
+                    directory,
+                    RESTORE_ENTRIES="\n".join(as_dumped[:2] + ordinary + as_dumped[2:]),
+                    TIMESCALEDB_TABLES="\n".join(timescaledb_tables),
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                root = Path(directory)
+                self.assertEqual(
+                    (root / "restore-first.list").read_text().splitlines(), as_dumped
+                )
+                steps = [
+                    "post_restore"
+                    if any("timescaledb_post_restore" in part for part in command)
+                    else " ".join(
+                        part
+                        for part in command
+                        if part.startswith(("--section", "--list", "PGOPTIONS", "/tmp"))
+                    )
+                    for command in commands
+                    if "pg_restore" in command
+                    or any("timescaledb_post_restore" in part for part in command)
+                ]
+                # TimescaleDB is active for the last entries alone, and the
+                # background jobs stay stopped until every key is back.
+                last = "PGOPTIONS=-c timescaledb.restoring=off /tmp/restore-last.list"
+                self.assertEqual(
+                    steps,
+                    [
+                        "--section=pre-data --section=data",
+                        "--section=post-data --list",
+                        "/tmp/restore-first.list",
+                        *([last] if ordinary else []),
+                        "post_restore",
+                    ],
+                )
+                if ordinary:
+                    self.assertEqual(
+                        (root / "restore-last.list").read_text().splitlines(), ordinary
+                    )
+                else:
+                    self.assertFalse((root / "restore-last.list").exists())
+
     def test_ephemeral_mount_must_be_unconfigured_and_image_defined(self):
         invalid_mounts = (
             {"CONFIGURED_MOUNT": "1"},

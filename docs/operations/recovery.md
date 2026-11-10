@@ -121,6 +121,15 @@ sessions revoked after the backup was taken cannot come back. Everyone signs in
 again. Passwords, roles and invitations return to their state at backup time, so
 review accounts changed since then.
 
+Alarms live in a TimescaleDB hypertable, and each one's public identifier refers to
+it by a foreign key. The restore adds the foreign keys of ordinary tables last, with
+TimescaleDB active for that step alone and its background jobs still stopped, so the
+key is checked against every chunk of alarms before retention can delete one. An
+earlier restore added that key with everything else and stopped at
+`postgres | restore each database` as soon as the backup held one alarm. Such a
+backup is complete: only the restore changed, so restore it with the current
+playbooks.
+
 Each PostgreSQL/EMQX backup publishes `manifest.json` last, after every expected
 artifact has reached the control host. The manifest records the service, timestamp,
 exact artifact names and SHA-256 checksums. Restore verifies every listed artifact

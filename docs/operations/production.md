@@ -71,7 +71,9 @@ The `deployment-smoke` CI lanes run the existing browser and adaptive-monitor jo
 disposable Swarm using the production frontend, TLS/authenticated MQTT and deployment
 tasks. PRs build production images; on main both smoke lanes start only after the
 same run's `publish` job pushed the images, and they test those digests before making
-them eligible for deployment. Synthetic accounts, saved catalog definitions,
+them eligible for deployment. The restore test creates its own state on the fresh
+Swarm: synthetic accounts with a custom role, a remembered session and a pending
+invitation, favourites, manual alarms a week apart, saved catalog definitions,
 telemetry and a running monitor must survive actual database backup/restore and
 repeated deployment, with exactly one restarted monitor and resumed collection.
 

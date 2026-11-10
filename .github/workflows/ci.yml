@@ -477,9 +477,9 @@ jobs:
       cache-scope-prefix: docker-publish
       cache-fallback-scope-prefix: docker-validate
 
-  # Two disposable Swarms run in parallel. The rehearsal lane keeps the original
-  # order (browser journeys, then backup restore and binary rollback over the state
-  # they leave); the pipelines lane runs the adaptive monitor and visual pipelines.
+  # Two disposable Swarms run in parallel. The rehearsal lane runs every deployment
+  # test: the adaptive monitor, then backup restore and binary rollback over state
+  # the restore test creates itself. The browser lane runs every browser journey.
   deployment-smoke:
     name: deployment-smoke (${{ matrix.lane }})
     needs: [changes, lint, frontend, images, publish]
@@ -498,12 +498,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - lane: rehearsal
-            # Every other deployment test, so a new one cannot fall between lanes.
-            deployment-tests: --ignore=backend/tests/contracts/test_adaptive_lane_e2e.py
-          - lane: pipelines
-            deployment-tests: backend/tests/contracts/test_adaptive_lane_e2e.py
+        lane: [rehearsal, browser]
     env:
       ANSIBLE_CONFIG: ${{ github.workspace }}/infra/ansible/ansible.cfg
 
@@ -566,28 +561,13 @@ jobs:
           docker swarm init > /dev/null
           uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare --directory "$OFFKEY_REHEARSAL_DIR"
 
-      - name: Run existing browser journeys against the production frontend
+      - name: Sign the operator in once for the deployment tests
         if: matrix.lane == 'rehearsal'
-        timeout-minutes: 12
-        run: |
-          set -euo pipefail
-          # Exercise the operator-disabled compatibility path before the visual lane.
-          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
-          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
-          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
-          docker run --rm --network host --ipc host \
-            --volume "${PWD}/frontend:/work" \
-            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
-            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
-            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
-
-      - name: Sign the operator in once for the pipelines lane
-        if: matrix.lane == 'pipelines'
         timeout-minutes: 5
         run: |
           set -euo pipefail
           # auth-setup accepts the operator invitation and saves the remembered session
-          # that the deployment tests and every visual journey below reuse.
+          # that the deployment tests below take their access token from.
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
@@ -613,8 +593,9 @@ jobs:
         with:
           run: uv run --frozen --project infra python infra/tests/swarm_smoke.py prepare-rollback --directory "$OFFKEY_REHEARSAL_DIR" --reference-repository "$GITHUB_WORKSPACE/.tmp/compatible-release-source"
 
-      # Rehearsal lane: backup restoration and compatible binary rollback; pipelines lane: adaptive monitoring.
-      - name: Verify this lane's deployment tests
+      # Adaptive monitoring, then backup restoration and compatible binary rollback.
+      - name: Verify every deployment test
+        if: matrix.lane == 'rehearsal'
         timeout-minutes: 25
         env:
           RUN_ADAPTIVE_E2E: "1"
@@ -638,11 +619,27 @@ jobs:
           export E2E_MQTT_USERNAME=offkey-radar
           E2E_MQTT_PASSWORD="$(python3 -c 'import json, os; from pathlib import Path; print(json.loads((Path(os.environ["OFFKEY_REHEARSAL_DIR"])/"inputs.json").read_text())["mqtt_radar_password"])')"
           export E2E_MQTT_PASSWORD
-          uv run --frozen --project backend python -m pytest -m deployment ${{ matrix.deployment-tests }} -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
-          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment ${{ matrix.lane }}"
+          # The marker alone selects them, so a new deployment test cannot fall outside this lane.
+          uv run --frozen --project backend python -m pytest -m deployment -q --tb=short --junitxml="$OFFKEY_REHEARSAL_DIR/deployment-results.xml"
+          python3 .github/scripts/require_executed_tests.py "$OFFKEY_REHEARSAL_DIR/deployment-results.xml" "deployment"
+
+      - name: Run existing browser journeys against the production frontend
+        if: matrix.lane == 'browser'
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          # Exercise the operator-disabled compatibility path before the visual pipelines.
+          docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=false offkey-smoke_tactic > /dev/null
+          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
+          playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          docker run --rm --network host --ipc host \
+            --volume "${PWD}/frontend:/work" \
+            --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
+            --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
 
       - name: Verify visual pipelines against the production frontend and worker
-        if: matrix.lane == 'pipelines'
+        if: matrix.lane == 'browser'
         timeout-minutes: 15
         run: |
           set -euo pipefail
@@ -650,23 +647,25 @@ jobs:
           docker service update --detach=false --env-add TACTIC_PIPELINE_AUTHORING_ENABLED=true offkey-smoke_tactic > /dev/null
           curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8001/ready > /dev/null
           playwright_version="$(node -p "require('./frontend/node_modules/@playwright/test/package.json').version")"
+          # Playwright empties its output folder before a run; a folder of their own
+          # keeps the evidence of the journeys above next to that of these.
           docker run --rm --network host --ipc host \
             --volume "${PWD}/frontend:/work" \
             --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" \
-            npm run test:e2e:pipelines
+            npm run test:e2e:pipelines -- --output=test-results/pipelines
 
       - name: Save shared parameter editor evidence
-        if: always()
+        if: always() && matrix.lane == 'browser'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: parameter-editor-${{ matrix.lane }}
+          name: parameter-editor
           path: frontend/test-results/**/parameter-*.png
           if-no-files-found: ignore
 
       - name: Save visual language review evidence
-        if: always() && matrix.lane == 'pipelines'
+        if: always() && matrix.lane == 'browser'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pipeline-visual-language

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Anomaly detection for sensor telemetry and digital data streams. Turn streaming data into evidence of change.">
   <meta name="theme-color" content="#08090a">
-  <title>Anomaly detection · Aberration</title>
+  <title>Aberration</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
   <link rel="alternate" type="text/markdown" href="/index.md" title="Aberration as Markdown">
   <link rel="describedby" type="text/plain" href="/llms.txt" title="llms.txt">
@@ -873,15 +873,22 @@
     .hero { color:#141615; background:#ededeb; overflow:hidden; }
     .hero-photo { position:relative; margin:0; height:auto; min-height:0; aspect-ratio:1942 / 809; overflow:hidden; background:#ededeb; }
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:center top; }
-    .hero-photo .hero-photo--pipes { position:absolute; inset:0; opacity:0; }
+    .hero-photo .hero-photo--pipes, .hero-photo .hero-photo--conveyor { position:absolute; inset:0; opacity:0; }
     .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:50px; background:linear-gradient(transparent,#ededeb); }
-    @keyframes hero-crossfade {
-      0%,40% { opacity:0; }
-      50%,90% { opacity:1; }
+    /* Eight seconds per photograph, with two-second fades in a thirty-second loop.
+       Pipes fade out only after the conveyor is opaque, avoiding a three-way blend. */
+    @keyframes hero-pipes-crossfade {
+      0%,26.6667%,73.3333%,100% { opacity:0; }
+      33.3333%,66.6667% { opacity:1; }
+    }
+    @keyframes hero-conveyor-crossfade {
+      0%,60% { opacity:0; }
+      66.6667%,93.3333% { opacity:1; }
       100% { opacity:0; }
     }
     @media (prefers-reduced-motion:no-preference) {
-      .hero-photo--pipes { animation:hero-crossfade 20s ease-in-out infinite; }
+      .hero-photo--pipes { animation:hero-pipes-crossfade 30s ease-in-out infinite; }
+      .hero-photo--conveyor { animation:hero-conveyor-crossfade 30s ease-in-out infinite; }
     }
     .hero-title { position:relative; text-align:center; padding:18px 32px 46px; }
     .hero-title > .mono { margin:0 0 17px; color:#656864; font-size:9px; letter-spacing:.12em; }
@@ -951,10 +958,11 @@
     </section>
 
 <section class="hero" aria-labelledby="headline">
-  {% from 'landing-hero.b64.j2' import hero_bridge, hero_pipes %}
+  {% from 'landing-hero.b64.j2' import hero_bridge, hero_pipes, hero_conveyor %}
   <figure class="hero-photo">
     <img src="{{ hero_bridge }}" width="1942" height="809" fetchpriority="high" alt="Generated photograph looking along the underside of a steel bridge.">
     <img class="hero-photo--pipes" src="{{ hero_pipes }}" width="1944" height="809" decoding="async" alt="Generated photograph looking along an overhead industrial pipe rack.">
+    <img class="hero-photo--conveyor" src="{{ hero_conveyor }}" width="1942" height="809" decoding="async" alt="Generated photograph looking along the underside of a powered roller conveyor.">
   </figure>
   <div class="hero-title">
     <p class="mono">Anomaly detection for physical &amp; digital systems</p>

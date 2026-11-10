@@ -2,9 +2,12 @@
 apiVersion: 1
 providers:
   - name: aberration
+    orgId: 1
     folder: Aberration
     type: file
     disableDeletion: true
     allowUiUpdates: false
+    # Poll mounted configs; filesystem change notifications are not portable.
+    updateIntervalSeconds: 30
     options:
       path: /etc/grafana/dashboards

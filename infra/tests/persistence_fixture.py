@@ -46,10 +46,14 @@ elif a[:2] == ['service', 'ls']:
     else:
         print('fixture services')
 elif a[:2] == ['service', 'scale']:
-    name, replicas = a[2].split('=')
-    if int(replicas) and name == os.environ.get('SCALE_FAIL_SERVICE'):
-        sys.exit(1)
-    state['replicas'][name] = int(replicas)
+    assert a[2] == '--detach=false', a
+    for assignment in a[3:]:
+        name, replicas = assignment.split('=')
+        if int(replicas) and name == os.environ.get('SCALE_FAIL_SERVICE'):
+            sys.exit(1)
+        state['replicas'][name] = int(replicas)
+        # A later rejected update must preserve earlier accepted updates.
+        state_file.write_text(json.dumps(state))
 elif a[:2] == ['service', 'ps']:
     name = next(v for v in a[2:] if v in state['replicas'])
     if '--quiet' in a:

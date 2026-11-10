@@ -469,7 +469,9 @@ class ReleaseTests(unittest.TestCase):
         tasks = yaml.safe_load(
             (ROOT / "ansible/roles/stack_deploy/tasks/main.yml").read_text()
         )
-        included = [step.get("include_tasks") for step in tasks]
+        full_cutover = next(step for step in tasks if "block" in step)
+        self.assertIn("not", full_cutover["when"])
+        included = [step.get("include_tasks") for step in full_cutover["block"]]
         position = included.index("replaced.yml")
         self.assertEqual(included[position + 1], "apply.yml")
         self.assertNotIn("apply.yml", included[:position])
@@ -499,7 +501,16 @@ class ReleaseTests(unittest.TestCase):
         )
         release_steps, *setup = tasks
         self.assertEqual(
-            [step["name"] for step in release_steps["block"][-3:]],
+            [
+                step["name"]
+                for step in release_steps["block"]
+                if step["name"]
+                in {
+                    "End application maintenance after successful verification",
+                    "Record the successfully verified release",
+                    "Remove the completed release operation record",
+                }
+            ],
             [
                 "End application maintenance after successful verification",
                 "Record the successfully verified release",
@@ -539,6 +550,43 @@ class ReleaseTests(unittest.TestCase):
             self.assertRaisesRegex(ValueError, "belongs to"),
         ):
             release.pin("ghcr.io/example/api:latest", revision)
+
+    def test_reused_image_is_checked_against_its_proven_source_at_the_pinned_digest(
+        self,
+    ):
+        revision, source = "a" * 40, "b" * 40
+        digest = "sha256:" + "c" * 64
+        with patch.object(
+            release,
+            "inspect",
+            side_effect=[
+                {"digest": digest},
+                {
+                    "architecture": "amd64",
+                    "config": {"Labels": {"org.opencontainers.image.revision": source}},
+                },
+            ],
+        ) as inspect:
+            pinned = release.pin("ghcr.io/example/api:latest", revision, source)
+        self.assertEqual(pinned, f"ghcr.io/example/api:sha-aaaaaaa@{digest}")
+        self.assertEqual(inspect.call_args.args, (pinned, "Image"))
+        with (
+            patch.object(
+                release,
+                "inspect",
+                side_effect=[
+                    {"digest": digest},
+                    {
+                        "architecture": "amd64",
+                        "config": {
+                            "Labels": {"org.opencontainers.image.revision": revision}
+                        },
+                    },
+                ],
+            ),
+            self.assertRaisesRegex(ValueError, "belongs to"),
+        ):
+            release.pin("ghcr.io/example/api:latest", revision, source)
 
     def test_convergence_probe_reaches_docker_with_supported_cli_options(self):
         # Exercise the real CLI parser without connecting to any Docker daemon.

@@ -100,6 +100,10 @@ class TaskTimingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / "inputs.json").write_text("{}")
+            (directory / "stack").mkdir()
+            (directory / "stack/validation.json").write_text(
+                '{"deployment_secret_names": {}}'
+            )
             with patch.object(swarm_smoke, "run", side_effect=run):
                 swarm_smoke.report(directory, "Initial deployment")
                 swarm_smoke.deploy(directory, "apply")

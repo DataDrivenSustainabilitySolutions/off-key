@@ -17,7 +17,9 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 
-from support import ROOT, run
+from support import ROOT, load_script, run
+
+image_sources = load_script("image_sources")
 
 COMPATIBLE_REVISION = "b03157ece337fd42a427e8eb26b4364b67942a53"
 REGISTRY = "offkey-smoke-registry"
@@ -104,9 +106,16 @@ def image_reference(service, revision):
 
 def build_arguments(service, source, revision, project):
     """The one set of image inputs every pre-release CI job tests."""
+    image_revision = revision
+    if revision != COMPATIBLE_REVISION:
+        image_revision = image_sources.source_revision(service, revision, project)
     args = [
         "--label",
-        f"org.opencontainers.image.revision={revision}",
+        f"org.opencontainers.image.revision={image_revision}",
+        "--label",
+        "org.opencontainers.image.source=https://github.com/DataDrivenSustainabilitySolutions/off-key",
+        "--label",
+        f"org.opencontainers.image.version=sha-{image_revision}",
         "-t",
         image_reference(service, revision),
     ]
@@ -122,7 +131,7 @@ def build_arguments(service, source, revision, project):
         "--build-arg",
         f"SERVICE_ROOT={source}",
         "--build-arg",
-        f"GIT_COMMIT={revision}",
+        f"GIT_COMMIT={image_revision}",
         str(Path(project) / "backend"),
     ]
 
@@ -163,19 +172,22 @@ def build_local_images(release, revision, project):
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         release["images"].update(pool.map(build, BUILDS.items()))
+    if revision != COMPATIBLE_REVISION:
+        release["image_revisions"] = image_sources.revisions(revision, project)
 
 
 def loaded_identities(revision):
     """Image IDs of this revision's loaded images; each must carry its revision."""
     identities = {}
+    sources = image_sources.revisions(revision)
     for name, (service, _) in BUILDS.items():
         reference = image_reference(service, revision)
         data = json.loads(run("docker", "image", "inspect", reference).stdout)[0]
         label = (data["Config"].get("Labels") or {}).get(
             "org.opencontainers.image.revision"
         )
-        if label != revision:
-            raise ValueError(f"{name} image belongs to {label}, not {revision}")
+        if label != sources[name]:
+            raise ValueError(f"{name} image belongs to {label}, not {sources[name]}")
         identities[name] = {"reference": reference, "image_id": data["Id"]}
     return identities
 
@@ -274,6 +286,7 @@ def compatible_release(directory, project, reference_repository=None):
     source = archive_compatible_source(directory, reference_repository or project)
     validate_compatible_source(source, project)
     release = deepcopy(current)
+    release.pop("image_revisions", None)
     build_local_images(release, COMPATIBLE_REVISION, source)
     release["application_revision"] = COMPATIBLE_REVISION
     (directory / "compatible-release.json").write_text(
@@ -391,13 +404,14 @@ def release_model(base, release):
 
 def image_identities(release):
     identities = {}
+    sources = image_sources.expected_revisions(release)
     for name in BUILDS:
         reference = release["images"][name]
         data = json.loads(run("docker", "image", "inspect", reference).stdout)[0]
         revision = (
             data["Config"].get("Labels", {}).get("org.opencontainers.image.revision")
         )
-        if revision != release["application_revision"]:
+        if revision != sources[name]:
             raise ValueError(
                 f"{name} image belongs to {revision}, not the selected release"
             )

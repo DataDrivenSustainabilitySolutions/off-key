@@ -41,3 +41,13 @@
         name: stack_deploy
         tasks_from: verify
       when: rehearsal_phase == 'verify'
+
+    - name: Exercise static updates with unchanged production workers
+      when: rehearsal_phase == 'static'
+      block:
+        - include_role:
+            name: stack_deploy
+            tasks_from: static_apply
+        - include_role:
+            name: stack_deploy
+            tasks_from: verify

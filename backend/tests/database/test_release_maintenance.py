@@ -18,6 +18,7 @@ from off_key_core.db.migrate import (
     apply_migrations,
     migration_files,
     migration_status,
+    verify_migrations,
 )
 from off_key_core.db.models import (
     Charger,
@@ -72,6 +73,24 @@ class _Preflight:
 
 def test_migration_history_is_the_expected_sequence():
     assert tuple(migration_files()) == EXPECTED_MIGRATIONS
+
+
+def test_read_only_schema_verification_requires_a_complete_existing_ledger(
+    disposable_database,
+):
+    with disposable_database.begin() as connection:
+        before = inspect(connection).get_table_names()
+        with pytest.raises(ValueError, match="ledger is missing"):
+            verify_migrations(connection)
+        assert inspect(connection).get_table_names() == before
+        apply_migrations(connection)
+        assert verify_migrations(connection)["pending"] == []
+        connection.execute(
+            text("DELETE FROM off_key_schema_migrations WHERE version = :version"),
+            {"version": EXPECTED_MIGRATIONS[-1]},
+        )
+        with pytest.raises(ValueError, match="fully applied"):
+            verify_migrations(connection)
 
 
 def test_template_migration_preserves_existing_designs(disposable_database):
@@ -673,6 +692,24 @@ async def test_monitor_cutover_blocks_writes_preserves_intent_and_resumes_once(
             worker.operational_stage = "waiting_for_data"
             await session.commit()
             await deployment.finish(session, revision)
+            await lock_collection_configuration(session)
+            await require_application_writes(session)
+            await session.rollback()
+            # Static releases use the same durable reservation, without stopping
+            # or replacing the already healthy monitor that survived cutover.
+            static_revision = "b" * 40
+            await deployment.reserve(session, static_revision)
+            async with AsyncSession(engine) as competitor:
+                await lock_collection_configuration(competitor)
+                with pytest.raises(DeploymentInProgressError):
+                    await require_application_writes(competitor)
+                await competitor.rollback()
+            with pytest.raises(ValueError, match="different release"):
+                await deployment.reserve(session, "c" * 40)
+            await session.rollback()
+            await deployment.finish_static(session, static_revision)
+            assert len(created) == 1
+            assert await session.get(MonitoringService, replacement) is not None
             await lock_collection_configuration(session)
             await require_application_writes(session)
             await session.rollback()

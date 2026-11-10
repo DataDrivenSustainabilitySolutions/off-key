@@ -18,6 +18,15 @@ from rehearsal_releases import (
 
 
 class RehearsalReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(
+            patch.object(
+                rehearsal_releases.image_sources,
+                "source_revision",
+                side_effect=lambda name, revision, project=None: revision,
+            )
+        )
+
     def test_current_builds_only_read_caches_and_rollback_writes_its_own_scope(self):
         current = rehearsal_releases.build_cache_options(
             "off-key-api-gateway", "a" * 40
@@ -286,6 +295,13 @@ class CiImageTests(unittest.TestCase):
     """One build per run; consumers use only the exact images that build produced."""
 
     def setUp(self):
+        self.enterContext(
+            patch.object(
+                rehearsal_releases.image_sources,
+                "source_revision",
+                side_effect=lambda name, revision, project=None: revision,
+            )
+        )
         self.ids = {
             service: "sha256:" + format(index, "x") * 64
             for index, (service, _) in enumerate(
@@ -430,6 +446,13 @@ class CiImageTests(unittest.TestCase):
     def test_ci_rehearsals_never_rebuild_the_current_images(self):
         import swarm_smoke
 
+        self.enterContext(
+            patch.object(
+                swarm_smoke,
+                "revisions",
+                return_value=dict.fromkeys(rehearsal_releases.BUILDS, REVISION),
+            )
+        )
         release = {"images": {}}
         for environment, expected in (
             ({"CI": "true", "OFFKEY_REHEARSAL_IMAGES": "loaded"}, "push_loaded_images"),

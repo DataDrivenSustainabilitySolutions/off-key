@@ -205,6 +205,7 @@ async def reserve(session, revision: str) -> dict:
             "previous_id": service.id,
             "workload_id": service.container_id,
             "config": service.launch_config,
+            "active": service.stop_requested_at is None,
             "stopped": False,
             "replacement_id": None,
         }
@@ -327,35 +328,91 @@ async def verify_restarted(session, revision: str, *, lock: bool = False) -> dic
     for monitor in operation.monitors:
         if monitor["config"] is None:
             continue
-        statement = (
-            select(PipelineRun)
-            .where(PipelineRun.service_id == monitor["replacement_id"])
-            .execution_options(populate_existing=True)
+        await verify_monitor(session, monitor["replacement_id"], lock=lock)
+    return {"verified": len(operation.monitors)}
+
+
+async def verify_monitor(session, service_id, *, lock: bool = False):
+    statement = (
+        select(PipelineRun)
+        .where(PipelineRun.service_id == service_id)
+        .execution_options(populate_existing=True)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    run = await session.scalar(statement)
+    service = await session.get(
+        MonitoringService,
+        service_id,
+        with_for_update=lock,
+        populate_existing=True,
+    )
+    if (
+        run is None
+        or run.ended_at is not None
+        or run.status == "failed"
+        or service is None
+        or not service.status
+        or service.operational_updated_at is None
+        or heartbeat_age_seconds(service.operational_updated_at)
+        > RUNTIME_STATUS_STALE_AFTER_SECONDS
+        or service.operational_stage in {"failed", "stopped", "degraded"}
+    ):
+        raise ValueError("A restarted monitor is not reporting healthy runtime status")
+
+
+async def verify_active(session) -> dict:
+    services = (
+        await session.scalars(
+            select(MonitoringService.id).where(
+                monitor_claim_condition(),
+                MonitoringService.stop_requested_at.is_(None),
+            )
         )
-        if lock:
-            statement = statement.with_for_update()
-        run = await session.scalar(statement)
+    ).all()
+    for service_id in services:
+        await verify_monitor(session, service_id)
+    return {"verified": len(services)}
+
+
+async def finish_static(session, revision: str) -> dict:
+    """Complete the shared release reservation without stopping any monitor."""
+    await lock_collection_configuration(session)
+    operation = await session.get(DeploymentMaintenance, 1)
+    if (
+        operation is None
+        or operation.revision != revision
+        or operation.phase != "quiescing"
+    ):
+        raise ValueError("No matching unchanged static release reservation")
+    for monitor in operation.monitors:
+        if (
+            "active" not in monitor
+            or monitor["stopped"]
+            or monitor["replacement_id"] is not None
+        ):
+            raise ValueError("A static release cannot complete a monitor cutover")
+        if not monitor["active"]:
+            continue
         service = await session.get(
             MonitoringService,
-            monitor["replacement_id"],
-            with_for_update=lock,
+            monitor["previous_id"],
+            with_for_update=True,
             populate_existing=True,
         )
-        if (
-            run is None
-            or run.ended_at is not None
-            or run.status == "failed"
-            or service is None
-            or not service.status
-            or service.operational_updated_at is None
-            or heartbeat_age_seconds(service.operational_updated_at)
-            > RUNTIME_STATUS_STALE_AFTER_SECONDS
-            or service.operational_stage in {"failed", "stopped", "degraded"}
-        ):
+        if service is None:
             raise ValueError(
-                "A restarted monitor is not reporting healthy runtime status"
+                "An existing monitor is not reporting healthy runtime status"
             )
-    return {"verified": len(operation.monitors)}
+        if service.stop_requested_at is not None:
+            continue
+        await verify_monitor(session, monitor["previous_id"], lock=True)
+        if service.container_id != monitor["workload_id"]:
+            raise ValueError("A static release replaced an existing monitor worker")
+    operation.phase = "complete"
+    operation.updated_at = datetime.now(UTC)
+    await session.commit()
+    return {"phase": "complete"}
 
 
 async def finish(session, revision: str) -> dict:
@@ -428,21 +485,27 @@ async def run(action: str, revision: str) -> dict:
             # action that inspects workloads connects to it.
             workloads = RadarWorkloadManager(get_async_docker())
             return await capture_existing(session, workloads)
-        if action == "reserve":
-            return await reserve(session, revision)
-        if action == "verify":
+        actions = {
+            "reserve": reserve,
+            "finish": finish,
+            "finish-static": finish_static,
+            "abort": abort,
+        }
+        if action in actions:
+            return await actions[action](session, revision)
+        if action in {"verify", "verify-active"}:
             for attempt in range(60):
                 try:
-                    return await verify_restarted(session, revision)
+                    return await (
+                        verify_active(session)
+                        if action == "verify-active"
+                        else verify_restarted(session, revision)
+                    )
                 except ValueError:
                     await session.rollback()
                     if attempt == 59:
                         raise
                     await asyncio.sleep(5)
-        if action == "finish":
-            return await finish(session, revision)
-        if action == "abort":
-            return await abort(session, revision)
         if action == "status":
             operation = await session.get(DeploymentMaintenance, 1)
             return {
@@ -467,7 +530,9 @@ def main() -> None:
             "begin",
             "resume",
             "verify",
+            "verify-active",
             "finish",
+            "finish-static",
             "abort",
             "status",
         ],

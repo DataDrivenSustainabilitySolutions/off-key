@@ -11,10 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
-    """Import infra/scripts/<name>.py as a module, without touching sys.path."""
+    """Import a production script without leaving changes to the import path."""
     spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Production scripts can import their sibling modules just as they do when
+    # Python executes them directly from infra/scripts.
+    previous_path = sys.path[:]
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = previous_path
     return module
 
 

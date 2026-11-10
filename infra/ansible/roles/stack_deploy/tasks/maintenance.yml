@@ -88,9 +88,10 @@
       include_tasks: release_writers.yml
 
     - name: Stop writers before the database backup
-      command:
-        argv: [docker, service, scale, "{{ item }}=0"]
-      loop: "{{ release_writers }}"
+      include_role:
+        name: swarm_scale
+      vars:
+        swarm_scale_replicas: "{{ dict(release_writers | zip([0] * (release_writers | length))) }}"
 
     - name: Confirm every old writer has stopped
       include_role:

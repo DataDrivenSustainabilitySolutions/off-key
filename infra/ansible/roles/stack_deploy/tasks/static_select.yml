@@ -1,0 +1,47 @@
+---
+- name: Default to the complete production cutover
+  set_fact:
+    release_static_only: false
+
+- name: Find the last fully verified deployment baseline
+  command:
+    argv: [python3, '-', previous, "{{ stack_dir }}", "{{ stack_name }}"]
+    stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/static_release.py') }}"
+  register: static_previous
+  changed_when: false
+
+- name: Check changes since the verified deployment
+  when: static_previous.stdout | trim | length > 0
+  block:
+    - name: Compare every committed path since the verified deployment
+      command:
+        argv: [git, diff, --name-only, --no-renames, "{{ static_previous.stdout | trim }}", "{{ release.application_revision }}", --]
+      args:
+        chdir: "{{ playbook_dir }}/../.."
+      delegate_to: localhost
+      become: false
+      register: static_source_diff
+      changed_when: false
+      failed_when: false
+
+    - name: Require identical configuration and live service specs before a static update
+      command:
+        argv: [python3, '-', select, "{{ stack_dir }}", "{{ stack_name }}", "{{ static_source_diff.stdout_lines | to_json }}"]
+        stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/static_release.py') }}"
+      when: static_source_diff.rc == 0
+      register: static_decision
+      changed_when: false
+
+    - name: Check database maintenance without reserving or stopping monitors
+      include_tasks: monitor_job.yml
+      vars:
+        monitor_action: status
+      when: static_decision is not skipped and static_decision.stdout | from_json | length > 0
+
+    - name: Select a static update only when no database operation is pending
+      set_fact:
+        release_static_only: true
+      when:
+        - static_decision is not skipped
+        - static_decision.stdout | from_json | length > 0
+        - release_job_output.phase == 'complete'

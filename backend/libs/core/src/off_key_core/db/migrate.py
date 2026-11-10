@@ -196,6 +196,16 @@ def migration_status(
     }
 
 
+def verify_migrations(connection: Connection) -> dict:
+    """Require the complete checksum ledger without adopting or changing schema."""
+    if not inspect(connection).has_table(LEDGER):
+        raise ValueError("The verified migration ledger is missing")
+    status = migration_status(connection)
+    if status["pending"] or status["fresh"]:
+        raise ValueError("The target schema has not been fully applied")
+    return status
+
+
 def apply_migrations(
     connection: Connection, migrations: dict[str, str] | None = None
 ) -> dict:
@@ -249,15 +259,15 @@ def apply_migrations(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["status", "apply"])
+    parser.add_argument("action", choices=["status", "apply", "verify"])
     action = parser.parse_args().action
     try:
         with get_engine().begin() as connection:
-            result = (
-                migration_status(connection)
-                if action == "status"
-                else apply_migrations(connection)
-            )
+            result = {
+                "status": migration_status,
+                "apply": apply_migrations,
+                "verify": verify_migrations,
+            }[action](connection)
         print(json.dumps(result))
     except Exception:
         # SQL/driver errors can embed passwords and user data; keep them off CI logs.

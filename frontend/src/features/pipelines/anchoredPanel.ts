@@ -25,9 +25,9 @@ const MIN_HEIGHT = 240;
 
 /**
  * Where settings sit beside their card: below it, right of it, left of it or above it.
- * The side that covers nothing else wins, the tallest among those; when every side
- * covers some, the one covering least. Covering the card itself counts several times
- * over, so the settings never hide what they edit while another side has room. Below
+ * A side that leaves the card itself clear always beats one that covers it, even
+ * partly, so the settings never hide what they edit while another side has room. Among
+ * those, the side that covers least of everything else wins, the tallest on a tie. Below
  * comes first because a pipeline reads left to right, so its neighbours sit beside it.
  * `size.height` is the settings' height when given the whole area.
  */
@@ -46,11 +46,13 @@ export function placeBeside(card: Box, size: { width: number; height: number }, 
       const wanted = candidate.top ?? candidate.bottom - height;
       const top = Math.max(area.top, Math.min(wanted, area.bottom - height));
       const box = { left, top, right: left + width, bottom: top + height };
-      const covered = others.reduce((sum, other) => sum + overlap(box, other), 0) + 4 * overlap(box, card);
-      return { left, top, height, covered };
+      const hidden = overlap(box, card);
+      const covered = others.reduce((sum, other) => sum + overlap(box, other), 0);
+      return { left, top, height, hidden, covered };
     });
   const better = (a: typeof candidates[number], b: typeof candidates[number]) =>
-    a.covered !== b.covered ? a.covered < b.covered : a.height > b.height;
+    a.hidden !== b.hidden ? a.hidden < b.hidden
+      : a.covered !== b.covered ? a.covered < b.covered : a.height > b.height;
   const best = candidates.reduce((winner, candidate) => (better(candidate, winner) ? candidate : winner));
   return { left: best.left, top: best.top, maxHeight: best.height };
 }

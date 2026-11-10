@@ -32,4 +32,11 @@ describe("settings beside their card", () => {
     const placed = { left: spot.left, top: spot.top, right: spot.left + 340, bottom: spot.top + spot.maxHeight };
     expect(placed.right <= card.left || placed.left >= card.right || placed.bottom <= card.top || placed.top >= card.bottom).toBe(true);
   });
+
+  it("leave their own card clear near the edge, even if that covers more of the others", () => {
+    const card = box(300, 650);
+    const spot = placeBeside(card, panel, area, [box(400, 250), box(550, 550)]);
+    const placed = { left: spot.left, top: spot.top, right: spot.left + 340, bottom: spot.top + spot.maxHeight };
+    expect(placed.right <= card.left || placed.left >= card.right || placed.bottom <= card.top || placed.top >= card.bottom).toBe(true);
+  });
 });

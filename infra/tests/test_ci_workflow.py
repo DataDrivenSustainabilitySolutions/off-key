@@ -1,5 +1,6 @@
 """CI is one workflow whose single, stable gate job stands for every check."""
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -120,6 +121,8 @@ class CiWorkflowTests(unittest.TestCase):
             self.assertEqual(needs(self.jobs[name]), ["changes", "lint"])
         self.assertEqual(needs(self.jobs["lint"]), ["changes"])
         self.assertEqual(needs(self.jobs["frontend"]), ["changes"])
+        self.assertEqual(needs(self.jobs["frontend-browser"]), ["changes", "frontend"])
+        self.assertNotIn("frontend-browser", needs(self.jobs["deployment-smoke"]))
 
     def test_version_independent_checks_run_once(self):
         lint = [step.get("run", "") for step in self.jobs["lint"]["steps"]]
@@ -133,6 +136,54 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.jobs["collection"]["strategy"]["matrix"]["emqx"], ["5.8.7", "6.3.2"]
         )
+
+    def test_mocked_browser_rejects_a_changed_build_before_extracting_it(self):
+        step = next(
+            step
+            for step in self.jobs["frontend-browser"]["steps"]
+            if step.get("name") == "Verify and unpack the checked frontend"
+        )
+        self.assertEqual(
+            step["env"]["EXPECTED_SHA256"], "${{ needs.frontend.outputs.dist-sha256 }}"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            (directory / "frontend-build").mkdir()
+            (directory / "frontend").mkdir()
+            archive = directory / "frontend-build/frontend-dist.tar.gz"
+            archive.write_bytes(b"changed archive that must never reach tar")
+            env = os.environ | {
+                "RUNNER_TEMP": str(directory),
+                "GITHUB_WORKSPACE": str(directory),
+            }
+            for expected in ("", "0" * 64):
+                with self.subTest(expected=expected):
+                    result = run(
+                        "bash",
+                        "-c",
+                        step["run"],
+                        env=env | {"EXPECTED_SHA256": expected},
+                        check=False,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(list((directory / "frontend").iterdir()))
+            # A valid archive of this run's checked dist can be unpacked.
+            source = directory / "source/dist"
+            source.mkdir(parents=True)
+            (source / "index.html").write_text("checked build")
+            run("tar", "-C", source.parent, "-czf", archive, "dist")
+            run(
+                "bash",
+                "-c",
+                step["run"],
+                env=env
+                | {
+                    "EXPECTED_SHA256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                },
+            )
+            self.assertEqual(
+                (directory / "frontend/dist/index.html").read_text(), "checked build"
+            )
 
     def test_main_rehearses_the_images_this_run_published(self):
         smoke = self.jobs["deployment-smoke"]

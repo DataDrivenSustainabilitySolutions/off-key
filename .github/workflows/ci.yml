@@ -105,7 +105,7 @@ jobs:
         working-directory: infra
         run: |
           uv sync --frozen
-          uv run --frozen python -m unittest -v test_docs test_service_registry
+          uv run --frozen python -m unittest -v test_docs test_service_registry test_ci_workflow
         env:
           PYTHONPATH: tests
 
@@ -140,6 +140,8 @@ jobs:
     if: fromJSON(needs.changes.outputs.plan).frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      dist-sha256: ${{ steps.bundle.outputs.sha256 }}
 
     steps:
       - name: Checkout
@@ -174,6 +176,65 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Bundle the checked frontend
+        id: bundle
+        run: |
+          tar -C frontend -czf "$RUNNER_TEMP/frontend-dist.tar.gz" dist
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/frontend-dist.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Keep this run's checked frontend
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-build
+          path: ${{ runner.temp }}/frontend-dist.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  frontend-browser:
+    name: frontend browser
+    needs: [changes, frontend]
+    if: fromJSON(needs.changes.outputs.plan)['frontend-browser']
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download this run's checked frontend
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frontend-build
+          path: ${{ runner.temp }}/frontend-build
+
+      - name: Verify and unpack the checked frontend
+        env:
+          EXPECTED_SHA256: ${{ needs.frontend.outputs.dist-sha256 }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/frontend-build"
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          actual = hashlib.sha256(Path("frontend-dist.tar.gz").read_bytes()).hexdigest()
+          if actual != os.environ["EXPECTED_SHA256"]:
+              raise SystemExit("The frontend build differs from the one this run checked")
+          PY
+          tar -C "$GITHUB_WORKSPACE/frontend" -xzf frontend-dist.tar.gz
+
       - name: Run route-mocked browser journeys
         working-directory: frontend
         run: |
@@ -184,6 +245,18 @@ jobs:
           playwright_version="$(node -p "require('./node_modules/@playwright/test/package.json').version")"
           docker run --rm --network host --ipc host --volume "${PWD}:/work" --workdir /work --env CI=true \
             "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e:mocked
+
+      - name: Keep browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-browser-failure
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+            ${{ runner.temp }}/vite-preview.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   infrastructure:
     name: infrastructure
@@ -780,7 +853,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, lint, contracts, backend, frontend, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
+    needs: [changes, lint, contracts, backend, frontend, frontend-browser, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

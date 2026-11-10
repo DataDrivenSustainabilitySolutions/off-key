@@ -6,6 +6,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel
 
+from ..schemas.pipeline_versions import FIXED_SPLIT, component_learning
 from ..schemas.pipelines import (
     NodeKind,
     PipelineCatalog,
@@ -15,13 +16,19 @@ from ..schemas.pipelines import (
     PipelineStrategy,
     PipelineTemplate,
 )
+from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
-from .pipeline_parameters import PARAMETER_MODELS, POLICY_MODELS
+from .pipeline_parameters import CALIBRATION_MODELS, PARAMETER_MODELS, POLICY_MODELS
 from .static import STATIC_MODELS
 
 BOTH: list[PipelineStrategy] = list(get_args(PipelineStrategy))
+# Schema 2 policies: the calibration step combines the detectors.
+_POLICY_SCHEMAS: dict[str, type[BaseModel]] = {
+    "policy.martingale": StaticMartingaleConfig,
+    "policy.quantile": AdaptiveThresholdConfig,
+}
 
 
 @cache
@@ -208,6 +215,16 @@ def pipeline_components() -> list[PipelineComponent]:
             ["adaptive_stream"],
         ),
         (
+            FIXED_SPLIT,
+            "calibration",
+            "Fixed split",
+            (
+                "Freeze each detector's scores on the calibration window and rank "
+                "every later score against them."
+            ),
+            BOTH,
+        ),
+        (
             "policy.martingale",
             "policy",
             "Conformal alarm policy",
@@ -232,16 +249,18 @@ def pipeline_components() -> list[PipelineComponent]:
     result = []
     for identifier, kind, label, description, strategies in specifications:
         schema = _json_schema(
-            PARAMETER_MODELS.get(identifier) or POLICY_MODELS[identifier]
+            PARAMETER_MODELS.get(identifier)
+            or CALIBRATION_MODELS.get(identifier)
+            or _POLICY_SCHEMAS[identifier]
         )
         input_type = (
             None
             if kind == "source"
             else (
-                "p_values"
-                if identifier == "policy.martingale"
-                else "scores"
-                if identifier == "policy.quantile"
+                "scores"
+                if kind == "calibration"
+                else "p_values"
+                if kind == "policy"
                 else "decisions"
                 if kind == "output"
                 else "features"
@@ -252,6 +271,8 @@ def pipeline_components() -> list[PipelineComponent]:
             if kind == "policy"
             else "evidence"
             if kind == "output"
+            else "p_values"
+            if kind == "calibration"
             else "features"
         )
         result.append(
@@ -261,6 +282,7 @@ def pipeline_components() -> list[PipelineComponent]:
                 label=label,
                 description=description,
                 strategies=strategies,
+                learning=component_learning(identifier),
                 parameter_schema=schema,
                 fields=component_fields(schema),
                 input_type=input_type,
@@ -274,11 +296,12 @@ def pipeline_components() -> list[PipelineComponent]:
                 id=f"detector:{identifier}",
                 kind="detector",
                 label=model.name,
-                description="Static detector with split-conformal calibration.",
+                description="Detector fitted once on the training window.",
                 strategies=["static_baseline"],
+                learning="batch",
                 parameter_schema=schema,
                 fields=component_fields(schema),
-                output_type="p_values",
+                output_type="scores",
             )
         )
     for identifier, model in ADAPTIVE_MODELS_BY_TYPE.items():
@@ -290,12 +313,41 @@ def pipeline_components() -> list[PipelineComponent]:
                 label=model["name"],
                 description="Adaptive score-before-learn anomaly detector.",
                 strategies=["adaptive_stream"],
+                learning="online",
                 parameter_schema=schema,
                 fields=component_fields(schema),
                 output_type="scores",
             )
         )
     return result
+
+
+def _schema_1_view(component: PipelineComponent) -> PipelineComponent:
+    """A component as today's editor knows it: lanes, and detectors wired
+    straight into a policy that combines them."""
+    if component.kind == "policy":
+        schema = _json_schema(POLICY_MODELS[component.id])
+        return component.model_copy(
+            update={
+                "parameter_schema": schema,
+                "fields": component_fields(schema),
+                "input_type": "p_values"
+                if component.id == "policy.martingale"
+                else "scores",
+            }
+        )
+    if component.kind == "detector" and component.learning == "batch":
+        return component.model_copy(update={"output_type": "p_values"})
+    return component
+
+
+def editor_components() -> list[PipelineComponent]:
+    """The catalog the editor reads until it shows the calibration step."""
+    return [
+        _schema_1_view(item)
+        for item in pipeline_components()
+        if item.kind != "calibration"
+    ]
 
 
 def _catalog_id(components: list[PipelineComponent]) -> str:
@@ -354,10 +406,9 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 ),
             )
         )
-    components = pipeline_components()
     return PipelineCatalog(
-        catalog_id=_catalog_id(components),
+        catalog_id=_catalog_id(pipeline_components()),
         authoring_enabled=authoring_enabled,
-        components=components,
+        components=editor_components(),
         templates=templates,
     )

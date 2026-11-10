@@ -1,0 +1,207 @@
+/* A quieter, more refined finish for the composer: a dotted canvas, cards that lift
+   on hover and glow in their own colour when selected, and floating bars of frosted
+   glass. Only appearance lives here; sizes that layout and hit-testing rely on stay
+   where they are defined. */
+
+.pl-canvas-wrap {
+  --pl-canvas-bg: hsl(220 24% 97.6%);
+  --pl-grid-dot: hsl(220 16% 62% / 0.75);
+  --pl-card-shadow: 0 1px 2px hsl(220 30% 20% / 0.05), 0 4px 14px -4px hsl(220 30% 20% / 0.08);
+  --pl-card-shadow-hover: 0 2px 4px hsl(220 30% 20% / 0.06), 0 12px 28px -8px hsl(220 30% 20% / 0.16);
+  background: var(--pl-canvas-bg);
+}
+.dark .pl-canvas-wrap {
+  --pl-canvas-bg: hsl(213 18% 9%);
+  --pl-grid-dot: hsl(210 16% 70% / 0.4);
+  --pl-card-shadow: 0 1px 2px #00000040, 0 6px 18px -6px #00000066;
+  --pl-card-shadow-hover: 0 2px 6px #0000004d, 0 16px 32px -10px #0000008c;
+}
+
+/* Cards: a clean surface with a soft wash of the step's colour along the top. */
+.pl-canvas-wrap .pl-node {
+  border: 1px solid color-mix(in srgb, var(--pl-node-accent) 20%, hsl(var(--border)));
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pl-node-accent) 9%, transparent), transparent 64px),
+    hsl(var(--card));
+  box-shadow: var(--pl-card-shadow);
+  transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.pl-canvas-wrap .react-flow__node:hover .pl-node {
+  border-color: color-mix(in srgb, var(--pl-node-accent) 42%, hsl(var(--border)));
+  box-shadow: var(--pl-card-shadow-hover);
+}
+.pl-canvas-wrap .pl-node.is-selected {
+  outline: none;
+  border-color: var(--pl-node-accent);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--pl-node-accent) 24%, transparent),
+    var(--pl-card-shadow-hover);
+}
+.pl-canvas-wrap .react-flow__node:focus-visible {
+  outline: none;
+}
+.pl-canvas-wrap .react-flow__node:focus-visible .pl-node {
+  box-shadow:
+    0 0 0 2px hsl(var(--background)),
+    0 0 0 4px hsl(var(--ring)),
+    var(--pl-card-shadow-hover);
+}
+/* The kind reads as a small coloured tag. */
+.pl-canvas-wrap .pl-node-kind {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.pl-canvas-wrap .pl-node-kind::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pl-node-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pl-node-accent) 18%, transparent);
+}
+.pl-canvas-wrap .pl-node strong {
+  letter-spacing: -0.01em;
+}
+.pl-canvas-wrap .pl-node-chips > span {
+  border-radius: 999px;
+}
+
+/* Connection dots: crisp, ringed in the card's surface, a touch larger on approach. */
+.pl-canvas-wrap .pl-node .react-flow__handle::after {
+  inset: 7px;
+  border: 2.5px solid hsl(var(--card));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-data-color, hsl(var(--muted-foreground))) 35%, transparent),
+    0 1px 3px hsl(220 30% 20% / 0.18);
+  transition: transform 120ms ease;
+}
+.pl-canvas-wrap .pl-node .react-flow__handle:hover::after {
+  transform: scale(1.18);
+}
+.pl-canvas-wrap .pl-node .react-flow__handle.has-count::after {
+  border-width: 2px;
+}
+.pl-canvas-wrap .pl-node .react-flow__handle.has-count:hover::after {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+.pl-canvas-wrap .react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+/* Zoom controls as one floating bar. */
+.pl-canvas-wrap .react-flow__controls {
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid hsl(var(--border) / 0.8);
+  border-radius: 12px;
+  background: color-mix(in srgb, hsl(var(--background)) 86%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: var(--pl-float-shadow, var(--pl-card-shadow));
+}
+.pl-canvas-wrap .react-flow__controls .react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.pl-canvas-wrap .react-flow__controls-button:hover {
+  background: hsl(var(--muted));
+}
+.pl-canvas-wrap .react-flow__controls-button.pl-canvas-scale {
+  width: 50px;
+}
+.pl-canvas-wrap .react-flow__controls-button[aria-pressed="true"] {
+  background: color-mix(in srgb, hsl(var(--primary)) 14%, transparent);
+}
+.pl-canvas-wrap .react-flow__attribution {
+  background: transparent;
+  opacity: 0.6;
+}
+.pl-canvas-wrap .pl-canvas-feedback {
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+}
+
+/* Floating bars: frosted glass with a hairline edge and a soft, wide shadow. */
+.pl-stage {
+  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 80%, transparent);
+  --pl-float-border: hsl(var(--border) / 0.85);
+  --pl-float-shadow: 0 1px 1px hsl(220 30% 20% / 0.04), 0 10px 30px -10px hsl(220 30% 20% / 0.18);
+}
+.dark .pl-stage {
+  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 76%, transparent);
+  --pl-float-border: hsl(0 0% 100% / 0.08);
+  --pl-float-shadow: 0 1px 1px #00000033, 0 12px 32px -10px #000000a6;
+}
+/* On a phone the header stacks above the canvas without cards, so this is wider screens only. */
+@media (min-width: 681px) {
+  .pl-stage .pl-setup-identity,
+  .pl-stage .pl-setup-actions,
+  .pl-stage .pl-canvas-toolbar > .pl-actions,
+  .pl-stage .pl-settings-panel {
+    border-color: var(--pl-float-border);
+    border-radius: 16px;
+    box-shadow: var(--pl-float-shadow);
+  }
+  .pl-stage .pl-setup-identity,
+  .pl-stage .pl-setup-actions,
+  .pl-stage .pl-canvas-toolbar > .pl-actions {
+    backdrop-filter: blur(14px) saturate(1.5);
+  }
+}
+.pl-stage .pl-setup-actions > button,
+.pl-stage .pl-canvas-toolbar > .pl-actions button {
+  border-radius: 10px;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.pl-stage .pl-setup-actions > button.mn-primary {
+  background: linear-gradient(180deg, hsl(var(--primary) / 0.92), hsl(var(--primary)));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.18), 0 1px 2px hsl(var(--primary) / 0.35),
+    0 4px 12px -4px hsl(var(--primary) / 0.5);
+}
+.pl-stage .pl-setup-actions > button.mn-primary:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+.pl-stage .pl-canvas-toolbar .pl-segmented {
+  border-radius: 10px;
+}
+.pl-stage .pl-canvas-toolbar .pl-segmented button {
+  border-radius: 8px;
+}
+
+/* Settings: the heading stays put above content that scrolls under it. */
+.pl-stage .pl-settings-panel {
+  background: hsl(var(--background));
+}
+.pl-stage .pl-settings-panel .pl-inspector-heading {
+  position: sticky;
+  /* The inspector's own padding would otherwise hold the heading 16px down. */
+  top: -16px;
+  z-index: 1;
+  margin: -16px -16px 12px;
+  padding: 12px 12px 10px 16px;
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
+  backdrop-filter: blur(10px);
+}
+.pl-stage .pl-settings-panel .pl-inspector-heading button {
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+.pl-stage .pl-settings-panel .pl-inspector-heading button:hover {
+  background: hsl(var(--muted));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-canvas-wrap .pl-node,
+  .pl-canvas-wrap .pl-node .react-flow__handle::after,
+  .pl-stage .pl-setup-actions > button,
+  .pl-stage .pl-canvas-toolbar > .pl-actions button {
+    transition: none;
+  }
+}

@@ -1,6 +1,7 @@
 """Persist monitor presentation independently of workload identity and lifecycle."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -88,6 +89,17 @@ async def test_overview_metadata_comes_from_saved_configuration_without_docker_c
     assert result[0]["model_type"] == "pyod_iforest"
     assert "configuration" not in result[0]
     service.workloads.get_status_and_labels.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_creation_time_is_served_as_utc_instead_of_browser_local_time():
+    record = row(configuration())
+    record.created_at = datetime(2026, 11, 9, 10, 30)
+    service = orchestration(record)
+    listed = await service.list_radar_services()
+    detail = await service.get_radar_service("monitor")
+    assert listed[0]["created_at"] == "2026-11-09T10:30:00+00:00"
+    assert detail["created_at"] == listed[0]["created_at"]
 
 
 @pytest.mark.asyncio

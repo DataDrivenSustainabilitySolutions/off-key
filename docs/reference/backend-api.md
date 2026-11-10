@@ -308,16 +308,18 @@ change it. A run replays one design over one dataset. Every route needs
 | --- | --- | --- | --- |
 | `GET` | `/dojo/datasets` | List datasets, newest first | `limit`, `offset` |
 | `POST` | `/dojo/datasets/csv` | Create a dataset from a CSV request body (`text/csv`, at most 100 MB) | Query: `name`, `layout` (`wide` or `long`), optional `timestamp_column`, `series_column`, `value_column`, `delimiter`, `filename`, `description` |
-| `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `start`, `end` |
+| `POST` | `/dojo/datasets/history` | Copy recorded readings for one window into a dataset | Body: `name`, `reading_ids`, `end`, optional `start` (omitted: from the first stored value) |
 | `GET` | `/dojo/datasets/{dataset_id}` | One dataset with its series | Path: `dataset_id` |
 | `PATCH` | `/dojo/datasets/{dataset_id}` | Rename or describe a dataset | Body: `name`, `description` |
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset and its values; 204 | Path: `dataset_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Values of one series in time order | `after`, `limit` (at most 10,000); continue with `next_after` |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | The dataset's labels, ordered by start | Path: `dataset_id` |
+| `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Alarms live monitors recorded on the readings the dataset was copied from, inside its span, grouped into episodes as candidate labels; nothing is stored, and an upload gets none | Optional `gap_seconds` (default 600): alarms closer together form one suggestion |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Mark a known problem as an interval | Body: `start_at`, `end_at`, optional `note` |
+| `POST` | `/dojo/datasets/{dataset_id}/labels/batch` | Add up to 200 labels in one write: all of them, or none when one overlaps or the dataset would hold more than 500; 201 with the new labels | Body: `labels`, each with `start_at`, `end_at`, optional `note` |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move a label or change its note | Body: `start_at`, `end_at`, `note` |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
-| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to three finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
+| `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to six finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
 | `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
 | `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
@@ -412,7 +414,9 @@ Health and readiness remain available without this service credential.
 | `DELETE` | `/dojo/datasets/{dataset_id}` | Delete a dataset |
 | `GET` | `/dojo/datasets/{dataset_id}/series/{series_id}/points` | Page through one series |
 | `GET` | `/dojo/datasets/{dataset_id}/labels` | List a dataset's labels |
+| `GET` | `/dojo/datasets/{dataset_id}/label-suggestions` | Suggest labels from recorded alarms |
 | `POST` | `/dojo/datasets/{dataset_id}/labels` | Add a label, refusing overlaps |
+| `POST` | `/dojo/datasets/{dataset_id}/labels/batch` | Add several labels as one write |
 | `PATCH` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Move or annotate a label |
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label |
 | `GET` | `/dojo/datasets/{dataset_id}/comparison` | Score runs of one dataset side by side |

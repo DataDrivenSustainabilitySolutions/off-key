@@ -7,6 +7,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from support import ROOT, ansible, load_script
 
@@ -74,6 +76,56 @@ class TaskTimingTests(unittest.TestCase):
         self.assertEqual(
             printed["failed_tasks"], "Failed Ansible task: Check the release\n"
         )
+
+    def test_each_rehearsal_deployment_adds_its_timings_to_the_lane_report(self):
+        import swarm_smoke
+
+        log = [
+            "TASK [Connect] ****",
+            "Monday 09 November 2026  21:16:00 +0000 (0:00:00.050)       0:00:00.050 *****",
+            "TASK [stack_deploy : Wait for all stack services to converge] ****",
+            "Monday 09 November 2026  21:16:03 +0000 (0:00:03.000)       0:00:03.050 *****",
+            "TASK [Finish] ****",
+            "Monday 09 November 2026  21:16:48 +0000 (0:00:45.000)       0:00:48.050 *****",
+            "TASKS RECAP ****",
+            "stack_deploy : Wait for all stack services to converge ------------- 45.00s",
+            "Connect ------------------------------------------------------------- 3.00s",
+        ]
+        commands = []
+
+        def run(*args, **kwargs):
+            commands.append(kwargs)
+            return SimpleNamespace(stdout="\n".join(log))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "inputs.json").write_text("{}")
+            with patch.object(swarm_smoke, "run", side_effect=run):
+                swarm_smoke.report(directory, "Initial deployment")
+                swarm_smoke.deploy(directory, "apply")
+                swarm_smoke.deploy(directory, "verify")
+            report = (directory / swarm_smoke.TIMINGS).read_text().splitlines()
+        for command in commands:
+            # The same callback as the production deployment, with the usual settings.
+            self.assertEqual(
+                command["env"]["ANSIBLE_CALLBACKS_ENABLED"],
+                "ansible.posix.profile_tasks",
+            )
+            self.assertEqual(
+                command["env"]["ANSIBLE_CONFIG"], str(ROOT / "ansible/ansible.cfg")
+            )
+        self.assertEqual(report[:2], ["Initial deployment", "Ansible apply:"])
+        self.assertRegex(report[2], r"^Ansible ran 2 tasks in 0m48s; median ")
+        self.assertEqual(
+            report[3:6],
+            [
+                "Slowest Ansible tasks:",
+                "   45.0s  stack_deploy : Wait for all stack services to converge",
+                "    3.0s  Connect",
+            ],
+        )
+        self.assertEqual(report[6], "Ansible verify:")
+        self.assertEqual(len(report), 11)
 
     def test_a_log_without_timings_says_so(self):
         self.assertEqual(

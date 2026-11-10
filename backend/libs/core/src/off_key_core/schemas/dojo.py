@@ -16,8 +16,12 @@ MAX_POINTS_PAGE = 10_000
 MAX_ACTIVE_RUNS = 20
 MAX_RESULTS_PAGE = 10_000
 MAX_DATASET_LABELS = 500
-# A comparison puts this many runs on one dataset side by side.
-MAX_COMPARED_RUNS = 3
+# Recorded alarms read for label suggestions, and suggestions returned.
+MAX_SUGGESTION_ALARMS = 50_000
+MAX_LABEL_SUGGESTIONS = 200
+# A comparison puts this many runs on one dataset side by side; each run keeps
+# its own colour in the chart beside two series of values.
+MAX_COMPARED_RUNS = 6
 DatasetOrigin = Literal["csv", "history"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 CsvLayout = Literal["wide", "long"]
@@ -95,20 +99,28 @@ class CsvImportQuery(DojoModel):
     )
 
 
+def _aware(value: datetime | None, name: str) -> None:
+    if value is not None and value.tzinfo is None:
+        raise ValueError(f"{name} needs a time zone, for example Z")
+
+
 class DatasetFromHistory(DojoModel):
     """Copy recorded readings for one time window into a new dataset."""
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     reading_ids: list[str] = Field(min_length=1, max_length=MAX_DATASET_SERIES)
-    start: datetime
+    start: datetime | None = Field(
+        default=None,
+        description="Omit to copy everything stored, from the first recorded value.",
+    )
     end: datetime
 
     @model_validator(mode="after")
     def window(self):
-        if self.start.tzinfo is None or self.end.tzinfo is None:
-            raise ValueError("start and end need a time zone, for example Z")
-        if self.end <= self.start:
+        _aware(self.start, "start")
+        _aware(self.end, "end")
+        if self.start is not None and self.end <= self.start:
             raise ValueError("end must be after start")
         if len(set(self.reading_ids)) != len(self.reading_ids):
             raise ValueError("Each reading may appear only once")
@@ -275,11 +287,6 @@ class RunPromotion(DojoModel):
     bindings: list[PromotedBinding] = Field(max_length=MAX_DATASET_SERIES)
 
 
-def _aware(value: datetime | None, name: str) -> None:
-    if value is not None and value.tzinfo is None:
-        raise ValueError(f"{name} needs a time zone, for example Z")
-
-
 class LabelCreate(DojoModel):
     """Mark a known problem as the interval from ``start_at`` to ``end_at``."""
 
@@ -298,6 +305,12 @@ class LabelCreate(DojoModel):
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be after start_at")
         return self
+
+
+class LabelBatch(DojoModel):
+    """Add several labels at once, for example every suggestion of a dataset."""
+
+    labels: list[LabelCreate] = Field(min_length=1, max_length=MAX_LABEL_SUGGESTIONS)
 
 
 class LabelChange(DojoModel):
@@ -325,6 +338,46 @@ class LabelView(DojoModel):
 class LabelList(DojoModel):
     items: list[LabelView] = Field(
         max_length=MAX_DATASET_LABELS, description="Ordered by start_at."
+    )
+
+
+class LabelSuggestionQuery(DojoModel):
+    gap_seconds: float = Field(
+        default=600.0,
+        ge=0,
+        le=7 * 86400,
+        description="Recorded alarms closer together than this form one suggestion.",
+    )
+
+
+class LabelSuggestion(DojoModel):
+    """Recorded alarms of live monitors that could mark a known problem."""
+
+    start_at: datetime = Field(description="The first alarm of the episode.")
+    end_at: datetime = Field(
+        description="The last alarm, or one second after a lone alarm, so the "
+        "interval can become a label as it is."
+    )
+    alarm_count: int
+    monitor_ids: list[str] = Field(
+        description="Monitors that raised the alarms; empty for alarms "
+        "recorded without one."
+    )
+    reading_ids: list[str] = Field(
+        description="The dataset's catalogue readings the alarms were about."
+    )
+
+
+class LabelSuggestionList(DojoModel):
+    """Alarms that live monitors recorded on the readings a dataset was copied
+    from, inside its time span, grouped into episodes. Empty for uploads."""
+
+    items: list[LabelSuggestion] = Field(
+        max_length=MAX_LABEL_SUGGESTIONS, description="Ordered by start_at."
+    )
+    truncated: bool = Field(
+        description="More alarms or episodes were recorded than are suggested; "
+        "the earliest are returned."
     )
 
 

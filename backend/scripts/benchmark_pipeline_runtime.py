@@ -468,7 +468,7 @@ def sustained_bounds(execution, *, samples=2000, seed=42) -> dict:
         "retained_diagnostic_bytes": after,
         "retention_measurement": "Collector-owned Python objects, counted once",
         "node_keys_stable": set(payload["nodes"])
-        == {node.id for node in execution.definition.nodes},
+        == {node["id"] for node in execution.definition.model_dump()["nodes"]},
         "maximum_preview_values": max(
             (
                 len(preview[side])

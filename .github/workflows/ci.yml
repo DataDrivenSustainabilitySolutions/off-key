@@ -601,7 +601,7 @@ jobs:
         if: matrix.lane == 'rehearsal'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 9311f9937e605da9b4be5a9903f08de4da79dade
+          ref: b03157ece337fd42a427e8eb26b4364b67942a53
           path: .tmp/compatible-release-source
           fetch-depth: 1
           persist-credentials: false
@@ -705,6 +705,11 @@ jobs:
             ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
           if-no-files-found: ignore
           retention-days: 30
+
+      # Task names and durations only, as the production deployment log prints them.
+      - name: Report where this lane's deployments spent their time
+        if: always()
+        run: cat "$OFFKEY_REHEARSAL_DIR/deployment-timings.txt" 2>/dev/null || echo "No deployment was timed."
 
       - name: Collect rehearsal diagnostics
         if: failure()

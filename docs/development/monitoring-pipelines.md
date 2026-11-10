@@ -343,6 +343,42 @@ designs keep their fingerprints. The compiler reports a design without a
 detector, one with more than four and a detector the policy does not read.
 `derive_monitoring_config` describes the first detector.
 
+### Schema 2: learning modes and calibration
+
+Schema 2 (`pipeline_versions.py`) describes a design without a lane. Each component
+says how it learns (`PipelineComponent.learning`: `none`, `batch`, `online` or
+`pretrained`), and a `calibration` step sits between the detectors and the alarm
+policy. Detectors give `scores`; the calibration step turns them into `p_values`
+for the policy. The only calibration step today is `calibrate.fixed_split`: the
+learned steps freeze and the calibration window gives conformal ranks, which is
+what both lanes did. It owns `fusion`; the policy keeps its own parameters,
+including the quantile. A `forecasts` port type is reserved for forecasters.
+
+Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
+a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
+and edge limits are checked on the stored form before the step is added. The
+serializer writes `downgrade()`, the schema 1 form, whenever a design has one: a
+single fixed split in front of the policy and learned steps that all learn one
+way. Stored designs, the editor's wire format and fingerprints therefore do not
+change, and the editor catalog (`editor_components()`) keeps the schema 1 ports
+and leaves the calibration step out. Validation reports hide that step too: its
+features are omitted and lineage passes through it.
+
+The compiler checks schema 2 designs by learning mode instead of by lane
+(`_validate_learning`):
+
+- `learning`: a step reads a learned step that learns differently. A batch
+  detector reads batch or stateless steps, an online one online or stateless steps.
+- `learning_mix`: the learned steps learn in different ways. This stays an error
+  until one runtime runs both modes.
+- `calibration`: the martingale policy needs exact p-values, so no step in front
+  of it may keep learning after calibration (no online step).
+
+`PipelineDefinition.lane` is the runtime that runs a design until then: its
+stored strategy, or the one all its learned steps share. A schema 2 design may
+use only that lane's components (`strategy`), so the score threshold needs
+online detectors for now.
+
 `fusion.RankFusion` combines detectors by rank, so detectors on different scales
 need no tuning. A detector's surprise for a score s is the share of its n
 calibration scores strictly below it, u = #{i : c_i < s} / n. Strongest combines
@@ -605,9 +641,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`9311f9937e605da9b4be5a9903f08de4da79dade`, the first invariant-enforcement
-commit that carries migration 025 (`evidence_cursor`), before the runtime
-connection lookup correction. It shares the current
+`b03157ece337fd42a427e8eb26b4364b67942a53`, the commit that adds the seasonal
+forecast detector to the generated catalog, on top of migration 025
+(`evidence_cursor`). It shares the current
 migration ledger, the published ABERRANT 1.4.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -615,9 +651,10 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `8db7b5cb`, carried migrations through 024; it cannot be a
-reference any more, because releases before migration 025 refuse a database that
-has applied it. Rolling back past migration 025 means restoring a verified
+The previous reference, `9311f993`, has the same schema but a catalog without
+the seasonal forecast detector, so the rehearsal no longer accepts it; the one
+before, `8db7b5cb`, carried migrations through 024, and releases before
+migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.4.0; migration from 1.3.0

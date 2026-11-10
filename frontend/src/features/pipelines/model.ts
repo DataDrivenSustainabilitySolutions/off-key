@@ -85,8 +85,9 @@ function nextNodeId(nodes: PipelineNode[], component: string): string {
 
 /** Defaults for a new step. A second Formula or Aggregate that would compute a feature
  * an earlier one already computes gets its own name, such as formula_2 or mean_2. */
-function newParams(nodes: PipelineNode[], component: PipelineComponent): PipelineNode["params"] {
-  const params = fieldDefaults(component.fields);
+function newParams(
+  nodes: PipelineNode[], component: PipelineComponent, params: PipelineNode["params"] = fieldDefaults(component.fields),
+): PipelineNode["params"] {
   if (component.id !== "prepare.formula" && component.id !== "prepare.aggregate") return params;
   const taken = new Set(nodes.map((node) => combinedName(node, componentFor(node, [component]))).filter(Boolean));
   const base = combinedName({ id: "", kind: component.kind, component: component.id, params }, component)!;
@@ -101,13 +102,15 @@ export function addComponent(
   component: PipelineComponent,
   position?: { x: number; y: number },
   anchor?: string,
+  /** Settings to start from instead of the defaults, as a duplicate does. */
+  initial?: PipelineNode["params"],
 ): GraphDocument {
   if (addBlocker(document.definition, component)) return document;
   const id = nextNodeId(document.definition.nodes, component.id);
   const instance =
     document.definition.nodes.filter((node) => node.component === component.id)
       .length + 1;
-  const params = newParams(document.definition.nodes, component);
+  const params = newParams(document.definition.nodes, component, initial && structuredClone(initial));
   return {
     definition: {
       ...document.definition,
@@ -261,6 +264,83 @@ export function removeElements(
 }
 
 export const removeNode = (document: GraphDocument, id: string) => removeElements(document, { nodeIds: [id] });
+
+/** Remove every connection into and out of a node; the node stays in place. */
+export const disconnectNode = (document: GraphDocument, id: string): GraphDocument => ({
+  ...document,
+  definition: {
+    ...document.definition,
+    edges: document.definition.edges.filter((edge) => edge.source !== id && edge.target !== id),
+  },
+});
+
+/** The step most recently added to a document. */
+const lastNode = (document: GraphDocument) => document.definition.nodes[document.definition.nodes.length - 1]!.id;
+
+/** Copy a step with its settings below the original, unconnected. One-per-design steps
+ * and detectors are not copied; undefined says it cannot be. */
+export function duplicateNode(
+  document: GraphDocument,
+  nodeId: string,
+  components: PipelineComponent[],
+): { document: GraphDocument; id: string } | undefined {
+  const index = document.definition.nodes.findIndex((node) => node.id === nodeId);
+  const node = document.definition.nodes[index];
+  const component = componentFor(node, components);
+  if (!node || !component || duplicateBlocker(document.definition, nodeId, components)) return;
+  const boxes = document.definition.nodes.map((item, position) => nodePosition(document.layout, item.id, position));
+  const from = boxes[index]!;
+  const position = { x: from.x, y: freeRow(boxes, from.x, snap(from.y + NODE_SIZE.height + PLACEMENT_GAP.y)) };
+  const added = addComponent(document, component, position, undefined, node.params);
+  const id = lastNode(added);
+  const label = document.layout.nodes[nodeId]?.label;
+  return { id, document: label ? setNodeLabel(added, id, `${label} copy`) : added };
+}
+
+/** Why a step cannot be duplicated; undefined when it can. */
+export function duplicateBlocker(
+  definition: PipelineDefinition,
+  nodeId: string,
+  components: PipelineComponent[],
+): string | undefined {
+  const node = definition.nodes.find((item) => item.id === nodeId);
+  const component = componentFor(node, components);
+  if (!node || !component) return "Compatible component metadata is required before copying this step.";
+  if (node.kind === "detector") return "Add another detector from a detector's settings.";
+  return addBlocker(definition, component);
+}
+
+/** Add a step that takes a node's output. When the node has one connection out and the
+ * step fits on it, the step goes in between, so a chain stays a chain; otherwise the
+ * step starts a new branch beside the node. */
+export function addAfter(
+  document: GraphDocument,
+  nodeId: string,
+  component: PipelineComponent,
+  components: PipelineComponent[],
+): { document: GraphDocument; id: string } | undefined {
+  const outgoing = document.definition.edges.filter((edge) => edge.source === nodeId);
+  if (outgoing.length === 1) {
+    const inserted = insertOnEdge(document, outgoing[0]!, component, components);
+    if (inserted) return inserted;
+  }
+  if (addBlocker(document.definition, component)) return;
+  const added = addComponent(document, component, undefined, nodeId);
+  const id = lastNode(added);
+  if (connectionIssue(added.definition, nodeId, id, components)) return;
+  return { id, document: { ...added, definition: connectNodes(added.definition, nodeId, id, components) } };
+}
+
+/** Why a step cannot follow a node; undefined when Add after can place it. */
+export function afterBlocker(
+  document: GraphDocument,
+  nodeId: string,
+  component: PipelineComponent,
+  components: PipelineComponent[],
+): string | undefined {
+  if (addAfter(document, nodeId, component, components)) return;
+  return addBlocker(document.definition, component) ?? "Does not take this step's output.";
+}
 
 export const disconnectEdge = (definition: PipelineDefinition, edge: Pick<PipelineEdge, "source" | "target">): PipelineDefinition => ({
   ...definition,

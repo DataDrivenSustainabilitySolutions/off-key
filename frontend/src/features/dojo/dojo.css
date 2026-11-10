@@ -21,7 +21,7 @@
 .dj-section-head h2 { font-size: var(--text-body); font-weight: 500; margin: 0; }
 .dj-muted { color: var(--ex-muted); font-size: var(--text-caption); }
 .dj-chart { height: 420px; width: 100%; min-width: 0; touch-action: none; }
-.dj-chart--alarms { height: 500px; }
+.dj-chart--alarms { height: calc(434px + var(--dj-alarm-rows, 3) * 22px); }
 .dj-series-picker { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: var(--text-caption); }
 .dj-series-picker label { display: inline-flex; gap: 6px; align-items: center; }
 .dj-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 12px 0; font-size: var(--text-caption); font-weight: 500; }
@@ -50,6 +50,8 @@
 .dj-labels li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--ex-line); }
 .dj-labels input { width: 100%; border: 1px solid transparent; background: transparent; color: var(--ex-ink); border-radius: 5px; padding: 4px 6px; font: inherit; font-size: var(--text-caption); }
 .dj-labels input:hover,.dj-labels input:focus { border-color: var(--ex-line); }
+.dj-suggestion-list li { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; }
+.dj-suggestion-actions { display: inline-flex; gap: 8px; }
 .dj-label-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 14px; }
 .dj-label-form .dj-field { margin: 0; }
 .dj-outcome { display: inline-flex; gap: 6px; align-items: center; }
@@ -62,6 +64,7 @@
 @media (max-width: 760px) {
   .dj-labels li { grid-template-columns: 1fr; gap: 4px; }
   .dj-chart { height: 340px; }
+  .dj-chart--alarms { height: calc(300px + var(--dj-alarm-rows, 3) * 22px); }
 }
 .dj-section-head--spaced { margin-top: 24px; }
 .dj-field--grow { flex: 1; min-width: 180px; }

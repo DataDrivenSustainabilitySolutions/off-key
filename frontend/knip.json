@@ -1,9 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
-    "src/main.tsx",
     "src/Tests/**/*.test.{ts,tsx}",
-    "src/Tests/setup.ts",
     "e2e/**/*.{spec,setup}.ts"
   ],
   "project": [
@@ -12,7 +10,6 @@
     "*.{ts,js}"
   ],
   "ignore": [
-    "src/components/ui/**",
     "src/types/pipelines.generated.ts",
     "src/types/dojo.generated.ts"
   ],

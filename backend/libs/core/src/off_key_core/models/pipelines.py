@@ -49,7 +49,7 @@ def derive_monitoring_config(definition: PipelineDefinition):
         training_window_size=settings.training_window_size,
         calibration_window_size=settings.calibration_window_size,
     )
-    if compiled.definition.strategy == "adaptive_stream":
+    if compiled.definition.lane == "adaptive_stream":
         return AdaptiveStreamConfig(**common, threshold_config=policy)
     return StaticBaselineConfig(
         **common,

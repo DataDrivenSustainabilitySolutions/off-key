@@ -1,0 +1,293 @@
+/* The service setup and template editor fill the page beside the side panel. The canvas
+   takes the whole area; the header, toolbar and settings float over it, and only they
+   take the pointer, so the canvas pans everywhere between them. */
+.app-main:has(> .ex-main-content > .pl-setup) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-main .ex-main-content:has(> .pl-setup) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  padding: 0;
+}
+.ex-main-content:has(> .pl-setup) > :not(.pl-setup) {
+  margin: 12px 16px 0;
+}
+.ex-main-content > .pl-setup {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+
+.pl-stage {
+  --pl-stage-gap: 12px;
+  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 94%, transparent);
+  --pl-float-shadow: 0 1px 2px #0000000d, 0 6px 20px -6px #00000024;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.dark .pl-stage {
+  --pl-float-shadow: 0 1px 2px #0000004d, 0 8px 24px -6px #0000008c;
+}
+.pl-stage-canvas {
+  grid-row: 1 / -1;
+  grid-column: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  isolation: isolate;
+}
+.pl-stage-canvas > * {
+  flex: 1;
+  min-width: 0;
+}
+.pl-stage .pl-canvas-wrap,
+.pl-stage .pl-flow-surface,
+.pl-stage .pl-canvas-wrap .react-flow {
+  min-height: 0;
+  height: 100%;
+}
+/* The features view is a list, not a surface to pan: it starts below the header. */
+.pl-stage--features .pl-stage-canvas {
+  grid-row: 2;
+  overflow: auto;
+  padding: 0 calc(var(--pl-covered-right, 0px) + var(--pl-stage-gap)) var(--pl-stage-gap) var(--pl-stage-gap);
+}
+
+.pl-stage-top,
+.pl-stage-body {
+  grid-column: 1;
+  z-index: 10;
+  min-width: 0;
+  pointer-events: none;
+}
+.pl-stage-top {
+  grid-row: 1;
+  display: grid;
+  gap: 8px;
+  padding: var(--pl-stage-gap) var(--pl-stage-gap) 0;
+}
+.pl-stage-body {
+  grid-row: 2;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 8px var(--pl-stage-gap) var(--pl-stage-gap);
+}
+
+/* Floating islands: each takes the pointer, the room between them stays canvas. */
+.pl-stage .pl-setup-header,
+.pl-stage .pl-canvas-toolbar,
+.pl-stage .pl-setup-notices > *,
+.pl-stage .pl-settings-panel {
+  pointer-events: auto;
+}
+.pl-stage .pl-setup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 0;
+  pointer-events: none;
+}
+.pl-stage .pl-setup-identity,
+.pl-stage .pl-setup-actions,
+.pl-stage .pl-canvas-toolbar > .pl-actions {
+  pointer-events: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: var(--pl-float-bg);
+  box-shadow: var(--pl-float-shadow);
+  backdrop-filter: blur(8px);
+}
+.pl-stage .pl-setup-identity {
+  flex: 0 1 auto;
+  gap: 2px;
+  padding: 8px 14px 10px;
+  max-width: min(640px, 100%);
+}
+.pl-stage .pl-setup-identity .ex-breadcrumb ol {
+  margin: 0;
+}
+.pl-stage .pl-name-input {
+  width: min(100%, 480px);
+  margin-left: -8px;
+  font-size: var(--text-title3);
+  line-height: var(--leading-title3);
+}
+.pl-stage .pl-setup-meta {
+  margin-top: 2px;
+}
+.pl-stage .pl-setup-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 6px;
+}
+.pl-stage .pl-setup-actions > button:not(.mn-primary) {
+  border-color: transparent;
+  background: transparent;
+}
+.pl-stage .pl-setup-actions > button:not(.mn-primary):not(:disabled):hover,
+.pl-stage .pl-setup-actions > button[data-state="open"] {
+  background: hsl(var(--muted));
+}
+.pl-stage .pl-setup-notices {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.pl-stage .pl-setup-notices:empty {
+  display: none;
+}
+.pl-stage .pl-setup-notices > * {
+  max-width: min(720px, 100%);
+  margin: 0;
+  box-shadow: var(--pl-float-shadow);
+}
+.pl-stage .pl-setup-notices > :is(.pl-warning, .pl-notice, .pl-error) {
+  padding: 8px 14px;
+}
+
+.pl-stage .pl-canvas-toolbar {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.pl-stage .pl-canvas-toolbar > .pl-actions {
+  padding: 4px;
+  gap: 4px;
+}
+.pl-stage .pl-canvas-toolbar > .pl-actions button {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.pl-stage .pl-canvas-toolbar > .pl-actions button:not(:disabled):hover,
+.pl-stage .pl-canvas-toolbar > .pl-actions button[aria-expanded="true"],
+.pl-stage .pl-canvas-toolbar > .pl-actions button[data-state="open"] {
+  background: hsl(var(--muted));
+}
+.pl-stage .pl-canvas-toolbar .pl-segmented {
+  border: 0;
+  padding: 2px;
+}
+.pl-stage .pl-canvas-toolbar .pl-segmented button[aria-pressed="true"] {
+  background: hsl(var(--background));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+}
+
+/* Settings float at the right, as tall as their content and never past the canvas. */
+.pl-stage .pl-settings-panel {
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--background));
+  box-shadow: var(--pl-float-shadow);
+  overflow: hidden;
+}
+.pl-stage .pl-settings-panel .pl-inspector {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  border-left: 0;
+}
+
+/* Bottom left: zoom controls and canvas messages keep clear of the floating settings. */
+.pl-stage .react-flow__controls {
+  box-shadow: var(--pl-float-shadow);
+}
+.pl-stage .pl-canvas-feedback {
+  left: var(--pl-stage-gap);
+  right: auto;
+  max-width: min(560px, calc(100% - 2 * var(--pl-stage-gap)));
+  box-shadow: var(--pl-float-shadow);
+}
+
+@media (max-width: 1050px) {
+  .pl-stage { --pl-stage-gap: 10px; }
+  .pl-stage .pl-settings-panel { width: 300px; }
+}
+
+/* On a phone the header stacks above the canvas and settings open as a bottom sheet. */
+@media (max-width: 680px) {
+  .app-main:has(> .ex-main-content > .pl-setup) {
+    overflow: auto;
+  }
+  .pl-stage {
+    grid-template-rows: auto minmax(420px, 1fr);
+  }
+  .pl-stage-canvas {
+    grid-row: 2;
+  }
+  .pl-stage--features .pl-stage-canvas {
+    padding: 0 var(--pl-stage-gap) var(--pl-stage-gap);
+  }
+  .pl-stage-canvas {
+    border-top: 1px solid hsl(var(--border));
+  }
+  .pl-stage-top {
+    padding-bottom: 8px;
+  }
+  .pl-stage .pl-setup-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* Stacked above the canvas, the header needs no floating cards. */
+  .pl-stage .pl-setup-identity,
+  .pl-stage .pl-setup-actions,
+  .pl-stage .pl-canvas-toolbar > .pl-actions {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    padding: 0;
+  }
+  .pl-stage .pl-setup-identity {
+    max-width: none;
+  }
+  .pl-stage .pl-setup-actions {
+    display: grid;
+  }
+  .pl-stage .pl-setup-actions > button:not(.mn-primary) {
+    border-color: hsl(var(--border));
+  }
+  .pl-stage-body {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .pl-stage .pl-settings-panel {
+    position: static;
+    width: 100%;
+    max-height: 58%;
+    max-height: round(down, 58%, 1px);
+    border-radius: 12px 12px 0 0;
+    border-width: 1px 0 0;
+    box-shadow: 0 -8px 24px #0002;
+  }
+}
+
+.pl-stage .pl-setup-actions > .ex-action-menu {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}

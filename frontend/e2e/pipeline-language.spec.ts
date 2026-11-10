@@ -140,7 +140,14 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await page.screenshot({ path: testInfo.outputPath(`readable-${strategy}-laptop.png`), fullPage: true });
       await node("input").click();
       await expect(editor.getByRole("button", { name: "Step settings", exact: true })).toHaveAttribute("aria-expanded", "true");
-      await expect.poll(async () => (await graph.boundingBox())!.width).toBeLessThan(canvasWidth - 250);
+      // Settings float over the full-page canvas instead of narrowing it, and the step stays clear of them.
+      await expect(editor.getByRole("heading", { name: "Step settings", exact: true })).toBeVisible();
+      await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
+      await expect.poll(async () => {
+        const panel = (await page.locator(".pl-settings-panel").boundingBox())!;
+        const card = (await node("input").boundingBox())!;
+        return card.x + card.width <= panel.x;
+      }).toBe(true);
       await editor.getByRole("button", { name: "Close settings", exact: true }).click();
       await expect.poll(async () => (await graph.boundingBox())!.width).toBe(canvasWidth);
       await openPipelineSettings(editor, "Component");

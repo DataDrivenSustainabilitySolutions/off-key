@@ -6,6 +6,7 @@ import "@/App.css";
 import { AuthProvider } from "@/auth/AuthContext";
 import { FullPageLoading } from "@/components/LoadingStates";
 import { ThemeProvider } from "@/components/theme-provider";
+import { useToastPosition } from "@/hooks/use-toast-position";
 import { createAppRoutes } from "./routes";
 
 const router = createBrowserRouter(createAppRoutes());
@@ -17,8 +18,15 @@ const App = () => (
         <RouterProvider router={router} />
       </Suspense>
     </AuthProvider>
+    <AppToaster />
+  </ThemeProvider>
+);
+
+/** Toasts appear top right, unless the page shown asks for another place. */
+function AppToaster() {
+  return (
     <Toaster
-      position="top-right"
+      position={useToastPosition()}
       toastOptions={{
         style: {
           color: "hsl(var(--foreground))",
@@ -30,7 +38,7 @@ const App = () => (
         },
       }}
     />
-  </ThemeProvider>
-);
+  );
+}
 
 export default App;

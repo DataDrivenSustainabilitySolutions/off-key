@@ -179,11 +179,21 @@ def test_an_outage_rejects_observations_whatever_runs_beside_timestral(
         # The value before the outage still has its forecast; the next has none.
         monkeypatch.setitem(state, "down", True)
         service.process_data_point(cycle(LEARNED + 8))
-        with pytest.raises(ObservationRejected, match="No forecast to compare with"):
-            service.process_data_point(cycle(LEARNED + 9))
+        # Five values are rejected, so a gap would shift the cycle of four.
+        for index in range(LEARNED + 9, LEARNED + 14):
+            with pytest.raises(
+                ObservationRejected, match="No forecast to compare with"
+            ):
+                service.process_data_point(cycle(index))
         assert service.state == AdaptiveStreamState.OPERATIONAL
 
+        # The run did not learn them, but Timestral's series has no gap, so
+        # the cycle is forecast as before.
         monkeypatch.setitem(state, "down", False)
+        results = feed(service, LEARNED + 14, LEARNED + 26)
+        if not companions:
+            assert not any(item.is_anomaly for item in results)
+            assert {item.anomaly_score for item in results} == {0.0}
         assert service.process_data_point(reading(110.0, 0.0)).is_anomaly
     finally:
         service.shutdown()

@@ -245,13 +245,68 @@ def test_detector_rejects_what_it_cannot_compare_and_recovers(
         flaky.learn_one({"x": _cycle(index)})
     assert flaky.model.failures == 4
     with pytest.raises(ObservationRejected, match="No forecast to compare with"):
-        flaky.score_one({"x": 110.0})
+        flaky.score_one({"x": _cycle(24)})
+    # A run does not learn what was rejected, so the detector kept the value.
+    steady.learn_one({"x": _cycle(24)})
+    assert flaky.model.n_samples_seen == steady.model.n_samples_seen == 25
+    assert flaky.model.failures == 5
 
     # Back again, the missed forecast is made from the same values as it
     # would have been, so the score is the one an undisturbed detector gives.
     monkeypatch.setitem(_OUTAGE, "down", False)
-    assert flaky.score_one({"x": 110.0}) == steady.score_one({"x": 110.0})
-    assert flaky.score_one({"x": 110.0}) > 5
+    assert flaky.score_one({"x": 130.0}) == steady.score_one({"x": 130.0})
+    assert flaky.score_one({"x": 130.0}) > 5
+
+
+@pytest.mark.parametrize("lead", [1, 3])
+def test_a_run_through_an_outage_scores_afterwards_as_an_undisturbed_run(
+    service, monkeypatch, lead
+):
+    monkeypatch.setitem(_CLIENTS, "service", service[0])
+    monkeypatch.setitem(_OUTAGE, "down", False)
+
+    def detector():
+        return ServiceResidualDetector(
+            ServiceForecaster(
+                MODEL,
+                horizon=lead,
+                context_length=16,
+                minimum_context=8,
+                client=_flaky_client,
+            ),
+            "x",
+            lead=lead,
+        )
+
+    def run(model, index):
+        """Score, then learn: a run does not learn what it rejected."""
+        x = {"x": _cycle(index)}
+        try:
+            score = model.score_one(x)
+        except ObservationRejected:
+            return None
+        model.learn_one(x)
+        return score
+
+    steady, flaky = detector(), detector()
+    for index in range(20):
+        assert run(flaky, index) == run(steady, index)
+
+    # Five values, so a gap in the series would shift the cycle of four.
+    monkeypatch.setitem(_OUTAGE, "down", True)
+    flaky.model._client = None
+    scores = [run(flaky, index) for index in range(20, 25)]
+    # The values still due a forecast made before the outage have their score.
+    assert scores == [0.0] * lead + [None] * (5 - lead)
+    for index in range(20, 25):
+        run(steady, index)
+    assert flaky.model.n_samples_seen == steady.model.n_samples_seen == 25
+
+    monkeypatch.setitem(_OUTAGE, "down", False)
+    for index in range(25, 40):
+        assert run(flaky, index) == run(steady, index) == 0.0
+    assert flaky.model.context() == steady.model.context()
+    assert flaky.score_one({"x": 110.0}) == steady.score_one({"x": 110.0}) > 5
 
 
 def test_detector_scores_zero_before_the_forecaster_is_ready(service):

@@ -417,6 +417,10 @@ class ServiceResidualDetector(ResidualDetector):
     right before the forecaster is ready, but not when the service failed to
     answer: the missed forecast is asked for again, and an observation that
     still has none is rejected, which counts as lost coverage, not as normal.
+
+    A run does not learn an observation it rejected, so the detector keeps
+    the value itself. The forecaster's series stays whole through an outage,
+    and the forecasts after it are the ones an undisturbed run compares with.
     """
 
     def __init__(
@@ -438,10 +442,18 @@ class ServiceResidualDetector(ResidualDetector):
             try:
                 issued[0] = self.model.forecast_from(self.lead - 1)
             except ForecastServiceError as error:
+                self._keep(x)
                 raise ObservationRejected(
                     f"No forecast to compare with: {error}"
                 ) from error
         return super().explain_one(x)
+
+    def _keep(self, x: FeatureMap) -> None:
+        """Take in a value that gets no score, without asking the service again."""
+        _, y = self._split(x)
+        self.model.learn_one(y)
+        # The forecast from this value is asked for when its turn comes.
+        self._issued.append(None)
 
 
 @dataclass(frozen=True)

@@ -398,9 +398,11 @@ on the step, with the issue `forecast_service`.
 The first value of a run asks the service to have the checkpoint ready, which
 starts a download if the weights are not there yet. Until a forecast exists
 for an observation, that observation is rejected (`ObservationRejected`): lost
-coverage, not a normal score. The weights never change, so a forecast the
-service missed is made later from the same values, and scores after an outage
-are the ones an undisturbed run gives. A service that hangs is left alone for
+coverage, not a normal score. A run does not learn a rejected observation, so
+the adapter keeps the value itself and the forecaster's series has no gap. The
+weights never change, so a forecast the service missed is made later from the
+same values, and scores after an outage are the ones an undisturbed run gives.
+A service that hangs is left alone for
 15 seconds after a slow failure. A service that does not offer the checkpoint
 ends the run (`FatalExecutionError`), because no later value could be scored.
 

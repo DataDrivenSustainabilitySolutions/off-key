@@ -123,6 +123,16 @@ describe("canvas context menu", () => {
     expect(onClose).toHaveBeenCalledWith(true);
   });
 
+  it("keeps typing in the menu after its Back button closes a submenu", () => {
+    const { search } = open();
+    fireEvent.keyDown(search, { key: "ArrowRight" });
+    const back = screen.getByRole("button", { name: "Back from Prepare" });
+    back.focus();
+    fireEvent.click(back);
+    expect(screen.queryByRole("menu", { name: "Prepare" })).toBeNull();
+    expect(window.document.activeElement).toBe(search);
+  });
+
   it("keeps a blocked entry readable but does not run it", () => {
     const run = vi.fn();
     render(<PipelineContextMenu x={0} y={0} onClose={vi.fn()} menu={{ label: "Smooth", items: [

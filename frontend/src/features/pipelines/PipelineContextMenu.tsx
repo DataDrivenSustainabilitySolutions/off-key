@@ -73,10 +73,12 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
   }, [levels, x, y]);
 
   // Typing goes to the deepest searchable level; otherwise the menu itself keeps focus.
+  // Closing a level can drop focus with the element that held it, so each change of depth restores it.
   const searchLevel = levels.map((level, index) => (level.menu.search ? index : -1)).filter((index) => index >= 0).pop();
   useEffect(() => {
-    (searchLevel !== undefined ? inputs.current[searchLevel] : root.current)?.focus({ preventScroll: true });
-  }, [searchLevel]);
+    const target = searchLevel !== undefined ? inputs.current[searchLevel] : root.current;
+    if (target && document.activeElement !== target) target.focus({ preventScroll: true });
+  }, [searchLevel, depth]);
 
   useEffect(() => {
     panels.current[depth]?.querySelector("[data-active='true']")?.scrollIntoView?.({ block: "nearest" });
@@ -144,6 +146,7 @@ export function PipelineContextMenu({ x, y, menu, onClose }: {
         }}>
         {index > 0 && <div className="pl-context-title">
           <button type="button" tabIndex={-1} aria-label={`Back from ${level.menu.label}`}
+            onPointerDown={(event) => event.preventDefault()}
             onClick={() => setLevels((previous) => previous.slice(0, index))}><ChevronLeft size={14} aria-hidden="true" /></button>
           {level.menu.label}
         </div>}

@@ -84,7 +84,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.detector_fingerprint = None if first is None else first.fingerprint
         self.model_capabilities = {} if first is None else first.capabilities.as_dict()
         self.schema_signature = self._build_schema_signature(config)
-        self.start_time = time.time()
+        self._started_monotonic = time.monotonic()
         self.processing_times: deque[float] = deque(maxlen=1000)
         self.training_error: str | None = None
         if checkpoint is None:
@@ -815,7 +815,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             "avg_processing_time_ms": (
                 sum(self.processing_times) / max(len(self.processing_times), 1) * 1000
             ),
-            "uptime_seconds": time.time() - self.start_time,
+            "uptime_seconds": time.monotonic() - self._started_monotonic,
         }
 
     def shutdown(self) -> None:

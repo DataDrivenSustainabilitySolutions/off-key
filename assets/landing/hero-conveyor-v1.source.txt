@@ -1,0 +1,6 @@
+Approved generated photograph: 02-industrial-conveyor-v1.png
+Original PNG SHA-256: 811798be6ae0c8259f3d7b3180cfd3dea5f91d442f699f0bd0db40c2ec1da9aa
+Web export: original dimensions, WebP quality 72, method 6 via Pillow.
+Composition, framing and tone are preserved; no generative edits.
+Original PNG retained in the local design artifacts.
+The photographs illustrate infrastructure; they are not customer installations.

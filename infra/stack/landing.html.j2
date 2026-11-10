@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="description" content="Anomaly detection for sensor telemetry and digital data streams. Turn streaming data into evidence of change.">
   <meta name="theme-color" content="#08090a">
-  <title>Anomaly detection · Aberration</title>
+  <title>Aberration</title>
   <link rel="canonical" href="https://{{ ingress_base_domain | e }}/">
   <link rel="alternate" type="text/markdown" href="/index.md" title="Aberration as Markdown">
   <link rel="describedby" type="text/plain" href="/llms.txt" title="llms.txt">
@@ -860,45 +860,66 @@
     }
 
 
-    /* Photography leads the page. The generated asset is embedded at render time. */
-    .site-header { position:absolute; z-index:3; top:0; width:100%; border:0; }
-    .header-inner { width:calc(100% - 64px); max-width:none; height:82px; }
-    .header-nav { gap:30px; }
-    .header-nav .nav-cta { margin-left:0; padding:0; border:0; }
-    .header-statement { color:#d6d6d3; font-size:10px; letter-spacing:.04em; }
+    /* The approved photographs share one fixed frame; only opacity changes. */
+    .site-header { position:absolute; z-index:3; top:0; width:100%; border:0; background:transparent; isolation:isolate; }
+    .site-header::before { content:""; position:absolute; z-index:-1; inset:0 0 -12px; background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,0)); pointer-events:none; }
+    .header-inner { width:calc(100% - 80px); max-width:none; height:84px; }
     .wordmark { font-size:22px; }
-    .hero { color:#141615; background:#e5e5e2; overflow:hidden; }
-    /* Keep the enclosure seam above the header as the photograph scales. */
-    .hero-photo { position:relative; margin:min(0px, calc(24px - 4.45vw)) 0 0; aspect-ratio:1800 / 874; min-height:0; }
-    .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:50% 45%; }
-    .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:24px; background:linear-gradient(transparent, #e5e5e2); }
-    .photo-caption { position:absolute; z-index:1; left:32px; bottom:24px; font-size:8px; letter-spacing:.08em; color:#515451; }
-    .hero-title { position:relative; text-align:center; padding:0 32px 54px; }
-    .hero-title .mono { font-size:9px; letter-spacing:.09em; color:#636561; margin:0 0 17px; }
-    .hero h1 { font-size:clamp(42px,4.8vw,72px); font-weight:400; line-height:1.05; letter-spacing:-.055em; }
-    .hero-summary { display:flex; justify-content:space-between; align-items:center; gap:40px; max-width:980px; margin:34px auto 0; padding-top:22px; border-top:1px solid #bfc1bc; text-align:left; }
-    .hero-summary p { max-width:520px; margin:0; color:#535651; font-size:14px; line-height:1.6; }
+    .wordmark,.header-nav a { color:#f4f5f2; }
+    .header-nav { gap:32px; }
+    .header-nav a { font-size:12px; }
+    .header-nav .nav-cta { margin-left:0; padding:9px 13px; border:1px solid rgba(255,255,255,.34); border-radius:2px; }
+    .header-statement { color:#c3c5c2; font-size:9px; letter-spacing:.06em; }
+    .hero { color:#141615; background:#ededeb; overflow:hidden; }
+    .hero-photo { position:relative; margin:0; height:auto; min-height:0; aspect-ratio:1942 / 809; overflow:hidden; background:#ededeb; }
+    .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:center top; }
+    .hero-photo img + img { position:absolute; inset:0; opacity:0; }
+    .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:50px; background:linear-gradient(transparent,#ededeb); }
+    /* Eight seconds per photograph, with two-second fades in a forty-second loop.
+       Earlier overlays fade out only after the next is opaque, avoiding three-way blends. */
+    @keyframes hero-pipes-crossfade {
+      0%,20%,55%,100% { opacity:0; }
+      25%,50% { opacity:1; }
+    }
+    @keyframes hero-conveyor-crossfade {
+      0%,45%,80%,100% { opacity:0; }
+      50%,75% { opacity:1; }
+    }
+    @keyframes hero-solar-crossfade {
+      0%,70% { opacity:0; }
+      75%,95% { opacity:1; }
+      100% { opacity:0; }
+    }
+    @media (prefers-reduced-motion:no-preference) {
+      .hero-photo--pipes { animation:hero-pipes-crossfade 40s ease-in-out infinite; }
+      .hero-photo--conveyor { animation:hero-conveyor-crossfade 40s ease-in-out infinite; }
+      .hero-photo--solar { animation:hero-solar-crossfade 40s ease-in-out infinite; }
+    }
+    .hero-title { position:relative; text-align:center; padding:18px 32px 46px; }
+    .hero-title > .mono { margin:0 0 17px; color:#656864; font-size:9px; letter-spacing:.12em; }
+    .hero h1 { font-size:clamp(42px,4.9vw,72px); font-weight:400; line-height:1.06; letter-spacing:-.05em; }
+    .hero-title .hero-promise { font-size:clamp(20px,2vw,27px); line-height:1.3; color:#646762; letter-spacing:-.025em; margin:10px 0 0; }
+    .hero-summary { display:flex; justify-content:space-between; align-items:center; gap:40px; max-width:980px; margin:30px auto 0; padding-top:20px; border-top:1px solid #cdd0ca; text-align:left; }
+    .hero-summary p { max-width:520px; margin:0; color:#595e57; font-size:14px; line-height:1.6; }
     .hero-summary a { color:#171a17; border-bottom:1px solid #92958e; gap:30px; white-space:nowrap; }
     body:has(#agents:target) .site-header { position:relative; }
     .agent-view { padding-top:65px; }
     @media(max-width:1000px) {
       .header-statement { display:none; }
-      .hero-photo img { object-position:51% 45%; }
-      .hero-title { padding-inline:32px; }
       .hero-summary { gap:32px; }
     }
     @media(max-width:760px) {
-      .header-inner { width:calc(100% - 40px); height:76px; }
+      .header-inner { width:calc(100% - 40px); height:72px; }
+      .wordmark { font-size:21px; }
+      .header-nav { gap:0; }
       .header-nav .desktop-link { display:none; }
-      .header-nav .nav-cta { padding:0; }
-      .hero-photo { height:clamp(256px, 80vw, 440px); margin-top:0; aspect-ratio:auto; }
-      .hero-photo img { object-position:50% 40%; }
-      .hero-photo::after { height:24px; }
-      .photo-caption { left:20px; bottom:18px; font-size:7px; }
-      .hero-title { padding:0 20px 42px; }
-      .hero-title .mono { max-width:260px; margin:0 auto 16px; font-size:8px; }
-      .hero h1 { font-size:clamp(38px,10.5vw,56px); line-height:1.06; max-width:540px; margin:auto; }
-      .hero-summary { align-items:flex-start; flex-direction:column; gap:16px; margin-top:26px; padding-top:20px; }
+      .header-nav .nav-cta { padding:8px 10px; }
+      .hero-photo { height:clamp(340px,48svh,440px); aspect-ratio:auto; }
+      .hero-title { padding:16px 22px 36px; }
+      .hero-title > .mono { max-width:310px; font-size:8px; line-height:1.6; margin:0 auto 17px; }
+      .hero h1 { font-size:44px; max-width:390px; line-height:1.04; margin:auto; }
+      .hero-title .hero-promise { margin-top:13px; font-size:21px; }
+      .hero-summary { align-items:flex-start; flex-direction:column; gap:16px; margin-top:25px; padding-top:18px; }
       .hero-summary p { font-size:13px; }
       .hero-summary a { font-size:12px; }
     }
@@ -942,15 +963,19 @@
     </section>
 
 <section class="hero" aria-labelledby="headline">
+  {% from 'landing-hero.b64.j2' import hero_bridge, hero_pipes, hero_conveyor, hero_solar %}
   <figure class="hero-photo">
-    <img src="data:image/jpeg;base64,{% include 'landing-hero.b64.j2' %}" width="1800" height="874" fetchpriority="high" alt="Generated industrial concept photograph of a compact sensor rack with braided cables, visible mounting brackets and a wireless data module with an outward-angled antenna.">
-    <figcaption class="photo-caption mono">01 / Connected sensing &nbsp; · &nbsp; Generated concept image</figcaption>
+    <img src="{{ hero_bridge }}" width="1942" height="809" fetchpriority="high" alt="Generated photograph looking along the underside of a steel bridge.">
+    <img class="hero-photo--pipes" src="{{ hero_pipes }}" width="1944" height="809" decoding="async" alt="Generated photograph looking along an overhead industrial pipe rack.">
+    <img class="hero-photo--conveyor" src="{{ hero_conveyor }}" width="1942" height="809" decoding="async" alt="Generated photograph looking along the underside of a powered roller conveyor.">
+    <img class="hero-photo--solar" src="{{ hero_solar }}" width="1944" height="809" decoding="async" alt="Generated photograph looking along the underside of a solar canopy with paired steel support columns.">
   </figure>
   <div class="hero-title">
     <p class="mono">Anomaly detection for physical &amp; digital systems</p>
-    <h1 id="headline">Detection for connected systems.</h1>
+    <h1 id="headline">Every system has a pattern.</h1>
+    <p class="hero-promise">Detect when it changes.</p>
     <div class="hero-summary">
-      <p>From sensor telemetry to digital data streams.<br>Detect meaningful deviations as your systems evolve.</p>
+      <p>Continuous anomaly detection for sensor telemetry<br>and digital data streams.</p>
       <a class="text-link" href="#platform">Explore the platform <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
     </div>
   </div>

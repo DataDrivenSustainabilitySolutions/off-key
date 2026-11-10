@@ -149,6 +149,52 @@ class PersistenceTests(unittest.TestCase):
                 self.assertFalse(
                     (Path(directory) / "stack/recovery-pending.json").exists()
                 )
+                # The stack's own writers are seen stopped before the runtime
+                # workers are told to stop.
+                stack_stop = commands.index(
+                    ["service", "scale", "--detach", "off-key_api=0"]
+                )
+                worker_stop = commands.index(
+                    ["service", "scale", "--detach", "radar-runtime=0"]
+                )
+                self.assertTrue(
+                    any(
+                        command[:3] == ["inspect", "--type", "task"]
+                        and command[-1] == "off-key_api-task"
+                        for command in commands[stack_stop:worker_stop]
+                    )
+                )
+                # This model has no frontend, so each resumed service is awaited.
+                self.assertIn(
+                    ["service", "scale", "--detach=false", "off-key_api=1"], commands
+                )
+
+    def test_resumed_services_are_awaited_by_their_scale_or_the_backend_check(self):
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_deploy/tasks/apply.yml").read_text()
+        )[0]["block"]
+        names = [task["name"] for task in tasks]
+        resume = names.index(
+            "Resume desired stack services after successful restoration"
+        )
+        check = names.index(
+            "Serve backend contracts before activating the browser bundle"
+        )
+        # A resumed service is not awaited by its scale call only where the
+        # backend convergence check that follows waits for it instead.
+        self.assertIn(
+            "--detach={{ ('frontend' in stack_compose_model.services) | lower }}",
+            tasks[resume]["command"]["argv"],
+        )
+        self.assertLess(resume, check)
+        self.assertEqual(
+            tasks[check]["when"], "'frontend' in stack_compose_model.services"
+        )
+        self.assertEqual(
+            tasks[check]["block"][0]["name"],
+            "Wait for the intended backend images without accepting rollbacks",
+        )
+        self.assertIn("--backend-first", tasks[check]["block"][0]["command"]["argv"])
 
     def test_restore_adds_the_foreign_keys_of_ordinary_tables_last(self):
         # The post-data entries of a backup as `pg_restore --list` prints them.

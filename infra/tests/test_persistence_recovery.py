@@ -174,7 +174,7 @@ class RecoveryWriterTests(unittest.TestCase):
         self.assertFalse(
             any(
                 command[:2] == ["service", "scale"]
-                and command[2].startswith("radar-new=")
+                and command[-1].startswith("radar-new=")
                 for command in commands
             )
         )

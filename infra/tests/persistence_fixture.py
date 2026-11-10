@@ -46,7 +46,7 @@ elif a[:2] == ['service', 'ls']:
     else:
         print('fixture services')
 elif a[:2] == ['service', 'scale']:
-    name, replicas = a[2].split('=')
+    name, replicas = a[-1].split('=')
     if int(replicas) and name == os.environ.get('SCALE_FAIL_SERVICE'):
         sys.exit(1)
     state['replicas'][name] = int(replicas)

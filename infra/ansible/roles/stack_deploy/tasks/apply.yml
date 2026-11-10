@@ -39,9 +39,16 @@
         name: persistence_switch
         tasks_from: restore
 
+    # With a frontend in the model, the backend convergence check below waits for
+    # these services together; without one, each scale call waits for its service.
     - name: Resume desired stack services after successful restoration
       command:
-        argv: [docker, service, scale, "{{ stack_name }}_{{ item.key }}={{ item.value.deploy.replicas | default(1) }}"]
+        argv:
+          - docker
+          - service
+          - scale
+          - "--detach={{ ('frontend' in stack_compose_model.services) | lower }}"
+          - "{{ stack_name }}_{{ item.key }}={{ item.value.deploy.replicas | default(1) }}"
       loop: "{{ stack_compose_model.services | dict2items }}"
       loop_control:
         label: "{{ item.key }}"

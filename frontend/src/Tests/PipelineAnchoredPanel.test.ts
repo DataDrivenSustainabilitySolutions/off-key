@@ -21,7 +21,7 @@ describe("settings beside their card", () => {
 
   it("go above when below would cover the zoom controls", () => {
     const card = box(300, 500);
-    const spot = placeBeside(card, panel, area, [box(590, 500), box(20, 820, 240, 44)]);
+    const spot = placeBeside(card, panel, area, [box(590, 500)], [box(20, 820, 240, 44)]);
     expect(spot).toEqual({ left: 300, top: 180, maxHeight: 500 - 12 - 180 });
   });
 
@@ -38,5 +38,14 @@ describe("settings beside their card", () => {
     const spot = placeBeside(card, panel, area, [box(400, 250), box(550, 550)]);
     const placed = { left: spot.left, top: spot.top, right: spot.left + 340, bottom: spot.top + spot.maxHeight };
     expect(placed.right <= card.left || placed.left >= card.right || placed.bottom <= card.top || placed.top >= card.bottom).toBe(true);
+  });
+
+  it("leave the zoom controls usable, even if that covers more of the others", () => {
+    const card = box(20, 450);
+    const controls = box(20, 820, 240, 44);
+    const spot = placeBeside(card, panel, area, [box(20, 200), box(300, 450)], [controls]);
+    const placed = { left: spot.left, top: spot.top, right: spot.left + 340, bottom: spot.top + spot.maxHeight };
+    expect(placed.right <= controls.left || placed.left >= controls.right
+      || placed.bottom <= controls.top || placed.top >= controls.bottom).toBe(true);
   });
 });

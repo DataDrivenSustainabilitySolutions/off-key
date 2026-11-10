@@ -25,13 +25,20 @@ const MIN_HEIGHT = 240;
 
 /**
  * Where settings sit beside their card: below it, right of it, left of it or above it.
- * A side that leaves the card itself clear always beats one that covers it, even
- * partly, so the settings never hide what they edit while another side has room. Among
- * those, the side that covers least of everything else wins, the tallest on a tie. Below
- * comes first because a pipeline reads left to right, so its neighbours sit beside it.
+ * A side that leaves the card itself and `keepClear` (controls that must stay usable)
+ * clear always beats one that covers them, even partly, so the settings never hide what
+ * they edit while another side has room. Among those, the side that covers least of the
+ * `others` wins, the tallest on a tie. Below comes first because a pipeline reads left to
+ * right, so its neighbours sit beside it.
  * `size.height` is the settings' height when given the whole area.
  */
-export function placeBeside(card: Box, size: { width: number; height: number }, area: Box, others: Box[]) {
+export function placeBeside(
+  card: Box,
+  size: { width: number; height: number },
+  area: Box,
+  others: Box[],
+  keepClear: Box[] = [],
+) {
   const { width } = size;
   const room = area.bottom - area.top;
   const candidates = [
@@ -46,7 +53,7 @@ export function placeBeside(card: Box, size: { width: number; height: number }, 
       const wanted = candidate.top ?? candidate.bottom - height;
       const top = Math.max(area.top, Math.min(wanted, area.bottom - height));
       const box = { left, top, right: left + width, bottom: top + height };
-      const hidden = overlap(box, card);
+      const hidden = [card, ...keepClear].reduce((sum, kept) => sum + overlap(box, kept), 0);
       const covered = others.reduce((sum, other) => sum + overlap(box, other), 0);
       return { left, top, height, hidden, covered };
     });
@@ -92,9 +99,10 @@ export function useAnchoredPanel(
       element.setAttribute("data-anchored", "true");
       element.style.setProperty("max-height", `${Math.max(0, area.bottom - area.top)}px`);
       const { width, height } = element.getBoundingClientRect();
-      // Other cards and the zoom controls are what the settings should leave in view.
-      const obstacles = [...nodes.filter((node) => node !== card), ...root.querySelectorAll(".react-flow__controls")];
-      const spot = placeBeside(relative(card), { width, height }, area, obstacles.map(relative));
+      // The zoom controls must stay usable; other cards should stay in view where there is room.
+      const others = nodes.filter((node) => node !== card).map(relative);
+      const controls = [...root.querySelectorAll(".react-flow__controls")].map(relative);
+      const spot = placeBeside(relative(card), { width, height }, area, others, controls);
       element.style.setProperty("max-height", `${Math.floor(spot.maxHeight)}px`);
       element.style.setProperty("left", `${Math.round(spot.left)}px`);
       element.style.setProperty("top", `${Math.round(spot.top)}px`);

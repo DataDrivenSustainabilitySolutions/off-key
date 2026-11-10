@@ -211,6 +211,11 @@
 .pl-stage .pl-settings-panel[data-anchored] {
   position: absolute;
 }
+/* A step dragged in from the menu may land where the settings sit, so they step aside as the menu does. */
+.pl-stage.is-adding-step .pl-settings-panel[data-anchored] {
+  opacity: 0;
+  pointer-events: none;
+}
 .pl-stage .pl-settings-panel .pl-inspector {
   flex: 1 1 auto;
   height: auto;

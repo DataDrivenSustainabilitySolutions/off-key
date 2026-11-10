@@ -271,7 +271,7 @@ export function PipelineWorkbench({
       </div>}
       content={panel === "service" ? settings : undefined} />
   </div>;
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`} ref={stageRoot}
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${dragging ? " is-adding-step" : ""}`} ref={stageRoot}
     style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>

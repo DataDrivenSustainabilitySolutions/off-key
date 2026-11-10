@@ -99,7 +99,8 @@ def normalized_parameters(
 ) -> dict[str, Any]:
     if node.kind == "detector":
         identifier = node.component.removeprefix("detector:")
-        if component_learning(node.component) == "online":
+        # Online and pretrained detectors score, then learn, every observation.
+        if component_learning(node.component) in ("online", "pretrained"):
             return validate_adaptive_model_params(identifier, node.params)
         return validate_static_model_params(
             identifier, node.params, include_defaults=True

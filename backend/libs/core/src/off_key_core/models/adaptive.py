@@ -141,9 +141,92 @@ FORECASTER_LIMITS: dict[str, dict[str, dict[str, Any]]] = {
     "seasonal_naive": {"season_length": {"minimum": 1, "maximum": 500_000}},
 }
 
+# A pretrained forecaster's weights live in the shared forecast service, so it is
+# not an Aberrant component and not in the generated catalog. RADAR wraps the
+# service in Aberrant's residual detector; its key is its component identifier.
+TIMESTRAL = "forecast.timestral"
+# The checkpoints the forecast service offers, smallest first.
+TIMESTRAL_CHECKPOINTS = (
+    "mistralai/Timestral-5M",
+    "mistralai/Timestral-28M",
+    "mistralai/Timestral-123M",
+    "mistralai/Timestral-209M",
+)
+PRETRAINED_FORECASTERS: dict[str, dict[str, Any]] = {
+    TIMESTRAL: {
+        "catalog_id": RESIDUAL_DETECTOR,
+        "forecaster_id": TIMESTRAL,
+        "name": "Timestral forecaster",
+        "import_path": "off_key_mqtt_radar.forecasting.ServiceForecaster",
+        "algorithm_family": "forecast",
+        "available": True,
+        "parameter_schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "checkpoint": {
+                    "enum": list(TIMESTRAL_CHECKPOINTS),
+                    "default": TIMESTRAL_CHECKPOINTS[0],
+                },
+                # How many recent values the model reads for each forecast.
+                "context_length": {
+                    "type": "integer",
+                    "default": 512,
+                    "minimum": 16,
+                    "maximum": 32_768,
+                },
+                # Forecasts start once this many values have arrived.
+                "minimum_context": {
+                    "type": "integer",
+                    "default": 32,
+                    "minimum": 16,
+                    "maximum": 32_768,
+                },
+                "lead": {**PARAMETER_LIMITS["lead"], "type": "integer", "default": 1},
+                "score": {"enum": ["absolute", "scaled"], "default": "scaled"},
+                "min_scale": {
+                    **PARAMETER_LIMITS["min_scale"],
+                    "type": "number",
+                    "default": 1e-06,
+                },
+            },
+        },
+        "default_parameters": {
+            "checkpoint": TIMESTRAL_CHECKPOINTS[0],
+            "context_length": 512,
+            "minimum_context": 32,
+            "lead": 1,
+            "score": "scaled",
+            "min_scale": 1e-06,
+        },
+        "default_capabilities": {
+            "event_kind": "univariate",
+            "feature_count": {"minimum": 1, "maximum": 1},
+            "feature_schema": "fixed",
+            "higher_is_more_anomalous": True,
+            "requires_unit_interval": False,
+            "resettable": False,
+            "score_kind": "non_negative",
+            "state": "bounded",
+            "warmup": {"minimum": 32, "unit": "events"},
+        },
+        "bound_parameters": ["target"],
+    }
+}
+
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
 ABERRANT_VERSION: str = CATALOG["aberrant_version"]
-ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = CATALOG["models"]
+ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = {
+    **CATALOG["models"],
+    **PRETRAINED_FORECASTERS,
+}
+
+
+def detector_component(model_type: str) -> str:
+    """The pipeline component of a streaming detector's model type."""
+    return (
+        model_type if model_type in PRETRAINED_FORECASTERS else f"detector:{model_type}"
+    )
 
 
 # Detector parameters bound from the feature schema, never from user input.
@@ -265,6 +348,19 @@ def validate_adaptive_model_params(
                     code="invalid_value",
                     loc=("gamma",),
                     message=f"{name} requires gamma <= 1 - alpha",
+                )
+            ],
+        )
+    if model_type in PRETRAINED_FORECASTERS and (
+        merged["minimum_context"] > merged["context_length"]
+    ):
+        raise parameter_error(
+            model_type,
+            [
+                ParameterIssue(
+                    code="invalid_value",
+                    loc=("minimum_context",),
+                    message="minimum_context must not exceed context_length",
                 )
             ],
         )

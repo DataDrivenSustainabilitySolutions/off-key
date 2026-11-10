@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from off_key_api_gateway.api.v1.monitors import _normalize_models_for_gateway
+from off_key_core.models.adaptive import detector_component
 from off_key_core.models.parameter_validation import validate_parameter_schema
 from off_key_core.models.pipeline_fields import component_fields
 from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
@@ -76,7 +77,7 @@ def test_discovery_serves_the_graphs_actual_fields_without_numerical_imports():
     for name, model in models.items():
         assert model["fields"] == [
             field.model_dump(mode="json")
-            for field in components[f"detector:{name}"].fields
+            for field in components[detector_component(name)].fields
         ]
     engine = next(
         field

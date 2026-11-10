@@ -9,17 +9,31 @@ calibrators treat a pretrained model like any online forecaster.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
 import urllib.error
 import urllib.request
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from aberrant.base.forecast import Forecast
 from aberrant.base.protocols import FeatureMap
+from aberrant.catalog import (
+    ComponentConfig,
+    DetectorConfig,
+    EventKind,
+    FeatureCount,
+    FeatureSchemaKind,
+    ModelCapabilities,
+    ScoreKind,
+    StateKind,
+    WarmupRequirement,
+    WarmupUnit,
+)
 from aberrant.forecast import ResidualDetector
 from off_key_core.config.validation import SECRETS_DIR
 from off_key_core.schemas.forecast import (
@@ -216,8 +230,9 @@ class ServiceForecaster:
     change, a missed forecast can be made later from the same values:
     ``forecast_from(back)`` forecasts as of ``back`` values ago.
 
-    ``client`` makes the connection on first use. It is stored in checkpoints
-    by reference, so it must be a module-level function.
+    ``client`` makes the connection on first use; without one the worker's
+    environment says where the service is. It is stored in checkpoints by
+    reference, so it must be a module-level function.
     """
 
     def __init__(
@@ -228,7 +243,7 @@ class ServiceForecaster:
         context_length: int = 512,
         minimum_context: int = 32,
         min_scale: float = 1e-6,
-        client: Callable[[], ForecastClient] = service_client,
+        client: Callable[[], ForecastClient] | None = None,
     ):
         if not isinstance(model, str) or not model:
             raise ValueError("model must name a forecast model")
@@ -289,7 +304,7 @@ class ServiceForecaster:
             return None
         try:
             if self._client is None:
-                self._client = self._client_factory()
+                self._client = (self._client_factory or service_client)()
             response = self._client.forecast(
                 self.model, [self.context(back)], self._horizon
             )
@@ -368,3 +383,54 @@ class ServiceResidualDetector(ResidualDetector):
                     f"No forecast to compare with: {error}"
                 ) from error
         return super().explain_one(x)
+
+
+@dataclass(frozen=True)
+class ResolvedServiceDetector:
+    """What RADAR reads of a resolved detector, for a pretrained forecaster.
+
+    Aberrant resolves its own components from configuration. This one is built
+    here, around the forecast service, and answers the same questions.
+    """
+
+    config: DetectorConfig
+    capabilities: ModelCapabilities
+    fingerprint: str
+
+    def build(self) -> ServiceResidualDetector:
+        params = self.config.model.params
+        forecaster = dict(params["model"]["params"])
+        return ServiceResidualDetector(
+            ServiceForecaster(forecaster.pop("checkpoint"), **forecaster),
+            params["target"],
+            lead=params["lead"],
+            score=params["score"],
+        )
+
+
+def resolve_service_detector(model: Mapping[str, Any]) -> ResolvedServiceDetector:
+    """Resolve a pretrained forecaster step, given as Aberrant's residual detector
+    around a forecaster of the forecast service."""
+    config = DetectorConfig(model=ComponentConfig(model["id"], model["params"]))
+    params = config.model.params
+    capabilities = ModelCapabilities(
+        event_kind=EventKind.UNIVARIATE,
+        feature_count=FeatureCount(1, 1),
+        feature_schema=FeatureSchemaKind.FIXED,
+        score_kind=ScoreKind.NON_NEGATIVE,
+        higher_is_more_anomalous=True,
+        warmup=WarmupRequirement(
+            params["model"]["params"]["minimum_context"] + params["lead"] - 1,
+            WarmupUnit.EVENTS,
+        ),
+        state=StateKind.BOUNDED,
+        resettable=False,
+        requires_unit_interval=False,
+    )
+    serialized = json.dumps(config.as_dict(), sort_keys=True, separators=(",", ":"))
+    resolved = ResolvedServiceDetector(
+        config, capabilities, hashlib.sha256(serialized.encode()).hexdigest()
+    )
+    # Settings out of range fail here, before a run subscribes or learns.
+    resolved.build()
+    return resolved

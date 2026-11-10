@@ -180,7 +180,7 @@ def test_every_detector_gives_scores_and_the_calibration_step_p_values():
     } == {"scores"}
     assert {
         item.learning for item in components.values() if item.kind == "detector"
-    } == {"batch", "online"}
+    } == {"batch", "online", "pretrained"}
     fixed = components["calibrate.fixed_split"]
     assert (fixed.input_type, fixed.output_type) == ("scores", "p_values")
     assert {

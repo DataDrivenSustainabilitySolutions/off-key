@@ -17,7 +17,7 @@ from ..schemas.pipelines import (
     PipelineTemplate,
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
-from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
 from .pipeline_parameters import CALIBRATION_MODELS, PARAMETER_MODELS, POLICY_MODELS
@@ -308,7 +308,7 @@ def pipeline_components() -> list[PipelineComponent]:
         schema = model["parameter_schema"]
         result.append(
             PipelineComponent(
-                id=f"detector:{identifier}",
+                id=detector_component(identifier),
                 kind="detector",
                 label=model["name"],
                 description=(
@@ -317,7 +317,7 @@ def pipeline_components() -> list[PipelineComponent]:
                     else "Adaptive score-before-learn anomaly detector."
                 ),
                 strategies=["adaptive_stream"],
-                learning="online",
+                learning=component_learning(detector_component(identifier)),
                 parameter_schema=schema,
                 fields=component_fields(schema),
                 output_type="scores",

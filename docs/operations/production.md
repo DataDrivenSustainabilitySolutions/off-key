@@ -11,10 +11,10 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
    CI holds every release gate, so this one run covers them all.
 2. One GitHub production job connects through an ephemeral management-tailnet runner
    and verified SSH. Superseded automatic candidates stop before deployment.
-3. Runtime files are compared against the manager's last verified release. Documentation
-   and test changes do not deploy; intervening undeployed runtime changes remain visible.
+3. Runtime files are compared against the manager's last verified release. Root-level Markdown
+   and test-only changes do not deploy; intervening undeployed runtime changes remain visible.
 4. Deployment uses the exact immutable image digests saved by that SHA's successful
-   production rehearsal. OCI revision labels must match the SHA; a missing or expired
+   production rehearsal. OCI revision labels must match each image's proven source revision in the rehearsal evidence; a missing or expired
    rehearsal artifact blocks deployment, so a root-Markdown-only `main` run, which
    rehearses nothing, is never selected. The control checkout must be clean and match
    that same commit.
@@ -41,6 +41,25 @@ released from one tested main commit. See [GitHub setup](github-setup.md) before
 9. Application setup follows the completed release: the first administrator
    invitation. It writes like any client, so a failure fails the run without
    holding the release open; a retry or the next deployment repeats it.
+
+Frontend/docs updates can retain running application writers and monitor UUIDs.
+This path requires an existing private `verified-deployment.json` baseline, only
+static source changes, identical non-image configuration and non-static images,
+identical live Docker service specs, and no pending filesystem or database recovery
+operation. It takes the same durable release reservation, briefly fencing catalogue
+and monitor configuration writes while ingestion and existing workers continue.
+It rechecks the baseline immediately before updating only the changed static images.
+Worker image/secret checks, schema and collection readiness, full
+Swarm convergence, existing worker heartbeats and public routes still gate success.
+Any uncertainty selects the complete sequence above. The baseline is recorded only
+after successful verification; losing this optional file selects a full cutover.
+CI updates disposable frontend/docs images and back while checking that backend tasks,
+an active monitor and real ingestion survive unchanged.
+
+Writer scaling during a full cutover submits all selected service counts together
+and waits for Docker convergence. Before any backup or replacement, the additional
+actual-task fence still requires every retiring writer to have stopped. Failed
+writer resumption preserves the original recovery plan and replica counts.
 
 Dispatch a tested release manually with `make deploy-prod REVISION=<full SHA>`.
 Use `BOOTSTRAP=true` only for the first integrated cutover. The automatic switch

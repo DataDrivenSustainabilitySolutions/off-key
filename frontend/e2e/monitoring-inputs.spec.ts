@@ -6,8 +6,6 @@ import { addTestCharger } from "./helpers/collection";
 import { accessToken } from "./helpers/auth";
 
 test("offers only entities with fresh MQTT data and retains their exact broker context", async ({ page, playwright }, testInfo) => {
-  // A fast reading keeps receiving for the 2 minute activity floor after it stops.
-  test.setTimeout(300_000);
   const runId = randomUUID();
   const activeId = `active-${runId}`;
   const quietId = `quiet-${runId}`;
@@ -66,7 +64,18 @@ test("offers only entities with fresh MQTT data and retains their exact broker c
     await expect(picker).toHaveText(`${broker.label} / Device ${quietId}`);
     await picker.click();
     await choices.getByRole("searchbox", { name: "Search entities", exact: true }).fill(runId);
-    await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible({ timeout: 150_000 });
+    // Keep the MQTT/collector/API path real, and control only the browser's
+    // clock for this picker boundary. The sidebar journey still exercises the
+    // complete two-minute expiry with real time and real MQTT traffic.
+    const receipts = (await readSystem()).runtime.ingress!.readings!;
+    const quietReceivedAt = Date.parse(receipts[quietReading.id]!.fresh_received_at!);
+    expect(Number.isFinite(quietReceivedAt)).toBe(true);
+    await page.clock.setFixedTime(new Date(quietReceivedAt + 119_000));
+    await expect(quietChoice).toBeVisible();
+    const latestReceipt = Math.max(...[activeReading.id, quietReading.id]
+      .map(id => Date.parse(receipts[id]!.fresh_received_at!)));
+    await page.clock.setFixedTime(new Date(latestReceipt + 121_000));
+    await expect(choices.getByText("No matching inputs receiving data.", { exact: true })).toBeVisible();
     await expect(picker).toHaveText(`${broker.label} / Device ${quietId}`);
   } finally {
     if (publisher) {

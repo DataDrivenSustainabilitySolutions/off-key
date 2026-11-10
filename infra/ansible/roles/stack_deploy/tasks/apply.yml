@@ -40,24 +40,35 @@
         tasks_from: restore
 
     - name: Resume desired stack services after successful restoration
-      command:
-        argv: [docker, service, scale, "{{ stack_name }}_{{ item.key }}={{ item.value.deploy.replicas | default(1) }}"]
-      loop: "{{ stack_compose_model.services | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-      when:
-        - persistence_flips | length > 0
-        - item.key not in ['postgres', 'emqx-main', 'frontend']
-        - item.value.deploy.mode | default('replicated') != 'global'
+      include_role:
+        name: swarm_scale
+      vars:
+        swarm_scale_replicas: "{{ stack_resume_replicas | from_json }}"
+        stack_resume_replicas: >-
+          {% set replicas = {} %}
+          {% for name, service in stack_compose_model.services.items() %}
+          {% if name not in ['postgres', 'emqx-main', 'frontend'] and service.deploy.mode | default('replicated') != 'global' %}
+          {% set _ = replicas.update({stack_name ~ '_' ~ name: service.deploy.replicas | default(1)}) %}
+          {% endif %}
+          {% endfor %}
+          {{ replicas | to_json }}
+      when: persistence_flips | length > 0
       no_log: true
 
     - name: Resume runtime workers with their original replica counts
-      command:
-        argv: [docker, service, scale, "{{ item.key }}={{ item.value }}"]
-      loop: "{{ persistence_writer_replicas | default({}) | dict2items }}"
-      loop_control:
-        label: "{{ item.key }}"
-      when: item.key not in (stack_compose_model.services.keys() | map('regex_replace', '^', stack_name ~ '_') | list)
+      include_role:
+        name: swarm_scale
+      vars:
+        swarm_scale_replicas: "{{ runtime_resume_replicas | from_json }}"
+        runtime_resume_replicas: >-
+          {% set replicas = {} %}
+          {% set stack_services = stack_compose_model.services.keys() | map('regex_replace', '^', stack_name ~ '_') | list %}
+          {% for name, count in (persistence_writer_replicas | default({})).items() %}
+          {% if name not in stack_services %}
+          {% set _ = replicas.update({name: count}) %}
+          {% endif %}
+          {% endfor %}
+          {{ replicas | to_json }}
 
     - name: Serve backend contracts before activating the browser bundle
       when: "'frontend' in stack_compose_model.services"

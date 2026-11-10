@@ -63,6 +63,7 @@ export default defineConfig({
     {
       name: "mocked-ui",
       testMatch: MOCKED_SPECS,
+      fullyParallel: true,
       use: { ...chromiumUse, storageState: { cookies: [], origins: [] } },
     },
     {

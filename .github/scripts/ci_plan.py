@@ -29,6 +29,7 @@ JOBS = (
     "lint",
     "backend",
     "frontend",
+    "frontend-browser",
     "contracts",
     "infrastructure",
     "collection",
@@ -43,7 +44,14 @@ JOBS = (
 FULL = set(JOBS) - {"contracts", "publish"}
 SELECTED = {
     "full": FULL,
-    "frontend": {"lint", "frontend", "contracts", "images", "deployment-smoke"},
+    "frontend": {
+        "lint",
+        "frontend",
+        "frontend-browser",
+        "contracts",
+        "images",
+        "deployment-smoke",
+    },
     "docs": {"lint", "contracts"},
 }
 # Frontend files that change the image or its dependencies select everything.

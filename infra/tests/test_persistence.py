@@ -125,6 +125,21 @@ class PersistenceTests(unittest.TestCase):
                     state["replicas"],
                     {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
                 )
+                # All writer updates are submitted together, with Docker still
+                # reporting convergence failures before recovery can advance.
+                stop = next(
+                    command for command in commands if "off-key_api=0" in command
+                )
+                self.assertEqual(
+                    stop,
+                    [
+                        "service",
+                        "scale",
+                        "--detach=false",
+                        "off-key_api=0",
+                        "radar-runtime=0",
+                    ],
+                )
                 restore = next(
                     command for command in commands if "pg_restore" in command
                 )

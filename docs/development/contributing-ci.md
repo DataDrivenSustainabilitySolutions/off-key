@@ -29,7 +29,7 @@ plan.
 
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests, build, route-mocked journeys); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
+| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests and build); `frontend browser` (route-mocked journeys against that checked build); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
 | `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix, including the strict Zensical docs build | no |
 | `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded and kept its `production-release` evidence ([Production releases](../operations/production.md)) | no |
 | `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
@@ -48,7 +48,7 @@ and anything it cannot classify, runs every job:
 | Changed paths | Jobs that run |
 | --- | --- |
 | Only root-level `*.md` | `lint`, `contracts` |
-| Those plus `frontend/**`, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
+| Those plus `frontend/**`, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `frontend browser`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
 | Published docs (`docs/**`, `dev/docs/**`, `zensical.toml`) and anything else: backend and shared core, lockfiles and dependency manifests (including `requirements-docs.txt`), Dockerfiles, `infra/**`, `.github/**`, unknown files | every job |
 
 Pull requests compare their merge commit with its base parent, the merge queue
@@ -64,7 +64,12 @@ A root-Markdown-only `main` run succeeds without publishing or rehearsing images
 so it keeps no release evidence; [production release selection](../operations/production.md)
 skips it. Cheap checks run first: backend, infrastructure, collection,
 observability, image and RADAR jobs wait for `lint`, and the deployment rehearsals
-also wait for `frontend`.
+also wait for `frontend`. The independently required `frontend browser` job verifies
+and unpacks that run's checked build using its SHA-256 output, then runs mocked
+journeys while the Swarms prepare. Mocked journeys run once with two isolated
+workers; production journeys keep one worker for shared catalogue/member state.
+The input-picker expiry test controls only browser time over real MQTT receipts;
+the sidebar journey still exercises the full two-minute expiry in real time.
 
 `make -C infra check-deploy` runs each infrastructure test in a worker process of
 its own, one per processor (`infra/tests/run_suite.py`). A class with a shared
@@ -76,6 +81,17 @@ Ansible task names and durations only, as the production deployment log prints
 them, and the duration of the readiness checks between them.
 
 ### Image builds
+
+`infra/scripts/image_sources.py` selects each image's source revision from its
+complete committed input paths. All backend paths are shared backend inputs;
+frontend and documentation inputs are separate. Build-tool and workflow edits
+invalidate every image. The selected revision's input tree must equal the tested
+checkout's tree; shallow history disables reuse. Stable revision/version labels
+let unchanged builds retain their digest instead of replacing it for each release.
+Every selected build, test and attestation still runs. Rehearsed release evidence
+records the source revision per image, and deployment recomputes these revisions
+before checking the registry labels. Older release evidence retains its original
+all-images-at-the-release-SHA validation.
 
 On pull requests, the merge queue and manual runs, the `images` job builds each
 application image once with the inputs the rehearsals test (the `production`

@@ -1,5 +1,6 @@
 """CI is one workflow whose single, stable gate job stands for every check."""
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -120,6 +121,8 @@ class CiWorkflowTests(unittest.TestCase):
             self.assertEqual(needs(self.jobs[name]), ["changes", "lint"])
         self.assertEqual(needs(self.jobs["lint"]), ["changes"])
         self.assertEqual(needs(self.jobs["frontend"]), ["changes"])
+        self.assertEqual(needs(self.jobs["frontend-browser"]), ["changes", "frontend"])
+        self.assertNotIn("frontend-browser", needs(self.jobs["deployment-smoke"]))
 
     def test_version_independent_checks_run_once(self):
         lint = [step.get("run", "") for step in self.jobs["lint"]["steps"]]
@@ -133,6 +136,54 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.jobs["collection"]["strategy"]["matrix"]["emqx"], ["5.8.7", "6.3.2"]
         )
+
+    def test_mocked_browser_rejects_a_changed_build_before_extracting_it(self):
+        step = next(
+            step
+            for step in self.jobs["frontend-browser"]["steps"]
+            if step.get("name") == "Verify and unpack the checked frontend"
+        )
+        self.assertEqual(
+            step["env"]["EXPECTED_SHA256"], "${{ needs.frontend.outputs.dist-sha256 }}"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            (directory / "frontend-build").mkdir()
+            (directory / "frontend").mkdir()
+            archive = directory / "frontend-build/frontend-dist.tar.gz"
+            archive.write_bytes(b"changed archive that must never reach tar")
+            env = os.environ | {
+                "RUNNER_TEMP": str(directory),
+                "GITHUB_WORKSPACE": str(directory),
+            }
+            for expected in ("", "0" * 64):
+                with self.subTest(expected=expected):
+                    result = run(
+                        "bash",
+                        "-c",
+                        step["run"],
+                        env=env | {"EXPECTED_SHA256": expected},
+                        check=False,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(list((directory / "frontend").iterdir()))
+            # A valid archive of this run's checked dist can be unpacked.
+            source = directory / "source/dist"
+            source.mkdir(parents=True)
+            (source / "index.html").write_text("checked build")
+            run("tar", "-C", source.parent, "-czf", archive, "dist")
+            run(
+                "bash",
+                "-c",
+                step["run"],
+                env=env
+                | {
+                    "EXPECTED_SHA256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                },
+            )
+            self.assertEqual(
+                (directory / "frontend/dist/index.html").read_text(), "checked build"
+            )
 
     def test_main_rehearses_the_images_this_run_published(self):
         smoke = self.jobs["deployment-smoke"]
@@ -184,7 +235,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertNotIn("npm run test:e2e", rehearsal)
         self.assertNotIn("pytest", browser)
         self.assertLess(
-            browser.index("npm run test:e2e\n"),
+            browser.index("npm run test:e2e:production\n"),
             # Its own output folder keeps the evidence of the journeys before it.
             browser.index("npm run test:e2e:pipelines -- --output=test-results/"),
         )
@@ -195,6 +246,27 @@ class CiWorkflowTests(unittest.TestCase):
             if step.get("with", {}).get("name") == "production-release"
         )
         self.assertIn("matrix.lane == 'rehearsal'", evidence["if"])
+
+    def test_browser_projects_are_covered_once_without_parallel_shared_mutations(self):
+        scripts = json.loads((ROOT.parent / "frontend/package.json").read_text())[
+            "scripts"
+        ]
+
+        def projects(script):
+            return set(re.findall(r"--project=([\w-]+)", scripts[script]))
+
+        mocked = projects("test:e2e:mocked")
+        production = projects("test:e2e:production")
+        self.assertTrue(mocked)
+        self.assertTrue(production)
+        self.assertFalse(mocked & production)
+        self.assertEqual(mocked | production, projects("test:e2e"))
+        commands = "\n".join(
+            step.get("run", "") for step in self.jobs["deployment-smoke"]["steps"]
+        )
+        self.assertIn("npm run test:e2e:production", commands)
+        self.assertNotIn("npm run test:e2e:mocked", commands)
+        self.assertNotIn("--workers", scripts["test:e2e:production"])
 
     def test_other_events_reuse_one_verified_image_build(self):
         images = self.jobs["images"]
@@ -259,7 +331,20 @@ class CiWorkflowTests(unittest.TestCase):
                     self.assertEqual(entry["file"], "./dev/docs/Dockerfile")
                     self.assertEqual(entry["build_args"], "")
                     continue
-                self.assertIn("GIT_COMMIT=${{ github.sha }}", entry["build_args"])
+                self.assertIn("SERVICE_NAME=off-key-", entry["build_args"])
+        build = next(
+            step
+            for step in workflow("docker-images.yml")["jobs"]["build-images"]["steps"]
+            if step.get("id") == "build"
+        )
+        self.assertIn(
+            "GIT_COMMIT=${{ steps.source.outputs.revision }}",
+            build["with"]["build-args"],
+        )
+        self.assertIn(
+            "org.opencontainers.image.revision=${{ steps.source.outputs.revision }}",
+            build["with"]["labels"],
+        )
 
     def test_build_cache_credentials_reach_only_image_builds(self):
         self.assertEqual(

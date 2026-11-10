@@ -190,8 +190,9 @@ def _parameter_message(issue) -> str:
     return issue["msg"].removeprefix("Value error, ")
 
 
-# Until one runtime runs every design, a schema 2 design runs in the lane its
-# learned steps share, and only that lane's components can run there.
+# A design whose learned steps all learn the same way keeps that lane's
+# components, its policy included; detectors that learn differently meet at
+# the calibration step and alarm on its threshold.
 _LEARNS = {
     "static_baseline": "are fitted once",
     "adaptive_stream": "learn continuously",
@@ -544,12 +545,6 @@ def _validate_learning(compilation: _Compilation) -> None:
     """What may be combined follows from how each step learns."""
     modes = _learned(compilation)
     _validate_branches(compilation, modes)
-    if len(set(modes.values())) > 1:
-        compilation.error(
-            "learning_mix",
-            "Detectors that learn in different ways can run together from the "
-            "next release.",
-        )
     for identifier, node in compilation.nodes.items():
         if node.component == "policy.martingale" and any(
             modes.get(item) == "online" for item in _ancestors(compilation, identifier)

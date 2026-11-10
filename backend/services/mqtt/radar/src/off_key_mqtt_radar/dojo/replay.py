@@ -18,11 +18,10 @@ from off_key_core.models.dojo_runs import DOJO_SENSOR_KEY_STRATEGY
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 
-from ..adaptive_detector import AdaptiveStreamDetectionService
 from ..config.config import AnomalyDetectionConfig
 from ..coverage import CoverageTracker
-from ..detector import StaticConformalDetectionService
 from ..detector_handle import DetectorHandle
+from ..detector_services import detector_service_class
 from ..feature_validation import TelemetryFeatureValidator
 from ..memory import MemoryManager
 from ..message_processor import MessageProcessor
@@ -99,11 +98,7 @@ class Replay:
             if required
             else None
         )
-        service_cls = (
-            AdaptiveStreamDetectionService
-            if config.monitoring.strategy == "adaptive_stream"
-            else StaticConformalDetectionService
-        )
+        service_cls = detector_service_class(config)
         self.detector = DetectorHandle(service_cls(config))
         self.coverage = CoverageTracker()
         self.processor = MessageProcessor(

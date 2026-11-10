@@ -20,7 +20,6 @@ from typing import Any
 
 from off_key_core.config.logs import logger
 
-from .adaptive_detector import AdaptiveStreamDetectionService
 from .admission import require_monitor_admission
 from .config.config import AnomalyDetectionConfig, get_radar_settings
 from .config.runtime import get_radar_checkpoint_settings
@@ -29,9 +28,9 @@ from .database import (
     CheckpointOwnershipLost,
     DatabaseWriter,
 )
-from .detector import StaticConformalDetectionService
 from .detector_handle import DetectorHandle
 from .detector_runtime import DetectorRuntime
+from .detector_services import detector_service_class
 from .execution_errors import FatalExecutionError
 from .feature_validation import TelemetryFeatureValidator
 from .health_monitor import HealthMonitor
@@ -512,11 +511,7 @@ class RadarService:
 
     @staticmethod
     def _detector_service_class(config):
-        return (
-            AdaptiveStreamDetectionService
-            if config.monitoring.strategy == "adaptive_stream"
-            else StaticConformalDetectionService
-        )
+        return detector_service_class(config)
 
     async def _checkpoint_if_due(self, *, force: bool = False) -> None:
         if (

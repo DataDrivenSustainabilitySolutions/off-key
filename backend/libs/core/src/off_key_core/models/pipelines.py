@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..schemas.pipeline_versions import component_learning
 from ..schemas.pipelines import BoundInput, PipelineDefinition
 from ..schemas.radar import (
     AdaptiveStreamConfig,
@@ -36,12 +37,28 @@ __all__ = [
 def derive_monitoring_config(definition: PipelineDefinition):
     """The run's monitoring settings: its first detector and the policy's own.
 
-    A design that combines detectors reads the others from its graph.
+    A design that combines detectors reads the others from its graph. The
+    policy picks the settings: the conformal alarm policy runs on p-values,
+    the score threshold on scores. A threshold run names its first detector
+    that learns continuously, which detectors fitted once sit beside.
     """
     compiled = compile_pipeline(definition)
     nodes = {node.id: node for node in compiled.definition.nodes}
-    detector = nodes[compiled.detector_id]
-    policy = policy_settings(nodes[compiled.policy_id].params)
+    policy_node = nodes[compiled.policy_id]
+    threshold = policy_node.component == "policy.quantile"
+    detector = nodes[
+        next(
+            (
+                identifier
+                for identifier in compiled.detector_ids
+                if component_learning(nodes[identifier].component) == "online"
+            ),
+            compiled.detector_id,
+        )
+        if threshold
+        else compiled.detector_id
+    ]
+    policy = policy_settings(policy_node.params)
     settings = compiled.definition.settings
     common: dict[str, Any] = dict(
         model_type=detector.component.removeprefix("detector:"),
@@ -49,7 +66,7 @@ def derive_monitoring_config(definition: PipelineDefinition):
         training_window_size=settings.training_window_size,
         calibration_window_size=settings.calibration_window_size,
     )
-    if compiled.definition.lane == "adaptive_stream":
+    if threshold:
         return AdaptiveStreamConfig(**common, threshold_config=policy)
     return StaticBaselineConfig(
         **common,

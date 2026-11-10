@@ -37,6 +37,8 @@ from .pipelines.prepare import Withheld
 class AdaptiveStreamState(Enum):
     WARMUP = "warmup"
     CALIBRATING = "calibrating"
+    # Detectors fitted once beside the online ones fit after calibration.
+    FITTING = "fitting"
     OPERATIONAL = "operational"
     FAILED = "failed"
 
@@ -50,8 +52,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         checkpoint: dict[str, Any] | None = None,
     ) -> None:
         self._init_pipeline_execution(config)
-        if self.plan.execution.definition.lane != "adaptive_stream":
+        if not self._runs(self.plan):
             raise ValueError("Adaptive execution requires an adaptive pipeline")
+        # The detectors that learn continuously, each in its own Aberrant graph.
+        self.online_ids: list[str] = self._online_ids()
         self._scored_features: dict[str, float] | None = None
         # The bound readings of the current observation, before any Prepare step.
         self._bound: dict[str, float] = {}
@@ -67,7 +71,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.logger = logging.getLogger(__name__)
         self._resolved_detectors = [
             resolved_detector_config(self.plan, identifier)
-            for identifier in self.plan.detector_ids
+            for identifier in self.online_ids
         ]
         self._resolved_detector = self._resolved_detectors[0]
         self.detector_config = self._resolved_detector.config
@@ -94,7 +98,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                     self.plan, self._observer(identifier), config, identifier
                 )[0]
                 for identifier, config in zip(
-                    self.plan.detector_ids, self._resolved_detectors, strict=True
+                    self.online_ids, self._resolved_detectors, strict=True
                 )
             ]
             self.pipeline = self.pipelines[0]
@@ -164,9 +168,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             self.pipeline.observer = self._observe
 
     def _resume_detectors(self, checkpoint: dict[str, Any]) -> None:
-        for identifier, graph in zip(
-            self.plan.detector_ids, self.pipelines, strict=True
-        ):
+        for identifier, graph in zip(self.online_ids, self.pipelines, strict=True):
             graph.observer = self._observer(identifier)
         if self.state == AdaptiveStreamState.OPERATIONAL:
             # The calibration scores give the same frozen threshold again.
@@ -235,6 +237,13 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode()).hexdigest()
 
+    @staticmethod
+    def _runs(plan) -> bool:
+        return plan.execution.definition.lane == "adaptive_stream"
+
+    def _online_ids(self) -> list[str]:
+        return list(self.plan.detector_ids)
+
     def _initial_feature_keys(self) -> list[str]:
         return sorted(slot.id for slot in self.plan.compiled.definition.input_slots)
 
@@ -296,7 +305,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         return frozenset(
             slot
             for identifier, resolved in zip(
-                self.plan.detector_ids, self._resolved_detectors, strict=True
+                self.online_ids, self._resolved_detectors, strict=True
             )
             if resolved.capabilities.requires_unit_interval
             for feature in self.plan.compiled.features[
@@ -466,9 +475,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self._diagnose(self.diagnostics.select_pass, "score")
         self.diagnostics.record(self.plan.source_id, self._bound, self._bound)
         scores = []
-        for identifier, graph in zip(
-            self.plan.detector_ids, self.pipelines, strict=True
-        ):
+        for identifier, graph in zip(self.online_ids, self.pipelines, strict=True):
             try:
                 score = float(graph.score_one(data))
             except GraphExecutionError as error:
@@ -480,6 +487,10 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
             scores.append(score)
         return scores
 
+    def _fused_scores(self, data: dict[str, float]) -> list[float]:
+        """Every detector's score, in the order the calibration scores keep."""
+        return self._scores(data)
+
     def _learn_fused(self, data: dict[str, float]) -> None:
         """Every detector learns the observation, after every one has scored it.
 
@@ -488,9 +499,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         misses only this observation and counts a skip.
         """
         learned = False
-        for identifier, graph in zip(
-            self.plan.detector_ids, self.pipelines, strict=True
-        ):
+        for identifier, graph in zip(self.online_ids, self.pipelines, strict=True):
             try:
                 graph.learn_one(data)
             except GraphExecutionError as error:
@@ -530,7 +539,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self.processed_count += 1
         self._detector_results = [
             {"detector_id": identifier, "score": score, "surprise": None}
-            for identifier, score in zip(self.plan.detector_ids, scores, strict=True)
+            for identifier, score in zip(self.online_ids, scores, strict=True)
         ]
         if self.calibration_count >= self.adaptive_config.calibration_window_size:
             self._freeze_fusion()
@@ -562,7 +571,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         """The combined surprise, and whether it is above the frozen threshold."""
         if self.fusion is None or self.threshold_count is None:
             raise RuntimeError("Combined detector threshold is not initialized")
-        scores = self._scores(data)
+        scores = self._fused_scores(data)
         counts = self.fusion.counts(scores)
         combined = int(self.fusion.combined(counts))
         self._detector_results = [
@@ -601,9 +610,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 self.diagnostics.readiness, self.pipeline.node_states, self.pipeline
             )
             return
-        for identifier, graph in zip(
-            self.plan.detector_ids, self.pipelines, strict=True
-        ):
+        for identifier, graph in zip(self.online_ids, self.pipelines, strict=True):
             self._diagnose(
                 self.diagnostics.readiness,
                 graph.node_states,

@@ -156,11 +156,8 @@ def test_a_detector_reads_steps_that_learn_as_it_does():
     )
 
 
-def test_detectors_that_learn_differently_wait_for_the_shared_runtime():
-    found = issues(design(IFOREST, MAD))
-
-    assert ("learning_mix", None) in found
-    assert all(code != "port_type" for code, _ in found)
+def test_detectors_that_learn_differently_meet_at_the_calibration_step():
+    assert issues(design(IFOREST, MAD)) == []
 
 
 def test_the_martingale_needs_detectors_that_stop_learning():

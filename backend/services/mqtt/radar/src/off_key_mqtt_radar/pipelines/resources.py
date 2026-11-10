@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, kernel
 from off_key_core.models.pipeline_scope import step_scope
+from off_key_core.schemas.pipeline_versions import component_learning
 from pydantic import BaseModel
 
 from .plan import ExecutionPlan
@@ -139,7 +140,7 @@ def _fusion_state(plan: ExecutionPlan) -> int:
     rows = plan.compiled.definition.settings.calibration_window_size
     width = len(plan.detector_ids)
     numeric = 5 * rows * width * 8
-    if plan.compiled.definition.lane == "adaptive_stream":
+    if plan.compiled.definition.lane != "static_baseline":
         row = sys.getsizeof([0.0] * width) + width * sys.getsizeof(0.0)
         numeric += rows * (row + calcsize("P")) + sys.getsizeof([])
     return numeric
@@ -152,17 +153,32 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
         definition.settings.training_window_size
         + definition.settings.calibration_window_size
     )
+    # A static baseline fits everything once. Detectors that learn in
+    # different ways fit some once and copy the steps of the others.
     static = definition.lane == "static_baseline"
+    online = [
+        identifier
+        for identifier in plan.detector_ids
+        if component_learning(plan.nodes[identifier].component) == "online"
+    ]
+    buffered = static or len(online) < len(plan.detector_ids)
+    fitted_once = frozenset().union(
+        *(
+            plan.reads(identifier)
+            for identifier in plan.detector_ids
+            if identifier not in online
+        )
+    )
     # Static baselines buffer what the learned stage reads: the readings, or
     # the prepared columns when the design has a Prepare stage.
     columns = plan.input_columns
-    input_buffer = samples * len(columns) * 8 if static else 0
+    input_buffer = samples * len(columns) * 8 if buffered else 0
     # Collection retains one dict and Python float per observation/feature until
     # the fitted result publishes. Keys are shared by the frozen source schema.
     # Training submission also keeps shallow list snapshots while fitting.
     row_bytes = sys.getsizeof(dict.fromkeys(columns, 0.0))
     row_bytes += len(columns) * sys.getsizeof(0.0)
-    containers = (samples * (row_bytes + 18) + 4 * sys.getsizeof([])) if static else 0
+    containers = (samples * (row_bytes + 18) + 4 * sys.getsizeof([])) if buffered else 0
     remaining = Counter(
         parent for node in plan.learned_nodes for parent in plan.parents(node.id)
     )
@@ -170,7 +186,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     # Adaptive detectors each learn their own copy of the steps they read.
     copies = Counter(
         identifier
-        for detector in plan.detector_ids
+        for detector in online
         for identifier in (plan.reads(detector) if plan.fused else ())
     )
     alive = (
@@ -194,7 +210,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
             outputs = node.params.get("n_components", len(scope.selected))
             numeric, retained = estimate(node, len(scope.selected), outputs)
             # A static run fits each step once; adaptive detectors keep a copy each.
-            times = 1 if static else max(copies[node.id], 1)
+            times = 1 if static else max(copies[node.id] + (node.id in fitted_once), 1)
             initialization += times * numeric
             projection_containers += times * retained
         for parent in plan.parents(node.id):
@@ -203,7 +219,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
                 alive.pop(parent)
     # Fitting keeps transformed training and calibration matrices until model
     # calibration completes. Account for them in addition to branch traversal.
-    intermediates = peak * (samples if static else 1) * 8
+    intermediates = peak * (samples if buffered else 1) * 8
     fusion_state = _fusion_state(plan)
     known = input_buffer + intermediates + initialization + fusion_state
     total = known + containers + projection_containers + prepare_state

@@ -369,15 +369,32 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 
 - `learning`: a step reads a learned step that learns differently. A batch
   detector reads batch or stateless steps, an online one online or stateless steps.
-- `learning_mix`: the learned steps learn in different ways. This stays an error
-  until one runtime runs both modes.
 - `calibration`: the martingale policy needs exact p-values, so no step in front
   of it may keep learning after calibration (no online step).
 
-`PipelineDefinition.lane` is the runtime that runs a design until then: its
-stored strategy, or the one all its learned steps share. A schema 2 design may
-use only that lane's components (`strategy`), so the score threshold needs
-online detectors for now.
+`PipelineDefinition.lane` is the stored strategy, or the one all a design's
+learned steps share. A design with a lane may use only that lane's components
+(`strategy`), so a design whose detectors are all fitted once still alarms with
+the martingale. Detectors that learn in different ways have no lane: they meet
+at the fixed split and alarm on the score threshold.
+
+`derive_monitoring_config` follows the policy: the martingale gives static
+baseline settings, the score threshold adaptive stream settings named after the
+first detector that learns continuously. RADAR picks its service the same way
+(`detector_services.detector_service_class`): a threshold run with a detector
+fitted once runs `MixedDetectionService`. It is the adaptive service with a
+`BatchBranches` beside its Aberrant graphs. While the online detectors warm up,
+the others buffer the latest training window; during calibration the online
+detectors score and learn while the others buffer the calibration window. Then
+the run is `fitting`: the detectors fitted once and the steps they read
+(`BatchFeatureGraph(plan, detector_ids)`) fit in the background on those
+windows, with split conformal calibration as in a static run, and the online
+detectors keep learning without evidence. When the fit publishes, each
+detector's calibration scores form one column of the `RankFusion`, and the run
+alarms as a combined adaptive run does. A Dojo replay waits for the fit, so it
+scores every observation after calibration. Checkpoints keep the buffers or the
+fitted detectors (`batch`) beside the adaptive state and refit when they were
+taken while fitting.
 
 `fusion.RankFusion` combines detectors by rank, so detectors on different scales
 need no tuning. A detector's surprise for a score s is the share of its n

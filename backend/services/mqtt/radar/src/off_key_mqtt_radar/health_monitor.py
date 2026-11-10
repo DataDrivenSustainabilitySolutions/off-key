@@ -593,6 +593,8 @@ class HealthMonitor:
                 f"{current}/{target} calibration scores",
                 {"current": current, "target": max(target, 1)},
             )
+        if state == "fitting":
+            return "training", "Fitting the detectors that learn once", None
         if state == "operational":
             return "operational", None, None
         return "waiting_for_data", "Waiting for adaptive detector state", None

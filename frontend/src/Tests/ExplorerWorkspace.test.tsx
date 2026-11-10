@@ -560,7 +560,8 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(input, { target: { value: "Room temperature" } });
     fireEvent.blur(input);
     await waitFor(() => expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature"));
-    expect(document.title).toBe("Room temperature · Monitoring · Aberration");
+    // The tab title follows in an effect, after the name is on the page.
+    await waitFor(() => expect(document.title).toBe("Room temperature · Monitoring · Aberration"));
     expect(apiUtils.put).toHaveBeenCalledOnce();
     const request = vi.mocked(apiUtils.put).mock.calls[0]!;
     expect(request[0]).toBe("/v1/catalogue");

@@ -2,7 +2,8 @@ import type { PipelineComponent, PipelineNode } from "./contracts";
 import { hasScope, SCOPE_FIELDS, setting } from "./scope";
 
 export type StepFamily =
-  "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "detector" | "policy" | "output";
+  "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector" | "policy"
+  | "output";
 
 /** Menu order: the steps people add most come first, the one-per-pipeline steps last.
  * Prepare steps lead because they run first, before anything learns; Combine steps
@@ -15,6 +16,7 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
   { id: "route", label: "Route" },
   { id: "transform", label: "Transform" },
   { id: "input", label: "Input" },
+  { id: "forecaster", label: "Forecaster" },
   { id: "detector", label: "Detector" },
   { id: "policy", label: "Decision policy" },
   { id: "output", label: "Evidence output" },
@@ -28,12 +30,17 @@ const COMBINE_STEPS = new Set(["prepare.aggregate", "prepare.formula"]);
 /** Steps that run once per observation, in arrival order, before anything learns. */
 const isPrepare = (component: string) => component.startsWith("prepare.");
 
+/** Detectors that score one feature against the forecast made for it. Some learn
+ * as data arrives; a pretrained one ("forecast.") is ready from the first values. */
+const isForecaster = (component: string) => component.endsWith("_forecaster") || component.startsWith("forecast.");
+
 /** What a step does, by its kind and component; unknown transforms stay "Transform". */
 export function stepFamily(kind: PipelineNode["kind"], component: string): StepFamily {
   if (kind === "source") return "input";
   // The editor shows calibration as part of the decision until it has its own card.
   if (kind === "calibration") return "policy";
   if (kind === "merge" || ROUTES.has(component)) return "route";
+  if (kind === "detector" && isForecaster(component)) return "forecaster";
   if (kind !== "transform") return kind;
   if (COMBINE_STEPS.has(component)) return "combine";
   if (isPrepare(component)) return "prepare";
@@ -71,6 +78,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "adaptive.uncentered_pca": "Keep the main directions, updated as data arrives.",
   "static.random_projection": "Fewer dimensions through a fixed random map.",
   "adaptive.random_projection": "Fewer dimensions through a fixed random map.",
+  "detector:aberrant_seasonal_naive_forecaster": "Expect the value one cycle ago and score the miss.",
+  "detector:aberrant_holt_winters_forecaster": "Expect a level, a trend and a repeating cycle, and score the miss.",
   "policy.martingale": "Alarm when evidence of change builds up.",
   "policy.quantile": "Alarm when scores pass a calibrated threshold.",
   "output.evidence": "Store scores, evidence and alarms.",

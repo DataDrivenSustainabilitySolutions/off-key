@@ -12,6 +12,7 @@ def resolved_detector_config(
 ) -> ResolvedDetectorConfig:
     from off_key_core.models.adaptive import (
         ADAPTIVE_MODELS_BY_TYPE,
+        aberrant_model,
         bind_detector_parameters,
     )
 
@@ -30,7 +31,7 @@ def resolved_detector_config(
     config = DetectorConfig.from_mapping(
         {
             "version": 1,
-            "model": {"id": definition["catalog_id"], "params": params},
+            "model": aberrant_model(definition, params),
         }
     ).resolve()
     capabilities = config.capabilities

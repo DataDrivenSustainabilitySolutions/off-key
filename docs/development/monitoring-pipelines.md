@@ -354,6 +354,19 @@ learned steps freeze and the calibration window gives conformal ranks, which is
 what both lanes did. It owns `fusion`; the policy keeps its own parameters,
 including the quantile. A `forecasts` port type is reserved for forecasters.
 
+A forecaster step is a detector that scores one feature by how far it misses the
+forecast made for it. `FORECASTER_IDS` in `models/adaptive.py` lists them; each
+is ABERRANT's `residual_detector` around one forecaster (`seasonal_naive`,
+`holt_winters`). A step's settings are the forecaster's own plus `lead`, how
+many updates ahead it forecasts, and `score`. `aberrant_model()` nests them into
+the residual detector's configuration, binds the step's single feature as the
+target and sets the forecaster's horizon to the lead. Warm-up is two seasons plus
+`lead - 1` updates and must fit the training window. Forecaster steps give
+`scores` today, so they work in front of `calibrate.fixed_split`; they move to
+the `forecasts` port once a calibration step reads forecasts. The composer lists
+them under Forecaster (`stepFamily`), where pretrained forecasters (`forecast.`
+components) will join them.
+
 Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
 a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
 and edge limits are checked on the stored form before the step is added. The

@@ -20,7 +20,10 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import bind_detector_parameters
+from off_key_core.models.adaptive import (
+    aberrant_model,
+    bind_detector_parameters,
+)
 from off_key_core.models.parameter_validation import parameter_location
 from off_key_core.models.static import (
     get_static_model_definition,
@@ -414,7 +417,7 @@ class AdaptiveStreamConfig(BaseModel):
         return {
             "version": 1,
             "transformers": transformers,
-            "model": {"id": definition["catalog_id"], "params": params},
+            "model": aberrant_model(definition, params),
         }
 
 

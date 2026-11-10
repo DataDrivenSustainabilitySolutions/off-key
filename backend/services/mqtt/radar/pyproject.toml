@@ -24,7 +24,7 @@ dependencies = [
     "paho-mqtt>=2.1,<3",
     "psutil>=5.9.0",
     "numpy>=1.24.0",
-    "aberrant[faiss] @ https://github.com/OliverHennhoefer/aberrant/archive/fb461979ddd689cf32b04472b5779f5df97efbac.tar.gz",
+    "aberrant[faiss] @ https://github.com/OliverHennhoefer/aberrant/archive/5a359e339c3ec4c74f4c691cf045956e764b25e4.tar.gz",
     "nonconform[pyod]>=1.0.0,<3",
     "sqlalchemy[asyncio]>=2.0.38",
     "pydantic-settings>=2.7.1",

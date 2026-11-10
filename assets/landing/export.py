@@ -19,7 +19,11 @@ def main():
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     encoded = "".join(
-        "{% set " + name + " = 'data:" + mime_type + ";base64,"
+        "{% set "
+        + name
+        + " = 'data:"
+        + mime_type
+        + ";base64,"
         + base64.b64encode(source.read_bytes()).decode("ascii")
         + "' %}\n"
         for name, (mime_type, source) in SOURCES.items()

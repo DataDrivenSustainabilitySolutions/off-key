@@ -73,9 +73,9 @@ tasks. PRs build production images; on main both smoke lanes start only after th
 same run's `publish` job pushed the images, and they test those digests before making
 them eligible for deployment. The restore test creates its own state on the fresh
 Swarm: synthetic accounts with a custom role, a remembered session and a pending
-invitation, favourites, manual alarms, saved catalog definitions, telemetry and a
-running monitor must survive actual database backup/restore and repeated
-deployment, with exactly one restarted monitor and resumed collection.
+invitation, favourites, manual alarms a week apart, saved catalog definitions,
+telemetry and a running monitor must survive actual database backup/restore and
+repeated deployment, with exactly one restarted monitor and resumed collection.
 
 The database integration job uses the pinned production TimescaleDB image and checks
 schema bootstrap, hypertables, constraints, retention jobs and real retention deletion

@@ -3,7 +3,8 @@
 #
 # The sequence below is the documented TimescaleDB procedure and the order matters:
 #   create db -> CREATE EXTENSION -> timescaledb_pre_restore() -> pg_restore -> post_restore()
-# Skipping pre/post_restore corrupts the TimescaleDB catalogs.
+# Skipping pre/post_restore corrupts the TimescaleDB catalogs. The foreign keys held by ordinary
+# tables are the last thing pg_restore adds, in a session of its own (see the task).
 
 - name: Discover the node running postgres
   include_role:
@@ -50,16 +51,48 @@
 - name: postgres | restore each database
   # NOTE: deliberately no -j on pg_restore. Parallel restore does not correctly restore the
   # TimescaleDB catalogs, and the corruption is silent. Do not "optimise" this.
+  #
+  # Only an active TimescaleDB checks a foreign key that points to a hypertable against the
+  # hypertable's chunks, and gives every chunk its share of the key. After pre_restore() it is
+  # not active, so such a key fails on the first row that uses it: a backup holding one alarm
+  # could not be restored. Foreign keys held by ordinary tables are therefore added last, in a
+  # session where TimescaleDB is active. Hypertables and chunks are dumped with a key each and
+  # get theirs back as dumped, before that.
+  #
+  # That session comes before post_restore(), which restarts the background jobs: retention
+  # deleting an old alarm while the key is missing would leave its identity behind, and the key
+  # would then fail on that.
   shell: |
     set -euo pipefail
     db={{ item | regex_replace('\.dump$', '') | quote }}
     cid="{{ svc_container }}"
+    dump={{ (persistence_stage_dir ~ '/restore/' ~ item) | quote }}
+    lists=$(mktemp -d)
+    trap 'rm -rf "$lists"; docker exec "$cid" rm -f /tmp/restore-first.list /tmp/restore-last.list || true' EXIT
+    sql() { docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" "$@"; }
+    in_container() { docker exec -i "$cid" "$@"; }
+    restore=(pg_restore --exit-on-error -U {{ postgres_user | quote }} -d "$db")
     docker exec "$cid" dropdb -U {{ postgres_user | quote }} --maintenance-db=template1 --if-exists --force "$db"
     docker exec "$cid" createdb -U {{ postgres_user | quote }} --maintenance-db=template1 --template=template0 "$db"
-    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
-    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_pre_restore();"
-    docker exec -i "$cid" pg_restore --exit-on-error -U {{ postgres_user | quote }} -d "$db" < {{ (persistence_stage_dir ~ '/restore/' ~ item) | quote }}
-    docker exec "$cid" psql -U {{ postgres_user | quote }} -v ON_ERROR_STOP=1 -d "$db" -c "SELECT timescaledb_post_restore();"
+    sql -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+    sql -c "SELECT timescaledb_pre_restore();"
+    in_container "${restore[@]}" --section=pre-data --section=data < "$dump"
+    in_container pg_restore --section=post-data --list < "$dump" > "$lists/post-data"
+    sql -At -c "SELECT schema_name || ' ' || table_name FROM _timescaledb_catalog.hypertable UNION ALL SELECT schema_name || ' ' || table_name FROM _timescaledb_catalog.chunk" > "$lists/timescaledb"
+    : > "$lists/first"
+    : > "$lists/last"
+    # An entry reads "<id>; <oid> <oid> FK CONSTRAINT <schema> <table> <name> <owner>".
+    awk -v first="$lists/first" -v last="$lists/last" '
+      FILENAME == ARGV[1] { timescaledb[$0]; next }
+      { print > ($4 " " $5 == "FK CONSTRAINT" && !(($6 " " $7) in timescaledb) ? last : first) }
+    ' "$lists/timescaledb" "$lists/post-data"
+    in_container sh -c 'cat > /tmp/restore-first.list' < "$lists/first"
+    in_container "${restore[@]}" -L /tmp/restore-first.list < "$dump"
+    if [ -s "$lists/last" ]; then
+      in_container sh -c 'cat > /tmp/restore-last.list' < "$lists/last"
+      in_container env PGOPTIONS="-c timescaledb.restoring=off" "${restore[@]}" -L /tmp/restore-last.list < "$dump"
+    fi
+    sql -c "SELECT timescaledb_post_restore();"
   args: {executable: /bin/bash}
   become: true
   delegate_to: "{{ svc_node }}"

@@ -10,7 +10,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import httpx
@@ -226,28 +226,30 @@ def add_group(operator: httpx.Client, entity: RecordedEntity, group_id: str) -> 
 
 
 def raise_alarms(operator: httpx.Client, entity: RecordedEntity) -> list[str]:
-    """One alarm about a single reading and one about two readings together."""
+    """One alarm about a single reading and one about two readings together.
+
+    The alarm table is stored in weekly chunks. The second alarm is over a week
+    old, so a restore has to bring back two chunks and each one's alarm.
+    """
     readings = entity.readings
+    now = datetime.now(UTC)
     alarms = (
         {
             "reading_ids": [readings["temperature"]],
+            "timestamp": now.isoformat(),
             "alarm_type": "Rehearsal manual alarm",
             "value": 0.01,
             "value_type": "tail_pvalue",
         },
         {
             "reading_ids": [readings["humidity"], readings["pressure"]],
+            "timestamp": (now - timedelta(days=8)).isoformat(),
             "alarm_type": "Rehearsal combined alarm",
             "value": 7.5,
         },
     )
     return [
-        _json(
-            operator.post(
-                "/v1/alarms", json=alarm | {"timestamp": datetime.now(UTC).isoformat()}
-            )
-        )["alarm_id"]
-        for alarm in alarms
+        _json(operator.post("/v1/alarms", json=alarm))["alarm_id"] for alarm in alarms
     ]
 
 

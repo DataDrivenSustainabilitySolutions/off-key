@@ -98,12 +98,19 @@ elif a[0] == 'exec':
         assert state['replicas']['radar-runtime'] == 0
         if os.environ.get('RESTORE_FAIL'):
             sys.exit(1)
+        if '--list' in a:
+            print(os.environ.get('RESTORE_ENTRIES', ''))
     elif 'psql' in a:
-        if '-At' in a:
+        if '-At' in a and '_timescaledb_catalog' in a[-1]:
+            print(os.environ.get('TIMESCALEDB_TABLES', ''))
+        elif '-At' in a:
             print(os.environ.get('DATABASES', 'fixture_db'))
         elif '-tc' in a:
             print('1')
-    elif not any(command in a for command in ('pg_isready', 'dropdb', 'createdb')):
+    elif 'sh' in a:
+        # The restore hands pg_restore its entry lists inside the container.
+        (root / a[-1].rsplit('/', 1)[-1]).write_text(sys.stdin.read())
+    elif not any(command in a for command in ('pg_isready', 'dropdb', 'createdb', 'rm')):
         sys.exit('unexpected exec: ' + repr(a))
 else:
     sys.exit('unexpected command: ' + repr(a))

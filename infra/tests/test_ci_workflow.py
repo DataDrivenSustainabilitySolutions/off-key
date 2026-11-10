@@ -184,7 +184,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertNotIn("npm run test:e2e", rehearsal)
         self.assertNotIn("pytest", browser)
         self.assertLess(
-            browser.index("npm run test:e2e\n"),
+            browser.index("npm run test:e2e:production\n"),
             # Its own output folder keeps the evidence of the journeys before it.
             browser.index("npm run test:e2e:pipelines -- --output=test-results/"),
         )
@@ -195,6 +195,27 @@ class CiWorkflowTests(unittest.TestCase):
             if step.get("with", {}).get("name") == "production-release"
         )
         self.assertIn("matrix.lane == 'rehearsal'", evidence["if"])
+
+    def test_browser_projects_are_covered_once_without_parallel_shared_mutations(self):
+        scripts = json.loads((ROOT.parent / "frontend/package.json").read_text())[
+            "scripts"
+        ]
+
+        def projects(script):
+            return set(re.findall(r"--project=([\w-]+)", scripts[script]))
+
+        mocked = projects("test:e2e:mocked")
+        production = projects("test:e2e:production")
+        self.assertTrue(mocked)
+        self.assertTrue(production)
+        self.assertFalse(mocked & production)
+        self.assertEqual(mocked | production, projects("test:e2e"))
+        commands = "\n".join(
+            step.get("run", "") for step in self.jobs["deployment-smoke"]["steps"]
+        )
+        self.assertIn("npm run test:e2e:production", commands)
+        self.assertNotIn("npm run test:e2e:mocked", commands)
+        self.assertNotIn("--workers", scripts["test:e2e:production"])
 
     def test_other_events_reuse_one_verified_image_build(self):
         images = self.jobs["images"]

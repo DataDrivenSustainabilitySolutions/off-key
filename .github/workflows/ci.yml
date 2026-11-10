@@ -636,7 +636,7 @@ jobs:
             --volume "${PWD}/frontend:/work" \
             --volume "$OFFKEY_REHEARSAL_DIR:/smoke:ro" \
             --workdir /work --env-file "$OFFKEY_REHEARSAL_DIR/smoke.env" --env CI=true \
-            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e
+            "mcr.microsoft.com/playwright:v${playwright_version}-noble" npm run test:e2e:production
 
       - name: Verify visual pipelines against the production frontend and worker
         if: matrix.lane == 'browser'

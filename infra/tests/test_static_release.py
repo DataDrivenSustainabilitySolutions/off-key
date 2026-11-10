@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from copy import deepcopy
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -124,7 +125,27 @@ class StaticReleaseTests(unittest.TestCase):
 
     def test_apply_rechecks_drift_and_only_updates_selected_static_services(self):
         self.write("release-maintenance.json", {"revision": "b" * 40})
+        self.write("browser-cutover.json", {"target_frontend_image": "stale-image"})
         original = (self.directory / "release.json").read_bytes()
+        started = datetime.now(UTC)
+        fences = []
+
+        def update(*args):
+            # Both updates must observe the new fence, never the previous
+            # full deployment's target or a timestamp recorded after activation.
+            fence = json.loads((self.directory / "browser-cutover.json").read_text())
+            self.assertEqual(fence["target_frontend_image"], "frontend@sha256:new")
+            self.assertEqual(fence["previous_frontend_image"], "frontend@sha256:old")
+            self.assertEqual(fence["previous_frontend_replicas"], 1)
+            self.assertIs(fence["backend_ready"], True)
+            self.assertLessEqual(
+                started, datetime.fromisoformat(fence["backend_ready_at"])
+            )
+            self.assertLessEqual(
+                datetime.fromisoformat(fence["backend_ready_at"]), datetime.now(UTC)
+            )
+            fences.append(fence)
+
         args = [
             "static_release.py",
             "apply",
@@ -139,7 +160,7 @@ class StaticReleaseTests(unittest.TestCase):
         with (
             patch.object(sys, "argv", args),
             patch.object(static, "specs", return_value=self.specs),
-            patch.object(static, "docker") as docker,
+            patch.object(static, "docker", side_effect=update) as docker,
         ):
             static.main()
         self.assertEqual(
@@ -158,6 +179,11 @@ class StaticReleaseTests(unittest.TestCase):
             ],
         )
         self.assertEqual((self.directory / "release.json").read_bytes(), original)
+        self.assertEqual(len(fences), 2)
+        self.assertEqual(fences[0], fences[1])
+        self.assertEqual(
+            os.stat(self.directory / "browser-cutover.json").st_mode & 0o777, 0o600
+        )
         with (
             patch.object(sys, "argv", args),
             patch.object(static, "specs", return_value={}),

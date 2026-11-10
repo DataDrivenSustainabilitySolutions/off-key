@@ -10,6 +10,7 @@ import json
 import subprocess
 import tempfile
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 STATIC = {"frontend", "docs"}
@@ -107,6 +108,32 @@ def decision(
         return {}
 
 
+def write_private(path, value):
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as output:
+        json.dump(value, output, sort_keys=True)
+    Path(output.name).replace(path)
+
+
+def record_browser_fence(directory):
+    """Retain the readiness fence established before this static image update."""
+    saved = json.loads((directory / STATE).read_text())
+    desired = json.loads((directory / "deployment-model.json").read_text())
+    if "frontend" not in desired["services"]:
+        return
+    previous = saved["model"]["services"]["frontend"]
+    write_private(
+        directory / "browser-cutover.json",
+        {
+            "backend_ready": True,
+            # This script also runs under the remote host's system Python.
+            "backend_ready_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017
+            "previous_frontend_image": previous["image"],
+            "previous_frontend_replicas": previous.get("deploy", {}).get("replicas", 1),
+            "target_frontend_image": desired["services"]["frontend"]["image"],
+        },
+    )
+
+
 def record(directory, stack):
     directory = Path(directory)
     verified = json.loads((directory / "release.json").read_text())
@@ -116,9 +143,7 @@ def record(directory, stack):
         "model": json.loads((directory / "deployment-model.json").read_text()),
         "specs": specs(stack),
     }
-    with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as output:
-        json.dump(state, output, sort_keys=True)
-    Path(output.name).replace(directory / STATE)
+    write_private(directory / STATE, state)
 
 
 def main():
@@ -156,6 +181,10 @@ def main():
                 raise SystemExit(
                     "Static release no longer matches the verified runtime"
                 )
+            # The production caller has verified API/catalogue readiness and the
+            # migration ledger. The exact live specs were rechecked above; keep
+            # a new fence before either static service can start its new image.
+            record_browser_fence(args.directory)
             for name, image in sorted(changed.items()):
                 docker(
                     "service",

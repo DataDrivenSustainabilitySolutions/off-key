@@ -1,5 +1,8 @@
 ---
-- name: Require a dedicated internal API credential
+# A failed release shows only task names in the public workflow log; results and
+# fail_msg stay in the private log. Every check of a vault variable therefore
+# names that variable, so the public log says what to add or correct.
+- name: Require a dedicated internal API credential (vault internal_api_secret, different from jwt_secret)
   assert:
     that:
       - internal_api_secret | default('') | length >= 32
@@ -53,7 +56,7 @@
       - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
     fail_msg: The resolved production release must contain the complete set of immutable image references.
 
-- name: Require the existing Cloudflare Tunnel token in production
+- name: Require the existing Cloudflare Tunnel token in production (vault cloudflare_tunnel_token)
   assert:
     that:
       - cloudflare_tunnel_token | default('') | trim | length > 40
@@ -68,7 +71,7 @@
     deployment_secret_names: {}
   no_log: true
 
-- name: Require production MQTT certificate and credential material
+- name: Require the production EMQX CA and broker certificate and key (vault emqx_ca_cert, emqx_server_cert, emqx_server_key)
   assert:
     that:
       - emqx_ca_cert | default('') | length > 100
@@ -80,17 +83,37 @@
       - "'TEST_ONLY' not in emqx_ca_cert"
       - "'TEST_ONLY' not in emqx_server_cert"
       - "'TEST_ONLY' not in emqx_server_key"
+    fail_msg: Add a dedicated EMQX CA certificate and the broker certificate and key to the production vault.
+  no_log: true
+
+- name: Require separate production MQTT client passwords (vault mqtt_proxy_password, mqtt_radar_password)
+  assert:
+    that:
       - mqtt_proxy_password | default('') | length >= 32
       - mqtt_radar_password | default('') | length >= 32
-      - radar_checkpoint_secret | default('') | length >= 32
       - mqtt_proxy_password != mqtt_radar_password
       - "'TEST_ONLY' not in mqtt_proxy_password"
       - "'TEST_ONLY' not in mqtt_radar_password"
+    fail_msg: Add two different MQTT client passwords of at least 32 characters to the production vault.
+  no_log: true
+
+- name: Require the RADAR checkpoint secret (vault radar_checkpoint_secret)
+  assert:
+    that:
+      - radar_checkpoint_secret | default('') | length >= 32
       - "'TEST_ONLY' not in radar_checkpoint_secret"
+    fail_msg: Add a RADAR checkpoint secret of at least 32 characters to the production vault.
+  no_log: true
+
+- name: Require a dedicated EMQX node cookie (vault emqx_node_cookie)
+  assert:
+    that:
       - emqx_node_cookie | default('') | length >= 32
       - "'TEST_ONLY' not in emqx_node_cookie | default('')"
       - emqx_node_cookie | default('') is match('^[A-Za-z0-9_-]+$')
-    fail_msg: Add a dedicated EMQX CA, broker certificate/key, Erlang node cookie and separate MQTT credentials to the production vault.
+    fail_msg: >-
+      Add emqx_node_cookie to the production vault: at least 32 characters from
+      A-Z, a-z, 0-9, _ and -, for example from openssl rand -hex 32.
   no_log: true
 
 - name: Define production deployment secret material

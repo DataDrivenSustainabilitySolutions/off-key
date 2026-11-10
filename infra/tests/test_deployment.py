@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path, PurePosixPath
+from unittest.mock import patch
 
 import yaml
 from support import (
@@ -24,6 +25,8 @@ from support import (
 )
 
 compiler = load_script("compile_stack")
+with patch.dict(sys.modules, {"check_application": load_script("check_application")}):
+    failed = load_script("failed_tasks")
 
 MOUNTS = {
     "persist_postgres": ("postgres", "/var/lib/postgresql/data"),
@@ -458,22 +461,71 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(environment["OAUTH2_PROXY_COOKIE_REFRESH"], "1h")
         self.assertEqual(environment["OAUTH2_PROXY_COOKIE_SAMESITE"], "lax")
 
-    def test_production_requires_a_dedicated_emqx_node_cookie(self):
-        for cookie in (
-            "",
-            "short-cookie",
-            "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX",
-            "cookie with spaces " + "x" * 32,
+    def test_a_rejected_production_secret_is_named_in_the_public_failure(self):
+        # A failed release publishes only its failed task names, so the name must
+        # say which vault variable to add or correct; values never leave the run.
+        same = "same-" + "s" * 32
+        for overrides, variable in (
+            ({"emqx_node_cookie": ""}, "emqx_node_cookie"),
+            ({"emqx_node_cookie": "short-cookie"}, "emqx_node_cookie"),
+            (
+                {"emqx_node_cookie": "TEST_ONLY_REPLACE_WITH_RANDOM_32_BYTE_HEX"},
+                "emqx_node_cookie",
+            ),
+            (
+                {"emqx_node_cookie": "cookie with spaces " + "x" * 32},
+                "emqx_node_cookie",
+            ),
+            ({"emqx_server_key": ""}, "emqx_server_key"),
+            (
+                {"mqtt_proxy_password": same, "mqtt_radar_password": same},
+                "mqtt_radar_password",
+            ),
+            ({"radar_checkpoint_secret": "short-secret"}, "radar_checkpoint_secret"),
         ):
             with (
-                self.subTest(cookie=cookie),
+                self.subTest(overrides=overrides),
                 tempfile.TemporaryDirectory() as directory,
             ):
-                result, _ = render(Path(directory), "prod", emqx_node_cookie=cookie)
+                result, _ = render(Path(directory), "prod", **overrides)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse((Path(directory) / "stack").exists())
-                if cookie:
-                    self.assertNotIn(cookie, result.stdout + result.stderr)
+                tasks = failed.failed_tasks(result.stdout.splitlines())
+                self.assertEqual(len(tasks), 1)
+                self.assertIn(f" {variable}", tasks[0])
+                for value in filter(None, overrides.values()):
+                    self.assertNotIn(value, result.stdout + result.stderr)
+
+    def test_each_vault_check_names_its_variables(self):
+        vault = yaml.safe_load(
+            (
+                ROOT / "ansible/inventories/prod/group_vars/all/vault.yml.example"
+            ).read_text()
+        )
+        tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/stack_prepare/tasks/render.yml").read_text()
+        )
+        checked = set()
+        for task in tasks:
+            if "assert" not in task:
+                continue
+            conditions = " ".join(task["assert"]["that"])
+            for variable in vault:
+                if re.search(rf"\b{variable}\b", conditions):
+                    checked.add(variable)
+                    self.assertRegex(task["name"], rf"\b{variable}\b")
+        self.assertLessEqual(
+            {
+                "emqx_ca_cert",
+                "emqx_server_cert",
+                "emqx_server_key",
+                "mqtt_proxy_password",
+                "mqtt_radar_password",
+                "radar_checkpoint_secret",
+                "emqx_node_cookie",
+            },
+            checked,
+        )
 
     def test_nfs_clients_can_mount_the_rendered_export(self):
         for name, result in self.results.items():

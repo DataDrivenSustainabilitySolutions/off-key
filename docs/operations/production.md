@@ -150,6 +150,18 @@ versioned Swarm secrets. Generate/validate certificate material using
 `infra/scripts/generate-emqx-pki.sh` and `validate-emqx-pki.py`; keep private keys in
 the encrypted vault. When changing a client password, rotate the existing EMQX user
 first; the playbook rejects changing only bootstrap/client values on a running broker.
+The broker's Erlang distribution (`emqx ctl`, clustering) is authenticated with
+`emqx_node_cookie` from the vault: at least 32 characters from letters, digits, `_`
+and `-`, for example from `openssl rand -hex 32`. Changing it restarts the broker;
+stored broker data is unaffected.
+
+A release that needs a vault variable the production vault lacks stops before it
+changes anything. Tests and the rehearsal cannot see this, because they render with
+synthetic secrets; the real vault is read only by a production release. The failed
+task names the variable, for example `Require a dedicated EMQX node cookie (vault
+emqx_node_cookie)`, and `vault.yml.example` describes its value. Add it with
+`ansible-vault edit`, replace the `OFFKEY_PROD_VAULT` environment secret with the
+whole encrypted file, then dispatch the same tested SHA again.
 
 Production email uses the configured Resend SMTP account with TLS and verified
 sender DNS. Save its key as `email_password` in the encrypted vault. First-admin

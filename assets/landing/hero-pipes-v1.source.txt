@@ -1,6 +1,6 @@
 Approved generated photograph: 03-industrial-pipe-rack-v1.png
 Original PNG SHA-256: 0aaaed770758ff0228bbba6ccc795c4ca3ab632d7a3c1b9b4299a8bd48f846b3
-Web export: original dimensions, WebP quality 82, method 6 via Pillow.
+Web export: original dimensions, WebP quality 72, method 6 via Pillow.
 Composition, framing and tone are preserved; no generative edits.
 Original PNG retained in the local design artifacts.
 The photographs illustrate infrastructure; they are not customer installations.

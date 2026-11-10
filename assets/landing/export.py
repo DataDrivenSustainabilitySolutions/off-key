@@ -9,6 +9,7 @@ SOURCES = {
     "hero_bridge": ("image/jpeg", ROOT / "assets/landing/hero-bridge-v1.jpg"),
     "hero_pipes": ("image/webp", ROOT / "assets/landing/hero-pipes-v1.webp"),
     "hero_conveyor": ("image/webp", ROOT / "assets/landing/hero-conveyor-v1.webp"),
+    "hero_solar": ("image/webp", ROOT / "assets/landing/hero-solar-v2.webp"),
 }
 DESTINATION = ROOT / "infra/stack/landing-hero.b64.j2"
 

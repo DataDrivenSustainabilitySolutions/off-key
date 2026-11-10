@@ -158,7 +158,7 @@ def node_features(
     branches: Sequence[tuple[str, Columns]],
 ) -> Columns:
     """The features a node gives, from its parents' features in input order."""
-    if node.kind == "policy" and len(branches) > 1:
+    if node.kind in {"calibration", "policy"} and len(branches) > 1:
         # Scores arrive here, one per detector; no feature goes further.
         return []
     columns = _changed(definition, node, _continued(branches))

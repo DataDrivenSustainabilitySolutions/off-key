@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
+from ..schemas.pipeline_versions import component_learning
 from ..schemas.pipelines import (
     MAX_DETECTORS,
     MAX_PIPELINE_EXECUTION_BYTES,
@@ -50,6 +51,29 @@ class _Compilation:
     order: list[str] = field(default_factory=list)
     features: dict[str, Columns] = field(default_factory=dict)
     unresolved: set[str] = field(default_factory=set)
+
+    @property
+    def legacy(self) -> bool:
+        """A schema 1 design keeps its lane until the editor stops offering one."""
+        return self.definition.strategy is not None
+
+    def calibration(self, identifier: str) -> bool:
+        node = self.nodes.get(identifier)
+        return node is not None and node.kind == "calibration"
+
+    def reported(self, identifier: str | None) -> str | None:
+        """Where an issue appears: a schema 1 design has no calibration step on
+        its canvas, so issues of that step appear on its policy."""
+        if identifier is None or not (self.legacy and self.calibration(identifier)):
+            return identifier
+        return next(
+            (
+                edge.target
+                for edge in self.definition.edges
+                if edge.source == identifier and edge.target in self.nodes
+            ),
+            identifier,
+        )
 
     def error(
         self,
@@ -116,7 +140,10 @@ def _validate_identity(compilation: _Compilation) -> None:
         compilation.unresolved.update(
             node.id for node in definition.nodes if node.kind == "source"
         )
-    for kind in ("source", "policy", "output"):
+    kinds = ["source", "policy", "output"]
+    if definition.strategy is None:
+        kinds.insert(1, "calibration")
+    for kind in kinds:
         if sum(node.kind == kind for node in definition.nodes) != 1:
             compilation.error(
                 "node_count", f"An executable design requires exactly one {kind} node"
@@ -163,6 +190,14 @@ def _parameter_message(issue) -> str:
     return issue["msg"].removeprefix("Value error, ")
 
 
+# Until one runtime runs every design, a schema 2 design runs in the lane its
+# learned steps share, and only that lane's components can run there.
+_LEARNS = {
+    "static_baseline": "are fitted once",
+    "adaptive_stream": "learn continuously",
+}
+
+
 def _validate_components(compilation: _Compilation) -> None:
     for node in compilation.definition.nodes:
         component = compilation.components.get(node.component)
@@ -171,10 +206,15 @@ def _validate_components(compilation: _Compilation) -> None:
                 "component", "Unknown component or incompatible node kind", node.id
             )
             continue
-        if compilation.definition.strategy not in component.strategies:
+        lane = compilation.definition.lane
+        if lane is not None and lane not in component.strategies:
             compilation.error(
                 "strategy",
-                "Component does not support this monitoring strategy",
+                "Component does not support this monitoring strategy"
+                if compilation.legacy
+                else f"{component.label} can't run with detectors that "
+                + _LEARNS[lane]
+                + " yet.",
                 node.id,
             )
             continue
@@ -192,11 +232,11 @@ def _validate_components(compilation: _Compilation) -> None:
                 compilation.error(
                     "parameters",
                     _parameter_message(issue),
-                    node.id,
+                    compilation.reported(node.id),
                     parameter_path=parameter_path(issue["loc"], component.fields),
                 )
         except (ValueError, TypeError) as exc:
-            compilation.error("parameters", str(exc), node.id)
+            compilation.error("parameters", str(exc), compilation.reported(node.id))
 
 
 def _index_connections(compilation: _Compilation) -> None:
@@ -215,30 +255,66 @@ def _index_connections(compilation: _Compilation) -> None:
         seen.add(key)
         compilation.incoming[edge.target].append(edge)
         compilation.outgoing[edge.source].append(edge.target)
-        source = compilation.components.get(compilation.nodes[edge.source].component)
-        target = compilation.components.get(compilation.nodes[edge.target].component)
-        if source and target and source.output_type != target.input_type:
-            compilation.error(
-                "port_type",
-                f"Cannot connect {source.output_type} to {target.input_type}",
-                edge.target,
-            )
+    for edge in compilation.definition.edges:
+        if edge.source in compilation.nodes and edge.target in compilation.nodes:
+            _check_ports(compilation, edge)
+
+
+# Schema 1 port types: frozen detectors calibrated themselves, and each
+# policy read what its lane's detectors gave.
+_SCHEMA_1_INPUTS = {"policy.martingale": "p_values", "policy.quantile": "scores"}
+
+
+def _port(compilation: _Compilation, identifier: str, side: str) -> str | None:
+    node = compilation.nodes[identifier]
+    component = compilation.components.get(node.component)
+    if component is None:
+        return None
+    if compilation.legacy and side == "output" and component.learning == "batch":
+        return "p_values" if node.kind == "detector" else component.output_type
+    if compilation.legacy and side == "input" and node.component in _SCHEMA_1_INPUTS:
+        return _SCHEMA_1_INPUTS[node.component]
+    return component.output_type if side == "output" else component.input_type
+
+
+def _check_ports(compilation: _Compilation, edge: PipelineEdge) -> None:
+    target = edge.target
+    if compilation.legacy and compilation.calibration(edge.source):
+        return
+    if compilation.legacy and compilation.calibration(target):
+        # A schema 1 wire into its policy, checked as it always was.
+        target = compilation.reported(target)
+        if target not in compilation.nodes:
+            return
+    source_type = _port(compilation, edge.source, "output")
+    target_type = _port(compilation, target, "input")
+    if source_type is None or target_type is None or source_type == target_type:
+        return
+    if compilation.calibration(target) and source_type == "forecasts":
+        return
+    compilation.error(
+        "port_type", f"Cannot connect {source_type} to {target_type}", target
+    )
 
 
 def _validate_node_connections(compilation: _Compilation, node: PipelineNode) -> None:
     edges = compilation.incoming[node.id]
     detectors = _detector_count(compilation.definition)
-    # A policy takes one connection from each detector.
-    required = {"source": 0, "merge": 2, "policy": max(detectors, 1)}.get(node.kind, 1)
+    # A calibration step takes one connection from each detector.
+    required = {"source": 0, "merge": 2, "calibration": max(detectors, 1)}.get(
+        node.kind, 1
+    )
+    # A schema 1 design shows its calibration step as its policy.
+    name = "policy" if compilation.legacy and node.kind == "calibration" else node.kind
     if len(edges) < required or (node.kind != "merge" and len(edges) != required):
         expected = "at least two" if node.kind == "merge" else str(required)
         compilation.error(
             "input_count",
-            f"policy requires one incoming connection from each of the {required} "
+            f"{name} requires one incoming connection from each of the {required} "
             "detectors"
-            if node.kind == "policy" and required > 1
-            else f"{node.kind} requires {expected} incoming connection(s)",
-            node.id,
+            if node.kind == "calibration" and required > 1
+            else f"{name} requires {expected} incoming connection(s)",
+            compilation.reported(node.id),
         )
     if node.kind == "merge" and len({edge.order for edge in edges}) != len(edges):
         compilation.error(
@@ -391,15 +467,99 @@ def _validate_values(compilation: _Compilation) -> None:
             )
 
 
+def _online(compilation: _Compilation, node: PipelineNode) -> bool:
+    if compilation.legacy:
+        return compilation.definition.strategy == "adaptive_stream"
+    return component_learning(node.component) == "online"
+
+
 def _validate_model(compilation: _Compilation) -> None:
-    if compilation.definition.strategy != "adaptive_stream":
-        return
     for detector in compilation.definition.nodes:
-        if detector.kind != "detector" or detector.id not in compilation.features:
+        if (
+            detector.kind != "detector"
+            or detector.id not in compilation.features
+            or not _online(compilation, detector)
+        ):
             continue
         errors = adaptive_input_errors(detector, compilation.features[detector.id])
         for code, message in errors:
             compilation.error(code, message, detector.id)
+
+
+def _fits_once(compilation: _Compilation) -> bool:
+    """Whether some step is fitted once on the training window."""
+    if compilation.legacy:
+        return compilation.definition.strategy == "static_baseline"
+    return any(
+        component_learning(node.component) == "batch"
+        for node in compilation.definition.nodes
+    )
+
+
+def _ancestors(compilation: _Compilation, identifier: str) -> list[str]:
+    seen: dict[str, None] = {}
+    pending = [edge.source for edge in compilation.incoming[identifier]]
+    while pending:
+        current = pending.pop()
+        if current not in seen and current in compilation.nodes:
+            seen[current] = None
+            pending.extend(edge.source for edge in compilation.incoming[current])
+    return list(seen)
+
+
+def _learned(compilation: _Compilation) -> dict[str, str]:
+    """How each learned step learns, by node."""
+    modes = {}
+    for identifier, node in compilation.nodes.items():
+        mode = component_learning(node.component)
+        if mode != "none":
+            modes[identifier] = mode
+    return modes
+
+
+def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None:
+    """A detector reads only steps that learn as it does."""
+    for identifier, node in compilation.nodes.items():
+        if node.kind != "detector" or identifier not in modes:
+            continue
+        for upstream in _ancestors(compilation, identifier):
+            other = modes.get(upstream)
+            if other is None or other == modes[identifier]:
+                continue
+            reason = (
+                "it learns continuously, and the detector is fitted once."
+                if other == "online"
+                else "it is fitted once, and the detector learns continuously."
+            )
+            compilation.error(
+                "learning",
+                f"{_label(compilation, upstream)} can't feed "
+                f"{_label(compilation, identifier)}: {reason}",
+                upstream,
+                blocks_features=False,
+            )
+
+
+def _validate_learning(compilation: _Compilation) -> None:
+    """What may be combined follows from how each step learns."""
+    modes = _learned(compilation)
+    _validate_branches(compilation, modes)
+    if len(set(modes.values())) > 1:
+        compilation.error(
+            "learning_mix",
+            "Detectors that learn in different ways can run together from the "
+            "next release.",
+        )
+    for identifier, node in compilation.nodes.items():
+        if node.component == "policy.martingale" and any(
+            modes.get(item) == "online" for item in _ancestors(compilation, identifier)
+        ):
+            compilation.error(
+                "calibration",
+                "The conformal alarm policy needs detectors that stop learning "
+                "before calibration. Use the calibrated score threshold.",
+                identifier,
+            )
 
 
 def _definition_fingerprint(definition: PipelineDefinition) -> str:
@@ -435,15 +595,14 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _validate_windows(compilation)
     _validate_values(compilation)
     _validate_model(compilation)
+    if not compilation.legacy:
+        _validate_learning(compilation)
     if not fits_json_budget(normalized, MAX_PIPELINE_EXECUTION_BYTES):
         compilation.error(
             "configuration_budget",
             "Normalized definition exceeds the 96KiB execution configuration budget",
         )
-    if (
-        normalized.strategy == "static_baseline"
-        and normalized.settings.training_window_size < 20
-    ):
+    if _fits_once(compilation) and normalized.settings.training_window_size < 20:
         compilation.error(
             "training", "Static baseline requires at least 20 training observations"
         )

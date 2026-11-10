@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from off_key_core.db.collection_runtime import read_collection_runtime
+from off_key_core.db.migrate import migration_files
 from off_key_core.db.models import (
     DeploymentMaintenance,
     MonitoringPipeline,
@@ -271,10 +272,21 @@ async def test_run_history_and_layout_survive_service_and_checkpoint_removal(
 
 
 @pytest.mark.asyncio
-async def test_release_reservation_before_pipeline_tables_exist(disposable_database):
+@pytest.mark.parametrize(
+    "pipeline_tables",
+    [False, True],
+    ids=["before-pipelines", "before-lifecycle-states"],
+)
+async def test_release_reservation_before_pipeline_schema_upgrades(
+    disposable_database, pipeline_tables
+):
     with disposable_database.begin() as connection:
         MonitoringService.__table__.create(connection)
         DeploymentMaintenance.__table__.create(connection)
+        if pipeline_tables:
+            connection.exec_driver_sql(
+                migration_files()["010_monitoring_pipelines.sql"]
+            )
     engine = create_async_engine(
         disposable_database.url.set(drivername="postgresql+asyncpg")
     )

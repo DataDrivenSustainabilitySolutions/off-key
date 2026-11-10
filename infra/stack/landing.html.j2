@@ -661,7 +661,7 @@
     .header-nav { gap:32px; }
     .header-nav a { font-size:12px; }
     .header-nav .nav-cta { margin-left:0; padding:9px 13px; border:1px solid rgba(255,255,255,.34); border-radius:2px; }
-    .header-statement { color:#c3c5c2; font-size:9px; letter-spacing:.06em; }
+    .header-statement { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#c3c5c2; font-size:9px; letter-spacing:.06em; white-space:nowrap; }
     .hero { color:#141615; background:#ededeb; overflow:hidden; }
     .hero-photo { position:relative; margin:0; height:auto; min-height:0; aspect-ratio:1942 / 809; overflow:hidden; background:#ededeb; }
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:center top; }
@@ -717,7 +717,7 @@
 <body><a class="skip-link" href="#main">Skip to content</a>
 <header class="site-header"><div class="container header-inner">
 <a class="wordmark" href="#main" aria-label="Aberration home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 10H38V20H20V54H10ZM44 10H54V54H26V44H44Z"/></svg><span>aberration</span></a>
-<span class="header-statement mono">Continuous anomaly detection.</span>
+<span class="header-statement mono">Real-time anomaly detection.</span>
 <nav class="header-nav" aria-label="Main navigation"><a class="nav-cta" href="{{ frontend_base_url | e }}/">Dashboard <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true">
 <path d="M7 17 17 7M7 7h10v10"/></svg></a></nav>
 </div></header><main id="main">

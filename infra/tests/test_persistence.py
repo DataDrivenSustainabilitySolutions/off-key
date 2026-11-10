@@ -199,13 +199,22 @@ class PersistenceTests(unittest.TestCase):
     def test_restore_adds_the_foreign_keys_of_ordinary_tables_last(self):
         # The post-data entries of a backup as `pg_restore --list` prints them.
         index = "4201; 1259 18001 INDEX public idx_anomaly_timestamp_desc fixture"
+        # pg_dump lists a comment directly after the entry it describes.
+        on_index = "4206; 0 0 COMMENT public INDEX idx_anomaly_timestamp_desc fixture"
         to_hypertable = (
             "4202; 2606 18002 FK CONSTRAINT public anomaly_identity "
             "fk_anomaly_identity_anomaly fixture"
         )
+        on_to_hypertable = (
+            "4207; 0 0 COMMENT public CONSTRAINT fk_anomaly_identity_anomaly "
+            "ON anomaly_identity fixture"
+        )
         to_table = "4203; 2606 18003 FK CONSTRAINT public users users_role_fkey fixture"
         of_hypertable = (
             "4204; 2606 18004 FK CONSTRAINT public samples samples_device_fkey fixture"
+        )
+        on_of_hypertable = (
+            "4208; 0 0 COMMENT public CONSTRAINT samples_device_fkey ON samples fixture"
         )
         of_chunk = (
             "4205; 2606 18005 FK CONSTRAINT _timescaledb_internal _hyper_4_5_chunk "
@@ -216,15 +225,23 @@ class PersistenceTests(unittest.TestCase):
             "public samples",
             "_timescaledb_internal _hyper_4_5_chunk",
         ]
-        for ordinary in ([to_hypertable, to_table], []):
+        # A key that waits takes its comment along: the comment fails without the key.
+        for ordinary in ([to_hypertable, on_to_hypertable, to_table], []):
             with (
                 self.subTest(ordinary=ordinary),
                 tempfile.TemporaryDirectory() as directory,
             ):
-                as_dumped = ["; Selected TOC Entries:", index, of_hypertable, of_chunk]
+                as_dumped = [
+                    "; Selected TOC Entries:",
+                    index,
+                    on_index,
+                    of_hypertable,
+                    on_of_hypertable,
+                    of_chunk,
+                ]
                 result, _, commands = self.run_cutover(
                     directory,
-                    RESTORE_ENTRIES="\n".join(as_dumped[:2] + ordinary + as_dumped[2:]),
+                    RESTORE_ENTRIES="\n".join(as_dumped[:3] + ordinary + as_dumped[3:]),
                     TIMESCALEDB_TABLES="\n".join(timescaledb_tables),
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

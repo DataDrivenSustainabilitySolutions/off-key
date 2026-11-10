@@ -380,22 +380,34 @@ def test_service_forecaster_rejects_settings_out_of_range(params):
         ServiceForecaster("", client=lambda: None)
 
 
-def test_preflight_of_a_timestral_design_needs_no_forecast_service(monkeypatch):
+def test_preflight_of_a_timestral_design_names_the_service_without_calling_it(
+    monkeypatch,
+):
     from off_key_core.schemas.radar import AdaptiveStreamConfig
-    from off_key_mqtt_radar.preflight import preflight
+    from off_key_mqtt_radar.preflight import DetectorConfigurationError, preflight
 
     from tests.support.form_pipeline import form_radar_config
 
-    monkeypatch.delenv("FORECAST_API_URL", raising=False)
     monitoring = AdaptiveStreamConfig(
         model_type="forecast.timestral",
         model_params={"context_length": 32, "minimum_context": 16, "lead": 2},
         training_window_size=20,
         calibration_window_size=4,
     )
+    execution = form_radar_config(monitoring, ["telemetry/c1/x0"]).pipeline
 
-    report = preflight(form_radar_config(monitoring, ["telemetry/c1/x0"]).pipeline)
-
-    # The target image checks the settings; the service is asked when values arrive.
+    # Nothing listens at this address: the target image checks the settings,
+    # and the service is asked when values arrive.
+    monkeypatch.setenv("FORECAST_API_URL", "http://127.0.0.1:9")
+    report = preflight(execution)
     assert report["ok"]
     assert report["capabilities"]["warmup"] == {"minimum": 17, "unit": "events"}
+
+    # A deployment without the service says so on the step, before a run starts.
+    monkeypatch.delenv("FORECAST_API_URL")
+    with pytest.raises(
+        DetectorConfigurationError, match="no forecast service"
+    ) as error:
+        preflight(execution)
+    assert error.value.node_id == "detector"
+    assert [issue.code for issue in error.value.error.issues] == ["forecast_service"]

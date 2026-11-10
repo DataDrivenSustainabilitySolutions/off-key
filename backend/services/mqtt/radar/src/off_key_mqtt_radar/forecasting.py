@@ -21,6 +21,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from aberrant.base import ConfigurationError, ConfigurationIssue
 from aberrant.base.forecast import Forecast
 from aberrant.base.protocols import FeatureMap
 from aberrant.catalog import (
@@ -491,4 +492,16 @@ def resolve_service_detector(model: Mapping[str, Any]) -> ResolvedServiceDetecto
     )
     # Settings out of range fail here, before a run subscribes or learns.
     resolved.build()
+    # So does a worker that cannot name the service: it could score nothing.
+    # Naming the service opens no connection.
+    try:
+        service_client()
+    except ValueError as error:
+        message = (
+            "This deployment has no forecast service, which a pretrained "
+            "forecaster needs (FORECAST_API_URL is not set)"
+        )
+        raise ConfigurationError(
+            message, issues=[ConfigurationIssue("forecast_service", (), message)]
+        ) from error
     return resolved

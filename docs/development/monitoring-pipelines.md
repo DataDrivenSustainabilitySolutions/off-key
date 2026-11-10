@@ -390,8 +390,10 @@ ABERRANT's `Forecast`, with the median as the expected value and the
 interquartile range as the spread. `ServiceResidualDetector` is ABERRANT's
 residual detector around it, and `resolve_service_detector()` answers what
 RADAR asks of a resolved ABERRANT detector: configuration, capabilities,
-fingerprint and `build()`. Preflight builds the step without the service. A
-worker finds the service through `FORECAST_API_URL` and `FORECAST_API_TOKEN`.
+fingerprint and `build()`. A worker finds the service through
+`FORECAST_API_URL` and `FORECAST_API_TOKEN`. Preflight builds the step without
+calling the service, but a deployment that names no service fails it there,
+on the step, with the issue `forecast_service`.
 
 The first value of a run asks the service to have the checkpoint ready, which
 starts a download if the weights are not there yet. Until a forecast exists

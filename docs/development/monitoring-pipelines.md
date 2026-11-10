@@ -671,8 +671,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`7194e94fa5a052e8cbed08dbee5030e747f1c82f`, the commit that pins RADAR to
-ABERRANT's main branch for the score calibrators, on top of migration 025
+`386eb796a735aa60dae48cd41788b0e950a2099d`, the commit that adds the forecaster
+steps to the catalog, on top of migration 025
 (`evidence_cursor`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -681,9 +681,9 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `b03157ec`, has the same schema but locks ABERRANT
-1.4.0, so the rehearsal no longer accepts it; the one before, `9311f993`, has a
-catalog without the seasonal forecast detector, and releases before
+The previous reference, `7194e94f`, has a catalog without the forecaster steps;
+`b03157ec` before it locks ABERRANT 1.4.0, so the rehearsal accepts neither.
+Releases before
 migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

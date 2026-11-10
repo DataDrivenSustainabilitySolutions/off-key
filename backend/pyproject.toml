@@ -49,6 +49,7 @@ members = [
     "libs/*",
     "services/api/*",
     "services/db/*",
+    "services/forecast/*",
     "services/mqtt/*",
     "services/middleware/*"
 ]

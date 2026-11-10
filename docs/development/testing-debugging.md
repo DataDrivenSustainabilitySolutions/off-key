@@ -113,13 +113,16 @@ because they need different TACTIC settings:
 | `npm --prefix frontend run test:e2e` | Default lanes | `TACTIC_PIPELINE_AUTHORING_ENABLED=false` |
 | `npm --prefix frontend run test:e2e:pipelines` | Visual-pipeline lane | `TACTIC_PIPELINE_AUTHORING_ENABLED=true` and the session `auth-setup` saved |
 
-The deployment smoke lanes run both. A run signs in once: the `auth-setup` project
-accepts the operator invitation, signs in and saves the remembered session to
-`frontend/playwright/.auth/user.json`, and every authenticated journey starts
-from that saved state. The gateway's login limit of 10 per account a minute
-therefore stays the production value. The pipeline lane reuses the file from an
-earlier `npx playwright test --project=auth-setup` invocation, made while authoring
-was still disabled.
+The browser lane of the deployment smoke runs both, one after the other. A run
+signs in once: the `auth-setup` project accepts the operator invitation, signs in
+and saves the remembered session to `frontend/playwright/.auth/user.json`, and
+every authenticated journey starts from that saved state. The gateway's login
+limit of 10 per account a minute therefore stays the production value. The
+pipeline invocation reuses the file the first one saved while authoring was still
+disabled, and writes to `test-results/pipelines`, because Playwright empties its
+output folder before a run and the first invocation's evidence must stay. The
+rehearsal lane runs only `npx playwright test --project=auth-setup` before its
+deployment tests, which take their access token from the same file.
 
 CI browser journeys retain one retry for diagnostic evidence. Any test that passes
 only on retry is classified as flaky and fails CI.
@@ -128,6 +131,8 @@ The member-management browser journeys read invitation links from the local mail
 sink. Set `MAILPIT_BASE_URL` to its reachable HTTP endpoint when using custom ports.
 The disposable production Swarm rehearsal publishes its SMTP fixture's API on
 port `8025` and supplies `MAILPIT_BASE_URL=http://127.0.0.1:8025` in `smoke.env`.
+The restore test reads the invitations of the members it creates from the same
+sink and honours the same variable.
 
 ### Repository pre-commit gate
 

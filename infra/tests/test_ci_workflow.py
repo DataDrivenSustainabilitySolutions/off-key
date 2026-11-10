@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -158,6 +159,42 @@ class CiWorkflowTests(unittest.TestCase):
             prepare["env"]["OFFKEY_REHEARSAL_IMAGES"],
             "${{ github.event_name != 'push' && 'loaded' || 'published' }}",
         )
+
+    def test_one_lane_rehearses_deployments_and_the_other_runs_the_browser(self):
+        smoke = self.jobs["deployment-smoke"]
+        self.assertEqual(
+            smoke["strategy"]["matrix"], {"lane": ["rehearsal", "browser"]}
+        )
+        commands = {"rehearsal": "", "browser": ""}
+        for step in smoke["steps"]:
+            condition = step.get("if", "")
+            if "matrix.lane" not in condition:
+                continue
+            # A misspelt lane would skip its step in both lanes without failing.
+            lane = re.search(r"matrix\.lane == '([^']*)'", condition).group(1)
+            self.assertIn(lane, commands, step["name"])
+            commands[lane] += step.get("run", "") + step.get("with", {}).get("run", "")
+        rehearsal, browser = commands["rehearsal"], commands["browser"]
+        # The marker alone selects the deployment tests, and none may be skipped.
+        self.assertIn("pytest -m deployment -q --tb=short --junitxml", rehearsal)
+        self.assertIn("require_executed_tests.py", rehearsal)
+        self.assertIn("swarm_smoke.py prepare-rollback", rehearsal)
+        # That lane only signs the operator in; every journey runs in the other.
+        self.assertIn("playwright test --project=auth-setup", rehearsal)
+        self.assertNotIn("npm run test:e2e", rehearsal)
+        self.assertNotIn("pytest", browser)
+        self.assertLess(
+            browser.index("npm run test:e2e\n"),
+            # Its own output folder keeps the evidence of the journeys before it.
+            browser.index("npm run test:e2e:pipelines -- --output=test-results/"),
+        )
+        # Release evidence comes from the lane that rehearsed the deployments.
+        evidence = next(
+            step
+            for step in smoke["steps"]
+            if step.get("with", {}).get("name") == "production-release"
+        )
+        self.assertIn("matrix.lane == 'rehearsal'", evidence["if"])
 
     def test_other_events_reuse_one_verified_image_build(self):
         images = self.jobs["images"]

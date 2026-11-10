@@ -2,6 +2,7 @@
 
 The volume cutover runs the actual Ansible backup and TimescaleDB restore tasks.
 The next identical deployment checks that retries do not duplicate workers.
+The stack is fresh, so the test first creates the state it expects back.
 """
 
 import json
@@ -23,6 +24,7 @@ from tests.support.integration_catalogue import (
     add_recorded_entity,
     remove_recorded_entity,
 )
+from tests.support.restorable_state import MAIL_SINK, create_restorable_state
 
 pytestmark = [
     pytest.mark.deployment,
@@ -396,11 +398,12 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
     directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
     root = Path(__file__).resolve().parents[3]
     headers = {"Authorization": f"Bearer {os.environ['E2E_AUTH_TOKEN']}"}
-    with httpx.Client(
-        base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"),
-        headers=headers,
-        timeout=210,
-    ) as client:
+    gateway = os.getenv("E2E_GATEWAY_URL", "http://localhost:8000")
+    with (
+        httpx.Client(base_url=gateway, headers=headers, timeout=210) as client,
+        httpx.Client(base_url=gateway, timeout=210) as guest,
+        httpx.Client(base_url=MAIL_SINK, timeout=30) as mail,
+    ):
         refresh_authentication(client)
         member = get_json(client, "/v1/me")
         discovery_fields = {
@@ -414,7 +417,11 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
         graph_entity = add_recorded_entity(
             client, label="Rehearsal graph entity", keys=("current", "temperature")
         )
+        # A second member, their session, an invitation, favourites, alarms, a
+        # group and recorded history: every redeployment must hand all of it back.
+        restorable = create_restorable_state(client, guest, mail)
         snapshot = get_json(client, "/v1/catalogue")
+        revisions = get_json(client, "/v1/catalogue/revisions")
         topic = entity.topics["temperature"]
         graph = None
         completed = False
@@ -496,6 +503,8 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     current["runtime"]["collection_revision"]
                     == snapshot["runtime"]["collection_revision"]
                 )
+                assert get_json(client, "/v1/catalogue/revisions") == revisions
+                restorable.assert_restored()
                 assert get_measurements(client, entity).json() == saved_data
                 monitors = client.get("/v1/monitors", params={"active": "true"})
                 monitors.raise_for_status()
@@ -533,6 +542,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 }
                 evidence_path.write_text(json.dumps(evidence, indent=2))
             assert list((directory / "backups/postgres").glob("*/*.dump"))
+            restorable.accept_invitation()
             publish.single(topic, "24.5", hostname="localhost", port=1884, qos=1)
             wait_for_measurement(client, entity, 24.5)
             completed = True
@@ -555,3 +565,4 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 if graph is not None:
                     remove_recorded_entity(client, graph_entity)
                 remove_recorded_entity(client, entity)
+                restorable.remove()

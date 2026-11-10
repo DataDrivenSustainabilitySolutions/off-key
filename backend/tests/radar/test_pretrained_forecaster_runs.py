@@ -6,10 +6,17 @@ the fixed split or under a calibration step that keeps adapting.
 """
 
 import math
+from datetime import UTC, datetime
 
 import pytest
 from off_key_core.models.adaptive import TIMESTRAL
-from off_key_core.models.pipelines import derive_monitoring_config, validate_pipeline
+from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    derive_monitoring_config,
+    validate_pipeline,
+)
+from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
@@ -17,6 +24,7 @@ from off_key_mqtt_radar.adaptive_detector import (
 )
 from off_key_mqtt_radar.boundary_detector import BoundaryDetectionService
 from off_key_mqtt_radar.detector_services import detector_service_class
+from off_key_mqtt_radar.dojo.replay import Replay, detection_config
 from off_key_mqtt_radar.execution_errors import ObservationRejected
 from off_key_mqtt_radar.mixed_detector import MixedDetectionService
 from off_key_mqtt_radar.preflight import preflight
@@ -179,3 +187,45 @@ def test_an_outage_rejects_observations_whatever_runs_beside_timestral(
         assert service.process_data_point(reading(110.0, 0.0)).is_anomaly
     finally:
         service.shutdown()
+
+
+@pytest.mark.parametrize(("companions", "steps"), [((), FIXED), (("knn",), ADAPTING)])
+def test_a_dojo_replay_scores_a_recording_against_timestral(
+    monkeypatch, tmp_path, companions, steps
+):
+    calls = forecast_service.start(monkeypatch, tmp_path, season_length=4)["calls"]
+    design = compile_pipeline(definition(companions, steps)).definition
+    execution = bind_dataset(
+        design,
+        {
+            slot.id: BoundSeries(
+                id=f"series-{index}", position=index, name=slot.id, unit=None
+            )
+            for index, slot in enumerate(design.input_slots)
+        },
+        run_id="run",
+    )
+    start = datetime(2026, 3, 1, tzinfo=UTC).timestamp()
+
+    def replayed():
+        run = Replay(detection_config(execution, RunAlignment(), 16384))
+        rows = []
+        try:
+            for index in range(LEARNED + 30):
+                values = list(cycle(index).values())
+                if index == LEARNED + 20:
+                    values[0] = 110.0
+                for slot, value in enumerate(values):
+                    row = run.step(series_topic(slot), start + 60 * index, value)
+                    if row is not None:
+                        rows.append(row)
+        finally:
+            run.close()
+        return rows
+
+    rows = replayed()
+    assert [row.sequence for row in rows] == list(range(1, LEARNED + 31))
+    assert rows[LEARNED + 20].alarm
+    # The weights are frozen, so a second replay gives the same rows.
+    forecasts = len(calls)
+    assert replayed() == rows and len(calls) == 2 * forecasts

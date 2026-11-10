@@ -35,6 +35,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+app.state.documentation_label = "Database sync API"
 app.include_router(api_docs_router)
 
 

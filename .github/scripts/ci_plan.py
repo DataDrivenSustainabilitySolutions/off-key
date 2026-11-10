@@ -1,9 +1,10 @@
 """Plan the CI jobs a change needs; anything uncertain runs every job.
 
-Only two narrow kinds of change run less than everything:
+Only explicitly classified changes run less than everything:
 
-- docs: root-level Markdown that no image, service or deployment reads. The
-  repository checks and the tests that read documentation still run.
+- docs: root-level Markdown that no image, service or deployment reads.
+- landing, published-docs, static: landing content, published documentation,
+  or both. Focused checks run; main releases reuse verified application images.
 - frontend: frontend sources other than its Dockerfile and dependency
   manifests. The frontend image, both deployment rehearsals and the tests that
   read frontend sources still run; backend, broker, RADAR and infrastructure
@@ -38,10 +39,12 @@ JOBS = (
     "publish",
     "deployment-smoke",
     "observability",
+    "static",
+    "static-release",
 )
 # The backend and infrastructure suites already include the contract tests;
 # "images" stands for this event's image job (see plan_for).
-FULL = set(JOBS) - {"contracts", "publish"}
+FULL = set(JOBS) - {"contracts", "publish", "static", "static-release"}
 SELECTED = {
     "full": FULL,
     "frontend": {
@@ -52,7 +55,18 @@ SELECTED = {
         "images",
         "deployment-smoke",
     },
-    "docs": {"lint", "contracts"},
+    "docs": {"static"},
+    "landing": {"static", "static-release"},
+    "published-docs": {"static", "static-release"},
+    "static": {"static", "static-release"},
+}
+STATIC_RELEASE_MODES = {"landing", "published-docs", "static"}
+LANDING_PATHS = {
+    "assets/landing/export.py",
+    "infra/stack/landing.html.j2",
+    "infra/stack/landing.md.j2",
+    "infra/stack/landing-llms.txt.j2",
+    "infra/stack/landing-hero.b64.j2",
 }
 # Frontend files that change the image or its dependencies select everything.
 FRONTEND_BROAD = {
@@ -65,11 +79,17 @@ FRONTEND_BROAD = {
 
 
 def classify(path):
-    """docs, frontend or full for one changed (added, deleted or renamed) path."""
+    """Classify a changed path, including both sides of renames."""
     if not path or path.startswith("/") or ".." in PurePosixPath(path).parts:
         return "full"
-    # Published documentation is a production image and must run the full plan.
-    # Root-level Markdown is excluded from every image build.
+    if path in LANDING_PATHS or (
+        path.startswith("assets/landing/")
+        and PurePosixPath(path).suffix in {".jpg", ".jpeg", ".png", ".webp", ".txt"}
+    ):
+        return "landing"
+    if path.startswith("docs/") or path == "zensical.toml":
+        return "published-docs"
+    # Other build programs, dependencies and shared assets remain full changes.
     if "/" not in path and path.endswith(".md"):
         return "docs"
     if path.startswith("frontend/") and path not in FRONTEND_BROAD:
@@ -83,11 +103,18 @@ def mode_for(paths):
     kinds = {classify(path) for path in paths}
     if "full" in kinds:
         return "full"
-    return "frontend" if "frontend" in kinds else "docs"
+    kinds.discard("docs")
+    if not kinds:
+        return "docs"
+    if "frontend" in kinds:
+        return "frontend" if kinds == {"frontend"} else "full"
+    return next(iter(kinds)) if len(kinds) == 1 else "static"
 
 
 def plan_for(mode, event):
     selected = set(SELECTED[mode]) - {"publish"}
+    if event != "push":
+        selected.discard("static-release")
     if "images" in selected:
         # A main push publishes the images it rehearses; other events only build them.
         selected.discard("images")

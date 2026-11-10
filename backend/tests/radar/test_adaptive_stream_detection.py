@@ -472,8 +472,6 @@ def test_timestral_outage_rejects_observations_and_the_run_recovers(
     # The service goes away: the value before the outage is still compared
     # with its forecast, the next has none.
     monkeypatch.setitem(service, "down", True)
-    for pipeline in detector.pipelines:
-        pipeline.model.model._client = None
     assert math.isfinite(detector.process_data_point({"x0": 102.0}).anomaly_score)
     for _ in range(3):
         with pytest.raises(ObservationRejected, match="No forecast to compare with"):

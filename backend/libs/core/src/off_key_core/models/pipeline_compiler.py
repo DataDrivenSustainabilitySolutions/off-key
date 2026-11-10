@@ -18,6 +18,12 @@ from ..schemas.pipelines import (
     PipelineValidation,
 )
 from ..utils.json_budget import fits_json_budget
+from .pipeline_calibration import (
+    CALIBRATORS,
+    EXCEEDANCE_RULE,
+    calibrator_id,
+    minimum_window,
+)
 from .pipeline_catalog import pipeline_components
 from .pipeline_combine import VALUE_CHECKED, value_issues
 from .pipeline_digest import digest
@@ -28,7 +34,7 @@ from .pipeline_features import (
 )
 from .pipeline_fields import parameter_path
 from .pipeline_formula import FormulaError
-from .pipeline_parameters import normalized_parameters
+from .pipeline_parameters import fusion_mode, normalized_parameters
 from .pipeline_prepare import (
     LANE_COMPONENTS,
     MAX_WINDOW_VALUES,
@@ -209,13 +215,28 @@ def _validate_components(compilation: _Compilation) -> None:
             continue
         lane = compilation.definition.lane
         if lane is not None and lane not in component.strategies:
+            # Pretrained detectors share the adaptive lane and learn nothing.
+            online = any(
+                component_learning(item.component) == "online"
+                for item in compilation.definition.nodes
+            )
+            learns = (
+                _LEARNS[lane]
+                if online or lane != "adaptive_stream"
+                else "are pretrained"
+            )
             compilation.error(
                 "strategy",
                 "Component does not support this monitoring strategy"
                 if compilation.legacy
-                else f"{component.label} can't run with detectors that "
-                + _LEARNS[lane]
-                + " yet.",
+                else f"{component.label} can't run with detectors that {learns} yet.",
+                node.id,
+            )
+            continue
+        if compilation.legacy and calibrator_id(node.component) is not None:
+            compilation.error(
+                "strategy",
+                f"{component.label} needs a design without a monitoring strategy",
                 node.id,
             )
             continue
@@ -547,10 +568,85 @@ def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None
             )
 
 
+# Why a policy cannot follow a calibration step that keeps adapting.
+_NEEDS_FIXED_SPLIT = {
+    "policy.martingale": "The conformal alarm policy needs the fixed split, whose "
+    "p-values are exact.",
+    "policy.quantile": "The calibrated score threshold takes its quantile from a "
+    "fixed split.",
+}
+
+
+def _validate_calibration(compilation: _Compilation) -> bool:
+    """A policy fits its calibration step: the fixed split gives p-values and a
+    frozen threshold, an adapting method gives a boundary to exceed."""
+    calibration = next(
+        (node for node in compilation.definition.nodes if node.kind == "calibration"),
+        None,
+    )
+    policy = next(
+        (node for node in compilation.definition.nodes if node.kind == "policy"), None
+    )
+    if calibration is None or policy is None:
+        return True
+    method = calibrator_id(calibration.component)
+    label = _label(compilation, calibration.id)
+    if method is None:
+        if policy.component == EXCEEDANCE_RULE:
+            compilation.error(
+                "calibration",
+                f"The exceedance rule needs a calibration step that sets an alarm "
+                f"rate, such as {CALIBRATORS['split']['name']} or "
+                f"{CALIBRATORS['aci']['name']}. With {label}, use the calibrated "
+                "score threshold.",
+                policy.id,
+            )
+            return False
+        return True
+    if policy.component in _NEEDS_FIXED_SPLIT:
+        compilation.error(
+            "calibration",
+            f"{_NEEDS_FIXED_SPLIT[policy.component]} With {label}, use the "
+            "exceedance rule.",
+            policy.id,
+        )
+        return False
+    _validate_calibration_window(compilation, calibration, method)
+    return True
+
+
+def _validate_calibration_window(
+    compilation: _Compilation, calibration: PipelineNode, method: str
+) -> None:
+    """A boundary at a small alarm rate needs enough calibration scores."""
+    alpha = calibration.params.get("alpha")
+    # An alarm rate out of range is reported with the step's other settings.
+    if not isinstance(alpha, float) or not 0 < alpha < 1:
+        return
+    window = compilation.definition.settings.calibration_window_size
+    needed = minimum_window(
+        method,
+        alpha,
+        _detector_count(compilation.definition),
+        fusion_mode(calibration.params),
+    )
+    if window < needed:
+        compilation.warning(
+            "calibration_window",
+            f"An alarm rate of {alpha:g} needs at least {needed:,} calibration "
+            f"observations; the calibration window has {window:,}. With fewer, "
+            "the boundary sits at the largest score seen.",
+            calibration.id,
+            parameter_path=["alpha"],
+        )
+
+
 def _validate_learning(compilation: _Compilation) -> None:
     """What may be combined follows from how each step learns."""
     modes = _learned(compilation)
     _validate_branches(compilation, modes)
+    if not _validate_calibration(compilation):
+        return
     for identifier, node in compilation.nodes.items():
         if node.component != "policy.martingale":
             continue
@@ -562,7 +658,8 @@ def _validate_learning(compilation: _Compilation) -> None:
                 "before calibration. Use the calibrated score threshold.",
                 identifier,
             )
-        elif "pretrained" in upstream:
+        elif "pretrained" in upstream and compilation.definition.lane is None:
+            # Beside detectors fitted once; alone, its lane has said so already.
             compilation.error(
                 "calibration",
                 "The conformal alarm policy does not run on a pretrained "

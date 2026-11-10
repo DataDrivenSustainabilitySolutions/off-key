@@ -1,10 +1,8 @@
 """Parameter normalization for the explicitly supported component registry."""
 
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import Field
-
-from ..schemas.pipeline_versions import FIXED_SPLIT, component_learning
+from ..schemas.pipeline_versions import component_learning
 from ..schemas.pipelines import (
     FusionMode,
     MinMaxScalerParameters,
@@ -21,6 +19,12 @@ from ..schemas.pipelines import (
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import validate_adaptive_model_params
+from .pipeline_calibration import (
+    CALIBRATION_MODELS,
+    EXCEEDANCE_RULE,
+    ExceedanceRuleParameters,
+    Fusion,
+)
 from .pipeline_prepare import PREPARE_MODELS
 from .pipeline_scope import SCOPED_COMPONENTS, canonical_scope
 from .static import validate_static_model_params
@@ -42,19 +46,9 @@ PARAMETER_MODELS: dict[str, type[PipelineModel]] = {
     "adaptive.random_projection": ProjectionParameters,
     "adaptive.uncentered_pca": OnlinePCAParameters,
     **PREPARE_MODELS,
+    EXCEEDANCE_RULE: ExceedanceRuleParameters,
     "output.evidence": PipelineModel,
 }
-Fusion = Annotated[
-    FusionMode,
-    Field(
-        title="Combine detectors",
-        description=(
-            "How several detectors raise one alarm. Each score becomes a surprise "
-            "against that detector's calibration scores; max follows the strongest "
-            "surprise, mean their average. With one detector this has no effect."
-        ),
-    ),
-]
 
 
 class MartingalePolicyParameters(StaticMartingaleConfig):
@@ -69,19 +63,11 @@ class ThresholdPolicyParameters(AdaptiveThresholdConfig):
     fusion: Fusion = "max"
 
 
-class CalibrationParameters(PipelineModel):
-    """How a calibration step combines the detectors that feed it."""
-
-    fusion: Fusion = "max"
-
-
+# The policies of schema 1 designs, which combine the detectors themselves.
+# Their schemas lose fusion when the editor shows the calibration step.
 POLICY_MODELS = {
     "policy.martingale": MartingalePolicyParameters,
     "policy.quantile": ThresholdPolicyParameters,
-}
-# The policies' schemas lose fusion when the editor shows the calibration step.
-CALIBRATION_MODELS: dict[str, type[PipelineModel]] = {
-    FIXED_SPLIT: CalibrationParameters,
 }
 
 

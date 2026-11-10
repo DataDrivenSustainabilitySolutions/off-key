@@ -193,6 +193,14 @@ def test_timestral_reads_no_step_that_learns(scaler):
 
 def test_the_conformal_alarm_policy_does_not_run_on_timestral():
     [(code, node, message)] = _issues(_design(TIMESTRAL, policy="policy.martingale"))
+    assert (code, node) == ("strategy", "policy")
+    assert message == (
+        "Conformal alarm policy can't run with detectors that are pretrained yet."
+    )
 
+    # Beside a detector fitted once the design has no lane to say so.
+    [(code, node, message)] = _issues(
+        _design(TIMESTRAL, IFOREST, policy="policy.martingale")
+    )
     assert (code, node) == ("calibration", "policy")
     assert "pretrained forecaster" in message

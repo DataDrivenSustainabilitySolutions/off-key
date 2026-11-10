@@ -6,7 +6,11 @@ from typing import Any, get_args
 
 from pydantic import BaseModel
 
-from ..schemas.pipeline_versions import FIXED_SPLIT, component_learning
+from ..schemas.pipeline_versions import (
+    CALIBRATION_PREFIX,
+    FIXED_SPLIT,
+    component_learning,
+)
 from ..schemas.pipelines import (
     NodeKind,
     PipelineCatalog,
@@ -18,9 +22,10 @@ from ..schemas.pipelines import (
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
 from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
+from .pipeline_calibration import CALIBRATION_MODELS, CALIBRATORS, EXCEEDANCE_RULE
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
-from .pipeline_parameters import CALIBRATION_MODELS, PARAMETER_MODELS, POLICY_MODELS
+from .pipeline_parameters import PARAMETER_MODELS, POLICY_MODELS
 from .static import STATIC_MODELS
 
 BOTH: list[PipelineStrategy] = list(get_args(PipelineStrategy))
@@ -224,6 +229,16 @@ def pipeline_components() -> list[PipelineComponent]:
             ),
             BOTH,
         ),
+        *(
+            (
+                f"{CALIBRATION_PREFIX}{identifier}",
+                "calibration",
+                method["name"],
+                method["summary"],
+                BOTH,
+            )
+            for identifier, method in CALIBRATORS.items()
+        ),
         (
             "policy.martingale",
             "policy",
@@ -237,6 +252,13 @@ def pipeline_components() -> list[PipelineComponent]:
             "Calibrated score threshold",
             "Existing frozen empirical quantile alarm policy.",
             ["adaptive_stream"],
+        ),
+        (
+            EXCEEDANCE_RULE,
+            "policy",
+            "Exceedance rule",
+            "Alarm when scores stay above the boundary a calibration step adapts.",
+            BOTH,
         ),
         (
             "output.evidence",
@@ -346,11 +368,15 @@ def _schema_1_view(component: PipelineComponent) -> PipelineComponent:
 
 
 def editor_components() -> list[PipelineComponent]:
-    """The catalog the editor reads until it shows the calibration step."""
+    """The catalog the editor reads until it shows the calibration step.
+
+    The exceedance rule is left out with it: it needs an adapting calibration
+    step, which a design made in today's editor cannot have.
+    """
     return [
         _schema_1_view(item)
         for item in pipeline_components()
-        if item.kind != "calibration"
+        if item.kind != "calibration" and item.id != EXCEEDANCE_RULE
     ]
 
 

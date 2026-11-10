@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block htmltitle %}
+  {% if page.url is defined and page.url == "" %}
+    <title>Docs · Aberration</title>
+  {% elif page.meta and page.meta.title %}
+    <title>{{ page.meta.title | striptags }} · Docs · Aberration</title>
+  {% elif page.title %}
+    <title>{{ page.title | striptags }} · Docs · Aberration</title>
+  {% else %}
+    <title>Page not found · Docs · Aberration</title>
+  {% endif %}
+{% endblock %}

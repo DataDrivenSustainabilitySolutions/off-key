@@ -13,6 +13,7 @@ file in the package's npm tarball, for example
 """
 
 from dataclasses import dataclass
+from html import escape
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
@@ -75,6 +76,11 @@ DOCS_CONTENT_SECURITY_POLICY = "; ".join(
 router = APIRouter(include_in_schema=False)
 
 
+def _browser_title(request: Request, view: str) -> str:
+    label = getattr(request.app.state, "documentation_label", "API")
+    return escape(f"{label} {view} · Aberration")
+
+
 def _pinned(response: HTMLResponse, *assets: PinnedAsset) -> HTMLResponse:
     """Add the integrity check to each asset tag and send the page's CSP."""
     html = bytes(response.body).decode()
@@ -101,7 +107,7 @@ async def swagger_ui(request: Request):
     root_path = request.scope.get("root_path", "").rstrip("/")
     page = get_swagger_ui_html(
         openapi_url=root_path + app.openapi_url,
-        title=f"{app.title} - Swagger UI",
+        title=_browser_title(request, "explorer"),
         swagger_js_url=SWAGGER_JS.url,
         swagger_css_url=SWAGGER_CSS.url,
         swagger_favicon_url=FAVICON_URL,
@@ -113,8 +119,11 @@ async def swagger_ui(request: Request):
 
 
 @router.get("/docs/oauth2-redirect")
-async def swagger_oauth_redirect():
-    return get_swagger_ui_oauth2_redirect_html()
+async def swagger_oauth_redirect(request: Request):
+    html = bytes(get_swagger_ui_oauth2_redirect_html().body).decode()
+    return HTMLResponse(
+        html.replace("Swagger UI: OAuth2 Redirect", _browser_title(request, "sign-in"))
+    )
 
 
 @router.get("/redoc")
@@ -123,7 +132,7 @@ async def redoc(request: Request):
     root_path = request.scope.get("root_path", "").rstrip("/")
     page = get_redoc_html(
         openapi_url=root_path + app.openapi_url,
-        title=f"{app.title} - ReDoc",
+        title=_browser_title(request, "reference"),
         redoc_js_url=REDOC_JS.url,
         redoc_favicon_url=FAVICON_URL,
         with_google_fonts=False,

@@ -8,6 +8,7 @@ from struct import calcsize
 from typing import Any
 
 import numpy as np
+from off_key_core.models.pipeline_calibration import calibrator_id
 from off_key_core.models.pipeline_prepare import LANE_COMPONENTS, kernel
 from off_key_core.models.pipeline_scope import step_scope
 from off_key_core.schemas.pipeline_versions import component_learning
@@ -146,6 +147,27 @@ def _fusion_state(plan: ExecutionPlan) -> int:
     return numeric
 
 
+def _boundary_state(plan: ExecutionPlan) -> int:
+    """A calibration step that adapts keeps its latest scores as Python floats.
+
+    It collects the calibration window as lists of floats, then holds that
+    window sorted and the latest scores in arrival order. Several detectors
+    each keep their window twice, in arrival order and sorted. The method's
+    own state is bounded by the largest one, 5,000 weighted scores.
+    """
+    identifier = plan.compiled.calibration_id
+    if identifier is None or calibrator_id(plan.nodes[identifier].component) is None:
+        return 0
+    rows = plan.compiled.definition.settings.calibration_window_size
+    width = len(plan.detector_ids)
+    score = sys.getsizeof(0.0) + calcsize("P")
+    collected = rows * (sys.getsizeof([0.0] * width) + width * score)
+    history = (rows + max(rows, 1024)) * score
+    ranks = 2 * rows * width * score if plan.fused else 0
+    method = 5000 * (sys.getsizeof((0.0, 0)) + sys.getsizeof(0) + score)
+    return collected + history + ranks + method
+
+
 def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEstimate:
     definition = plan.compiled.definition
     source = plan.source_id
@@ -159,7 +181,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     online = [
         identifier
         for identifier in plan.detector_ids
-        if component_learning(plan.nodes[identifier].component) == "online"
+        if component_learning(plan.nodes[identifier].component) != "batch"
     ]
     buffered = static or len(online) < len(plan.detector_ids)
     fitted_once = frozenset().union(
@@ -220,7 +242,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
     # Fitting keeps transformed training and calibration matrices until model
     # calibration completes. Account for them in addition to branch traversal.
     intermediates = peak * (samples if buffered else 1) * 8
-    fusion_state = _fusion_state(plan)
+    fusion_state = _fusion_state(plan) + _boundary_state(plan)
     known = input_buffer + intermediates + initialization + fusion_state
     total = known + containers + projection_containers + prepare_state
     if total > memory_limit_mb * 1024 * 1024:

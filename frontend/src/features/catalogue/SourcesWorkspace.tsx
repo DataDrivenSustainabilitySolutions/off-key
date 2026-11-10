@@ -11,6 +11,7 @@ import { BrokerCheckMark } from "./BrokerCheck";
 import { checkProblem, useBrokerChecks } from "./useBrokerChecks";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { catalogueSelectionLabel } from "../workspace/catalogue-navigation";
 import { systemApi } from "@/domain/system/systemApi";
 import type { SystemDocument, SystemRuntime } from "@/types/system";
 import "./sources.css";
@@ -81,7 +82,7 @@ export function SourcesWorkspace() {
       <Circle size={12} />{busy ? "Starting…" : "Record"}</Button>;
   };
   const safeReturn = safeServiceReturn(params.get("returnTo"));
-  useDocumentTitle(selected?.label, "Sources");
+  useDocumentTitle(selectionMissing ? "Source not found" : catalogueSelectionLabel(document, selected), "Sources");
 
   const rename = async (kind: Parameters<typeof system.rename>[0], id: string, label: string) => {
     if (!await system.rename(kind, id, label)) throw new Error("The name was not saved.");

@@ -67,8 +67,8 @@ Exports:
 
 - [logo-black.svg](logo-black.svg): black, for light backgrounds.
 - [logo-white.svg](logo-white.svg): white, for dark backgrounds.
-- [favicon.svg](favicon.svg): transparent, black/white according to the browser's
-  colour scheme.
+- [favicon.svg](favicon.svg): white mark on a solid black background in every
+  browser colour scheme.
 
 The mark stands alone in application navigation and links to dashboard home.
 Give that link an accessible name, “Aberration home”, and a minimum 44 × 44
@@ -104,4 +104,5 @@ its favicon and logo path, preserving the surrounding layout.
 The app references the master's exported path with an external SVG use element,
 so its current colour follows the app's explicit light/dark appearance setting.
 Documentation embeds the same mark inline and follows its selected theme.
-Standalone favicons follow the browser colour scheme through an SVG media query.
+Standalone favicons keep the white mark on a solid black background in every
+browser colour scheme.

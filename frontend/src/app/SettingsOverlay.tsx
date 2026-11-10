@@ -16,6 +16,7 @@ const SystemStatusSettings = lazy(() => import("@/features/settings/SystemStatus
 type SectionDefinition = {
   id: SettingsSection;
   label: string;
+  tabTitle: string;
   heading?: string;
   description: string;
   icon: LucideIcon;
@@ -26,13 +27,13 @@ type SectionDefinition = {
 };
 
 const SECTIONS: SectionDefinition[] = [
-  { id: "account", label: "Account", description: "Your sign-in and who can access this organization.", icon: UserCircle,
+  { id: "account", label: "Account", tabTitle: "Account settings", description: "Your sign-in and who can access this organization.", icon: UserCircle,
     group: "Personal", membersOnly: true, content: () => <AccountSettings /> },
-  { id: "preferences", label: "Preferences", heading: "Appearance", description: "Saved on this device.", icon: SlidersHorizontal,
+  { id: "preferences", label: "Preferences", heading: "Appearance", tabTitle: "Appearance", description: "Saved on this device.", icon: SlidersHorizontal,
     group: "Personal", content: () => <AppearanceSettings /> },
-  { id: "catalogue", label: "Catalogue", description: "Manage your sources and catalogue files.", icon: Database,
+  { id: "catalogue", label: "Catalogue", tabTitle: "Catalogue settings", description: "Manage your sources and catalogue files.", icon: Database,
     group: "Workspace", content: () => <CatalogueSettings /> },
-  { id: "status", label: "System status", description: "Live collection and storage diagnostics.", icon: Activity,
+  { id: "status", label: "System status", tabTitle: "System status", description: "Live collection and storage diagnostics.", icon: Activity,
     group: "Workspace", membersOnly: true, content: () => <SystemStatusSettings /> },
 ];
 
@@ -49,7 +50,7 @@ export function SettingsOverlay() {
   const saving = !!catalogue?.system.saving;
   const sections = SECTIONS.filter(entry => !entry.membersOnly || isAuthenticated);
   const current = sections.find(entry => entry.id === section);
-  useOverlayDocumentTitle(current?.label);
+  useOverlayDocumentTitle(current?.tabTitle);
   const dialog = useRef<HTMLDivElement>(null);
   const inOtherDialog = (target: EventTarget | null) => target instanceof Element
     && !dialog.current?.contains(target) && !!target.closest("[role=dialog], [role=alertdialog]");

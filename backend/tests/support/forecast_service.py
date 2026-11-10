@@ -30,11 +30,11 @@ class StandInCheckpoint(SeasonalNaiveProvider):
 
 def client() -> ForecastClient:
     """Module-level, as a checkpoint stores a forecaster's connection by name."""
-    if _STATE.get("down"):
-        raise ForecastServiceError("Forecast service is unreachable: refused")
     http: TestClient = _STATE["http"]
 
     def transport(method, url, body, headers):
+        if _STATE.get("down"):
+            raise ForecastServiceError("Forecast service is unreachable: refused")
         _STATE["calls"].append((method, url))
         response = http.request(method, url, content=body, headers=headers)
         return response.status_code, response.content

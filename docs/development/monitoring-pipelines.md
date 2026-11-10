@@ -349,10 +349,11 @@ Schema 2 (`pipeline_versions.py`) describes a design without a lane. Each compon
 says how it learns (`PipelineComponent.learning`: `none`, `batch`, `online` or
 `pretrained`), and a `calibration` step sits between the detectors and the alarm
 policy. Detectors give `scores`; the calibration step turns them into `p_values`
-for the policy. The only calibration step today is `calibrate.fixed_split`: the
-learned steps freeze and the calibration window gives conformal ranks, which is
-what both lanes did. It owns `fusion`; the policy keeps its own parameters,
-including the quantile. A `forecasts` port type is reserved for forecasters.
+for the policy. `calibrate.fixed_split` is what both lanes did: the learned
+steps freeze and the calibration window gives conformal ranks. It owns `fusion`;
+the policy keeps its own parameters, including the quantile. Every other
+calibration step keeps adapting (see below). A `forecasts` port type is reserved
+for forecasters.
 
 A forecaster step is a detector that scores one feature by how far it misses the
 forecast made for it. `FORECASTER_IDS` in `models/adaptive.py` lists them; each
@@ -375,8 +376,12 @@ component of either kind. The first is `forecast.timestral`, with a `checkpoint`
 (`TIMESTRAL_CHECKPOINTS`, the ones the service offers), a `context_length` (how
 many recent values the model reads), a `minimum_context` (how many values must
 have arrived before the first forecast), and `lead`, `score` and `min_scale` as
-for the other forecasters. It reads one feature and no step that learns, and it
-runs with the calibrated score threshold, in the adaptive lane.
+for the other forecasters. It reads one feature and no step that learns. It
+scores and then takes in every observation, as a detector that learns
+continuously does, so it runs wherever one runs: alone or beside detectors of
+either kind, under the fixed split with the calibrated score threshold or under
+a calibration step that keeps adapting. The conformal alarm policy does not run
+on it.
 
 In RADAR, `off_key_mqtt_radar/forecasting.py` gives the service ABERRANT's
 forecaster interface. `ServiceForecaster` keeps the recent values and asks the
@@ -413,7 +418,11 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 - `learning`: a step reads a learned step that learns differently. A batch
   detector reads batch or stateless steps, an online one online or stateless steps.
 - `calibration`: the martingale policy needs exact p-values, so no step in front
-  of it may keep learning after calibration (no online step).
+  of it may keep learning after calibration (no online step). A policy also has
+  to fit its calibration step: the martingale and the score threshold need the
+  fixed split, the exceedance rule a step that adapts.
+- `calibration_window` (warning): the calibration window is too short for the
+  alarm rate of a step that adapts.
 
 `PipelineDefinition.lane` is the stored strategy, or the one all a design's
 learned steps share. A design with a lane may use only that lane's components
@@ -438,6 +447,66 @@ alarms as a combined adaptive run does. A Dojo replay waits for the fit, so it
 scores every observation after calibration. Checkpoints keep the buffers or the
 fitted detectors (`batch`) beside the adaptive state and refit when they were
 taken while fitting.
+
+#### Calibration steps that adapt
+
+`calibrate.<method>` runs a method of `aberrant.calibration`: rolling split CP,
+ACI, DtACI, AgACI, the quantile tracker, conformal PID, NexCP and eight more.
+`calibration_catalog.json` describes them (name, reference, family, coverage,
+parameters). RADAR generates it from the installed aberrant
+(`python -m off_key_mqtt_radar.catalog --write`, checked with `--check`), so the
+control plane imports no numerics; `pipeline_calibration.py` builds one parameter
+model per method from it. A step takes `alpha`, the target alarm rate, the
+method's own parameters and `fusion`. The method's window is the design's
+calibration window. The editor does not offer these steps yet
+(`editor_components()` leaves them and the exceedance rule out).
+
+There are three stages, and each claims only what it can:
+
+1. Detectors give scores.
+2. The calibration step issues a boundary for each observation before it sees the
+   score, then learns the score. The calibration window seeds it. What a method
+   holds is the long-run share of scores above the boundary, at `alpha`. That
+   share counts every score above the boundary, anomalies included, so it is not
+   a false alarm rate, and a method that adapts also gets used to a lasting
+   anomaly. Methods of the Bayesian family hold no such rate (`coverage: none`).
+3. `policy.exceedance`, the detection rule, alarms once `consecutive` scores in a
+   row are above the boundary. With more than one the alarm rate falls below
+   `alpha`, but not to `alpha` to that power, because exceedances come together.
+
+The martingale and the score threshold stay with the fixed split: only its
+p-values are exact, and only it freezes a threshold. A design saved with a
+monitoring strategy keeps the fixed split too.
+
+A boundary that is a quantile of the window (`split`, `aci`, `dtaci`, `agaci`)
+needs `ceil(1 / alpha) - 1` calibration observations, or it sits at the largest
+score seen. Several detectors need that for any method, and
+`ceil(k / alpha) - 1` for k detectors under `max`, because each reaches the top
+of its window about once in n scores. The compiler warns below that
+(`minimum_window`).
+
+`BoundaryDetectionService` runs every design with such a step: detectors fitted
+once, detectors that learn every observation, or both. It is the mixed service
+with a `ScoreBoundary` (`boundary.py`) where that one freezes a threshold.
+Warm-up, the calibration window and the background fit are the same. The
+calibration window's scores then seed the boundary, and each scored observation
+is judged against the boundary issued for it and then learned by the detectors,
+the boundary and the rule's count, in that order; an observation a detector
+fails on moves none of them. Results are `adaptive_stream` results with the
+boundary as `threshold`, so evidence rows, charts and the Dojo read them as a
+threshold run's. `derive_monitoring_config` names the first detector that takes
+in every observation; when every detector is fitted once it gives static
+baseline settings for the windows and the seed, while the results stay
+`adaptive_stream`. Checkpoints keep the boundary and are refused when the
+design's calibration step or rule changed.
+
+One detector's raw score is the method's score. Several detectors meet as ranks,
+as under the fixed split, but against each detector's latest n scores
+(`fusion.RollingRanks`, n the calibration window) so the ranks follow the
+detectors. A share alone stops at 1, where a score just above the window and one
+far above it would tie and a boundary that has reached 1 could never be
+exceeded. A score above its whole window therefore adds how far above it is, in
+units of the window's range. The surprise reported per detector stays a share.
 
 `fusion.RankFusion` combines detectors by rank, so detectors on different scales
 need no tuning. A detector's surprise for a score s is the share of its n

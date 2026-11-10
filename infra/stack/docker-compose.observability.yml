@@ -116,6 +116,7 @@ services:
       GOMEMLIMIT: 384MiB
       GOMAXPROCS: "1"
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/overview.json
     configs:
       - source: grafana_datasources
         target: /etc/grafana/provisioning/datasources/stack.yml
@@ -125,6 +126,12 @@ services:
         target: /etc/grafana/dashboards/logs.json
       - source: grafana_dashboard_overview
         target: /etc/grafana/dashboards/overview.json
+      - source: grafana_dashboard_collection
+        target: /etc/grafana/dashboards/collection.json
+      - source: grafana_dashboard_radar
+        target: /etc/grafana/dashboards/radar.json
+      - source: grafana_dashboard_access
+        target: /etc/grafana/dashboards/access.json
     volumes: [grafana-data:/var/lib/grafana]
     networks: [observability-network]
     logging: *bounded-logs
@@ -211,3 +218,12 @@ configs:
   grafana_dashboard_overview:
     name: grafana_dashboard_overview_${GRAFANA_DASHBOARD_OVERVIEW_HASH}
     file: ./grafana-dashboard-overview.json
+  grafana_dashboard_collection:
+    name: grafana_dashboard_collection_${GRAFANA_DASHBOARD_COLLECTION_HASH}
+    file: ./grafana-dashboard-collection.json
+  grafana_dashboard_radar:
+    name: grafana_dashboard_radar_${GRAFANA_DASHBOARD_RADAR_HASH}
+    file: ./grafana-dashboard-radar.json
+  grafana_dashboard_access:
+    name: grafana_dashboard_access_${GRAFANA_DASHBOARD_ACCESS_HASH}
+    file: ./grafana-dashboard-access.json

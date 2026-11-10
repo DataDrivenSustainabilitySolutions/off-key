@@ -217,6 +217,7 @@ def create_app() -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+    app.state.documentation_label = "TACTIC API"
     app.include_router(api_docs_router)
 
     @app.exception_handler(DeploymentInProgressError)

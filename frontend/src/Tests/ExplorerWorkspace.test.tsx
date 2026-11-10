@@ -297,6 +297,7 @@ describe("service-centred monitoring workspace", () => {
     for (const [section, heading] of [["Sources", "Room station"], ["Reporting", "Reporting"], ["Monitoring", "Monitoring"]]) {
       fireEvent.click(screen.getByRole("link", { name: section }));
       await screen.findByRole("heading", { name: heading, level: 1 });
+      expect(window.document.title).toBe(`Room station · ${section} · Aberration`);
       expect(screen.getByRole("navigation", { name: "Catalogue" })).toBe(sidebar);
       expect(within(sidebar).getByRole("list", { name: "Search results" })).toBe(list);
       expect((search as HTMLInputElement).value).toBe("Room station");
@@ -324,7 +325,24 @@ describe("service-centred monitoring workspace", () => {
     fireEvent.click(back);
     await screen.findByRole("region", { name: "Monitoring service details" });
     expect(router.state.location.search).toBe("?service=service-one");
+    expect(document.title).toBe("Room climate · Monitoring · Aberration");
     expect(apiUtils.put).not.toHaveBeenCalled();
+  });
+
+  it("names the service section and restores it after settings and browser navigation", async () => {
+    withServices([service()]);
+    const { router } = mount("/?service=service-one&tab=configuration");
+    await screen.findByRole("region", { name: "Monitoring service details" });
+    expect(document.title).toBe("Room climate — Configuration · Monitoring · Aberration");
+    await act(async () => { await router.navigate("/?service=service-one&tab=configuration&settings=preferences"); });
+    await screen.findByRole("dialog", { name: "Settings" });
+    expect(document.title).toBe("Appearance · Aberration");
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    await waitFor(() => expect(document.title).toBe("Room climate — Configuration · Monitoring · Aberration"));
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+    expect(document.title).toBe("Room climate · Monitoring · Aberration");
+    await act(async () => { await router.navigate(-1); });
+    expect(document.title).toBe("Room climate — Configuration · Monitoring · Aberration");
   });
 
   it("enables service setup when recording is acknowledged after a Sources detour", async () => {
@@ -542,6 +560,7 @@ describe("hierarchical explorer workspace", () => {
     fireEvent.change(input, { target: { value: "Room temperature" } });
     fireEvent.blur(input);
     await waitFor(() => expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature"));
+    expect(document.title).toBe("Room temperature · Monitoring · Aberration");
     expect(apiUtils.put).toHaveBeenCalledOnce();
     const request = vi.mocked(apiUtils.put).mock.calls[0]!;
     expect(request[0]).toBe("/v1/catalogue");

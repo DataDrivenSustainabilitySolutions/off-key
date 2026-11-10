@@ -235,7 +235,7 @@ describe("<Details />", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Room station" })).toBeTruthy();
     const station = index.nodes.get(index.objectKeys.get("station")![0]!)!;
     expect(screen.getByRole("link", { name: "View in Sources" }).getAttribute("href")).toBe(`/sources?source=${encodeURIComponent(station.key)}`);
-    expect(window.document.title).toBe("Room station · Reporting · Aberration");
+    expect(window.document.title).toBe("Room station — Evidence · Reporting · Aberration");
     // The device's readings come from the provider's snapshot instead of another /v1/catalogue request.
     expect(mockLoadAllTelemetryTypes).toHaveBeenCalledWith([document.readings[0]], expect.any(AbortSignal), undefined);
     expect(mockApiGet).not.toHaveBeenCalledWith("/v1/catalogue", expect.anything());

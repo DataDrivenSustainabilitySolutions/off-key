@@ -39,6 +39,16 @@ def learning_ids(plan: ExecutionPlan, mode: str) -> list[str]:
     ]
 
 
+def streaming_ids(plan: ExecutionPlan) -> list[str]:
+    """The detectors that score and then take in every observation: those that
+    learn continuously and those that are pretrained."""
+    return [
+        identifier
+        for identifier in plan.detector_ids
+        if component_learning(plan.nodes[identifier].component) != "batch"
+    ]
+
+
 def fit_batch_branches(
     plan: ExecutionPlan,
     detector_ids: list[str],
@@ -98,7 +108,8 @@ class BatchBranches:
 
     @property
     def fitted(self) -> bool:
-        return self.detectors is not None
+        """Nothing is left to fit: the detectors are fitted, or there are none."""
+        return self.detectors is not None or not self.detector_ids
 
     def vector(self, data: dict[str, float]) -> list[float]:
         return [float(data[key]) for key in self.plan.input_columns]
@@ -153,10 +164,10 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
 
     @staticmethod
     def _runs(plan) -> bool:
-        return bool(learning_ids(plan, "batch")) and bool(learning_ids(plan, "online"))
+        return bool(learning_ids(plan, "batch")) and bool(streaming_ids(plan))
 
     def _online_ids(self) -> list[str]:
-        return learning_ids(self.plan, "online")
+        return streaming_ids(self.plan)
 
     def _initialize_fresh(self) -> None:
         super()._initialize_fresh()
@@ -187,7 +198,8 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
 
     def _process_warmup(self, data, topic, charger_id, started) -> AnomalyResult:
         result = super()._process_warmup(data, topic, charger_id, started)
-        self.batch.training.append(self.batch.vector(data))
+        if self.batch.detector_ids:
+            self.batch.training.append(self.batch.vector(data))
         return result
 
     def _process_current_state(self, data, topic, charger_id, started):
@@ -222,13 +234,7 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
 
     def _fused_scores(self, data: dict[str, float]) -> list[float]:
         online = dict(zip(self.online_ids, self._scores(data), strict=True))
-        try:
-            fitted = self.batch.scores(data, self.diagnostics)
-        except NonFiniteFeatures as error:
-            # Scoring only read fitted state, so the observation is skipped.
-            self._skip(
-                error.node_id or self.batch.detector_ids[0], "non_finite", str(error)
-            )
+        fitted = self._batch_scores(data)
         self._scored_features = {
             **(self._scored_features or {}),
             **self.batch.last_features,
@@ -237,6 +243,18 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
             online[identifier] if identifier in online else fitted[identifier]
             for identifier in self.plan.detector_ids
         ]
+
+    def _batch_scores(self, data: dict[str, float]) -> dict[str, float]:
+        """The score of each detector fitted once; a failure skips the observation."""
+        if not self.batch.detector_ids:
+            return {}
+        try:
+            return self.batch.scores(data, self.diagnostics)
+        except NonFiniteFeatures as error:
+            # Scoring only read fitted state, so the observation is skipped.
+            self._skip(
+                error.node_id or self.batch.detector_ids[0], "non_finite", str(error)
+            )
 
     def _submit_fit(self) -> None:
         if self._fit_executor is None:
@@ -314,10 +332,11 @@ class MixedDetectionService(AdaptiveStreamDetectionService):
 
     def get_pipeline_state(self) -> dict[str, Any]:
         state = super().get_pipeline_state()
-        state["batch_training"] = {
-            "state": self.state.value,
-            "training_samples": len(self.batch.training),
-            "calibration_samples": len(self.batch.calibration),
-            "frozen": self.batch.fitted,
-        }
+        if self.batch.detector_ids:
+            state["batch_training"] = {
+                "state": self.state.value,
+                "training_samples": len(self.batch.training),
+                "calibration_samples": len(self.batch.calibration),
+                "frozen": self.batch.fitted,
+            }
         return state

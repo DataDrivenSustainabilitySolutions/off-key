@@ -352,6 +352,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
 
       - name: Set up the backend toolchain
@@ -389,7 +391,7 @@ jobs:
           echo "TEST_RADAR_DATABASE_IMAGE=$image" >> "$GITHUB_ENV"
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             # The digest this run's publish job pushed, checked against its revision label.
-            radar="$(python3 -c 'import os, sys; sys.path.insert(0, "infra/scripts"); from pin_release import pin; print(pin(sys.argv[1], os.environ["GITHUB_SHA"]))' "$(python3 .github/scripts/release_image.py mqtt_radar)")"
+            radar="$(python3 -c 'import os, sys; sys.path.insert(0, "infra/scripts"); from pin_release import pin; from image_sources import source_revision; print(pin(sys.argv[1], os.environ["GITHUB_SHA"], source_revision("mqtt_radar", os.environ["GITHUB_SHA"])))' "$(python3 .github/scripts/release_image.py mqtt_radar)")"
             docker pull --quiet "$radar"
           else
             radar="$(python3 -c 'import json, os; print(json.loads(os.environ["MANIFEST"])["images"]["mqtt_radar"]["reference"])')"
@@ -499,6 +501,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -579,6 +583,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
 
       - name: Set up Node.js
@@ -775,6 +781,7 @@ jobs:
             ${{ env.OFFKEY_REHEARSAL_DIR }}/route-replacement-events.log
             ${{ env.OFFKEY_REHEARSAL_DIR }}/compatible-release.json
             ${{ env.OFFKEY_REHEARSAL_DIR }}/deployment-results.xml
+            ${{ env.OFFKEY_REHEARSAL_DIR }}/static-release-evidence.json
           if-no-files-found: ignore
           retention-days: 30
 

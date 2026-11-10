@@ -331,7 +331,20 @@ class CiWorkflowTests(unittest.TestCase):
                     self.assertEqual(entry["file"], "./dev/docs/Dockerfile")
                     self.assertEqual(entry["build_args"], "")
                     continue
-                self.assertIn("GIT_COMMIT=${{ github.sha }}", entry["build_args"])
+                self.assertIn("SERVICE_NAME=off-key-", entry["build_args"])
+        build = next(
+            step
+            for step in workflow("docker-images.yml")["jobs"]["build-images"]["steps"]
+            if step.get("id") == "build"
+        )
+        self.assertIn(
+            "GIT_COMMIT=${{ steps.source.outputs.revision }}",
+            build["with"]["build-args"],
+        )
+        self.assertIn(
+            "org.opencontainers.image.revision=${{ steps.source.outputs.revision }}",
+            build["with"]["labels"],
+        )
 
     def test_build_cache_credentials_reach_only_image_builds(self):
         self.assertEqual(

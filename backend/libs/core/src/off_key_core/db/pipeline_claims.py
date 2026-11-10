@@ -30,7 +30,13 @@ async def pending_activations(session):
 
 
 async def require_no_pipeline_activation(session) -> None:
-    if await pending_activations(session):
+    # Release reservation runs before migrations add newer activation columns.
+    pending = (
+        select(PipelineActivation.id)
+        .where(PipelineActivation.phase.not_in(TERMINAL_ACTIVATION_PHASES))
+        .exists()
+    )
+    if await session.scalar(select(pending)):
         raise ValueError(
             "Finish or cancel pending pipeline activations before beginning a release"
         )

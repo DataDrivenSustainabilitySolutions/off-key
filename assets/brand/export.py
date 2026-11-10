@@ -24,6 +24,10 @@ def exports() -> dict[Path, str]:
     )
     black = source.replace('fill="currentColor"', 'fill="#000"')
     white = source.replace('fill="currentColor"', 'fill="#fff"')
+    favicon = white.replace(
+        "  <path ",
+        '  <rect width="64" height="64" fill="#000"/>\n  <path ',
+    )
     icon = source.replace(' id="mark"', "").replace(
         ' role="img"', ' aria-hidden="true" focusable="false"'
     )
@@ -38,24 +42,24 @@ def exports() -> dict[Path, str]:
     output = {
         BRAND / "logo-black.svg": black,
         BRAND / "logo-white.svg": white,
-        BRAND / "favicon.svg": adaptive,
+        BRAND / "favicon.svg": favicon,
         ROOT / "frontend/public/brand/logo.svg": source,
         ROOT / "frontend/public/brand/wordmark.svg": wordmark,
         ROOT / "frontend/public/brand/auth-pattern.svg": pattern,
-        ROOT / "frontend/public/brand/favicon.svg": adaptive,
-        ROOT / "frontend/public/favicon.svg": adaptive,
+        ROOT / "frontend/public/brand/favicon.svg": favicon,
+        ROOT / "frontend/public/favicon.svg": favicon,
         ROOT / "docs/assets/brand/logo.svg": adaptive,
         ROOT / "docs/assets/brand/logo-black.svg": black,
         ROOT / "docs/assets/brand/logo-white.svg": white,
-        ROOT / "docs/assets/brand/favicon.svg": adaptive,
+        ROOT / "docs/assets/brand/favicon.svg": favicon,
         ROOT / "docs/overrides/.icons/brand/aberration.svg": icon,
     }
     landing = ROOT / "infra/stack/landing.html.j2"
     template = landing.read_text(encoding="utf-8")
-    favicon = quote(adaptive, safe="")
+    encoded_favicon = quote(favicon, safe="")
     template, icons = re.subn(
         r'<link rel="icon"[^>]*>',
-        f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{favicon}">',
+        f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{encoded_favicon}">',
         template,
         count=1,
     )

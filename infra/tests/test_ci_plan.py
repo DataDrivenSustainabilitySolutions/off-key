@@ -25,7 +25,10 @@ def load(name):
 
 plan = load("ci_plan")
 gate = load("ci_gate")
-FULL_NON_PUSH = {job: job not in {"contracts", "publish"} for job in plan.JOBS}
+FULL_NON_PUSH = {
+    job: job not in {"contracts", "publish", "static", "static-release"}
+    for job in plan.JOBS
+}
 
 
 def selected(jobs):
@@ -83,7 +86,17 @@ class ClassificationTests(unittest.TestCase):
         cases = {
             ("README.md",): "docs",
             ("dev/docs/llms.py", "zensical.toml", "README.md"): "full",
-            ("docs/guide.md",): "full",
+            ("docs/guide.md",): "published-docs",
+            ("docs/guide.md", "README.md", "zensical.toml"): "published-docs",
+            ("infra/stack/landing.html.j2", "assets/landing/export.py"): "landing",
+            (
+                "assets/landing/hero-v15.jpg",
+                "assets/landing/hero-v15.source.txt",
+            ): "landing",
+            ("docs/guide.md", "infra/stack/landing.md.j2"): "static",
+            ("docs/guide.md", "frontend/src/App.tsx"): "full",
+            ("infra/stack/landing-nginx.conf.j2",): "full",
+            ("assets/landing/new-build.py",): "full",
             ("dev/docs/Dockerfile",): "full",
             ("frontend/src/App.tsx", "README.md"): "frontend",
             (
@@ -106,7 +119,7 @@ class ClassificationTests(unittest.TestCase):
             ("frontend/.dockerignore",): "full",
             ("backend/Dockerfile",): "full",
             ("infra/README.md",): "full",
-            ("infra/stack/landing.md.j2",): "full",
+            ("infra/stack/landing.md.j2",): "landing",
             (".github/workflows/ci.yml",): "full",
             (".github/scripts/ci_plan.py",): "full",
             (".github/dependabot.yml",): "full",
@@ -127,7 +140,12 @@ class ClassificationTests(unittest.TestCase):
 
     def test_each_mode_selects_its_jobs_and_one_image_job_per_event(self):
         docs = plan.plan_for("docs", "pull_request")
-        self.assertEqual(selected(docs), {"lint", "contracts"})
+        self.assertEqual(selected(docs), {"static"})
+        for mode in plan.STATIC_RELEASE_MODES:
+            self.assertEqual(selected(plan.plan_for(mode, "pull_request")), {"static"})
+            self.assertEqual(
+                selected(plan.plan_for(mode, "push")), {"static", "static-release"}
+            )
         frontend = plan.plan_for("frontend", "pull_request")
         self.assertEqual(
             selected(frontend),
@@ -162,7 +180,7 @@ class ClassificationTests(unittest.TestCase):
         # The full plan runs every suite; contracts are already inside them.
         self.assertEqual(
             selected(push),
-            set(plan.JOBS) - {"contracts", "images"},
+            set(plan.JOBS) - {"contracts", "images", "static", "static-release"},
         )
         for mode in plan.SELECTED:
             self.assertEqual(set(plan.plan_for(mode, "push")), set(plan.JOBS))
@@ -193,7 +211,7 @@ class ComparisonTests(unittest.TestCase):
         )
         mode, jobs, _ = self.repo.plan("pull_request", event, merge)
         self.assertEqual(mode, "docs")
-        self.assertEqual(selected(jobs), {"lint", "contracts"})
+        self.assertEqual(selected(jobs), {"static"})
 
     def test_published_documentation_runs_the_release_pipeline(self):
         self.repo.write("docs/guide.md", "Published documentation change\n")
@@ -203,8 +221,8 @@ class ComparisonTests(unittest.TestCase):
         mode, jobs, _ = self.repo.plan(
             "push", {"ref": "refs/heads/main"}, head, api=api
         )
-        self.assertEqual(mode, "full")
-        self.assertTrue(jobs["publish"] and jobs["deployment-smoke"])
+        self.assertEqual(mode, "published-docs")
+        self.assertEqual(selected(jobs), {"static", "static-release"})
 
     def test_deletions_and_renames_classify_both_paths(self):
         # Renaming a backend file into the docs tree still touches the backend.
@@ -357,6 +375,20 @@ class ComparisonTests(unittest.TestCase):
             "full",
         )
 
+    def test_landing_push_cannot_hide_a_cancelled_backend_change(self):
+        self.repo.write("backend/app.py", "changed backend\n")
+        self.repo.commit("cancelled backend run")
+        self.repo.write("infra/stack/landing.html.j2", "new landing\n")
+        head = self.repo.commit("landing")
+        api = self.main_push(
+            [self.run_for(1, self.repo.base)],
+            {1: [{"name": "production-release", "expired": False}]},
+        )
+        self.assertEqual(
+            self.repo.plan("push", {"ref": "refs/heads/main"}, head, api=api)[0],
+            "full",
+        )
+
     def test_an_unreadable_diff_runs_everything(self):
         def failing_git(*args):
             if args[0] == "diff":
@@ -398,7 +430,7 @@ class ComparisonTests(unittest.TestCase):
         )
         lines = dict(line.split("=", 1) for line in output.read_text().splitlines())
         self.assertEqual(lines["mode"], "docs")
-        self.assertEqual(selected(json.loads(lines["plan"])), {"lint", "contracts"})
+        self.assertEqual(selected(json.loads(lines["plan"])), {"static"})
         # A checkout other than the event's commit is never trusted.
         output.unlink()
         environment["GITHUB_SHA"] = self.repo.base

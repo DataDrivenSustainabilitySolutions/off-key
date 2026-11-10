@@ -16,7 +16,7 @@ export function DojoWorkspace() {
   const allowed = useDojoAccess();
   const { selected, document } = useCatalogue();
   const datasetId = params.get("dataset");
-  useDocumentTitle(!datasetId && "Dojo");
+  useDocumentTitle(!allowed ? "Access denied" : datasetId ? "Dataset" : "Datasets", "Dojo");
   const href = (next: Record<string, string | null>) => {
     const url = new URLSearchParams(params);
     for (const [key, value] of Object.entries(next)) {

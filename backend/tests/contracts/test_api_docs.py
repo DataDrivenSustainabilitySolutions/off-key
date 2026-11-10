@@ -43,6 +43,30 @@ def test_documentation_keeps_schema_and_oauth_links_with_embedded_favicon(root_p
     assert client.get("/openapi.json").json()["paths"] == {}
 
 
+@pytest.mark.parametrize(
+    ("path", "view"),
+    [
+        ("/docs", "explorer"),
+        ("/redoc", "reference"),
+        ("/docs/oauth2-redirect", "sign-in"),
+    ],
+)
+def test_documentation_titles_identify_the_view_and_service(path, view):
+    app = FastAPI(docs_url=None, redoc_url=None)
+    app.include_router(router)
+    client = TestClient(app)
+    assert f"<title>API {view} · Aberration</title>" in client.get(path).text
+    app.state.documentation_label = "Database sync API"
+    assert (
+        f"<title>Database sync API {view} · Aberration</title>" in client.get(path).text
+    )
+    app.state.documentation_label = "Example <API>"
+    assert (
+        f"<title>Example &lt;API&gt; {view} · Aberration</title>"
+        in client.get(path).text
+    )
+
+
 def _asset_tags(html):
     return re.findall(r"<(?:script|link)\b[^>]*\b(?:src|href)=\"https?://[^>]*>", html)
 

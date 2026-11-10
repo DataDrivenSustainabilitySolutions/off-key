@@ -12,7 +12,7 @@ with (root / 'commands.jsonl').open('a') as log:
 
 def spec(name):
     result = {'Spec': {'Name': name, 'Mode': {'Replicated': {'Replicas': state['replicas'][name]}},
-            'TaskTemplate': {'ContainerSpec': {'Image': 'example/' + name,
+            'TaskTemplate': {'ContainerSpec': {'Image': 'example/' + name.removeprefix('off-key_'),
               'Mounts': [{'Type': 'volume', 'Source': 'off-key_postgres_data',
                           'Target': '/var/lib/postgresql/data'}]
                         if name == 'off-key_postgres' and (state.get('persistent', state['deployed'])
@@ -26,8 +26,12 @@ def spec(name):
 
 if a[:2] == ['compose', '--env-file']:
     if a[-2:] == ['--format', 'json']:
-        print(json.dumps({'services': {'postgres': {'image': 'example/postgres', 'deploy': {'replicas': 1}},
-                                      'api': {'image': 'example/api', 'deploy': {'replicas': 1}}}}))
+        services = {'postgres': {'image': 'example/postgres', 'deploy': {'replicas': 1}},
+                    'api': {'image': 'example/api', 'deploy': {'replicas': 1}}}
+        # A test that deploys a browser bundle lists the frontend among the replicas.
+        if 'off-key_frontend' in state['replicas']:
+            services['frontend'] = {'image': 'example/frontend', 'deploy': {'replicas': 1}}
+        print(json.dumps({'services': services}))
     else:
         assert '-f' in a and any('persistence-cutover.yml' in v for v in a)
         print('services: {}')
@@ -41,12 +45,20 @@ elif a[:2] == ['service', 'ls']:
         pass  # This fixture has no observability services.
     elif 'label=managed_by=tactic' in a:
         print('\n'.join(name for name in state['replicas'] if name.startswith('radar-')))
+    elif '{{json .}}' in a:
+        # The convergence check reads the running and the desired tasks of each service.
+        for name in (name for name in state['replicas'] if name.startswith('off-key_')):
+            desired = state['replicas'][name]
+            running = 0 if name == os.environ.get('STALLED_SERVICE') else desired
+            print(json.dumps({'ID': name, 'Name': name, 'Replicas': f'{running}/{desired}'}))
     elif '--quiet' in a:
         print('off-key_postgres\noff-key_api')
+        if 'off-key_frontend' in state['replicas']:
+            print('off-key_frontend')
     else:
         print('fixture services')
 elif a[:2] == ['service', 'scale']:
-    assert a[2] == '--detach=false', a
+    assert a[2] in ('--detach=false', '--detach=true'), a
     for assignment in a[3:]:
         name, replicas = assignment.split('=')
         if int(replicas) and name == os.environ.get('SCALE_FAIL_SERVICE'):

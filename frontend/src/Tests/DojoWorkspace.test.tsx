@@ -79,6 +79,28 @@ beforeEach(() => {
 });
 
 describe("Dojo workspace", () => {
+  it("names a directly opened dataset, its sections, and the list on return", async () => {
+    vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
+      runs: [metrics("r1", "Forest", 1, 0), metrics("r2", "Baseline", 0, 0)] });
+    mount("/dojo?dataset=d1&tab=runs");
+    await screen.findByRole("heading", { name: "Pump trips", level: 1 });
+    expect(document.title).toBe("Pump trips — Runs · Dojo · Aberration");
+    fireEvent.click(screen.getByRole("tab", { name: "Compare" }));
+    expect(document.title).toBe("Pump trips — Compare · Dojo · Aberration");
+    fireEvent.click(screen.getByRole("tab", { name: "Values and labels" }));
+    expect(document.title).toBe("Pump trips · Dojo · Aberration");
+    fireEvent.click(screen.getByRole("link", { name: "All datasets" }));
+    await screen.findByRole("link", { name: "Pump trips" });
+    expect(document.title).toBe("Datasets · Dojo · Aberration");
+  });
+
+  it("names denied dataset links without leaving an unrelated page title", () => {
+    access.allowed = false;
+    mount("/dojo?dataset=d1");
+    expect(document.title).toBe("Access denied · Dojo · Aberration");
+    expect(dojoApi.dataset).not.toHaveBeenCalled();
+  });
+
   it("loads older runs without dropping the runs already shown", async () => {
     vi.mocked(dojoApi.runs).mockImplementation(async query => query?.offset === 100
       ? { items: [run("older", "Older run")], next_offset: null }

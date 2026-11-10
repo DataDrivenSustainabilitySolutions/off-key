@@ -1,0 +1,791 @@
+{
+  "id": null,
+  "uid": "aberration-access",
+  "title": "04 · HTTP & access",
+  "description": "Recorded HTTP exceptions, access-control signals and notification failures.",
+  "tags": [
+    "aberration",
+    "operations",
+    "provisioned"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "24h",
+      "2d",
+      "7d"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "stack",
+          "type": 1,
+          "label": "stack",
+          "stream": ""
+        },
+        "definition": "label_values(stack)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "allValue": null,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "node",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "node",
+          "type": 1,
+          "label": "node",
+          "stream": "{stack=~`${stack:regex}`}"
+        },
+        "definition": "label_values({stack=~`${stack:regex}`}, node)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "01 · Operations overview",
+      "url": "/d/aberration-system-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "02 · Collection & persistence",
+      "url": "/d/aberration-collection",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "03 · RADAR & Dojo",
+      "url": "/d/aberration-radar",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "05 · Log investigation",
+      "url": "/d/aberration-logs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Reading this dashboard",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Production disables successful-request and performance logging.** These panels show recorded exceptions and access events; they cannot provide request throughput, total 4xx/5xx counts, availability or overall latency.\n\nAccess warnings are **throttled per event/client over 60s**. A later warning reports suppressed occurrences; a quiet tail may never report them. Suspicious-pattern matches are diagnostic hints, not confirmed attacks. IDs and paths remain in records, not chart series."
+      },
+      "transparent": true
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Recorded symptoms · selected time range",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "HTTP exceptions",
+      "description": "http.request_failed records only; handled HTTP errors and successful requests are not included.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(http[.]request_failed)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Access warnings",
+      "description": "Throttled warning records, not total denied requests or unique clients.",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(security[.](authentication_failed|authorization_failed))( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Path warnings",
+      "description": "Throttled path-pattern matches. Legitimate requests can match these heuristics.",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(security[.]suspicious_request)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Email failures",
+      "description": "Invitation, password-reset and alarm email failure records. Not a full SMTP delivery metric.",
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(member_invitation_delivery_failed|password_reset_delivery_failed|gateway[.]alarm_email_failed)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "API / TACTIC error records",
+      "description": "Observed error-level lines by service. TACTIC errors are not necessarily visible HTTP failures.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api|tactic)`} | detected_level=~\"error|critical|fatal|panic\" | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Access warnings by event",
+      "description": "Emitted warning records per bucket; suppression means this undercounts actual occurrences.",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (event) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(security[.](authentication_failed|authorization_failed|suspicious_request))( .*|$)` | line_format `{{.msg}}` | logfmt event | __error__=\"\" | drop msg | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "HTTP and backend error context",
+      "description": "Original exceptions preserve correlation IDs. Copy a reference into Log investigation to follow Gateway → TACTIC.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api|tactic)`} | detected_level=~\"error|critical|fatal|panic\"",
+          "queryType": "range",
+          "legendFormat": "",
+          "maxLines": 200,
+          "direction": "backward"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Access and notifications · expand for diagnostic context",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Suppressed occurrences subsequently reported",
+          "description": "Sum of suppressed values in newly emitted warnings. Values refer to prior suppression windows; pending unreported occurrences are absent.",
+          "gridPos": {
+            "x": 0,
+            "y": 28,
+            "w": 24,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (event) (sum_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(security[.](authentication_failed|authorization_failed|suspicious_request))( .*|$)` | line_format `{{.msg}}` | logfmt event, suppressed | __error__=\"\" | drop msg | unwrap suppressed | __error__=\"\" [$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{event}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "logs",
+          "title": "Access-warning context",
+          "description": "Use the redacted request context for investigation. These are heuristic/throttled diagnostics, not an audit trail.",
+          "gridPos": {
+            "x": 0,
+            "y": 36,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(security[.](authentication_failed|authorization_failed|suspicious_request))( .*|$)`",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        },
+        {
+          "id": 13,
+          "type": "logs",
+          "title": "Notification-delivery context",
+          "description": "Application notification failures are separate from Grafana alert delivery. No alert notification receiver is configured by these dashboards.",
+          "gridPos": {
+            "x": 0,
+            "y": 45,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(api)`} |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(member_invitation_delivery_failed|password_reset_delivery_failed|gateway[.]alarm_email_failed)( .*|$)`",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 Aberration's mark uses two opposing angular forms. Its geometry is kept in the
 repository's assets/brand/logo.svg master; the folder also contains plain black
-and white SVGs and the adaptive favicon for reuse.
+and white SVGs and a white-on-black favicon for reuse.
 
 <img class="brand-reference" src="../assets/brand/logo-black.svg" width="96" height="96" alt="Aberration mark">
 

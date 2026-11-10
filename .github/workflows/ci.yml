@@ -2,11 +2,11 @@ name: CI
 
 # Every check that gates a merge or a release runs in this one workflow. Branch
 # rules require only `ci-gate`, and Deploy Production requires this workflow's
-# success on a main push plus the release evidence only a rehearsal keeps, so
+# success on a main push plus tested release evidence, so
 # adding, renaming or re-versioning a job never changes a required check.
 #
 # The changes job plans the run (.github/scripts/ci_plan.py): root-Markdown-only
-# and frontend-only changes skip suites whose inputs did not change; everything
+# static content and frontend-only changes skip suites whose inputs did not change; everything
 # else, and anything uncertain, runs every job. Cheap checks run first, so a
 # lint failure stops the image builds and disposable Swarms before they start.
 on:
@@ -52,6 +52,147 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci_plan.py
+
+  static:
+    name: static content
+    needs: changes
+    if: fromJSON(needs.changes.outputs.plan).static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      docs-sha256: ${{ steps.archive.outputs.sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: ./.github/actions/setup-backend
+        with:
+          python-version: "3.12"
+          sync: "false"
+          cache: "false"
+      - name: Check public content and generated assets
+        run: |
+          uv sync --frozen --project infra
+          uv run --frozen --project infra python infra/scripts/check_static.py
+          uv run --frozen --project infra python -m unittest -q test_docs
+        env:
+          PYTHONPATH: infra/tests:infra/scripts
+      - name: Select docs image source
+        if: needs.changes.outputs.mode == 'published-docs' || needs.changes.outputs.mode == 'static'
+        id: source
+        run: echo "revision=$(python3 infra/scripts/image_sources.py "$GITHUB_SHA" --service docs)" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        if: steps.source.outputs.revision != ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build documentation
+        if: steps.source.outputs.revision != ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: dev/docs/Dockerfile
+          load: true
+          provenance: false
+          sbom: false
+          tags: off-key-docs:checked
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.revision }}
+            org.opencontainers.image.version=sha-${{ steps.source.outputs.revision }}
+          cache-from: |
+            type=gha,scope=static-docs
+            type=gha,scope=ci-main-docs
+          cache-to: type=gha,mode=max,scope=static-docs
+      - name: Probe the documentation server
+        if: steps.source.outputs.revision != ''
+        run: python3 dev/docs/check_image.py off-key-docs:checked
+      - name: Archive the checked docs image
+        if: github.event_name == 'push' && steps.source.outputs.revision != ''
+        id: archive
+        run: |
+          docker save off-key-docs:checked | gzip > "$RUNNER_TEMP/static-docs.tar.gz"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/static-docs.tar.gz" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - name: Keep the checked docs image for publication
+        if: steps.archive.outputs.sha256 != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: static-docs
+          path: ${{ runner.temp }}/static-docs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  static-release:
+    name: static release
+    needs: [changes, static]
+    if: github.event_name == 'push' && fromJSON(needs.changes.outputs.plan)['static-release']
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Download this run's checked docs image
+        if: needs.static.outputs.docs-sha256 != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: static-docs
+          path: ${{ runner.temp }}
+      - name: Verify and load the checked docs image
+        if: needs.static.outputs.docs-sha256 != ''
+        env:
+          EXPECTED_SHA256: ${{ needs.static.outputs.docs-sha256 }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, os, pathlib, re
+          expected = os.environ["EXPECTED_SHA256"]
+          archive = pathlib.Path(os.environ["RUNNER_TEMP"]) / "static-docs.tar.gz"
+          if not re.fullmatch(r"[a-f0-9]{64}", expected) or hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
+              raise SystemExit("Docs archive checksum mismatch")
+          PYTHON
+          docker load --input "$RUNNER_TEMP/static-docs.tar.gz"
+      - name: Carry forward tested images and publish changed docs
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          DOCS_SHA256: ${{ needs.static.outputs.docs-sha256 }}
+        run: |
+          args=()
+          if [[ -n "$DOCS_SHA256" ]]; then args+=(--docs-image off-key-docs:checked); fi
+          python3 .github/scripts/static_release.py "${args[@]}" --output "$RUNNER_TEMP/production-release.json"
+      - name: Attest the checked docs image
+        if: steps.release.outputs.docs-digest != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.release.outputs.docs-name }}
+          subject-digest: ${{ steps.release.outputs.docs-digest }}
+          push-to-registry: true
+      - name: Keep production release evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: production-release
+          path: ${{ runner.temp }}/production-release.json
+          if-no-files-found: error
+          retention-days: 90
 
   # Interpreter-independent repository checks, once, ahead of every costly job.
   lint:
@@ -860,7 +1001,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, lint, contracts, backend, frontend, frontend-browser, infrastructure, collection, radar, images, publish, deployment-smoke, observability]
+    needs: [changes, lint, contracts, backend, frontend, frontend-browser, infrastructure, collection, radar, images, publish, deployment-smoke, observability, static, static-release]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -164,6 +164,22 @@ def images(release, revision):
     build_local_images(release, revision, PROJECT)
 
 
+def expose_rehearsal_ports(model):
+    # Docs uses start-first updates. The routing mesh lets old and replacement
+    # tasks share its test endpoint on the rehearsal's single node.
+    for service, port, published, mode in (
+        ("docs", 80, 8087, "ingress"),
+        ("frontend", 5173, 5173, "host"),
+        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000")), "host"),
+        ("tactic", 8001, 8001, "host"),
+        ("emqx-main", 8883, 8883, "host"),
+        ("smtp-fixture", 8025, 8025, "host"),
+    ):
+        model["services"][service]["ports"] = [
+            {"target": port, "published": published, "mode": mode}
+        ]
+
+
 def prepare(directory):
     if run("docker", "service", "ls", "-q").stdout.strip():
         raise ValueError("The rehearsal requires a Swarm with no existing services")
@@ -355,17 +371,7 @@ def prepare(directory):
         "image": pin("axllent/mailpit:latest"),
         "networks": ["app-network"],
     }
-    for service, port, published in (
-        ("docs", 80, 8087),
-        ("frontend", 5173, 5173),
-        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
-        ("tactic", 8001, 8001),
-        ("emqx-main", 8883, 8883),
-        ("smtp-fixture", 8025, 8025),
-    ):
-        model["services"][service]["ports"] = [
-            {"target": port, "published": published, "mode": "host"}
-        ]
+    expose_rehearsal_ports(model)
     # The compatible release predates broker routes and ignores their secret. An
     # allowlist entry lets it dial the test broker directly; the current release
     # still takes the route, whose proxy wins over a direct connection.

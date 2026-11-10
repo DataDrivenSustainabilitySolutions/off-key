@@ -1,0 +1,6 @@
+Approved generated photograph: bridge-wide-v1.png
+Original PNG SHA-256: 80b098c23c0702cd73880a975058ff3f9da7e4b5ae9a14df13d824632497752a
+Web export: original dimensions, JPEG quality 56 via macOS sips.
+Composition, framing and tone are preserved; no generative edits.
+Original PNG retained in the local design artifacts.
+The photographs illustrate infrastructure; they are not customer installations.

@@ -14,9 +14,13 @@ from off_key_core.models import (
 )
 from off_key_core.models.adaptive import CATALOG
 from off_key_core.models.pipeline_fields import component_fields
+from off_key_core.models.pipelines import validate_pipeline
+from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.catalog import generate_catalog
 from off_key_tactic_middleware.api.v1.models import ModelInfo
+
+from tests.support.pipelines import template
 
 
 def test_generated_catalog_matches_pinned_runtime():
@@ -89,6 +93,19 @@ def test_legacy_and_canonical_parameters_have_the_same_fingerprint(
         ("aberrant_online_isolation_forest", {"num_trees": True}),
         ("aberrant_online_isolation_forest", {"subsample": float("nan")}),
         ("aberrant_half_space_trees", {"n_trees": 2000, "height": 20}),
+        ("aberrant_seasonal_residual_detector", {}),
+        ("aberrant_seasonal_residual_detector", {"season_length": 1}),
+        ("aberrant_seasonal_residual_detector", {"season_length": 24.5}),
+        ("aberrant_seasonal_residual_detector", {"season_length": 600_000}),
+        (
+            "aberrant_seasonal_residual_detector",
+            {"season_length": 24, "alpha": 0.8, "gamma": 0.3},
+        ),
+        (
+            "aberrant_seasonal_residual_detector",
+            {"season_length": 24, "residual_alpha": 0},
+        ),
+        ("aberrant_seasonal_residual_detector", {"season_length": 24, "key": "x"}),
     ],
 )
 def test_configuration_rejects_conflicts_unsupported_components_and_resource_abuse(
@@ -129,3 +146,46 @@ def test_catalog_capabilities_survive_tactic_and_gateway_responses():
     }
     assert payload["available"] is True
     json.dumps(payload, allow_nan=False)
+
+
+def test_seasonal_forecast_detector_needs_its_season_and_one_feature():
+    model_type = "aberrant_seasonal_residual_detector"
+    definition = ADAPTIVE_MODELS_BY_TYPE[model_type]
+    assert definition["catalog_id"] == "seasonal_residual_detector"
+    assert definition["parameter_schema"]["required"] == ["season_length"]
+    assert "season_length" not in definition["default_parameters"]
+    assert definition["bound_parameters"] == ["key"]
+    assert definition["default_capabilities"]["feature_count"] == {
+        "minimum": 1,
+        "maximum": 1,
+    }
+    params = validate_adaptive_model_params(model_type, {"season_length": 24})
+    assert params["season_length"] == 24
+    assert params["normalize"] is True
+
+    config = AdaptiveStreamConfig(model_type=model_type, model_params=params)
+    assert config.validate_feature_schema(["x"]) == 1
+    with pytest.raises(ValueError, match="exactly one feature"):
+        config.validate_feature_schema(["x", "y"])
+    mapping = config.detector_mapping(["x"])
+    assert mapping["model"]["params"]["key"] == "x"
+    assert DetectorConfig.from_mapping(mapping).capabilities().warmup.minimum == 48
+
+
+def test_seasonal_forecast_detector_in_a_design_checks_its_season_and_features():
+    data = template("adaptive_stream").model_dump(mode="json")
+    detector = next(node for node in data["nodes"] if node["kind"] == "detector")
+    detector["component"] = "detector:aberrant_seasonal_residual_detector"
+    detector["params"] = {"season_length": 24}
+    assert validate_pipeline(PipelineDefinition.model_validate(data)).valid
+
+    data["input_slots"].append({"id": "second", "label": "Second"})
+    issues = validate_pipeline(PipelineDefinition.model_validate(data)).issues
+    assert ("model_features", detector["id"]) in [
+        (issue.code, issue.node_id) for issue in issues
+    ]
+
+    data["input_slots"].pop()
+    detector["params"] = {}
+    issues = validate_pipeline(PipelineDefinition.model_validate(data)).issues
+    assert detector["id"] in [issue.node_id for issue in issues]

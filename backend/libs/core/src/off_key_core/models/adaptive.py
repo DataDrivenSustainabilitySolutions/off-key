@@ -46,6 +46,7 @@ MODEL_IDS = {
             "moving_mahalanobis_distance",
             "rolling_matrix_profile",
             "multivariate_rolling_matrix_profile",
+            "seasonal_residual_detector",
         )
     },
 }
@@ -113,6 +114,13 @@ PARAMETER_LIMITS = {
     "adaptation_rate": {"exclusiveMinimum": 0, "maximum": 1},
     "tolerance": {"exclusiveMinimum": 0},
     "quantile": {"minimum": 0, "maximum": 1},
+    # Two seasons are learned before scoring, and they must fit the training window.
+    "season_length": {"minimum": 2, "maximum": 500_000},
+    "alpha": {"minimum": 0, "maximum": 1},
+    "beta": {"minimum": 0, "maximum": 1},
+    "gamma": {"minimum": 0, "maximum": 1},
+    "residual_alpha": {"exclusiveMinimum": 0, "maximum": 1},
+    "min_scale": {"exclusiveMinimum": 0},
 }
 
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
@@ -196,6 +204,20 @@ def validate_adaptive_model_params(
                     message=(
                         "Half-Space Trees exceeds the 2,000,000-node resource budget"
                     ),
+                )
+            ],
+        )
+    if (
+        model_type == "aberrant_seasonal_residual_detector"
+        and merged["gamma"] > 1 - merged["alpha"]
+    ):
+        raise parameter_error(
+            model_type,
+            [
+                ParameterIssue(
+                    code="invalid_value",
+                    loc=("gamma",),
+                    message="Seasonal residual detector requires gamma <= 1 - alpha",
                 )
             ],
         )

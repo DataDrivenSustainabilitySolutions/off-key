@@ -47,15 +47,6 @@ _ANOMALY_IDENTITY_JOIN = and_(
 )
 
 
-def _anomaly_listing():
-    return (
-        select(AnomalyIdentity.anomaly_id, Anomaly)
-        .select_from(Anomaly)
-        .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
-        .order_by(Anomaly.timestamp.desc())
-    )
-
-
 def _has_sensor_set() -> ColumnElement[bool]:
     # Rows written before sensor sets, and manual alarms, store SQL or JSON null.
     return (

@@ -168,7 +168,8 @@ class RadarOrchestrationService:
             container_id=None,
             container_name=container_name,
             mqtt_topic=mqtt_topics,
-            created_at=datetime.now(),
+            # The column has no time zone; every reader takes it as UTC.
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             status=True,
             desired_state="running",
             lifecycle_version=1,

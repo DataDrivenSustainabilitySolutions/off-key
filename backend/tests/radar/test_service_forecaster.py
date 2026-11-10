@@ -12,10 +12,12 @@ from off_key_core.schemas.forecast import QUANTILE_LEVELS
 from off_key_forecast.api import create_app
 from off_key_forecast.providers import naive_providers
 from off_key_forecast.registry import ModelRegistry
+from off_key_mqtt_radar.execution_errors import ObservationRejected
 from off_key_mqtt_radar.forecasting import (
     ForecastClient,
     ForecastServiceError,
     ServiceForecaster,
+    ServiceResidualDetector,
     forecast_from_quantiles,
 )
 from pydantic import SecretStr
@@ -106,7 +108,14 @@ def test_service_forecaster_is_an_aberrant_forecaster(service):
 
     for index in range(8, 40):
         forecaster.learn_one(_cycle(index))
-    assert len(forecaster._context) == 16
+    # The model reads 16 values; two more let a missed forecast be made late.
+    assert len(forecaster.context()) == 16
+    assert forecaster.context(back=2) == [_cycle(index) for index in range(22, 38)]
+    late = forecaster.forecast_from(back=2)
+    assert late is not None and late.origin == 38
+    assert late.mean == pytest.approx((_cycle(38), _cycle(39), _cycle(40)))
+    with pytest.raises(ValueError, match="back"):
+        forecaster.forecast_from(back=3)
 
 
 def test_residual_detector_scores_a_break_in_the_cycle(service):
@@ -150,7 +159,7 @@ def test_checkpoint_keeps_the_values_and_reconnects(service, monkeypatch):
     restored = pickle.loads(pickle.dumps(forecaster))
 
     assert restored._client is None
-    assert list(restored._context) == list(forecaster._context)
+    assert restored.context() == forecaster.context()
     assert restored.forecast_one() == expected
 
 
@@ -190,6 +199,73 @@ def test_an_outage_gives_no_forecast_and_forecasts_resume(service):
     forecast = forecaster.forecast_one()
     assert forecast is not None and math.isfinite(forecast.mean[0])
     assert forecaster.last_error is None
+
+
+_OUTAGE = {"down": False}
+
+
+def _flaky_client():
+    if _OUTAGE["down"]:
+        raise ForecastServiceError("Forecast service is unreachable: refused")
+    return _CLIENTS["service"]()
+
+
+@pytest.mark.parametrize("lead", [1, 3])
+def test_detector_rejects_what_it_cannot_compare_and_recovers(
+    service, monkeypatch, lead
+):
+    monkeypatch.setitem(_CLIENTS, "service", service[0])
+    monkeypatch.setitem(_OUTAGE, "down", False)
+
+    def detector():
+        return ServiceResidualDetector(
+            ServiceForecaster(
+                MODEL,
+                horizon=lead,
+                context_length=16,
+                minimum_context=8,
+                client=_flaky_client,
+            ),
+            "x",
+            lead=lead,
+        )
+
+    steady, flaky = detector(), detector()
+    for index in range(20):
+        steady.learn_one({"x": _cycle(index)})
+        flaky.learn_one({"x": _cycle(index)})
+
+    # The service is away while the forecasts for the next values are due.
+    monkeypatch.setitem(_OUTAGE, "down", True)
+    flaky.model._client = None
+    for index in range(20, 24):
+        steady.learn_one({"x": _cycle(index)})
+        flaky.learn_one({"x": _cycle(index)})
+    assert flaky.model.failures == 4
+    with pytest.raises(ObservationRejected, match="No forecast to compare with"):
+        flaky.score_one({"x": 110.0})
+
+    # Back again, the missed forecast is made from the same values as it
+    # would have been, so the score is the one an undisturbed detector gives.
+    monkeypatch.setitem(_OUTAGE, "down", False)
+    assert flaky.score_one({"x": 110.0}) == steady.score_one({"x": 110.0})
+    assert flaky.score_one({"x": 110.0}) > 5
+
+
+def test_detector_scores_zero_before_the_forecaster_is_ready(service):
+    detector = ServiceResidualDetector(
+        ServiceForecaster(
+            MODEL, horizon=2, context_length=16, minimum_context=8, client=service[0]
+        ),
+        "x",
+        lead=2,
+    )
+    for index in range(9):
+        assert detector.score_one({"x": _cycle(index)}) == 0.0
+        detector.learn_one({"x": _cycle(index)})
+    assert service[1] == [("POST", "http://forecast/v1/forecast")] * 2
+    with pytest.raises(TypeError, match="forecast service"):
+        ServiceResidualDetector(object(), "x")
 
 
 @pytest.mark.parametrize(

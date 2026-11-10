@@ -19,6 +19,8 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from aberrant.base.forecast import Forecast
+from aberrant.base.protocols import FeatureMap
+from aberrant.forecast import ResidualDetector
 from off_key_core.config.validation import SECRETS_DIR
 from off_key_core.schemas.forecast import (
     MAX_CONTEXT_LENGTH,
@@ -29,6 +31,8 @@ from off_key_core.schemas.forecast import (
 )
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .execution_errors import ObservationRejected
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +212,9 @@ class ServiceForecaster:
 
     A request the service cannot answer gives no forecast: ``forecast_one()``
     returns ``None`` and ``last_error`` says why. The values are kept either
-    way, so forecasts resume when the service does.
+    way, so forecasts resume when the service does. Because the weights never
+    change, a missed forecast can be made later from the same values:
+    ``forecast_from(back)`` forecasts as of ``back`` values ago.
 
     ``client`` makes the connection on first use. It is stored in checkpoints
     by reference, so it must be a module-level function.
@@ -249,39 +255,63 @@ class ServiceForecaster:
 
     @property
     def is_ready(self) -> bool:
-        return len(self._context) >= self.minimum_context
+        return self.n_samples_seen >= self.minimum_context
 
     def reset(self) -> None:
         self.n_samples_seen = 0
-        self._context: deque[float] = deque(maxlen=self.context_length)
+        # Enough values to repeat any forecast a residual detector still holds.
+        self._values: deque[float] = deque(
+            maxlen=self.context_length + self._horizon - 1
+        )
         self.failures = 0
         self.last_error: str | None = None
         self._logged_at = 0.0
 
     def learn_one(self, y: float) -> None:
-        self._context.append(float(y))
+        self._values.append(float(y))
         self.n_samples_seen += 1
 
-    def forecast_one(self) -> Forecast | None:
-        if not self.is_ready:
+    def context(self, back: int = 0) -> list[float]:
+        """The values the model reads for a forecast made ``back`` values ago."""
+        end = len(self._values) - back
+        return list(self._values)[max(0, end - self.context_length) : end]
+
+    def forecast_from(self, back: int = 0) -> Forecast | None:
+        """The forecast as of ``back`` values ago, or ``None`` before readiness.
+
+        Raises:
+            ForecastServiceError: The service gave no usable forecast.
+        """
+        if not 0 <= back < self._horizon:
+            raise ValueError("back must be from 0 to horizon - 1")
+        origin = self.n_samples_seen - back
+        if origin < self.minimum_context:
             return None
         try:
             if self._client is None:
                 self._client = self._client_factory()
             response = self._client.forecast(
-                self.model, [list(self._context)], self._horizon
+                self.model, [self.context(back)], self._horizon
             )
             forecast = forecast_from_quantiles(
-                self.n_samples_seen,
-                response.levels,
-                response.quantiles[0],
-                self.min_scale,
+                origin, response.levels, response.quantiles[0], self.min_scale
             )
-        except (ForecastServiceError, ValueError, IndexError) as error:
+        except ForecastServiceError as error:
             self._failed(error)
-            return None
+            raise
+        except (ValueError, IndexError) as error:
+            self._failed(error)
+            raise ForecastServiceError(
+                f"Forecast service gave an unusable forecast: {error}"
+            ) from error
         self.last_error = None
         return forecast
+
+    def forecast_one(self) -> Forecast | None:
+        try:
+            return self.forecast_from()
+        except ForecastServiceError:
+            return None
 
     def _failed(self, error: Exception) -> None:
         self.failures += 1
@@ -304,3 +334,37 @@ class ServiceForecaster:
             f"ServiceForecaster({self.model!r}, horizon={self._horizon}, "
             f"context_length={self.context_length})"
         )
+
+
+class ServiceResidualDetector(ResidualDetector):
+    """Scores a feature against a pretrained model's forecast.
+
+    Aberrant's residual detector scores 0 when it holds no forecast. That is
+    right before the forecaster is ready, but not when the service failed to
+    answer: the missed forecast is asked for again, and an observation that
+    still has none is rejected, which counts as lost coverage, not as normal.
+    """
+
+    def __init__(
+        self,
+        model: ServiceForecaster,
+        target: str,
+        *,
+        lead: int = 1,
+        score: str = "scaled",
+    ):
+        if not isinstance(model, ServiceForecaster):
+            raise TypeError("model must be a forecaster in the forecast service")
+        super().__init__(model, target, lead=lead, score=score)  # type: ignore[arg-type]
+
+    def explain_one(self, x: FeatureMap) -> tuple[float, float | None, float | None]:
+        issued = self._issued
+        if len(issued) == self.lead and issued[0] is None:
+            # The forecast for this observation was made `lead` values ago.
+            try:
+                issued[0] = self.model.forecast_from(self.lead - 1)
+            except ForecastServiceError as error:
+                raise ObservationRejected(
+                    f"No forecast to compare with: {error}"
+                ) from error
+        return super().explain_one(x)

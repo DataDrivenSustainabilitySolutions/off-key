@@ -174,6 +174,7 @@ describe("simple monitoring setup", () => {
     const ui = <MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>;
     const view = render(ui);
     fireEvent.change(screen.getByRole("textbox", { name: "Service name" }), { target: { value: "Two phases" } });
+    expect(document.title).toBe("Two phases — New service · Monitoring · Aberration");
     fireEvent.click(screen.getByRole("checkbox", { name: "Monitor AC2" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("checkbox", { name: "Monitor AC2" }) as HTMLInputElement).checked).toBe(false);

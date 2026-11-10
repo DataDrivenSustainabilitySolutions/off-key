@@ -12,6 +12,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { useNow } from "@/hooks/use-now";
 import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { catalogueSelectionLabel } from "@/features/workspace/catalogue-navigation";
 import {
   formatAnomalyValue,
   getAnomalyValueClassName,
@@ -150,7 +151,7 @@ export default function AnomalyTable() {
   const count = page?.summary.count ?? 0;
   const metric = (value: number) => unknown ? "—" : value;
   const scopedSource = selectedSource(streamIds, document);
-  useDocumentTitle(selected?.label, "Reporting");
+  useDocumentTitle(document && catalogueSelectionLabel(document, selected), "Reporting");
 
   const handleDelete = async (alarm: Alarm) => {
     if (!await confirm({ title: "Delete this anomaly?", confirmLabel: "Delete anomaly", destructive: true,

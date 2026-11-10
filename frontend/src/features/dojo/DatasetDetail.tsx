@@ -3,7 +3,7 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InlineName } from "@/components/InlineName";
 import { useConfirm } from "@/hooks/use-confirm";
-import { useDocumentTitle } from "@/hooks/use-document-title";
+import { useDetailDocumentTitle } from "@/hooks/use-document-title";
 import { usePollingLoop } from "@/hooks/use-polling";
 import { getErrorMessage } from "@/lib/errors";
 import { loadOffsetPages } from "@/lib/offset-pages";
@@ -28,7 +28,9 @@ export function DatasetDetail({ id, tab, listHref, onTab, onDeleted }: {
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [confirm, confirmation] = useConfirm();
-  useDocumentTitle(dataset?.name, "Dojo");
+  const name = dataset?.name ?? "Dataset";
+  const tabLabel = TABS.find(item => item.id === tab)!.label;
+  useDetailDocumentTitle(tab === "values" ? name : `${name} — ${tabLabel}`, "Dojo");
 
   const loadDataset = useCallback(async (signal: AbortSignal) => {
     try {

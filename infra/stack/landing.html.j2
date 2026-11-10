@@ -682,15 +682,32 @@
       75%,95% { opacity:1; }
       100% { opacity:0; }
     }
+    @keyframes hero-word-turn {
+      0%,20% { transform:translateZ(-.65em) rotateX(0deg); }
+      25%,45% { transform:translateZ(-.65em) rotateX(90deg); }
+      50%,70% { transform:translateZ(-.65em) rotateX(180deg); }
+      75%,95% { transform:translateZ(-.65em) rotateX(270deg); }
+      100% { transform:translateZ(-.65em) rotateX(360deg); }
+    }
     @media (prefers-reduced-motion:no-preference) {
       .hero-photo--pipes { animation:hero-pipes-crossfade 40s ease-in-out infinite; }
       .hero-photo--conveyor { animation:hero-conveyor-crossfade 40s ease-in-out infinite; }
       .hero-photo--solar { animation:hero-solar-crossfade 40s ease-in-out infinite; }
+      .hero-word-cube { animation:hero-word-turn 40s ease-in-out infinite; }
     }
     .hero-title { position:relative; text-align:center; padding:18px 32px 46px; }
     .hero-title > .mono { margin:0 0 17px; color:#656864; font-size:9px; letter-spacing:.12em; }
     .hero h1 { font-size:clamp(42px,4.9vw,72px); font-weight:400; line-height:1.06; letter-spacing:-.05em; }
     .hero-title .hero-promise { font-size:clamp(20px,2vw,27px); line-height:1.3; color:#646762; letter-spacing:-.025em; margin:10px 0 0; }
+    /* The grid reserves the widest word; the four faces share the photo timing.
+       Half the 1.3em line height puts the resting face on the normal text plane. */
+    .hero-words { display:inline-grid; vertical-align:baseline; perspective:8em; }
+    .hero-word-cube { display:grid; transform-style:preserve-3d; transform:translateZ(-.65em); }
+    .hero-word-cube > span { grid-area:1 / 1; padding-inline:.28em; background:#141615; color:#fff; white-space:nowrap; backface-visibility:hidden; transform:translateZ(.65em); }
+    .hero-word-cube .hero-word--pipes { transform:rotateX(-90deg) translateZ(.65em); }
+    .hero-word-cube .hero-word--conveyor { transform:rotateX(-180deg) translateZ(.65em); }
+    .hero-word-cube .hero-word--solar { transform:rotateX(-270deg) translateZ(.65em); }
+    .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
     .hero-summary { display:flex; justify-content:space-between; align-items:center; gap:40px; max-width:980px; margin:30px auto 0; padding-top:20px; border-top:1px solid #cdd0ca; text-align:left; }
     .hero-summary p { max-width:520px; margin:0; color:#595e57; font-size:14px; line-height:1.6; }
     .hero-summary a { color:#171a17; border-bottom:1px solid #92958e; gap:30px; white-space:nowrap; }
@@ -732,7 +749,7 @@
   <div class="hero-title">
     <p class="mono">Anomaly detection for physical &amp; digital systems</p>
     <h1 id="headline">Every system has a pattern.</h1>
-    <p class="hero-promise">Detect when it changes.</p>
+    <p class="hero-promise"><span class="visually-hidden">Detect when strain, flow, quality or yield changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words"><span class="hero-word-cube"><span>strain</span><span class="hero-word--pipes">flow</span><span class="hero-word--conveyor">quality</span><span class="hero-word--solar">yield</span></span></span><span class="hero-promise-suffix"> changes.</span></span></p>
     <div class="hero-summary">
       <p>Continuous anomaly detection for sensor telemetry<br>and digital data streams.</p>
       <a class="text-link" href="#platform">Explore the platform <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>

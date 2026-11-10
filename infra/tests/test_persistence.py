@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -195,6 +196,142 @@ class PersistenceTests(unittest.TestCase):
             "Wait for the intended backend images without accepting rollbacks",
         )
         self.assertIn("--backend-first", tasks[check]["block"][0]["command"]["argv"])
+
+    def cutover_with_a_short_retry_budget(self, base, role, task_file, find_task):
+        """Prepare a cutover on the canonical roles, with one retry budget shortened.
+
+        The role that holds the task is copied and only that task's retries and
+        delay change; every other role is the canonical one.
+        """
+        roles = base / "ansible/roles"
+        roles.mkdir(parents=True)
+        for source in (ROOT / "ansible/roles").iterdir():
+            if source.name == role:
+                shutil.copytree(source, roles / role)
+            else:
+                (roles / source.name).symlink_to(source)
+        # The roles and the playbook read their scripts relative to themselves.
+        (base / "scripts").symlink_to(ROOT / "scripts")
+        path = roles / role / "tasks" / task_file
+        tasks = yaml.safe_load(path.read_text())
+        find_task(tasks).update(retries=1, delay=0)
+        path.write_text(yaml.safe_dump(tasks))
+        work = base / "work"
+        work.mkdir()
+        return work, {"ANSIBLE_ROLES_PATH": str(roles)}
+
+    def test_runtime_workers_stop_only_after_the_stack_writers_have_stopped(self):
+        replicas = {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2}
+        worker_stop = ["service", "scale", "--detach", "radar-runtime=0"]
+        for task_states in (["running", "shutdown"], ["running"]):
+            with (
+                self.subTest(task_states=task_states),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                work, roles = self.cutover_with_a_short_retry_budget(
+                    Path(directory),
+                    "persistence_switch",
+                    "wait_stopped.yml",
+                    lambda tasks: tasks[0],
+                )
+                (work / "state.json").write_text(
+                    json.dumps(
+                        {
+                            "replicas": replicas,
+                            "deployed": False,
+                            "persistent": False,
+                            # The scale call returns while the API's task still runs.
+                            "task_state_sequences": {"off-key_api": task_states},
+                        }
+                    )
+                )
+                result, state, commands = self.run_cutover(work, **roles)
+                stack_stop = commands.index(
+                    ["service", "scale", "--detach", "off-key_api=0"]
+                )
+                if task_states[-1] == "shutdown":
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
+                    # The first look saw the API's task running. The workers were
+                    # told to stop only after a second look saw it stopped.
+                    looks = [
+                        command
+                        for command in commands[
+                            stack_stop : commands.index(worker_stop)
+                        ]
+                        if command[:3] == ["inspect", "--type", "task"]
+                        and command[-1] == "off-key_api-task"
+                    ]
+                    self.assertEqual(len(looks), 2)
+                    continue
+                # The API's task never stops: no worker is told to stop, no backup
+                # runs beside the live writer and nothing is replaced.
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Wait for every task to stop", result.stdout)
+                self.assertIn("original writers resumed", result.stdout)
+                self.assertNotIn(worker_stop, commands)
+                self.assertFalse(
+                    any(
+                        "pg_dump" in command
+                        or "pg_dumpall" in command
+                        or command[:2] == ["stack", "deploy"]
+                        for command in commands
+                    )
+                )
+                self.assertEqual(state["replicas"], replicas)
+                self.assertFalse((work / "stack/recovery-pending.json").exists())
+
+    def test_a_resumed_backend_that_does_not_converge_stops_the_deployment(self):
+        check = "Wait for the intended backend images without accepting rollbacks"
+        with tempfile.TemporaryDirectory() as directory:
+            work, roles = self.cutover_with_a_short_retry_budget(
+                Path(directory),
+                "stack_deploy",
+                "apply.yml",
+                lambda tasks: next(
+                    task
+                    for task in tasks[0]["block"]
+                    if task["name"]
+                    == "Serve backend contracts before activating the browser bundle"
+                )["block"][0],
+            )
+            (work / "state.json").write_text(
+                json.dumps(
+                    {
+                        "replicas": {
+                            "off-key_postgres": 1,
+                            "off-key_api": 1,
+                            "off-key_frontend": 1,
+                            "radar-runtime": 2,
+                        },
+                        "deployed": False,
+                        "persistent": False,
+                    }
+                )
+            )
+            result, state, commands = self.run_cutover(
+                work,
+                extra_vars={"release": {"images": {"mqtt_radar": "example/radar"}}},
+                STALLED_SERVICE="off-key_api",
+                **roles,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            # With a frontend in the model the scale call does not wait for the API,
+            self.assertIn(
+                ["service", "scale", "--detach=true", "off-key_api=1"], commands
+            )
+            # so the convergence check is what sees that its task never started.
+            self.assertIn(f"Deployment stopped at '{check}'", result.stdout)
+            self.assertIn("off-key_api: 0/1 tasks running, expected 1", result.stdout)
+            # The browser bundle is not activated and the cutover stays open.
+            self.assertEqual(
+                sum(command[:2] == ["stack", "deploy"] for command in commands), 1
+            )
+            self.assertFalse((work / "stack/browser-cutover.json").exists())
+            plan = json.loads((work / "stack/recovery-pending.json").read_text())
+            self.assertEqual(plan["phase"], "restore")
+            self.assertEqual(state["replicas"]["off-key_frontend"], 0)
 
     def test_restore_adds_the_foreign_keys_of_ordinary_tables_last(self):
         # The post-data entries of a backup as `pg_restore --list` prints them.

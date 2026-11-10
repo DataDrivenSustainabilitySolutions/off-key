@@ -10,6 +10,9 @@ observability_files:
   - grafana-dashboards.yml
   - grafana-dashboard-logs.json
   - grafana-dashboard-overview.json
+  - grafana-dashboard-collection.json
+  - grafana-dashboard-radar.json
+  - grafana-dashboard-access.json
 observability_config_keys:
   ALLOY_DOCKER_CONFIG_HASH: alloy-docker.cfg
   ALLOY_CONFIG_HASH: alloy.alloy
@@ -18,3 +21,6 @@ observability_config_keys:
   GRAFANA_DASHBOARDS_HASH: grafana-dashboards.yml
   GRAFANA_DASHBOARD_LOGS_HASH: grafana-dashboard-logs.json
   GRAFANA_DASHBOARD_OVERVIEW_HASH: grafana-dashboard-overview.json
+  GRAFANA_DASHBOARD_COLLECTION_HASH: grafana-dashboard-collection.json
+  GRAFANA_DASHBOARD_RADAR_HASH: grafana-dashboard-radar.json
+  GRAFANA_DASHBOARD_ACCESS_HASH: grafana-dashboard-access.json

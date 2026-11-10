@@ -104,7 +104,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Login" brandVariant="wordmark" hideTitle>
+    <AuthLayout title="Sign in" brandVariant="wordmark" hideTitle>
       <form onSubmit={handleLogin} className="space-y-4">
         {/* Email */}
         <div>

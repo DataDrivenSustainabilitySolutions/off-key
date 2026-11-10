@@ -1,0 +1,378 @@
+{
+  "aberrant_version": "1.5.0",
+  "calibrators": {
+    "aci": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "ACI",
+      "parameters": [
+        {
+          "default": 0.01,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "",
+          "high": 0.2,
+          "integer": false,
+          "key": "gamma",
+          "label": "Step size",
+          "low": 0.001,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.001
+        }
+      ],
+      "reference": "Gibbs & Candes, NeurIPS 2021",
+      "summary": "Adapts the working miscoverage level alpha_t += gamma (alpha - err_t). Long-run coverage holds for any sequence."
+    },
+    "agaci": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "AgACI",
+      "parameters": [],
+      "reference": "Zaffran et al., ICML 2022",
+      "summary": "Aggregates ACI experts with online expert aggregation on the pinball loss."
+    },
+    "belief": {
+      "coverage": "none",
+      "family": "bayesian",
+      "name": "Bayesian belief CP",
+      "parameters": [
+        {
+          "default": 0.99,
+          "exclusive_maximum": true,
+          "exclusive_minimum": true,
+          "help": "Per-step discount of past scores.",
+          "high": 0.9999,
+          "integer": false,
+          "key": "beta",
+          "label": "Discount",
+          "low": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "step": 0.0001
+        }
+      ],
+      "reference": "Zhang, Bombara & Yang, The Benefit of Being Bayesian in Online Conformal Prediction, 2024",
+      "summary": "Threshold = quantile of a belief: a prior mixed with the discounted empirical score distribution."
+    },
+    "bocpd": {
+      "coverage": "none",
+      "family": "bayesian",
+      "name": "BOCPD",
+      "parameters": [
+        {
+          "default": 250,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "Expected steps between changepoints (hazard 1/lambda).",
+          "high": 5000,
+          "integer": false,
+          "key": "lambda",
+          "label": "Run length",
+          "low": 10,
+          "maximum": null,
+          "minimum": 1.0,
+          "step": 10
+        }
+      ],
+      "reference": "Adams & MacKay 2007",
+      "summary": "Bayesian online changepoint detection with a Normal-Inverse-Gamma model per regime; threshold = predictive quantile."
+    },
+    "bocpd_aci": {
+      "coverage": "long_run",
+      "family": "bayesian",
+      "name": "BOCPD + ACI",
+      "parameters": [
+        {
+          "default": 250,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "Expected steps between changepoints (hazard 1/lambda).",
+          "high": 5000,
+          "integer": false,
+          "key": "lambda",
+          "label": "Run length",
+          "low": 10,
+          "maximum": null,
+          "minimum": 1.0,
+          "step": 10
+        },
+        {
+          "default": 0.01,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "",
+          "high": 0.2,
+          "integer": false,
+          "key": "gamma",
+          "label": "Step size",
+          "low": 0.001,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.001
+        }
+      ],
+      "reference": "Adams & MacKay 2007; Gibbs & Candes 2021",
+      "summary": "Bayesian changepoint predictive, with its level set by ACI so long-run coverage holds."
+    },
+    "cpcp": {
+      "coverage": "none",
+      "family": "bayesian",
+      "name": "Changepoint CP",
+      "parameters": [
+        {
+          "default": 250,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "Expected steps between changepoints (hazard 1/lambda).",
+          "high": 5000,
+          "integer": false,
+          "key": "lambda",
+          "label": "Run length",
+          "low": 10,
+          "maximum": null,
+          "minimum": 1.0,
+          "step": 10
+        }
+      ],
+      "reference": "Barber et al. 2023 weights from Adams & MacKay 2007",
+      "summary": "Weighted split conformal; a past score's weight is the posterior probability it is in the current regime."
+    },
+    "dtaci": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "DtACI",
+      "parameters": [
+        {
+          "default": 100,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "Local-regret interval that sets the learning rates.",
+          "high": 1000,
+          "integer": false,
+          "key": "interval",
+          "label": "Interval",
+          "low": 10,
+          "maximum": null,
+          "minimum": 1.0,
+          "step": 10
+        }
+      ],
+      "reference": "Gibbs & Candes, JMLR 2024",
+      "summary": "Runs ACI over a grid of step sizes and reweights the experts online, so the step size tunes itself."
+    },
+    "eci": {
+      "coverage": "none",
+      "family": "conformal",
+      "name": "ECI",
+      "parameters": [
+        {
+          "default": 0.05,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "Step as a fraction of the recent score range.",
+          "high": 0.5,
+          "integer": false,
+          "key": "lr",
+          "label": "Learning rate",
+          "low": 0.001,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.001
+        },
+        {
+          "default": 1,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "Slope of the smoothed miss indicator, per unit of the recent score range.",
+          "high": 50,
+          "integer": false,
+          "key": "c",
+          "label": "Sigmoid slope",
+          "low": 0.05,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.05
+        },
+        {
+          "default": 0,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "Apply the error term only beyond this share of the range.",
+          "high": 1,
+          "integer": false,
+          "key": "h",
+          "label": "Cutoff",
+          "low": 0,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.01
+        }
+      ],
+      "reference": "Wu, Hu, Bao, Xia & Zou, ICLR 2025",
+      "summary": "Quantile tracker plus an error-quantification term that also weighs how far the score fell from the threshold. Trades some coverage for width."
+    },
+    "nexcp": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "NexCP",
+      "parameters": [
+        {
+          "default": 0.99,
+          "exclusive_maximum": true,
+          "exclusive_minimum": true,
+          "help": "Weight of a score one step older.",
+          "high": 0.9999,
+          "integer": false,
+          "key": "rho",
+          "label": "Decay",
+          "low": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "step": 0.0001
+        }
+      ],
+      "reference": "Barber, Candes, Ramdas & Tibshirani, Ann. Stat. 2023",
+      "summary": "Weighted split conformal with geometric weights rho^age, robust to drift."
+    },
+    "nig": {
+      "coverage": "none",
+      "family": "bayesian",
+      "name": "Discounted Bayes",
+      "parameters": [
+        {
+          "default": 0.98,
+          "exclusive_maximum": true,
+          "exclusive_minimum": true,
+          "help": "Keeps about 1/(1 - delta) effective observations.",
+          "high": 0.9999,
+          "integer": false,
+          "key": "delta",
+          "label": "Discount",
+          "low": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "step": 0.0001
+        }
+      ],
+      "reference": "West & Harrison 1997, discount variance learning",
+      "summary": "Gaussian score with unknown mean and variance, evidence discounted per step; Student-t predictive quantile."
+    },
+    "pid": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "Conformal PID",
+      "parameters": [
+        {
+          "default": 0.05,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "",
+          "high": 0.5,
+          "integer": false,
+          "key": "lr",
+          "label": "Learning rate",
+          "low": 0.001,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.001
+        },
+        {
+          "default": 0.5,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "In units of the recent score range.",
+          "high": 5,
+          "integer": false,
+          "key": "ki",
+          "label": "Integrator gain",
+          "low": 0,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.05
+        }
+      ],
+      "reference": "Angelopoulos, Candes & Tibshirani, NeurIPS 2023",
+      "summary": "Quantile tracker plus a saturated integrator of past coverage errors."
+    },
+    "qt": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "Quantile tracker",
+      "parameters": [
+        {
+          "default": 0.05,
+          "exclusive_maximum": false,
+          "exclusive_minimum": true,
+          "help": "Step as a fraction of the recent score range.",
+          "high": 0.5,
+          "integer": false,
+          "key": "lr",
+          "label": "Learning rate",
+          "low": 0.001,
+          "maximum": null,
+          "minimum": 0.0,
+          "step": 0.001
+        }
+      ],
+      "reference": "Angelopoulos, Candes & Tibshirani, NeurIPS 2023",
+      "summary": "Online gradient descent on the pinball loss of the threshold itself: q += eta (err - alpha)."
+    },
+    "saocp": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "SAOCP",
+      "parameters": [
+        {
+          "default": 8,
+          "exclusive_maximum": false,
+          "exclusive_minimum": false,
+          "help": "An expert started at t lives g * 2^(trailing zeros of t) steps.",
+          "high": 64,
+          "integer": true,
+          "key": "g",
+          "label": "Lifetime",
+          "low": 1,
+          "maximum": null,
+          "minimum": 1.0,
+          "step": 1
+        }
+      ],
+      "reference": "Bhatnagar, Wang, Xiong & Bai, ICML 2023",
+      "summary": "SF-OGD experts on geometric covering intervals, combined by coin betting: low regret on every time interval."
+    },
+    "sfogd": {
+      "coverage": "long_run",
+      "family": "conformal",
+      "name": "SF-OGD",
+      "parameters": [],
+      "reference": "Orabona & Pal 2016; Bhatnagar et al., ICML 2023",
+      "summary": "Scale-free gradient descent on the pinball loss, with no learning rate to tune."
+    },
+    "split": {
+      "coverage": "exchangeable",
+      "family": "conformal",
+      "name": "Rolling split CP",
+      "parameters": [],
+      "reference": "Vovk et al. 2005; rolling calibration window",
+      "summary": "Empirical (1-alpha)(1+1/n) quantile of the last W scores. Valid under exchangeability, slow to react to shifts."
+    }
+  },
+  "order": [
+    "split",
+    "aci",
+    "dtaci",
+    "agaci",
+    "qt",
+    "pid",
+    "nexcp",
+    "eci",
+    "sfogd",
+    "saocp",
+    "belief",
+    "bocpd_aci",
+    "cpcp",
+    "bocpd",
+    "nig"
+  ]
+}

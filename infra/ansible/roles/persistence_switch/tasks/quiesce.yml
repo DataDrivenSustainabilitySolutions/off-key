@@ -91,11 +91,14 @@
 - name: Save the recovery plan before stopping any writer
   include_tasks: save_recovery.yml
 
+# The scale call returns at once. The task states read below are the proof that every
+# writer has stopped, and they fail the play when one keeps running.
 - name: Stop writers before taking the backup
   include_role:
     name: swarm_scale
   vars:
     swarm_scale_replicas: "{{ dict(persistence_writer_replicas.keys() | zip([0] * (persistence_writer_replicas | length))) }}"
+    swarm_scale_detach: true
 
 - name: Confirm all writers have stopped
   include_tasks: wait_stopped.yml

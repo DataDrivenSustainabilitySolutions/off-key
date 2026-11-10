@@ -29,7 +29,7 @@ plan.
 
 | Workflow file | Name | Triggers | Checks | Release gate |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests and build); `frontend browser` (route-mocked journeys against that checked build); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
+| `ci.yml` | CI | Pull requests, `main`, merge queue, manual | `ci-gate` (required) needs every job: `changes` (plans the run); `static` and `static-release` (focused content checks and verified image reuse for the static plan); `lint` (pre-commit, the `ty` type check and generated contracts, once); `contracts` (tests that read documentation or frontend sources, only when the full suites are planned out); `backend (3.12)`, `backend (3.14)` (backend tests); `frontend` (lint, tests and build); `frontend browser` (route-mocked journeys against that checked build); `infrastructure` (Ansible syntax, rendered stack and `infra/tests`); `collection (5.8.7)`, `collection (6.3.2)` (`postgres` lane and real EMQX brokers); `radar` (`radar_integration` lane on Swarm with this run's RADAR image); `images` on pull requests, the merge queue and manual runs (builds every image once, checks the frontend's delayed API start and keeps a run-scoped archive) or `publish` on `main` (pushes and attests the images); `deployment-smoke (rehearsal)` (every deployment test on a production Swarm: the adaptive monitor, then backup restore and binary rollback over state the test creates) and `deployment-smoke (browser)` (every browser journey on a second Swarm, visual pipelines last). On `main` RADAR and both smoke lanes test the images `publish` pushed | yes |
 | `docker-images.yml` | Docker Images | Called by CI on `main` | Publishes and attests the image matrix, including the strict Zensical docs build | no |
 | `deploy-production.yml` | Deploy Production | Completion of CI on `main`, manual | Deploys the newest main commit whose CI push run succeeded and kept its `production-release` evidence ([Production releases](../operations/production.md)) | no |
 | `ghcr-retention.yml` | GHCR Retention | Weekly, manual | Lists application image versions beyond the newest 20 releases per image, keeping `latest`, the committed release pins and the kept images' attestations; deletes them on a manual run with `delete` or weekly once the variable `GHCR_RETENTION_ENABLED` is `true` ([Image retention](../operations/production.md#image-retention)) | no |
@@ -42,14 +42,30 @@ and the locked backend sync). Test lanes select their tests by pytest marker; se
 
 ### Planned runs
 
-`.github/scripts/ci_plan.py` narrows only two kinds of change; every other path,
-and anything it cannot classify, runs every job:
+`.github/scripts/ci_plan.py` selects checks from the complete change:
 
 | Changed paths | Jobs that run |
 | --- | --- |
-| Only root-level `*.md` | `lint`, `contracts` |
-| Those plus `frontend/**`, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `frontend browser`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
-| Published docs (`docs/**`, `dev/docs/**`, `zensical.toml`) and anything else: backend and shared core, lockfiles and dependency manifests (including `requirements-docs.txt`), Dockerfiles, `infra/**`, `.github/**`, unknown files | every job |
+| Only root-level `*.md` | `static`: generated asset checks, public template rendering and documentation navigation/link checks |
+| Landing HTML, Markdown, agent index, embedded hero, images and the landing exporter | `static`; on `main`, `static-release` |
+| Published content in `docs/**` or `zensical.toml`, optionally alongside landing changes and root Markdown | `static`, including a strict docs image build and HTTP/asset/export probe; on `main`, `static-release` |
+| `frontend/**`, optionally root Markdown, except `frontend/Dockerfile`, `.dockerignore`, `.npmrc`, `package.json` and `package-lock.json` | `lint`, `frontend`, `frontend browser`, `contracts`, `images` or `publish`, both `deployment-smoke` lanes |
+| Backend, dependencies, shared brand assets, docs build programs, other infrastructure/CI changes, mixed frontend/static changes, or unknown paths | every application suite and full release rehearsal |
+
+Static changes skip backend type checking and tests, frontend browser suites,
+broker tests, RADAR, observability and Swarm rehearsals. The allowlist names the
+four landing templates explicitly; changing nginx or deployment configuration
+still runs the full plan. The landing exporter is included so selecting a new
+hero photograph stays a fast change.
+
+On `main`, `static-release` carries forward the exact immutable application image
+digests from a successful ancestor's `production-release` artifact. It independently
+checks the complete diff and every reused image's committed build inputs. Changed
+docs are built and probed once, transferred using a run-specific SHA-256-verified
+archive, then published and attested; the registry image config must match the
+checked image. Reused digests receive this release's tags to preserve retention.
+The resulting `production-release` artifact keeps ordinary automatic deployment
+working. This does not change production maintenance, readiness or rollback rules.
 
 Pull requests compare their merge commit with its base parent, the merge queue
 compares the group with its base, and manual runs always run every job. A `main`
@@ -57,8 +73,7 @@ push compares with the newest ancestor whose CI run kept the `production-release
 artifact, so a cancelled or superseded run never hides a change. Deletions and
 renames count both paths. An empty or unreadable diff, an unexpected checkout or
 an API failure selects every job. `infra/tests/test_ci_plan.py` covers these
-cases and fails when a backend or infrastructure test outside the `contracts` job
-starts reading documentation or frontend sources.
+cases, including a landing push following a cancelled backend run.
 
 A root-Markdown-only `main` run succeeds without publishing or rehearsing images,
 so it keeps no release evidence; [production release selection](../operations/production.md)
@@ -88,7 +103,8 @@ frontend and documentation inputs are separate. Build-tool and workflow edits
 invalidate every image. The selected revision's input tree must equal the tested
 checkout's tree; shallow history disables reuse. Stable revision/version labels
 let unchanged builds retain their digest instead of replacing it for each release.
-Every selected build, test and attestation still runs. Rehearsed release evidence
+Full/frontend plans still build and rehearse images; static plans reuse unchanged
+tested digests as described above. Release evidence
 records the source revision per image, and deployment recomputes these revisions
 before checking the registry labels. Older release evidence retains its original
 all-images-at-the-release-SHA validation.
@@ -126,6 +142,14 @@ traffic and repeated storage; the first installation remains approximately the
 same size.
 
 ## Local quality gate
+
+Match local work to the changed surface. For landing copy, CSS and images, run
+`python assets/brand/export.py --check`, `python assets/landing/export.py --check`
+and `uv run --project infra python infra/scripts/check_static.py`; inspect desktop
+and mobile screenshots when layout changes. Skip application tests. For published
+docs, use a strict docs build and `dev/docs/check_image.py` against the built image.
+Root Markdown edits need only formatting/link review. Run targeted component tests
+for behavior changes and the broader gate below for shared/runtime/CI changes.
 
 ```bash
 uv sync --project backend --all-packages --all-groups --frozen

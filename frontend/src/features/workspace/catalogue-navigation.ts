@@ -1,5 +1,12 @@
 import { WORKSPACE_PATHS } from "./application-navigation";
 import type { ExplorerNode, NavigationIndex } from "@/domain/system/navigationIndex";
+import type { SystemDocument } from "@/types/system";
+
+/** Use the visible signal name or full topic, rather than its last MQTT segment. */
+export function catalogueSelectionLabel(document: SystemDocument, node?: ExplorerNode) {
+  if (node?.entityKind === "stream") return document.readings.find(reading => reading.id === node.objectId)?.label ?? node.label;
+  return node?.topic ?? node?.label;
+}
 
 export const isWorkspacePath = (path: string) => WORKSPACE_PATHS.includes(path);
 

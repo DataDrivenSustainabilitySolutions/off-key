@@ -64,6 +64,20 @@ def preflight(model):
     return {"data_node": target, "worker_only": True}
 
 
+def verify_config_mounts(task, wanted, model):
+    """A running container is insufficient when its dashboard configs are stale."""
+    actual = {
+        (item["ConfigName"], item.get("File", {}).get("Name"))
+        for item in task["ContainerSpec"].get("Configs", [])
+    }
+    expected = {
+        (model["configs"][item["source"]]["name"], item["target"])
+        for item in wanted.get("configs", [])
+    }
+    if actual != expected:
+        raise ValueError("Mounted configuration differs from the independent model")
+
+
 def topology(stack, model):
     actual = {s["Spec"]["Name"]: s for s in owned_services(stack)}
     expected = {
@@ -86,6 +100,7 @@ def topology(stack, model):
         service = actual[name]
         spec = service["Spec"]
         task = spec["TaskTemplate"]
+        verify_config_mounts(task, wanted, model)
         if task["ContainerSpec"]["Image"] != wanted["image"]:
             raise ValueError(f"{name}: image differs from the pinned model")
         if service.get("UpdateStatus", {}).get("State") not in (None, "completed"):

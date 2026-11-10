@@ -1,0 +1,1167 @@
+{
+  "id": null,
+  "uid": "aberration-radar",
+  "title": "03 · RADAR & Dojo",
+  "description": "RADAR lifecycle, coverage and healthy runtime samples, followed by Dojo replay outcomes.",
+  "tags": [
+    "aberration",
+    "operations",
+    "provisioned"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "24h",
+      "2d",
+      "7d"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "stack",
+        "label": "Stack",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "stack",
+          "type": 1,
+          "label": "stack",
+          "stream": ""
+        },
+        "definition": "label_values(stack)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "allValue": null,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "node",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": {
+          "refId": "node",
+          "type": 1,
+          "label": "node",
+          "stream": "{stack=~`${stack:regex}`}"
+        },
+        "definition": "label_values({stack=~`${stack:regex}`}, node)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "reference",
+        "label": "Run / monitor reference",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Case-insensitive literal substring in the original record. Applies to every panel, including Dojo.",
+        "options": []
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "01 · Operations overview",
+      "url": "/d/aberration-system-overview",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "02 · Collection & persistence",
+      "url": "/d/aberration-collection",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "04 · HTTP & access",
+      "url": "/d/aberration-access",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "type": "link",
+      "title": "05 · Log investigation",
+      "url": "/d/aberration-logs",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Reading this dashboard",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Lifecycle events describe transitions, not current state.** Use the application's Monitoring view for desired runs, readiness, anomaly evidence and input ownership. The reference filter accepts a run or monitor ID.\n\nHealth summaries are emitted about once per minute **only while healthy**. Their absence can mean no monitors, degradation or missing logs. Dojo is offline replay; its outcomes are grouped separately below."
+      },
+      "transparent": true
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Live detection · observed events in the selected range",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Runtime starts",
+      "description": "Runtime-start records, including restored runs. Not the number of currently running monitors.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]runtime_started)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "To operational",
+      "description": "Transitions into operational state; a monitor can enter this state more than once.",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]stage_changed)( .*|$)` | line_format `{{.msg}}` | logfmt to | __error__=\"\" | drop msg | to=\"operational\" | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Failure signals",
+      "description": "Crash, startup, processing, ownership and persistence signals; multiple records may describe one incident.",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(tactic[.]radar_(task_crashed|worker_abandoned)|radar[.](service_start_failed|start_failed|fatal_error|execution_state_uncertain|health_degraded|message_processing_failed|model_error|db_batch_write_failed|db_retry_exhausted|db_checkpoint_ownership_lost|run_events_write_failed|checkpoint_loop_failed|final_checkpoint_failed))( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Coverage reports",
+      "description": "Throttled coverage reports. Each may summarize several dropped messages or possible gaps; not a count of lost readings.",
+      "gridPos": {
+        "x": 18,
+        "y": 6,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]coverage_gap)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+          "queryType": "instant",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Transitions by destination stage",
+      "description": "Transitions per bucket. A stage with no new transitions is not necessarily inactive.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (to) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]stage_changed)( .*|$)` | line_format `{{.msg}}` | logfmt to | __error__=\"\" | drop msg | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{to}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Failure signals by event",
+      "description": "Separate operational symptoms before looking at the original exception.",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (event) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(tactic[.]radar_(task_crashed|worker_abandoned)|radar[.](service_start_failed|start_failed|fatal_error|execution_state_uncertain|health_degraded|message_processing_failed|model_error|db_batch_write_failed|db_retry_exhausted|db_checkpoint_ownership_lost|run_events_write_failed|checkpoint_loop_failed|final_checkpoint_failed))( .*|$)` | line_format `{{.msg}}` | logfmt event | __error__=\"\" | drop msg | drop msg [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{event}}"
+        }
+      ],
+      "interval": "1m",
+      "maxDataPoints": 180,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No observations",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "RADAR failures and coverage gaps",
+      "description": "Original records retain monitor/run IDs and exceptions. Use Log investigation to follow all messages for a reference.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|radar-preflight|${stack:regex}_(mqtt-radar|tactic)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(tactic[.]radar_(task_crashed|worker_abandoned)|radar[.](service_start_failed|start_failed|fatal_error|execution_state_uncertain|health_degraded|message_processing_failed|model_error|db_batch_write_failed|db_retry_exhausted|db_checkpoint_ownership_lost|run_events_write_failed|checkpoint_loop_failed|final_checkpoint_failed)|radar[.]coverage_gap)( .*|$)`",
+          "queryType": "range",
+          "legendFormat": "",
+          "maxLines": 200,
+          "direction": "backward"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Runtime samples · expand for healthy detector measurements",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Reported processing throughput",
+          "description": "Last healthy summary in a rolling 2m window, per monitor. Processing rate is measured by the runtime; absent/degraded monitors remain gaps. Shows up to ten highest values at each step.",
+          "gridPos": {
+            "x": 0,
+            "y": 28,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "topk(10, last_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]health_summary)( .*|$)` | json monitor=\"extra.service_id\" | __error__=\"\" | monitor!=\"\" | line_format `{{.msg}}` | logfmt throughput | __error__=\"\" | drop msg | unwrap throughput | __error__=\"\" [2m]) by (monitor))",
+              "queryType": "range",
+              "legendFormat": "{{monitor}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Detector process memory",
+          "description": "Last healthy process RSS sample in MiB over 2m, per monitor. This is process memory, not worker or container memory utilization. Shows up to ten highest values at each step.",
+          "gridPos": {
+            "x": 12,
+            "y": 28,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "topk(10, last_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.]health_summary)( .*|$)` | json monitor=\"extra.service_id\" | __error__=\"\" | monitor!=\"\" | line_format `{{.msg}}` | logfmt memory_mb | __error__=\"\" | drop msg | unwrap memory_mb | __error__=\"\" [2m]) by (monitor))",
+              "queryType": "range",
+              "legendFormat": "{{monitor}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "mbytes",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "logs",
+          "title": "Lifecycle, warm-up and calibration",
+          "description": "Transitions and startup/calibration completion records; use the app for the current stage and progress.",
+          "gridPos": {
+            "x": 0,
+            "y": 36,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`radar|${stack:regex}_mqtt-radar`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(radar[.](runtime_started|stage_changed|adaptive_warmup_complete|adaptive_calibration_complete|service_bootstrap_start|service_bootstrap_stopped))( .*|$)`",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Dojo · expand for offline replay outcomes",
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 15,
+          "type": "stat",
+          "title": "Replay completions",
+          "description": "Completion records for replay attempts; not a count of saved datasets.",
+          "gridPos": {
+            "x": 0,
+            "y": 29,
+            "w": 8,
+            "h": 4
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(dojo[.]run_finished)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+              "queryType": "instant",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          }
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "Replay failures",
+          "description": "Includes domain failures logged at INFO and unexpected crashes. Retries may produce several outcomes for one run.",
+          "gridPos": {
+            "x": 8,
+            "y": 29,
+            "w": 8,
+            "h": 4
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(dojo[.]run_(failed|crashed))( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+              "queryType": "instant",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          }
+        },
+        {
+          "id": 17,
+          "type": "stat",
+          "title": "Replay requeues",
+          "description": "Observed requeue records. This does not measure queue depth or queue wait time.",
+          "gridPos": {
+            "x": 16,
+            "y": 29,
+            "w": 8,
+            "h": 4
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(dojo[.]run_requeued)( .*|$)` | drop msg [$__range])) or (0 * sum(count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message [$__range])))",
+              "queryType": "instant",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "auto",
+            "orientation": "auto"
+          }
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Replay lifecycle by outcome",
+          "description": "Dojo events per bucket. Start, requeue and terminal records are not independent jobs.",
+          "gridPos": {
+            "x": 0,
+            "y": 33,
+            "w": 24,
+            "h": 8
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "sum by (event) (count_over_time({stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(dojo[.]run_(started|finished|failed|crashed|requeued|stopped_elsewhere))( .*|$)` | line_format `{{.msg}}` | logfmt event | __error__=\"\" | drop msg | drop msg [$__interval]))",
+              "queryType": "range",
+              "legendFormat": "{{event}}"
+            }
+          ],
+          "interval": "1m",
+          "maxDataPoints": 180,
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "noValue": "No observations",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "blue",
+                    "value": null
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "stepAfter",
+                "lineWidth": 1,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": false,
+                "axisCenteredZero": false,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 19,
+          "type": "logs",
+          "title": "Replay event context",
+          "description": "Expand a record for its run ID and outcome; the reference filter applies here too.",
+          "gridPos": {
+            "x": 0,
+            "y": 41,
+            "w": 24,
+            "h": 9
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "loki",
+                "uid": "loki"
+              },
+              "editorMode": "code",
+              "expr": "{stack=~`${stack:regex}`,node=~`${node:regex}`,service=~`${stack:regex}_(dojo-worker)`} | json search_message=\"message\" | drop __error__, __error_details__ | label_format line_matches=`{{ if or (eq \"${reference:percentencode}\" \"\") (contains (lower (urldecode \"${reference:percentencode}\")) (lower (__line__))) (contains (lower (urldecode \"${reference:percentencode}\")) (lower .search_message)) }}yes{{ end }}` | line_matches=\"yes\" | drop line_matches, search_message |= \"event=\" | json msg=\"message\" | __error__=\"\" | msg=~`(?s)^event=(dojo[.]run_(started|finished|failed|crashed|requeued|stopped_elsewhere))( .*|$)`",
+              "queryType": "range",
+              "legendFormat": "",
+              "maxLines": 200,
+              "direction": "backward"
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": true,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useDetailDocumentTitle } from "@/hooks/use-document-title";
 import { Link, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
@@ -83,6 +84,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const creationKey = `pipeline-setup:${userId}:${initialDesign?.id ?? "new"}:${props.revisionId ?? "draft"}:${sourceId ?? initialTarget ?? ""}:${replaceId ? "replace" : "new"}:${initialReading ?? ""}:${Object.entries(initialBindings ?? {}).join(";")}`;
   const { draft, template, save: saveState, session } = useCreationSession(creationKey, initial,
     !replaceId && !props.revisionId && initialDesign?.is_template !== false ? initialDesign : undefined);
+  const viewTitle = replaceId ? "Update service" : initialDesign ? "Template" : "New service";
+  useDetailDocumentTitle(draft.name.trim() ? `${draft.name} — ${viewTitle}` : viewTitle, "Monitoring");
   const setDraft = session.setDraft;
   const saving = saveState.status === "saving";
   const [loadingTemplate, setLoadingTemplate] = useState(false);

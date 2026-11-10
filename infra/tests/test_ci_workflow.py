@@ -304,17 +304,54 @@ class CiWorkflowTests(unittest.TestCase):
                     self.assertNotIn("build-ci-images", text)
                     self.assertNotIn("backend/Dockerfile", text)
 
-    def test_only_the_publish_job_can_write_packages(self):
+    def test_only_main_publish_jobs_can_write_packages(self):
         self.assertEqual(workflow("ci.yml")["permissions"], {"contents": "read"})
         writers = [
             name
             for name, job in self.jobs.items()
             if job.get("permissions", {}).get("packages") == "write"
         ]
-        self.assertEqual(writers, ["publish"])
+        self.assertEqual(set(writers), {"publish", "static-release"})
+        for name in writers:
+            self.assertIn("github.event_name == 'push'", self.jobs[name]["if"])
         published = workflow("docker-images.yml")
         self.assertEqual(list(published["on"]), ["workflow_call"])
         self.assertNotIn("publish", published["on"]["workflow_call"]["inputs"])
+
+    def test_static_release_requires_checked_content_and_verified_archive(self):
+        self.assertEqual(needs(self.jobs["static-release"]), ["changes", "static"])
+        static = self.jobs["static"]
+        self.assertNotIn("permissions", static)
+        steps = {step.get("name"): step for step in static["steps"]}
+        build = steps["Build documentation"]["with"]
+        self.assertEqual(build["file"], "dev/docs/Dockerfile")
+        self.assertEqual(build["load"], "true")
+        self.assertNotIn("push", build)
+        self.assertIn("check_image.py", steps["Probe the documentation server"]["run"])
+        release = {
+            step.get("name"): step for step in self.jobs["static-release"]["steps"]
+        }
+        verify = release["Verify and load the checked docs image"]
+        self.assertEqual(
+            verify["env"]["EXPECTED_SHA256"], "${{ needs.static.outputs.docs-sha256 }}"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "static-docs.tar.gz"
+            archive.write_bytes(b"corrupted checked image")
+            result = run(
+                "bash",
+                "-e",
+                "-c",
+                verify["run"],
+                env=os.environ
+                | {"RUNNER_TEMP": directory, "EXPECTED_SHA256": "0" * 64},
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Docs archive checksum mismatch", result.stderr)
+        evidence = release["Keep production release evidence"]
+        self.assertNotIn("if", evidence)
+        self.assertEqual(evidence["with"]["name"], "production-release")
 
     def test_published_and_tested_images_share_their_build_inputs(self):
         matrix = workflow("docker-images.yml")["jobs"]["build-images"]["strategy"][

@@ -10,6 +10,7 @@ import urllib.parse
 import uuid
 from pathlib import Path
 
+from grafana_queries import verify_provisioned, verify_queries
 from observability_lab import Lab, engine_environment, wait
 from support import ROOT, render
 
@@ -156,6 +157,11 @@ def run_rehearsal(evidence_path):
             model = json.loads(model_path.read_text())
             for service in model["services"].values():
                 service["image"] = lab.content_ids[service["image"]]
+            # The isolated fixture has no published Grafana port or real users.
+            # Allow read-only API verification without a production auth identity.
+            model["services"]["grafana"]["environment"]["GF_AUTH_ANONYMOUS_ENABLED"] = (
+                "true"
+            )
             model_path.write_text(json.dumps(model))
             manager(
                 "stack", "deploy", "--resolve-image", "never", "-c", model_path, stack
@@ -166,11 +172,42 @@ def run_rehearsal(evidence_path):
                     topology = runtime.topology(stack, model)
                 with engine_environment(data):
                     health = runtime.health(stack, node_names)
-                return topology | health
+
+                def grafana_request(path):
+                    container = local_container(data, f"{stack}_grafana")
+                    return json.loads(
+                        data(
+                            "exec",
+                            container,
+                            "wget",
+                            "-q",
+                            "-T",
+                            "5",
+                            "-O",
+                            "-",
+                            "http://127.0.0.1:3000" + path,
+                        )
+                    )
+
+                dashboards = verify_provisioned(directory / "stack", grafana_request)
+                return topology | health | dashboards
 
             report.update(
                 wait(verify, "worker topology and canary round trip", seconds=300)
             )
+
+            def loki_request(path, payload=None):
+                container = local_container(data, f"{stack}_grafana")
+                args = ["exec", container, "wget", "-q", "-T", "10", "-O", "-"]
+                if payload is not None:
+                    args += [
+                        "--header=Content-Type: application/json",
+                        "--post-data=" + json.dumps(payload),
+                    ]
+                raw = data(*args, "http://loki:3100" + path)
+                return json.loads(raw) if raw.strip() else None
+
+            report.update(verify_queries(directory / "stack", stack, loki_request))
             for kind in ("owned", "legacy"):
 
                 def present(kind=kind):

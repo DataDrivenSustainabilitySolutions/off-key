@@ -25,10 +25,10 @@ APPLICATION_IMAGES = {
     "db_sync",
 }
 REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
-# CI runs every release gate, publishes the images and rehearses them, so its
-# success on a main push is what makes a commit releasable.
+# CI runs the selected release gates and records tested image digests. Static
+# content can inherit unchanged images; main CI success still gates deployment.
 RELEASE_WORKFLOW = "ci.yml"
-# The tested image manifest only a rehearsed, published run keeps.
+# The tested image manifest retained by a full or verified static release.
 EVIDENCE = "production-release"
 
 
@@ -99,7 +99,7 @@ def select_revision(requested):
     scope = "the latest 100 main commits/runs" if requested == "latest" else requested
     raise ValueError(
         f"No eligible release in {scope}: CI must succeed on a main push of the "
-        "commit and keep its rehearsed release evidence."
+        "commit and keep its tested release evidence."
     )
 
 
@@ -152,7 +152,7 @@ def require_image_revision(reference, revision):
 def tested_release(revision):
     run = main_runs(RELEASE_WORKFLOW, revision).get(revision)
     if not run or run["status"] != "completed" or run["conclusion"] != "success":
-        raise ValueError("No successful production rehearsal for this main revision")
+        raise ValueError("No successful release CI for this main revision")
     with tempfile.TemporaryDirectory(prefix="offkey-tested-release-") as directory:
         subprocess.run(
             [

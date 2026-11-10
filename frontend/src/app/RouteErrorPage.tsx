@@ -5,7 +5,7 @@ import { BrandHome } from "@/components/BrandHome";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export function RouteErrorPage({ notFound = false }: { notFound?: boolean }) {
-  useDocumentTitle(notFound ? "Page not found" : "Something went wrong");
+  useDocumentTitle(notFound ? "Page not found" : "Page unavailable");
   return (
     <main
       aria-labelledby="route-error-title"

@@ -5,7 +5,7 @@ import base64
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "assets/landing/hero-connected-v9.jpg"
+SOURCE = ROOT / "assets/landing/hero-connected-v14.jpg"
 DESTINATION = ROOT / "infra/stack/landing-hero.b64.j2"
 
 

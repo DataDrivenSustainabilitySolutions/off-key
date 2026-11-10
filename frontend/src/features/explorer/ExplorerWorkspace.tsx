@@ -13,7 +13,7 @@ import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
 import { CopyToDojo } from "../dojo/CopyToDojo";
-import { withCatalogueSource } from "../workspace/catalogue-navigation";
+import { catalogueSelectionLabel, withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
 
 const Preview = lazy(() => import("../readings/ExplorerPreview"));
@@ -55,8 +55,17 @@ export function ExplorerWorkspace() {
     && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
   const selectedLabel = selected && (selected.entityKind === "stream"
     ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label);
-  useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
-    : creating ? "New service" : pipelineView ? "Templates" : selectedLabel, "Monitoring");
+  let title = catalogueSelectionLabel(document, selected);
+  if (loadingCreation) title = "New service";
+  else if (selectionMissing && !pipelineView) title = "Source not found";
+  else if (pipelineView) {
+    title = params.get("pipeline") ? (params.has("activation") ? "Starting service" : "Template")
+      : params.get("view") === "pipelines" ? "Templates" : params.has("replace") ? "Update service" : "New service";
+  } else if (creating) title = "New service";
+  else if (selectedService) title = serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? []);
+  else if (requestedService) title = params.get("tab") === "pipeline" ? "Retained pipeline"
+    : monitoring.ready ? "Service not found" : "Monitoring service";
+  useDocumentTitle(title, "Monitoring");
   useEffect(() => {
     rememberNavigation(monitoringNavigationKey(userId), `/${params.size ? `?${params}` : ""}`);
   }, [userId, params]);

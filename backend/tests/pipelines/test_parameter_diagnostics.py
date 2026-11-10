@@ -37,7 +37,7 @@ def test_reviewed_1_3_launch_normalization_preserves_history_and_execution():
     original = deepcopy(saved)
     normalized = normalize_saved_launch(saved)
     assert saved == original
-    assert normalized.monitoring.aberrant_version == "1.4.0"
+    assert normalized.monitoring.aberrant_version == "1.5.0"
     assert normalized.pipeline == launch.pipeline
     assert normalized.runtime_image is None
 

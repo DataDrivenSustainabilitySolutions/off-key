@@ -1,4 +1,4 @@
-"""A real 1.3 checkpoint cannot bypass 1.4 relearning and recalibration."""
+"""A real 1.3 checkpoint cannot bypass relearning and recalibration."""
 
 import base64
 import json
@@ -28,7 +28,7 @@ def test_authentic_1_3_checkpoint_requires_fresh_learning(monkeypatch):
     launch = normalize_saved_launch(fixture["launch"])
     assert fixture["launch"] == original
     assert launch.pipeline.model_dump(mode="json") == original["pipeline"]
-    assert launch.monitoring.aberrant_version == "1.4.0"
+    assert launch.monitoring.aberrant_version == "1.5.0"
     config = MQTTRadarConfig(pipeline=launch.pipeline)
     record = fixture["checkpoint"]
     record["payload"] = base64.b64decode(record["payload"], validate=True)

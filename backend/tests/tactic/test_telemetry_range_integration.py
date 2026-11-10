@@ -16,7 +16,11 @@ async def test_range_keeps_extremes_and_returns_sparse_rows_raw(disposable_datab
     engine = create_async_engine(
         disposable_database.url.set(drivername="postgresql+asyncpg")
     )
-    start = datetime(2026, 7, 27, tzinfo=UTC)
+    # The schema's retention job runs within a second of the commit and deletes rows
+    # older than the retention window, so the range starts at yesterday's midnight.
+    start = datetime.now(UTC).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ) - timedelta(days=1)
     rows = [
         {
             "charger_id": "range-test",

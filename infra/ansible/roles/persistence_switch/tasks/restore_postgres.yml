@@ -81,10 +81,16 @@
     sql -At -c "SELECT schema_name || ' ' || table_name FROM _timescaledb_catalog.hypertable UNION ALL SELECT schema_name || ' ' || table_name FROM _timescaledb_catalog.chunk" > "$lists/timescaledb"
     : > "$lists/first"
     : > "$lists/last"
-    # An entry reads "<id>; <oid> <oid> FK CONSTRAINT <schema> <table> <name> <owner>".
+    # An entry reads "<id>; <oid> <oid> FK CONSTRAINT <schema> <table> <name> <owner>". pg_dump
+    # lists a comment directly after the entry it describes, and a comment on a key that does
+    # not exist yet fails, so a comment goes wherever the entry before it went.
     awk -v first="$lists/first" -v last="$lists/last" '
+      BEGIN { list = first }
       FILENAME == ARGV[1] { timescaledb[$0]; next }
-      { print > ($4 " " $5 == "FK CONSTRAINT" && !(($6 " " $7) in timescaledb) ? last : first) }
+      $4 != "COMMENT" {
+        list = $4 " " $5 == "FK CONSTRAINT" && !(($6 " " $7) in timescaledb) ? last : first
+      }
+      { print > list }
     ' "$lists/timescaledb" "$lists/post-data"
     in_container sh -c 'cat > /tmp/restore-first.list' < "$lists/first"
     in_container "${restore[@]}" -L /tmp/restore-first.list < "$dump"

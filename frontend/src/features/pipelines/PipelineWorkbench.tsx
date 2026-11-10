@@ -11,6 +11,7 @@ import { startupSentence, startupSummary, type Startup } from "./startup";
 import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
 import { usePlaceToasts } from "@/hooks/use-toast-position";
+import { useAnchoredPanel, useSettingsSheet } from "./anchoredPanel";
 
 export type InspectorPanel = "service" | "component" | null;
 type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale" | "insets"> & {
@@ -112,7 +113,12 @@ export function PipelineWorkbench({
   const top = useRef<HTMLDivElement>(null);
   const settingsPanel = useRef<HTMLDivElement>(null);
   const stageCanvas = useRef<HTMLDivElement>(null);
-  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
+  const stageRoot = useRef<HTMLDivElement>(null);
+  // On a stage, a step's settings sit beside its card instead of covering the canvas edge.
+  const sheet = useSettingsSheet();
+  const anchored = stage && !sheet && view === "graph" && panel === "component" && !!props.selected;
+  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel && !anchored);
+  useAnchoredPanel(anchored, stageRoot, settingsPanel, props.selected, insets?.top ?? 0);
   // The stage's own actions sit at the top right, where toasts would cover them.
   usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
@@ -143,18 +149,6 @@ export function PipelineWorkbench({
     if (id) setPanel("component");
     props.onSelect(id);
   };
-  // Rename from a card's menu: its settings open with the title ready to type over.
-  const [renaming, setRenaming] = useState(0);
-  useEffect(() => {
-    if (!renaming) return;
-    const frame = requestAnimationFrame(() => {
-      const title = settingsPanel.current?.querySelector<HTMLInputElement>("input[data-step-title]");
-      title?.focus({ preventScroll: true });
-      title?.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [renaming]);
-  const rename = (id: string) => { setView("graph"); select(id); setRenaming((value) => value + 1); };
   const add: Props["onAdd"] = (...args) => {
     addedFromMenu.current = adding;
     setMenu(false);
@@ -260,7 +254,7 @@ export function PipelineWorkbench({
       onChange={(document) => props.onChange(document)} />
     : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
       features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} insets={insets}
-      onRename={rename} onConfigure={select} />;
+      onConfigure={select} />;
   const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
       event.stopPropagation(); close();
@@ -277,7 +271,7 @@ export function PipelineWorkbench({
       </div>}
       content={panel === "service" ? settings : undefined} />
   </div>;
-  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`}
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}${dragging ? " is-adding-step" : ""}`} ref={stageRoot}
     style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
     <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
     <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>

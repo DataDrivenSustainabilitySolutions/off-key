@@ -31,6 +31,8 @@ type CanvasData = {
   /** One line about the settings, or the features a selection keeps. */
   summary?: string;
   chips?: string[];
+  /** The title is being typed on the card. */
+  renaming?: boolean;
   [key: string]: unknown;
 };
 export type CanvasNode = Node<CanvasData, "component">;

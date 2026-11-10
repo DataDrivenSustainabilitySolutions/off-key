@@ -1,10 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { ReactFlowProvider, type NodeProps } from "@xyflow/react";
 import { stepMenu } from "@/features/pipelines/contextMenu";
 import {
   addAfter, afterBlocker, disconnectNode, duplicateBlocker, duplicateNode, type GraphDocument,
 } from "@/features/pipelines/model";
 import { PipelineContextMenu } from "@/features/pipelines/PipelineContextMenu";
+import { PipelineNodeCard } from "@/features/pipelines/PipelineNodeCard";
+import { CardActionsContext } from "@/features/pipelines/cardActions";
+import type { CanvasNode } from "@/features/pipelines/types";
 import { normalizeDefinition, normalizeLayout, type PipelineComponent } from "@/features/pipelines/contracts";
 
 const component = (id: string, kind: PipelineComponent["kind"], label: string, extra: Partial<PipelineComponent> = {}) => ({
@@ -143,5 +147,40 @@ describe("canvas context menu", () => {
     expect(item.textContent).toContain("A design has one of these.");
     fireEvent.click(item);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe("renaming on the card", () => {
+  const card = (finishRename = vi.fn()) => {
+    const data = {
+      label: "Calm", kind: "transform", family: "Prepare", operation: "Smooth", available: true,
+      inputPort: true, outputPort: true, issueCount: 0, renaming: true,
+    } as CanvasNode["data"];
+    const props = { id: "smooth", data, selected: false, isConnectable: true } as unknown as NodeProps<CanvasNode>;
+    render(<ReactFlowProvider><CardActionsContext.Provider value={{ finishRename }}>
+      <PipelineNodeCard {...props} />
+    </CardActionsContext.Provider></ReactFlowProvider>);
+    return { finishRename, input: screen.getByRole("textbox", { name: "Step title" }) as HTMLInputElement };
+  };
+
+  it("types over the title in place and keeps it with Enter", () => {
+    const { finishRename, input } = card();
+    expect(window.document.activeElement).toBe(input);
+    expect(input.value).toBe("Calm");
+    fireEvent.change(input, { target: { value: "Quiet" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(finishRename).toHaveBeenCalledExactlyOnceWith("smooth", "Quiet");
+  });
+
+  it("keeps the old title with Escape, and keeps keys away from the canvas", () => {
+    const outside = vi.fn();
+    window.document.addEventListener("keydown", outside);
+    const { finishRename, input } = card();
+    fireEvent.keyDown(input, { key: "Backspace" });
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.blur(input);
+    window.document.removeEventListener("keydown", outside);
+    expect(outside).not.toHaveBeenCalled();
+    expect(finishRename).toHaveBeenCalledExactlyOnceWith("smooth", undefined);
   });
 });

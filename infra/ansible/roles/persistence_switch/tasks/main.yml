@@ -58,9 +58,11 @@
     label: "{{ item.0.volume }}"
 
 - name: Stop the old stateful tasks before deploying replacement mounts
-  command:
-    argv: [docker, service, scale, "{{ stack_name }}_{{ item }}=0"]
-  loop: "{{ persistence_flips | map(attribute='service') | unique | list }}"
+  include_role:
+    name: swarm_scale
+  vars:
+    stateful_services: "{{ persistence_flips | map(attribute='service') | unique | map('regex_replace', '^', stack_name ~ '_') | list }}"
+    swarm_scale_replicas: "{{ dict(stateful_services | zip([0] * (stateful_services | length))) }}"
 
 - name: Confirm the old stateful tasks have stopped
   include_tasks: wait_stopped.yml

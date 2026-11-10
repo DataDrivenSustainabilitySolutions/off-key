@@ -1,0 +1,43 @@
+---
+- name: Recheck database maintenance immediately before a static update
+  include_tasks: monitor_job.yml
+  vars:
+    monitor_action: status
+
+- name: Require completed database maintenance for a static update
+  assert:
+    that: release_job_output.phase == 'complete'
+
+- name: Validate unchanged runtime worker images and secret wiring
+  include_tasks: worker_security.yml
+
+- name: Reserve the shared durable release operation without stopping monitors
+  include_tasks: monitor_job.yml
+  vars:
+    monitor_action: reserve
+
+- name: Require the static release reservation to precede any image change
+  assert:
+    that: release_job_output.phase == 'quiescing'
+
+- name: Record the reserved static release for interruption recovery
+  copy:
+    dest: "{{ stack_dir }}/release-maintenance.json"
+    mode: "0600"
+    content: "{{ {'revision': release.application_revision} | to_json }}"
+
+- name: Require the existing APIs and catalogue before a static release
+  include_tasks: application_readiness.yml
+
+- name: Verify the complete migration checksum ledger without changing the schema
+  include_tasks: job.yml
+  vars:
+    release_job_service: db-sync
+    release_job_image: "{{ db_sync_image }}"
+    release_job_module: off_key_core.db.migrate
+    release_job_arguments: [verify]
+
+- name: Recheck the verified baseline and update only the static service images
+  command:
+    argv: [python3, '-', apply, "{{ stack_dir }}", "{{ stack_name }}", "{{ static_source_diff.stdout_lines | to_json }}", --revision, "{{ release.application_revision }}", --baseline-revision, "{{ static_previous.stdout | trim }}"]
+    stdin: "{{ lookup('file', playbook_dir ~ '/../scripts/static_release.py') }}"

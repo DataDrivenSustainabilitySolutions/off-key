@@ -131,11 +131,25 @@ class ClassificationTests(unittest.TestCase):
         frontend = plan.plan_for("frontend", "pull_request")
         self.assertEqual(
             selected(frontend),
-            {"lint", "frontend", "contracts", "images", "deployment-smoke"},
+            {
+                "lint",
+                "frontend",
+                "frontend-browser",
+                "contracts",
+                "images",
+                "deployment-smoke",
+            },
         )
         self.assertEqual(
             selected(plan.plan_for("frontend", "push")),
-            {"lint", "frontend", "contracts", "publish", "deployment-smoke"},
+            {
+                "lint",
+                "frontend",
+                "frontend-browser",
+                "contracts",
+                "publish",
+                "deployment-smoke",
+            },
         )
         for event in ("pull_request", "merge_group", "workflow_dispatch"):
             jobs = plan.plan_for("full", event)

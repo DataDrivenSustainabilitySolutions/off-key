@@ -566,3 +566,65 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                     remove_recorded_entity(client, graph_entity)
                 remove_recorded_entity(client, entity)
                 restorable.remove()
+
+
+def test_static_updates_preserve_backend_tasks_active_monitors_and_ingestion():
+    directory = Path(os.environ["OFFKEY_REHEARSAL_DIR"])
+    root = Path(__file__).resolve().parents[3]
+    with httpx.Client(
+        base_url=os.getenv("E2E_GATEWAY_URL", "http://localhost:8000"), timeout=210
+    ) as client:
+        refresh_authentication(client)
+        entity = add_recorded_entity(
+            client, label="Static cutover", keys=("temperature",)
+        )
+        started = client.post(
+            "/v1/monitors",
+            json={
+                "display_name": "Unchanged static release monitor",
+                "reading_ids": list(entity.reading_ids),
+                "monitoring": {
+                    "strategy": "static_baseline",
+                    "model_type": "pyod_iforest",
+                },
+            },
+        )
+        started.raise_for_status()
+        monitor = started.json()
+        wait_until_service_accepts_data(
+            client, monitor["monitor_id"], activation_id=monitor["activation_id"]
+        )
+        completed = False
+        try:
+            subprocess.run(
+                [
+                    "uv",
+                    "run",
+                    "--frozen",
+                    "--project",
+                    str(root / "infra"),
+                    "python",
+                    str(root / "infra/tests/static_smoke.py"),
+                    "--directory",
+                    str(directory),
+                ],
+                cwd=root,
+                check=True,
+                timeout=600,
+            )
+            wait_until_service_accepts_data(client, monitor["monitor_id"])
+            publish.single(
+                entity.topics["temperature"],
+                "29.5",
+                hostname="localhost",
+                port=1884,
+                qos=1,
+            )
+            wait_for_measurement(client, entity, 29.5)
+            completed = True
+        finally:
+            if completed:
+                client.delete(
+                    f"/v1/monitors/{monitor['monitor_id']}"
+                ).raise_for_status()
+                remove_recorded_entity(client, entity)

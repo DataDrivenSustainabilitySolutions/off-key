@@ -91,30 +91,14 @@
 - name: Save the recovery plan before stopping any writer
   include_tasks: save_recovery.yml
 
-# A scale call returns at once, so the writers of a group stop together; the task
-# states read afterwards are the proof that they stopped. The stack's own services,
-# TACTIC among them, are gone before the runtime workers are stopped, as they were
-# when every service was stopped in turn.
-- name: Stop the stack's own writers before taking the backup
-  command:
-    argv: [docker, service, scale, --detach, "{{ item }}=0"]
-  loop: >-
-    {{ persistence_writer_replicas.keys() | list
-       | difference(stack_tactic_workers | map(attribute='Spec.Name') | list) | sort }}
-
-- name: Confirm the stack's own writers have stopped before any runtime worker
-  include_tasks: wait_stopped.yml
+# The scale call returns at once. The task states read below are the proof that every
+# writer has stopped, and they fail the play when one keeps running.
+- name: Stop writers before taking the backup
+  include_role:
+    name: swarm_scale
   vars:
-    service_names: >-
-      {{ persistence_writer_replicas.keys() | list
-         | difference(stack_tactic_workers | map(attribute='Spec.Name') | list) | sort }}
-
-- name: Stop the runtime workers before taking the backup
-  command:
-    argv: [docker, service, scale, --detach, "{{ item }}=0"]
-  loop: >-
-    {{ persistence_writer_replicas.keys() | list
-       | intersect(stack_tactic_workers | map(attribute='Spec.Name') | list) | sort }}
+    swarm_scale_replicas: "{{ dict(persistence_writer_replicas.keys() | zip([0] * (persistence_writer_replicas | length))) }}"
+    swarm_scale_detach: true
 
 - name: Confirm all writers have stopped
   include_tasks: wait_stopped.yml

@@ -30,6 +30,7 @@ from support import ROOT, render, run
 
 sys.path.insert(0, str(ROOT / "scripts"))
 from compile_stack import compile_stack, select_component
+from image_sources import revisions
 from pin_release import APPLICATION_IMAGES, pin
 from task_timings import summary
 
@@ -130,6 +131,9 @@ def deploy(directory, phase, **overrides):
             "ansible_become": False,
             "release_public_urls": ["http://localhost:5173", "http://localhost:8087"],
             "persistence_backup_dir": str(directory / "backups"),
+            "deployment_secret_names": json.loads(
+                (directory / "stack/validation.json").read_text()
+            )["deployment_secret_names"],
         }
     )
     variables = directory / "deployment-inputs.json"
@@ -160,6 +164,8 @@ def deploy(directory, phase, **overrides):
 
 
 def images(release, revision):
+    sources = revisions(revision)
+    release["image_revisions"] = sources
     if (
         os.getenv("GITHUB_EVENT_NAME") == "push"
         and os.getenv("GITHUB_REF") == "refs/heads/main"
@@ -168,7 +174,7 @@ def images(release, revision):
         # Allow brief registry propagation, then verify each digest's revision.
         for name in sorted(APPLICATION_IMAGES):
             release["images"][name] = wait(
-                lambda name=name: pin(release["images"][name], revision),
+                lambda name=name: pin(release["images"][name], revision, sources[name]),
                 f"published {name} image",
                 timeout=60,
             )

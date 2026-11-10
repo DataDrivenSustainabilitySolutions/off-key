@@ -9,6 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from image_sources import expected_revisions
+
 RELEASE = (
     Path(__file__).resolve().parents[1]
     / "ansible/inventories/prod/group_vars/all/release.yml"
@@ -120,7 +122,7 @@ def inspect(reference, field):
     return json.loads(result.stdout)
 
 
-def pin(reference, revision=None):
+def pin(reference, revision=None, image_revision=None):
     reference = reference.split("@", 1)[0]
     if revision:
         reference = reference.rsplit(":", 1)[0] + ":sha-" + revision[:7]
@@ -130,7 +132,7 @@ def pin(reference, revision=None):
     pinned = f"{reference}@{digest}"
     if revision:
         # Read the label by digest, so a moving tag cannot race this check.
-        require_image_revision(pinned, revision)
+        require_image_revision(pinned, image_revision or revision)
     return pinned
 
 
@@ -180,6 +182,7 @@ def tested_release(revision):
         raise ValueError(
             "The tested release manifest does not match the selected revision"
         )
+    sources = expected_revisions(result)
     for name, reference in result["images"].items():
         repository = expected["images"][name].split("@", 1)[0].rsplit(":", 1)[0]
         if not re.fullmatch(
@@ -187,7 +190,7 @@ def tested_release(revision):
         ):
             raise ValueError(f"Invalid tested image for {name}")
         if name in APPLICATION_IMAGES:
-            require_image_revision(reference, revision)
+            require_image_revision(reference, sources[name])
         elif reference != expected["images"][name]:
             raise ValueError(
                 f"The tested platform image for {name} differs from this checkout"

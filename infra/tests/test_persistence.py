@@ -126,6 +126,31 @@ class PersistenceTests(unittest.TestCase):
                     state["replicas"],
                     {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2},
                 )
+                # All writer updates are submitted together and the call returns
+                # at once: the task states read afterwards prove the stop.
+                stop = [
+                    "service",
+                    "scale",
+                    "--detach=true",
+                    "off-key_api=0",
+                    "radar-runtime=0",
+                ]
+                self.assertIn(stop, commands)
+                # Every writer's task is seen stopped before the backup starts.
+                backup = next(
+                    index
+                    for index, command in enumerate(commands)
+                    if "pg_dumpall" in command or "pg_dump" in command
+                )
+                for task in ("off-key_api-task", "radar-runtime-task"):
+                    self.assertTrue(
+                        any(
+                            command[:3] == ["inspect", "--type", "task"]
+                            and command[-1] == task
+                            for command in commands[commands.index(stop) : backup]
+                        ),
+                        task,
+                    )
                 restore = next(
                     command for command in commands if "pg_restore" in command
                 )
@@ -150,25 +175,12 @@ class PersistenceTests(unittest.TestCase):
                 self.assertFalse(
                     (Path(directory) / "stack/recovery-pending.json").exists()
                 )
-                # The stack's own writers are seen stopped before the runtime
-                # workers are told to stop.
-                stack_stop = commands.index(
-                    ["service", "scale", "--detach", "off-key_api=0"]
-                )
-                worker_stop = commands.index(
-                    ["service", "scale", "--detach", "radar-runtime=0"]
-                )
-                self.assertTrue(
-                    any(
-                        command[:3] == ["inspect", "--type", "task"]
-                        and command[-1] == "off-key_api-task"
-                        for command in commands[stack_stop:worker_stop]
+                # This model has no frontend, so no convergence check follows the
+                # resumption and both scale calls wait for their services.
+                for resumed in ("off-key_api=1", "radar-runtime=2"):
+                    self.assertIn(
+                        ["service", "scale", "--detach=false", resumed], commands
                     )
-                )
-                # This model has no frontend, so each resumed service is awaited.
-                self.assertIn(
-                    ["service", "scale", "--detach=false", "off-key_api=1"], commands
-                )
 
     def test_resumed_services_are_awaited_by_their_scale_or_the_backend_check(self):
         tasks = yaml.safe_load(
@@ -183,11 +195,18 @@ class PersistenceTests(unittest.TestCase):
         )
         # A resumed service is not awaited by its scale call only where the
         # backend convergence check that follows waits for it instead.
-        self.assertIn(
-            "--detach={{ ('frontend' in stack_compose_model.services) | lower }}",
-            tasks[resume]["command"]["argv"],
+        self.assertEqual(tasks[resume]["include_role"]["name"], "swarm_scale")
+        self.assertEqual(
+            tasks[resume]["vars"]["swarm_scale_detach"],
+            "{{ 'frontend' in stack_compose_model.services }}",
         )
         self.assertLess(resume, check)
+        # That check does not cover the runtime workers, so their scale call waits.
+        workers = names.index(
+            "Resume runtime workers with their original replica counts"
+        )
+        self.assertEqual(tasks[workers]["include_role"]["name"], "swarm_scale")
+        self.assertNotIn("swarm_scale_detach", tasks[workers]["vars"])
         self.assertEqual(
             tasks[check]["when"], "'frontend' in stack_compose_model.services"
         )
@@ -220,9 +239,9 @@ class PersistenceTests(unittest.TestCase):
         work.mkdir()
         return work, {"ANSIBLE_ROLES_PATH": str(roles)}
 
-    def test_runtime_workers_stop_only_after_the_stack_writers_have_stopped(self):
+    def test_no_backup_starts_beside_a_writer_whose_task_still_runs(self):
         replicas = {"off-key_postgres": 1, "off-key_api": 1, "radar-runtime": 2}
-        worker_stop = ["service", "scale", "--detach", "radar-runtime=0"]
+        stop = ["service", "scale", "--detach=true", "off-key_api=0", "radar-runtime=0"]
         for task_states in (["running", "shutdown"], ["running"]):
             with (
                 self.subTest(task_states=task_states),
@@ -246,31 +265,31 @@ class PersistenceTests(unittest.TestCase):
                     )
                 )
                 result, state, commands = self.run_cutover(work, **roles)
-                stack_stop = commands.index(
-                    ["service", "scale", "--detach", "off-key_api=0"]
-                )
+                stopped = commands.index(stop)
                 if task_states[-1] == "shutdown":
                     self.assertEqual(
                         result.returncode, 0, result.stdout + result.stderr
                     )
-                    # The first look saw the API's task running. The workers were
-                    # told to stop only after a second look saw it stopped.
+                    # The first look saw the API's task running. The backup
+                    # started only after a second look saw it stopped.
+                    backup = next(
+                        index
+                        for index, command in enumerate(commands)
+                        if "pg_dumpall" in command or "pg_dump" in command
+                    )
                     looks = [
                         command
-                        for command in commands[
-                            stack_stop : commands.index(worker_stop)
-                        ]
+                        for command in commands[stopped:backup]
                         if command[:3] == ["inspect", "--type", "task"]
                         and command[-1] == "off-key_api-task"
                     ]
                     self.assertEqual(len(looks), 2)
                     continue
-                # The API's task never stops: no worker is told to stop, no backup
-                # runs beside the live writer and nothing is replaced.
+                # The API's task never stops: no backup runs beside the live
+                # writer, nothing is replaced and the writers are resumed.
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("Wait for every task to stop", result.stdout)
                 self.assertIn("original writers resumed", result.stdout)
-                self.assertNotIn(worker_stop, commands)
                 self.assertFalse(
                     any(
                         "pg_dump" in command

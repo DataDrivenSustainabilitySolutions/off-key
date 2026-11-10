@@ -1,0 +1,21 @@
+---
+# Submit every desired count before waiting, so independent services converge
+# together. Docker's own wait reports a failed convergence, but it also watches
+# every service for at least five seconds, one service after another. A caller
+# whose next step proves the outcome itself sets swarm_scale_detach and skips that
+# wait; every other caller keeps Docker's synchronous failure reporting. Zero
+# desired replicas still need the caller's actual-task fence before a backup or
+# replacement.
+- name: Scale selected services together and wait for convergence
+  command:
+    argv: "{{ ['docker', 'service', 'scale', '--detach=false'] + (swarm_scale_replicas.items() | map('join', '=') | list) }}"
+  when:
+    - swarm_scale_replicas | length > 0
+    - not (swarm_scale_detach | default(false) | bool)
+
+- name: Scale selected services together and leave the proof to the caller's next check
+  command:
+    argv: "{{ ['docker', 'service', 'scale', '--detach=true'] + (swarm_scale_replicas.items() | map('join', '=') | list) }}"
+  when:
+    - swarm_scale_replicas | length > 0
+    - swarm_scale_detach | default(false) | bool

@@ -1,6 +1,7 @@
 """Health describes current useful activity, independently of cumulative counts."""
 
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from off_key_mqtt_radar.activity import ActivityTracker, evaluate_activity
@@ -34,7 +35,7 @@ def _input(tracker, sensor, clock):
 
 def _health(tracker, *, state="ready", processed_count=10, database_health=None):
     monitor = HealthMonitor(sensor_freshness_seconds=5.0)
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         detector=SimpleNamespace(
             get_health_info=lambda: {
@@ -158,3 +159,23 @@ def test_observations_a_gate_holds_back_are_progress_not_a_stall():
     assert tracker.snapshot()["last_inference_age_seconds"] == 30.0
     clock[0] = 145.0
     assert activity().inference_stalled
+
+
+def test_uptime_follows_the_monotonic_clock_and_reports_utc(monkeypatch):
+    from off_key_mqtt_radar import health_monitor
+
+    clock = SimpleNamespace(
+        monotonic=lambda: 50.0,
+        time=time.time,
+    )
+    monkeypatch.setattr(health_monitor, "time", clock)
+    monitor = HealthMonitor()
+    assert monitor.get_health_status().status == "failed"
+
+    monitor.started_monotonic = 20.0
+    status = monitor.get_health_status()
+
+    # A wall clock set back by an hour would have reported a negative uptime.
+    assert status.uptime_seconds == 30.0
+    assert status.metrics["uptime_seconds"] == 30.0
+    assert status.timestamp.utcoffset() == timedelta(0)

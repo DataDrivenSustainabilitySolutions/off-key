@@ -62,7 +62,7 @@ class RadarMQTTClient:
         self.rate_limiter = deque()  # No maxlen - size controlled by time-based cleanup
 
         # Performance tracking
-        self.connection_time = None
+        self._connected_monotonic: float | None = None
 
         # Event loop for async coordination
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -213,7 +213,7 @@ class RadarMQTTClient:
                     self._connection_result = None
 
             logger.info("event=radar.mqtt_connected")
-            self.connection_time = datetime.now()
+            self._connected_monotonic = time.monotonic()
             self.reconnect_attempts = 0
 
         except BaseException as e:
@@ -555,8 +555,8 @@ class RadarMQTTClient:
             "connected": self.is_connected,
             "coverage": coverage,
             "uptime_seconds": (
-                (datetime.now() - self.connection_time).total_seconds()
-                if self.connection_time
+                time.monotonic() - self._connected_monotonic
+                if self._connected_monotonic is not None
                 else 0
             ),
         }

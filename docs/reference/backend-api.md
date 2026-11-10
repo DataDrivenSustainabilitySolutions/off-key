@@ -44,10 +44,8 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | Retired: always returns 403 | Accounts require an invitation |
 | `POST` | `/auth/accept-invitation` | Activate an invited account | Body: `token`, `password` |
 | `POST` | `/auth/login` | Authenticate and mint a JWT | Body: `email`, `password` |
-| `GET` | `/auth/verify-email` | Retired: always returns 410 | Request a new invitation |
 | `POST` | `/auth/password-reset` | Send reset mail when the account exists; the answer is the same either way | Body: `email` |
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the reset mail | Body: `token`, `new_password` |
 | `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |

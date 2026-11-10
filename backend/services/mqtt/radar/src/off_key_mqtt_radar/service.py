@@ -15,7 +15,6 @@ import signal
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 from off_key_core.config.logs import logger
@@ -99,7 +98,6 @@ class RadarService:
 
         # Service state
         self.is_running = False
-        self.start_time: datetime | None = None
         self.shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
         self._detector_runtime: DetectorRuntime | None = None
@@ -142,7 +140,6 @@ class RadarService:
             return
 
         logger.info("Starting RADAR service", extra=self._log_context)
-        self.start_time = datetime.now()
         self.shutdown_event.clear()
 
         try:

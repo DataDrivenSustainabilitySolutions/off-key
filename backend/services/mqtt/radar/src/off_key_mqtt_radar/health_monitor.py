@@ -55,7 +55,8 @@ class HealthMonitor:
         self.processing_times: deque[float] = deque(maxlen=max_processing_times)
 
         # Service state
-        self.start_time: datetime | None = None
+        # Monotonic, so a clock adjustment cannot skew uptime or throughput.
+        self.started_monotonic: float | None = None
         self._shutdown_event: asyncio.Event | None = None
         self._health_check_task: asyncio.Task | None = None
 
@@ -109,7 +110,7 @@ class HealthMonitor:
         Args:
             shutdown_event: Event signaling service shutdown
         """
-        self.start_time = datetime.now()
+        self.started_monotonic = time.monotonic()
         self._started_at_utc = datetime.now(UTC)
         self._shutdown_event = shutdown_event
         self._health_check_task = asyncio.create_task(self._monitor_loop())
@@ -232,9 +233,7 @@ class HealthMonitor:
 
     def _calculate_throughput(self, message_count: int) -> float:
         """Calculate messages per second throughput."""
-        if not self.start_time:
-            return 0.0
-        uptime = (datetime.now() - self.start_time).total_seconds()
+        uptime = self._uptime_seconds()
         if uptime <= 0:
             return 0.0
         return message_count / uptime
@@ -303,9 +302,9 @@ class HealthMonitor:
         return alerts
 
     def _uptime_seconds(self) -> float:
-        if self.start_time is None:
+        if self.started_monotonic is None:
             return 0.0
-        return (datetime.now() - self.start_time).total_seconds()
+        return time.monotonic() - self.started_monotonic
 
     def _build_health_metrics(
         self,
@@ -387,7 +386,7 @@ class HealthMonitor:
             activity,
         )
 
-        if self.start_time is None:
+        if self.started_monotonic is None:
             status = "failed"
         elif active_alerts:
             status = "degraded"
@@ -406,7 +405,7 @@ class HealthMonitor:
 
         return HealthStatus(
             status=status,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(UTC),
             components=components,
             metrics=metrics,
             active_alerts=active_alerts,

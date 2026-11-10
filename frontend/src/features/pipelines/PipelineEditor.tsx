@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Archive, ArchiveRestore } from "lucide-react";
+import { ActionMenu } from "@/components/ActionMenu";
 import { getErrorMessage } from "@/lib/errors";
 import { pipelinesApi } from "./api";
 import type { PipelineRevisionView, PipelineView } from "./contracts";
@@ -35,26 +38,24 @@ export default function PipelineEditor(props: Props) {
   // Recover existing links to an in-flight start created by earlier releases.
   if (props.activationId && revision) return <PipelineActivation operationId={props.activationId}
     onComplete={props.onStarted} onClose={() => props.onRevision(undefined)} />;
-  return <>
-    <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`}
-      catalog={props.catalog} canEdit={props.canEdit} targets={props.targets} services={props.services} byStream={props.byStream}
-      collectionReady={props.collectionReady} initialTarget={props.initialTarget} initialReading={props.initialReading}
-      initialBindings={props.initialBindings} replaceService={props.replaceService} predecessor={props.predecessor} revisionId={props.revisionId}
-      sourceService={props.sourceService} activationBlocked={props.activationBlocked} onManage={props.onManage}
-      onBack={props.onBack} onStarted={props.onStarted} backLabel={props.backLabel} initialDesign={pipeline}
-      initialDocument={revision ? { definition: revision.definition, layout: pipeline.layout } : undefined} />
-    {props.canEdit && props.catalog.authoring_enabled && <details className="pl-archive">
-      <summary>Template options</summary>
-      <p>{pipeline.archived ? "Restore this template to use it again." : "Archiving removes the template from the active library. Running services and history are kept."}</p>
-      {error && <p className="pl-error" role="alert">{error}</p>}
-      <button type="button" onClick={async () => {
-        try {
-          const current = await pipelinesApi.get(pipeline.id);
-          await pipelinesApi.metadata(pipeline.id, { expected_version: current.version,
-            name: current.name, description: current.description, archived: !current.archived });
-          props.onManage();
-        } catch (reason) { setError(getErrorMessage(reason)); }
-      }}>{pipeline.archived ? "Restore template" : "Archive template"}</button>
-    </details>}
-  </>;
+  // Archiving removes the template from the active library; running services and history are kept.
+  const archive = async () => {
+    try {
+      const current = await pipelinesApi.get(pipeline.id);
+      await pipelinesApi.metadata(pipeline.id, { expected_version: current.version,
+        name: current.name, description: current.description, archived: !current.archived });
+      props.onManage();
+    } catch (reason) { toast.error(getErrorMessage(reason), { id: "pipeline-template-archive" }); }
+  };
+  const options = props.canEdit && props.catalog.authoring_enabled
+    ? <ActionMenu label="Template options" actions={[{ label: pipeline.archived ? "Restore template" : "Archive template",
+      icon: pipeline.archived ? ArchiveRestore : Archive, destructive: !pipeline.archived, onSelect: () => void archive() }]} />
+    : undefined;
+  return <PipelineCreate key={`${pipeline.id}:${props.revisionId ?? "draft"}:${props.sourceService?.id ?? ""}:${props.sourceService?.replace ? "replace" : "copy"}`}
+    catalog={props.catalog} canEdit={props.canEdit} targets={props.targets} services={props.services} byStream={props.byStream}
+    collectionReady={props.collectionReady} initialTarget={props.initialTarget} initialReading={props.initialReading}
+    initialBindings={props.initialBindings} replaceService={props.replaceService} predecessor={props.predecessor} revisionId={props.revisionId}
+    sourceService={props.sourceService} activationBlocked={props.activationBlocked} onManage={props.onManage}
+    onBack={props.onBack} onStarted={props.onStarted} backLabel={props.backLabel} initialDesign={pipeline}
+    initialDocument={revision ? { definition: revision.definition, layout: pipeline.layout } : undefined} menu={options} />;
 }

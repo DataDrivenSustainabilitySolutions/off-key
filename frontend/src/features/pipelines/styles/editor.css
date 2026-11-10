@@ -10,7 +10,6 @@
 }
 
 .pl-design-settings,
-.pl-archive,
 .pl-history {
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
@@ -20,7 +19,6 @@
 }
 
 .pl-design-settings summary,
-.pl-archive summary,
 .pl-history summary {
   cursor: pointer;
   font-weight: 500;
@@ -194,14 +192,6 @@
 
 .pl-slots {
   margin: 15px 0;
-}
-
-.pl-archive {
-  margin-top: 24px;
-}
-
-.pl-archive button {
-  color: #dc2626;
 }
 
 .pl-error,

@@ -137,6 +137,16 @@ describe("revealNode", () => {
     }
   });
 
+  it("keeps a revealed component above a bottom sheet covering more than half the canvas", async () => {
+    const start = { x: 0, y: 0, zoom: 1 };
+    const { flow, instance } = canvas([{ id: "model", x: 50, y: 400, width: 100, height: 80 }], { viewport: start });
+
+    await revealNode(instance, surface(400, 600), "model", VIEW_MARGIN, { bottom: 348 });
+
+    // 252 px stay uncovered, so the card ends a margin above the sheet.
+    expect(flow.setViewport).toHaveBeenCalledExactlyOnceWith({ x: 0, y: 252 - VIEW_MARGIN - 480, zoom: 1 }, { duration: 200 });
+  });
+
   it.each([
     ["the component is gone", "removed", surface(500, 300)],
     ["the surface has no size yet", "model", surface(500, 0)],

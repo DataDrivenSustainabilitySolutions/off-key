@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { CircleCheck, Plus, TriangleAlert, X } from "lucide-react";
 import type { PipelineCatalog } from "./contracts";
@@ -8,10 +8,12 @@ import { PipelineInspector } from "./PipelineInspector";
 import { PipelineToolbox } from "./PipelineToolbox";
 import { isWarning } from "./scope";
 import { startupSentence, startupSummary, type Startup } from "./startup";
+import type { CoveredEdges } from "./viewport";
 import { useUndoShortcuts } from "./useGraphEditor";
+import { usePlaceToasts } from "@/hooks/use-toast-position";
 
 export type InspectorPanel = "service" | "component" | null;
-type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale"> & {
+type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues" | "features" | "featuresStale" | "insets"> & {
   catalog: PipelineCatalog;
   validation?: ComponentProps<typeof PipelineInspector>["validation"];
   settings?: ReactNode;
@@ -30,12 +32,46 @@ type Props = Omit<ComponentProps<typeof PipelineCanvas>, "components" | "issues"
   /** Why the latest automatic check failed; the status chip offers to check again. */
   validationError?: string;
   onRetryValidation?: () => void;
+  /** Fills its container: the header, toolbar and settings float over the canvas. */
+  stage?: boolean;
+  /** Floats above the toolbar on a stage, such as the service name and its actions. */
+  header?: ReactNode;
 };
+
+/** How far a stage's floating header and settings reach over its canvas, in pixels. */
+function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, top: RefObject<HTMLElement | null>,
+  panel: RefObject<HTMLElement | null>, open: boolean) {
+  const [covered, setCovered] = useState<CoveredEdges>();
+  useLayoutEffect(() => {
+    if (!stage) return;
+    const measure = () => {
+      const area = canvas.current?.getBoundingClientRect();
+      const header = top.current?.getBoundingClientRect();
+      const settings = open ? panel.current?.getBoundingClientRect() : undefined;
+      if (!area || !header) return;
+      // Beside the canvas the settings cover its right edge; as a bottom sheet, its bottom.
+      const side = !!settings?.width && settings.left > area.left + 1;
+      const next = {
+        top: Math.max(0, Math.round(header.bottom - area.top)),
+        right: side ? Math.max(0, Math.round(area.right - settings.left)) : 0,
+        bottom: settings?.height && !side ? Math.max(0, Math.round(area.bottom - settings.top)) : 0,
+      };
+      setCovered((previous) => previous?.top === next.top && previous.right === next.right
+        && previous.bottom === next.bottom ? previous : next);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    for (const element of [canvas.current, top.current, panel.current]) if (element) observer.observe(element);
+    return () => observer.disconnect();
+  }, [stage, canvas, top, panel, open]);
+  return covered;
+}
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
   catalog, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
-  onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, ...props
+  onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, ...props
 }: Props) {
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -73,6 +109,12 @@ export function PipelineWorkbench({
   const componentButton = useRef<HTMLButtonElement>(null);
   const addedFromMenu = useRef(false);
   const menu = useRef<HTMLDivElement>(null);
+  const top = useRef<HTMLDivElement>(null);
+  const settingsPanel = useRef<HTMLDivElement>(null);
+  const stageCanvas = useRef<HTMLDivElement>(null);
+  const insets = useCoveredEdges(stage, stageCanvas, top, settingsPanel, !!panel);
+  // The stage's own actions sit at the top right, where toasts would cover them.
+  usePlaceToasts(stage ? "bottom-center" : undefined);
   useEffect(() => () => { if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current); }, []);
   const finishDrag = () => {
     if (dragFrame.current !== undefined) cancelAnimationFrame(dragFrame.current);
@@ -109,121 +151,130 @@ export function PipelineWorkbench({
     setView("graph");
     props.onAdd(...args);
   };
-  return <div className="pl-workbench">
-    <div className="pl-canvas-toolbar">
-      <div className="pl-actions">
-        {!props.readOnly && <Popover.Root open={adding} onOpenChange={setMenu}>
-          <Popover.Trigger><Plus size={16} aria-hidden="true" />Add step</Popover.Trigger>
-          <Popover.Portal><div className={`pl-component-portal${dragging ? " is-dragging" : ""}`}>
-            <Popover.Content ref={menu} className="pl-library pl-component-menu" align="start" sideOffset={8} collisionPadding={12}
-            aria-label="Add a step" onOpenAutoFocus={(event) => {
-              // Typing narrows the steps at once; Close stays one Shift+Tab away.
-              const search = menu.current?.querySelector<HTMLInputElement>("input[type='search']");
-              if (!search) return;
+  const toolbar = <div className="pl-canvas-toolbar">
+    <div className="pl-actions">
+      {!props.readOnly && <Popover.Root open={adding} onOpenChange={setMenu}>
+        <Popover.Trigger><Plus size={16} aria-hidden="true" />Add step</Popover.Trigger>
+        <Popover.Portal><div className={`pl-component-portal${dragging ? " is-dragging" : ""}`}>
+          <Popover.Content ref={menu} className="pl-library pl-component-menu" align="start" sideOffset={8} collisionPadding={12}
+          aria-label="Add a step" onOpenAutoFocus={(event) => {
+            // Typing narrows the steps at once; Close stays one Shift+Tab away.
+            const search = menu.current?.querySelector<HTMLInputElement>("input[type='search']");
+            if (!search) return;
+            event.preventDefault();
+            search.focus();
+          }} onCloseAutoFocus={(event) => {
+            if (addedFromMenu.current) {
               event.preventDefault();
-              search.focus();
-            }} onCloseAutoFocus={(event) => {
-              if (addedFromMenu.current) {
-                event.preventDefault();
-                addedFromMenu.current = false;
-                heading.current?.focus({ preventScroll: true });
-              }
-            }}>
-            <div className="pl-component-menu-heading"><h3>Add a step</h3>
-              <Popover.Close aria-label="Close steps"><X size={16} aria-hidden="true" /></Popover.Close>
-            </div>
-            <PipelineToolbox components={catalog.components} document={props.document} onAdd={add}
-              onSelect={(id) => { setMenu(false); select(id); }}
-              onDragStart={() => {
-                // Keep the source visible until the browser captures its drag image.
-                dragFrame.current = requestAnimationFrame(() => {
-                  dragFrame.current = undefined;
-                  setDragging(true);
-                });
-              }}
-              onDragEnd={() => setMenu(false)} />
-          </Popover.Content></div></Popover.Portal>
-        </Popover.Root>}
-        {actions}
-        <div className="pl-segmented pl-view-switch" role="group" aria-label="View">
-          {(["graph", "features"] as const).map((item) => <button type="button" key={item}
-            aria-pressed={view === item} onClick={() => setView(item)}>
-            {item === "graph" ? "Graph" : "Features"}
-          </button>)}
-        </div>
-      </div>
-      <div className="pl-actions" aria-label="Settings panels">
-        {(status || failed) && <Popover.Root open={issuesOpen} onOpenChange={setIssuesOpen}>
-          <Popover.Trigger className={`pl-issue-status${failed || errors ? " has-issues" : warnings ? " has-warnings" : ""}${
-            checking ? " is-checking" : ""}`}
-            aria-label={`${statusLabel}${checking ? ", checking changes" : ""}`}>
-            {failed ? <><TriangleAlert size={15} aria-hidden="true" />Not checked</>
-              : errors
-                ? <><TriangleAlert size={15} aria-hidden="true" />{issueCount} {errors === 1 ? "issue" : "issues"}</>
-                : <><CircleCheck size={15} aria-hidden="true" />Valid
-                  {warningCount && <span className="pl-issue-warnings">· {warningCount}</span>}
-                  {estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
-          </Popover.Trigger>
-          <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8} collisionPadding={12}
-            aria-label="Graph validation">
-            <div className="pl-component-menu-heading">
-              <h3>{failed ? "Graph not checked" : status?.valid && !errors ? "Valid processing graph" : "Validation errors"}</h3>
-              <Popover.Close aria-label="Close validation"><X size={16} aria-hidden="true" /></Popover.Close>
-            </div>
-            {failed ? <>
-              <p className="pl-help" role="alert">The latest changes could not be checked. {validationError}</p>
-              {onRetryValidation && <button type="button" onClick={onRetryValidation}>Check again</button>}
-            </> : status && <>
-              {checking && <p className="pl-help" role="status">Checking the latest changes…</p>}
-              {status.issues_truncated && <p className="pl-help">Additional validation messages were omitted.
-                Resolve the listed issues to see the rest.</p>}
-              {status.issues.length > 0 && <ul>{status.issues.map((issue, index) => {
-                // Warnings are marked by name too, not only by their colour.
-                const label = isWarning(issue) ? `Warning: ${issue.message}` : undefined;
-                return <li key={index} className={isWarning(issue) ? "is-warning" : undefined}>
-                  {issue.node_id
-                    ? <button type="button" aria-label={label} onClick={() => { setIssuesOpen(false); select(issue.node_id!); }}>{issue.message}</button>
-                    : <span aria-label={label}>{issue.message}</span>}
-                </li>;
-              })}</ul>}
-              {!errors && <>
-                {!warnings && <p className="pl-help">The compiler accepts this graph.</p>}
-                {startup && <p className="pl-help">{startupSentence(startup)}</p>}
-              </>}
-            </>}
-          </Popover.Content></Popover.Portal>
-        </Popover.Root>}
-        {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
-          aria-expanded={panel === "service"} aria-controls={panelId}
-          onClick={() => panel === "service" ? close() : setPanel("service")}>Service</button>}
-        <button type="button" ref={componentButton} aria-label="Step settings"
-          aria-expanded={panel === "component"} aria-controls={panelId}
-          onClick={() => panel === "component" ? close() : setPanel("component")}>Step</button>
+              addedFromMenu.current = false;
+              heading.current?.focus({ preventScroll: true });
+            }
+          }}>
+          <div className="pl-component-menu-heading"><h3>Add a step</h3>
+            <Popover.Close aria-label="Close steps"><X size={16} aria-hidden="true" /></Popover.Close>
+          </div>
+          <PipelineToolbox components={catalog.components} document={props.document} onAdd={add}
+            onSelect={(id) => { setMenu(false); select(id); }}
+            onDragStart={() => {
+              // Keep the source visible until the browser captures its drag image.
+              dragFrame.current = requestAnimationFrame(() => {
+                dragFrame.current = undefined;
+                setDragging(true);
+              });
+            }}
+            onDragEnd={() => setMenu(false)} />
+        </Popover.Content></div></Popover.Portal>
+      </Popover.Root>}
+      {actions}
+      <div className="pl-segmented pl-view-switch" role="group" aria-label="View">
+        {(["graph", "features"] as const).map((item) => <button type="button" key={item}
+          aria-pressed={view === item} onClick={() => setView(item)}>
+          {item === "graph" ? "Graph" : "Features"}
+        </button>)}
       </div>
     </div>
-    <div className={`pl-editor-grid${panel ? " pl-editor-grid--settings" : ""}`}>
-      {view === "features"
-        ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
-          stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
-          onChange={(document) => props.onChange(document)} />
-        : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
-          features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} />}
-      {panel && <div className="pl-settings-panel" id={panelId} onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
-          event.stopPropagation(); close();
-        }
-      }}>
-        <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
-          validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
-          onChange={props.onChange} input={input}
-          header={<div className="pl-inspector-heading">
-            <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
-            <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
-              <X size={16} aria-hidden="true" />
-            </button>
-          </div>}
-          content={panel === "service" ? settings : undefined} />
+    <div className="pl-actions" aria-label="Settings panels">
+      {(status || failed) && <Popover.Root open={issuesOpen} onOpenChange={setIssuesOpen}>
+        <Popover.Trigger className={`pl-issue-status${failed || errors ? " has-issues" : warnings ? " has-warnings" : ""}${
+          checking ? " is-checking" : ""}`}
+          aria-label={`${statusLabel}${checking ? ", checking changes" : ""}`}>
+          {failed ? <><TriangleAlert size={15} aria-hidden="true" />Not checked</>
+            : errors
+              ? <><TriangleAlert size={15} aria-hidden="true" />{issueCount} {errors === 1 ? "issue" : "issues"}</>
+              : <><CircleCheck size={15} aria-hidden="true" />Valid
+                {warningCount && <span className="pl-issue-warnings">· {warningCount}</span>}
+                {estimate && <span className="pl-issue-startup">· first alarm after {estimate}</span>}</>}
+        </Popover.Trigger>
+        <Popover.Portal><Popover.Content className="pl-library pl-issue-popover" align="end" sideOffset={8} collisionPadding={12}
+          aria-label="Graph validation">
+          <div className="pl-component-menu-heading">
+            <h3>{failed ? "Graph not checked" : status?.valid && !errors ? "Valid processing graph" : "Validation errors"}</h3>
+            <Popover.Close aria-label="Close validation"><X size={16} aria-hidden="true" /></Popover.Close>
+          </div>
+          {failed ? <>
+            <p className="pl-help" role="alert">The latest changes could not be checked. {validationError}</p>
+            {onRetryValidation && <button type="button" onClick={onRetryValidation}>Check again</button>}
+          </> : status && <>
+            {checking && <p className="pl-help" role="status">Checking the latest changes…</p>}
+            {status.issues_truncated && <p className="pl-help">Additional validation messages were omitted.
+              Resolve the listed issues to see the rest.</p>}
+            {status.issues.length > 0 && <ul>{status.issues.map((issue, index) => {
+              // Warnings are marked by name too, not only by their colour.
+              const label = isWarning(issue) ? `Warning: ${issue.message}` : undefined;
+              return <li key={index} className={isWarning(issue) ? "is-warning" : undefined}>
+                {issue.node_id
+                  ? <button type="button" aria-label={label} onClick={() => { setIssuesOpen(false); select(issue.node_id!); }}>{issue.message}</button>
+                  : <span aria-label={label}>{issue.message}</span>}
+              </li>;
+            })}</ul>}
+            {!errors && <>
+              {!warnings && <p className="pl-help">The compiler accepts this graph.</p>}
+              {startup && <p className="pl-help">{startupSentence(startup)}</p>}
+            </>}
+          </>}
+        </Popover.Content></Popover.Portal>
+      </Popover.Root>}
+      {settings && <button type="button" ref={serviceButton} aria-label="Service settings"
+        aria-expanded={panel === "service"} aria-controls={panelId}
+        onClick={() => panel === "service" ? close() : setPanel("service")}>Service</button>}
+      <button type="button" ref={componentButton} aria-label="Step settings"
+        aria-expanded={panel === "component"} aria-controls={panelId}
+        onClick={() => panel === "component" ? close() : setPanel("component")}>Step</button>
+    </div>
+  </div>;
+  const canvas = view === "features"
+    ? <PipelineFeatures document={props.document} components={catalog.components} report={validation ?? lastValidation}
+      stale={checking || failed} selected={props.selected} readOnly={props.readOnly} onSelect={select}
+      onChange={(document) => props.onChange(document)} />
+    : <PipelineCanvas {...props} components={catalog.components} issues={validation?.issues}
+      features={(validation ?? lastValidation)?.features} featuresStale={checking || failed} onSelect={select} onAdd={add} insets={insets} />;
+  const settingsContent = panel && <div className="pl-settings-panel" id={panelId} ref={settingsPanel} onKeyDown={(event) => {
+    if (event.key === "Escape" && !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
+      event.stopPropagation(); close();
+    }
+  }}>
+    <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
+      validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
+      onChange={props.onChange} input={input}
+      header={<div className="pl-inspector-heading">
+        <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
+        <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">
+          <X size={16} aria-hidden="true" />
+        </button>
       </div>}
+      content={panel === "service" ? settings : undefined} />
+  </div>;
+  if (stage) return <div className={`pl-workbench pl-stage pl-stage--${view}`}
+    style={{ "--pl-covered-right": `${insets?.right ?? 0}px` } as CSSProperties}>
+    <div className="pl-stage-canvas" ref={stageCanvas}>{canvas}</div>
+    <div className="pl-stage-top" ref={top}>{header}{toolbar}</div>
+    <div className="pl-stage-body">{settingsContent}</div>
+  </div>;
+  return <div className="pl-workbench">
+    {toolbar}
+    <div className={`pl-editor-grid${panel ? " pl-editor-grid--settings" : ""}`}>
+      {canvas}
+      {settingsContent}
     </div>
   </div>;
 }

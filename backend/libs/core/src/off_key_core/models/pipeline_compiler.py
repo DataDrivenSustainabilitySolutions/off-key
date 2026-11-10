@@ -469,9 +469,10 @@ def _validate_values(compilation: _Compilation) -> None:
 
 
 def _online(compilation: _Compilation, node: PipelineNode) -> bool:
+    """Whether a detector runs on the stream: it learns there or is pretrained."""
     if compilation.legacy:
         return compilation.definition.strategy == "adaptive_stream"
-    return component_learning(node.component) == "online"
+    return component_learning(node.component) in ("online", "pretrained")
 
 
 def _validate_model(compilation: _Compilation) -> None:
@@ -519,7 +520,10 @@ def _learned(compilation: _Compilation) -> dict[str, str]:
 
 
 def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None:
-    """A detector reads only steps that learn as it does."""
+    """A detector reads only steps that learn as it does.
+
+    A pretrained detector has learned already, so it reads no step that learns.
+    """
     for identifier, node in compilation.nodes.items():
         if node.kind != "detector" or identifier not in modes:
             continue
@@ -528,7 +532,9 @@ def _validate_branches(compilation: _Compilation, modes: dict[str, str]) -> None
             if other is None or other == modes[identifier]:
                 continue
             reason = (
-                "it learns continuously, and the detector is fitted once."
+                "the detector is pretrained and reads only steps that do not learn."
+                if modes[identifier] == "pretrained"
+                else "it learns continuously, and the detector is fitted once."
                 if other == "online"
                 else "it is fitted once, and the detector learns continuously."
             )
@@ -546,13 +552,21 @@ def _validate_learning(compilation: _Compilation) -> None:
     modes = _learned(compilation)
     _validate_branches(compilation, modes)
     for identifier, node in compilation.nodes.items():
-        if node.component == "policy.martingale" and any(
-            modes.get(item) == "online" for item in _ancestors(compilation, identifier)
-        ):
+        if node.component != "policy.martingale":
+            continue
+        upstream = {modes.get(item) for item in _ancestors(compilation, identifier)}
+        if "online" in upstream:
             compilation.error(
                 "calibration",
                 "The conformal alarm policy needs detectors that stop learning "
                 "before calibration. Use the calibrated score threshold.",
+                identifier,
+            )
+        elif "pretrained" in upstream:
+            compilation.error(
+                "calibration",
+                "The conformal alarm policy does not run on a pretrained "
+                "forecaster. Use the calibrated score threshold.",
                 identifier,
             )
 

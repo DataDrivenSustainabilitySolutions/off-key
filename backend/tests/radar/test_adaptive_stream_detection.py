@@ -19,7 +19,10 @@ from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamState,
 )
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.execution_errors import ObservationRejected
+from off_key_mqtt_radar.execution_errors import (
+    FatalExecutionError,
+    ObservationRejected,
+)
 from pydantic import ValidationError
 
 from tests.support import forecast_service
@@ -423,8 +426,12 @@ def test_timestral_step_scores_a_break_in_the_cycle_through_the_service(
     assert detector.state is AdaptiveStreamState.OPERATIONAL
     assert max(scores[24:]) < 0.5
     assert spike.anomaly_score > 10 * max(scores[24:], default=0.0) + 1
-    # One forecast per value, from the sixteenth on; the weights stay in the service.
-    assert service["calls"] == [("POST", "http://forecast/v1/forecast")] * 26
+    # The first value asks for the model, then one forecast per value from the
+    # sixteenth on; the weights stay in the service.
+    assert service["calls"] == [
+        ("POST", "http://forecast/v1/downloads"),
+        *[("POST", "http://forecast/v1/forecast")] * 26,
+    ]
     assert detector.model_capabilities["warmup"] == {
         "minimum": 16 + lead - 1,
         "unit": "events",
@@ -476,6 +483,20 @@ def test_timestral_outage_rejects_observations_and_the_run_recovers(
     monkeypatch.setitem(service, "down", False)
     result = detector.process_data_point({"x0": 140.0})
     assert result.anomaly_score > 1 and result.is_anomaly
+
+
+def test_timestral_run_ends_when_the_service_does_not_offer_the_checkpoint(
+    monkeypatch, tmp_path
+):
+    forecast_service.start(
+        monkeypatch, tmp_path, checkpoints=("mistralai/Timestral-28M",)
+    )
+    detector = AdaptiveStreamDetectionService(_timestral())
+
+    with pytest.raises(FatalExecutionError, match="does not offer") as error:
+        detector.process_data_point({"x0": 100.0})
+    assert "mistralai/Timestral-5M" in str(error.value)
+    assert detector.state is AdaptiveStreamState.FAILED
 
 
 def test_timestral_settings_are_checked_before_a_run_starts(monkeypatch, tmp_path):

@@ -12,7 +12,7 @@ from off_key_core.schemas.forecast import QUANTILE_LEVELS
 from off_key_forecast.api import create_app
 from off_key_forecast.providers import naive_providers
 from off_key_forecast.registry import ModelRegistry
-from off_key_mqtt_radar.execution_errors import ObservationRejected
+from off_key_mqtt_radar.execution_errors import FatalExecutionError, ObservationRejected
 from off_key_mqtt_radar.forecasting import (
     ForecastClient,
     ForecastServiceError,
@@ -95,7 +95,8 @@ def test_service_forecaster_is_an_aberrant_forecaster(service):
     for index in range(7):
         forecaster.learn_one(_cycle(index))
     assert not forecaster.is_ready and forecaster.forecast_one() is None
-    assert service[1] == []
+    # The first value asks the service to have the model ready, and no more.
+    assert service[1] == [("POST", "http://forecast/v1/downloads")]
 
     forecaster.learn_one(_cycle(7))
     forecast = forecaster.forecast_one()
@@ -192,7 +193,8 @@ def test_an_outage_gives_no_forecast_and_forecasts_resume(service):
 
     assert forecaster.forecast_one() is None
     assert forecaster.forecast_one() is None
-    assert forecaster.failures == 2
+    # The first value could not ask for the model either.
+    assert forecaster.failures == 3
     assert "unreachable" in forecaster.last_error
 
     available[0] = True
@@ -263,9 +265,100 @@ def test_detector_scores_zero_before_the_forecaster_is_ready(service):
     for index in range(9):
         assert detector.score_one({"x": _cycle(index)}) == 0.0
         detector.learn_one({"x": _cycle(index)})
-    assert service[1] == [("POST", "http://forecast/v1/forecast")] * 2
+    assert service[1] == [
+        ("POST", "http://forecast/v1/downloads"),
+        *[("POST", "http://forecast/v1/forecast")] * 2,
+    ]
     with pytest.raises(TypeError, match="forecast service"):
         ServiceResidualDetector(object(), "x")
+
+
+class _Clock:
+    """The forecaster's monotonic clock, moved by hand."""
+
+    def __init__(self, monkeypatch):
+        self.now = 1000.0
+        monkeypatch.setattr(
+            "off_key_mqtt_radar.forecasting.time.monotonic", lambda: self.now
+        )
+
+
+def test_first_value_asks_for_the_model_and_asks_again_after_an_outage(
+    service, monkeypatch
+):
+    clock = _Clock(monkeypatch)
+    available = [False]
+
+    def client():
+        if not available[0]:
+            raise ForecastServiceError("Forecast service is unreachable: refused")
+        return service[0]()
+
+    forecaster = ServiceForecaster(
+        MODEL, horizon=1, context_length=16, minimum_context=8, client=client
+    )
+    forecaster.learn_one(_cycle(0))
+    available[0] = True
+    forecaster.learn_one(_cycle(1))
+    assert service[1] == []
+
+    # Half a minute later the service is asked again, and then not any more.
+    clock.now += 30.0
+    forecaster.learn_one(_cycle(2))
+    clock.now += 3600.0
+    forecaster.learn_one(_cycle(3))
+    assert service[1] == [("POST", "http://forecast/v1/downloads")]
+    assert forecaster.prepare().status == "ready"
+
+    # A restored worker asks once more: its service may be another one.
+    assert forecaster.__getstate__()["_prepare_at"] == 0.0
+
+
+def test_a_model_the_service_does_not_offer_ends_the_run(service):
+    forecaster = ServiceForecaster("timestral/unknown", client=service[0])
+
+    with pytest.raises(FatalExecutionError, match="does not offer timestral/unknown"):
+        forecaster.learn_one(1.0)
+    with pytest.raises(FatalExecutionError, match="Unknown model"):
+        forecaster.prepare()
+
+
+def test_a_service_that_hangs_is_left_alone_for_a_while(service, monkeypatch):
+    clock = _Clock(monkeypatch)
+    hanging = [False]
+    asked = []
+
+    def transport(method, url, body, headers):
+        asked.append(url)
+        if hanging[0]:
+            clock.now += 10.0
+            raise ForecastServiceError("Forecast service is unreachable: timed out")
+        return service[0]()._send(method, url, body, headers)
+
+    forecaster = ServiceForecaster(
+        MODEL,
+        horizon=1,
+        context_length=16,
+        minimum_context=4,
+        client=lambda: ForecastClient(
+            "http://forecast", token=TOKEN, transport=transport
+        ),
+    )
+    for index in range(8):
+        forecaster.learn_one(_cycle(index))
+    hanging[0] = True
+    del asked[:]
+
+    # One request waits out the timeout; the next values do not wait again.
+    for _ in range(5):
+        assert forecaster.forecast_one() is None
+    assert len(asked) == 1 and forecaster.failures == 5
+    assert "timed out" in forecaster.last_error
+
+    hanging[0] = False
+    clock.now += 15.0
+    assert forecaster.forecast_one() is not None
+    assert forecaster.last_error is None
 
 
 @pytest.mark.parametrize(
@@ -285,3 +378,24 @@ def test_service_forecaster_rejects_settings_out_of_range(params):
         ServiceForecaster(MODEL, client=lambda: None, **params)
     with pytest.raises(ValueError):
         ServiceForecaster("", client=lambda: None)
+
+
+def test_preflight_of_a_timestral_design_needs_no_forecast_service(monkeypatch):
+    from off_key_core.schemas.radar import AdaptiveStreamConfig
+    from off_key_mqtt_radar.preflight import preflight
+
+    from tests.support.form_pipeline import form_radar_config
+
+    monkeypatch.delenv("FORECAST_API_URL", raising=False)
+    monitoring = AdaptiveStreamConfig(
+        model_type="forecast.timestral",
+        model_params={"context_length": 32, "minimum_context": 16, "lead": 2},
+        training_window_size=20,
+        calibration_window_size=4,
+    )
+
+    report = preflight(form_radar_config(monitoring, ["telemetry/c1/x0"]).pipeline)
+
+    # The target image checks the settings; the service is asked when values arrive.
+    assert report["ok"]
+    assert report["capabilities"]["warmup"] == {"minimum": 17, "unit": "events"}

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import time
 import urllib.error
 import urllib.request
@@ -46,7 +47,7 @@ from off_key_core.schemas.forecast import (
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .execution_errors import ObservationRejected
+from .execution_errors import FatalExecutionError, ObservationRejected
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,12 @@ logger = logging.getLogger(__name__)
 _IQR_DEVIATIONS = 1.349
 # A failing service is logged at most this often per forecaster.
 _FAILURE_LOG_SECONDS = 60.0
+# A service that could not be asked to have a model ready is asked again after this.
+_PREPARE_SECONDS = 30.0
+# A service that took this long to fail is not asked again for a while, so a
+# worker does not wait out a timeout for every value while the service hangs.
+_SLOW_FAILURE_SECONDS = 2.0
+_PAUSE_SECONDS = 15.0
 
 # (method, url, body, headers) -> (status, body)
 Transport = Callable[[str, str, bytes | None, dict[str, str]], tuple[int, bytes]]
@@ -230,6 +237,11 @@ class ServiceForecaster:
     change, a missed forecast can be made later from the same values:
     ``forecast_from(back)`` forecasts as of ``back`` values ago.
 
+    The first value asks the service to have the model ready, so weights it
+    has to download are usually there before the first forecast is due. A
+    service that does not offer the model ends the run: no later value could
+    be scored either.
+
     ``client`` makes the connection on first use; without one the worker's
     environment says where the service is. It is stored in checkpoints by
     reference, so it must be a module-level function.
@@ -281,10 +293,55 @@ class ServiceForecaster:
         self.failures = 0
         self.last_error: str | None = None
         self._logged_at = 0.0
+        # When the service is next asked to have the model ready, and until
+        # when it is left alone after a slow failure; both on the monotonic clock.
+        self._prepare_at = 0.0
+        self._paused_until = 0.0
 
     def learn_one(self, y: float) -> None:
         self._values.append(float(y))
         self.n_samples_seen += 1
+        if time.monotonic() >= self._prepare_at:
+            self.prepare()
+
+    def prepare(self) -> ForecastModelInfo | None:
+        """Ask the service to have the model ready, downloading it if needed.
+
+        Returns the model as the service describes it, or ``None`` when the
+        service could not be asked; it is then asked again later.
+
+        Raises:
+            FatalExecutionError: The service does not offer the model.
+        """
+        try:
+            info = self._ask(lambda client: client.request_download(self.model))
+        except ForecastServiceError:
+            self._prepare_at = time.monotonic() + _PREPARE_SECONDS
+            return None
+        self._prepare_at = math.inf
+        return info
+
+    def _ask(self, request: Callable[[ForecastClient], Any]) -> Any:
+        """One request to the service, with its failure counted and explained."""
+        started = time.monotonic()
+        try:
+            if started < self._paused_until:
+                raise ForecastServiceError(
+                    self.last_error or "Forecast service is not asked again yet"
+                )
+            if self._client is None:
+                self._client = (self._client_factory or service_client)()
+            return request(self._client)
+        except ForecastServiceError as error:
+            now = time.monotonic()
+            if now - started >= _SLOW_FAILURE_SECONDS:
+                self._paused_until = now + _PAUSE_SECONDS
+            self._failed(error)
+            if error.status == 404:
+                raise FatalExecutionError(
+                    f"The forecast service does not offer {self.model}: {error}"
+                ) from error
+            raise
 
     def context(self, back: int = 0) -> list[float]:
         """The values the model reads for a forecast made ``back`` values ago."""
@@ -302,18 +359,15 @@ class ServiceForecaster:
         origin = self.n_samples_seen - back
         if origin < self.minimum_context:
             return None
-        try:
-            if self._client is None:
-                self._client = (self._client_factory or service_client)()
-            response = self._client.forecast(
+        response = self._ask(
+            lambda client: client.forecast(
                 self.model, [self.context(back)], self._horizon
             )
+        )
+        try:
             forecast = forecast_from_quantiles(
                 origin, response.levels, response.quantiles[0], self.min_scale
             )
-        except ForecastServiceError as error:
-            self._failed(error)
-            raise
         except (ValueError, IndexError) as error:
             self._failed(error)
             raise ForecastServiceError(
@@ -335,13 +389,17 @@ class ServiceForecaster:
         if now - self._logged_at >= _FAILURE_LOG_SECONDS:
             self._logged_at = now
             logger.warning(
-                "No forecast from %s (%d so far): %s", self.model, self.failures, error
+                "Forecast service did not answer for %s (%d so far): %s",
+                self.model,
+                self.failures,
+                error,
             )
 
     def __getstate__(self) -> dict[str, Any]:
-        # A checkpoint keeps the values, not the connection.
+        # A checkpoint keeps the values, not the connection or this worker's clock.
         state = self.__dict__.copy()
         state["_client"] = None
+        state["_logged_at"] = state["_prepare_at"] = state["_paused_until"] = 0.0
         return state
 
     def __repr__(self) -> str:

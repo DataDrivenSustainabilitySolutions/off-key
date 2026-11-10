@@ -42,16 +42,18 @@ def client() -> ForecastClient:
     return ForecastClient("http://forecast", transport=transport)
 
 
-def start(monkeypatch, cache_dir: Path, season_length: int = 1) -> dict:
+def start(
+    monkeypatch,
+    cache_dir: Path,
+    season_length: int = 1,
+    checkpoints: tuple[str, ...] = TIMESTRAL_CHECKPOINTS,
+) -> dict:
     """Serve the Timestral checkpoints to every forecaster RADAR builds.
 
     Returns the service's state: its ``calls``, and ``down`` to take it away.
     """
     registry = ModelRegistry(
-        [
-            StandInCheckpoint(checkpoint, season_length)
-            for checkpoint in TIMESTRAL_CHECKPOINTS
-        ],
+        [StandInCheckpoint(checkpoint, season_length) for checkpoint in checkpoints],
         cache_dir,
     )
     monkeypatch.setitem(_STATE, "http", TestClient(create_app(registry, None)))

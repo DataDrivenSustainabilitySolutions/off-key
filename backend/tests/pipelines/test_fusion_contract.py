@@ -1,6 +1,7 @@
 """Designs whose policy combines up to four detectors: compiler and settings."""
 
 import pytest
+from off_key_core.models.pipeline_catalog import editor_components
 from off_key_core.models.pipelines import (
     derive_monitoring_config,
     pipeline_components,
@@ -88,14 +89,19 @@ def test_combine_is_left_out_at_its_default_and_with_one_detector():
     strongest = validate_pipeline(fused_definition(fusion="max"))
     default = validate_pipeline(fused_definition())
     average = validate_pipeline(fused_definition(fusion="mean"))
-    policy = {node.id: node for node in average.definition.nodes}["policy"]
+    # The calibration step holds the setting; the schema 1 form keeps it on
+    # the policy, as the editor knows it.
+    calibration = {node.id: node for node in average.definition.nodes}["calibrate"]
+    policy = next(
+        node
+        for node in average.definition.model_dump()["nodes"]
+        if node["id"] == "policy"
+    )
 
     assert strongest.fingerprint == default.fingerprint != average.fingerprint
-    assert policy.params["fusion"] == "mean"
-    assert (
-        "fusion"
-        not in {node.id: node for node in default.definition.nodes}["policy"].params
-    )
+    assert calibration.params["fusion"] == "mean"
+    assert policy["params"]["fusion"] == "mean"
+    assert not any("fusion" in node.params for node in default.definition.nodes)
     # One detector has nothing to combine, so the setting does not change it.
     single = template("adaptive_stream").model_dump(mode="json")
     plain = validate_pipeline(PipelineDefinition.model_validate(single))
@@ -132,9 +138,15 @@ def test_run_settings_hold_the_first_detector_and_the_policy_without_combine(
 
 
 def test_both_policies_offer_combine_in_the_catalog():
-    for component in pipeline_components():
-        if component.kind != "policy":
-            continue
+    # The editor's catalog keeps the setting on the policies until it shows
+    # the calibration step, which holds it in the compiler's catalog.
+    calibrations = [
+        item for item in pipeline_components() if item.kind == "calibration"
+    ]
+    for component in [
+        *calibrations,
+        *(item for item in editor_components() if item.kind == "policy"),
+    ]:
         field = next(item for item in component.fields if item.name == "fusion")
         assert (field.label, field.type, field.options, field.default) == (
             "Combine detectors",

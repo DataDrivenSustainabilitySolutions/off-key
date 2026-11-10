@@ -23,8 +23,10 @@ def test_maximum_graph_executes_once_per_node_with_observation_equivalence(
     workload, edges
 ):
     execution = build_workload(workload, trees=2)
-    assert len(execution.definition.nodes) == 64
-    assert len(execution.definition.edges) == edges
+    # The schema 1 form: the policy still combines the detectors.
+    design = execution.definition.model_dump()
+    assert len(design["nodes"]) == 64
+    assert len(design["edges"]) == edges
     assert len(execution.bindings) == 100
     values = observations(100, 128, seed=42)
     clean = StreamRunner(execution, observed=False)
@@ -116,21 +118,23 @@ def test_readiness_reasons_and_dependencies_stay_bounded_at_graph_limits(charact
     for edge in execution.definition.edges:
         edge.source, edge.target = identifiers[edge.source], identifiers[edge.target]
     diagnostics = PipelineDiagnostics(execution)
+    # The schema 1 form, as this runtime reports it.
+    design = execution.definition.model_dump()
     parents = {
-        node.id: tuple(
-            edge.source for edge in execution.definition.edges if edge.target == node.id
+        node["id"]: tuple(
+            edge["source"] for edge in design["edges"] if edge["target"] == node["id"]
         )
-        for node in execution.definition.nodes
+        for node in design["nodes"]
     }
     diagnostics.readiness(
         [
             NodeState(
-                node.id,
+                identifier,
                 123,
                 Readiness(False, 123, 100_000, character * 10_000),
-                parents[node.id],
+                sources,
             )
-            for node in execution.definition.nodes
+            for identifier, sources in parents.items()
         ]
     )
     snapshot = diagnostics.snapshot()

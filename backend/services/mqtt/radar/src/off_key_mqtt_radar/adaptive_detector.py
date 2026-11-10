@@ -50,7 +50,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         checkpoint: dict[str, Any] | None = None,
     ) -> None:
         self._init_pipeline_execution(config)
-        if self.plan.execution.definition.strategy != "adaptive_stream":
+        if self.plan.execution.definition.lane != "adaptive_stream":
             raise ValueError("Adaptive execution requires an adaptive pipeline")
         self._scored_features: dict[str, float] | None = None
         # The bound readings of the current observation, before any Prepare step.

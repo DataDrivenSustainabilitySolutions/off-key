@@ -15,7 +15,9 @@ export async function dropPipelineComponent(page: Page, component: string, nodeI
     const area = element.closest(".react-flow")!.getBoundingClientRect();
     return { x: area.x + matrix.e, y: area.y + matrix.f, zoom: matrix.a };
   });
-  const target = { x: 163, y: 127 };
+  // The page's header and toolbar float over the top of the canvas; drop below them.
+  const covered = await page.locator(".pl-stage-top").evaluate((element) => element.getBoundingClientRect().bottom);
+  const target = { x: 163, y: Math.max(127, Math.ceil(covered - bounds.y) + 127) };
   // Drag events can round fractional screen coordinates. Measure the actual
   // pointer delivered to the canvas rather than assuming the requested target.
   await canvas.evaluate((element) => {

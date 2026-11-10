@@ -32,7 +32,7 @@ export type DatasetFromHistory = {
   name: string;
   description?: string;
   reading_ids: Array<string>;
-  start: string;
+  start?: string | null;
   end: string;
 };
 
@@ -102,6 +102,10 @@ export type DatasetView = {
 
 export type DojoModel = Record<string, unknown>;
 
+export type LabelBatch = {
+  labels: Array<LabelCreate>;
+};
+
 export type LabelChange = {
   start_at?: string | null;
   end_at?: string | null;
@@ -125,6 +129,23 @@ export type LabelOutcome = {
   outcome: "detected" | "missed" | "unscored";
   first_alarm_at: string | null;
   delay_seconds: number | null;
+};
+
+export type LabelSuggestion = {
+  start_at: string;
+  end_at: string;
+  alarm_count: number;
+  monitor_ids: Array<string>;
+  reading_ids: Array<string>;
+};
+
+export type LabelSuggestionList = {
+  items: Array<LabelSuggestion>;
+  truncated: boolean;
+};
+
+export type LabelSuggestionQuery = {
+  gap_seconds?: number;
 };
 
 export type LabelView = {
@@ -264,4 +285,4 @@ export type RunView = {
   stats: Record<string, number>;
 };
 
-export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, labels: 500, comparedRuns: 3 } as const;
+export const DOJO_LIMITS = { uploadBytes: 104857600, series: 64, points: 5000000, pointsPage: 10000, resultsPage: 10000, labels: 500, comparedRuns: 6 } as const;

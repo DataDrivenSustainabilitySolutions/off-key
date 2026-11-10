@@ -11,6 +11,7 @@ export type DataKind = NonNullable<PipelineComponent["output_type"]>;
 export const dataKinds: Record<DataKind, { label: string }> = {
   features: { label: "Features" },
   scores: { label: "Scores" },
+  forecasts: { label: "Forecasts" },
   p_values: { label: "P-values" },
   decisions: { label: "Decisions" },
   evidence: { label: "Evidence" },

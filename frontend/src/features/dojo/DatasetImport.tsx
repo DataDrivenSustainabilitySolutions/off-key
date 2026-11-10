@@ -112,7 +112,18 @@ export function CsvImportDialog({ open, onOpenChange, onCreated }: {
   </ImportDialog>;
 }
 
-const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Windows offered for a copy; each ends now. `null` copies everything retention has kept. */
+const WINDOWS = [
+  { id: "all", label: "Everything stored", span: null },
+  { id: "30d", label: "Last 30 days", span: 30 * DAY_MS },
+  { id: "7d", label: "Last 7 days", span: 7 * DAY_MS },
+  { id: "24h", label: "Last 24 hours", span: DAY_MS },
+  { id: "custom", label: "Custom", span: undefined },
+] as const;
+type WindowId = (typeof WINDOWS)[number]["id"];
 
 /** Copy recorded readings of the catalogue selection for one window. */
 export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, readings }: {
@@ -124,25 +135,37 @@ export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, read
   const numeric = useMemo(() => readings.filter(item => item.value_type === "number").slice(0, DOJO_LIMITS.series), [readings]);
   const [chosen, setChosen] = useState<Set<string> | null>(null);
   const [name, setName] = useState("");
+  const [windowId, setWindowId] = useState<WindowId>("all");
   const [start, setStart] = useState(() => toLocalInput(Date.now() - 7 * DAY_MS));
   const [end, setEnd] = useState(() => toLocalInput(Date.now()));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const selected = chosen ?? new Set(numeric.map(item => item.id));
+  const custom = windowId === "custom";
   const startAt = fromLocalInput(start), endAt = fromLocalInput(end);
-  const windowValid = !!startAt && !!endAt && endAt > startAt;
+  const windowValid = !custom || (!!startAt && !!endAt && endAt > startAt);
   const close = (next: boolean) => {
-    if (!next) { setChosen(null); setName(""); setError(""); }
+    if (!next) { setChosen(null); setName(""); setError(""); setWindowId("all"); }
     onOpenChange(next);
   };
+  /** The window to copy, measured when the copy starts so "now" is current. */
+  const copyWindow = (): { start?: string; end: string } | undefined => {
+    if (custom) return startAt && endAt ? { start: startAt, end: endAt } : undefined;
+    const now = Date.now();
+    const span = WINDOWS.find(item => item.id === windowId)?.span ?? null;
+    // A second past now keeps a value that arrives while the dialog is open.
+    const until = new Date(now + 1000).toISOString();
+    return span === null ? { end: until } : { start: new Date(now - span).toISOString(), end: until };
+  };
   const submit = async () => {
-    if (!startAt || !endAt) return;
+    const chosenWindow = copyWindow();
+    if (!chosenWindow) return;
     setBusy(true); setError("");
     try {
       const dataset = await dojoApi.importHistory({
         name: (name.trim() || scope || "Recorded readings").slice(0, 120),
         reading_ids: numeric.filter(item => selected.has(item.id)).map(item => item.id),
-        start: startAt, end: endAt,
+        ...chosenWindow,
       });
       close(false);
       onCreated(dataset);
@@ -167,12 +190,21 @@ export function HistoryImportDialog({ open, onOpenChange, onCreated, scope, read
       </fieldset>}
     <label className="dj-field">Name<input maxLength={120} value={name} disabled={busy} placeholder={scope ?? "Recorded readings"}
       onChange={event => setName(event.target.value)} /></label>
-    <div className="dj-field-row">
-      <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy}
-        onChange={event => setStart(event.target.value)} /></label>
-      <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy}
-        onChange={event => setEnd(event.target.value)} /></label>
-    </div>
-    {!windowValid && <p className="dj-error">The end must be after the start.</p>}
+    <fieldset className="dj-field"><legend>Window</legend><div className="dj-choices">
+      {WINDOWS.map(item => <label key={item.id}><input type="radio" name="history-window" checked={windowId === item.id}
+        disabled={busy} onChange={() => setWindowId(item.id)} />{item.label}</label>)}
+    </div></fieldset>
+    {custom ? <>
+      <div className="dj-field-row">
+        <label className="dj-field">From<input type="datetime-local" step={1} value={start} disabled={busy}
+          onChange={event => setStart(event.target.value)} /></label>
+        <label className="dj-field">To<input type="datetime-local" step={1} value={end} disabled={busy}
+          onChange={event => setEnd(event.target.value)} /></label>
+      </div>
+      {!windowValid && <p className="dj-error">The end must be after the start.</p>}
+    </> : <p className="dj-help">{windowId === "all"
+      ? "From the first value still stored up to now. Retention decides how far back that reaches."
+      : "Ends now."} A dataset holds at most {DOJO_LIMITS.points.toLocaleString()} values; choose a shorter window if the
+      copy is refused.</p>}
   </ImportDialog>;
 }

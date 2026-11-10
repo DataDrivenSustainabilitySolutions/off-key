@@ -1,16 +1,17 @@
 import { epochMilliseconds } from "@/lib/timestamps";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Tag, Trash2 } from "lucide-react";
 import { useConfirm } from "@/hooks/use-confirm";
 import { getErrorMessage } from "@/lib/errors";
-import type { DatasetView, LabelView } from "@/types/dojo.generated";
+import type { DatasetView, LabelSuggestion, LabelView } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { EChart } from "../charts/EChart";
 import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
 import { datasetChartOption } from "./dojo-chart";
 import { CHART_POINTS, useSeriesPoints } from "./hooks";
-import { formatInstant, fromLocalInput, toLocalInput } from "./model";
+import { LabelSuggestions } from "./LabelSuggestions";
+import { formatInstant, fromLocalInput, suggestionNote, toLocalInput } from "./model";
 
 const SHOWN_SERIES = 4;
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -48,6 +49,13 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
     if (await act(() => dojoApi.createLabel(dataset.id, { start_at: startAt, end_at: endAt, note: note.trim() }))) {
       setStart(""); setEnd(""); setNote("");
     }
+  };
+  const loadSuggestions = useCallback((signal: AbortSignal) => dojoApi.labelSuggestions(dataset.id, {}, signal), [dataset.id]);
+  // All or nothing: a refused suggestion leaves the labels as they were.
+  const addSuggested = (items: LabelSuggestion[]) => void act(() => dojoApi.createLabels(dataset.id, {
+    labels: items.map(item => ({ start_at: item.start_at, end_at: item.end_at, note: suggestionNote(item) })) }));
+  const adjust = (item: LabelSuggestion) => {
+    setStart(toLocalInput(item.start_at)); setEnd(toLocalInput(item.end_at)); setNote(suggestionNote(item));
   };
   const remove = async (label: LabelView) => {
     if (!await confirm({ title: "Delete label?", description: `${formatInstant(label.start_at)} – ${formatInstant(label.end_at)}`,
@@ -98,6 +106,8 @@ export function LabelsPanel({ dataset, labels, onLabelsChange }: {
         <button type="button" className="dj-danger" disabled={busy} aria-label="Delete label"
           onClick={() => void remove(label)}><Trash2 size={14} /></button>
       </li>)}</ul>}
+    <LabelSuggestions dataset={dataset} labels={labels} busy={busy} load={loadSuggestions} onAdd={addSuggested}
+      onAdjust={adjust} />
     {confirmation}
   </div>;
 }

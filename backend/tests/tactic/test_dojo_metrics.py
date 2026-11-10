@@ -17,6 +17,7 @@ from off_key_core.db.models import (
     User,
 )
 from off_key_core.schemas.dojo import (
+    MAX_COMPARED_RUNS,
     ComparisonQuery,
     CsvImportQuery,
     LabelChange,
@@ -314,8 +315,10 @@ async def test_a_comparison_puts_runs_of_one_dataset_side_by_side(sessions):
     assert [item.start_at for item in comparison.labels] == [at(30)]
     with pytest.raises(SchemaError, match="only once"):
         ComparisonQuery(run_ids=[eager, eager])
-    with pytest.raises(SchemaError):
-        ComparisonQuery(run_ids=["a", "b", "c", "d"])
+    ids = [f"r{index}" for index in range(MAX_COMPARED_RUNS)]
+    assert ComparisonQuery(run_ids=ids).run_ids == ids
+    with pytest.raises(SchemaError, match=f"at most {MAX_COMPARED_RUNS}"):
+        ComparisonQuery(run_ids=[*ids, "one more"])
 
 
 async def dataset_of(factory, creator):
@@ -399,7 +402,7 @@ async def test_routes_label_a_dataset_and_compare_runs(sessions):
         )
         too_many = await client.get(
             f"{base}/comparison",
-            params={"run_ids": ["a", "b", "c", "d"]},
+            params={"run_ids": [f"r{index}" for index in range(MAX_COMPARED_RUNS + 1)]},
             headers=headers,
         )
         overlapping = await client.post(

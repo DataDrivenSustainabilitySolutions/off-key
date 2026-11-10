@@ -1,8 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the first invariant-enforcement commit, carrying migration 025
-and Aberrant 1.4.0 numerics, before the runtime connection lookup correction.
-It is not an eligible production release and proves no pre-feature compatibility.
+The reference is the commit that adds the seasonal forecast detector to the
+generated catalog, carrying migration 025 and Aberrant 1.4.0 numerics. It is not
+an eligible production release and proves no pre-feature compatibility.
 """
 
 import argparse
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from support import ROOT, run
 
-COMPATIBLE_REVISION = "9311f9937e605da9b4be5a9903f08de4da79dade"
+COMPATIBLE_REVISION = "b03157ece337fd42a427e8eb26b4364b67942a53"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

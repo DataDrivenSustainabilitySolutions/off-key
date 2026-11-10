@@ -12,6 +12,7 @@ import { buildMonitoringIndex, readingTargetId, serviceName, servicesForScope } 
 import { useMonitoringServices } from "@/domain/monitoring/useMonitoringServices";
 import { useCatalogue } from "../workspace/catalogue-context";
 import { SourceScope } from "../workspace/SourceScope";
+import { CopyToDojo } from "../dojo/CopyToDojo";
 import { withCatalogueSource } from "../workspace/catalogue-navigation";
 import "../monitoring/monitoring.css";
 
@@ -44,13 +45,18 @@ export function ExplorerWorkspace() {
   const selectedService = monitoring.services.find(service => service.id === requestedService);
   const favourites = useMemo(() => new Set(starred.filter(item => item.kind === "monitor").map(item => item.id)), [starred]);
   const preview = selected && (selected.entityKind === "stream" || params.has("entity") || params.get("inspect") === "source");
+  const previewReadings = useMemo(() => {
+    const ids = new Set(streamIds ?? []);
+    return document.readings.filter(stream => ids.has(stream.id));
+  }, [document.readings, streamIds]);
   const readingDetail = selected?.entityKind === "stream" && !creating && !requestedService && !pipelineView;
   // Service detail and setup carry their own breadcrumb and heading.
   const ownHeading = !loadingCreation && !(selectionMissing && !pipelineView)
     && (pipelineView || creating && manageMonitors || !!requestedService && !!selectedService);
+  const selectedLabel = selected && (selected.entityKind === "stream"
+    ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label);
   useDocumentTitle(selectedService ? serviceName(selectedService, monitoringIndex.inputs.get(selectedService.id) ?? [])
-    : creating ? "New service" : pipelineView ? "Templates" : selected && (selected.entityKind === "stream"
-      ? document.readings.find(stream => stream.id === selected.objectId)?.label ?? selected.label : selected.label), "Monitoring");
+    : creating ? "New service" : pipelineView ? "Templates" : selectedLabel, "Monitoring");
   useEffect(() => {
     rememberNavigation(monitoringNavigationKey(userId), `/${params.size ? `?${params}` : ""}`);
   }, [userId, params]);
@@ -104,6 +110,7 @@ export function ExplorerWorkspace() {
         error={system.error} onRename={rename} onEdit={openEditor}
         runtime={system.snapshot?.runtime} collapseDefinition favourite={starred.some(item => item.kind === "reading" && item.id === selected.objectId)}
         onFavourite={id => toggleFavourite("reading", id)}
+        actions={<CopyToDojo compact scope={selectedLabel ?? selected.label} readings={previewReadings} />}
         collectionControls={selected.entityKind !== "stream" && !!streamIds?.length && <p className="ex-muted">
           Recording enabled for {streamIds.filter(id => {
             const policy = system.snapshot?.runtime.bindings?.[id]?.policy;

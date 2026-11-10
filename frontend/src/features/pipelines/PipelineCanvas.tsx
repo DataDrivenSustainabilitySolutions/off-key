@@ -20,7 +20,7 @@ import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
 import { PipelineNodeCard } from "./PipelineNodeCard";
 import { PipelineGrid } from "./PipelineGrid";
-import { fitReadableView, revealNode } from "./viewport";
+import { fitReadableView, revealNode, VIEW_MARGIN, type CoveredEdges } from "./viewport";
 import type { CanvasNode, HistoryMode, PlacementRequest } from "./types";
 import { PipelineEdge, type RoutedEdge } from "./PipelineEdge";
 import { PipelineToolbox } from "./PipelineToolbox";
@@ -39,6 +39,13 @@ function displaced(definition: GraphDocument["definition"], source: string, targ
 const nodeName = (document: GraphDocument, components: PipelineComponent[], id: string) =>
   nodeOptionLabeler(document, components)(document.definition.nodes.find((node) => node.id === id));
 const edgeTypes = { pipeline: PipelineEdge };
+
+/** Fit padding that keeps the graph clear of floating controls, plus a margin of room. */
+function fitPadding(covered: CoveredEdges | undefined, room: number, fallback: number) {
+  if (!covered?.top && !covered?.right && !covered?.bottom) return fallback;
+  const side = (edge = 0) => `${edge + room}px` as const;
+  return { top: side(covered.top), right: side(covered.right), bottom: side(covered.bottom), left: side() };
+}
 type Props = {
   document: GraphDocument;
   components: PipelineComponent[];
@@ -59,6 +66,8 @@ type Props = {
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
   onAdd: (componentId: string, position?: { x: number; y: number }) => void;
   onBeginMove?: () => void;
+  /** Edges that floating controls cover; fitting and revealing keep cards out from under them. */
+  insets?: CoveredEdges;
 };
 
 export default function PipelineCanvas({
@@ -77,6 +86,7 @@ export default function PipelineCanvas({
   onChange,
   onAdd,
   onBeginMove,
+  insets,
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
@@ -96,18 +106,20 @@ export default function PipelineCanvas({
   }, []);
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
   const surface = useRef<HTMLDivElement>(null);
+  const covered = useRef(insets);
+  useEffect(() => { covered.current = insets; }, [insets]);
   const lastFit = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!flow || !surface.current || lastFit.current === fitRequest) return;
     lastFit.current = fitRequest;
-    void fitReadableView(flow, surface.current, selected);
+    void fitReadableView(flow, surface.current, selected, covered.current);
   }, [fitRequest, flow, selected]);
   const lastReveal = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!flow || !surface.current || !reveal || lastReveal.current === reveal.request) return;
     lastReveal.current = reveal.request;
     const frame = requestAnimationFrame(() => {
-      if (surface.current) void revealNode(flow, surface.current, reveal.id);
+      if (surface.current) void revealNode(flow, surface.current, reveal.id, VIEW_MARGIN, covered.current);
     });
     return () => cancelAnimationFrame(frame);
   }, [flow, reveal]);
@@ -120,7 +132,7 @@ export default function PipelineCanvas({
       setInserted(undefined);
       const element = surface.current;
       if (!element) return;
-      void revealNode(flow, element, inserted);
+      void revealNode(flow, element, inserted, VIEW_MARGIN, covered.current);
       const focused = element.ownerDocument.activeElement;
       if (!focused || focused === element.ownerDocument.body)
         element.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(inserted)}"]`)
@@ -139,11 +151,16 @@ export default function PipelineCanvas({
       const width = element.getBoundingClientRect().width;
       if (width === previous) return;
       previous = width;
-      if (selectedRef.current) void revealNode(flow, element, selectedRef.current);
+      if (selectedRef.current) void revealNode(flow, element, selectedRef.current, VIEW_MARGIN, covered.current);
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, [flow]);
+  // A floating settings panel covers the canvas instead of narrowing it.
+  useEffect(() => {
+    if (flow && surface.current && selectedRef.current && (insets?.right || insets?.bottom))
+      void revealNode(flow, surface.current, selectedRef.current, VIEW_MARGIN, insets);
+  }, [flow, insets]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
   // Escape releases the selection so Delete cannot remove a component the user moved away from.
   // An open settings panel or popover consumes the first Escape itself.
@@ -433,12 +450,12 @@ export default function PipelineCanvas({
           }}
         >
           <PipelineGrid />
-          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: 0.15 }}>
+          <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitPadding(insets, 48, 0.15) }}>
             <ControlButton
               className="pl-canvas-scale"
               aria-label="Readable size"
               title="Return to readable size"
-              onClick={() => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected); }}
+              onClick={() => { if (flow && surface.current) void fitReadableView(flow, surface.current, selected, insets); }}
             >
               {Math.round(zoom * 100)}%
             </ControlButton>
@@ -460,7 +477,7 @@ export default function PipelineCanvas({
                     nodes: [{ id: selected }],
                     minZoom: 1,
                     maxZoom: 1,
-                    padding: 0.5,
+                    padding: fitPadding(insets, 0, 0.5),
                   });
               }}
             >

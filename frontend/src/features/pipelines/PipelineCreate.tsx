@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { LayoutGrid, Play, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -43,6 +43,8 @@ export type PipelineSetupProps = {
   activationBlocked?: string; onManage: () => void; onBack: () => void; onStarted: (id: string) => void;
   /** Names where onBack leads, for the breadcrumb. */
   backLabel?: string;
+  /** Extra controls beside the setup's actions, such as a template's archive option. */
+  menu?: ReactNode;
 };
 
 function startingSetup(catalog: PipelineCatalog, id?: string, target?: MonitoringTarget, reading?: string) {
@@ -212,12 +214,12 @@ export function PipelineCreate(props: PipelineSetupProps) {
       {target && props.collectionReady && !unrecorded.length && <Link to={recordingHref}>Review recording in Sources</Link>}
     </div>
   </div>;
-  return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
-    <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
-      current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
+  const header = <>
     <header className="pl-header pl-setup-header">
-      <h1 className="ex-sr-only">{title}</h1>
       <div className="pl-setup-identity">
+        <Breadcrumb disabled={busy} steps={[{ label: props.backLabel ?? "Monitoring", onClick: props.onBack }]}
+          current={replaceId ? "Update service" : initialDesign ? initialDesign.name : "New service"} />
+        <h1 className="ex-sr-only">{title}</h1>
         <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
           disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
           value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
@@ -233,7 +235,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
           </button>
         </div>
       </div>
-      <div className="pl-actions pl-setup-actions">
+      {(canAuthor || props.menu) && <div className="pl-actions pl-setup-actions">
         {canAuthor && <>
           <PipelineTemplateMenu catalog={catalog} disabled={busy} onLoading={setLoadingTemplate} onManage={props.onManage} onLoad={load}
             onBuiltIn={(id) => { const item = catalog.templates.find((item) => item.id === id)!;
@@ -243,26 +245,31 @@ export function PipelineCreate(props: PipelineSetupProps) {
           <PipelineSaveTemplate name={template?.name ?? draft.name} description={template?.description ?? draft.description}
             existing={!!template} disabled={busy} saving={saving} error={saveState.message} conflict={saveState.conflict}
             onSave={async (details) => !!await session.save(details)} />
-          <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
-            <Play size={15} />{checking ? "Checking…" : replaceId ? "Update monitoring" : "Start monitoring"}</button>
         </>}
-      </div>
+        {props.menu}
+        {canAuthor && <button type="button" className="mn-primary" disabled={busy} onClick={() => void start()}>
+          <Play size={15} />{checking ? "Checking…" : replaceId ? "Update monitoring" : "Start monitoring"}</button>}
+      </div>}
     </header>
-    {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
-      : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
-    {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
-    {error && <p className="pl-error" role="alert">{error}</p>}
-    <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
-    {waitingForRecording ? <p className="pl-warning" role="status">Waiting for recording settings to apply.
-      {target && <> <Link to={recordingHref}>Review recording in Sources</Link></>}
-    </p>
-      : unrecorded.length > 0 && <p className="pl-notice" role="status">
-        Recording is off for {unrecorded.length} {unrecorded.length === 1 ? "reading" : "readings"}.{" "}
-        <Link to={recordingHref}>Turn on recording in Sources</Link>
-      </p>}
-    {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
-    {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.</p>}
-    <PipelineWorkbench catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
+    <div className="pl-setup-notices">
+      {!canAuthor && <p className="pl-warning" role="status">{initialDesign?.archived ? "This template is archived. Restore it from the template library to edit it."
+        : props.canEdit ? "Monitoring configuration is disabled for this deployment." : "Configuring monitoring services needs the Manage monitors permission."}</p>}
+      {session.restored && dirty && <p className="pl-notice" role="status">Restored your unsaved setup from this browser tab.</p>}
+      {error && <p className="pl-error" role="alert">{error}</p>}
+      <PipelineApplyStatus apply={apply} onInspect={id => { select(id); setInspectorPanel("component"); }} />
+      {waitingForRecording ? <p className="pl-warning" role="status">Waiting for recording settings to apply.
+        {target && <> <Link to={recordingHref}>Review recording in Sources</Link></>}
+      </p>
+        : unrecorded.length > 0 && <p className="pl-notice" role="status">
+          Recording is off for {unrecorded.length} {unrecorded.length === 1 ? "reading" : "readings"}.{" "}
+          <Link to={recordingHref}>Turn on recording in Sources</Link>
+        </p>}
+      {props.activationBlocked && !locked && <p className="pl-warning" role="status">{props.activationBlocked}</p>}
+      {replaceId && !locked && <p className="pl-warning">Updating replaces “{replaceService?.display_name ?? "the selected service"}”. Monitoring pauses briefly and learning restarts. History is kept.</p>}
+    </div>
+  </>;
+  return <section className="pl-editor pl-setup" aria-label={initialDesign ? "Pipeline editor" : "Monitoring workbench"}>
+    <PipelineWorkbench stage header={header} catalog={catalog} document={draft.document} validation={displayedValidation} readOnly={!canAuthor || locked || checking}
       inspectorPanel={inspectorPanel} onInspectorPanelChange={setInspectorPanel} input={inputStep} startup={startup}
       validationError={metadata.error} onRetryValidation={metadata.retry}
       selected={selected} fitRequest={fitRequest} reveal={graph.reveal} onSelect={select} onChange={commit} onAdd={add}

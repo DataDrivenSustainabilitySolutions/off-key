@@ -3,21 +3,33 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
+from .pipeline_versions import Learning, Strategy, derived_strategy, downgrade, upgrade
 from .public_names import public
 
 # The one monitoring-strategy vocabulary; forms, pipelines and RADAR share it.
-PipelineStrategy = Literal["static_baseline", "adaptive_stream"]
+PipelineStrategy = Strategy
 DEFAULT_TRAINING_WINDOW_SIZE = 1200
 DEFAULT_CALIBRATION_WINDOW_SIZE = 360
-NodeKind = Literal["source", "transform", "merge", "detector", "policy", "output"]
+NodeKind = Literal[
+    "source", "transform", "merge", "detector", "calibration", "policy", "output"
+]
 # Errors block applying a design; warnings are shown and do not.
 IssueSeverity = Literal["error", "warning"]
-PortType = Literal["features", "scores", "p_values", "decisions", "evidence"]
+PortType = Literal[
+    "features", "scores", "forecasts", "p_values", "decisions", "evidence"
+]
 MAX_PIPELINE_EXECUTION_BYTES = 96 * 1024
 # Detectors that can feed one policy, and how the policy combines them.
 MAX_DETECTORS = 4
@@ -62,13 +74,55 @@ class PipelineSettings(PipelineModel):
 
 
 class PipelineDefinition(PipelineModel):
-    schema_version: Literal[1] = 1
-    strategy: PipelineStrategy = "static_baseline"
+    """A monitoring design; held as schema 2, written as schema 1 when it can be.
+
+    ``strategy`` is the lane a schema 1 design was made in. It stays checked
+    until the editor stops offering lanes; a schema 2 design leaves it unset.
+    """
+
+    schema_version: Literal[1, 2] = 1
+    strategy: PipelineStrategy | None = None
     input_slots: list[InputSlot] = Field(default_factory=list, max_length=100)
     # Drafts intentionally allow incomplete/disconnected graphs.
     nodes: list[PipelineNode] = Field(default_factory=list, max_length=64)
     edges: list[PipelineEdge] = Field(default_factory=list, max_length=128)
     settings: PipelineSettings = Field(default_factory=PipelineSettings)
+
+    @model_validator(mode="after")
+    def upgrade_schema_1(self) -> "PipelineDefinition":
+        """Read a schema 1 design as schema 2, after its own limits held."""
+        if self.schema_version == 1:
+            data = upgrade(
+                {
+                    "schema_version": 1,
+                    "strategy": self.strategy or "static_baseline",
+                    "nodes": self.nodes,
+                    "edges": self.edges,
+                }
+            )
+            self.schema_version = 2
+            self.strategy = data["strategy"]
+            self.nodes = [PipelineNode.model_validate(item) for item in data["nodes"]]
+            self.edges = [PipelineEdge.model_validate(item) for item in data["edges"]]
+        return self
+
+    @property
+    def lane(self) -> PipelineStrategy | None:
+        """The runtime that runs this design until one runtime runs them all:
+        its schema 1 lane, or the one all its learned steps share."""
+        if self.strategy is not None:
+            return self.strategy
+        return derived_strategy([node.model_dump() for node in self.nodes])
+
+    @model_serializer(mode="wrap")
+    def schema_1_when_possible(self, handler, info):
+        data = downgrade(handler(self))
+        if info.exclude_defaults and data.get("schema_version") == 1:
+            # Schema 1's own defaults, as a schema 1 design always left them out.
+            data.pop("schema_version")
+            if data.get("strategy") == "static_baseline":
+                data.pop("strategy")
+        return data
 
 
 class CanvasPosition(PipelineModel):
@@ -218,6 +272,14 @@ class PipelineValidation(PipelineModel):
         return self.detector_ids[0]
 
     @property
+    def calibration_id(self) -> str | None:
+        """The step that turns detector scores into what the policy decides on."""
+        return next(
+            (node.id for node in self.definition.nodes if node.kind == "calibration"),
+            None,
+        )
+
+    @property
     def policy_id(self) -> str:
         return self._node_id("policy")
 
@@ -303,6 +365,7 @@ class PipelineComponent(PipelineModel):
     label: str
     description: str
     strategies: list[PipelineStrategy]
+    learning: Learning = "none"
     parameter_schema: dict[str, Any] = Field(default_factory=dict)
     fields: list[ComponentField] = Field(default_factory=list)
     input_type: PortType | None = "features"

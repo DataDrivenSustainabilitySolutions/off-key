@@ -139,7 +139,7 @@ def _fusion_state(plan: ExecutionPlan) -> int:
     rows = plan.compiled.definition.settings.calibration_window_size
     width = len(plan.detector_ids)
     numeric = 5 * rows * width * 8
-    if plan.compiled.definition.strategy == "adaptive_stream":
+    if plan.compiled.definition.lane == "adaptive_stream":
         row = sys.getsizeof([0.0] * width) + width * sys.getsizeof(0.0)
         numeric += rows * (row + calcsize("P")) + sys.getsizeof([])
     return numeric
@@ -152,7 +152,7 @@ def estimate_resources(plan: ExecutionPlan, memory_limit_mb: int) -> ResourceEst
         definition.settings.training_window_size
         + definition.settings.calibration_window_size
     )
-    static = definition.strategy == "static_baseline"
+    static = definition.lane == "static_baseline"
     # Static baselines buffer what the learned stage reads: the readings, or
     # the prepared columns when the design has a Prepare stage.
     columns = plan.input_columns

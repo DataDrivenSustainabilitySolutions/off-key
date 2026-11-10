@@ -1555,6 +1555,88 @@
         "type": "object"
       }
     },
+    "aberrant_seasonal_residual_detector": {
+      "algorithm_family": "time_series",
+      "available": true,
+      "bound_parameters": [
+        "key"
+      ],
+      "catalog_id": "seasonal_residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": true,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": null,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "alpha": 0.2,
+        "beta": 0.05,
+        "gamma": 0.1,
+        "min_scale": 1e-06,
+        "normalize": true,
+        "residual_alpha": 0.05
+      },
+      "import_path": "aberrant.model.timeseries.SeasonalResidualDetector",
+      "name": "Aberrant SeasonalResidualDetector",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "alpha": {
+            "default": 0.2,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "beta": {
+            "default": 0.05,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "gamma": {
+            "default": 0.1,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "normalize": {
+            "default": true,
+            "type": "boolean"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "season_length": {
+            "maximum": 500000,
+            "minimum": 2,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_length"
+        ],
+        "type": "object"
+      }
+    },
     "aberrant_stream_random_histogram_forest": {
       "algorithm_family": "isolation_forest",
       "available": true,

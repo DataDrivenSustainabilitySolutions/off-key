@@ -47,15 +47,6 @@ _ANOMALY_IDENTITY_JOIN = and_(
 )
 
 
-def _anomaly_listing():
-    return (
-        select(AnomalyIdentity.anomaly_id, Anomaly)
-        .select_from(Anomaly)
-        .join(AnomalyIdentity, _ANOMALY_IDENTITY_JOIN)
-        .order_by(Anomaly.timestamp.desc())
-    )
-
-
 def _has_sensor_set() -> ColumnElement[bool]:
     # Rows written before sensor sets, and manual alarms, store SQL or JSON null.
     return (
@@ -350,6 +341,27 @@ class AnomalyRepository:
             .group_by(Anomaly.charger_id, keys.c.value)
         )
         return [(entity, key, count) for entity, key, count in result.all()]
+
+    async def timeline(
+        self, filters: AnomalyFilters, *, limit: int
+    ) -> list[tuple[datetime, str, str, str, object]]:
+        """Matching alarms oldest first: when, by which monitor, about what."""
+        result = await self._session.execute(
+            select(
+                Anomaly.timestamp,
+                Anomaly.service_id,
+                Anomaly.charger_id,
+                Anomaly.telemetry_type,
+                Anomaly.sensor_set,
+            )
+            .where(*_matching(filters))
+            .order_by(Anomaly.timestamp, Anomaly.service_id)
+            .limit(limit)
+        )
+        return [
+            (timestamp, monitor, entity, key, sensor_set)
+            for timestamp, monitor, entity, key, sensor_set in result.all()
+        ]
 
     async def count_since(self, *, since: datetime | None = None) -> int:
         query = select(func.count()).select_from(Anomaly)

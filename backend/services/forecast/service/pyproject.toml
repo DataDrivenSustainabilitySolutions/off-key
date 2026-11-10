@@ -1,0 +1,37 @@
+[project]
+name = "off-key-forecast"
+version = "0.1.0"
+description = "Shared forecast service with pretrained forecasting models for the off-key platform"
+authors = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+maintainers = [
+    { name = "Oliver Hennhoefer", email = "oliver.hennhoefer@mail.de" },
+    { name = "Fernando Saba", email = "fernando.saba@gmx.de" }
+]
+keywords = ["off-key", "forecasting", "foundation model", "anomaly detection"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+
+dependencies = [
+    "off-key-core[web]",
+    "fastapi>=0.115.8",
+    "uvicorn>=0.25.0",
+    "numpy>=1.24.0",
+    "pydantic-settings>=2.7.1",
+    # Fetches and caches model weights; the models themselves are optional extras.
+    "huggingface-hub>=0.23,<2",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+off-key-core = { workspace = true }

@@ -39,10 +39,6 @@ class ExecutionPlan:
     def nodes(self):
         return self._nodes
 
-    @property
-    def feature_nodes(self):
-        return self._feature_nodes
-
     def parents(self, identifier: str) -> list[str]:
         return self._parents[identifier]
 
@@ -76,8 +72,9 @@ class ExecutionPlan:
 
     @cached_property
     def fusion(self) -> str:
-        """How the policy combines detectors: max or mean."""
-        return fusion_mode(self.nodes[self.policy_id].params)
+        """How the calibration step combines detectors: max or mean."""
+        identifier = self.compiled.calibration_id or self.policy_id
+        return fusion_mode(self.nodes[identifier].params)
 
     def detector_features(self, detector_id: str) -> list[str]:
         """The features one detector scores, in their order."""

@@ -77,6 +77,7 @@ async def test_reconciliation_purges_old_terminal_rows_and_keeps_recent_rows():
     )
 
     session = AsyncMock()
+    session.add_all = MagicMock()
     session.execute = AsyncMock(
         side_effect=purge_results(scalars_result(all=[old_service, recent_service]))
     )

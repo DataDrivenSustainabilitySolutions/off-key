@@ -6,9 +6,16 @@ from typing import Any
 from off_key_core.db.collection_runtime import read_collection_runtime
 from off_key_core.db.models import MonitoringService
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
+from off_key_core.utils.timestamps import as_utc
 from sqlalchemy import select
 
 from .radar_status import derive_operational_status, name_inputs_by_reading
+
+
+def _created_at(service: MonitoringService) -> str | None:
+    # The column has no time zone and holds UTC. Without an offset a browser
+    # reads the value as its own local time.
+    return as_utc(service.created_at).isoformat() if service.created_at else None
 
 
 async def find_service(session, service_id: str):
@@ -51,7 +58,7 @@ def service_summary(
         "stream_ids": catalogue.watched_by(service.mqtt_topic),
         "status": service.status,
         "operational_status": operational_status,
-        "created_at": service.created_at.isoformat() if service.created_at else None,
+        "created_at": _created_at(service),
     }
     if probe is not None:
         summary["docker_status"] = docker_status
@@ -126,7 +133,5 @@ class RadarServiceQueries:
             or labels.get("monitoring_strategy"),
             "model_type": monitoring.get("model_type")
             or labels.get("radar_model_type"),
-            "created_at": (
-                service.created_at.isoformat() if service.created_at else None
-            ),
+            "created_at": _created_at(service),
         }

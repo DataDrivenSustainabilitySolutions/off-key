@@ -74,6 +74,8 @@ def _swarm_service(*tasks, labels=None):
 
 def _session(execute=None, *, row=None):
     session = AsyncMock()
+    # AsyncSession.add_all is synchronous; an AsyncMock would leave a coroutine.
+    session.add_all = MagicMock()
     session.scalar.return_value = None
     session.get.return_value = row
     if isinstance(execute, list):

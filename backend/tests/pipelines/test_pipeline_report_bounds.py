@@ -26,7 +26,7 @@ pytestmark = pytest.mark.radar_integration
 @pytest.fixture(scope="module")
 def maximum_compilation():
     result = compile_pipeline(maximum_definition())
-    assert len(result.definition.nodes) == 64
+    assert len(result.definition.model_dump()["nodes"]) == 64
     assert all(len(columns) == 100 for columns in result.features.values())
     # Establish the expansion without ever serializing that 60+MiB payload.
     assert (
@@ -81,7 +81,12 @@ def test_maximum_report_preserves_complete_selected_feature_choices(
 def test_normal_reports_preserve_full_metadata():
     result = compile_pipeline(pipeline_catalog().templates[1].definition)
     report = bounded_validation_report(result, "detector")
-    assert report.features == result.features
+    # The editor draws the calibration step as part of the policy.
+    shown = {key: value for key, value in result.features.items() if key != "calibrate"}
+    assert report.features.keys() == shown.keys()
+    assert [column.previous for column in report.features["policy"]] == [
+        "detector.value"
+    ]
     assert report.features_complete and report.provenance_complete
     assert not report.definition_omitted and not report.issues_truncated
     assert not report.issues

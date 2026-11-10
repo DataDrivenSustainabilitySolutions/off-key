@@ -1,5 +1,5 @@
 import { epochMilliseconds } from "@/lib/timestamps";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { getErrorMessage } from "@/lib/errors";
 import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
@@ -12,6 +12,8 @@ import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from
 
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const CHART_SERIES = 2;
+/** Runs ticked when the tab opens; more can be added up to the limit. */
+const FIRST_PICKED = 3;
 
 type Row = {
   label: string;
@@ -48,11 +50,11 @@ function bestOf(row: Row, runs: RunMetrics[]) {
 
 const OUTCOME = { detected: "Detected", missed: "Missed", unscored: "Not scored" } as const;
 
-/** Up to three finished runs side by side, scored against the dataset's labels. */
+/** Finished runs side by side, scored against the dataset's labels. */
 export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; runs: RunSummary[]; labels: LabelView[] }) {
   const finished = useMemo(() => runs.filter(run => run.status === "succeeded"), [runs]);
   const [picked, setPicked] = useState<string[] | null>(null);
-  const chosen = useMemo(() => (picked ?? finished.slice(0, DOJO_LIMITS.comparedRuns).map(run => run.id))
+  const chosen = useMemo(() => (picked ?? finished.slice(0, Math.min(FIRST_PICKED, DOJO_LIMITS.comparedRuns)).map(run => run.id))
     .filter(id => finished.some(run => run.id === id)), [picked, finished]);
   const chosenKey = chosen.join(",");
   const labelsKey = labels.map(label => `${label.id}:${label.start_at}:${label.end_at}`).join(",");
@@ -83,6 +85,8 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     from the Runs tab; it appears here once it has finished.</p></div>;
   const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
   return <div className="dj-section">
+    <div className="dj-section-head"><h2>Runs{" "}
+      <span className="dj-muted">{chosen.length} of at most {DOJO_LIMITS.comparedRuns} compared</span></h2></div>
     <div className="dj-compare-picker" role="group" aria-label={`Runs to compare, at most ${DOJO_LIMITS.comparedRuns}`}>
       {finished.map(run => {
         const checked = chosen.includes(run.id);
@@ -95,8 +99,9 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
     {!labels.length && <p className="ex-banner" role="status">This dataset has no labels yet, so every alarm counts as a false
       alarm. Mark the known problems on the Values tab first.</p>}
     {(error || points.error || alarms.error) && <p className="ex-banner ex-error" role="alert">{error || points.error || alarms.error}</p>}
-    {chosen.length > 0 && <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart dj-chart--alarms"
-      accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} />}
+    {chosen.length > 0 && <div style={{ "--dj-alarm-rows": chosen.length } as CSSProperties}>
+      <EChart option={option} resolvedTheme={resolvedTheme} className="dj-chart dj-chart--alarms"
+        accessibleDescription={`Values with labels and the alarms of ${chosen.length} runs`} /></div>}
     {shown && <>
       <div className="dj-table-scroll dj-section"><table className="dj-table" aria-label="Run metrics">
         <thead><tr><th>Metric</th>{shown.runs.map(item => <th key={item.run_id}>{names.get(item.run_id) ?? item.run_name}</th>)}</tr></thead>

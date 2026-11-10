@@ -31,6 +31,8 @@ const isPrepare = (component: string) => component.startsWith("prepare.");
 /** What a step does, by its kind and component; unknown transforms stay "Transform". */
 export function stepFamily(kind: PipelineNode["kind"], component: string): StepFamily {
   if (kind === "source") return "input";
+  // The editor shows calibration as part of the decision until it has its own card.
+  if (kind === "calibration") return "policy";
   if (kind === "merge" || ROUTES.has(component)) return "route";
   if (kind !== "transform") return kind;
   if (COMBINE_STEPS.has(component)) return "combine";

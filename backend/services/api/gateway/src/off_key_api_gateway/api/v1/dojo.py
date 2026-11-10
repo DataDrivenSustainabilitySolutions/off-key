@@ -20,9 +20,12 @@ from off_key_core.schemas.dojo import (
     DatasetPointsPage,
     DatasetPointsQuery,
     DatasetView,
+    LabelBatch,
     LabelChange,
     LabelCreate,
     LabelList,
+    LabelSuggestionList,
+    LabelSuggestionQuery,
     LabelView,
     RunCreate,
     RunListPage,
@@ -137,8 +140,9 @@ async def import_dojo_history(
     """Create a dataset by copying recorded readings for one time window.
 
     `reading_ids` are reading ids from `GET /v1/catalogue`. Each becomes
-    one series named after the reading. The copy is frozen: later retention
-    or catalogue edits do not change it.
+    one series named after the reading. Without `start`, everything still
+    stored up to `end` is copied. The copy is frozen: later retention or
+    catalogue edits do not change it.
     """
     return await tactic.request(
         "POST",
@@ -238,6 +242,31 @@ async def list_dojo_labels(
     )
 
 
+@router.get(
+    "/datasets/{dataset_id}/label-suggestions", response_model=LabelSuggestionList
+)
+@read_limit
+async def suggest_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    query: Annotated[LabelSuggestionQuery, Query()],
+    authorization: str = Depends(member_authorization),
+):
+    """Alarms live monitors recorded on the readings the dataset was copied
+    from, inside its time span, as candidate labels.
+
+    Alarms closer together than `gap_seconds` form one suggestion. Nothing is
+    stored: add a suggestion with `POST .../labels`. An uploaded dataset has
+    no recorded readings and gets none.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/label-suggestions",
+        params=_query(query),
+        headers={"Authorization": authorization},
+    )
+
+
 @router.post("/datasets/{dataset_id}/labels", response_model=LabelView, status_code=201)
 @write_limit
 async def create_dojo_label(
@@ -256,6 +285,30 @@ async def create_dojo_label(
         "POST",
         f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels",
         json_data=label.model_dump(mode="json"),
+        headers={"Authorization": authorization},
+    )
+
+
+@router.post(
+    "/datasets/{dataset_id}/labels/batch", response_model=LabelList, status_code=201
+)
+@write_limit
+async def create_dojo_labels(
+    request: Request,
+    dataset_id: str,
+    batch: LabelBatch,
+    authorization: str = Depends(member_authorization),
+):
+    """Add up to 200 labels at once, as one write.
+
+    All of them are added, or none when one is refused: labels may not
+    overlap each other or the dataset's labels, and a dataset holds at most
+    500. Returns the new labels in the order given.
+    """
+    return await tactic.request(
+        "POST",
+        f"/api/v1/dojo/datasets/{path_segment(dataset_id)}/labels/batch",
+        json_data=batch.model_dump(mode="json"),
         headers={"Authorization": authorization},
     )
 
@@ -305,7 +358,7 @@ async def compare_dojo_runs(
     query: Annotated[ComparisonQuery, Query()],
     authorization: str = Depends(member_authorization),
 ):
-    """Up to three finished runs of the dataset, scored against its labels.
+    """Up to six finished runs of the dataset, scored against its labels.
 
     Repeat `run_ids` for each run, for example
     `?run_ids=a&run_ids=b`. Each run carries the metrics of

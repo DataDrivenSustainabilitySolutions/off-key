@@ -231,14 +231,15 @@ export type PipelineCatalog = {
 export type PipelineComponent = {
   id: string;
   contract_version?: 1;
-  kind: "source" | "transform" | "merge" | "detector" | "policy" | "output";
+  kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
   label: string;
   description: string;
   strategies: Array<"static_baseline" | "adaptive_stream">;
+  learning?: "none" | "batch" | "online" | "pretrained";
   parameter_schema?: Record<string, unknown>;
   fields?: Array<ComponentField>;
-  input_type?: "features" | "scores" | "p_values" | "decisions" | "evidence" | null;
-  output_type?: "features" | "scores" | "p_values" | "decisions" | "evidence";
+  input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
+  output_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence";
 };
 
 export type PipelineCreate = {
@@ -249,8 +250,8 @@ export type PipelineCreate = {
 };
 
 export type PipelineDefinition = {
-  schema_version?: 1;
-  strategy?: "static_baseline" | "adaptive_stream";
+  schema_version?: 1 | 2;
+  strategy?: "static_baseline" | "adaptive_stream" | null;
   input_slots?: Array<InputSlot>;
   nodes?: Array<PipelineNode>;
   edges?: Array<PipelineEdge>;
@@ -328,7 +329,7 @@ export type PipelineModel = Record<string, unknown>;
 
 export type PipelineNode = {
   id: string;
-  kind: "source" | "transform" | "merge" | "detector" | "policy" | "output";
+  kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
   component: string;
   contract_version?: number;
   params?: Record<string, unknown>;

@@ -357,6 +357,16 @@ describe("service-centred monitoring workspace", () => {
     expect(within(preview).getByRole("status").textContent).toContain("Recording");
     expect(screen.queryByRole("button", { name: "View live" })).toBeNull();
     expect(vi.mocked(apiUtils.post).mock.calls.some(([endpoint]) => endpoint === "/v1/live/views")).toBe(false);
+    expect(within(preview).queryByRole("button", { name: "Copy to Dojo" })).toBeNull();
+  });
+  it("copies the previewed reading into the Dojo for members who may use it", async () => {
+    auth.permissions = [...everything, "use_dojo"];
+    mount();
+    const preview = await selectTemperature();
+    fireEvent.click(within(preview).getByRole("button", { name: "Copy to Dojo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Copy recorded readings" });
+    expect(within(dialog).getAllByRole("checkbox").map(item => item.closest("label")?.textContent)).toEqual(["Air temperature"]);
+    expect((within(dialog).getByRole("textbox", { name: "Name" }) as HTMLInputElement).placeholder).toBe("Air temperature");
   });
   it("shows monitors by default without starting telemetry or enabling collection, and keeps service selection in the URL", async () => {
     withServices([service()]); mount();

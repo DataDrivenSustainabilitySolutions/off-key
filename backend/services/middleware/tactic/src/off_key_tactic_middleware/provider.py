@@ -39,9 +39,15 @@ from .services.pipelines.activation import PipelineActivations
 from .services.pipelines.forms import start_form_monitor
 from .services.pipelines.library import PipelineLibrary
 
+# One session per request, committed when the route returns and before the
+# response is sent. FastAPI ends a dependency with the default scope only after
+# the response, which answered a write before it was committed and let a read
+# sent right after it see the old state.
+RequestSession = Depends(get_db_async, scope="function")
+
 
 def get_radar_orchestration_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> RadarOrchestrationService:
     """
     Dependency injection provider for RadarOrchestrationService.
@@ -56,35 +62,35 @@ def get_radar_orchestration_service(
 
 
 def get_user_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> UserService:
     """Dependency provider for user/account use cases."""
     return UserService(session, UserRepository(session))
 
 
 def get_favorite_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> FavoriteService:
     """Dependency provider for favorites use cases."""
     return FavoriteService(session, FavoriteRepository(session))
 
 
 def get_alarm_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> AlarmService:
     """Dependency provider for alarm use cases."""
     return AlarmService(session, AnomalyRepository(session))
 
 
 async def get_catalogue_data_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> CatalogueDataService:
     """Devices, measurements and evidence by catalogue id, resolved against the
     saved catalogue of this request."""
     return CatalogueDataService(session, await SystemService(session).read())
 
 
-def get_system_service(session: AsyncSession = Depends(get_db_async)) -> SystemService:
+def get_system_service(session: AsyncSession = RequestSession) -> SystemService:
     """Saved catalogue, collection status and policy changes."""
     return SystemService(session)
 
@@ -114,43 +120,43 @@ def get_system_ingress(request: Request) -> SystemIngress:
 
 
 def get_pipeline_library(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> PipelineLibrary:
     return PipelineLibrary(session)
 
 
-def get_dojo_datasets(session: AsyncSession = Depends(get_db_async)) -> DojoDatasets:
+def get_dojo_datasets(session: AsyncSession = RequestSession) -> DojoDatasets:
     return DojoDatasets(session)
 
 
-def get_dojo_runs(session: AsyncSession = Depends(get_db_async)) -> DojoRuns:
+def get_dojo_runs(session: AsyncSession = RequestSession) -> DojoRuns:
     return DojoRuns(session)
 
 
-def get_dojo_labels(session: AsyncSession = Depends(get_db_async)) -> DojoLabels:
+def get_dojo_labels(session: AsyncSession = RequestSession) -> DojoLabels:
     return DojoLabels(session)
 
 
-def get_dojo_metrics(session: AsyncSession = Depends(get_db_async)) -> DojoMetrics:
+def get_dojo_metrics(session: AsyncSession = RequestSession) -> DojoMetrics:
     return DojoMetrics(session)
 
 
 def get_pipeline_activations(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> PipelineActivations:
     return PipelineActivations(session)
 
 
-def get_form_monitor_starter(session: AsyncSession = Depends(get_db_async)):
+def get_form_monitor_starter(session: AsyncSession = RequestSession):
     """Start a setup-form monitor as its equivalent pipeline activation."""
     return partial(start_form_monitor, session)
 
 
-def get_member_service(session: AsyncSession = Depends(get_db_async)) -> MemberService:
+def get_member_service(session: AsyncSession = RequestSession) -> MemberService:
     return MemberService(session)
 
 
 def get_remembered_session_service(
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> RememberedSessionService:
     return RememberedSessionService(session)

@@ -559,10 +559,9 @@ describe("hierarchical explorer workspace", () => {
     const input = within(preview).getByRole("textbox", { name: "Rename reading" });
     fireEvent.change(input, { target: { value: "Room temperature" } });
     fireEvent.blur(input);
-    await waitFor(() => {
-      expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature");
-      expect(document.title).toBe("Room temperature · Monitoring · Aberration");
-    });
+    await waitFor(() => expect(within(preview).getByRole("button", { name: "Rename reading" }).textContent).toBe("Room temperature"));
+    // The tab title is set in an effect, which runs after the render that renames the button.
+    await waitFor(() => expect(document.title).toBe("Room temperature · Monitoring · Aberration"));
     expect(apiUtils.put).toHaveBeenCalledOnce();
     const request = vi.mocked(apiUtils.put).mock.calls[0]!;
     expect(request[0]).toBe("/v1/catalogue");

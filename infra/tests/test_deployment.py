@@ -732,13 +732,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(json.loads(api_env["CORS_ALLOWED_ORIGINS"]), [dashboard])
         self.assertIn(f'href="{dashboard}/"', result["landing_html"])
         self.assertNotIn("{{", result["landing_html"])
-        # Encoded photograph bytes can contain words by chance; check the markup.
-        markup = re.sub(
-            r"data:image/[^;]+;base64,[A-Za-z0-9+/=\s]+",
-            "[embedded image]",
+        # Embedded photographs are base64, where any four letters can occur.
+        page_text = re.sub(
+            r"data:[a-z]+/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+",
+            "",
             result["landing_html"],
         )
-        self.assertNotIn("demo", markup.lower())
+        self.assertNotIn("demo", page_text.lower())
 
         landing = config["services"]["landing"]
         self.assertEqual(set(landing["networks"]), {"public-network"})

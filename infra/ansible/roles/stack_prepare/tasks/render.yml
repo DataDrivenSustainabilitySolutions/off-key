@@ -48,7 +48,7 @@
   assert:
     that:
       - release.application_revision is match('^[0-9a-f]{40}$')
-      - release.images.keys() | sort == ['alloy', 'api', 'cloudflared', 'db_sync', 'emqx', 'frontend', 'gost', 'grafana', 'landing', 'loki', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
+      - release.images.keys() | sort == ['alloy', 'api', 'cloudflared', 'db_sync', 'docs', 'emqx', 'frontend', 'gost', 'grafana', 'landing', 'loki', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
       - release.images.values() | reject('match', '^.+@sha256:[0-9a-f]{64}$') | list | length == 0
       - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
     fail_msg: The resolved production release must contain the complete set of immutable image references.
@@ -181,6 +181,7 @@
     - docker-compose.traefik.yml
     - docker-compose.oauth2.yml
     - docker-compose.landing.yml
+    - docker-compose.docs.yml
 
 - name: Copy optional stack overlays this installation uses
   copy:

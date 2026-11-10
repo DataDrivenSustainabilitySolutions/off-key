@@ -79,6 +79,31 @@ class RehearsalReleaseTests(unittest.TestCase):
                     self.assertEqual(build[-1], "/source/backend")
                     self.assertEqual(release["images"], {"api": digest})
 
+    def test_documentation_rollback_build_uses_the_selected_source_tree(self):
+        digest = "localhost:5010/off-key-docs@sha256:" + "b" * 64
+        with (
+            patch.object(rehearsal_releases, "start_registry"),
+            patch.object(
+                rehearsal_releases, "BUILDS", {"docs": ("off-key-docs", "docs")}
+            ),
+            patch.object(
+                rehearsal_releases,
+                "run",
+                return_value=SimpleNamespace(stdout=json.dumps([digest])),
+            ) as docker,
+        ):
+            release = {"images": {}}
+            rehearsal_releases.build_local_images(
+                release, rehearsal_releases.COMPATIBLE_REVISION, Path("/older-source")
+            )
+            build = docker.call_args_list[0].args
+            self.assertEqual(build[-1], "/older-source")
+            self.assertEqual(
+                build[build.index("-f") + 1],
+                str(rehearsal_releases.ROOT.parent / "dev/docs/Dockerfile"),
+            )
+            self.assertEqual(release["images"]["docs"], digest)
+
     def test_reference_archive_refuses_missing_or_unreviewed_repository(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

@@ -40,20 +40,23 @@
       vars:
         monitor_action: verify
 
-    - name: Check the public website and dashboard HTTP responses through Cloudflare
+    - name: Check the public website, docs and dashboard HTTP responses through Cloudflare
       uri:
         url: "{{ item }}/"
         method: GET
         follow_redirects: none
-        status_code: [200, 301, 302, 307, 308]
+        status_code: "{{ public_status_codes }}"
         timeout: 10
         headers:
           Cache-Control: no-cache
       register: public_route
       retries: 12
       delay: 5
-      until: public_route.status | default(0) in [200, 301, 302, 307, 308]
-      loop: "{{ release_public_urls | default(['https://' ~ ingress_base_domain, frontend_base_url]) }}"
+      until: public_route.status | default(0) in public_status_codes
+      loop: "{{ release_public_urls | default(['https://' ~ ingress_base_domain, frontend_base_url, docs_base_url]) }}"
+      vars:
+        # Documentation must be publicly readable, not redirected to a login.
+        public_status_codes: "{{ [200] if item == docs_base_url else [200, 301, 302, 307, 308] }}"
 
     - name: End application maintenance after successful verification
       include_tasks: monitor_job.yml

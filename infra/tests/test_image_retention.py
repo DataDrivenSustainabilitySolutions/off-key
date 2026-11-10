@@ -89,7 +89,10 @@ class GhcrRetentionTests(unittest.TestCase):
     def test_the_committed_release_pins_are_kept(self):
         pinned = retention.pinned_digests()
         images = json.loads(retention.RELEASE.read_text())["release"]["images"]
-        self.assertEqual(pinned, {image.split("@", 1)[1] for image in images.values()})
+        self.assertEqual(
+            pinned,
+            {image.split("@", 1)[1] for image in images.values() if "@" in image},
+        )
 
     def test_every_published_image_is_covered(self):
         workflow = yaml.safe_load(

@@ -118,7 +118,7 @@ def deploy(directory, phase, **overrides):
         | {
             "rehearsal_phase": phase,
             "ansible_become": False,
-            "release_public_urls": ["http://localhost:5173"],
+            "release_public_urls": ["http://localhost:5173", "http://localhost:8087"],
             "persistence_backup_dir": str(directory / "backups"),
         }
     )
@@ -162,6 +162,22 @@ def images(release, revision):
     if os.getenv("CI"):
         raise ValueError("CI rehearses the run's shared images; load them first")
     build_local_images(release, revision, PROJECT)
+
+
+def expose_rehearsal_ports(model):
+    # Docs uses start-first updates. The routing mesh lets old and replacement
+    # tasks share its test endpoint on the rehearsal's single node.
+    for service, port, published, mode in (
+        ("docs", 80, 8087, "ingress"),
+        ("frontend", 5173, 5173, "host"),
+        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000")), "host"),
+        ("tactic", 8001, 8001, "host"),
+        ("emqx-main", 8883, 8883, "host"),
+        ("smtp-fixture", 8025, 8025, "host"),
+    ):
+        model["services"][service]["ports"] = [
+            {"target": port, "published": published, "mode": mode}
+        ]
 
 
 def prepare(directory):
@@ -209,6 +225,8 @@ def prepare(directory):
         or run("git", "rev-parse", "HEAD", cwd=PROJECT).stdout.strip()
     )
     images(release, revision)
+    # Probe the current release on main as well as validation builds.
+    run("python3", PROJECT / "dev/docs/check_image.py", release["images"]["docs"])
     release["application_revision"] = revision
     (directory / "production-release.json").write_text(
         json.dumps({"release": release}, indent=2)
@@ -353,16 +371,7 @@ def prepare(directory):
         "image": pin("axllent/mailpit:latest"),
         "networks": ["app-network"],
     }
-    for service, port, published in (
-        ("frontend", 5173, 5173),
-        ("api", 8000, int(os.getenv("OFFKEY_REHEARSAL_API_PORT", "8000"))),
-        ("tactic", 8001, 8001),
-        ("emqx-main", 8883, 8883),
-        ("smtp-fixture", 8025, 8025),
-    ):
-        model["services"][service]["ports"] = [
-            {"target": port, "published": published, "mode": "host"}
-        ]
+    expose_rehearsal_ports(model)
     # The compatible release predates broker routes and ignores their secret. An
     # allowlist entry lets it dial the test broker directly; the current release
     # still takes the route, whose proxy wins over a direct connection.

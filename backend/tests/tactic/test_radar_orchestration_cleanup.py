@@ -163,7 +163,19 @@ def selected_collection(monkeypatch, request):
 
 
 @pytest.mark.asyncio
-async def test_production_radar_copies_required_swarm_secret_references(monkeypatch):
+@pytest.mark.parametrize(
+    ("template_secrets", "copied"),
+    [
+        # A deployment without a forecast service has no token to hand over.
+        ((), ()),
+        (("FORECAST_API_TOKEN",), ("FORECAST_API_TOKEN",)),
+        # Whatever else the template service mounts stays with it.
+        (("FORECAST_API_TOKEN", "SOMETHING_ELSE"), ("FORECAST_API_TOKEN",)),
+    ],
+)
+async def test_production_radar_copies_required_swarm_secret_references(
+    monkeypatch, template_secrets, copied
+):
     required = ("EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET")
     secrets = [
         {
@@ -171,7 +183,7 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
             "SecretName": f"versioned-{target}",
             "File": {"Name": target, "UID": "0", "GID": "0", "Mode": 0o444},
         }
-        for target in required
+        for target in (*required, *template_secrets)
     ]
     template = SimpleNamespace(
         attrs={"Spec": {"TaskTemplate": {"ContainerSpec": {"Secrets": secrets}}}}
@@ -204,7 +216,11 @@ async def test_production_radar_copies_required_swarm_secret_references(monkeypa
 
     fake_docker.client.services.get.assert_called_once_with("off-key_mqtt-radar")
     mounted = fake_docker.client.services.create.call_args.kwargs["secrets"]
-    assert {secret["File"]["Name"] for secret in mounted} == set(required)
+    assert {secret["File"]["Name"] for secret in mounted} == {*required, *copied}
+    assert all(
+        secret["SecretName"] == f"versioned-{secret['File']['Name']}"
+        for secret in mounted
+    )
     resources = fake_docker.client.services.create.call_args.kwargs["resources"]
     assert resources["Limits"] == {"NanoCPUs": 500_000_000, "MemoryBytes": 536_870_912}
     assert resources["Reservations"] == resources["Limits"]

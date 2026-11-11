@@ -24,6 +24,8 @@ from .workload_identity import has_labels, radar_identity_labels, radar_workload
 
 MANAGED_BY_TACTIC_LABEL = "managed_by=tactic"
 RADAR_SERVICE_TYPE_LABEL = "service_type=radar"
+# Secrets a production worker gets when the secret template service carries them.
+OPTIONAL_RADAR_SECRETS = frozenset({"FORECAST_API_TOKEN"})
 
 
 _shared_async_docker: AsyncDocker | None = None
@@ -138,6 +140,8 @@ class RadarWorkloadManager:
             }
             if not required <= by_target.keys():
                 raise RuntimeError("Production RADAR secret template is incomplete")
+            # A deployment with a forecast service also hands its token over.
+            copied = required | (OPTIONAL_RADAR_SECRETS & by_target.keys())
             service_kwargs["secrets"] = [
                 SecretReference(
                     secret_id=by_target[target]["SecretID"],
@@ -147,7 +151,7 @@ class RadarWorkloadManager:
                     gid=by_target[target]["File"].get("GID", "0"),
                     mode=by_target[target]["File"].get("Mode", 0o444),
                 )
-                for target in sorted(required)
+                for target in sorted(copied)
             ]
 
         return await self.async_docker.run(

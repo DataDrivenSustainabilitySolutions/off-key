@@ -6,17 +6,18 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from off_key_core.auth.permissions import Permission
 from off_key_core.auth.tokens import InvalidAccessToken, decode_access_token
-from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..provider import RequestSession
 
 bearer = HTTPBearer(auto_error=False)
 
 
 async def current_member(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
-    session: AsyncSession = Depends(get_db_async),
+    session: AsyncSession = RequestSession,
 ) -> User:
     if credentials is None:
         raise HTTPException(401, "Sign in to continue")

@@ -11,6 +11,12 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  build: {
+    // The limit applies to every file. Two on-demand libraries exceed the
+    // default of 500 kB: the ELK graph layout (1,463 kB) and the chart time
+    // axis (587 kB). The entry file is about 400 kB.
+    chunkSizeWarningLimit: 1500,
+  },
   server: {
     host: '0.0.0.0', // Allow connections from Docker network
     port: 5173,

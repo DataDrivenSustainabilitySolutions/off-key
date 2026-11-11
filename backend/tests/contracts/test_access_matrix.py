@@ -150,8 +150,6 @@ GATEWAY_ACCESS = {
         "POST /v1/auth/login",
         "POST /v1/auth/logout",
         "POST /v1/auth/refresh",
-        "POST /v1/auth/register",
-        "GET /v1/auth/verify-email",
     },
     "member": {
         "POST /v1/alarms/query",

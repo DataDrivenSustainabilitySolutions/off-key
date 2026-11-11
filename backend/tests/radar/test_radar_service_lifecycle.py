@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -137,7 +137,7 @@ def test_static_detector_operational_stage_mapping(
     expected_progress,
 ):
     monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         detector=_FakeDetector(
             {
@@ -183,7 +183,7 @@ def test_adaptive_detector_operational_stage_mapping(
     expected_progress,
 ):
     monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         detector=_FakeDetector(
             {
@@ -210,7 +210,7 @@ def test_adaptive_detector_operational_stage_mapping(
 
 def test_health_status_uses_one_metric_snapshot_and_reduces_alerts():
     monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     message_processor = MagicMock()
     message_processor.get_metrics.return_value = {
         "message_count": 10,
@@ -345,7 +345,7 @@ async def test_failed_execution_stops_health_publication_without_errors(
         get_health_status=lambda: {"status": "healthy"},
     )
     monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         database_writer=writer,
         recovery_status=lambda: radar_service.recovery_status,

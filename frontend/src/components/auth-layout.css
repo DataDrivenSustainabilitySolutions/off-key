@@ -1,35 +1,13 @@
 .auth-backdrop {
-  /* The public site's warm neutrals, scoped to the authentication screens. */
-  --background: 60 5% 93%;
-  --foreground: 150 5% 8%;
-  --card: 60 5% 93%;
-  --card-foreground: 150 5% 8%;
-  --primary: 150 5% 8%;
-  --primary-foreground: 60 8% 96%;
-  --muted-foreground: 90 4% 40%;
-  --input: 90 4% 52%;
-  --ring: 21 52% 66%;
   position: relative;
   display: grid;
   place-items: center;
   min-height: 100dvh;
   padding: 112px 24px 128px;
-  background: #ededeb;
+  background: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-}
-
-.dark .auth-backdrop {
-  --background: 150 5% 7%;
-  --foreground: 60 8% 94%;
-  --card: 150 5% 7%;
-  --card-foreground: 60 8% 94%;
-  --primary: 60 8% 94%;
-  --primary-foreground: 150 5% 8%;
-  --muted-foreground: 90 3% 62%;
-  --input: 90 3% 39%;
-  background: #111312;
 }
 
 .auth-panel { max-width: 368px; }
@@ -46,7 +24,7 @@
   font-size: 13px;
   text-decoration: none;
 }
-.auth-return:hover { color: hsl(var(--foreground)); }
+.auth-return:hover { color: hsl(var(--primary)); }
 .auth-return:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 5px;
@@ -56,33 +34,33 @@
 .auth-eyebrow {
   margin: 0 0 14px;
   color: hsl(var(--muted-foreground));
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 10px;
-  line-height: 16px;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
   font-weight: 400;
-  letter-spacing: .13em;
+  letter-spacing: .08em;
   text-transform: uppercase;
 }
 .auth-heading h1 {
   margin: 0;
   font-size: 38px;
   line-height: 1.12;
-  font-weight: 400;
-  letter-spacing: -.045em;
+  font-weight: var(--heading-weight);
+  letter-spacing: var(--heading-tracking);
 }
 
 .auth-backdrop [data-slot="label"] { margin-bottom: 8px; font-size: 13px; font-weight: 400; }
 .auth-backdrop [data-slot="input"] {
   height: 48px;
   padding-inline: 13px;
-  border-radius: 2px;
+  border-radius: var(--radius-control);
   background: transparent;
   font-size: 15px;
 }
 .auth-backdrop [data-slot="input"]::placeholder { color: hsl(var(--muted-foreground)); opacity: 1; }
 .auth-backdrop [data-slot="button"] {
   min-height: 48px;
-  border-radius: 2px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 400;
 }
@@ -106,10 +84,9 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--primary));
   font-size: 13px;
 }
-.auth-recovery a:hover { color: hsl(var(--foreground)); }
 
 @media (max-width: 600px) {
   .auth-backdrop { padding: 96px 24px; }

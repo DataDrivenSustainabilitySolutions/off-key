@@ -26,8 +26,8 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius-control);
+  --radius-sm: var(--radius-control);
   /* Tailwind's small sizes follow the app's type scale. */
   --text-xs: var(--text-caption);
   --text-xs--line-height: var(--leading-caption);
@@ -58,7 +58,15 @@
     --border: 210 15% 92%;
     --input: 210 15% 87%;
     --ring: 170 37% 36%;
-    --radius: 0.5rem;
+    /* Shared with auth: crisp controls, quiet surfaces and light headings. */
+    --radius: 4px;
+    --radius-control: 2px;
+    --heading-weight: 400;
+    --heading-tracking: -0.04em;
+    --shadow-ink: 210 22% 19%;
+    --shadow-popover: 0 8px 24px hsl(var(--shadow-ink) / .1);
+    --shadow-dialog: 0 20px 60px hsl(var(--shadow-ink) / .18);
+    --overlay: hsl(var(--shadow-ink) / .3);
 
     /* Type scale. Seven sizes; use these instead of literal pixels.
        caption: table heads, counts, units, meta lines (never smaller)
@@ -66,7 +74,8 @@
        control: buttons, tabs and navigation, a step below body on phones
        title3: dialog and card titles; title2: the object on screen
        title1: page titles; metric: stat tiles; display: one hero value */
-    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --text-caption: 12px;  --leading-caption: 16px;
     --text-body: 13px;     --leading-body: 20px;
     --text-control: 13px;  /* buttons, tabs, navigation */
@@ -111,6 +120,7 @@
     --border: 212 13% 19%;
     --input: 212 13% 28%;
     --ring: 164 28% 64%;
+    --shadow-ink: 213 16% 3%;
   }
 
   * {
@@ -179,9 +189,9 @@
   .app-page-title {
     margin: 0;
     font-size: var(--text-title1);
-    font-weight: 550;
+    font-weight: var(--heading-weight);
     line-height: var(--leading-title1);
-    letter-spacing: -0.02em;
+    letter-spacing: var(--heading-tracking);
     overflow-wrap: anywhere;
   }
 
@@ -192,7 +202,7 @@
     width: 44px;
     height: 44px;
     flex-shrink: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     color: #000;
     text-decoration: none;
   }
@@ -216,7 +226,7 @@
     min-height: 36px;
     padding: 0 10px;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: transparent;
     color: hsl(var(--muted-foreground));
     font: inherit;
@@ -256,9 +266,9 @@
     color: hsl(var(--foreground));
     background: hsl(var(--popover));
     border: 1px solid hsl(var(--border));
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 6px;
-    box-shadow: 0 12px 32px rgb(16 24 32 / 0.1);
+    box-shadow: var(--shadow-popover);
     max-width: calc(100vw - 24px);
   }
 
@@ -288,7 +298,7 @@
     gap: 10px;
     min-height: 36px;
     padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     font-size: var(--text-body);
     color: hsl(var(--foreground));
     text-decoration: none;

@@ -1,6 +1,7 @@
 """CI, image builds and production use one uv release and one Docker Engine release."""
 
 import re
+import subprocess
 import unittest
 
 import yaml
@@ -10,6 +11,76 @@ REPOSITORY = ROOT.parent
 
 
 class ToolchainTests(unittest.TestCase):
+    def test_ci_engine_restart_after_package_installation(self):
+        action = yaml.safe_load(
+            (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()
+        )
+        script = action["runs"]["steps"][0]["run"]
+        # Exercise the install/restart/version check without touching the host.
+        # Package hooks have left a working daemon but exhausted its start limit.
+        install = script[script.index("sudo DEBIAN_FRONTEND=") :]
+        shell = r"""
+set -euo pipefail
+version=29.0.0
+package=5:29.0.0-1
+start_limit=0
+running=0
+sudo() {
+    case "$*" in
+        DEBIAN_FRONTEND=noninteractive\ apt-get\ install*)
+            start_limit=1
+            running=1
+            ;;
+        "systemctl reset-failed docker") start_limit=0 ;;
+        "systemctl restart docker")
+            running=0
+            if (( start_limit )); then
+                echo 'start-limit-hit' >&2
+                return 1
+            fi
+            if [[ "$restart_fails" == yes ]]; then
+                echo 'daemon failed' >&2
+                return 1
+            fi
+            running=1
+            ;;
+        *) echo "Unexpected privileged command: $*" >&2; return 99 ;;
+    esac
+}
+docker() {
+    (( running )) || return 1
+    printf '%s\n' "$reported_version"
+}
+"""
+        for restart_fails, reported_version, succeeds in [
+            ("no", "29.0.0", True),
+            ("yes", "29.0.0", False),
+            ("no", "28.0.0", False),
+        ]:
+            with self.subTest(restart_fails=restart_fails, version=reported_version):
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        shell
+                        + f"\nrestart_fails={restart_fails}\nreported_version={reported_version}\n"
+                        + install,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(
+                    result.returncode == 0, succeeds, result.stdout + result.stderr
+                )
+                if succeeds:
+                    self.assertIn("Docker Engine 29.0.0", result.stdout)
+                elif restart_fails == "yes":
+                    self.assertIn("daemon failed", result.stderr)
+                else:
+                    self.assertIn("expected 29.0.0", result.stdout)
+
     def test_uv_version_is_pinned_once_everywhere(self):
         action = yaml.safe_load(
             (REPOSITORY / ".github/actions/setup-backend/action.yml").read_text()

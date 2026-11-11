@@ -49,7 +49,7 @@ export function PageHeader({
           {title}
         </h1>
         {description ? (
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <p className="mt-2 max-w-prose text-sm text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -85,7 +85,7 @@ export function SectionPanel({
           <div className="min-w-0">
             {title ? (
               <div className="flex items-center gap-1">
-                <h2 className="text-sm font-medium leading-6">{title}</h2>
+                <h2 className="text-[length:var(--text-title3)] font-medium leading-[var(--leading-title3)]">{title}</h2>
                 {help && <HelpTooltip label={typeof title === "string" ? title : "this section"}>{help}</HelpTooltip>}
               </div>
             ) : null}

@@ -16,9 +16,9 @@
 .dj-table-scroll { overflow-x: auto; }
 .dj-row-actions { display: flex; gap: 12px; justify-content: flex-end; white-space: nowrap; }
 .dj-section { margin-top: 28px; }
-.dj-section > h2 { font-size: var(--text-body); font-weight: 500; margin: 0 0 12px; }
+.dj-section > h2 { font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 500; margin: 0 0 12px; }
 .dj-section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.dj-section-head h2 { font-size: var(--text-body); font-weight: 500; margin: 0; }
+.dj-section-head h2 { font-size: var(--text-title3); line-height: var(--leading-title3); font-weight: 500; margin: 0; }
 .dj-muted { color: var(--ex-muted); font-size: var(--text-caption); }
 .dj-chart { height: 420px; width: 100%; min-width: 0; touch-action: none; }
 .dj-chart--alarms { height: calc(434px + var(--dj-alarm-rows, 3) * 22px); }
@@ -27,8 +27,8 @@
 .dj-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 12px 0; font-size: var(--text-caption); font-weight: 500; }
 .dj-field small { color: var(--ex-muted); font-weight: 400; }
 .dj-field input:not([type="checkbox"]):not([type="radio"]),.dj-field select,.dj-field textarea {
-  width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius-control); background: hsl(var(--background));
-  color: hsl(var(--foreground)); padding: 8px 10px; font-size: var(--text-caption); font-weight: 400; font-family: inherit; }
+  width: 100%; min-width: 0; border: 1px solid hsl(var(--input)); border-radius: var(--radius-control); background: hsl(var(--background));
+  color: hsl(var(--foreground)); padding: 8px 10px; font-size: var(--text-body); font-weight: 400; font-family: inherit; }
 .dj-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; }
 .dj-choices { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 400; }
 .dj-choices label { display: inline-flex; gap: 6px; align-items: center; }
@@ -64,6 +64,8 @@
 .dj-check { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: var(--text-caption); font-weight: 500; }
 .dj-method-own { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--ex-line); border-radius: 999px; font-size: var(--text-caption); font-weight: 400; color: var(--ex-muted); }
 @media (max-width: 760px) {
+  .ex-shell .dj-action,.ex-shell .dj-primary,.dj-back { min-height: 44px; }
+  .dj-field :is(input:not([type="checkbox"]):not([type="radio"]),select,textarea) { min-height: 44px; }
   .dj-labels li { grid-template-columns: 1fr; gap: 4px; }
   .dj-chart { height: 340px; }
   .dj-chart--alarms { height: calc(300px + var(--dj-alarm-rows, 3) * 22px); }

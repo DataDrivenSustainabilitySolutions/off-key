@@ -3,8 +3,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
+from off_key_core.schemas.forecast import ForecastModelInfo
 from off_key_core.schemas.members import MemberProfile
 from off_key_core.schemas.pipelines import (
+    ForecastModelCatalog,
+    ForecastModelDownload,
     PipelineActivationRequest,
     PipelineActivationView,
     PipelineApplyRequest,
@@ -51,6 +54,7 @@ def member_router() -> APIRouter:
 
 router = member_router()
 components_router = member_router()
+forecast_models_router = member_router()
 activations_router = member_router()
 monitor_pipeline_router = member_router()
 read_limit = limiter.shared_limit(
@@ -111,6 +115,35 @@ async def list_pipeline_components(request: Request):
     and the starting templates.
     """
     return await forward(request, "GET", "/pipelines/catalog")
+
+
+@forecast_models_router.get("", response_model=ForecastModelCatalog)
+@read_limit
+async def list_forecast_models(request: Request):
+    """The models of the deployment's forecast service, which pretrained
+    forecaster steps use, each with its `status` (`not_downloaded`,
+    `downloading` with `progress` from 0 to 1, `ready`, or `failed` with the
+    `error`). `service` is `not_deployed` where the deployment has no forecast
+    service, and `unreachable` while it does not answer; `models` is then empty.
+    """
+    return await forward(request, "GET", "/pipelines/forecast-models")
+
+
+@forecast_models_router.post(
+    "/downloads", response_model=ForecastModelInfo, status_code=202
+)
+@write_limit
+async def download_forecast_model(request: Request, change: ForecastModelDownload):
+    """Have the forecast service download a model's weights. Needs `manage_monitors`.
+
+    Answers 202 at once with the model's state: poll the list for its progress.
+    A model that is ready or already downloading is left as it is, and a failed
+    download starts again. Answers 409 where the deployment has no forecast
+    service, 404 for a model it does not offer, and 503 while it does not answer.
+    """
+    return await forward(
+        request, "POST", "/pipelines/forecast-models/downloads", change
+    )
 
 
 @router.get("", response_model=PipelineListPage)

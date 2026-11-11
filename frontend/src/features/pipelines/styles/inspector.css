@@ -184,6 +184,78 @@
   padding: 1px 5px;
 }
 
+/* A pretrained forecaster's checkpoints: name and size, state, and the download. */
+.pl-forecast-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-weight: 400;
+}
+
+.pl-forecast-models li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.pl-forecast-model {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pl-forecast-models small {
+  color: hsl(var(--muted-foreground));
+}
+
+.pl-forecast-models li.is-selected strong::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  vertical-align: middle;
+}
+
+.pl-forecast-state {
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+
+.pl-forecast-state.is-ready {
+  color: #15803d;
+}
+
+.dark .pl-forecast-state.is-ready {
+  color: #86efac;
+}
+
+.pl-forecast-state.is-failed {
+  color: #dc2626;
+}
+
+.pl-forecast-models button {
+  padding: 3px 8px;
+}
+
+.pl-forecast-models progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 6px;
+  accent-color: hsl(var(--primary));
+}
+
+.pl-forecast-models .pl-forecast-error {
+  grid-column: 1 / -1;
+  color: #dc2626;
+  overflow-wrap: anywhere;
+}
+
 .pl-lineage {
   list-style: none;
   padding: 0;

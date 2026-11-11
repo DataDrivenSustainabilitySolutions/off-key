@@ -35,6 +35,9 @@ export type PipelineLayout = Wire.PipelineLayout & {
 };
 export type PipelineComponent = Omit<Wire.PipelineComponent, "fields"> & {
   fields: FieldDescriptor[];
+  /** Why this deployment cannot run the step. No menu adds it then; a design that
+   * already holds it still shows it. */
+  unavailable?: string;
 };
 export type PipelineRevisionView = Omit<
   Wire.PipelineRevisionView,

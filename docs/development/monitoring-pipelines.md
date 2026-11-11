@@ -427,6 +427,19 @@ on the step, with the issue `forecast_service`.
 [Forecast service](../operations/forecast-service.md) describes the deployment,
 the pinned weights and their sizes.
 
+The HTTP client is shared: `ForecastClient` in
+`off_key_core/utils/forecast_client.py`. TACTIC uses it for the composer, in
+`services/pipelines/forecast_models.py`: `GET /v1/forecast-models` answers the
+service's models with their download state, and whether the deployment has a
+service at all (`not_deployed`) or one that does not answer (`unreachable`);
+`POST /v1/forecast-models/downloads` starts a download and needs
+`manage_monitors`. In the frontend, `useForecastModels` loads that list for the
+workbench and asks again every three seconds while a checkpoint downloads.
+Where the deployment has no service, `withForecastService` marks the
+`forecast.` components `unavailable`, which `addBlocker` returns, so no menu
+adds the step; a service that only does not answer leaves it on offer.
+`PipelineForecastModels` lists the checkpoints in the step's settings.
+
 The first value of a run asks the service to have the checkpoint ready, which
 starts a download if the weights are not there yet. Until a forecast exists
 for an observation, that observation is rejected (`ObservationRejected`): lost

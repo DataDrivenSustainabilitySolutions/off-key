@@ -17,6 +17,9 @@ services:
         target: EMQX_CA_CERT
       - source: mqtt_proxy_password
         target: SYSTEM_COLLECTION_MQTT_API_KEY
+      # TACTIC asks the forecast service which models it holds, for the composer.
+      - source: forecast_api_token
+        target: FORECAST_API_TOKEN
 {% if 'system_broker_routes' in deployment_secret_names %}
       - source: system_broker_routes
         target: SYSTEM_BROKER_ROUTES

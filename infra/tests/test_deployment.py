@@ -699,6 +699,7 @@ class DeploymentTests(unittest.TestCase):
             "tactic": {
                 "emqx_ca_cert": "EMQX_CA_CERT",
                 "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
+                "forecast_api_token": "FORECAST_API_TOKEN",
                 "system_broker_routes": "SYSTEM_BROKER_ROUTES",
             },
         }
@@ -1055,6 +1056,8 @@ class DeploymentTests(unittest.TestCase):
                     {secret["target"] for secret in controller["secrets"]},
                     {
                         "EMQX_CA_CERT",
+                        # For the composer's list of forecast models.
+                        "FORECAST_API_TOKEN",
                         "SYSTEM_BROKER_ROUTES",
                         "SYSTEM_COLLECTION_MQTT_API_KEY",
                     },

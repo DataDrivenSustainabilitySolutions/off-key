@@ -132,7 +132,8 @@ export function PipelineToolbox({
                   onClick={() => onAdd(component.id)}
                 >
                   <strong>{component.label}</strong>
-                  <small id={`${id}-${component.id}`}>{stepDescription(component)}</small>
+                  {/* A step the deployment cannot run says why instead of what it does. */}
+                  <small id={`${id}-${component.id}`}>{component.unavailable ?? stepDescription(component)}</small>
                   {learningLabel(component) && <small className="pl-learning-tag">{learningLabel(component)}</small>}
                 </button>;
               })}

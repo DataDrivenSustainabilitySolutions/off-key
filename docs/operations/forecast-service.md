@@ -16,11 +16,14 @@ installed or cannot compute. No other image carries them.
 
 - The service has no published port and no route. It joins the app network only,
   where workers reach it as `http://forecast:8020`.
-- Every call but `/health/live` needs a bearer token. The service, the Dojo
-  workers and every RADAR worker read it from the Swarm secret
+- Every call but `/health/live` needs a bearer token. The service, TACTIC, the
+  Dojo workers and every RADAR worker read it from the Swarm secret
   `FORECAST_API_TOKEN`; it is never in a container's environment. TACTIC copies
   the secret reference to each RADAR worker it starts, from the same template
   service as the worker's MQTT credentials.
+- The browser never reaches the service. The composer asks the gateway, the
+  gateway asks TACTIC, and TACTIC asks the service which checkpoints it holds
+  and starts their downloads.
 - TACTIC hands the address (`TACTIC_FORECAST_API_URL`) to every RADAR worker and
   every preflight job as `FORECAST_API_URL`. A preflight job only checks that a
   service is named; it has no network and no token. The address is not part of a
@@ -35,12 +38,15 @@ so a worker that holds the token learns nothing about the internal credential.
 
 ## Weights
 
-Weights are not in the image. The first monitor or Dojo run that uses a checkpoint
-asks the service for it, and the service downloads it from the Hugging Face Hub
-into the `forecast_models` volume (`/models`). The backend node therefore needs
-outbound HTTPS to `huggingface.co` and the hosts it redirects downloads to. Values
-that arrive before the checkpoint is ready are counted as lost coverage, not
-scored; the smallest checkpoint is ready within seconds.
+Weights are not in the image. The service downloads a checkpoint from the Hugging
+Face Hub into the `forecast_models` volume (`/models`) when it is asked for it:
+by **Download** in the settings of a Timestral step, which lists every checkpoint
+with its size and state, or by the first monitor or Dojo run that uses it. The
+backend node therefore needs outbound HTTPS to `huggingface.co` and the hosts it
+redirects downloads to. Values that arrive before the checkpoint is ready are
+counted as lost coverage, not scored; the smallest checkpoint is ready within
+seconds. **Download** needs the `manage_monitors` permission. The service
+downloads one checkpoint at a time; the others wait their turn.
 
 The volume is node-local and outlives redeployments, so a checkpoint downloads
 once. A task rescheduled to another backend node downloads what it is asked for
@@ -104,11 +110,14 @@ lists what the service and the workers read.
 | Preflight rejects a Timestral step with `forecast_service` | The worker's environment names no service: `TACTIC_FORECAST_API_URL` is empty. |
 | A monitor's coverage drops while it keeps running | The service did not answer, or the checkpoint is still downloading. Scores resume by themselves; the model's series has no gap. |
 | A run ends right after it starts | The step names a checkpoint that `FORECAST_TIMESTRAL_MODELS` does not offer. |
-| `/v1/models` shows a checkpoint as `failed` | Its download failed; `error` says why (usually no route to the Hub). The next use asks again. |
+| The composer shows the Timestral step greyed out, with "This deployment has no forecast service" | TACTIC is told no service: `TACTIC_FORECAST_API_URL` is empty. |
+| A Timestral step's settings say the forecast service does not answer | TACTIC could not reach the service within 3 seconds, or the service refused its token. Read the `forecast` task's state and TACTIC's log line `tactic.forecast_models_unreachable`. |
+| A checkpoint is listed as **Download failed**, or `/v1/models` shows it as `failed` | Its download failed; the reason is listed with it (usually no route to the Hub). **Try again**, or the next use, asks again. |
 | The release fails on `forecast endpoint` | The task is not running or not reachable on the app network; read its task errors and logs. |
 
-To look at the service, ask it from a Dojo worker, which holds the token. On the
-node that runs one:
+The settings of a Timestral step show what the service holds. To ask the service
+itself, do it from a Dojo worker, which holds the token. On the node that runs
+one:
 
 ```bash
 docker exec "$(docker ps -q -f name=off-key_dojo-worker | head -1)" /app/bin/python -c \

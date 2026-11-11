@@ -191,11 +191,12 @@ The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
 
 Pretrained forecaster steps (Timestral) ask the forecast service for forecasts;
 see [Forecast service](../operations/forecast-service.md). Workers read the first
-three variables; the service reads the rest.
+three variables; the service reads the rest. TACTIC reads the token as well, to
+ask the service which models it holds for the composer.
 
 | Variable | Development default | Purpose / validation |
 | --- | --- | --- |
-| `FORECAST_API_URL` | empty (`http://forecast:8020` in production) | Where RADAR workers, preflight jobs and Dojo workers reach the service. Empty: a pretrained forecaster step fails preflight with the issue `forecast_service`. Compose and Ansible give it to TACTIC as `TACTIC_FORECAST_API_URL`, which hands it to every worker and preflight job it starts. |
+| `FORECAST_API_URL` | empty (`http://forecast:8020` in production) | Where RADAR workers, preflight jobs and Dojo workers reach the service. Empty: the composer does not offer a pretrained forecaster step, and a design that holds one fails preflight with the issue `forecast_service`. Compose and Ansible give it to TACTIC as `TACTIC_FORECAST_API_URL`, which hands it to every worker and preflight job it starts. |
 | `FORECAST_API_TOKEN` | unset; a Swarm secret in production | Bearer token shared by the service and its callers. Unset on both sides only on a development machine. |
 | `FORECAST_API_TIMEOUT` | `10` | Seconds a worker waits for one answer, above 0 and at most 120. |
 | `FORECAST_API_HOST`, `FORECAST_API_PORT` | `0.0.0.0`, `8020` | Bind address and port of the service. |

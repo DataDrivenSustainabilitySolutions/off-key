@@ -16,6 +16,7 @@ from pydantic import (
 from off_key_core.utils.json_budget import fits_json_budget
 
 from .collection_policy import CollectionPolicy
+from .forecast import ForecastModelInfo
 from .pipeline_versions import (
     Learning,
     Strategy,
@@ -406,6 +407,23 @@ class PipelineCatalog(PipelineModel):
     authoring_enabled: bool
     components: list[PipelineComponent]
     templates: list[PipelineTemplate]
+
+
+class ForecastModelCatalog(PipelineModel):
+    """What the composer shows about pretrained forecasters.
+
+    ``service`` says whether the deployment has a forecast service and whether
+    it answers; ``models`` are its checkpoints with their download state.
+    """
+
+    service: Literal["available", "unreachable", "not_deployed"]
+    models: list[ForecastModelInfo] = Field(default_factory=list)
+
+
+class ForecastModelDownload(PipelineModel):
+    """The model whose weights the forecast service should download."""
+
+    model: str = Field(min_length=1, max_length=200)
 
 
 class PipelineCreate(PipelineModel):

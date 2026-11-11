@@ -101,6 +101,32 @@ export type FeatureDescription = {
   steps?: Array<string>;
 };
 
+export type ForecastModelCatalog = {
+  service: "available" | "unreachable" | "not_deployed";
+  models?: Array<ForecastModelInfo>;
+};
+
+export type ForecastModelDownload = {
+  model: string;
+};
+
+export type ForecastModelInfo = {
+  id: string;
+  family: string;
+  label: string;
+  parameters?: number | null;
+  download_bytes: number;
+  licence: string;
+  source?: string | null;
+  revision?: string | null;
+  levels: Array<number>;
+  max_context: number;
+  max_horizon: number;
+  status: "not_downloaded" | "downloading" | "ready" | "failed";
+  progress?: number | null;
+  error?: string | null;
+};
+
 export type FormulaParameters = {
   expression: string;
   name?: string | null;

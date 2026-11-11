@@ -23,6 +23,8 @@ import {
   calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
   learningLabel, type Learning,
 } from "./learning";
+import { usesForecastService, type ForecastModels } from "./forecastModels";
+import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
 import { combinedName, hasScope, isWarning } from "./scope";
@@ -50,6 +52,8 @@ type Props = {
   content?: ReactNode;
   /** Shown for the input instead of its generic settings: the readings it monitors. */
   input?: ReactNode;
+  /** What the forecast service holds, for the steps whose model lives there. */
+  forecast?: ForecastModels;
   onSelect: (id?: string) => void;
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
 };
@@ -64,6 +68,7 @@ export function PipelineInspector({
   header,
   content,
   input: inputContent,
+  forecast,
   onSelect,
   onChange,
 }: Props) {
@@ -300,7 +305,10 @@ export function PipelineInspector({
                   {LEARNING_GROUPS.map((group) => {
                     const items = models.filter((item) => (item.learning ?? "none") === group.mode);
                     return items.length ? <optgroup key={group.mode} label={group.label}>
-                      {items.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      {items.map((item) => <option key={item.id} value={item.id}
+                        disabled={!!item.unavailable && item.id !== node.component}>
+                        {item.label}{item.unavailable ? " (no forecast service)" : ""}
+                      </option>)}
                     </optgroup> : null;
                   })}
                 </select>
@@ -449,6 +457,9 @@ export function PipelineInspector({
                 .sort()
                 .join(","))}
             />
+          )}
+          {component && forecast && usesForecastService(node.component) && (
+            <PipelineForecastModels node={node} component={component} forecast={forecast} />
           )}
           <h4>
             {node.kind === "calibration" && detectors.length > 1

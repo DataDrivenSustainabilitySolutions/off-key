@@ -25,6 +25,8 @@ runs:
         fi
         sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --allow-downgrades \
           "docker-ce=$package" "docker-ce-cli=$package" > /dev/null
+        # Package hooks can use up systemd's start burst before this explicit restart.
+        sudo systemctl reset-failed docker
         sudo systemctl restart docker
         actual="$(docker version --format '{{.Server.Version}}')"
         if [ "$actual" != "$version" ]; then

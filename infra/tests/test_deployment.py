@@ -829,6 +829,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(set(landing["networks"]), {"public-network"})
         self.assertFalse(landing.get("environment"))
         self.assertFalse(landing.get("secrets"))
+        assets = json.loads((ROOT / "stack/landing-assets.json").read_text())
         self.assertEqual(
             {item["source"]: item["target"] for item in landing["configs"]},
             {
@@ -836,18 +837,31 @@ class DeploymentTests(unittest.TestCase):
                 "landing_markdown": "/usr/share/nginx/html/index.md",
                 "landing_llms": "/usr/share/nginx/html/llms.txt",
                 "landing_nginx": "/etc/nginx/conf.d/default.conf",
+                **{
+                    f"landing_{asset['name']}": "/usr/share/nginx/html/assets/"
+                    + asset["file"]
+                    for asset in assets
+                },
             },
         )
-        for name in ("page", "markdown", "llms", "nginx"):
+        for name in ("page", "markdown", "llms", "nginx", *[a["name"] for a in assets]):
             self.assertRegex(
                 config["configs"][f"landing_{name}"]["name"],
                 rf"^landing_{name}_[0-9a-f]{{12}}$",
             )
+        for asset in assets:
+            with self.subTest(image=asset["file"]):
+                image = Path(config["configs"][f"landing_{asset['name']}"]["file"])
+                data = image.read_bytes()
+                self.assertLess(len(data), 500_000)
+                self.assertEqual(hashlib.sha256(data).hexdigest(), asset["sha256"])
+                self.assertIn(f'src="/assets/{asset["file"]}"', result["landing_html"])
         headers = routes["middlewares"]["landing-headers"]["headers"]
         self.assertEqual(
             headers["customRequestHeaders"], {"Cookie": "", "Authorization": ""}
         )
         self.assertIn("default-src 'none'", headers["contentSecurityPolicy"])
+        self.assertIn("img-src 'self' data:", headers["contentSecurityPolicy"])
 
     def test_grafana_sits_behind_the_admin_gate_on_its_own_network(self):
         result = self.results["prod"]

@@ -130,7 +130,7 @@ http:
           Authorization: ""
         contentTypeNosniff: true
         referrerPolicy: no-referrer
-        contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        contentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     api-strip:
       stripPrefix:
         prefixes:

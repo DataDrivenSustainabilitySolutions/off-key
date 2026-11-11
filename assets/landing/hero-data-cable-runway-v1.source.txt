@@ -1,0 +1,6 @@
+Approved generated photograph: data-cable-runway-v1.png
+Original PNG SHA-256: 247ccf5077d4642b987c49135c71c5118d7e4158236715f890f96b8a0bb361b0
+Web export: original dimensions, WebP quality 85, method 6.
+Composition and tone preserved; no generative edits in export.
+Original PNG retained in the local design artifacts.
+Illustrative infrastructure, not a customer installation.

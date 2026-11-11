@@ -1,0 +1,6 @@
+Approved generated photograph: irrigation-span-v2.png
+Original PNG SHA-256: ab589b7a495dfa3f8f18950506ffe842e93d64ae3bb291c8c055da5f815969ec
+Web export: original dimensions, WebP quality 85, method 6.
+Composition and tone preserved; no generative edits in export.
+Original PNG retained in the local design artifacts.
+Illustrative infrastructure, not a customer installation.

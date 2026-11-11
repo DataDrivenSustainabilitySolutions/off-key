@@ -1,0 +1,50 @@
+[
+  {
+    "name": "hero_bridge",
+    "file": "hero-bridge-v1.jpg",
+    "type": "image/jpeg",
+    "sha256": "45b8ff724b7cea847800e81e4b9765850accd3509b66c084625fc3472de56c70"
+  },
+  {
+    "name": "hero_pipes",
+    "file": "hero-pipes-v1.webp",
+    "type": "image/webp",
+    "sha256": "2808116faf319154ede375e49fef48418063ee918a81f3615e7f0d54c4a27b7b"
+  },
+  {
+    "name": "hero_conveyor",
+    "file": "hero-conveyor-v1.webp",
+    "type": "image/webp",
+    "sha256": "4c8ffe53063c0e7f1779d1b0b55dfa91806fe2c92a7f696e90ade7b5bf2148c1"
+  },
+  {
+    "name": "hero_solar",
+    "file": "hero-solar-v2.webp",
+    "type": "image/webp",
+    "sha256": "998a048cf24eb95f6fb321c9447940c6b0f7d118ea40d700b02e4cf47de331d5"
+  },
+  {
+    "name": "hero_cooling",
+    "file": "hero-cooling-bank-v1.webp",
+    "type": "image/webp",
+    "sha256": "25e679d6c67451fdc1137d243a24196dea25e65c898aab5ed27bf8c4c0a06f95"
+  },
+  {
+    "name": "hero_gantry",
+    "file": "hero-robotic-gantry-v1.webp",
+    "type": "image/webp",
+    "sha256": "07e780b9699c9ae6137322c03c80dde5811cc5adc476f56a1cbaff9f51c626b7"
+  },
+  {
+    "name": "hero_cables",
+    "file": "hero-data-cable-runway-v1.webp",
+    "type": "image/webp",
+    "sha256": "290cb7bdcd8937bb627b51cef5d64cb2f75c2721ed0e7d8ef55980e40a0ddd9d"
+  },
+  {
+    "name": "hero_irrigation",
+    "file": "hero-irrigation-span-v2.webp",
+    "type": "image/webp",
+    "sha256": "4e75a620fafd1771bdfc76eddb04d1ef9f8e438dc2ac1040aaa9999380bee7ad"
+  }
+]

@@ -1,6 +1,6 @@
 """Render public content without starting the application or its test suites."""
 
-import base64
+import json
 import re
 import subprocess
 import sys
@@ -14,6 +14,7 @@ PROJECT = Path(__file__).resolve().parents[2]
 def main():
     for export in ("assets/brand/export.py", "assets/landing/export.py"):
         subprocess.run([sys.executable, PROJECT / export, "--check"], check=True)
+    assets = json.loads((PROJECT / "infra/stack/landing-assets.json").read_text())
     environment = Environment(
         loader=FileSystemLoader(PROJECT / "infra/stack"),
         undefined=StrictUndefined,
@@ -31,15 +32,20 @@ def main():
             if not rendered.strip() or len(rendered.encode()) >= 500_000:
                 raise ValueError(f"Empty or oversized Swarm config: {name}")
             if name == "landing.html.j2":
-                hero = re.search(r"data:image/jpeg;base64,([^\"]+)", rendered)
-                if hero is None:
-                    raise ValueError("Missing embedded hero")
-                decoded = base64.b64decode("".join(hero[1].split()), validate=True)
-                if not decoded.startswith(b"\xff\xd8") or not decoded.endswith(
-                    b"\xff\xd9"
-                ):
-                    raise ValueError("Invalid JPEG hero")
-    print("Landing HTML, Markdown, agent index and embedded assets render correctly.")
+                images = re.findall(r'<img\b[^>]*src="/assets/([^"]+)"', rendered)
+                if images != [asset["file"] for asset in assets]:
+                    raise ValueError("Hero photographs do not match the image manifest")
+                for asset in assets:
+                    data = (PROJECT / "assets/landing" / asset["file"]).read_bytes()
+                    if asset["type"] == "image/jpeg":
+                        valid = data.startswith(b"\xff\xd8") and data.endswith(
+                            b"\xff\xd9"
+                        )
+                    else:
+                        valid = data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+                    if not valid:
+                        raise ValueError(f"Invalid hero image: {asset['file']}")
+    print("Landing HTML, Markdown, agent index and hero assets render correctly.")
 
 
 if __name__ == "__main__":

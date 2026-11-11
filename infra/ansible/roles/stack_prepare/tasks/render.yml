@@ -279,6 +279,17 @@
     owner: "{{ stack_file_owner }}"
     group: "{{ stack_file_group }}"
 
+- name: Copy the public landing photographs
+  copy:
+    src: "{{ stack_source_dir }}/../../assets/landing/{{ item.file }}"
+    dest: "{{ stack_dir }}/{{ item.file }}"
+    mode: "0640"
+    owner: "{{ stack_file_owner }}"
+    group: "{{ stack_file_group }}"
+  loop: "{{ lookup('file', stack_source_dir ~ '/landing-assets.json') | from_json }}"
+  loop_control:
+    label: "{{ item.file }}"
+
 - name: Render production Cloudflare Tunnel connector overlay
   template:
     src: "{{ stack_source_dir }}/docker-compose.cloudflared.yml.j2"

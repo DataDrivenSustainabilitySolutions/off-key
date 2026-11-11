@@ -1,0 +1,6 @@
+Approved generated photograph: cooling-bank-v1.png
+Original PNG SHA-256: 12aa6f1fc9b8ede37988bfaf1f9a4b3a307841de55d21fa041ff399dca5d9289
+Web export: original dimensions, WebP quality 85, method 6.
+Composition and tone preserved; no generative edits in export.
+Original PNG retained in the local design artifacts.
+Illustrative infrastructure, not a customer installation.

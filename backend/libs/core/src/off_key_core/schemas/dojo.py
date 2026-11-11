@@ -455,14 +455,18 @@ class MethodMetrics(DojoModel):
         "design. Every other method ran with its defaults."
     )
     failed: str | None = Field(
-        description="Why the method stopped on these scores; its numbers then "
-        "cover only the results before it stopped."
+        description="Why the method stopped on these scores. Its counts then "
+        "cover only the results before it stopped, and it has no share or "
+        "rate, which would be over results it never judged."
     )
     alarm_count: int = Field(description="Results on which the method alarmed.")
     alarm_share: float | None = Field(
         description="alarm_count over the results the methods judged."
     )
-    labels_scored: int
+    labels_scored: int = Field(
+        description="Labels the run scored; a method that stopped may not "
+        "have reached all of them."
+    )
     labels_detected: int
     detection_rate: float | None
     median_delay_seconds: float | None

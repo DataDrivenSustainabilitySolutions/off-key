@@ -215,6 +215,9 @@ class DojoMetrics:
                 ]
             evaluation = evaluate(intervals, alarms, scored_from, scored_to)
             evaluated = evaluation.evaluated_seconds
+            # A method that stopped judged only part of the run: what it found
+            # is counted, but no rate over the whole run is its own.
+            stopped = method in failed
             delays = [
                 item.delay_seconds
                 for item in evaluation.labels
@@ -236,15 +239,19 @@ class DojoMetrics:
                     own=position == 0,
                     failed=failed.get(method),
                     alarm_count=len(alarms),
-                    alarm_share=len(alarms) / results if results else None,
+                    alarm_share=(
+                        len(alarms) / results if results and not stopped else None
+                    ),
                     labels_scored=evaluation.labels_scored,
                     labels_detected=evaluation.labels_detected,
-                    detection_rate=_rate(
-                        evaluation.labels_detected, evaluation.labels_scored
+                    detection_rate=(
+                        None
+                        if stopped
+                        else _rate(evaluation.labels_detected, evaluation.labels_scored)
                     ),
                     median_delay_seconds=median(delays) if delays else None,
                     false_alarms=evaluation.false_alarms,
-                    false_alarms_per_day=_per_day(evaluation),
+                    false_alarms_per_day=None if stopped else _per_day(evaluation),
                 )
             )
         return MethodComparison(

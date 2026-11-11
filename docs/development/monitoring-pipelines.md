@@ -539,7 +539,9 @@ A monitor never has a comparison; only `Replay` sets one. Each result carries
 `method_alarms`, one bit per method in the plan's order, stored in
 `dojo_run_results.method_alarms` (migration 027) and null before the run is
 operational. A method that raises leaves the comparison and the worker writes
-the reason to `calibration_comparison.failed` when the run ends. TACTIC scores
+the reason to `calibration_comparison.failed` when the run ends; such a method
+keeps the counts of what it found and gets no share or rate, which would be
+over results it never judged. TACTIC scores
 each method on read like a run of its own (`DojoMetrics.calibration`), so a
 moved label re-scores the methods too. All 15 adapting methods together cost
 about 2 ms per observation, mostly the Bayesian ones, which is why the

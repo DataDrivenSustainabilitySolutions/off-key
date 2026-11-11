@@ -316,7 +316,8 @@ describe("Dojo workspace", () => {
       results: 320, scored_from: T0, scored_to: "2024-01-01T02:00:00Z", labels_total: 2, evaluated_seconds: 6000,
       methods: [method("fixed_split", "Fixed split", "fixed", 1, 3, { own: true }), method("aci", "ACI", "conformal", 2, 5),
         method("pid", "Conformal PID", "conformal", 2, 1), method("nig", "Discounted Bayes", "bayesian", 2, 0,
-          { failed: "ArithmeticError: no boundary" })] });
+          { failed: "ArithmeticError: no boundary", alarm_share: null, detection_rate: null,
+            false_alarms_per_day: null })] });
     mount("/dojo?dataset=d1&tab=compare");
     const table = await screen.findByRole("table", { name: "Calibration methods" });
     expect(dojoApi.calibration).toHaveBeenCalledWith("r1", expect.any(AbortSignal));
@@ -324,6 +325,9 @@ describe("Dojo workspace", () => {
     expect(within(table).getAllByRole("row").slice(1).map(row => within(row).getAllByRole("cell")[0]!.textContent)).toEqual([
       "Conformal PIDConformal", "ACIConformal", "Fixed splitThis runFixed",
       "Discounted BayesBayesian · stopped early: ArithmeticError: no boundary"]);
+    // It shows what it found before it stopped, without a rate over results it never judged.
+    const stopped = within(table).getByRole("row", { name: /Discounted Bayes/ });
+    expect(within(stopped).getAllByRole("cell").slice(1, 3).map(cell => cell.textContent)).toEqual(["2", "–"]);
     const best = within(table).getByRole("row", { name: /Conformal PID/ });
     expect(within(best).getAllByRole("cell")[5]!.className).toBe("dj-metric-best");
     within(best).getByText("1.3 %");

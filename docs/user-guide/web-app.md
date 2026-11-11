@@ -255,7 +255,9 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
    and the share of results it would have alarmed on. Every method saw the
    same scores at the same alarm rate; the row marked **This run** is the
    design's own calibration step with its settings, the others run with their
-   defaults. To use a better method, change the design's calibration step.
+   defaults. A method that stopped on an error is listed last with the reason
+   and shows only what it found until then. To use a better method, change the
+   design's calibration step.
 5. **Use as template**, on a finished run, saves its design to the template
    library; it needs the permission to manage monitors. **Start a monitor**
    then opens the template in Monitoring with each input set to the recorded

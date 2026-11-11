@@ -328,8 +328,9 @@ async def test_each_compared_calibration_method_is_scored_like_a_run(sessions):
             "failed": {"nig": "ArithmeticError: no boundary"},
         },
         # The fixed split holds one alarm from the label into quiet time and
-        # alarms twice more; PID is late in the label and quiet elsewhere.
-        method_minutes=({39, 40, 41, 60, 61, 90}, {38}, set()),
+        # alarms twice more; PID is late in the label and quiet elsewhere; NIG
+        # alarmed once in the label before it stopped.
+        method_minutes=({39, 40, 41, 60, 61, 90}, {38}, {35}),
     )
     plain = await finished_run(factory, view, alarm_minutes={33}, name="plain")
     async with factory() as session:
@@ -363,8 +364,16 @@ async def test_each_compared_calibration_method_is_scored_like_a_run(sessions):
     assert fixed.median_delay_seconds == 540.0
     assert (pid.alarm_count, pid.detection_rate, pid.false_alarms) == (1, 1.0, 0)
     assert pid.false_alarms_per_day == 0.0
-    assert (nig.alarm_count, nig.detection_rate) == (0, 0.0)
+    # A method that stopped keeps what it found, but has no share or rate:
+    # those would be over results it never judged.
     assert nig.failed == "ArithmeticError: no boundary" and own.failed is None
+    assert (nig.alarm_count, nig.labels_detected, nig.false_alarms) == (1, 1, 0)
+    assert nig.median_delay_seconds == 300.0
+    assert (nig.alarm_share, nig.detection_rate, nig.false_alarms_per_day) == (
+        None,
+        None,
+        None,
+    )
 
 
 @pytest.mark.asyncio

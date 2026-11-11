@@ -10,7 +10,9 @@ type Column = { label: string; value: (item: MethodMetrics) => string;
   best?: { score: (item: MethodMetrics) => number | null; prefer: "high" | "low" } };
 
 const COLUMNS: Column[] = [
-  { label: "Labels detected", value: item => `${item.labels_detected} of ${item.labels_scored}` },
+  // A method that stopped may not have reached every label, so it shows only what it found.
+  { label: "Labels detected", value: item => item.failed ? String(item.labels_detected)
+    : `${item.labels_detected} of ${item.labels_scored}` },
   { label: "Detection rate", value: item => formatRate(item.detection_rate),
     best: { score: item => item.detection_rate, prefer: "high" } },
   { label: "Median delay", value: item => formatDuration(item.median_delay_seconds),

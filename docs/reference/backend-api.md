@@ -376,7 +376,10 @@ martingale has no boundary on scores and is refused with 422.
 (`own`), then the others, each with the event metrics above counted from the
 first result the methods judged, and `alarm_share`, the share of judged
 results it would have alarmed on. A method that raised an error on the scores
-stops there and says why in `failed`; the run itself carries on.
+stops there and says why in `failed`; the run itself carries on. Its counts
+are of what it found until then, and `alarm_share`, `detection_rate` and
+`false_alarms_per_day` are null, because they would be over results it never
+judged.
 
 Promoting a run copies its compiled design into the pipeline library as a new
 template, the same as `POST /pipelines`, so pipeline authoring must

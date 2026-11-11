@@ -2,10 +2,10 @@ import React, { useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { waitForLogout } from "@/auth/session";
+import { loginDestination } from "@/auth/login-navigation";
 import {
   AuthLayout,
   AUTH_LINK_CLASS,
@@ -34,6 +34,7 @@ const Login: React.FC = () => {
   const [emailError, setEmailError] = useState<string | undefined>();
   const [passwordError, setPasswordError] = useState<string | undefined>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const configuredAdminEmail = import.meta.env.VITE_LOCAL_ADMIN_EMAIL?.trim();
   const localAdminEmail = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(globalThis.location.hostname)
@@ -89,7 +90,7 @@ const Login: React.FC = () => {
       // Use consolidated login function which handles token storage
       login(data.access_token, rememberMe);
 
-      navigate("/");
+      navigate(loginDestination(searchParams.get("returnTo")), { replace: true });
     } catch (error) {
       clientLogger.error({
         event: "auth.login_request_failed",
@@ -104,8 +105,8 @@ const Login: React.FC = () => {
   };
 
   return (
-    <AuthLayout title="Sign in" brandVariant="wordmark" hideTitle>
-      <form onSubmit={handleLogin} className="space-y-4">
+    <AuthLayout title="Sign in">
+      <form onSubmit={handleLogin} className="auth-login-form">
         {/* Email */}
         <div>
           <Label htmlFor="email" className={AUTH_LABEL_CLASS}>
@@ -165,7 +166,7 @@ const Login: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center space-x-2 text-sm">
+        <label className="auth-remember" htmlFor="remember">
           <input
             type="checkbox"
             id="remember"
@@ -173,8 +174,8 @@ const Login: React.FC = () => {
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
           />
-          <label htmlFor="remember">Remember this device</label>
-        </div>
+          <span>Remember this device</span>
+        </label>
 
         {/* Login Button */}
         <Button
@@ -194,7 +195,7 @@ const Login: React.FC = () => {
         )}
 
         {/* Links */}
-        <div className="text-sm text-center mt-3 space-y-1">
+        <div className="auth-recovery">
           <Link
             to="/forgot-password"
             className={AUTH_LINK_CLASS}

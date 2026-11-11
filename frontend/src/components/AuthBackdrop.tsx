@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import "./auth-layout.css";
 
 interface AuthBackdropProps {
   children: ReactNode;
@@ -11,9 +12,8 @@ export function AuthBackdrop({
   contentClassName,
 }: AuthBackdropProps) {
   return (
-    <div className="auth-backdrop flex min-h-dvh items-center justify-center px-5 py-10">
-      <div className="auth-monogram-pattern" aria-hidden="true" />
-      <div className={cn("relative z-10 w-full", contentClassName)}>
+    <div className="auth-backdrop">
+      <div className={cn("w-full", contentClassName)}>
         {children}
       </div>
     </div>

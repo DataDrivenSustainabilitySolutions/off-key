@@ -1,12 +1,6 @@
-import type { ComponentProps, ReactNode } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import type { ReactNode } from "react";
+import { ArrowLeft } from "lucide-react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
-import { BrandHome } from "@/components/BrandHome";
-import { cn } from "@/lib/utils";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export const AUTH_LINK_CLASS = "text-primary underline-offset-4 hover:underline";
@@ -21,32 +15,24 @@ export const AUTH_SUBMIT_BUTTON_CLASS =
 interface AuthLayoutProps {
   title: string;
   children: ReactNode;
-  brandVariant?: ComponentProps<typeof BrandHome>["variant"];
-  hideTitle?: boolean;
 }
 
-export function AuthLayout({
-  title,
-  children,
-  brandVariant,
-  hideTitle = false,
-}: AuthLayoutProps) {
+export function AuthLayout({ title, children }: AuthLayoutProps) {
   useDocumentTitle(title);
 
   return (
-    <AuthBackdrop contentClassName="max-w-sm">
-      <Card className="w-full gap-6 border-border py-7 sm:py-8">
-        <CardHeader className={hideTitle ? "gap-0" : undefined}>
-          <div className={cn("flex justify-center", !hideTitle && "mb-4")}><BrandHome variant={brandVariant} /></div>
-          <h1
-            data-slot="card-title"
-            className={hideTitle ? "sr-only" : "text-center text-xl font-medium leading-7 tracking-[-0.02em]"}
-          >
-            {title}
-          </h1>
-        </CardHeader>
-        <CardContent className="pb-0">{children}</CardContent>
-      </Card>
+    <AuthBackdrop contentClassName="auth-panel">
+      <a className="auth-return" href="https://aberration.app/">
+        <ArrowLeft size={15} strokeWidth={1.5} aria-hidden="true" />
+        Back to website
+      </a>
+      <main aria-labelledby="auth-title">
+        <header className="auth-heading">
+          <p className="auth-eyebrow">Dashboard</p>
+          <h1 id="auth-title">{title}</h1>
+        </header>
+        {children}
+      </main>
     </AuthBackdrop>
   );
 }

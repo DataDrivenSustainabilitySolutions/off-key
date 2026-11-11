@@ -41,6 +41,7 @@ function sidebarCatalogue(benches = 240) {
 }
 
 export type SidebarMock = {
+  authenticated?: boolean;
   role?: "admin" | "viewer";
   dojo?: boolean;
   catalogue?: ReturnType<typeof sidebarCatalogue> | null;
@@ -57,15 +58,17 @@ export type SidebarMock = {
  */
 export async function installSidebarMockApi(page: Page, {
   role = "admin", dojo = true, catalogue = sidebarCatalogue(), favourites = [{ kind: "reading", id: "air-temperature" }, { kind: "device", id: "plant" }],
-  theme = "light", catalogueError = false,
+  theme = "light", catalogueError = false, authenticated = true,
 }: SidebarMock = {}) {
   const writes: string[] = [];
-  await page.addInitScript((preferredTheme) => {
-    const payload = btoa(JSON.stringify({ sub: "1", user_id: 1, exp: 4_102_444_800 }));
-    sessionStorage.setItem("auth_token", `e2e.${payload}.signature`);
+  await page.addInitScript(({ preferredTheme, signedIn }) => {
+    if (signedIn) {
+      const payload = btoa(JSON.stringify({ sub: "1", user_id: 1, exp: 4_102_444_800 }));
+      sessionStorage.setItem("auth_token", `e2e.${payload}.signature`);
+    }
     localStorage.setItem("token_storage_type", "sessionStorage");
     localStorage.setItem("vite-ui-theme", preferredTheme);
-  }, theme);
+  }, { preferredTheme: theme, signedIn: authenticated });
   const admin = role === "admin";
   await page.route("**/v1/**", async (route) => {
     const request: Request = route.request();

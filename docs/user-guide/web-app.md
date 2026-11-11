@@ -115,6 +115,13 @@ closes it, and focus returns to **Show sidebar**.
 3. Log in and receive a bearer token.
 4. The frontend API client attaches that token to subsequent requests.
 
+Opening a protected link while signed out takes you to **Sign in**. After login,
+you return to that page with its selected item, filters and URL fragment intact.
+The destination also survives reloading the login page or signing in again after
+your session expires. Opening the login page directly takes you to Monitoring.
+Application invitations and member roles control access; the GitHub allowlist for
+infrastructure administration is separate.
+
 With **Remember this device**, the access token stays in memory and is restored from an HttpOnly session cookie through `/v1/auth/refresh`; otherwise it lives in session storage for the tab. In local development, invitation and password-reset messages are available in Mailpit at <http://localhost:8025>.
 
 **Account → Signed in** shows your email, your role and what it lets you change.

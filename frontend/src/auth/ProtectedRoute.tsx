@@ -1,10 +1,12 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { JSX } from "react";
 import { AuthBackdrop } from "@/components/AuthBackdrop";
 import { Button } from "@/components/ui/button";
+import { loginHref } from "./login-navigation";
 
 export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
+  const location = useLocation();
   const { isAuthenticated, isLoading, authError, retryAuthentication, logout } = useAuth();
 
   if (authError) {
@@ -33,7 +35,7 @@ export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={loginHref(location)} replace />;
   }
 
   return children;

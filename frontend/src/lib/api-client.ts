@@ -10,6 +10,7 @@ import axios, {
 } from 'axios';
 import { refreshSession, tokenManager } from '@/auth/session';
 import { getUserIdFromToken } from '@/auth/token';
+import { loginHref } from '@/auth/login-navigation';
 import { API_CONFIG, DEFAULT_REQUEST_CONFIG } from './api-config';
 
 
@@ -131,7 +132,7 @@ const createApiClient = (): AxiosInstance => {
         }
         tokenManager.removeToken();
         // Redirect to login page
-        if (options?.redirectOnUnauthorized !== false) window.location.href = '/login';
+        if (options?.redirectOnUnauthorized !== false) window.location.replace(loginHref(window.location));
         return Promise.reject(new ApiRequestError('Session expired. Please login again.', 401));
       }
 

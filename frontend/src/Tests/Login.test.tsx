@@ -38,10 +38,10 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-const renderLogin = () =>
+const renderLogin = (returnTo?: string) =>
   render(
     <AuthProvider>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[{ pathname: "/login", search: returnTo ? `?${new URLSearchParams({ returnTo })}` : "" }]}>
         <Login />
       </MemoryRouter>
     </AuthProvider>
@@ -207,7 +207,7 @@ describe("Login", () => {
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
     });
-    expect(mockNavigate).toHaveBeenCalledWith("/");
+    expect(mockNavigate).toHaveBeenCalledWith("/", { replace: true });
     expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe("include");
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).remember_me).toBe(rememberMe);
     // Remembered access tokens stay in memory; only the HttpOnly cookie persists.
@@ -243,6 +243,21 @@ describe("Login", () => {
     await waitFor(() => {
       expect(tokenManager.getToken()).toBe(mockToken);
     });
-    expect(mockNavigate).toHaveBeenCalledWith("/");
+    expect(mockNavigate).toHaveBeenCalledWith("/", { replace: true });
+  });
+
+  it.each([
+    ["/sources?reading=air-temperature#history", "/sources?reading=air-temperature#history"],
+    ["https://outside.example/login", "/"],
+  ])("resumes only a valid internal destination after signing in: %s", async (returnTo, expected) => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      access_token: createUnsignedToken({ sub: "test@example.com", user_id: 7, exp: Math.floor(Date.now() / 1000) + 3600 }),
+      token_type: "bearer",
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    renderLogin(returnTo);
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "test@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), { target: { value: "correctpass" } });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith(expected, { replace: true }));
   });
 });

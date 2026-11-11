@@ -70,24 +70,21 @@ Exports:
 - [favicon.svg](favicon.svg): white mark on a solid black background in every
   browser colour scheme.
 
-The mark stands alone in application navigation and links to dashboard home.
-Give that link an accessible name, “Aberration home”, and a minimum 44 × 44
-interaction area. The SVG itself is decorative inside the named link. Render the
-mark black on light surfaces and white on dark surfaces; no teal fill, frame,
-shadow, perspective, or extra wordmark is needed in the application header.
+Where the mark links to dashboard home, give that link an accessible name,
+“Aberration home”, and a minimum 44 × 44 interaction area. The SVG itself is
+decorative inside the named link. Render the mark black on light surfaces and
+white on dark surfaces. The application's sidebar and main content have no
+branded header.
 
 The master includes 10 units of clear space on every side. Use the full viewBox
-and preserve its aspect ratio. A 36px SVG in a 44px button gives the app header a
-quiet mark without making its target difficult to activate.
+and preserve its aspect ratio. A 36px SVG in a 44px button preserves a usable
+interaction target.
 
-The login form uses the selected single-line Aberration wordmark, exported from
-`wordmark.svg` to `frontend/public/brand/wordmark.svg`. It follows
-the selected appearance through `currentColor`; the redundant Login heading is
-visually hidden while remaining available to screen readers.
-
-The authentication background repeats the same paired-r mark through a CSS
-mask, exported as `frontend/public/brand/auth-pattern.svg` from the logo master.
-It follows the page foreground colour in light and dark modes.
+Authentication screens use a plain heading and a compact form, without a
+wordmark, repeating pattern or surrounding card. Warm grey and charcoal
+surfaces, Helvetica-style typography and restrained controls connect them to
+the public website. The exported wordmark and pattern remain available as brand
+assets; the login page does not display them.
 
 ## Updating distributed assets
 

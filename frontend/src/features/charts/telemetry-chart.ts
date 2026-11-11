@@ -10,6 +10,8 @@ import type {
 import { color as chartColor, type ComposeOption } from "echarts/core";
 import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "./telemetry-detection-series";
 import { formatMonitoringObservationTooltip } from "./monitoring-tooltip";
+import { buildForecastChartSeries, formatForecastTooltip } from "./forecast-chart";
+import { formatForecastValue, type ForecastEvidenceSeries } from "./forecast-evidence";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import type { TimeValue } from "./telemetry-data";
@@ -77,6 +79,8 @@ export const areChartNavigationStatesEqual = (
 
 export interface MonitoringChartModel {
   readings: MonitoringChartReading[];
+  forecasts?: ForecastEvidenceSeries[];
+  intervalLabel?: string;
   /** The features the detectors scored, in their own pane under the readings. */
   detectorInputs?: DetectorInputSeries[];
   secondarySeries: SecondaryChartSeries[];
@@ -328,9 +332,12 @@ export const buildMonitoringChartOption = ({
   const hasStaticPane = model.secondarySeries.some((series) => series.pane === "static");
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
   const detectorInputs = model.detectorInputs ?? [];
+  const forecasts = model.forecasts ?? [];
+  const hasInputsPane = detectorInputs.length > 0 || forecasts.some(forecast => !forecast.readingId);
   const panes = [
     ...model.readings.map(reading => reading.id),
-    ...(detectorInputs.length ? ["inputs"] : []),
+    ...(hasInputsPane ? ["inputs"] : []),
+    ...forecasts.map(forecast => `residual:${forecast.id}`),
     ...(hasStaticPane ? ["static"] : []),
     ...(hasAdaptivePane ? ["adaptive"] : []),
   ] as const;
@@ -341,7 +348,9 @@ export const buildMonitoringChartOption = ({
   for (const reading of model.readings) if (reading.unit) units.set(reading.name, reading.unit);
 
   const grid: GridComponentOption[] = monitoring
-    ? panes.map((_, index) => ({ left: 52, right: 18, top: 28 + index * 148, height: 100 }))
+    ? panes.map((_, index) => ({ left: 52, right: 18,
+        top: 28 + index * 148 + (forecasts.length ? 60 * Math.min(index, model.readings.length) : 0),
+        height: forecasts.length && index < model.readings.length ? 160 : 100 }))
     : compact
     ? panes.map((_, index) => ({
         left: 44, right: 16,
@@ -537,6 +546,12 @@ export const buildMonitoringChartOption = ({
     pageTextStyle: { color: colors.mutedForeground },
   } : undefined;
 
+  const evaluatedForecastSeries = forecasts.flatMap((forecast, index) => {
+    const readingPane = model.readings.findIndex(reading => reading.inputKey === forecast.readingId);
+    return buildForecastChartSeries(forecast, readingPane < 0 ? inputsPane : readingPane,
+      panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.alarmBoundary ?? "#dc2626");
+  });
+
   const ruledPanes = new Set<number>();
   const secondarySeries: LineSeriesOption[] = model.secondarySeries.flatMap((series) => {
     const paneIndex = panes.indexOf(series.pane);
@@ -595,7 +610,9 @@ export const buildMonitoringChartOption = ({
       textStyle: { color: colors.popoverForeground, fontSize: 12 },
       axisPointer: { type: "cross" },
       formatter: (params: unknown) =>
-        (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
+        (forecasts.length ? formatForecastTooltip(params,
+          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval") : undefined)
+          ?? (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
           ?? formatTelemetryTooltip(params, timeZone, units, locale),
     },
@@ -618,7 +635,7 @@ export const buildMonitoringChartOption = ({
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
       })),
-      ...(detectorInputs.length
+      ...(hasInputsPane
         ? [
             {
               id: "detector-input-values",
@@ -627,7 +644,7 @@ export const buildMonitoringChartOption = ({
               boundaryGap: ["10%", "10%"] as [string, string],
               ...(compact ? { splitNumber: 3 } : {}),
               gridIndex: inputsPane,
-              name: "Detector inputs",
+              name: forecasts.length ? "Transformed / unassociated features" : "Detector inputs",
               nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const },
               axisLabel: { color: colors.mutedForeground, fontSize: 12,
                 formatter: (value: number) => formatNumber(Number(value)), hideOverlap: true },
@@ -637,6 +654,18 @@ export const buildMonitoringChartOption = ({
             },
           ]
         : []),
+      ...forecasts.map(forecast => ({
+        id: `residual-values:${forecast.id}`, type: "value" as const, scale: true,
+        min: ({ min }: { min: number }) => Math.min(0, min),
+        max: ({ max }: { max: number }) => Math.max(0, max),
+        gridIndex: panes.indexOf(`residual:${forecast.id}`), splitNumber: 3,
+        name: `Residual · ${forecast.name}`,
+        nameTextStyle: { color: colors.mutedForeground, fontSize: 12, align: "left" as const,
+          overflow: "truncate" as const, width: 260 },
+        axisLabel: { color: colors.mutedForeground, fontSize: 12, formatter: (value: number) => formatNumber(value), hideOverlap: true },
+        axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: colors.border, type: "dashed" as const } },
+      })),
       ...(hasStaticPane
         ? [
             {
@@ -730,6 +759,7 @@ export const buildMonitoringChartOption = ({
       ...pendingTelemetrySeries,
       ...inputSeries,
       ...forecastSeries,
+      ...evaluatedForecastSeries,
       ...secondarySeries,
     ],
   };

@@ -8,6 +8,49 @@ type Issue = { path: (string | number)[]; message: string };
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
+/** The one feature a Rolling relation compares every other feature with. */
+export function PipelineAgainst({ node, features, featureLabels, featureHint, issues, readOnly, onChange }: {
+  node: PipelineNode;
+  features: string[];
+  featureLabels: Record<string, string>;
+  featureHint?: ReactNode;
+  issues: Issue[];
+  readOnly?: boolean;
+  onChange: (params: Record<string, JsonValue>, field: string) => void;
+}) {
+  const id = useId();
+  const against = typeof node.params.against === "string" ? node.params.against : "";
+  const errors = issues.filter((issue) => issue.path[0] === "against");
+  const choose = (feature: string) => {
+    const params = { ...node.params };
+    if (feature) params.against = feature;
+    else delete params.against;
+    // The compared feature is never one the step uses.
+    if (Array.isArray(params.apply_to)) {
+      const kept = params.apply_to.filter((name) => name !== feature);
+      if (kept.length) params.apply_to = kept;
+      else delete params.apply_to;
+    }
+    onChange(params, "against");
+  };
+  return <div className="pl-field">
+    <label htmlFor={`${id}-against`}>Against</label>
+    <select id={`${id}-against`} value={against} disabled={readOnly} aria-invalid={errors.length > 0}
+      aria-describedby={`${id}-against-help ${id}-against-errors`} onChange={(event) => choose(event.target.value)}>
+      <option value="">Choose a feature</option>
+      {features.map((feature) => <option key={feature} value={feature}>{featureLabels[feature] ?? feature}</option>)}
+      {against && !features.includes(against) && <option value={against}>{against} (not available here)</option>}
+    </select>
+    <small className="pl-help" id={`${id}-against-help`}>
+      Every feature under Applies to is compared with this one, over the same recent observations.
+    </small>
+    {!features.length && featureHint}
+    <div id={`${id}-against-errors`}>
+      {errors.map((issue, index) => <p key={index} className="pl-field-error" role="alert">{issue.message}</p>)}
+    </div>
+  </div>;
+}
+
 /** Applies to and Result: which incoming features a step uses and where its output goes. */
 export function PipelineScope({ node, component, features, featureLabels, featureHint, issues, readOnly, onChange }: {
   node: PipelineNode;

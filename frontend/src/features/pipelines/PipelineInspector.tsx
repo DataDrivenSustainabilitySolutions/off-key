@@ -26,10 +26,10 @@ import {
 import { usesForecastService, type ForecastModels } from "./forecastModels";
 import { PipelineForecastModels } from "./PipelineForecastModels";
 import { PipelineFormula } from "./PipelineFormula";
-import { PipelineScope } from "./PipelineScope";
+import { PipelineAgainst, PipelineScope } from "./PipelineScope";
 import { combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
-import { FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
+import { CONDITION_STEPS, FORMULA_STEPS, FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
 
 /** Detector models by how they learn, in the order the picker lists them. */
@@ -433,11 +433,18 @@ export function PipelineInspector({
             </div>
           )}
           {titleField}
-          {component && scoped && (
-            <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
+          {component && node.component === "prepare.relation" && (
+            <PipelineAgainst node={node} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
-          {component && ["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set"].includes(node.component) && (
+          {component && scoped && (
+            // A Rolling relation compares the other features with one, which it never uses itself.
+            <PipelineScope node={node} component={component}
+              features={features.filter((feature) => node.component !== "prepare.relation" || feature !== node.params.against)}
+              featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
+          )}
+          {component && FORMULA_STEPS.has(node.component) && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
               readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
               range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />
@@ -457,6 +464,10 @@ export function PipelineInspector({
                 .sort()
                 .join(","))}
             />
+          )}
+          {component && CONDITION_STEPS.has(node.component) && (
+            <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
+              featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
           {component && forecast && usesForecastService(node.component) && (
             <PipelineForecastModels node={node} component={component} forecast={forecast} />

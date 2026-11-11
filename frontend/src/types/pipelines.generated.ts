@@ -4,7 +4,8 @@ export type AccumulateParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  function?: "sum" | "min" | "max";
+  function?: "sum" | "min" | "max" | "count";
+  reset_when?: string | null;
 };
 
 export type AdaptiveLearningState = {
@@ -37,6 +38,10 @@ export type BoundInput = {
   accepted_topic: string;
   input_key: string;
   unit?: string | null;
+};
+
+export type CalculateParameters = {
+  formulas: string;
 };
 
 export type CanvasPosition = {
@@ -154,6 +159,13 @@ export type FormulaParameters = {
 
 export type GateParameters = {
   condition: string;
+};
+
+export type HoldParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  update_when: string;
 };
 
 export type InputSlot = {
@@ -675,6 +687,15 @@ export type RangeParameters = {
   low?: number | null;
   high?: number | null;
   action?: "clip" | "skip";
+};
+
+export type RelationParameters = {
+  apply_to?: Array<string> | null;
+  result?: "replace" | "add";
+  suffix?: string | null;
+  against: string;
+  statistic?: "correlation" | "covariance" | "slope" | "residual";
+  window_size?: number;
 };
 
 export type RenameParameters = {

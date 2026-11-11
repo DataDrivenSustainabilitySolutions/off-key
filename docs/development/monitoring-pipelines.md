@@ -280,7 +280,41 @@ state per selected feature. A sum keeps the rounding error of its additions in
 a second number (Neumaier) and emits total plus error, so a long total does
 not drift. It emits immediately, shares Prepare's commit and
 rollback behavior, and resumes from the same checkpoint state. Its default is
-to add `<feature>_total`, `<feature>_running_min` or `<feature>_running_max`.
+to add `<feature>_total`, `<feature>_running_min`, `<feature>_running_max` or
+`<feature>_count`. State is `(seen, value, carry)`; `_carried()` reads the
+`(seen, value)` of checkpoints from before the carry as a carry of 0.
+
+Three per-feature steps also read the row they run on. A kernel cannot parse a
+condition, because `pipeline_formula.py` imports `pipeline_prepare.py`, so
+`lane_context(component, params, names)` in `pipeline_combine.py` returns a
+function from the arriving row to the extra arguments of `Kernel.advance`, or
+none for a step that reads only its own feature. `PrepareStage` evaluates it
+once per step and observation and passes the result to every feature's
+kernel; a `PrepareFailure` in it skips the observation like any other.
+
+- `prepare.accumulate` takes `reset_when`, a condition (`LANE_CONDITIONS`).
+  Where it holds, the kernel starts from `initial()` before it takes the
+  value, so that observation is the first of the new accumulation. The
+  setting is left out of the normalized parameters when empty, so earlier
+  designs keep their fingerprints. `count` emits the observations since.
+- `prepare.hold` (`Hold`) takes `update_when` and keeps `(seen, value)`: it
+  takes the value where the condition holds, and always on its first
+  observation. It has no lead and adds `<feature>_held`.
+- `prepare.relation` (`Relation`) receives the value of `against` and keeps
+  both windows. Deviations from each window's mean are divided by the largest
+  one before `math.sumprod`, so products neither overflow nor vanish, and the
+  scales return in the result: `correlation` (clamped to [-1, 1], its known
+  range), `covariance` (n - 1), `slope` of the feature on `against` and
+  `residual`, the latest value's distance from that line. A window that holds
+  one value is flat by comparison of its values, not of its mean, since
+  `fsum([0.1] * 3) / 3 != 0.1`; a flat window on either side gives 0, and for
+  `residual` the latest deviation from the feature's own mean. Suffixes are
+  `corr60`, `cov60`, `beta60` and `resid60`. `step_scope` requires `against`
+  to arrive, selects every other feature by default and refuses `against`
+  inside `apply_to`; the feature's lineage includes the slots of `against`.
+
+Conditions are checked like a Gate's: names and kinds as `formula` issues on
+the setting, and `values` warns where a condition is always or never true.
 
 `prepare.constant`, `prepare.condition` and `prepare.set` are stateless row
 operations on the existing numeric feature stream. Constant and Condition append
@@ -292,6 +326,20 @@ replaces keeps that column's `previous` and extends its `steps`; otherwise the
 column starts at the Set. A name Set adds must match the pattern of computed
 names (`scope` issue on `name`). These operations retain the existing source,
 feature DAG, detector, policy and evidence contracts.
+
+`prepare.calculate` (`Calculation`) is a Set per line. `formulas` holds up to
+32 (`MAX_CALCULATION_LINES`) lines of `name = formula`; blank lines and lines
+that start with `#` are skipped. `assignments()` parses each line once per
+text (`lru_cache`) and checks names top to bottom against the features that
+arrive plus the names written above, so a line cannot read a later one. The
+row step copies the row and writes each feature in order; a failure names the
+feature it was computing. Columns follow Set: an existing name is replaced in
+place and continues its trail when the line reads it, a new one is appended.
+Issues carry `parameter_path: ["formulas"]`, a message that starts with
+`Line N:` and a position and `fix` counted in the whole text, so the editor
+applies a fix to the right line. `calculateLine()` in `formula.ts` gives the
+editor the names written above the caret and whether the caret is still in
+the name, where only features are offered.
 
 Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
 state and have output from the first observation. A recursive-descent parser in

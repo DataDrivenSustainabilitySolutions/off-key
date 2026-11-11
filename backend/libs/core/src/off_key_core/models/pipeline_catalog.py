@@ -155,7 +155,25 @@ def pipeline_components() -> list[PipelineComponent]:
             "prepare.accumulate",
             "transform",
             "Accumulate",
-            "Keep a running total, minimum or maximum of accepted values.",
+            "Keep a running total, minimum, maximum or count of accepted values.",
+        ),
+        (
+            "prepare.hold",
+            "transform",
+            "Hold",
+            "Keep each value from the last observation where a condition held.",
+        ),
+        (
+            "prepare.relation",
+            "transform",
+            "Rolling relation",
+            "Correlation, covariance, slope or residual against one other feature.",
+        ),
+        (
+            "prepare.calculate",
+            "transform",
+            "Calculate",
+            "Compute several named features in order, one formula per line.",
         ),
         (
             "static.standard_scaler",

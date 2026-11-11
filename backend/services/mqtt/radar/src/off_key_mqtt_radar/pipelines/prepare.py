@@ -10,11 +10,17 @@ after it see nothing, and nothing learns or scores.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from time import perf_counter_ns
 from typing import Any
 
-from off_key_core.models.pipeline_combine import Gate, RowStep, row_step
+from off_key_core.models.pipeline_combine import (
+    Gate,
+    RowStep,
+    lane_context,
+    row_step,
+)
 from off_key_core.models.pipeline_prepare import (
     LANE_COMPONENTS,
     ROW_COMPONENTS,
@@ -54,6 +60,9 @@ class _Step:
     """The per-feature step; None for row steps and routes."""
     row: RowStep | None = None
     """Aggregate, Formula or Gate, which work on the whole row."""
+    context: Callable[[dict[str, float]], tuple[Any, ...]] | None = None
+    """What a per-feature step reads from the row besides its feature: whether
+    a condition holds, or the value it compares with."""
     selected: tuple[str, ...] = ()
     targets: tuple[str, ...] = ()
     """Where each selected feature's value goes: its own name, or an added one."""
@@ -120,13 +129,15 @@ class PrepareStage:
         if node.component not in LANE_COMPONENTS:
             return _Step(node.id, node.component, parents, dict(node.params))
         step = kernel(node.component, node.params)
-        scope = step_scope(node.component, node.params, plan.names(parents[0]))
+        inputs = plan.names(parents[0])
+        scope = step_scope(node.component, node.params, inputs)
         return _Step(
             node.id,
             node.component,
             parents,
             dict(node.params),
             kernel=step,
+            context=lane_context(node.component, node.params, inputs),
             selected=scope.selected,
             targets=scope.added if scope.add else scope.selected,
             required=step.lead + 1,
@@ -281,9 +292,17 @@ class PrepareStage:
         advanced = []
         outputs: dict[str, float] = {}
         complete = True
+        context: tuple[Any, ...] = ()
+        if step.context is not None:
+            try:
+                context = step.context(values)
+            except PrepareFailure as failure:
+                self._reject(step, values, failure, diagnostics)
         for index, name in enumerate(step.selected):
             try:
-                state, value = step.kernel.advance(states[index], values[name])
+                state, value = step.kernel.advance(
+                    states[index], values[name], *context
+                )
             except PrepareFailure as failure:
                 self._reject(step, values, failure, diagnostics, name)
             advanced.append(state)

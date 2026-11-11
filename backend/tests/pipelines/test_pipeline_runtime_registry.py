@@ -29,6 +29,12 @@ ROW_SETTINGS = {
     "prepare.constant": {},
     "prepare.condition": {"condition": "a > 1"},
     "prepare.set": {"name": "a", "expression": "a + b"},
+    "prepare.calculate": {"formulas": "c = a + b"},
+}
+# Likewise for the steps that read the row for each feature.
+LANE_SETTINGS = {
+    "prepare.hold": {"update_when": "a > 1"},
+    "prepare.relation": {"against": "b"},
 }
 
 
@@ -38,7 +44,8 @@ def test_the_runtime_can_build_every_feature_component_the_catalog_offers(compon
         # Prepare steps learn nothing and run in the same stage for every detector.
         assert component.learning == "none"
         if component.id in LANE_COMPONENTS:
-            assert kernel(component.id, {}).initial() is not None
+            settings = LANE_SETTINGS.get(component.id, {})
+            assert kernel(component.id, settings).initial() is not None
         else:
             settings = ROW_SETTINGS[component.id]
             assert row_step(component.id, settings, ["a", "b"]) is not None

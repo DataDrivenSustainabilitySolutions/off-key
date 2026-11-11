@@ -287,20 +287,44 @@ their windows never restart.
 
   A window that holds one value throughout has no spread: its scores, skewness
   and kurtosis are 0 and its rank is 0.5.
-- **Accumulate** adds a running total, minimum or maximum. It starts with the
-  first observation reaching the step, continues across checkpoint recovery,
-  and starts over in a new run. A total of a 0/1 feature counts its true values.
-  A total keeps growing, so a detector that learned its early values soon sees
-  only values it never met. Before a total reaches a detector, take its
-  **Change** or a **Rolling statistic**, or compare it in a Condition.
+- **Accumulate** adds a running total, minimum, maximum or count. It starts
+  with the first observation reaching the step, continues across checkpoint
+  recovery, and starts over in a new run. A total of a 0/1 feature counts its
+  true values, and **count** numbers the observations themselves from 1.
+  **Reset when** takes a condition over the features that arrive, such as
+  `dc_current < 1`: each observation where it holds starts over and is the
+  first of the new accumulation, so a count reads 1 there. With it, a total
+  becomes the energy of one charging session and a count the observations
+  since the last door opening. Without a reset a total keeps growing, so a
+  detector that learned its early values soon sees only values it never met.
+  Before such a total reaches a detector, take its **Change** or a **Rolling
+  statistic**, or compare it in a Condition.
+- **Hold** keeps each value from the last observation where **Update when**
+  held, such as `valid == 1` to carry the last valid measurement through the
+  observations in between. The first observation is always taken, so the step
+  has a value from the start.
+- **Rolling relation** compares each feature with the one chosen under
+  **Against** over the last **Window** observations, at least 3: their
+  **correlation** from -1 to 1, their **covariance**, the **slope** of the
+  feature per unit of the other one, or the **residual**, how far the latest
+  value lies from the line fitted through the window. The correlation of a
+  current with the power it should drive stays near 1 until something comes
+  loose. **Applies to** starts with every other feature. A window where either
+  feature keeps one value has no direction: correlation, covariance and slope
+  are 0, and the residual is the latest value's distance from the window's
+  mean.
 - **Math** takes a logarithm, square root, absolute value or square, or computes
   scale × x + offset.
 - **Range check** clips values to **Low** and **High**, or skips observations
   outside them.
 
 Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
-**Change**, **Rolling statistic** and **Accumulate** add features by default, such as
-`dc_voltage_diff1`, `dc_voltage_mean60` and `dc_voltage_total`; the others replace values.
+**Change**, **Rolling statistic**, **Accumulate**, **Hold** and **Rolling
+relation** add features by default, such as `dc_voltage_diff1`,
+`dc_voltage_mean60`, `dc_voltage_total`, `dc_voltage_held` and
+`dc_voltage_corr60`; the others replace values. A count is named
+`dc_voltage_count`, and a covariance, slope or residual over 60 observations
+ends in `cov60`, `beta60` or `resid60`.
 A rolling quantile is named after its quantile as a percentage, so the 0.1 and
 0.9 quantiles of 60 values sit side by side as `dc_voltage_q10_60` and
 `dc_voltage_q90_60`. A step
@@ -384,6 +408,24 @@ computed name. A Set feature that reads the feature it replaces continues it:
 warns about a Condition that is always or never true, and about a Set feature
 that reads no feature. These steps run before learned scaling and projection,
 like Formula.
+
+**Calculate** computes several named features in one step, one per line:
+
+```text
+# Electrical power and how much of the limit it uses
+power = dc_voltage * dc_current
+share = power / 11000
+dc_current = if(dc_current < 0.05, 0, dc_current)
+```
+
+Each line is `name = formula`, and a line reads the features that arrive and
+the names written above it, so `share` can use `power`. A name that already
+arrives is replaced in its place, like **Set feature**; a new name is added
+after the others. Lines that start with `#` are notes, and a step holds up to
+32 formulas. A problem names its line, such as *Line 3: Unknown feature powr
+at character 9*, and **Use** fixes it in that line. Suggestions list the names
+written above the line being typed. The check warns per line about values that
+will be skipped, like it does for a Formula.
 
 **For each feature** runs one Formula once per feature chosen under **For
 each**, with `x` standing for that feature, so `x / i_mean - 1` on `L1`, `L2`

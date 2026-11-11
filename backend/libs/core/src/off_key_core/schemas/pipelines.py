@@ -1166,13 +1166,88 @@ class RollingParameters(PrepareScopeParameters):
     )
 
 
+def _row_condition(title: str, description: str, *, default: Any = ...) -> Any:
+    """A condition over the arriving features that a per-feature step reads."""
+    return Field(
+        default=default,
+        min_length=1,
+        max_length=512,
+        title=title,
+        description=description,
+    )
+
+
 class AccumulateParameters(PrepareScopeParameters):
     result: Literal["replace", "add"] = Field(default="add", title="Result")
-    function: Literal["sum", "min", "max"] = Field(
+    function: Literal["sum", "min", "max", "count"] = Field(
         default="sum",
         description=(
-            "Total, minimum or maximum since this step's first accepted observation. "
-            "Restoring a checkpoint continues the accumulation; a new run starts over."
+            "Total, minimum, maximum or number of observations since this step's "
+            "first accepted observation. Restoring a checkpoint continues the "
+            "accumulation; a new run starts over."
+        ),
+    )
+    reset_when: str | None = _row_condition(
+        "Reset when",
+        "Start over on each observation where this condition holds, such as "
+        "dc_current < 1. That observation is the first of the new "
+        "accumulation. Leave empty to never start over.",
+        default=None,
+    )
+
+
+class HoldParameters(PrepareScopeParameters):
+    """Keep each feature's value from the last observation a condition held."""
+
+    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    update_when: str = _row_condition(
+        "Update when",
+        "Take the current value on each observation where this condition "
+        "holds, such as valid == 1, and keep it until the next one. The "
+        "first observation is always taken.",
+    )
+
+
+class RelationParameters(PrepareScopeParameters):
+    """How each feature moves with one other feature over recent observations."""
+
+    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    against: str = Field(
+        min_length=1,
+        max_length=120,
+        title="Against",
+        description="The feature every other feature is compared with.",
+    )
+    statistic: Literal["correlation", "covariance", "slope", "residual"] = Field(
+        default="correlation",
+        description=(
+            "Correlation, from -1 to 1, and covariance, with n - 1, say how the "
+            "feature moves with the other one. Slope is the feature's fitted "
+            "change per unit of the other one. Residual is how far the latest "
+            "value lies from that fitted line. A window where either feature "
+            "stays flat gives a correlation and a slope of 0."
+        ),
+    )
+    window_size: int = _window(
+        60, "Recent observations the statistic covers.", minimum=3
+    )
+
+
+MAX_CALCULATION_LINES = 32
+
+
+class CalculateParameters(PipelineModel):
+    """Several features computed in order, each line as name = formula."""
+
+    formulas: str = Field(
+        min_length=1,
+        max_length=4096,
+        title="Formulas",
+        description=(
+            "One feature per line, written name = formula, such as "
+            "power = dc_voltage * dc_current. Lines run from top to bottom, so a "
+            "line can read the features above it. A name that already arrives "
+            "is replaced; a new one is added. Lines that start with # are notes."
         ),
     )
 

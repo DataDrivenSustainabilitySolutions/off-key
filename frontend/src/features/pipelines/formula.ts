@@ -35,6 +35,21 @@ export function inCondition(text: string, caret: number, condition: boolean) {
   return call ? call.name === "if" && call.commas === 0 : condition;
 }
 
+const ASSIGNMENT = /^\s*(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_]*))\s*=(?!=)/;
+
+/** The features the lines of a Calculate step write, in order; notes and other lines write none. */
+export const writtenNames = (text: string) => [...new Set(text.split("\n").flatMap((line) => {
+  const match = ASSIGNMENT.exec(line);
+  return match ? [match[1] ?? match[2]!] : [];
+}))];
+
+/** In a Calculate step, the line the caret is in: where it starts, whether the caret is
+ * still in the name before the equals sign, and the features the lines above write. */
+export function calculateLine(text: string, caret: number) {
+  const start = text.lastIndexOf("\n", caret - 1) + 1;
+  return { start, naming: !text.slice(start, caret).includes("="), above: writtenNames(text.slice(0, start)) };
+}
+
 /** The word being typed just before the caret: a bare name, or a name in an open backtick. */
 export function typedWord(text: string, caret: number) {
   const before = text.slice(0, caret);

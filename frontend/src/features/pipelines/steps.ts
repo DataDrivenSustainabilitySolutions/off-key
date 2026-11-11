@@ -27,7 +27,7 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
 const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate"]);
 /** Steps that compute one feature from the features that arrive. */
 const COMBINE_STEPS = new Set([
-  "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set",
+  "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set", "prepare.calculate",
 ]);
 
 /** Steps that run once per observation, in arrival order, before anything learns. */
@@ -64,7 +64,9 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.despike": "Replace sudden spikes with the recent median.",
   "prepare.change": "Add the change since earlier observations.",
   "prepare.rolling": "Add a sum, quantile, spread, trend, shape or score of recent values.",
-  "prepare.accumulate": "Keep a running total, minimum or maximum.",
+  "prepare.accumulate": "Keep a running total, minimum, maximum or count, and start over on a condition.",
+  "prepare.hold": "Keep each value from the last time a condition held.",
+  "prepare.relation": "Add how features move with one other feature: correlation, slope or residual.",
   "prepare.math": "Take a log, root, absolute value, square or scale.",
   "prepare.range": "Clip values to a range, or skip observations outside it.",
   "prepare.aggregate": "Combine features into their mean, sum, extreme, spread or range.",
@@ -73,6 +75,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.constant": "Add a named constant to use in later steps.",
   "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
   "prepare.set": "Calculate or replace one feature, keeping the others.",
+  "prepare.calculate": "Calculate several named features, one formula per line.",
   "static.standard_scaler": "Center and scale with training statistics.",
   "adaptive.standard_scaler": "Center and scale with running statistics.",
   "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
@@ -96,14 +99,23 @@ const DESCRIPTIONS: Record<string, string> = {
 export const stepDescription = (component: PipelineComponent) =>
   DESCRIPTIONS[component.id] ?? component.description;
 
-/** Settings with controls of their own: the formula editor, For each, Result, Name and Suffix. */
+/** Settings with controls of their own: the formula editor, For each, Result, Name, Suffix
+ * and the feature a Rolling relation compares with. */
 const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
   "prepare.condition": new Set(["condition", "name"]),
   "prepare.set": new Set(["expression", "name"]),
+  "prepare.calculate": new Set(["formulas"]),
+  "prepare.accumulate": new Set(["reset_when"]),
+  "prepare.hold": new Set(["update_when"]),
+  "prepare.relation": new Set(["against"]),
 };
+/** Steps that compute or decide by a formula; it is their main setting. */
+export const FORMULA_STEPS = new Set(["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set", "prepare.calculate"]);
+/** Steps that work on each feature and read a condition as well, below their own settings. */
+export const CONDITION_STEPS = new Set(["prepare.accumulate", "prepare.hold"]);
 // Combine detectors has its own control, shown once the design has two detectors.
 const CALIBRATION_CONTROLS = new Set(["fusion"]);
 

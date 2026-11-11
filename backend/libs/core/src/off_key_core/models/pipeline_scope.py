@@ -136,20 +136,47 @@ class StepScope:
         return [self.inputs[index] for index in self.kept] + list(components)
 
 
+def _selected(
+    component: str, params: dict[str, Any], names: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The features a step uses: Applies to, or every feature that arrives.
+
+    A Rolling relation compares the others with one feature, which is never
+    among them.
+    """
+    available = set(names)
+    apply_to = params.get("apply_to")
+    against = params.get("against") if component == "prepare.relation" else None
+    if against is not None and against not in available:
+        raise ScopeError(f"{against} is not available at this step.", "against")
+    if apply_to is None:
+        selected = tuple(name for name in names if name != against)
+        if against is not None and not selected:
+            raise ScopeError(
+                f"Only {against} arrives here. A Rolling relation needs another "
+                "feature to compare with it.",
+                "apply_to",
+            )
+        return selected
+    missing = [name for name in apply_to if name not in available]
+    if missing:
+        raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
+    if against in apply_to:
+        raise ScopeError(
+            f"{against} is the feature the others are compared with. Leave it "
+            "out of Applies to.",
+            "apply_to",
+        )
+    return tuple(apply_to)
+
+
 def step_scope(
     component: str, params: dict[str, Any], inputs: Sequence[str]
 ) -> StepScope:
     """Resolve a step's scope against the features that reach it."""
     names = tuple(inputs)
     available = set(names)
-    apply_to = params.get("apply_to")
-    if apply_to is None:
-        selected = names
-    else:
-        missing = [name for name in apply_to if name not in available]
-        if missing:
-            raise ScopeError(f"{missing[0]} is not available at this step.", "apply_to")
-        selected = tuple(apply_to)
+    selected = _selected(component, params, names)
     add = adds(component, params)
     elementwise = component in ELEMENTWISE_SUFFIXES or component in LANE_COMPONENTS
     added: tuple[str, ...] = ()

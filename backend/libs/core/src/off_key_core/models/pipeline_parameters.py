@@ -100,6 +100,9 @@ def normalized_parameters(
     if node.component == "prepare.rolling" and params["statistic"] != "quantile":
         # Preserve the executable fingerprints of existing rolling steps.
         params.pop("quantile", None)
+    if node.component == "prepare.accumulate" and params["reset_when"] is None:
+        # Likewise for accumulations that never start over.
+        del params["reset_when"]
     if node.component in POLICY_MODELS:
         # The calibration step combines detectors now; schema 1 designs move
         # their setting there when they are read.

@@ -2,6 +2,7 @@ import type { JsonValue } from "@/types/monitoring";
 import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
+import { writtenNames } from "./formula";
 import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
 import { coverage } from "./learning";
 import { fusionChoice } from "./steps";
@@ -73,6 +74,10 @@ const STATISTICS: Record<string, string> = {
   skewness: "Skewness", kurtosis: "Excess kurtosis",
 };
 const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
+const ACCUMULATIONS: Record<string, string> = { sum: "total", min: "minimum", max: "maximum", count: "count" };
+const RELATIONS: Record<string, string> = {
+  correlation: "Correlation with", covariance: "Covariance with", slope: "Slope against", residual: "Residual against",
+};
 const FUNCTIONS: Record<string, string> = {
   log: "log(x)", log1p: "log(1 + x)", sqrt: "√x", abs: "|x|", square: "x²",
 };
@@ -111,8 +116,24 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       const within = ["zscore", "robust_zscore", "rank"].includes(statistic);
       return `${STATISTICS[statistic] ?? "Mean"}${statistic === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} ${within ? "within" : "of"} last ${number(amount("window_size", 60))}`;
     }
-    case "prepare.accumulate":
-      return `Running ${value("function") === "sum" ? "total" : value("function") === "min" ? "minimum" : "maximum"} since the first accepted observation`;
+    case "prepare.accumulate": {
+      const running = `Running ${ACCUMULATIONS[String(value("function"))] ?? "total"}`;
+      const reset = written(value("reset_when"));
+      return reset ? `${running} · starts over when ${reset}` : `${running} since the first accepted observation`;
+    }
+    case "prepare.hold": {
+      const condition = written(value("update_when"));
+      return condition ? `Value from the last time ${condition}` : "No condition yet";
+    }
+    case "prepare.relation": {
+      const against = value("against");
+      if (typeof against !== "string" || !against) return "No feature to compare with yet";
+      return `${RELATIONS[String(value("statistic"))] ?? RELATIONS.correlation} ${against} over last ${number(amount("window_size", 60))}`;
+    }
+    case "prepare.calculate": {
+      const names = writtenNames(typeof value("formulas") === "string" ? String(value("formulas")) : "");
+      return names.length ? `Writes ${listed(names)}` : "No formula yet";
+    }
     case "prepare.constant":
       return `${combinedName(node, component)} = ${number(amount("value", 0))}`;
     case "prepare.condition": {

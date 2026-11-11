@@ -153,6 +153,10 @@ def _detector_count(definition: PipelineDefinition) -> int:
 _EMPTY_TEXT = {
     "expression": "Write a formula, such as dc_voltage * dc_current.",
     "condition": "Write a condition, such as dc_current > 1.",
+    "update_when": "Write a condition, such as dc_current > 1.",
+    "reset_when": "Write a condition, or leave it empty to never start over.",
+    "formulas": "Write a line such as power = dc_voltage * dc_current.",
+    "against": "Choose the feature to compare with.",
 }
 # The characters a name may hold, in words rather than as a pattern.
 _NAME_CHARACTERS = {

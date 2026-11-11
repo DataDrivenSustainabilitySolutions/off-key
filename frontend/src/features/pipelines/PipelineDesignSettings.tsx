@@ -1,13 +1,10 @@
 import { useId, useState } from "react";
 import type { PipelineCatalog } from "./contracts";
-import { nodeOptionLabeler, PIPELINE_LIMITS, type GraphDocument } from "./model";
-import { strategyLabel } from "./semantics";
+import { hasFittedDetector, hasStreamingDetector } from "./learning";
+import { PIPELINE_LIMITS, type GraphDocument } from "./model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "./slots";
 import { observationCount, roughDuration, startupSummary, type Startup } from "./startup";
-import { convertStrategy, type Strategy } from "./strategy";
 import type { HistoryMode } from "./types";
-
-const STRATEGIES: Strategy[] = ["static_baseline", "adaptive_stream"];
 
 /** Learning and calibration as one bar, with their lengths and durations. */
 function StartupTimeline({ startup }: { startup: Startup }) {
@@ -98,7 +95,7 @@ export function PipelineDesignSettings({
   onChange,
 }: {
   document: GraphDocument;
-  /** Offers the strategy switch, which needs every component's counterpart. */
+  /** Tells how the design's detectors learn, which names the learning window. */
   catalog?: PipelineCatalog;
   startup?: Startup;
   readOnly: boolean;
@@ -106,24 +103,9 @@ export function PipelineDesignSettings({
 }) {
   const definition = document.definition;
   const settings = definition.settings;
-  const [switched, setSwitched] = useState<{ strategy: Strategy; message: string }>();
-  const strategyLabelId = useId();
-  const switchTo = (strategy: Strategy) => {
-    if (!catalog || strategy === definition.strategy) return;
-    const change = convertStrategy(document, strategy, catalog);
-    const name = nodeOptionLabeler(change.document, catalog.components);
-    const missing = change.unconverted.map((id) => name(definition.nodes.find((node) => node.id === id)));
-    const moved = change.converted.length;
-    const kind = strategy === "adaptive_stream" ? "adaptive" : "static";
-    setSwitched({ strategy, message: [
-      `Switched to ${strategyLabel(strategy)}.`,
-      moved === 1 ? `1 step moved to its ${kind} counterpart.`
-        : moved ? `${moved} steps moved to their ${kind} counterparts.` : "",
-      missing.length ? `No counterpart for ${missing.join(", ")}; replace ${missing.length === 1 ? "it" : "them"} to apply.` : "",
-      "Undo switches back.",
-    ].filter(Boolean).join(" ") });
-    onChange(change.document);
-  };
+  // Without the catalog, a design reads as one that learns continuously.
+  const fitted = !!catalog && hasFittedDetector(definition, catalog.components);
+  const streaming = !catalog || hasStreamingDetector(definition, catalog.components);
   const setting = (change: Partial<typeof settings>, field: string) =>
     onChange({
       ...document,
@@ -133,23 +115,17 @@ export function PipelineDesignSettings({
     onChange({ ...document, definition: { ...definition, input_slots } }, history);
   return (
     <>
-      {catalog && <div className="pl-field pl-strategy-field">
-        <span id={strategyLabelId}>Strategy</span>
-        <div className="pl-segmented" role="group" aria-labelledby={strategyLabelId}>
-          {STRATEGIES.map((strategy) => <button key={strategy} type="button" aria-pressed={definition.strategy === strategy}
-            disabled={readOnly} onClick={() => switchTo(strategy)}>{strategyLabel(strategy)}</button>)}
-        </div>
-        <small className="pl-help">
-          {definition.strategy === "adaptive_stream" ? "Learns from live readings and keeps adapting." : "Learns a baseline, then monitors against it."}
-          {" "}Switching moves learned steps to their counterparts and changes the detector.
-        </small>
-        {switched?.strategy === definition.strategy && <p className="pl-notice" role="status">{switched.message}</p>}
-      </div>}
+      {catalog && <p className="pl-help pl-learning-note">
+        {fitted && streaming
+          ? "Some detectors are fitted once on the training window and others keep learning. They meet at the calibration step."
+          : fitted ? "The detectors are fitted once on the training window and then stay as they are."
+            : "The detectors take in every observation and keep adapting."}
+        {" "}Each detector's settings choose its model, and with it how it learns.
+      </p>}
       <div className="pl-settings-grid">
         <NumberSetting
-          label={definition.strategy === "adaptive_stream"
-            ? "Detector learning updates before calibration"
-            : "Training observations"}
+          label={fitted && streaming ? "Training observations and learning updates"
+            : fitted ? "Training observations" : "Detector learning updates before calibration"}
           min={2}
           max={1_000_000}
           value={settings.training_window_size}
@@ -174,7 +150,7 @@ export function PipelineDesignSettings({
         />
       </div>
       {startup && <StartupTimeline startup={startup} />}
-      {definition.strategy === "adaptive_stream" && (
+      {streaming && (
         <p className="pl-help">
           Upstream steps initialize first. The configured learning count
           tracks successful updates to the detector; calibration starts only

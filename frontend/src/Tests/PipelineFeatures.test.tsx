@@ -27,8 +27,7 @@ const scoped: Field[] = [
   { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
 ];
 const component = (id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id): PipelineComponent => ({
-  id, kind, label, description: "", fields, strategies: ["adaptive_stream"],
-  input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
+  id, kind, label, description: "", fields,  input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? "evidence" : "features",
 });
 const components = [
@@ -53,7 +52,6 @@ const tail = [
 ] as const;
 const document = (nodes: object[], edges: object[]): GraphDocument => ({
   definition: normalizeDefinition({
-    strategy: "adaptive_stream",
     input_slots: ["a", "b", "c"].map((id) => ({ id, label: `Reading ${id.toUpperCase()}` })),
     nodes: [{ id: "input", kind: "source", component: "source.aligned" }, ...nodes, ...tail] as never,
     edges: [...edges, { source: "model", target: "policy" }, { source: "policy", target: "output" }] as never,

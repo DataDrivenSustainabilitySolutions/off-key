@@ -83,14 +83,17 @@ export function PipelineDiagnostics({
   expectedRunId,
   nodeLabels,
   policyId,
+  calibrationId,
   onSelect,
 }: {
   state?: PipelineState | null;
   selected?: string;
   expectedRunId?: string;
   nodeLabels?: Record<string, string>;
-  /** The decision policy, which shows every detector's part when it combines several. */
+  /** The detection rule, which shows every detector's part when the design combines several. */
   policyId?: string;
+  /** The calibration step. The runtime reports it together with the detection rule. */
+  calibrationId?: string;
   onSelect?: (id: string) => void;
 }) {
   const [pass, setPass] = useState<"score" | "learn">("score");
@@ -107,9 +110,11 @@ export function PipelineDiagnostics({
         </p>
       </section>
     );
-  const node = selected ? state.nodes[selected] : undefined;
-  const sample = selected
-    ? state.observation?.passes[pass][selected]
+  // A runtime that calibrates inside its detection rule reports both under the rule.
+  const reported = selected && selected === calibrationId && !state.nodes[selected] ? policyId : selected;
+  const node = reported ? state.nodes[reported] : undefined;
+  const sample = reported
+    ? state.observation?.passes[pass][reported]
     : undefined;
   const detectors = state.observation?.detectors;
   const observed = detectors?.find((item) => item.detector_id === selected);
@@ -245,7 +250,7 @@ export function PipelineDiagnostics({
               Learning pass
             </button>
           </div>
-          {pass === "score" && detectors?.length && selected === policyId ? (
+          {pass === "score" && detectors?.length && reported === policyId ? (
             <ObservedDetectors detectors={detectors} nodeLabels={nodeLabels} onSelect={onSelect} />
           ) : null}
           {sample ? (

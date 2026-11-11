@@ -87,17 +87,18 @@ change-detection parameters and must be calibrated for the intended null stream;
 
 A design can combine up to four detectors, such as one for each group of
 readings. Each detector's score is ranked against its own calibration scores, so
-detectors on different scales need no tuning. The decision policy's **Combine
+detectors on different scales need no tuning. The calibration step's **Combine
 detectors** setting decides how the ranks make one: **Strongest**, the default,
 follows the most surprised detector, so a change that one detector sees is
 enough; **Average** follows their mean, so a change has to show in several
 detectors, or strongly in one. The setting appears once the design has two
-detectors, and the policy's card then reads, for example, *Strongest of 2
-detectors*. The static strategy turns the combined rank into a p-value that
-behaves like a single detector's, so the martingale trackers and their
-thresholds keep their meaning. The adaptive strategy alarms when the combined
-rank exceeds the policy's quantile of the combined ranks it saw during
-calibration, and it starts calibrating once its slowest detector is ready.
+detectors, and the calibration card then reads, for example, *Strongest of 2
+detectors*. When every detector is fitted once, the combined rank becomes a
+p-value that behaves like a single detector's, so the martingale trackers and
+their thresholds keep their meaning. With a detector that learns continuously,
+the design alarms when the combined rank exceeds the rule's quantile of the
+combined ranks it saw during calibration, and it starts calibrating once its
+slowest detector is ready.
 
 Every ready-phase inference is persisted in `monitoring_evidence`, including the
 p-value or score, sensor set, aggregate alarm flag, and bounded
@@ -127,8 +128,8 @@ assigning its readings elsewhere.
 
 The setup page is the processing graph under a compact header. The header holds
 the service name and two shortcuts: the input summary, such as **Room · 3
-readings**, opens the **Input** step, and the strategy opens **Service
-settings**. A new service opens at its Input step, where **Readings from** picks
+readings**, opens the **Input** step, and how the detectors learn, such as
+**Learns continuously**, opens **Service settings**. A new service opens at its Input step, where **Readings from** picks
 the entity and **Readings to monitor** its readings; a saved template or a
 service being replaced opens at its graph. The main actions are **Load
 template**, **Save template** and **Start monitoring**. Starting a service never
@@ -142,8 +143,10 @@ template name, independently of the service name. A concurrent edit keeps your
 work and offers to save it as a new template.
 
 Read a graph from left to right. Each card names its step family (Input,
-Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Decision policy
-or Evidence output), its title and its underlying operation; renaming a card helps explain its purpose while the operation name
+Prepare, Combine, Normalize, Reduce, Route, Transform, Detector, Calibration,
+Detection rule or Evidence output), its title and its underlying operation; a
+step that learns also says how (**Learns continuously**, **Fitted once** or
+**Pretrained**); renaming a card helps explain its purpose while the operation name
 remains visible. Below the title, a card summarizes the settings that differ from
 their defaults, such as a scaling range, and a **Select features** card lists the
 readings it keeps. Ports carry their data type as a colored dot, and connections
@@ -151,10 +154,11 @@ are solid directional links in the same color, without text labels. Once the gra
 has been checked, a features output dot shows how many features leave it; hover
 over the dot for their names. The canvas has no separate legend; type names appear
 on hover, in the inspector and in accessible descriptions. Scores are
-model-specific; the static strategy's P-values come from conformal calibration.
+model-specific; the calibration step makes them comparable (**Calibrated
+scores**).
 
-**Add step** lists the steps the strategy offers, grouped by family, with one
-line on what each does. Search by name, description or family; the arrow keys
+**Add step** lists every step, grouped by family, with one line on what each
+does and, for a step that learns, how it learns. Search by name, description or family; the arrow keys
 move through the list, and Enter in the search box adds the first match. Drag a
 step onto the canvas, or click it to add it beside the selected step without
 changing connections. To put a step into an existing
@@ -163,11 +167,12 @@ only the steps that fit there; the new step is connected on both sides and takes
 the connection's place in a merge's input order. Drawing a connection onto an
 input that is already connected replaces its connection: the dot's hover text
 names the connection it replaces, the canvas confirms the change and **Undo**
-restores it. A design has one input, decision policy and output, so the menu
-does not offer them again; it links to the existing steps instead. A detector's
-settings offer **Add another detector**: it adds a detector with the same model
-that reads the same features and connects it to the policy, up to four
-detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
+restores it. A step that learns can only feed a detector that learns the same
+way; the check names a step that does not. A design has one
+input, calibration step, detection rule and output, so the menu does not offer
+them again; it links to the existing steps instead. A detector's settings offer
+**Add another detector**: it adds a detector with the same model that reads the
+same features and connects it to the calibration step, up to four detectors. Change its model or its input afterwards like any step's. **Service settings** and **Step settings** open the side panel.
 Step settings provide the same connection editing on keyboards and narrow
 screens, listing compatible, cycle-free upstream choices.
 **Locate selected component** brings its card into a readable view and **Fit
@@ -184,12 +189,33 @@ can come, or the number of issues. Open it to list the issues; selecting one
 opens that step. When a check cannot reach the server, the chip shows **Not
 checked** and offers **Check again**.
 
-**Service settings** switches the strategy. Learned steps move to their
-counterparts, such as **Standard scaling** to **Online standard scaling**, and
-keep the settings both versions share. A detector without a counterpart becomes
-the strategy's default detector, and the decision policy follows the strategy.
-A notice names any step without a counterpart, and **Undo** switches back.
-**Before the first alarm** shows the observations Prepare steps need first, then
+A design has no strategy to choose. Three settings decide how it detects:
+
+- **Detector model**, in a detector's settings, lists the models by how they
+  learn: **Learns continuously**, **Fitted once** or **Pretrained**. Detectors
+  that learn in different ways can run in one design. Choosing a model that
+  learns differently moves the learned steps only that detector reads to their
+  counterparts, such as **Standard scaling** to **Online standard scaling**,
+  and they keep the settings both versions share.
+- **Calibration method**, in the calibration step's settings, decides how scores
+  become alarms. **Fixed split** ranks every later score against a calibration
+  window that then stays as it is. The other methods keep moving a boundary as
+  scores arrive, so they follow data that drifts. Each method says what it
+  holds: **Exact while data stays alike**, **Long-run alarm rate** (over a long
+  run the share of scores above the boundary approaches the **Target alarm
+  rate**) or **No guarantee**. That share counts every score above the
+  boundary, anomalies included, so it is not a false alarm rate.
+- **Detection rule** follows the other two, and the picker marks the rules that
+  do not fit the design. A method that adapts alarms by the **Exceedance rule**,
+  once **Exceedances in a row** scores are above the boundary; more than one
+  ignores short spikes. Under the fixed split, detectors that are all fitted
+  once alarm with the **Conformal alarm policy**, and a design with a detector
+  that learns continuously, or a pretrained one, alarms on the **Calibrated
+  score threshold**.
+
+When a change also moves steps or the detection rule, a notice says what
+changed, and **Undo** reverses all of it.
+In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then
 the learning and calibration phases. Once every chosen reading reports how often it arrives, it also
 shows durations. The slowest reading paces observations, because each
 observation waits for all of its readings.
@@ -214,9 +240,9 @@ scoped step computes the same values as a branch of **Select features**, the ste
 and **Merge features**.
 
 **Prepare** steps clean and derive features before anything learns. They run once
-per observation, in arrival order, and compute the same values under both
-strategies; the static strategy keeps running them while it trains, so their
-windows never restart.
+per observation, in arrival order, and compute the same values however the
+detectors learn; a detector fitted once keeps them running while it trains, so
+their windows never restart.
 
 - **Smooth** averages recent values, exponentially or over a rolling window.
 - **Despike** replaces a value further than **Threshold** robust deviations from

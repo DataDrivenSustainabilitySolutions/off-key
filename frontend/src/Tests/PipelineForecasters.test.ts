@@ -5,7 +5,7 @@ import { familyLabel, STEP_FAMILIES, stepDescription, stepFamily } from "@/featu
 
 const detector = (id: string, label: string) => ({
   id, kind: "detector", label, description: "Scores a feature by how far it misses its forecast.",
-  strategies: ["adaptive_stream"], fields: [], input_type: "features", output_type: "scores",
+  fields: [], input_type: "features", output_type: "scores",
 }) as PipelineComponent;
 
 const holtWinters = detector("detector:aberrant_holt_winters_forecaster", "Aberrant HoltWinters forecaster");

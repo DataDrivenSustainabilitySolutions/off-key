@@ -15,7 +15,7 @@ test("reroutes around moved components during native dragging and after reload",
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = await response.json() as PipelineCatalog;
-  const definition = structuredClone(catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!.definition);
+  const definition = structuredClone(catalog.templates.find((item) => item.id === "adaptive_stream")!.definition);
   definition.nodes!.push(
     { id: "middle", kind: "transform", component: "features.passthrough" },
     { id: "obstacle", kind: "transform", component: "features.passthrough" },
@@ -26,7 +26,8 @@ test("reroutes around moved components during native dragging and after reload",
     name: `Obstacle routing ${randomUUID()}`, definition,
     layout: { nodes: {
       input: { x: 0, y: 100 }, middle: { x: 360, y: 100 }, detector: { x: 900, y: 100 },
-      policy: { x: 1220, y: 100 }, output: { x: 1540, y: 100 }, obstacle: { x: 650, y: 360 },
+      calibrate: { x: 1220, y: 100 }, policy: { x: 1540, y: 100 }, output: { x: 1860, y: 100 },
+      obstacle: { x: 650, y: 360 },
     } },
   } });
   expect(created.ok(), await created.text()).toBe(true);

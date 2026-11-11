@@ -71,15 +71,19 @@ export default function PipelineRunView({
     [view, layout],
   );
   const runId = view?.run?.id;
-  const nodeStates = useMemo(
-    () =>
-      state && state.run_id === runId
-        ? Object.fromEntries(
-            Object.entries(state.nodes).map(([id, node]) => [id, node.state]),
-          )
-        : undefined,
-    [state, runId],
-  );
+  const definition = view?.definition;
+  const nodeStates = useMemo(() => {
+    if (!state || state.run_id !== runId) return undefined;
+    const states = Object.fromEntries(
+      Object.entries(state.nodes).map(([id, node]) => [id, node.state]),
+    );
+    // A runtime that calibrates inside its detection rule reports both under the rule.
+    const calibration = definition?.nodes.find((node) => node.kind === "calibration")?.id;
+    const policy = definition?.nodes.find((node) => node.kind === "policy")?.id;
+    if (calibration && policy && !(calibration in states) && policy in states)
+      states[calibration] = states[policy]!;
+    return states;
+  }, [state, runId, definition]);
   const nodeLabels = useMemo(() => {
     if (!view || !catalog) return {};
     const optionLabel = nodeOptionLabeler(
@@ -247,6 +251,7 @@ export default function PipelineRunView({
             expectedRunId={view.run?.id}
             nodeLabels={nodeLabels}
             policyId={view.definition.nodes.find((node) => node.kind === "policy")?.id}
+            calibrationId={view.definition.nodes.find((node) => node.kind === "calibration")?.id}
             onSelect={select}
           />
           {view.run && (

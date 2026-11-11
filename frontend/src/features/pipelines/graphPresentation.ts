@@ -11,6 +11,7 @@ import {
   nodePosition,
   outputKind,
 } from "./semantics";
+import { learningLabel } from "./learning";
 import { isWarning } from "./scope";
 import { familyLabel, stepFamily } from "./steps";
 import { nodeSummary } from "./summaries";
@@ -38,6 +39,7 @@ export function presentGraph(
         label: nodeLabel(node, components, document.layout),
         kind: node.kind,
         family: familyLabel(stepFamily(node.kind, node.component)),
+        learning: learningLabel(component),
         operation: component?.label ?? node.component,
         available: !!component,
         inputPort: component ? !!input : node.kind !== "source",

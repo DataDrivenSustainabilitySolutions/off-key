@@ -44,15 +44,16 @@ match. Unrelated catalog descriptions or components do not invalidate a revision
 
 `?create=monitoring` opens one setup page: the processing graph under a header
 with the service name, an input summary that opens the **Input** step (entity and
-reading bindings) and a strategy shortcut that opens **Service settings**. A new
+reading bindings) and a learning shortcut that opens **Service settings**. A new
 service opens at the Input step. Its main actions are **Load template**, **Save
 template** and **Apply monitoring**. Users do not save drafts or publish
-revisions to start a service. Service settings (strategy, learning counts and
-the start-up timeline) and step parameters stay in the side panel; only advanced
+revisions to start a service. Service settings (learning counts and the
+start-up timeline) and step parameters stay in the side panel; only advanced
 input-slot editing is collapsed. `useGraphMetadata` checks every edit after
-800 ms, and the status chip offers a retry when the check fails. The strategy
-switch (`strategy.ts`) maps learned steps through explicit counterpart pairs and
-falls back to the target template's detector and policy. The start-up estimate
+800 ms, and the status chip offers a retry when the check fails. A design has no
+strategy to switch: each detector's settings choose its model, and with it how
+it learns (see [The editor without a lane](#the-editor-without-a-lane)). The
+start-up estimate
 (`startup.ts`) takes the slowest bound reading's typical interval, because RADAR
 aligns observations across all readings. Entity selection includes configured
 entities even when there is no recent traffic; collection and reading ownership
@@ -119,13 +120,14 @@ retain readable text size, while Fit entire graph explicitly requests an overvie
 
 Detectors are the one step kind a design may repeat outside the add-step menu.
 `addDetector()` copies the selected detector, model and settings, as
-`detector_N`, connects it to the same input and appends it to the policy, up to
-`PIPELINE_LIMITS.detectors`, which the type generator exports from
-`MAX_DETECTORS`. `occupiedInput()` and `connectNodes()` treat the policy like a
-merge, so another detector's connection is added instead of replacing one, and
-`detectorIds()` orders detectors by node ID as RADAR does. **Combine detectors**
-has its own control (`FUSION_CHOICES`) once there are two detectors; a strategy
-switch keeps it, and the policy card leads with *Strongest of 2 detectors*.
+`detector_N`, connects it to the same input and appends it to the calibration
+step, up to `PIPELINE_LIMITS.detectors`, which the type generator exports from
+`MAX_DETECTORS`. `occupiedInput()` and `connectNodes()` treat the calibration
+step like a merge (`takesSeveral`), so another detector's connection is added
+instead of replacing one, and `detectorIds()` orders detectors by node ID as
+RADAR does. **Combine detectors** has its own control (`FUSION_CHOICES`) on the
+calibration step once there are two detectors; changing the calibration method
+keeps it, and the calibration card leads with *Strongest of 2 detectors*.
 `featuresView()` takes the detector to show, and `detectorsAfter()` lets a row's
 menu say when a Prepare step on a shared path also reaches other detectors. A
 sampled observation of combined detectors carries `detectors`, each detector's
@@ -407,14 +409,18 @@ A service that hangs is left alone for
 ends the run (`FatalExecutionError`), because no later value could be scored.
 
 Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
-a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
-and edge limits are checked on the stored form before the step is added. The
-serializer writes `downgrade()`, the schema 1 form, whenever a design has one: a
+a `calibrate.fixed_split` step and its `fusion` onto that step, and drops the
+stored strategy. A design holds 65 nodes and 129 edges, the calibration step and
+its edge into the policy included; a schema 1 design is held to its own 64 and
+128 before the step is added. The serializer writes `downgrade()`, the schema 1
+form with the strategy its learned steps share, whenever a design has one: a
 single fixed split in front of the policy and learned steps that all learn one
-way. Stored designs, the editor's wire format and fingerprints therefore do not
-change, and the editor catalog (`editor_components()`) keeps the schema 1 ports
-and leaves the calibration step out. Validation reports hide that step too: its
-features are omitted and lineage passes through it.
+way. Stored designs and fingerprints therefore do not change. The editor reads
+and writes schema 2: every response that carries a design for the editor
+(`EditorDefinition`) serializes `editor_form()`, the upgraded design without a
+strategy, and the catalog serves schema 2 components and templates, with the
+calibration step, its ports and each calibration method's `family`, `coverage`
+and `reference`. Validation reports list the calibration step like any other.
 
 The compiler checks schema 2 designs by learning mode instead of by lane
 (`_validate_learning`):
@@ -428,11 +434,16 @@ The compiler checks schema 2 designs by learning mode instead of by lane
 - `calibration_window` (warning): the calibration window is too short for the
   alarm rate of a step that adapts.
 
-`PipelineDefinition.lane` is the stored strategy, or the one all a design's
-learned steps share. A design with a lane may use only that lane's components
-(`strategy`), so a design whose detectors are all fitted once still alarms with
-the martingale. Detectors that learn in different ways have no lane: they meet
-at the fixed split and alarm on the score threshold.
+The rules leave one policy for a design. A calibration step that adapts alarms
+by the exceedance rule. Under the fixed split, detectors that are all fitted
+once alarm with the martingale, and a design with a detector that takes in
+every observation (one that learns continuously or a pretrained forecaster)
+alarms on the score threshold; the compiler reports the threshold behind
+detectors that are all fitted once as `calibration`.
+
+No design stores a lane. `PipelineDefinition.lane` is derived: the strategy all
+a design's learned steps share, or none. Routing and the schema 1 written form
+use it; the compiler does not.
 
 `derive_monitoring_config` follows the policy: the martingale gives static
 baseline settings, the score threshold adaptive stream settings named after the
@@ -462,8 +473,8 @@ parameters). RADAR generates it from the installed aberrant
 control plane imports no numerics; `pipeline_calibration.py` builds one parameter
 model per method from it. A step takes `alpha`, the target alarm rate, the
 method's own parameters and `fusion`. The method's window is the design's
-calibration window. The editor does not offer these steps yet
-(`editor_components()` leaves them and the exceedance rule out).
+calibration window. The editor offers them as the **Calibration method** of the
+calibration step.
 
 There are three stages, and each claims only what it can:
 
@@ -479,8 +490,7 @@ There are three stages, and each claims only what it can:
    `alpha`, but not to `alpha` to that power, because exceedances come together.
 
 The martingale and the score threshold stay with the fixed split: only its
-p-values are exact, and only it freezes a threshold. A design saved with a
-monitoring strategy keeps the fixed split too.
+p-values are exact, and only it freezes a threshold.
 
 A boundary that is a quantile of the window (`split`, `aci`, `dtaci`, `agaci`)
 needs `ceil(1 / alpha) - 1` calibration observations, or it sits at the largest
@@ -488,6 +498,38 @@ score seen. Several detectors need that for any method, and
 `ceil(k / alpha) - 1` for k detectors under `max`, because each reaches the top
 of its window about once in n scores. The compiler warns below that
 (`minimum_window`).
+
+#### The editor without a lane
+
+The composer has no strategy switch and no `strategy.ts`. `learning.ts` holds
+what replaced it:
+
+- A card says how its step learns (`learningLabel`: *Learns continuously*,
+  *Fitted once*, *Pretrained*), and the add-step menu lists every step with that
+  tag. `learningBlocker()` refuses a step in front of a detector that learns
+  differently, with the compiler's reason, before the step is added.
+- **Detector model** lists the models by how they learn. Choosing one that
+  learns differently (`changeDetector`) moves the learned steps only that
+  detector reads to their counterparts (`COUNTERPARTS`) and fits the policy.
+- The calibration step has its own card between the detectors and the detection
+  rule. **Calibration method** lists the methods by family (conformal, Bayesian)
+  and says what the chosen one holds (`coverage`), with its reference.
+  `changeCalibration()` keeps `fusion`, takes the new method's defaults and fits
+  the policy.
+- **Detection rule** is the policy. `fittingPolicy()` names the one policy the
+  design allows; the picker marks the others *(does not fit this design)*. After
+  a change that moved steps or the policy, a status line says what changed
+  (`changeNotice`) and Undo reverses it in one step.
+- Service settings name their first window after what the detectors do with it:
+  *Training observations*, *Detector learning updates before calibration*, or
+  both for a design that mixes them. `startupPhases()` takes the same view.
+
+`normalizeDefinition()` drops a strategy and stamps `schema_version: 2` on what
+the editor sends. A layout saved before the calibration step had a card gets one
+at the policy's place, with the policy and everything right of it moved one
+column over (`placeCalibration`). RADAR reports calibration under the policy, so
+the run view shows the policy's state and diagnostics on the calibration card
+too.
 
 `BoundaryDetectionService` runs every design with such a step: detectors fitted
 once, detectors that learn every observation, or both. It is the mixed service

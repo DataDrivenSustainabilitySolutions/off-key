@@ -9,13 +9,13 @@ export type StartupPhase = {
 
 /** What a service sees before it can raise its first alarm: Prepare windows filling,
  * as the last check counted them, then learning and calibration. Learned steps upstream
- * of the detector may need a few observations of their own first, so this is a lower bound. */
-export function startupPhases(definition: PipelineDefinition, preparation = 0): StartupPhase[] {
+ * of the detector may need a few observations of their own first, so this is a lower bound.
+ * `fitted` says every detector is fitted once, which makes the learning phase a training. */
+export function startupPhases(definition: PipelineDefinition, preparation = 0, fitted = false): StartupPhase[] {
   const { training_window_size: learning, calibration_window_size: calibration } = definition.settings;
-  const adaptive = definition.strategy === "adaptive_stream";
   return [
     ...(preparation > 0 ? [{ id: "preparing", label: "Preparing", verb: "prepare", observations: preparation } as const] : []),
-    { id: "learning", label: adaptive ? "Detector learning" : "Training", verb: adaptive ? "learn" : "train", observations: learning },
+    { id: "learning", label: fitted ? "Training" : "Detector learning", verb: fitted ? "train" : "learn", observations: learning },
     { id: "calibration", label: "Calibration", verb: "calibrate", observations: calibration },
   ];
 }
@@ -57,8 +57,9 @@ export function startupEstimate(
   definition: PipelineDefinition,
   intervals: ReadonlyArray<number | null | undefined>,
   preparation = 0,
+  fitted = false,
 ): Startup {
-  const phases = startupPhases(definition, preparation);
+  const phases = startupPhases(definition, preparation, fitted);
   return {
     phases,
     observations: phases.reduce((total, phase) => total + phase.observations, 0),

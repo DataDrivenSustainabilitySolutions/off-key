@@ -3,6 +3,7 @@ import type { FieldDescriptor } from "@/components/parameter-editor/types";
 import type { PipelineComponent, PipelineDefinition, PipelineNode } from "./contracts";
 import { detectorIds } from "./model";
 import { addedName, combinedName, eachSuffix, formulaEach, listed, SCOPE_FIELDS, setting, stepScope } from "./scope";
+import { coverage } from "./learning";
 import { fusionChoice } from "./steps";
 
 /** What a card says about its settings: one line of text, or the features it keeps. */
@@ -38,7 +39,7 @@ function formatted(field: FieldDescriptor, value: JsonValue): string | undefined
 
 /** Settings that differ from the catalogue defaults, at most two, then a count of the rest. */
 function changedSettings(node: PipelineNode, component: PipelineComponent) {
-  // The policy names how it combines detectors on its own, and only when there are several.
+  // The calibration step names how it combines detectors on its own, and only when there are several.
   const changed = component.fields.filter((field) => !SCOPE_FIELDS.has(field.name) && field.name !== "fusion"
     && node.params[field.name] !== undefined && !same(node.params[field.name], field.default));
   const lines = changed.map((field) => formatted(field, node.params[field.name]!));
@@ -147,8 +148,12 @@ export function nodeSummary(
   const labels = new Map(definition.input_slots.map((slot) => [slot.id, slot.label || slot.id]));
   const base = settingsSummary(node, component, definition, labels);
   const detectors = detectorIds(definition).length;
-  if (node.kind === "policy" && detectors > 1)
-    return { text: [`${fusionChoice(node).label} of ${detectors} detectors`, base.text].filter(Boolean).join(" · ") };
+  if (node.kind === "calibration") {
+    const combined = detectors > 1 ? `${fusionChoice(node).label} of ${detectors} detectors` : undefined;
+    // A method without a guarantee says so on its card.
+    const promise = component?.coverage === "none" ? coverage(component)?.label : undefined;
+    return { text: [combined, base.text, promise].filter(Boolean).join(" · ") || undefined };
+  }
   const scope = scopeSummary(node, component, labels);
   if (!scope) return base;
   return {

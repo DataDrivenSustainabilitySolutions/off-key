@@ -19,6 +19,8 @@ export type PipelineNode = Omit<Wire.PipelineNode, "params"> & {
   params: Record<string, JsonValue>;
 };
 export type PipelineEdge = Required<Wire.PipelineEdge>;
+/** A design as the editor holds it: schema 2, where each step says how it learns and a
+ * calibration step sits between the detectors and the policy. It has no strategy. */
 export type PipelineDefinition = Omit<
   Wire.PipelineDefinition,
   "nodes" | "edges" | "settings" | "input_slots" | "strategy"
@@ -27,7 +29,6 @@ export type PipelineDefinition = Omit<
   edges: PipelineEdge[];
   settings: Required<Wire.PipelineSettings>;
   input_slots: Wire.InputSlot[];
-  strategy: "static_baseline" | "adaptive_stream";
 };
 export type PipelineLayout = Wire.PipelineLayout & {
   nodes: NonNullable<Wire.PipelineLayout["nodes"]>;
@@ -79,9 +80,12 @@ export type PipelineServiceView = Omit<
 export function normalizeDefinition(
   definition: Wire.PipelineDefinition,
 ): PipelineDefinition {
+  // A strategy written with an older design is read by the server and means nothing here.
+  const rest = { ...definition };
+  delete rest.strategy;
   return {
-    ...definition,
-    strategy: definition.strategy ?? "static_baseline",
+    ...rest,
+    schema_version: 2,
     input_slots: definition.input_slots ?? [],
     nodes: (definition.nodes ?? []).map((node) => ({
       ...node,
@@ -103,16 +107,37 @@ export function normalizeDefinition(
 export function normalizeLayout(layout?: Wire.PipelineLayout): PipelineLayout {
   return { ...layout, nodes: layout?.nodes ?? {} };
 }
+
+/** One column of cards: a card and the room beside it for a wire and its insert handle. */
+const COLUMN = 288;
+
+/** A design arranged before calibration had a card keeps its arrangement: the card takes
+ * the policy's place, and the policy and everything to its right move one column over. */
+function placeCalibration(definition: PipelineDefinition, layout: PipelineLayout): PipelineLayout {
+  const calibration = definition.nodes.find((node) => node.kind === "calibration");
+  const policy = definition.nodes.find((node) => node.kind === "policy");
+  const at = policy && layout.nodes[policy.id];
+  if (!calibration || layout.nodes[calibration.id] || !at) return layout;
+  return {
+    ...layout,
+    nodes: {
+      ...Object.fromEntries(Object.entries(layout.nodes).map(([id, position]) =>
+        [id, position.x >= at.x ? { ...position, x: position.x + COLUMN } : position])),
+      [calibration.id]: { x: at.x, y: at.y },
+    },
+  };
+}
 export function normalizeRevision(
   revision: Wire.PipelineRevisionView,
 ): PipelineRevisionView {
   return { ...revision, definition: normalizeDefinition(revision.definition) };
 }
 export function normalizeView(view: Wire.PipelineView): PipelineView {
+  const draft = normalizeDefinition(view.draft);
   return {
     ...view,
-    draft: normalizeDefinition(view.draft),
-    layout: normalizeLayout(view.layout),
+    draft,
+    layout: placeCalibration(draft, normalizeLayout(view.layout)),
     revisions: view.revisions ?? [],
   };
 }
@@ -146,10 +171,11 @@ export function normalizeValidation(
 export function normalizeService(
   view: Wire.PipelineServiceView,
 ): PipelineServiceView {
+  const definition = normalizeDefinition(view.definition);
   return {
     ...view,
-    definition: normalizeDefinition(view.definition),
-    layout: normalizeLayout(view.layout),
+    definition,
+    layout: placeCalibration(definition, normalizeLayout(view.layout)),
     validation: view.validation
       ? normalizeValidation(view.validation, view.definition)
       : null,

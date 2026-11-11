@@ -71,6 +71,14 @@
   color: hsl(var(--muted-foreground));
 }
 
+.pl-toolbox-item .pl-learning-tag {
+  margin-top: 2px;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  line-height: 16px;
+}
+
 .pl-inspector {
   border-left: 1px solid hsl(var(--border));
   padding: 16px;

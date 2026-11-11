@@ -12,7 +12,6 @@ vi.mock("@/features/pipelines/api", () => ({
   pipelinesApi: { validate: vi.fn(), runMetadata: vi.fn() },
 }));
 const definition = normalizeDefinition({
-  strategy: "adaptive_stream",
   input_slots: [{ id: "value", label: "Value" }],
 });
 const report = (selected: string) =>

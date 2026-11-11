@@ -62,7 +62,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
     expect(response.ok()).toBe(true);
     const catalog = (await response.json()) as PipelineCatalog;
     const definition: PipelineDefinition = structuredClone(
-      catalog.templates.find((item) => item.definition.strategy === strategy)!
+      catalog.templates.find((item) => item.id === strategy)!
         .definition,
     );
     const slot = definition.input_slots![0]!.id;
@@ -98,8 +98,9 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
             renamed: { x: 280, y: 240 },
             merge: { x: 560, y: 130 },
             detector: { x: 840, y: 130 },
-            policy: { x: 1120, y: 130 },
-            output: { x: 1400, y: 130 },
+            calibrate: { x: 1120, y: 130 },
+            policy: { x: 1400, y: 130 },
+            output: { x: 1680, y: 130 },
           },
         },
       },
@@ -162,9 +163,10 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       await expect(node("raw").getByRole("img", { name: "Input: Features", exact: true })).toHaveAttribute("title", "Input: Features");
       // The compiler's report, when it has arrived, adds the features the dot emits.
       await expect(node("raw").getByRole("img", { name: "Output: Features", exact: true })).toHaveAttribute("title", /^Output: Features(\. .+)?$/);
-      await expect(node("detector").getByRole("img", {
-        name: strategy === "static_baseline" ? "Output: P-values" : "Output: Scores", exact: true,
-      })).toBeAttached();
+      // Every detector gives scores; the calibration step turns them into calibrated ones.
+      await expect(node("detector").getByRole("img", { name: "Output: Scores", exact: true })).toBeAttached();
+      await expect(node("calibrate").getByRole("img", { name: "Output: Calibrated scores", exact: true })).toBeAttached();
+      await expect(node("detector")).toContainText(strategy === "static_baseline" ? "Fitted once" : "Learns continuously");
       await expect(node("policy").getByRole("img", { name: "Output: Decisions", exact: true })).toBeAttached();
       const typeColors = await graph.evaluate((element) => {
         const css = getComputedStyle(element);
@@ -209,7 +211,7 @@ for (const strategy of ["static_baseline", "adaptive_stream"] as const) {
       const wireCount = await graph.locator(".react-flow__edge").count();
       await beginWire("detector", "output");
       await expect(dot("merge", "input")).toHaveClass(/is-incompatible/);
-      await expect(dot("merge", "input")).toHaveAttribute("title", /Cannot connect (P-values|Scores) to Features/);
+      await expect(dot("merge", "input")).toHaveAttribute("title", /Cannot connect Scores to Features/);
       await endWire("merge", "input");
       await expect(graph.locator(".react-flow__edge")).toHaveCount(wireCount);
       const reverse = strategy === "adaptive_stream";
@@ -284,7 +286,7 @@ test("inserts a step on a wire and replaces an occupied input, both undoable", a
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
-  const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
+  const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Wire editing ${randomUUID()}`, definition: template.definition, layout: template.layout },
@@ -375,7 +377,7 @@ test("lists the features the detector receives and adds a step for one of them",
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
-  const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
+  const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Feature rows ${randomUUID()}`, definition: template.definition, layout: template.layout },
@@ -427,13 +429,13 @@ test("lists the features the detector receives and adds a step for one of them",
   }
 });
 
-test("combines a second detector in the policy and lists each detector's features", async ({ page }, testInfo) => {
+test("combines a second detector at the calibration step and lists each detector's features", async ({ page }, testInfo) => {
   const token = await accessToken(page);
   const headers = { Authorization: `Bearer ${token}` };
   const response = await page.request.get("/api/v1/pipeline-components", { headers });
   expect(response.ok()).toBe(true);
   const catalog = (await response.json()) as PipelineCatalog;
-  const template = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!;
+  const template = catalog.templates.find((item) => item.id === "adaptive_stream")!;
   const created = await page.request.post("/api/v1/pipelines", {
     headers,
     data: { name: `Combined detectors ${randomUUID()}`, definition: template.definition, layout: template.layout },
@@ -452,24 +454,35 @@ test("combines a second detector in the policy and lists each detector's feature
     const reads = template.definition.edges!.find((edge) => edge.target === "detector")!.source;
     await expectReadablePipeline(page);
     await node("detector").click();
-    // Another detector reads what the first one reads, and the policy takes both.
+    // Another detector reads what the first one reads, and the calibration step takes both.
     await editor.getByRole("button", { name: "Add another detector", exact: true }).click();
     await expect(selector).toHaveValue("detector_2");
     await expect(wire(reads, "detector_2")).toHaveCount(1);
-    await expect(wire("detector_2", "policy")).toHaveCount(1);
-    await expect(wire("detector", "policy")).toHaveCount(1);
+    await expect(wire("detector_2", "calibrate")).toHaveCount(1);
+    await expect(wire("detector", "calibrate")).toHaveCount(1);
+    await expect(wire("calibrate", "policy")).toHaveCount(1);
     const model = editor.getByRole("combobox", { name: "Detector model", exact: true });
     const current = await model.inputValue();
     const other = (await model.locator("option").evaluateAll((options) =>
       options.map((option) => (option as HTMLOptionElement).value))).find((value) => value !== current)!;
     await model.selectOption(other);
-    // The policy shows how it combines them once there are two.
-    await selector.selectOption("policy");
+    // The calibration step shows how it combines them once there are two.
+    await selector.selectOption("calibrate");
     const combine = editor.getByRole("group", { name: "Combine detectors", exact: true });
     await expect(combine.getByRole("button", { name: "Strongest", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(node("policy")).toContainText("Strongest of 2 detectors");
+    await expect(node("calibrate")).toContainText("Strongest of 2 detectors");
     await combine.getByRole("button", { name: "Average", exact: true }).click();
-    await expect(node("policy")).toContainText("Average of 2 detectors");
+    await expect(node("calibrate")).toContainText("Average of 2 detectors");
+    await expectValidPipeline(page);
+    // A method that adapts takes the exceedance rule along, and the design still checks.
+    await expect(editor.getByText("Exact while data stays alike.", { exact: true })).toBeVisible();
+    await editor.getByRole("combobox", { name: "Calibration method", exact: true }).selectOption("calibrate.aci");
+    await expect(editor.getByText("Long-run alarm rate.", { exact: true })).toBeVisible();
+    await expect(node("policy")).toContainText("Exceedance rule");
+    await expect(node("calibrate")).toContainText("Average of 2 detectors");
+    await expectValidPipeline(page);
+    await editor.getByRole("button", { name: "Undo graph change", exact: true }).click();
+    await expect(node("policy")).not.toContainText("Exceedance rule");
     await expectValidPipeline(page);
     await page.screenshot({ path: testInfo.outputPath("combined-detectors.png"), fullPage: true });
     await editor.getByRole("button", { name: "Close settings", exact: true }).click();

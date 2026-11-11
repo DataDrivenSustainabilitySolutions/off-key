@@ -2,8 +2,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   normalizeDefinition,
-  normalizeLayout,
-  type PipelineCatalog,
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
@@ -11,7 +9,7 @@ import { rejectionSummary } from "@/features/pipelines/diagnostics";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { defaultSuffix, stepScope } from "@/features/pipelines/scope";
 import { STEP_FAMILIES, stepDescription, stepFamily, stepFields } from "@/features/pipelines/steps";
-import { convertStrategy } from "@/features/pipelines/strategy";
+import { changeDetector } from "@/features/pipelines/learning";
 import { nodeSummary } from "@/features/pipelines/summaries";
 import type { JsonValue } from "@/types/monitoring";
 
@@ -25,7 +23,6 @@ const amount = (name: string, value: number, type: "integer" | "number" = "numbe
 function prepare(id: string, fields: Field[], result = "replace"): PipelineComponent {
   return {
     id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features",
-    strategies: ["static_baseline", "adaptive_stream"],
     fields: [
       { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
       option("result", result, ["replace", "add"]),
@@ -55,7 +52,7 @@ const STEPS = [smooth, despike, change, rolling, math, range];
 const node = (component: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "step", kind: "transform", component: component.id, params });
 const definition = normalizeDefinition({
-  strategy: "adaptive_stream", input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [],
+  input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [],
 });
 const summary = (component: PipelineComponent, params?: PipelineNode["params"]) =>
   nodeSummary(node(component, params), component, definition);
@@ -111,19 +108,23 @@ describe("Prepare steps in the composer", () => {
     expect(stepFields(node(rolling), rolling).map((field) => field.name)).toEqual(["statistic", "window_size"]);
   });
 
-  it("keep every Prepare step when the strategy changes", () => {
-    const catalog: PipelineCatalog = { catalog_id: "prepare", authoring_enabled: true, templates: [], components: STEPS };
-    const document = {
-      definition: normalizeDefinition({
-        strategy: "adaptive_stream", input_slots: [{ id: "dc_voltage", label: "" }],
-        nodes: [{ id: "smooth", kind: "transform", component: "prepare.smooth", params: { window_size: 4 } }],
-      }),
-      layout: normalizeLayout(),
-    };
-    const changed = convertStrategy(document, "static_baseline", catalog);
+  it("stay as they are when the detector after them learns differently", () => {
+    const detector = (id: string, learning: PipelineComponent["learning"]): PipelineComponent => ({
+      id, kind: "detector", label: id, description: "", learning, fields: [], input_type: "features", output_type: "scores",
+    });
+    const fitted = detector("detector:fitted", "batch");
+    const definition = normalizeDefinition({
+      input_slots: [{ id: "dc_voltage", label: "" }],
+      nodes: [
+        { id: "smooth", kind: "transform", component: "prepare.smooth", params: { window_size: 4 } },
+        { id: "model", kind: "detector", component: "detector:continuous" },
+      ],
+      edges: [{ source: "smooth", target: "model" }],
+    });
+    const changed = changeDetector(definition, "model", fitted, [...STEPS, detector("detector:continuous", "online"), fitted]);
     expect(changed.converted).toEqual([]);
-    expect(changed.unconverted).toEqual([]);
-    expect(changed.document.definition.nodes[0]).toEqual(document.definition.nodes[0]);
+    expect(changed.definition.nodes[0]).toEqual(definition.nodes[0]);
+    expect(changed.definition.nodes[1]?.component).toBe("detector:fitted");
   });
 });
 

@@ -12,7 +12,8 @@ export const dataKinds: Record<DataKind, { label: string }> = {
   features: { label: "Features" },
   scores: { label: "Scores" },
   forecasts: { label: "Forecasts" },
-  p_values: { label: "P-values" },
+  // A fixed split gives p-values; a method that adapts gives scores against its boundary.
+  p_values: { label: "Calibrated scores" },
   decisions: { label: "Decisions" },
   evidence: { label: "Evidence" },
 };
@@ -76,5 +77,3 @@ export function sampledState(state: string) {
           : "neutral";
   return { label, tone };
 }
-
-export const strategyLabel = (strategy: string) => strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline";

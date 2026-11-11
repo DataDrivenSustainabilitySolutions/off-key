@@ -12,7 +12,7 @@ import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
 import { hasScope, isWarning, stepScope } from "@/features/pipelines/scope";
 import { stepFamily } from "@/features/pipelines/steps";
-import { convertStrategy } from "@/features/pipelines/strategy";
+import { changeDetector } from "@/features/pipelines/learning";
 import type { JsonValue } from "@/types/monitoring";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -23,16 +23,16 @@ const scopeFields = (suffix?: string): Field[] => [
   { name: "result", label: "Result", type: "enum", default: "replace", has_default: true, options: ["replace", "add"] },
   ...(suffix ? [{ name: "suffix", label: "Suffix", type: "string", default: suffix, has_default: true } satisfies Field] : []),
 ];
-const transform = (id: string, strategy: "static_baseline" | "adaptive_stream", fields: PipelineComponent["fields"]) =>
-  ({ id, kind: "transform", label: id, description: "", strategies: [strategy], input_type: "features",
+const transform = (id: string, learning: PipelineComponent["learning"], fields: PipelineComponent["fields"]) =>
+  ({ id, kind: "transform", label: id, description: "", learning, input_type: "features",
     output_type: "features", fields }) as PipelineComponent;
 
-const robust = transform("adaptive.robust_scaler", "adaptive_stream", [
+const robust = transform("adaptive.robust_scaler", "online", [
   ...scopeFields("robust"),
   { name: "window_size", label: "Window Size", type: "integer", default: 256, has_default: true },
 ]);
-const staticRobust = transform("static.robust_scaler", "static_baseline", scopeFields("robust"));
-const pca = transform("static.pca", "static_baseline", [
+const staticRobust = transform("static.robust_scaler", "batch", scopeFields("robust"));
+const pca = transform("static.pca", "batch", [
   ...scopeFields(),
   { name: "n_components", label: "N Components", type: "integer", default: 1, has_default: true },
 ]);
@@ -167,7 +167,7 @@ describe("scope settings", () => {
     const node = (params: PipelineNode["params"]): PipelineNode =>
       ({ id: "scale", kind: "transform", component: robust.id, params });
     expect(hasScope(robust)).toBe(true);
-    expect(hasScope(transform("features.select", "adaptive_stream", []))).toBe(false);
+    expect(hasScope(transform("features.select", "none", []))).toBe(false);
     expect(stepScope(node({ apply_to: null, result: "replace", suffix: "robust" }), robust))
       .toEqual({ applyTo: undefined, add: false, suffix: "robust", elementwise: true });
     expect(stepScope(node({ result: "add", suffix: "" }), robust)?.suffix).toBe("robust");
@@ -182,19 +182,24 @@ describe("scope settings", () => {
     expect(stepFamily("transform", "adaptive.robust_scaler")).toBe("normalize");
   });
 
-  it("keeps a step's scope when the strategy changes", () => {
-    const catalog: PipelineCatalog = { catalog_id: "scope", authoring_enabled: true, templates: [],
-      components: [staticRobust, robust] };
+  it("keeps a step's scope when it moves to its counterpart with the detector", () => {
+    const detector = (id: string, learning: PipelineComponent["learning"]) => ({
+      id, kind: "detector", label: id, description: "", learning, fields: [], input_type: "features", output_type: "scores",
+    }) as PipelineComponent;
+    const continuous = detector("detector:continuous", "online");
     const scope = { apply_to: ["dc_voltage"], result: "add", suffix: "iqr" };
-    const document = {
-      definition: normalizeDefinition({ strategy: "static_baseline", input_slots: [{ id: "dc_voltage", label: "" }],
-        nodes: [{ id: "scale", kind: "transform", component: "static.robust_scaler", params: scope }] }),
-      layout: normalizeLayout(),
-    };
+    const definition = normalizeDefinition({ input_slots: [{ id: "dc_voltage", label: "" }],
+      nodes: [
+        { id: "scale", kind: "transform", component: "static.robust_scaler", params: scope },
+        { id: "model", kind: "detector", component: "detector:fitted" },
+      ],
+      edges: [{ source: "scale", target: "model" }] });
 
-    const change = convertStrategy(document, "adaptive_stream", catalog);
+    const change = changeDetector(definition, "model", continuous,
+      [staticRobust, robust, detector("detector:fitted", "batch"), continuous]);
 
-    expect(change.document.definition.nodes[0]).toMatchObject({
+    expect(change.converted).toEqual(["scale"]);
+    expect(change.definition.nodes[0]).toMatchObject({
       component: "adaptive.robust_scaler", params: { ...scope, window_size: 256 },
     });
   });
@@ -203,7 +208,6 @@ describe("scope settings", () => {
 describe("warnings", () => {
   const document = () => ({
     definition: normalizeDefinition({
-      strategy: "adaptive_stream",
       input_slots: [{ id: "dc_voltage", label: "DC voltage" }, { id: "dc_current", label: "dc_current" }],
       nodes: [
         { id: "input", kind: "source", component: "source.aligned" },
@@ -214,7 +218,7 @@ describe("warnings", () => {
     layout: normalizeLayout(),
   });
   const source = { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
-    strategies: ["adaptive_stream"], input_type: null, output_type: "features", fields: [] } as PipelineComponent;
+    input_type: null, output_type: "features", fields: [] } as PipelineComponent;
   const warning = { node_id: "scale", code: "unused", message: "dc_current is not used after this step.",
     severity: "warning" as const };
 

@@ -7,7 +7,7 @@ import type { DatasetView, RunView } from "@/types/dojo.generated";
 import { pipelinesApi } from "../pipelines/api";
 import type { PipelineDefinition } from "../pipelines/contracts";
 import { dojoApi } from "./api";
-import { strategyLabel, suggestBindings } from "./model";
+import { suggestBindings } from "./model";
 
 type Choice = { key: string; name: string; group: "template" | "design"; definition?: PipelineDefinition };
 
@@ -78,6 +78,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
     onOpenChange(next);
   };
   const slots = useMemo(() => definition?.input_slots ?? [], [definition]);
+  const detectors = definition?.nodes.filter(node => node.kind === "detector").length ?? 0;
   const bound = slots.length > 0 && slots.every(slot => bindings[slot.id]);
   const duplicates = useMemo(() => {
     const values = slots.map(slot => bindings[slot.id]).filter(Boolean);
@@ -122,7 +123,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
             onClick={() => { setLoadingDesigns(true); setLoadError(""); setDesignPages(count => count + 1); }}>
             {loadingDesigns ? "Loading designs…" : "Load more designs"}</Button>}
           {definition && <>
-            <p className="dj-help">{strategyLabel(definition.strategy)} · {slots.length} {slots.length === 1 ? "input" : "inputs"}</p>
+            <p className="dj-help">{detectors} {detectors === 1 ? "detector" : "detectors"} · {slots.length} {slots.length === 1 ? "input" : "inputs"}</p>
             <fieldset className="dj-field"><legend>Inputs</legend>
               <div className="dj-bindings">{slots.map(slot => <label key={slot.id} className="dj-binding">
                 <span>{slot.label}{slot.unit ? ` (${slot.unit})` : ""}</span>

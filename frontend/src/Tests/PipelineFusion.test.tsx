@@ -8,6 +8,7 @@ import {
 } from "@/features/pipelines/contracts";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
 import { featuresView } from "@/features/pipelines/features";
+import { changeCalibration } from "@/features/pipelines/learning";
 import {
   addDetector,
   connectNodes,
@@ -22,7 +23,6 @@ import { PipelineDiagnostics, type PipelineState } from "@/features/pipelines/Pi
 import { PipelineFeatures } from "@/features/pipelines/PipelineFeatures";
 import { PipelineInspector } from "@/features/pipelines/PipelineInspector";
 import { PipelineToolbox } from "@/features/pipelines/PipelineToolbox";
-import { convertStrategy } from "@/features/pipelines/strategy";
 import { nodeSummary } from "@/features/pipelines/summaries";
 
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -36,36 +36,36 @@ const fusion: Field = {
   name: "fusion", label: "Combine detectors", type: "enum", default: "max", has_default: true, options: ["max", "mean"],
 };
 const quantile: Field = { name: "quantile", label: "Quantile", type: "number", default: 1, has_default: true };
+const alpha: Field = { name: "alpha", label: "Alarm rate", type: "number", default: 0.01, has_default: true };
 const component = (
   id: string, kind: PipelineComponent["kind"], fields: Field[] = [], label = id,
-  strategies: PipelineComponent["strategies"] = ["adaptive_stream"],
+  learning: PipelineComponent["learning"] = "none",
 ): PipelineComponent => ({
-  id, kind, label, description: "", fields, strategies,
-  input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
-  output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? "evidence" : "features",
+  id, kind, label, description: "", fields, learning,
+  input_type: kind === "source" ? null : kind === "calibration" ? "scores" : kind === "policy" ? "p_values"
+    : kind === "output" ? "decisions" : "features",
+  output_type: kind === "detector" ? "scores" : kind === "calibration" ? "p_values" : kind === "policy" ? "decisions"
+    : kind === "output" ? "evidence" : "features",
 });
 const components = [
-  component("source.aligned", "source", [], "Input", ["adaptive_stream", "static_baseline"]),
-  component("prepare.smooth", "transform", scoped, "Smooth", ["adaptive_stream", "static_baseline"]),
-  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling"),
-  component("features.select", "transform", [], "Select", ["adaptive_stream", "static_baseline"]),
-  component("detector:mahalanobis", "detector", [{ name: "window_size", label: "Window", type: "integer", default: 20, has_default: true }], "Mahalanobis"),
-  component("detector:knn", "detector", [], "Nearest neighbours"),
-  component("policy.quantile", "policy", [quantile, fusion], "Quantile"),
-  component("policy.martingale", "policy", [fusion], "Martingale", ["static_baseline"]),
-  component("output.evidence", "output", [], "Evidence", ["adaptive_stream", "static_baseline"]),
+  component("source.aligned", "source", [], "Input"),
+  component("prepare.smooth", "transform", scoped, "Smooth"),
+  component("adaptive.standard_scaler", "transform", scoped, "Standard scaling", "online"),
+  component("features.select", "transform", [], "Select"),
+  component("detector:mahalanobis", "detector", [{ name: "window_size", label: "Window", type: "integer", default: 20, has_default: true }], "Mahalanobis", "online"),
+  component("detector:knn", "detector", [], "Nearest neighbours", "online"),
+  { ...component("calibrate.fixed_split", "calibration", [fusion], "Fixed split"), family: "conformal" as const, coverage: "exchangeable" as const },
+  { ...component("calibrate.aci", "calibration", [alpha, fusion], "ACI"), family: "conformal" as const, coverage: "long_run" as const },
+  { ...component("calibrate.bocpd", "calibration", [alpha, fusion], "BOCPD"), family: "bayesian" as const, coverage: "none" as const },
+  component("policy.quantile", "policy", [quantile], "Quantile"),
+  component("policy.martingale", "policy", [], "Martingale"),
+  component("policy.exceedance", "policy", [], "Exceedance rule"),
+  component("output.evidence", "output", [], "Evidence"),
 ];
-const catalog = {
-  catalog_id: "fusion", authoring_enabled: true, components,
-  templates: [{ id: "static", name: "Static", description: "", definition: normalizeDefinition({
-    strategy: "static_baseline", input_slots: [], nodes: [
-      { id: "policy", kind: "policy", component: "policy.martingale" },
-    ] as never, edges: [],
-  }) }],
-} as never;
+const catalog = { catalog_id: "fusion", authoring_enabled: true, components, templates: [] } as never;
 
-/** Readings a and b, scaled once and selected per detector. */
-function design(detectors: 1 | 2 = 2, policy: object = {}): GraphDocument {
+/** Readings a and b, scaled once and selected per detector, meeting at the calibration step. */
+function design(detectors: 1 | 2 = 2, calibration: object = {}, policy: object = {}): GraphDocument {
   const nodes = [
     { id: "input", kind: "source", component: "source.aligned" },
     { id: "scale", kind: "transform", component: "adaptive.standard_scaler" },
@@ -73,6 +73,7 @@ function design(detectors: 1 | 2 = 2, policy: object = {}): GraphDocument {
     { id: "only_b", kind: "transform", component: "features.select", params: { features: ["b"] } },
     { id: "detector", kind: "detector", component: "detector:mahalanobis", params: { window_size: 30 } },
     ...(detectors === 2 ? [{ id: "detector_2", kind: "detector", component: "detector:knn" }] : []),
+    { id: "calibrate", kind: "calibration", component: "calibrate.fixed_split", params: calibration },
     { id: "policy", kind: "policy", component: "policy.quantile", params: policy },
     { id: "output", kind: "output", component: "output.evidence" },
   ];
@@ -81,15 +82,15 @@ function design(detectors: 1 | 2 = 2, policy: object = {}): GraphDocument {
     { source: "scale", target: "only_a" },
     { source: "scale", target: "only_b" },
     { source: "only_a", target: "detector" },
-    { source: "detector", target: "policy", order: 0 },
+    { source: "detector", target: "calibrate", order: 0 },
     ...(detectors === 2
-      ? [{ source: "only_b", target: "detector_2" }, { source: "detector_2", target: "policy", order: 1 }]
+      ? [{ source: "only_b", target: "detector_2" }, { source: "detector_2", target: "calibrate", order: 1 }]
       : []),
+    { source: "calibrate", target: "policy" },
     { source: "policy", target: "output" },
   ];
   return {
     definition: normalizeDefinition({
-      strategy: "adaptive_stream",
       input_slots: [{ id: "a", label: "Reading A" }, { id: "b", label: "Reading B" }],
       nodes: nodes as never,
       edges: edges as never,
@@ -110,7 +111,7 @@ const report = {
 } as unknown as PipelineValidation;
 
 describe("combining detectors in the graph", () => {
-  it("adds another detector like the selected one, on its input and into the policy", () => {
+  it("adds another detector like the selected one, on its input and into the calibration step", () => {
     const added = addDetector(design(1), "detector")!;
     const { definition, layout } = added.document;
 
@@ -119,8 +120,9 @@ describe("combining detectors in the graph", () => {
       kind: "detector", component: "detector:mahalanobis", params: { window_size: 30 },
     });
     expect(incomingEdges(definition, "detector_2").map((edge) => edge.source)).toEqual(["only_a"]);
-    expect(incomingEdges(definition, "policy").map((edge) => [edge.source, edge.order]))
+    expect(incomingEdges(definition, "calibrate").map((edge) => [edge.source, edge.order]))
       .toEqual([["detector", 0], ["detector_2", 1]]);
+    expect(incomingEdges(definition, "policy").map((edge) => edge.source)).toEqual(["calibrate"]);
     // Below the original, without covering it.
     expect(layout.nodes.detector_2!.x).toBe(900);
     expect(layout.nodes.detector_2!.y).toBeGreaterThan(0);
@@ -135,29 +137,46 @@ describe("combining detectors in the graph", () => {
     expect(addDetector(document, "detector")).toBeUndefined();
   });
 
-  it("lets the policy take one input per detector", () => {
+  it("lets the calibration step take one input per detector, and the detection rule one", () => {
     const { definition } = design(2);
     const loose = removeNode({ definition, layout: design().layout }, "detector_2").definition;
     const back = { ...loose, nodes: [...loose.nodes, { ...definition.nodes.find((node) => node.id === "detector_2")! }] };
 
-    expect(occupiedInput(back, "policy")).toBeUndefined();
-    const connected = connectNodes(back, "detector_2", "policy", components);
-    expect(incomingEdges(connected, "policy").map((edge) => edge.source)).toEqual(["detector", "detector_2"]);
-    expect(incomingEdges(removeNode({ definition, layout: design().layout }, "detector").definition, "policy")
+    expect(occupiedInput(back, "calibrate")).toBeUndefined();
+    expect(occupiedInput(back, "policy")).toMatchObject({ source: "calibrate" });
+    const connected = connectNodes(back, "detector_2", "calibrate", components);
+    expect(incomingEdges(connected, "calibrate").map((edge) => edge.source)).toEqual(["detector", "detector_2"]);
+    // A detector's scores do not go into the detection rule.
+    expect(connectNodes(back, "detector_2", "policy", components)).toBe(back);
+    expect(incomingEdges(removeNode({ definition, layout: design().layout }, "detector").definition, "calibrate")
       .map((edge) => edge.source)).toEqual(["detector_2"]);
   });
 
-  it("names how the policy combines on its card, only with several detectors", () => {
-    const quantilePolicy = components.find((item) => item.id === "policy.quantile")!;
-    const node = (document: GraphDocument) => document.definition.nodes.find((item) => item.kind === "policy")!;
+  it("names how the calibration step combines on its card, only with several detectors", () => {
+    const find = (id: string) => components.find((item) => item.id === id)!;
+    const node = (document: GraphDocument, kind: string) => document.definition.nodes.find((item) => item.kind === kind)!;
+    const summary = (document: GraphDocument, kind: string) =>
+      nodeSummary(node(document, kind), find(node(document, kind).component), document.definition).text;
 
-    expect(nodeSummary(node(design(2)), quantilePolicy, design(2).definition).text)
-      .toBe("Strongest of 2 detectors · Above the calibration maximum");
-    const average = design(2, { fusion: "mean", quantile: 0.99 });
-    expect(nodeSummary(node(average), quantilePolicy, average.definition).text)
-      .toBe("Average of 2 detectors · Above calibration quantile 0.99");
-    const single = design(1, { fusion: "mean" });
-    expect(nodeSummary(node(single), quantilePolicy, single.definition).text).toBe("Above the calibration maximum");
+    expect(summary(design(2), "calibration")).toBe("Strongest of 2 detectors");
+    expect(summary(design(2), "policy")).toBe("Above the calibration maximum");
+    const average = design(2, { fusion: "mean" }, { quantile: 0.99 });
+    expect(summary(average, "calibration")).toBe("Average of 2 detectors");
+    expect(summary(average, "policy")).toBe("Above calibration quantile 0.99");
+    expect(summary(design(1, { fusion: "mean" }), "calibration")).toBeUndefined();
+  });
+
+  it("names a changed alarm rate and a missing guarantee on the calibration card", () => {
+    const find = (id: string) => components.find((item) => item.id === id)!;
+    const adapting = (id: string, params: object) => {
+      const document = design(2);
+      const node = { ...document.definition.nodes.find((item) => item.kind === "calibration")!, component: id, params };
+      return nodeSummary(node as never, find(id), document.definition).text;
+    };
+
+    expect(adapting("calibrate.aci", { alpha: 0.01, fusion: "max" })).toBe("Strongest of 2 detectors");
+    expect(adapting("calibrate.aci", { alpha: 0.05, fusion: "mean" })).toBe("Average of 2 detectors · Alarm rate 0.05");
+    expect(adapting("calibrate.bocpd", { alpha: 0.01 })).toBe("Strongest of 2 detectors · No guarantee");
   });
 
   it("counts a model's nested settings at their defaults as unchanged on its card", () => {
@@ -174,12 +193,14 @@ describe("combining detectors in the graph", () => {
     expect(nodeSummary(changed, knn, design(2).definition).text).toBe("1 more setting");
   });
 
-  it("keeps Combine detectors when the strategy switches", () => {
-    const changed = convertStrategy(design(2, { fusion: "mean" }), "static_baseline", catalog);
-    const policy = changed.document.definition.nodes.find((node) => node.kind === "policy")!;
+  it("keeps Combine detectors when the calibration method changes", () => {
+    const aci = components.find((item) => item.id === "calibrate.aci")!;
+    const changed = changeCalibration(design(2, { fusion: "mean" }).definition, "calibrate", aci, components);
+    const calibration = changed.definition.nodes.find((node) => node.kind === "calibration")!;
 
-    expect(policy.component).toBe("policy.martingale");
-    expect(policy.params.fusion).toBe("mean");
+    expect(calibration.component).toBe("calibrate.aci");
+    expect(calibration.params.fusion).toBe("mean");
+    expect(changed.definition.nodes.find((node) => node.kind === "policy")!.component).toBe("policy.exceedance");
   });
 });
 
@@ -197,15 +218,15 @@ describe("the inspector", () => {
     expect(onSelect).toHaveBeenCalledWith("detector_2");
   });
 
-  it("shows Combine detectors on the policy only once there are two", () => {
-    const { unmount } = render(<PipelineInspector document={design(1)} catalog={catalog} selected="policy"
+  it("shows Combine detectors on the calibration step only once there are two", () => {
+    const { unmount } = render(<PipelineInspector document={design(1)} catalog={catalog} selected="calibrate"
       validation={report} onSelect={() => {}} onChange={() => {}} />);
     expect(screen.queryByText("Combine detectors")).toBeNull();
     expect(screen.queryByRole("combobox", { name: /Combine/ })).toBeNull();
     unmount();
 
     const onChange = vi.fn();
-    render(<PipelineInspector document={design(2)} catalog={catalog} selected="policy" validation={report}
+    render(<PipelineInspector document={design(2)} catalog={catalog} selected="calibrate" validation={report}
       onSelect={() => {}} onChange={onChange} />);
     const group = screen.getByRole("group", { name: "Combine detectors" });
     expect(within(group).getByRole("button", { name: "Strongest" }).getAttribute("aria-pressed")).toBe("true");
@@ -213,13 +234,47 @@ describe("the inspector", () => {
     expect(screen.getByRole("heading", { name: "Detectors" })).toBeTruthy();
 
     fireEvent.click(within(group).getByRole("button", { name: "Average" }));
-    const policy = (onChange.mock.calls[0]![0] as GraphDocument).definition.nodes.find((node) => node.id === "policy")!;
-    expect(policy.params.fusion).toBe("mean");
+    const changed = (onChange.mock.calls[0]![0] as GraphDocument).definition;
+    expect(changed.nodes.find((node) => node.id === "calibrate")!.params.fusion).toBe("mean");
+    expect(changed.nodes.find((node) => node.id === "policy")!.params.fusion).toBeUndefined();
+  });
+
+  it("changes the calibration method, says what it promises and moves the detection rule along", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<PipelineInspector document={design(2)} catalog={catalog} selected="calibrate"
+      validation={report} onSelect={() => {}} onChange={onChange} />);
+    const method = screen.getByRole("combobox", { name: "Calibration method" }) as HTMLSelectElement;
+    expect(method.value).toBe("calibrate.fixed_split");
+    expect([...method.querySelectorAll("optgroup")].map((group) => group.label)).toEqual(["Conformal", "Bayesian"]);
+    expect(screen.getByText("Exact while data stays alike.")).toBeTruthy();
+
+    fireEvent.change(method, { target: { value: "calibrate.bocpd" } });
+    const changed = onChange.mock.calls[0]![0] as GraphDocument;
+    expect(changed.definition.nodes.find((node) => node.id === "calibrate")!.component).toBe("calibrate.bocpd");
+    expect(changed.definition.nodes.find((node) => node.id === "policy")!.component).toBe("policy.exceedance");
+    rerender(<PipelineInspector document={changed} catalog={catalog} selected="calibrate"
+      validation={report} onSelect={() => {}} onChange={onChange} />);
+    expect(screen.getByText("No guarantee.")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("The detection rule is now Exceedance rule. Undo reverses this.");
+  });
+
+  it("offers every detection rule and marks the ones that do not fit the design", () => {
+    const onChange = vi.fn();
+    render(<PipelineInspector document={design(2)} catalog={catalog} selected="policy" validation={report}
+      onSelect={() => {}} onChange={onChange} />);
+    const rule = screen.getByRole("combobox", { name: "Detection rule" }) as HTMLSelectElement;
+    expect([...rule.options].map((option) => option.textContent)).toEqual([
+      "Quantile", "Martingale (does not fit this design)", "Exceedance rule (does not fit this design)",
+    ]);
+    fireEvent.change(rule, { target: { value: "policy.martingale" } });
+    const changed = (onChange.mock.calls[0]![0] as GraphDocument).definition;
+    expect(changed.nodes.find((node) => node.id === "policy")!.component).toBe("policy.martingale");
   });
 
   it("names the detectors in the add-step menu once", () => {
     render(<PipelineToolbox components={components} document={design(2)} onAdd={() => {}} onSelect={() => {}} />);
-    expect(screen.getByText(/The 2 detectors, policy and output are already in this pipeline/)).toBeTruthy();
+    expect(screen.getByText(/The 2 detectors, calibration step, detection rule and output are already in this pipeline/))
+      .toBeTruthy();
     expect(screen.getByText(/A detector's settings can add another detector/)).toBeTruthy();
   });
 });
@@ -287,6 +342,12 @@ describe("each detector's part in a run", () => {
     expect(rows.map((row) => row.textContent)).toEqual(["Mahalanobis2.5000000.95", "Nearest neighbours0.25000000.3"]);
     fireEvent.click(screen.getByRole("button", { name: "Nearest neighbours" }));
     expect(onSelect).toHaveBeenCalledWith("detector_2");
+  });
+
+  it("lists them on the calibration step too, which the runtime reports with the detection rule", () => {
+    render(<PipelineDiagnostics state={observed()} selected="calibrate" policyId="policy" calibrationId="calibrate"
+      expectedRunId="run" nodeLabels={{ detector: "Mahalanobis", detector_2: "Nearest neighbours" }} />);
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3);
   });
 
   it("gives a detector's surprise beside its score", () => {

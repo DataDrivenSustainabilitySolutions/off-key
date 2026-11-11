@@ -2,7 +2,7 @@ import type { MonitoringChartEvidence } from "@/types/monitoring";
 import { getPauseLimit } from "./telemetry-data";
 
 /** What a forecaster step expected of a feature at one time, and the interval around it. */
-export type ForecastPoint = [time: number, expected: number | null, lower: number | null, upper: number | null];
+type ForecastPoint = [time: number, expected: number | null, lower: number | null, upper: number | null];
 
 /** One feature a detector scored, over time. A null value breaks the line. */
 export interface DetectorInputSeries {

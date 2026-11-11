@@ -887,9 +887,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`535b29cd791b6f30433202720f6543408879d3a3`, the commit that brings the
-stored forecasts and the Dojo's comparison of calibration methods together, on
-top of migration 027 (`dojo_method_alarms`). It shares the current
+`f02a9201a4aad4bdeacd196062246cc48f883505`, the commit that adds bearer-token
+revocation and the Dojo metrics cache through migrations 028
+(`access_token_revocation`) and 029 (`dojo_metrics_cache`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -897,14 +897,16 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `934f8f93`, has no migration 027; `cbe2d839` before it
+The previous reference, `535b29cd`, has neither migration 028 nor 029;
+`934f8f93` has no migration 027; `cbe2d839` before it
 has no migration 026, `ad919d98` returns a design with its lane and without
 its calibration step, where the current release returns it as the editor
 reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
 has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
 1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 027 refuse a database that has applied it. Rolling back past migration 027 means restoring a verified
+migrations 028 and 029 refuse a database that has applied them. Rolling back past
+this schema boundary means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.5.0; migration from

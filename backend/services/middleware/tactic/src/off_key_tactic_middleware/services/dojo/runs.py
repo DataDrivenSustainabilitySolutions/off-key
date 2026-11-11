@@ -12,7 +12,7 @@ from uuid import uuid4
 from off_key_core.db.locks import DOJO_QUEUE_LOCK
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import DojoDataset, DojoRun, DojoRunResult, DojoSeries
-from off_key_core.models.dojo_runs import BoundSeries, bind_dataset
+from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, result_kind
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import (
     MAX_ACTIVE_RUNS,
@@ -279,7 +279,7 @@ class DojoRuns:
             dataset_id=row.dataset_id,
             name=row.name,
             status=cast(RunStatus, row.status),
-            strategy=row.config["execution"]["definition"]["strategy"],
+            strategy=result_kind(row.config["execution"]["definition"]),
             points_total=row.points_total,
             points_read=row.points_read,
             result_count=row.result_count,

@@ -181,7 +181,7 @@ test("loads the saved template, saves an independent copy, and fits desktop and 
   const unique = randomUUID();
   try {
     const catalog = await (await page.request.get("/api/v1/pipeline-components", { headers })).json() as PipelineCatalog;
-    const definition = structuredClone(catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")!.definition);
+    const definition = structuredClone(catalog.templates.find((item) => item.id === "adaptive_stream")!.definition);
     definition.input_slots = [{ id: "voltage", label: "Voltage", unit: "V" }];
     const response = await page.request.post(endpoint, { headers, data: { name: `Reusable ${unique}`, definition } });
     const source = await response.json() as PipelineView; ids.push(source.id);

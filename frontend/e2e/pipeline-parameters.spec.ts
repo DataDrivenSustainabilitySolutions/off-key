@@ -15,7 +15,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     expect(response.ok()).toBe(true);
     const catalog = await response.json() as PipelineCatalog;
     const definition = structuredClone(catalog.templates.find(item =>
-      item.definition.strategy === "adaptive_stream")!.definition);
+      item.id === "adaptive_stream")!.definition);
     const detector = definition.nodes!.find(node => node.kind === "detector")!;
     detector.component = "detector:aberrant_knn";
     detector.params = { k: 0, similarity_engine: { id: "faiss", params: { window_size: 0, warm_up: 0 } } };

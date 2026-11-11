@@ -5,14 +5,30 @@ synthetic telemetry topic of one synthetic entity. TACTIC binds when a run is
 created; the worker only executes the stored result.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
+from ..schemas.pipeline_versions import Strategy
 from ..schemas.pipelines import BoundInput, PipelineDefinition, PipelineExecutionConfig
 from ..utils.mqtt_topics import derive_monitoring_sensor_keys
 from .pipelines import execution_fingerprint
 
 DOJO_ENTITY = "dojo"
 DOJO_SENSOR_KEY_STRATEGY = "full_hierarchy"
+
+
+def result_kind(definition: Mapping[str, Any]) -> Strategy:
+    """What a run's results are, from its stored design.
+
+    The conformal alarm policy gives p-values (``static_baseline``); every
+    other policy gives scores against a threshold (``adaptive_stream``).
+    """
+    martingale = any(
+        node.get("component") == "policy.martingale"
+        for node in definition.get("nodes", [])
+    )
+    return "static_baseline" if martingale else "adaptive_stream"
 
 
 def series_topic(position: int) -> str:

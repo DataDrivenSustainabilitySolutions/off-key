@@ -3,9 +3,12 @@ import type { PipelineComponent } from "./contracts";
 import {
   addBlocker, insertBlocker, isMultiInstanceKind, nodeLabel, PIPELINE_LIMITS, type GraphDocument, type Link,
 } from "./model";
+import { learningLabel } from "./learning";
 import { familyLabel, STEP_FAMILIES, stepDescription, stepFamily } from "./steps";
 
-const singleNames: Record<string, string> = { detector: "detector", policy: "policy", output: "output" };
+const singleNames: Record<string, string> = {
+  detector: "detector", calibration: "calibration step", policy: "detection rule", output: "output",
+};
 const listed = (names: string[]) =>
   names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
@@ -37,8 +40,7 @@ export function PipelineToolbox({
   const definition = document.definition;
   const search = query.trim().toLocaleLowerCase();
   const offered = choices ?? components.filter((component) =>
-    component.strategies.includes(definition.strategy)
-    && (isMultiInstanceKind(component.kind) || !definition.nodes.some((node) => node.kind === component.kind))
+    (isMultiInstanceKind(component.kind) || !definition.nodes.some((node) => node.kind === component.kind))
     && (!link || !insertBlocker(definition, link, component, components)));
   const matches = offered.filter((component) =>
     `${component.label} ${stepDescription(component)} ${component.description} ${familyLabel(stepFamily(component.kind, component.id))}`
@@ -47,7 +49,7 @@ export function PipelineToolbox({
   const sections = STEP_FAMILIES
     .map((family) => ({ ...family, items: matches.filter((component) => stepFamily(component.kind, component.id) === family.id) }))
     .filter((section) => section.items.length);
-  // The detector, policy and output are changed in their own settings, not added again.
+  // The detector, calibration step, detection rule and output are changed in their own settings, not added again.
   const present = link || choices ? [] : definition.nodes.filter((node) => node.kind in singleNames
     && (!search || `${nodeLabel(node, components, document.layout)} ${singleNames[node.kind]}`.toLocaleLowerCase().includes(search)));
   // Several detectors read as one entry: "the 2 detectors, policy and output".
@@ -57,6 +59,11 @@ export function PipelineToolbox({
     return count > 1 ? `${count} ${singleNames[kind]}s` : singleNames[kind]!;
   }));
   const full = definition.nodes.length >= PIPELINE_LIMITS.nodes;
+  // Two steps can share a name and differ in how they learn; their names then say so.
+  const shared = new Set(offered.map((component) => component.label)
+    .filter((label, index, labels) => labels.indexOf(label) !== index));
+  const named = (component: PipelineComponent) => shared.has(component.label) && learningLabel(component)
+    ? `${component.label}, ${learningLabel(component)!.toLowerCase()}` : component.label;
   const blocker = (component: PipelineComponent) => link ? undefined : addBlocker(definition, component);
   const items = () => [...list.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []];
   const focusItem = (index: number) => {
@@ -109,7 +116,7 @@ export function PipelineToolbox({
                   key={component.id}
                   className="pl-toolbox-item"
                   title={reason}
-                  aria-label={`${link ? "Insert" : "Add"} ${component.label}`}
+                  aria-label={`${link ? "Insert" : "Add"} ${named(component)}`}
                   aria-describedby={`${id}-${component.id}`}
                   disabled={!!reason}
                   draggable={!link && !choices && !reason}
@@ -126,6 +133,7 @@ export function PipelineToolbox({
                 >
                   <strong>{component.label}</strong>
                   <small id={`${id}-${component.id}`}>{stepDescription(component)}</small>
+                  {learningLabel(component) && <small className="pl-learning-tag">{learningLabel(component)}</small>}
                 </button>;
               })}
             </div>

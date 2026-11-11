@@ -12,7 +12,8 @@ export const dataKinds: Record<DataKind, { label: string }> = {
   features: { label: "Features" },
   scores: { label: "Scores" },
   forecasts: { label: "Forecasts" },
-  p_values: { label: "P-values" },
+  // A fixed split gives p-values; a method that adapts gives scores against its boundary.
+  p_values: { label: "Calibrated scores" },
   decisions: { label: "Decisions" },
   evidence: { label: "Evidence" },
 };
@@ -53,6 +54,14 @@ export function inputKind(component: PipelineComponent | undefined) {
     : undefined;
 }
 
+/** Whether a step takes what a connection carries. A calibration step reads a
+ * forecaster's forecasts as it reads a detector's scores. */
+export function takes(component: PipelineComponent | undefined, carried: DataKind | undefined) {
+  const input = inputKind(component);
+  return !!carried && (input === carried
+    || (component?.kind === "calibration" && carried === "forecasts"));
+}
+
 export function outputKind(
   node: PipelineNode,
   component: PipelineComponent | undefined,
@@ -76,5 +85,3 @@ export function sampledState(state: string) {
           : "neutral";
   return { label, tone };
 }
-
-export const strategyLabel = (strategy: string) => strategy === "adaptive_stream" ? "Adaptive stream" : "Static baseline";

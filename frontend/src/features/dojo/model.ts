@@ -60,8 +60,10 @@ export function runState(run: Pick<RunSummary, "status" | "points_read" | "point
 
 export const isActive = (run: Pick<RunSummary, "status">) => run.status === "queued" || run.status === "running";
 
-export const strategyLabel = (strategy: string) =>
-  strategy === "static_baseline" ? "Static baseline" : strategy === "adaptive_stream" ? "Adaptive stream" : strategy;
+/** What a run's results hold, which follows from the design's detection rule: p-values
+ * and martingale evidence, or scores against a threshold. */
+export const resultKindLabel = (kind: string) =>
+  kind === "static_baseline" ? "Conformal alarm" : kind === "adaptive_stream" ? "Score threshold" : kind;
 
 /** A duration in the largest unit that keeps it readable: 45 s, 12 min, 3.5 h, 2.1 d. */
 export function formatDuration(seconds: number | null | undefined) {

@@ -8,6 +8,8 @@ type CanvasData = {
   kind: PipelineNode["kind"];
   /** What the step does, as the add-step menu groups it. */
   family: string;
+  /** How a learned step learns: "Fitted once", "Learns continuously" or "Pretrained". */
+  learning?: string;
   operation: string;
   available: boolean;
   inputPort: boolean;

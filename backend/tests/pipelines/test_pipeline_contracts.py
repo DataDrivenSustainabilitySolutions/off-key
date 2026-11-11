@@ -23,10 +23,12 @@ def test_complete_catalog_and_templates_have_bounded_controls():
     assert catalog.authoring_enabled
     assert len(catalog.components) >= 48
     assert len({item.id for item in catalog.components}) == len(catalog.components)
-    assert {item.definition.strategy for item in catalog.templates} == {
+    assert {item.id for item in catalog.templates} == {
         "static_baseline",
         "adaptive_stream",
     }
+    # A design has no lane; the templates differ in what they are made of.
+    assert {item.definition.strategy for item in catalog.templates} == {None}
     for item in catalog.templates:
         assert compile_pipeline(item.definition).valid
     for component in catalog.components:
@@ -145,8 +147,9 @@ def test_bound_fingerprint_has_one_canonical_shape():
             "component",
         ),
         (
+            # The score threshold needs a detector that takes in every observation.
             lambda data: data["nodes"][1].update(component="detector:pyod_iforest"),
-            "strategy",
+            "calibration",
         ),
         (
             lambda data: data["edges"].append({"source": "input", "target": "policy"}),

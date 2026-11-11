@@ -18,7 +18,7 @@ from off_key_core.models.pipeline_calibration import (
     calibrator_id,
     minimum_window,
 )
-from off_key_core.models.pipeline_catalog import editor_components
+from off_key_core.models.pipeline_catalog import pipeline_catalog
 from off_key_core.models.pipelines import (
     derive_monitoring_config,
     pipeline_components,
@@ -78,11 +78,30 @@ def test_every_method_is_a_calibration_step_with_its_own_settings():
     assert [item.name for item in rule.fields] == ["consecutive"]
 
 
-def test_the_editor_does_not_offer_calibration_steps_yet():
-    editor = {item.id for item in editor_components()}
+def test_the_editor_is_offered_every_calibration_step_and_what_it_holds():
+    catalog = pipeline_catalog()
+    offered = {item.id: item for item in catalog.components}
 
-    assert not {item for item in editor if item.startswith("calibrate.")}
-    assert "policy.exceedance" not in editor
+    assert [item.id for item in catalog.components] == [
+        item.id for item in pipeline_components()
+    ]
+    assert "policy.exceedance" in offered
+    fixed = offered["calibrate.fixed_split"]
+    assert (fixed.family, fixed.coverage, fixed.reference) == (
+        "conformal",
+        "exchangeable",
+        None,
+    )
+    for method, spec in CALIBRATORS.items():
+        component = offered[f"calibrate.{method}"]
+        assert (component.family, component.coverage, component.reference) == (
+            spec["family"],
+            spec["coverage"],
+            spec["reference"],
+        )
+    assert all(
+        item.family is None for item in offered.values() if item.kind != "calibration"
+    )
 
 
 @pytest.mark.parametrize("detectors", SHAPES)
@@ -203,17 +222,20 @@ def test_a_method_that_tracks_the_boundary_itself_needs_no_window():
     assert result.valid and result.issues == []
 
 
-def test_a_design_with_a_monitoring_strategy_keeps_the_fixed_split():
+def test_a_design_stored_with_a_strategy_can_take_a_step_that_adapts():
     stored = fused_definition("adaptive_stream", fusion="mean", quantile=0.99)
-    definition = PipelineDefinition.model_validate(stored.model_dump(mode="json"))
-    assert definition.strategy == "adaptive_stream"
+    written = stored.model_dump(mode="json")
+    assert written["strategy"] == "adaptive_stream"
+    definition = PipelineDefinition.model_validate(written)
+    assert definition.strategy is None
     for node in definition.nodes:
         if node.kind == "calibration":
             node.component, node.params = "calibrate.aci", {"alpha": 0.1}
         if node.kind == "policy":
             node.component, node.params = "policy.exceedance", {}
 
-    assert ("strategy", "calibrate", "error") in issues(definition)
+    assert issues(definition) == []
+    assert definition.model_dump(mode="json")["strategy"] is None
 
 
 @pytest.mark.parametrize(

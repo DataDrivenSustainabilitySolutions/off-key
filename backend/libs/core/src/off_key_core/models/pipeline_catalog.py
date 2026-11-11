@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from functools import cache
-from typing import Any, get_args
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -17,7 +17,6 @@ from ..schemas.pipelines import (
     PipelineComponent,
     PipelineDefinition,
     PipelineLayout,
-    PipelineStrategy,
     PipelineTemplate,
 )
 from ..schemas.radar import AdaptiveThresholdConfig, StaticMartingaleConfig
@@ -25,10 +24,9 @@ from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
 from .pipeline_calibration import CALIBRATION_MODELS, CALIBRATORS, EXCEEDANCE_RULE
 from .pipeline_digest import digest
 from .pipeline_fields import component_fields
-from .pipeline_parameters import PARAMETER_MODELS, POLICY_MODELS
+from .pipeline_parameters import PARAMETER_MODELS
 from .static import STATIC_MODELS
 
-BOTH: list[PipelineStrategy] = list(get_args(PipelineStrategy))
 # Schema 2 policies: the calibration step combines the detectors.
 _POLICY_SCHEMAS: dict[str, type[BaseModel]] = {
     "policy.martingale": StaticMartingaleConfig,
@@ -47,27 +45,24 @@ def _json_schema(model: type[BaseModel]) -> dict[str, Any]:
 
 
 def pipeline_components() -> list[PipelineComponent]:
-    specifications: list[tuple[str, NodeKind, str, str, list[PipelineStrategy]]] = [
+    specifications: list[tuple[str, NodeKind, str, str]] = [
         (
             "source.aligned",
             "source",
             "Aligned inputs",
             "One coherent observation of the bound numeric readings.",
-            BOTH,
         ),
         (
             "features.select",
             "transform",
             "Select features",
             "Keep selected features in the explicit selection order.",
-            BOTH,
         ),
         (
             "features.rename",
             "transform",
             "Rename features",
             "Explicit names prevent collisions when branches merge.",
-            BOTH,
         ),
         (
             "features.passthrough",
@@ -77,147 +72,126 @@ def pipeline_components() -> list[PipelineComponent]:
                 "Preserve incoming values and names. "
                 "Connect directly to aligned inputs to retain raw readings."
             ),
-            BOTH,
         ),
         (
             "features.merge",
             "merge",
             "Merge features",
             "Concatenate branches in connection order.",
-            BOTH,
         ),
         (
             "prepare.smooth",
             "transform",
             "Smooth",
             "Average recent values, exponentially or over a window.",
-            BOTH,
         ),
         (
             "prepare.despike",
             "transform",
             "Despike",
             "Replace values far from the recent median with the median.",
-            BOTH,
         ),
         (
             "prepare.change",
             "transform",
             "Change",
             "Difference, percent change or the value a few observations back.",
-            BOTH,
         ),
         (
             "prepare.rolling",
             "transform",
             "Rolling statistic",
             "Mean, median, minimum, maximum, spread or range of recent values.",
-            BOTH,
         ),
         (
             "prepare.math",
             "transform",
             "Math",
             "log, log1p, square root, absolute value, square or scale and offset.",
-            BOTH,
         ),
         (
             "prepare.range",
             "transform",
             "Range check",
             "Clip values to a range, or skip observations outside it.",
-            BOTH,
         ),
         (
             "prepare.aggregate",
             "transform",
             "Aggregate",
             "Mean, sum, minimum, maximum, spread or range across features.",
-            BOTH,
         ),
         (
             "prepare.formula",
             "transform",
             "Formula",
             "One feature computed from the features arriving here.",
-            BOTH,
         ),
         (
             "prepare.gate",
             "transform",
             "Gate",
             "Learn and score only the observations where a condition holds.",
-            BOTH,
         ),
         (
             "static.standard_scaler",
             "transform",
             "Standard scaling",
             "Fit means and variances on training observations only.",
-            ["static_baseline"],
         ),
         (
             "static.min_max_scaler",
             "transform",
             "Min-max scaling",
             "Fit bounds on training observations; clipping is explicit.",
-            ["static_baseline"],
         ),
         (
             "static.robust_scaler",
             "transform",
             "Robust scaling",
             "Center on the training median and divide by its interquartile range.",
-            ["static_baseline"],
         ),
         (
             "static.pca",
             "transform",
             "Centered PCA",
             "Batch centered principal components fitted on training data.",
-            ["static_baseline"],
         ),
         (
             "static.random_projection",
             "transform",
             "Random projection",
             "A seeded fixed random projection.",
-            ["static_baseline"],
         ),
         (
             "adaptive.standard_scaler",
             "transform",
             "Online standard scaling",
             "Score with previous statistics, then update.",
-            ["adaptive_stream"],
         ),
         (
             "adaptive.min_max_scaler",
             "transform",
             "Online min-max scaling",
             "Online observed bounds; clipping is explicit.",
-            ["adaptive_stream"],
         ),
         (
             "adaptive.robust_scaler",
             "transform",
             "Online robust scaling",
             "Center on the recent median and divide by the recent interquartile range.",
-            ["adaptive_stream"],
         ),
         (
             "adaptive.uncentered_pca",
             "transform",
             "Online uncentered PCA",
             "Online uncentered components, with explicit initialization.",
-            ["adaptive_stream"],
         ),
         (
             "adaptive.random_projection",
             "transform",
             "Random projection",
             "A seeded fixed random projection.",
-            ["adaptive_stream"],
         ),
         (
             FIXED_SPLIT,
@@ -227,7 +201,6 @@ def pipeline_components() -> list[PipelineComponent]:
                 "Freeze each detector's scores on the calibration window and rank "
                 "every later score against them."
             ),
-            BOTH,
         ),
         *(
             (
@@ -235,7 +208,6 @@ def pipeline_components() -> list[PipelineComponent]:
                 "calibration",
                 method["name"],
                 method["summary"],
-                BOTH,
             )
             for identifier, method in CALIBRATORS.items()
         ),
@@ -244,32 +216,28 @@ def pipeline_components() -> list[PipelineComponent]:
             "policy",
             "Conformal alarm policy",
             "Existing calibrated martingale alarm policy.",
-            ["static_baseline"],
         ),
         (
             "policy.quantile",
             "policy",
             "Calibrated score threshold",
             "Existing frozen empirical quantile alarm policy.",
-            ["adaptive_stream"],
         ),
         (
             EXCEEDANCE_RULE,
             "policy",
             "Exceedance rule",
             "Alarm when scores stay above the boundary a calibration step adapts.",
-            BOTH,
         ),
         (
             "output.evidence",
             "output",
             "Evidence and alarms",
             "Persist the existing inference evidence and anomaly output.",
-            BOTH,
         ),
     ]
     result = []
-    for identifier, kind, label, description, strategies in specifications:
+    for identifier, kind, label, description in specifications:
         schema = _json_schema(
             PARAMETER_MODELS.get(identifier)
             or CALIBRATION_MODELS.get(identifier)
@@ -303,12 +271,12 @@ def pipeline_components() -> list[PipelineComponent]:
                 kind=kind,
                 label=label,
                 description=description,
-                strategies=strategies,
                 learning=component_learning(identifier),
                 parameter_schema=schema,
                 fields=component_fields(schema),
                 input_type=input_type,
                 output_type=output_type,
+                **_calibration_facts(identifier),
             )
         )
     for identifier, model in STATIC_MODELS.items():
@@ -319,7 +287,6 @@ def pipeline_components() -> list[PipelineComponent]:
                 kind="detector",
                 label=model.name,
                 description="Detector fitted once on the training window.",
-                strategies=["static_baseline"],
                 learning="batch",
                 parameter_schema=schema,
                 fields=component_fields(schema),
@@ -338,46 +305,29 @@ def pipeline_components() -> list[PipelineComponent]:
                     if "forecaster_id" in model
                     else "Adaptive score-before-learn anomaly detector."
                 ),
-                strategies=["adaptive_stream"],
                 learning=component_learning(detector_component(identifier)),
                 parameter_schema=schema,
                 fields=component_fields(schema),
-                output_type="scores",
+                # A forecaster hands its forecast on with the score, so the
+                # calibration step can give the band its boundary leaves.
+                output_type="forecasts" if "forecaster_id" in model else "scores",
             )
         )
     return result
 
 
-def _schema_1_view(component: PipelineComponent) -> PipelineComponent:
-    """A component as today's editor knows it: lanes, and detectors wired
-    straight into a policy that combines them."""
-    if component.kind == "policy":
-        schema = _json_schema(POLICY_MODELS[component.id])
-        return component.model_copy(
-            update={
-                "parameter_schema": schema,
-                "fields": component_fields(schema),
-                "input_type": "p_values"
-                if component.id == "policy.martingale"
-                else "scores",
-            }
-        )
-    if component.kind == "detector" and component.learning == "batch":
-        return component.model_copy(update={"output_type": "p_values"})
-    return component
-
-
-def editor_components() -> list[PipelineComponent]:
-    """The catalog the editor reads until it shows the calibration step.
-
-    The exceedance rule is left out with it: it needs an adapting calibration
-    step, which a design made in today's editor cannot have.
-    """
-    return [
-        _schema_1_view(item)
-        for item in pipeline_components()
-        if item.kind != "calibration" and item.id != EXCEEDANCE_RULE
-    ]
+def _calibration_facts(identifier: str) -> dict[str, Any]:
+    """What a calibration step's card says about its method."""
+    if identifier == FIXED_SPLIT:
+        return {"family": "conformal", "coverage": "exchangeable"}
+    method = CALIBRATORS.get(identifier.removeprefix(CALIBRATION_PREFIX))
+    if method is None or not identifier.startswith(CALIBRATION_PREFIX):
+        return {}
+    return {
+        "family": method["family"],
+        "coverage": method["coverage"],
+        "reference": method["reference"],
+    }
 
 
 def _catalog_id(components: list[PipelineComponent]) -> str:
@@ -392,13 +342,17 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
     from .pipeline_compiler import compile_pipeline
 
     templates = []
-    for strategy, detector, policy in [
-        ("static_baseline", "pyod_iforest", "martingale"),
-        ("adaptive_stream", "aberrant_online_isolation_forest", "quantile"),
+    for identifier, name, detector, policy in [
+        ("static_baseline", "Static baseline", "pyod_iforest", "martingale"),
+        (
+            "adaptive_stream",
+            "Adaptive stream",
+            "aberrant_online_isolation_forest",
+            "quantile",
+        ),
     ]:
         definition = PipelineDefinition.model_validate(
             {
-                "strategy": strategy,
                 "input_slots": [{"id": "value", "label": "Value"}],
                 "nodes": [
                     {"id": "input", "kind": "source", "component": "source.aligned"},
@@ -417,21 +371,18 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
                 ],
             }
         )
+        compiled = compile_pipeline(definition).definition
         templates.append(
             PipelineTemplate(
-                id=strategy,
-                name="Static baseline"
-                if strategy == "static_baseline"
-                else "Adaptive stream",
-                definition=compile_pipeline(definition).definition,
+                id=identifier,
+                name=name,
+                definition=compiled,
                 # 64px between cards leaves every wire room for the editor's
                 # insert handle beside the 28px connection dots.
                 layout=PipelineLayout(
                     nodes={
-                        identifier: {"x": index * 288, "y": 100}
-                        for index, identifier in enumerate(
-                            ["input", "detector", "policy", "output"]
-                        )
+                        node.id: {"x": index * 288, "y": 100}
+                        for index, node in enumerate(compiled.nodes)
                     }
                 ),
             )
@@ -439,6 +390,6 @@ def pipeline_catalog(authoring_enabled: bool = False) -> PipelineCatalog:
     return PipelineCatalog(
         catalog_id=_catalog_id(pipeline_components()),
         authoring_enabled=authoring_enabled,
-        components=editor_components(),
+        components=pipeline_components(),
         templates=templates,
     )

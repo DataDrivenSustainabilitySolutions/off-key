@@ -20,7 +20,7 @@ const initial: GraphDocument = {
 const components = normalizeCatalog({
   catalog_id: "test", authoring_enabled: true, templates: [], components: [{
     id: "transform.test", kind: "transform", label: "Transform", description: "",
-    strategies: ["static_baseline"], input_type: "features", output_type: "features",
+    input_type: "features", output_type: "features",
   }],
 }).components;
 

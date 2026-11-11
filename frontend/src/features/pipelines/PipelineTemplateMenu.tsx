@@ -3,6 +3,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { Copy, X } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
 import type { PipelineCatalog } from "./contracts";
+import { hasFittedDetector } from "./learning";
 import type { GraphDocument } from "./model";
 import { pipelinesApi } from "./api";
 import { arrangeGraph } from "./layout";
@@ -63,8 +64,8 @@ export function PipelineTemplateMenu({
       <div className="pl-starting-points" aria-label="Starting flows">
         {catalog.templates.map((template) => <button key={template.id} type="button" disabled={busy}
           aria-label={`Use ${template.name}`} onClick={() => { onBuiltIn(template.id); setOpen(false); }}>
-          <strong>{template.name}</strong><span>{template.definition.strategy === "adaptive_stream"
-            ? "Learns incrementally from the stream" : "Fits and freezes preprocessing on a baseline"}</span>
+          <strong>{template.name}</strong><span>{hasFittedDetector(template.definition, catalog.components)
+            ? "Fits and freezes preprocessing on a baseline" : "Learns incrementally from the stream"}</span>
         </button>)}
       </div>
       <h4>Your templates</h4>

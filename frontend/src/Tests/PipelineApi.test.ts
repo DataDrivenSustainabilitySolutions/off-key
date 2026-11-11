@@ -28,7 +28,7 @@ const definition: PipelineDefinition = {
 };
 /** What the normalizers make of `definition`: every omitted field gets its default. */
 const normalized = {
-  strategy: "static_baseline",
+  schema_version: 2,
   input_slots: [],
   nodes: [
     { id: "input", kind: "source", component: "source.aligned", params: {} },

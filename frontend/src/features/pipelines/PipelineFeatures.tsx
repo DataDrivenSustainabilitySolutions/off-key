@@ -37,7 +37,7 @@ function AddForFeature({ row, document, components, report, view, disabled, onAd
   onAdded: (document: GraphDocument, id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const steps = rowSteps(document.definition, components);
+  const steps = rowSteps(document.definition, components, view.detector);
   const placed = (component: PipelineComponent) => rowPlacement(document.definition, report, view, row, component);
   const choices = steps.filter((component) => !("reason" in placed(component)));
   const refused = steps.map(placed).find((placement) => "reason" in placement);

@@ -234,12 +234,14 @@ export type PipelineComponent = {
   kind: "source" | "transform" | "merge" | "detector" | "calibration" | "policy" | "output";
   label: string;
   description: string;
-  strategies: Array<"static_baseline" | "adaptive_stream">;
   learning?: "none" | "batch" | "online" | "pretrained";
   parameter_schema?: Record<string, unknown>;
   fields?: Array<ComponentField>;
   input_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence" | null;
   output_type?: "features" | "scores" | "forecasts" | "p_values" | "decisions" | "evidence";
+  family?: "conformal" | "bayesian" | null;
+  coverage?: "exchangeable" | "long_run" | "none" | null;
+  reference?: string | null;
 };
 
 export type PipelineCreate = {
@@ -538,7 +540,6 @@ export type PipelineSummary = {
   description: string;
   archived: boolean;
   version: number;
-  strategy: "static_baseline" | "adaptive_stream";
   revision_count: number;
   created_at: string;
   updated_at: string;
@@ -683,4 +684,4 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
-export const PIPELINE_LIMITS = { nodes: 64, edges: 128, slots: 100, detectors: 4 } as const;
+export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;

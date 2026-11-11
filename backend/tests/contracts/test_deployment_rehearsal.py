@@ -124,7 +124,8 @@ def graph_definition(catalog):
             ("scaled", "joined", 0),
             ("raw", "joined", 1),
             ("joined", "detector", 0),
-            ("detector", "policy", 0),
+            ("detector", "calibrate", 0),
+            ("calibrate", "policy", 0),
             ("policy", "output", 0),
         )
     ]

@@ -27,13 +27,10 @@ async def list_designs(session, query: PipelineListQuery) -> PipelineListPage:
     fields = [
         getattr(MonitoringPipeline, name)
         for name in PipelineSummary.model_fields
-        if name not in {"strategy", "revision_count"}
+        if name != "revision_count"
     ]
     statement = select(
         *fields,
-        func.coalesce(
-            MonitoringPipeline.draft["strategy"].as_string(), "static_baseline"
-        ).label("strategy"),
         revision_count.label("revision_count"),
     ).where(
         MonitoringPipeline.archived == query.archived,

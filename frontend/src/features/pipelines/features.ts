@@ -1,4 +1,5 @@
 import type { PipelineComponent, PipelineDefinition, PipelineValidation } from "./contracts";
+import { learningBlocker } from "./learning";
 import { detectorIds, incomingEdges, insertOnEdge, type GraphDocument, type Link } from "./model";
 import { stepFamily } from "./steps";
 
@@ -111,13 +112,14 @@ function learnedStage(definition: PipelineDefinition) {
   return learned;
 }
 
-/** Steps a feature's row offers: per-feature steps that can use one feature. */
-export function rowSteps(definition: PipelineDefinition, components: PipelineComponent[]) {
+/** Steps a feature's row offers: per-feature steps that can use one feature and, when
+ * they learn, learn as the row's detector does. */
+export function rowSteps(definition: PipelineDefinition, components: PipelineComponent[], detector?: string) {
   return components.filter((component) => {
     const family = stepFamily(component.kind, component.id);
     return (family === "prepare" || family === "normalize")
       && component.fields.some((field) => field.name === "apply_to")
-      && component.strategies.includes(definition.strategy);
+      && !(detector && learningBlocker(definition, detector, component, components));
   });
 }
 

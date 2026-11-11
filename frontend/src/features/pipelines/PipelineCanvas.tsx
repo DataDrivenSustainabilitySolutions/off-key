@@ -342,15 +342,14 @@ export default function PipelineCanvas({
     onSelect(result.id);
     setInserted(result.id);
   };
-  const strategyComponents = components.filter((component) => component.strategies.includes(document.definition.strategy));
   const menuFor = (target: MenuTarget): Menu => {
     if (target.kind === "pane") return stepMenu("Add a step",
-      strategyComponents.filter((component) => !addBlocker(document.definition, component)),
+      components.filter((component) => !addBlocker(document.definition, component)),
       (component) => onAdd(component.id, target.position),
       "No step can be added. The design has reached its limit.");
     if (target.kind === "edge") {
       const between = `${nodeName(document, components, target.link.source)} and ${nodeName(document, components, target.link.target)}`;
-      const fitting = strategyComponents.filter((component) => !insertBlocker(document.definition, target.link, component, components));
+      const fitting = components.filter((component) => !insertBlocker(document.definition, target.link, component, components));
       return { label: `Connection between ${between}`, items: [
         { key: "insert", label: "Insert here", icon: Plus, blocked: fitting.length ? undefined : "No step fits this connection.",
           submenu: stepMenu("Insert a step", fitting,
@@ -361,7 +360,7 @@ export default function PipelineCanvas({
     }
     const { id } = target;
     const connected = document.definition.edges.some((edge) => edge.source === id || edge.target === id);
-    const after = strategyComponents.filter((component) => !afterBlocker(document, id, component, components));
+    const after = components.filter((component) => !afterBlocker(document, id, component, components));
     const node = document.definition.nodes.find((item) => item.id === id);
     return { label: nodeName(document, components, id), items: [
       { key: "rename", label: "Rename", icon: Pencil, run: () => setRenaming(id) },

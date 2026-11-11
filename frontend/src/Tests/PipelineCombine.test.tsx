@@ -23,7 +23,7 @@ const text = (name: string, label: string, required = false): Field => ({
 const result: Field = { name: "result", label: "Result", type: "enum", default: "add", has_default: true, options: ["replace", "add"] };
 const component = (id: string, fields: Field[]): PipelineComponent => ({
   id, kind: "transform", label: id, description: "", input_type: "features", output_type: "features",
-  strategies: ["static_baseline", "adaptive_stream"], fields,
+  fields,
 });
 const aggregate = component("prepare.aggregate", [
   { name: "apply_to", label: "Applies to", type: "features", default: null, has_default: true, nullable: true },
@@ -38,7 +38,7 @@ const gate = component("prepare.gate", [text("condition", "Condition", true)]);
 const node = (step: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "step", kind: "transform", component: step.id, params });
 const definition = normalizeDefinition({
-  strategy: "adaptive_stream", input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [],
+  input_slots: [{ id: "dc_voltage", label: "DC voltage" }], nodes: [],
 });
 const summary = (step: PipelineComponent, params?: PipelineNode["params"]) =>
   nodeSummary(node(step, params), step, definition);

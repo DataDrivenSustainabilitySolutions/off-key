@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from "react";
-import type { PipelineCatalog, PipelineNode, PipelineValidation } from "./contracts";
+import type { PipelineCatalog, PipelineComponent, PipelineNode, PipelineValidation } from "./contracts";
 import { ParameterFields } from "@/components/parameter-editor/ParameterFields";
 import { hasParameterControl } from "@/components/parameter-editor/types";
 import {
@@ -19,12 +19,24 @@ import {
   type GraphDocument,
 } from "./model";
 import { afterGate, featureBlocker, rangeText, readyText } from "./features";
+import {
+  calibrationFamily, changeCalibration, changeDetector, changeNotice, coverage, FIXED_SPLIT, fittingPolicy,
+  learningLabel, type Learning,
+} from "./learning";
 import { PipelineFormula } from "./PipelineFormula";
 import { PipelineScope } from "./PipelineScope";
 import { combinedName, hasScope, isWarning } from "./scope";
 import { componentFor, dataKinds, inputKind, outputKind } from "./semantics";
 import { FUSION_CHOICES, fusionChoice, stepFields } from "./steps";
 import type { HistoryMode } from "./types";
+
+/** Detector models by how they learn, in the order the picker lists them. */
+const LEARNING_GROUPS: { mode: Learning; label: string }[] = [
+  { mode: "online", label: "Learns continuously" },
+  { mode: "batch", label: "Fitted once" },
+  { mode: "pretrained", label: "Pretrained" },
+  { mode: "none", label: "Other" },
+];
 
 type Props = {
   document: GraphDocument;
@@ -57,6 +69,8 @@ export function PipelineInspector({
 }: Props) {
   const connectionHelpId = useId();
   const [modelQuery, setModelQuery] = useState("");
+  // What a change of model or method did besides the step itself, until the next change.
+  const [notice, setNotice] = useState<{ node: string; component: string; text: string }>();
   const node = document.definition.nodes.find((item) => item.id === selected);
   const component = componentFor(node, catalog.components);
   const incoming = selected ? incomingEdges(document.definition, selected) : [];
@@ -195,6 +209,21 @@ export function PipelineInspector({
     if (node) onChange(setNodeParams(document, node.id, params), `param:${node.id}:${changed}`);
   };
   const detectors = detectorIds(document.definition);
+  /** Swap the step's component and show what else followed from it. */
+  const swap = (replacement: PipelineComponent) => {
+    if (!node) return;
+    const change = node.kind === "detector"
+      ? changeDetector(document.definition, node.id, replacement, catalog.components)
+      : node.kind === "calibration"
+        ? changeCalibration(document.definition, node.id, replacement, catalog.components)
+        : { definition: replaceComponent(document, node.id, replacement).definition, converted: [] };
+    const text = changeNotice(change, replacement.learning);
+    setNotice(text ? { node: node.id, component: replacement.id, text } : undefined);
+    onChange({ ...document, definition: change.definition });
+  };
+  const swapNotice = node && notice?.node === node.id && notice.component === node.component
+    ? <p className="pl-notice" role="status">{notice.text}</p> : null;
+  const fitting = fittingPolicy(document.definition, catalog.components);
   return (
     <aside className="pl-inspector" aria-label={header ? "Monitoring inspector" : "Component inspector"}>
       {header}
@@ -240,9 +269,8 @@ export function PipelineInspector({
               .filter(
                 (item) =>
                   item.kind === "detector" &&
-                  item.strategies.includes(document.definition.strategy) &&
                   (item.id === node.component ||
-                    `${item.label} ${item.description}`.toLocaleLowerCase().includes(query)),
+                    `${item.label} ${item.description} ${learningLabel(item) ?? ""}`.toLocaleLowerCase().includes(query)),
               )
               .sort((left, right) => left.label.localeCompare(right.label));
             return (
@@ -266,21 +294,88 @@ export function PipelineInspector({
                     const replacement = catalog.components.find(
                       (item) => item.id === event.target.value,
                     );
-                    if (replacement) onChange(replaceComponent(document, node.id, replacement));
+                    if (replacement) swap(replacement);
                   }}
                 >
-                  {models.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
+                  {LEARNING_GROUPS.map((group) => {
+                    const items = models.filter((item) => (item.learning ?? "none") === group.mode);
+                    return items.length ? <optgroup key={group.mode} label={group.label}>
+                      {items.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </optgroup> : null;
+                  })}
                 </select>
                 <small className="pl-help">
                   {query && models.length <= 1
                     ? "No other model matches this filter. "
                     : ""}
+                  {learningLabel(component) ? `${learningLabel(component)}. ` : ""}
                   Changing the model resets its parameters to catalog defaults.
-                  Connections are retained.
+                  Connections are retained. A model that learns differently takes
+                  the learned steps before it and the detection rule along.
+                </small>
+                {swapNotice}
+              </div>
+            );
+          })()}
+          {node.kind === "calibration" && (() => {
+            const methods = catalog.components.filter((item) => item.kind === "calibration");
+            const groups = [...new Set(methods.map(calibrationFamily))];
+            const promise = coverage(component);
+            return (
+              <div className="pl-field">
+                <label htmlFor={`${node.id}-calibration-method`}>Calibration method</label>
+                <select
+                  id={`${node.id}-calibration-method`}
+                  aria-label="Calibration method"
+                  value={node.component}
+                  disabled={readOnly}
+                  onChange={(event) => {
+                    const replacement = methods.find((item) => item.id === event.target.value);
+                    if (replacement) swap(replacement);
+                  }}
+                >
+                  {groups.map((group) => <optgroup key={group} label={group}>
+                    {methods.filter((item) => calibrationFamily(item) === group)
+                      .map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </optgroup>)}
+                </select>
+                {promise && <small className={`pl-help pl-coverage is-${component!.coverage}`}>
+                  <strong>{promise.label}.</strong> {promise.help}
+                </small>}
+                {component?.reference && <small className="pl-help">{component.reference}</small>}
+                <small className="pl-help">
+                  {node.component === FIXED_SPLIT
+                    ? "The calibration window stays as it is. Methods that adapt keep moving their boundary and alarm by the exceedance rule."
+                    : "The boundary keeps adapting. The fixed split freezes the calibration window instead."}
+                  {" "}The detection rule follows the method.
+                </small>
+                {swapNotice}
+              </div>
+            );
+          })()}
+          {node.kind === "policy" && (() => {
+            const rules = catalog.components.filter((item) => item.kind === "policy");
+            return (
+              <div className="pl-field">
+                <label htmlFor={`${node.id}-detection-rule`}>Detection rule</label>
+                <select
+                  id={`${node.id}-detection-rule`}
+                  aria-label="Detection rule"
+                  value={node.component}
+                  disabled={readOnly}
+                  onChange={(event) => {
+                    const replacement = rules.find((item) => item.id === event.target.value);
+                    if (replacement) swap(replacement);
+                  }}
+                >
+                  {rules.map((item) => <option key={item.id} value={item.id}>
+                    {item.label}{fitting && item.id !== fitting ? " (does not fit this design)" : ""}
+                  </option>)}
+                </select>
+                <small className="pl-help">
+                  The calibration step and how the detectors learn decide which rule fits.
+                  {fitting && node.component !== fitting
+                    ? ` This design needs ${rules.find((item) => item.id === fitting)?.label ?? "another rule"}.` : ""}
                 </small>
               </div>
             );
@@ -302,12 +397,12 @@ export function PipelineInspector({
                   Add another detector
                 </button>
                 <small className="pl-help">
-                  {blocked ?? "Adds a detector like this one that reads the same features. The decision policy combines them; change its model or input afterwards."}
+                  {blocked ?? "Adds a detector like this one that reads the same features. The calibration step combines them; change its model or input afterwards."}
                 </small>
               </div>
             );
           })()}
-          {node.kind === "policy" && detectors.length > 1 && (
+          {node.kind === "calibration" && detectors.length > 1 && (
             <div className="pl-field">
               <span id={`${node.id}-fusion`}>Combine detectors</span>
               <div className="pl-segmented" role="group" aria-labelledby={`${node.id}-fusion`}>
@@ -356,7 +451,7 @@ export function PipelineInspector({
             />
           )}
           <h4>
-            {node.kind === "policy" && detectors.length > 1
+            {node.kind === "calibration" && detectors.length > 1
               ? "Detectors"
               : `Incoming connections${node.kind === "merge" ? " · output order" : ""}`}
           </h4>
@@ -442,7 +537,7 @@ export function PipelineInspector({
           )}
           {!readOnly &&
             node.kind !== "source" &&
-            (node.kind === "merge" || !incoming.length || (node.kind === "policy" && candidates.length > 0)) && (
+            (node.kind === "merge" || !incoming.length || (node.kind === "calibration" && candidates.length > 0)) && (
               <label className="pl-field">
                 <span>Connect input from</span>
                 <select

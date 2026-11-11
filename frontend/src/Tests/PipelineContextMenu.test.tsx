@@ -12,7 +12,7 @@ import type { CanvasNode } from "@/features/pipelines/types";
 import { normalizeDefinition, normalizeLayout, type PipelineComponent } from "@/features/pipelines/contracts";
 
 const component = (id: string, kind: PipelineComponent["kind"], label: string, extra: Partial<PipelineComponent> = {}) => ({
-  id, kind, label, description: "", strategies: ["adaptive_stream"], fields: [],
+  id, kind, label, description: "", fields: [],
   input_type: kind === "source" ? null : kind === "policy" ? "scores" : kind === "output" ? "decisions" : "features",
   output_type: kind === "detector" ? "scores" : kind === "policy" ? "decisions" : kind === "output" ? null : "features",
   ...extra,
@@ -29,7 +29,6 @@ const components = [
 
 const document = (): GraphDocument => ({
   definition: normalizeDefinition({
-    strategy: "adaptive_stream",
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },

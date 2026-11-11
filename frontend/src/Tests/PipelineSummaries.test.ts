@@ -4,7 +4,6 @@ import { normalizeDefinition, type PipelineComponent, type PipelineNode } from "
 import { nodeSummary } from "@/features/pipelines/summaries";
 
 const definition = normalizeDefinition({
-  strategy: "adaptive_stream",
   input_slots: [
     { id: "value", label: "DC voltage" },
     { id: "input_2", label: "DC current" },
@@ -48,8 +47,7 @@ describe("card summaries", () => {
 
   it("lists changed detector settings against the catalogue defaults", () => {
     const detector: PipelineComponent = {
-      id: "detector:forest", kind: "detector", label: "Forest", description: "", strategies: ["adaptive_stream"],
-      fields: [
+      id: "detector:forest", kind: "detector", label: "Forest", description: "",      fields: [
         { name: "window_size", label: "Window Size", type: "integer", default: 2048 },
         { name: "metric", label: "Metric", type: "enum", default: "axisparallel" },
         { name: "subsample", label: "Subsample", type: "number", default: 1 },
@@ -72,7 +70,7 @@ describe("card summaries", () => {
       { name: "result", label: "Result", type: "enum", default: "replace" },
     ];
     const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", label: id, description: "", strategies: ["adaptive_stream"], fields,
+      id, kind: "transform", label: id, description: "", fields,
     });
     const scaler = step("adaptive.standard_scaler", [...scope,
       { name: "suffix", label: "Suffix", type: "string", default: "std" },

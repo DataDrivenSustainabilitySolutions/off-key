@@ -30,19 +30,20 @@ ROW_SETTINGS = {
 
 
 @pytest.mark.parametrize("component", FEATURE_COMPONENTS, ids=lambda item: item.id)
-def test_each_strategy_can_build_the_feature_components_it_offers(component):
+def test_the_runtime_can_build_every_feature_component_the_catalog_offers(component):
     if component.id in PREPARE_COMPONENTS:
-        # Both strategies run Prepare steps in the same Prepare stage.
-        assert set(component.strategies) == {"static_baseline", "adaptive_stream"}
+        # Prepare steps learn nothing and run in the same stage for every detector.
+        assert component.learning == "none"
         if component.id in LANE_COMPONENTS:
             assert kernel(component.id, {}).initial() is not None
         else:
             settings = ROW_SETTINGS[component.id]
             assert row_step(component.id, settings, ["a", "b"]) is not None
         return
-    if "static_baseline" in component.strategies:
+    # A step that learns nothing runs beside either kind of detector.
+    if component.learning in ("none", "batch"):
         assert component.id in BATCH_PASSTHROUGH | BATCH_BUILDERS.keys()
-    if "adaptive_stream" in component.strategies:
+    if component.learning in ("none", "online"):
         assert component.id == "features.merge" or component.id in ONLINE_BUILDERS
 
 

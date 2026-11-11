@@ -40,17 +40,18 @@ vi.mock("@/features/pipelines/api", () => ({
 }));
 
 const definition = normalizeDefinition({
-  strategy: "adaptive_stream",
   input_slots: [{ id: "value", label: "Value" }],
   nodes: [
     { id: "input", kind: "source", component: "source.aligned" },
     { id: "detector", kind: "detector", component: "detector:test" },
+    { id: "calibrate", kind: "calibration", component: "calibrate.fixed_split" },
     { id: "policy", kind: "policy", component: "policy.quantile" },
     { id: "output", kind: "output", component: "output.evidence" },
   ],
   edges: [
     { source: "input", target: "detector" },
-    { source: "detector", target: "policy" },
+    { source: "detector", target: "calibrate" },
+    { source: "calibrate", target: "policy" },
     { source: "policy", target: "output" },
   ],
 });
@@ -64,7 +65,6 @@ const catalog = normalizeCatalog({
       kind: "source",
       label: "Inputs",
       description: "Aligned values",
-      strategies: ["adaptive_stream"],
       input_type: null,
       output_type: "features",
     },
@@ -73,17 +73,26 @@ const catalog = normalizeCatalog({
       kind: "detector",
       label: "Detector",
       description: "Scores",
-      strategies: ["adaptive_stream"],
+      learning: "online",
       input_type: "features",
       output_type: "scores",
+    },
+    {
+      id: "calibrate.fixed_split",
+      kind: "calibration",
+      label: "Fixed split",
+      description: "Calibration",
+      family: "conformal",
+      coverage: "exchangeable",
+      input_type: "scores",
+      output_type: "p_values",
     },
     {
       id: "policy.quantile",
       kind: "policy",
       label: "Threshold",
       description: "Threshold",
-      strategies: ["adaptive_stream"],
-      input_type: "scores",
+      input_type: "p_values",
       output_type: "decisions",
     },
     {
@@ -91,7 +100,6 @@ const catalog = normalizeCatalog({
       kind: "output",
       label: "Evidence",
       description: "Evidence",
-      strategies: ["adaptive_stream"],
       input_type: "decisions",
       output_type: "evidence",
     },
@@ -196,9 +204,12 @@ describe("simple monitoring setup", () => {
     expect(screen.getByRole("heading", { name: "Create monitoring service" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Validate" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Strategy: Adaptive stream" }));
+    // The header says how the detectors learn; a design has no strategy to switch.
+    fireEvent.click(screen.getByRole("button", { name: "Learning: Learns continuously" }));
     expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Adaptive stream", pressed: true })).toBeTruthy();
+    expect(screen.getByText(/The detectors take in every observation and keep adapting/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Static baseline" })).toBeNull();
+    expect(screen.getByRole("spinbutton", { name: "Detector learning updates before calibration" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Before the first alarm" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Input: Room, 3 readings" }));
     expect((screen.getByRole("checkbox", { name: "Monitor AC1" }) as HTMLInputElement).checked).toBe(true);

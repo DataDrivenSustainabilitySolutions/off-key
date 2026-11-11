@@ -577,7 +577,7 @@ test.describe("visual pipeline real infrastructure", () => {
       const catalog = (await result.json()) as PipelineCatalog;
       expect(catalog.authoring_enabled).toBe(true);
       const template = catalog.templates.find(
-        (item) => item.definition.strategy === "adaptive_stream",
+        (item) => item.id === "adaptive_stream",
       )!;
       const definition = structuredClone(template.definition);
       definition.input_slots = Array.from({ length: 100 }, (_item, index) => ({
@@ -676,11 +676,12 @@ test.describe("visual pipeline real infrastructure", () => {
         .locator(`.react-flow__node[data-id="${processingId(60)}"]`)
         .focus();
       await page.keyboard.press("Delete");
-      await expect(page.locator(".react-flow__node")).toHaveCount(63);
+      // One of the 65 steps is gone; the 65th is the calibration step every design has.
+      await expect(page.locator(".react-flow__node")).toHaveCount(64);
       await page
         .getByRole("button", { name: "Undo graph change", exact: true })
         .click();
-      await expect(page.locator(".react-flow__node")).toHaveCount(64);
+      await expect(page.locator(".react-flow__node")).toHaveCount(65);
       await expect(
         page.getByRole("heading", { name: "Output features", exact: true }),
       ).toBeVisible();
@@ -740,7 +741,7 @@ test.describe("visual pipeline real infrastructure", () => {
         path: metricsPath,
         contentType: "application/json",
       });
-      expect(metrics.nodeCount).toBe(64);
+      expect(metrics.nodeCount).toBe(65);
       expect(metrics.maximumInteractionMs).toBeLessThan(500);
       expect(metrics.retainedHeapGrowthBytes).toBeLessThan(32 * 1024 * 1024);
       const graph = page.getByLabel("Pipeline graph", { exact: true });
@@ -827,7 +828,7 @@ test.describe("visual pipeline real infrastructure", () => {
       expect(copy.layout.nodes?.[processingId(60)]?.label).toBe(
         "Preserved conflicted edit",
       );
-      expect(copy.draft.nodes).toHaveLength(64);
+      expect(copy.draft.nodes).toHaveLength(65);
     } finally {
       await archivePipelines(api, headers, [copyId, pipelineId].filter(Boolean)
         .map(id => `/api/v1/pipelines/${id}`), { lenient: true });

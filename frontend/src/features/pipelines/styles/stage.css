@@ -210,6 +210,10 @@
 }
 .pl-stage .pl-settings-panel[data-anchored] {
   position: absolute;
+  /* The workbench measures the panel right after it writes max-height. With reduced
+     motion every property gets a near-zero transition, so the measure would read the
+     height from before the write. */
+  transition: none;
 }
 /* A step dragged in from the menu may land where the settings sit, so they step aside as the menu does. */
 .pl-stage.is-adding-step .pl-settings-panel[data-anchored] {

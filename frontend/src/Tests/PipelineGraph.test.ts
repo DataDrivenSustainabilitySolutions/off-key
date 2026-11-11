@@ -9,6 +9,7 @@ import {
   insertBlocker,
   insertOnEdge,
   moveMergeInput,
+  PIPELINE_LIMITS,
   removeElements,
   removeNode,
   replaceComponent,
@@ -16,7 +17,6 @@ import {
   type GraphDocument,
 } from "@/features/pipelines/model";
 import { addSlot, removeSlot, renameSlot, setSlotUnit } from "@/features/pipelines/slots";
-import { strategyLabel } from "@/features/pipelines/semantics";
 import {
   normalizeDefinition,
   normalizeLayout,
@@ -25,7 +25,6 @@ import {
 
 const definition = () =>
   normalizeDefinition({
-    strategy: "adaptive_stream",
     input_slots: [{ id: "temperature", label: "Temperature" }],
     nodes: [
       { id: "source", kind: "source", component: "source.aligned" },
@@ -48,7 +47,6 @@ const components: PipelineComponent[] = definition().nodes.map((node) => ({
   kind: node.kind,
   label: node.component,
   description: "",
-  strategies: ["adaptive_stream"],
   fields: [],
   input_type: node.kind === "source" ? null : "features",
   output_type: node.kind === "detector" ? "scores" : "features",
@@ -105,7 +103,6 @@ describe("visual pipeline documents", () => {
       kind: "transform",
       label: "Scale",
       description: "",
-      strategies: ["adaptive_stream"],
       fields: [
         {
           name: "with_std",
@@ -131,7 +128,7 @@ describe("visual pipeline documents", () => {
 
   it("names a second Formula or Aggregate so the features they compute do not clash", () => {
     const step = (id: string, fields: PipelineComponent["fields"]): PipelineComponent => ({
-      id, kind: "transform", label: id, description: "", strategies: ["adaptive_stream"], fields,
+      id, kind: "transform", label: id, description: "", fields,
     });
     const name = { name: "name", label: "Name", type: "string", has_default: true, nullable: true } as const;
     const formula = step("prepare.formula", [name]);
@@ -154,13 +151,12 @@ describe("visual pipeline documents", () => {
       kind: "transform",
       label: "Raw",
       description: "",
-      strategies: ["adaptive_stream"],
       fields: [],
     };
     const full = {
       definition: {
         ...definition(),
-        nodes: Array.from({ length: 64 }, (_item, index) => ({
+        nodes: Array.from({ length: PIPELINE_LIMITS.nodes }, (_item, index) => ({
           id: `node_${index}`,
           kind: "transform" as const,
           component: component.id,
@@ -174,9 +170,6 @@ describe("visual pipeline documents", () => {
     expect(addComponent(normal, { ...component, kind: "detector" })).toBe(
       normal,
     );
-    expect(
-      addComponent(normal, { ...component, strategies: ["static_baseline"] }),
-    ).toBe(normal);
   });
 
 
@@ -227,11 +220,6 @@ describe("graph document helpers", () => {
     expect(setSlotUnit(slots, "input_1", "")[0]?.unit).toBeNull();
     expect(setSlotUnit(slots, "input_1", "°C")[0]?.unit).toBe("°C");
     expect(removeSlot(slots, "input_1").map((slot) => slot.id)).toEqual(["input_3"]);
-  });
-
-  it("names learning strategies", () => {
-    expect(strategyLabel("adaptive_stream")).toBe("Adaptive stream");
-    expect(strategyLabel("static_baseline")).toBe("Static baseline");
   });
 });
 

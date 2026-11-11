@@ -7,7 +7,7 @@ import type { DatasetView, RunSummary } from "@/types/dojo.generated";
 import { dojoApi } from "./api";
 import { PromoteRunDialog } from "./PromoteRunDialog";
 import { RunCreateDialog } from "./RunCreateDialog";
-import { formatInstant, isActive, runName, runState, strategyLabel } from "./model";
+import { formatInstant, isActive, resultKindLabel, runName, runState } from "./model";
 
 export function RunsPanel({ dataset, runs, onRunsChange }: {
   dataset: DatasetView; runs: RunSummary[]; onRunsChange: () => Promise<void>;
@@ -41,7 +41,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
         <tbody>{runs.map(run => {
           const state = runState(run);
           return <tr key={run.id}>
-            <td>{runName(run)}<small>{strategyLabel(run.strategy)}</small></td>
+            <td>{runName(run)}<small>{resultKindLabel(run.strategy)}</small></td>
             <td><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
               {run.error && <small title={run.error}>{run.error}</small>}</td>
             <td>{run.result_count.toLocaleString()}<small>{run.points_read.toLocaleString()} of {run.points_total.toLocaleString()} values</small></td>

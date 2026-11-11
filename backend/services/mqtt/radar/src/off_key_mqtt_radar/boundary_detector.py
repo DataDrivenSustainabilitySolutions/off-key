@@ -88,6 +88,8 @@ class BoundaryDetectionService(MixedDetectionService):
 
     def _process_operational(self, data, topic, charger_id, started) -> AnomalyResult:
         judgement = self.boundary.judge(self._detector_scores(data))
+        # One detector's raw score meets the boundary; ranks have no such band.
+        self._expect(judgement.threshold if judgement.surprises is None else None)
         self._learn(data)
         # Only an observation every detector took in moves the boundary.
         self.boundary.learn(judgement)

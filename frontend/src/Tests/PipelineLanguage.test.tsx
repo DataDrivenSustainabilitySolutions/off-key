@@ -16,7 +16,6 @@ const components: PipelineComponent[] = [
     kind: "source",
     label: "Aligned inputs",
     description: "Aligned readings",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: null,
     output_type: "features",
@@ -26,7 +25,6 @@ const components: PipelineComponent[] = [
     kind: "transform",
     label: "Pass through",
     description: "Preserve incoming values",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: "features",
     output_type: "features",
@@ -36,7 +34,6 @@ const components: PipelineComponent[] = [
     kind: "merge",
     label: "Merge features",
     description: "Ordered columns",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: "features",
     output_type: "features",
@@ -46,7 +43,6 @@ const components: PipelineComponent[] = [
     kind: "detector",
     label: "Detector",
     description: "Online model",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: "features",
     output_type: "scores",
@@ -56,7 +52,6 @@ const components: PipelineComponent[] = [
     kind: "policy",
     label: "Threshold",
     description: "Alarm threshold",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: "scores",
     output_type: "decisions",
@@ -66,7 +61,6 @@ const components: PipelineComponent[] = [
     kind: "output",
     label: "Evidence",
     description: "Persist evidence",
-    strategies: ["adaptive_stream"],
     fields: [],
     input_type: "decisions",
     output_type: "evidence",
@@ -74,7 +68,6 @@ const components: PipelineComponent[] = [
 ];
 const fixture = () => ({
   definition: normalizeDefinition({
-    strategy: "adaptive_stream",
     input_slots: [{ id: "x", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
@@ -236,12 +229,10 @@ describe("monitoring graph visual language", () => {
     ).toBeTruthy();
   });
 
-  it("preserves the distinction between calibrated P-values and raw scores", () => {
+  it("preserves the distinction between calibrated and raw scores", () => {
     const document = fixture();
-    document.definition.strategy = "static_baseline";
     const staticComponents = components.map((component) => ({
       ...component,
-      strategies: ["static_baseline" as const],
       output_type:
         component.kind === "detector"
           ? ("p_values" as const)
@@ -256,7 +247,7 @@ describe("monitoring graph visual language", () => {
       "p_values",
     );
     expect(graph.edges.find((edge) => edge.source === "model")?.ariaLabel).toMatch(
-      /: P-values$/,
+      /: Calibrated scores$/,
     );
   });
 });

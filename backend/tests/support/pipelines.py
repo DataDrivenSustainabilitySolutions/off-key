@@ -61,7 +61,7 @@ def template(strategy="adaptive_stream"):
     return next(
         item.definition.model_copy(deep=True)
         for item in pipeline_catalog().templates
-        if item.definition.strategy == strategy
+        if item.id == strategy
     )
 
 

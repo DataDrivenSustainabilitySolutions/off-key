@@ -1,11 +1,11 @@
 """Schema 1 and schema 2 monitoring designs, translated one to one.
 
 Schema 2 has no lane. Each learned step says how it learns, and a calibration
-step sits between the detectors and the alarm policy. Schema 1 designs carry a
-``strategy`` and wire the detectors straight into the policy; they are
-translated when they are read, and a schema 2 design that schema 1 can express
-is written in its schema 1 form. Stored designs, the editor's wire format and
-fingerprints therefore stay as they were.
+step sits between the detectors and the alarm policy. Schema 1 designs carried
+a ``strategy`` and wired the detectors straight into the policy; they are
+translated when they are read. A schema 2 design that schema 1 can express is
+still written in its schema 1 form, so stored designs and fingerprints stay as
+they were. The editor reads and writes schema 2 (``editor_form``).
 """
 
 from typing import Any, Literal
@@ -75,15 +75,10 @@ def _calibration_id(nodes: list[dict[str, Any]]) -> str:
 
 
 def upgrade(data: Any) -> Any:
-    """A schema 1 design as schema 2: the policy's inputs move to a fixed split.
-
-    The design keeps its lane as ``strategy`` until the editor stops offering
-    one, so a schema 1 draft is checked exactly as before.
-    """
+    """A schema 1 design as schema 2: the policy's inputs move to a fixed split."""
     if not isinstance(data, dict) or data.get("schema_version", 1) != 1:
         return data
     data = {**data, "schema_version": 2}
-    data.setdefault("strategy", "static_baseline")
     nodes, edges = _plain(data.get("nodes")), _plain(data.get("edges"))
     policies = [node for node in nodes if node.get("kind") == "policy"]
     if len(policies) != 1 or any(node.get("kind") == "calibration" for node in nodes):
@@ -112,7 +107,7 @@ def upgrade(data: Any) -> Any:
 def downgrade(data: dict[str, Any]) -> dict[str, Any]:
     """The schema 1 form of a design, or the design itself when it has none."""
     nodes, edges = _plain(data.get("nodes")), _plain(data.get("edges"))
-    strategy = data.get("strategy") or derived_strategy(nodes)
+    strategy = derived_strategy(nodes)
     calibrations = [node for node in nodes if node.get("kind") == "calibration"]
     if strategy is None or len(calibrations) > 1:
         return data
@@ -121,6 +116,12 @@ def downgrade(data: dict[str, Any]) -> dict[str, Any]:
         if calibration.get("component") != FIXED_SPLIT:
             return data
         identifier = calibration["id"]
+        others = [node for node in nodes if node is not calibration]
+        if identifier != _calibration_id(others) or (
+            calibration.get("contract_version", 1) != 1
+        ):
+            # Reading the schema 1 form back would rename the step.
+            return data
         leaving = [edge for edge in edges if edge.get("source") == identifier]
         by_id = {node.get("id"): node for node in nodes}
         if (
@@ -144,3 +145,10 @@ def downgrade(data: dict[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "edges": edges,
     }
+
+
+def editor_form(data: dict[str, Any]) -> dict[str, Any]:
+    """A written design as the editor reads it: schema 2, without a lane."""
+    data = dict(upgrade(data))
+    data.pop("strategy", None)
+    return data

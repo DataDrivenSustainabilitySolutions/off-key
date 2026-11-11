@@ -256,6 +256,10 @@ def test_detector_rejects_what_it_cannot_compare_and_recovers(
     monkeypatch.setitem(_OUTAGE, "down", False)
     assert flaky.score_one({"x": 130.0}) == steady.score_one({"x": 130.0})
     assert flaky.score_one({"x": 130.0}) > 5
+    # The missed forecast was fetched while the value was scored, so a run
+    # reads what was expected after scoring.
+    assert flaky.forecast_for({"x": 130.0}) == steady.forecast_for({"x": 130.0})
+    assert flaky.forecast_for({"x": 130.0}) is not None
 
 
 @pytest.mark.parametrize("lead", [1, 3])

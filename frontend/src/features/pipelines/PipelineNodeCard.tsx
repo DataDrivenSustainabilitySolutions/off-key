@@ -103,6 +103,7 @@ export function PipelineNodeCard({
     >
       <span className="pl-node-kind">
         {data.family}
+        {data.learning && <span className="pl-node-learning">{data.learning}</span>}
       </span>
       <div className="pl-node-title">
         {data.renaming && actions

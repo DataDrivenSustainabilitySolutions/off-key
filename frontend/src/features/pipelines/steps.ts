@@ -2,8 +2,8 @@ import type { PipelineComponent, PipelineNode } from "./contracts";
 import { hasScope, SCOPE_FIELDS, setting } from "./scope";
 
 export type StepFamily =
-  "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector" | "policy"
-  | "output";
+  "prepare" | "combine" | "normalize" | "reduce" | "route" | "transform" | "input" | "forecaster" | "detector"
+  | "calibration" | "policy" | "output";
 
 /** Menu order: the steps people add most come first, the one-per-pipeline steps last.
  * Prepare steps lead because they run first, before anything learns; Combine steps
@@ -18,7 +18,8 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
   { id: "input", label: "Input" },
   { id: "forecaster", label: "Forecaster" },
   { id: "detector", label: "Detector" },
-  { id: "policy", label: "Decision policy" },
+  { id: "calibration", label: "Calibration" },
+  { id: "policy", label: "Detection rule" },
   { id: "output", label: "Evidence output" },
 ];
 
@@ -37,8 +38,6 @@ const isForecaster = (component: string) => component.endsWith("_forecaster") ||
 /** What a step does, by its kind and component; unknown transforms stay "Transform". */
 export function stepFamily(kind: PipelineNode["kind"], component: string): StepFamily {
   if (kind === "source") return "input";
-  // The editor shows calibration as part of the decision until it has its own card.
-  if (kind === "calibration") return "policy";
   if (kind === "merge" || ROUTES.has(component)) return "route";
   if (kind === "detector" && isForecaster(component)) return "forecaster";
   if (kind !== "transform") return kind;
@@ -83,6 +82,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "forecast.timestral": "Expect what a pretrained model forecasts from the recent values and score the miss.",
   "policy.martingale": "Alarm when evidence of change builds up.",
   "policy.quantile": "Alarm when scores pass a calibrated threshold.",
+  "policy.exceedance": "Alarm when scores stay above the boundary the calibration step adapts.",
+  "calibrate.fixed_split": "Rank every score against the calibration window, which then stays as it is.",
   "output.evidence": "Store scores, evidence and alarms.",
 };
 
@@ -94,12 +95,11 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
-  // Combine detectors has its own control, shown once the design has two detectors.
-  "policy.martingale": new Set(["fusion"]),
-  "policy.quantile": new Set(["fusion"]),
 };
+// Combine detectors has its own control, shown once the design has two detectors.
+const CALIBRATION_CONTROLS = new Set(["fusion"]);
 
-/** How the policy makes one alarm from several detectors, in the composer's words. */
+/** How the calibration step makes one value from several detectors, in the composer's words. */
 export const FUSION_CHOICES = [
   { value: "max", label: "Strongest", help: "The most surprised detector decides, so a change one detector sees is enough." },
   { value: "mean", label: "Average", help: "Their mean decides, so a change has to show in several detectors, or strongly in one." },
@@ -111,7 +111,7 @@ export const fusionChoice = (node: PipelineNode) =>
 /** The settings the inspector lists below Applies to and Result. Scale and offset
  * only mean something to a linear Math step, so they stay hidden otherwise. */
 export function stepFields(node: PipelineNode, component: PipelineComponent) {
-  const own = OWN_CONTROLS[node.component];
+  const own = node.kind === "calibration" ? CALIBRATION_CONTROLS : OWN_CONTROLS[node.component];
   const fields = component.fields.filter((field) =>
     !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name));
   if (node.component !== "prepare.math" || setting(node, component, "function") === "linear") return fields;

@@ -24,13 +24,13 @@ vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme
 const catalog = normalizeCatalog({
   catalog_id: "test", authoring_enabled: true, templates: [], components: [
     { id: "source.aligned", kind: "source", label: "Aligned inputs", description: "",
-      strategies: ["adaptive_stream"], input_type: null, output_type: "features" },
+      input_type: null, output_type: "features" },
     { id: "features.passthrough", kind: "transform", label: "Pass through", description: "",
-      strategies: ["adaptive_stream"], input_type: "features", output_type: "features" },
+      input_type: "features", output_type: "features" },
     { id: "detector:a", kind: "detector", label: "Detector A", description: "",
-      strategies: ["adaptive_stream"], input_type: "features", output_type: "scores" },
+      input_type: "features", output_type: "scores" },
     { id: "detector:static", kind: "detector", label: "Static detector", description: "",
-      strategies: ["static_baseline"], input_type: "features", output_type: "p_values" },
+      input_type: "features", output_type: "p_values" },
   ],
 });
 const components = catalog.components;
@@ -38,7 +38,6 @@ const passthrough = components.find((item) => item.id === "features.passthrough"
 
 const pipeline = (): GraphDocument => ({
   definition: normalizeDefinition({
-    strategy: "adaptive_stream",
     input_slots: [{ id: "value", label: "Value" }],
     nodes: [
       { id: "input", kind: "source", component: "source.aligned" },
@@ -69,8 +68,9 @@ describe("component placement", () => {
     // A second detector comes from the first one's settings, which connect it.
     expect(addBlocker(definition, components.find((item) => item.id === "detector:a")!))
       .toBe("Add another detector from a detector's settings.");
+    // That holds for a detector that learns differently too: a design has no strategy to break.
     expect(addBlocker(definition, components.find((item) => item.id === "detector:static")!))
-      .toBe("Not available for this strategy.");
+      .toBe("Add another detector from a detector's settings.");
     expect(addBlocker(definition, passthrough)).toBeUndefined();
   });
 });
@@ -241,8 +241,7 @@ describe("component menu", () => {
     const added: string[] = [];
     const steps = [...components, ...normalizeCatalog({ catalog_id: "steps", authoring_enabled: true, templates: [], components:
       ["adaptive.standard_scaler", "adaptive.uncentered_pca", "features.select"].map((id) => ({
-        id, kind: "transform" as const, label: id, description: "Catalog text", strategies: ["adaptive_stream" as const],
-        input_type: "features" as const, output_type: "features" as const })),
+        id, kind: "transform" as const, label: id, description: "Catalog text",        input_type: "features" as const, output_type: "features" as const })),
     }).components];
     render(<PipelineToolbox components={steps} document={pipeline()} onAdd={(id) => added.push(id)} />);
     expect(screen.getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["Normalize", "Reduce", "Route"]);

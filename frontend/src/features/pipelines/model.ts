@@ -7,6 +7,7 @@ import type {
   PipelineNode,
   PipelineComponent,
 } from "./contracts";
+import { learningBlocker } from "./learning";
 import { combinedName } from "./scope";
 import {
   componentFor,
@@ -14,6 +15,7 @@ import {
   dataKinds,
   GRID_STEP,
   inputKind,
+  takes,
   NODE_SIZE,
   nodePosition,
   outputKind,
@@ -34,10 +36,10 @@ export const detectorIds = (definition: PipelineDefinition) =>
   definition.nodes.filter((node) => node.kind === "detector").map((node) => node.id)
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
-/** Nodes that take several inputs: a merge in order, the policy one per detector. */
+/** Nodes that take several inputs: a merge in order, the calibration step one per detector. */
 const takesSeveral = (definition: PipelineDefinition, nodeId: string) => {
   const kind = definition.nodes.find((node) => node.id === nodeId)?.kind;
-  return kind === "merge" || kind === "policy";
+  return kind === "merge" || kind === "calibration";
 };
 
 export type GraphDocument = {
@@ -179,8 +181,6 @@ export function addBlocker(
   definition: PipelineDefinition,
   component: PipelineComponent,
 ): string | undefined {
-  if (!component.strategies.includes(definition.strategy))
-    return "Not available for this strategy.";
   if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
     return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
   if (component.kind === "detector" && detectorIds(definition).length)
@@ -205,7 +205,7 @@ export function detectorBlocker(definition: PipelineDefinition): string | undefi
 }
 
 /** Another detector like this one: the same model and settings, reading the same
- * input and connected to the policy, placed below it. Its model and input can then be
+ * input and connected to the calibration step, placed below it. Its model and input can then be
  * changed like any step's. */
 export function addDetector(
   document: GraphDocument,
@@ -218,7 +218,7 @@ export function addDetector(
   while (definition.nodes.some((node) => node.id === `detector_${suffix}`)) suffix++;
   const id = `detector_${suffix}`;
   const input = incomingEdges(definition, detectorId)[0];
-  const policy = definition.nodes.find((node) => node.kind === "policy");
+  const calibration = definition.nodes.find((node) => node.kind === "calibration");
   const boxes = definition.nodes.map((node, index) => nodePosition(layout, node.id, index));
   const anchor = boxes[definition.nodes.indexOf(original)]!;
   return {
@@ -230,7 +230,7 @@ export function addDetector(
         edges: [
           ...definition.edges,
           ...(input ? [{ source: input.source, target: id, order: 0 }] : []),
-          ...(policy ? [{ source: id, target: policy.id, order: incomingEdges(definition, policy.id).length }] : []),
+          ...(calibration ? [{ source: id, target: calibration.id, order: incomingEdges(definition, calibration.id).length }] : []),
         ],
       },
       layout: {
@@ -416,18 +416,13 @@ export function connectionIssue(
     return `The design has reached its ${PIPELINE_LIMITS.edges}-connection limit.`;
   const fromComponent = componentFor(from, components);
   const toComponent = componentFor(to, components);
-  if (
-    !fromComponent ||
-    !toComponent ||
-    !fromComponent.strategies.includes(definition.strategy) ||
-    !toComponent.strategies.includes(definition.strategy)
-  )
+  if (!fromComponent || !toComponent)
     return "Compatible component metadata is required before connecting these nodes.";
   const output = outputKind(from, fromComponent);
   const input = inputKind(toComponent);
   if (!output) return "Evidence output is terminal.";
   if (!input) return "Aligned inputs have no incoming port.";
-  if (output !== input)
+  if (!takes(toComponent, output))
     return `Cannot connect ${dataKinds[output].label} to ${dataKinds[input].label}.`;
   if (!replace && occupiedInput(definition, target))
     return "This input is occupied. Disconnect it before choosing a replacement.";
@@ -452,7 +447,7 @@ export function connectNodes(
 ): PipelineDefinition {
   if (connectionIssue(definition, source, target, components, options))
     return definition;
-  // A merge or the policy appends the new input; a single input keeps only the new one.
+  // A merge or the calibration step appends the new input; a single input keeps only the new one.
   const incoming = takesSeveral(definition, target) ? incomingEdges(definition, target) : [];
   return {
     ...definition,
@@ -487,8 +482,9 @@ export function insertBlocker(
     return "Compatible component metadata is required before inserting here.";
   const carried = outputKind(from, fromComponent);
   const produces = component.kind === "output" ? undefined : (component.output_type ?? "features");
-  if (!carried || inputKind(component) !== carried || produces !== inputKind(toComponent))
+  if (!carried || !takes(component, carried) || !takes(toComponent, produces))
     return `Does not fit a connection that carries ${dataKinds[carried ?? "features"].label.toLowerCase()}.`;
+  return learningBlocker(definition, link.target, component, components);
 }
 
 /** Room for a card on a link: between its ends when there is space, otherwise a

@@ -29,7 +29,7 @@ import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings, suggestedTarget } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
-import { strategyLabel } from "./semantics";
+import { hasFittedDetector, hasStreamingDetector, learningSummary } from "./learning";
 import { startupEstimate } from "./startup";
 
 export type PipelineSetupProps = {
@@ -67,7 +67,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const location = useLocation();
   const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
   const sourceId = props.sourceService?.id ?? replaceId;
-  const startingId = catalog.templates.find((item) => item.definition.strategy === "adaptive_stream")?.id ?? catalog.templates[0]?.id;
+  // A new service starts from the flow that learns from the stream.
+  const startingId = catalog.templates.find((item) => !hasFittedDetector(item.definition, catalog.components))?.id ?? catalog.templates[0]?.id;
   const initial = useCallback((): CreationDraft => {
     const suggested = { ...initialBindings, ...previousBindings(predecessor) };
     const targetId = initialTarget ?? predecessorTarget(targets, predecessor) ?? suggestedTarget(targets, suggested);
@@ -133,7 +134,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const intervals = system.snapshot?.runtime.ingress?.readings;
   const startup = startupEstimate(draft.document.definition,
     Object.values(bindings).map((reading) => intervals?.[reading]?.typical_interval_seconds),
-    compiledValidation?.preparation_observations);
+    compiledValidation?.preparation_observations,
+    !hasStreamingDetector(draft.document.definition, catalog.components));
   const openInput = () => { const id = inputNode(draft.document); if (id) select(id); };
   useUnsavedChanges(dirty && !locked);
 
@@ -232,9 +234,9 @@ export function PipelineCreate(props: PipelineSetupProps) {
             title="Choose readings" onClick={openInput}>
             {target ? `${target.label} · ${readingCount}` : "Choose readings"}
           </button>
-          <button type="button" aria-label={`Strategy: ${strategyLabel(draft.document.definition.strategy)}`}
-            title="Strategy and learning" onClick={() => setInspectorPanel("service")}>
-            {strategyLabel(draft.document.definition.strategy)}
+          <button type="button" aria-label={`Learning: ${learningSummary(draft.document.definition, catalog.components)}`}
+            title="Learning and calibration windows" onClick={() => setInspectorPanel("service")}>
+            {learningSummary(draft.document.definition, catalog.components)}
           </button>
         </div>
       </div>

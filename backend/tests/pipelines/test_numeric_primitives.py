@@ -2,6 +2,8 @@
 
 import math
 import pickle
+import random
+import statistics
 from datetime import UTC, datetime
 from itertools import pairwise
 
@@ -9,9 +11,17 @@ import numpy as np
 import pytest
 from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
 from off_key_core.models.pipeline_combine import combined_columns, row_step
-from off_key_core.models.pipeline_prepare import kernel
+from off_key_core.models.pipeline_prepare import (
+    PrepareFailure,
+    default_suffix,
+    kernel,
+)
 from off_key_core.models.pipeline_scope import ScopeError
-from off_key_core.models.pipelines import compile_pipeline, execution_fingerprint
+from off_key_core.models.pipelines import (
+    compile_pipeline,
+    execution_fingerprint,
+    validate_pipeline,
+)
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import (
     FeatureDescription,
@@ -43,7 +53,7 @@ STEPS = [
 ]
 
 
-def execution(strategy="adaptive_stream", steps=STEPS):
+def design(strategy="adaptive_stream", steps=STEPS):
     data = template(strategy).model_dump(mode="json")
     data["input_slots"] = [{"id": key, "label": key.upper()} for key in ("a", "b")]
     data["settings"].update(training_window_size=20, calibration_window_size=5)
@@ -65,7 +75,16 @@ def execution(strategy="adaptive_stream", steps=STEPS):
             ["input", *(key for key, _, _ in steps), "detector"]
         )
     ]
-    definition = compile_pipeline(PipelineDefinition.model_validate(data)).definition
+    return PipelineDefinition.model_validate(data)
+
+
+def checked(*steps):
+    """What the compiler says about a chain of steps, valid or not."""
+    return validate_pipeline(design(steps=list(steps)))
+
+
+def execution(strategy="adaptive_stream", steps=STEPS):
+    definition = compile_pipeline(design(strategy, steps)).definition
     bindings = [
         dict(
             slot_id=key,
@@ -174,8 +193,180 @@ def test_accumulation_starts_with_the_first_value_and_restores(function, expecte
     for value, result in zip([-2.0, 5.0, -1.0], expected, strict=True):
         state, actual = step.advance(pickle.loads(pickle.dumps(state)), value)
         assert actual == result and step.accepts(state)
-    assert not step.accepts((True, math.inf))
-    assert not step.accepts((False, 1.0))
+    assert not step.accepts((True, math.inf, 0.0))
+    assert not step.accepts((False, 1.0, 0.0))
+    assert not step.accepts((True, 1.0))
+    # Only a total carries what addition dropped.
+    assert step.accepts((True, 1.0, 0.5)) is (function == "sum")
+
+
+def test_a_long_total_keeps_what_plain_addition_drops():
+    step = kernel("prepare.accumulate", {"function": "sum"})
+    state = step.initial()
+    values = [1e16, 1.0, 1.0, -1e16, 0.5, 0.5]
+    for value in values:
+        state, total = step.advance(state, value)
+    assert total == math.fsum(values) == 3.0
+    plain = 0.0
+    for value in values:
+        plain += value
+    assert plain == 1.0
+    state, _ = step.advance(step.initial(), 1e308)
+    with pytest.raises(PrepareFailure, match="finite"):
+        step.advance(state, 1e308)
+
+
+@pytest.mark.parametrize("size", [2, 3, 50, 51])
+def test_the_median_deviation_is_found_in_the_sorted_window_exactly(size):
+    rng = random.Random(size)
+    values = [
+        float(rng.choice([rng.randint(-3, 3), rng.gauss(0, 5)])) for _ in range(300)
+    ]
+    step = kernel("prepare.rolling", {"statistic": "mad", "window_size": size})
+    state = step.initial()
+    for index, value in enumerate(values):
+        state, actual = step.advance(state, value)
+        if index + 1 < size:
+            continue
+        window = values[index + 1 - size : index + 1]
+        median = statistics.median(window)
+        assert actual == statistics.median(abs(item - median) for item in window)
+
+
+@pytest.mark.parametrize(
+    ("quantile", "suffix"),
+    [
+        (0.9, "q90_60"),
+        (0.1, "q10_60"),
+        (0.999, "q99p9_60"),
+        (0.125, "q12p5_60"),
+        (0.3, "q30_60"),
+        (0.0, "q0_60"),
+        (1.0, "q100_60"),
+    ],
+)
+def test_a_rolling_quantile_is_named_after_its_quantile(quantile, suffix):
+    params = {"statistic": "quantile", "quantile": quantile, "window_size": 60}
+    assert default_suffix("prepare.rolling", params) == suffix
+    assert default_suffix("prepare.rolling", {"statistic": "iqr"}) == "iqr60"
+
+
+def test_two_quantiles_of_one_window_sit_side_by_side():
+    band = [
+        (
+            f"q{percent}",
+            "prepare.rolling",
+            {
+                "apply_to": ["a"],
+                "statistic": "quantile",
+                "quantile": percent / 100,
+                "window_size": 6,
+            },
+        )
+        for percent in (10, 90)
+    ]
+    result = checked(*band)
+    assert result.valid
+    assert [item.name for item in result.features["q90"]] == [
+        "a",
+        "b",
+        "a_q10_6",
+        "a_q90_6",
+    ]
+
+
+def test_set_continues_the_feature_it_reads_and_starts_one_it_does_not():
+    smooth = ("smooth", "prepare.smooth", {"apply_to": ["a"], "window_size": 5})
+    guarded = checked(
+        smooth,
+        ("assign", "prepare.set", {"name": "a", "expression": "if(a > 0, a, b)"}),
+    ).features["assign"][0]
+    assert (guarded.name, guarded.steps) == ("a", ["smooth", "assign"])
+    assert guarded.previous == "smooth.a" and guarded.slots == ["a", "b"]
+    assert not guarded.raw
+    fresh = checked(
+        smooth, ("assign", "prepare.set", {"name": "a", "expression": "b * 2"})
+    ).features["assign"][0]
+    assert (fresh.name, fresh.steps, fresh.previous) == ("a", ["assign"], None)
+    assert fresh.slots == ["b"]
+
+
+@pytest.mark.parametrize("name", ["a", "ratio", "_x1"])
+def test_set_replaces_any_feature_and_adds_names_a_formula_can_read(name):
+    result = checked(("assign", "prepare.set", {"name": name, "expression": "a + b"}))
+    assert result.valid
+
+
+@pytest.mark.parametrize("name", ["my feature", "tick`", "1st", "a-b"])
+def test_set_refuses_a_new_name_no_formula_could_read(name):
+    result = checked(("assign", "prepare.set", {"name": name, "expression": "a + b"}))
+    assert [(issue.code, issue.parameter_path) for issue in result.issues] == [
+        ("scope", ["name"])
+    ]
+    assert "letters, digits and underscores" in result.issues[0].message
+
+
+def warnings(result):
+    return [
+        (issue.code, issue.node_id, issue.message)
+        for issue in result.issues
+        if issue.severity == "warning"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("condition", "message"),
+    [
+        ("a > 20", "The condition is never true, so the flag is always 0."),
+        ("a >= 0", "The condition is always true, so the flag is always 1."),
+    ],
+)
+def test_a_flag_that_never_changes_is_pointed_out(condition, message):
+    result = checked(
+        ("range", "prepare.range", {"low": 0, "high": 10}),
+        ("flag", "prepare.condition", {"name": "flag", "condition": condition}),
+        ("keep", "features.select", {"features": ["a", "b"]}),
+    )
+    assert result.valid
+    assert warnings(result) == [("values", "flag", message)]
+
+
+def test_a_set_feature_that_reads_nothing_is_pointed_out():
+    result = checked(
+        ("assign", "prepare.set", {"name": "a", "expression": "1 + 2"}),
+        ("keep", "features.select", {"features": ["b"]}),
+    )
+    assert warnings(result) == [
+        (
+            "values",
+            "assign",
+            "The formula reads no feature, so its value never changes.",
+        )
+    ]
+
+
+def test_a_feature_that_never_changes_is_pointed_out_where_something_learns():
+    limit = ("limit", "prepare.constant", {"name": "limit", "value": 80})
+    message = (
+        "limit is always 80, so {} learns nothing from it. Use it in a formula "
+        "or condition, then leave it out with Select features."
+    )
+    assert warnings(checked(limit)) == [
+        (
+            "constant_feature",
+            "detector",
+            message.format("Aberrant MovingMahalanobisDistance"),
+        )
+    ]
+    used = ("over", "prepare.condition", {"name": "over", "condition": "a > limit"})
+    keep = ("keep", "features.select", {"features": ["a", "b", "over"]})
+    assert warnings(checked(limit, used, keep)) == []
+    # A scaler that is not given the constant has nothing to say about it; the
+    # scaler that is given it reports it, and after scaling it has no range.
+    scoped = ("scale", "adaptive.standard_scaler", {"apply_to": ["a", "b"]})
+    assert [node for _, node, _ in warnings(checked(limit, scoped))] == ["detector"]
+    scaled = ("scale", "adaptive.standard_scaler", {})
+    assert [node for _, node, _ in warnings(checked(limit, scaled))] == ["scale"]
 
 
 def test_rejection_rolls_back_accumulation_and_window_state():

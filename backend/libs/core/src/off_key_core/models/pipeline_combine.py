@@ -12,11 +12,17 @@ steps built here.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..schemas.pipelines import FORMULA_SUFFIX, FORMULA_VARIABLE, FeatureDescription
+from ..schemas.pipelines import (
+    COMBINED_NAME_PATTERN,
+    FORMULA_SUFFIX,
+    FORMULA_VARIABLE,
+    FeatureDescription,
+)
 from .pipeline_formula import (
     Expression,
     FormulaError,
@@ -377,8 +383,17 @@ def _named_columns(
 ) -> Columns:
     name = combined_name(component, params)
     names = [item.name for item in columns]
-    if name in names and component != "prepare.set":
+    replaced = next((item for item in columns if item.name == name), None)
+    if replaced is not None and component != "prepare.set":
         raise ScopeError(f"{name} already exists. Choose another name.", "name")
+    if replaced is None and not re.fullmatch(COMBINED_NAME_PATTERN, name):
+        # Set may name any arriving feature; a name it adds must be one that
+        # formulas can read.
+        raise ScopeError(
+            f"{name[:40]} is not a feature here. For a new feature, use letters, "
+            "digits and underscores, and start with a letter or an underscore.",
+            "name",
+        )
     used = ()
     if component == "prepare.constant":
         low = high = _setting(component, params, "value")
@@ -392,18 +407,23 @@ def _named_columns(
             )
         else:
             low, high = analysis.low, analysis.high
-    result = FeatureDescription(
-        name=name,
-        raw=False,
-        minimum=low,
-        maximum=high,
-        slots=sorted(
-            {slot for item in columns if item.name in used for slot in item.slots}
-        ),
+    slots = sorted(
+        {slot for item in columns if item.name in used for slot in item.slots}
     )
-    if name in names:
-        return [result if item.name == name else item for item in columns]
-    return [*columns, result]
+    if replaced is not None and name in used:
+        # A Set that reads the feature it replaces continues that feature, so
+        # the reading and the earlier steps stay on its trail.
+        result = replaced.model_copy(
+            deep=True,
+            update={"raw": False, "minimum": low, "maximum": high, "slots": slots},
+        )
+    else:
+        result = FeatureDescription(
+            name=name, raw=False, minimum=low, maximum=high, slots=slots
+        )
+    if replaced is None:
+        return [*columns, result]
+    return [result if item.name == name else item for item in columns]
 
 
 def _each_bounds(columns: Columns, name: str) -> dict[str, Bounds]:
@@ -529,7 +549,16 @@ def _expression_issues(
                 parameter,
             )
         )
-    if component == "prepare.formula" and not parsed.names:
+    elif component == "prepare.condition" and analysis.truth is not None:
+        issues.append(
+            ValueIssue(
+                "warning",
+                f"The condition is {'always' if analysis.truth else 'never'} true, "
+                f"so the flag is always {int(analysis.truth)}.",
+                parameter,
+            )
+        )
+    if component in {"prepare.formula", "prepare.set"} and not parsed.names:
         issues.append(
             ValueIssue(
                 "warning",

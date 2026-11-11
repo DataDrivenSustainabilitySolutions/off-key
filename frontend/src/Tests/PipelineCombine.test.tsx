@@ -5,7 +5,7 @@ import {
   type PipelineComponent,
   type PipelineNode,
 } from "@/features/pipelines/contracts";
-import { suggestions, typedWord } from "@/features/pipelines/formula";
+import { inCondition, suggestions, typedWord } from "@/features/pipelines/formula";
 import { addComponent } from "@/features/pipelines/model";
 import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineLearningSummary } from "@/features/pipelines/PipelineLearningSummary";
@@ -296,7 +296,8 @@ describe("numeric primitives", () => {
     expect(screen.getByText(/Other features stay unchanged/)).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Result" })).toBeNull();
     expect(screen.queryByRole("button", { name: "For each feature" })).toBeNull();
-    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "dc_voltage" } });
+    // The name offers the arriving features, which makes it a combobox.
+    fireEvent.change(screen.getByRole("combobox", { name: "Name" }), { target: { value: "dc_voltage" } });
     expect(changes[changes.length - 1]?.name).toBe("dc_voltage");
     expect(stepFields(node(assignment), assignment)).toEqual([]);
   });
@@ -307,6 +308,42 @@ describe("numeric primitives", () => {
     formulaPanel(formula, { expression: "if(dc_voltage > 0 an" });
     caretAtEnd();
     expect(screen.getByRole("option", { name: /and/ })).toBeTruthy();
+  });
+
+  it("keeps and, or and not out of the values an if chooses between", () => {
+    const { container } = render(<PipelineFormula node={node(formula, { expression: "if(dc_voltage > 0, dc_voltage an" })}
+      component={formula} features={["dc_voltage"]} featureLabels={{}} issues={[]} onChange={() => {}} />);
+    caretAtEnd();
+    expect(container.querySelector("[role=listbox]")).toBeNull();
+  });
+
+  it("knows where a condition is being written", () => {
+    const at = (text: string, condition = false) => inCondition(text, text.length, condition);
+    // A formula takes numbers; the first argument of if is a condition.
+    expect(at("a + ")).toBe(false);
+    expect(at("if(a > 1 ")).toBe(true);
+    expect(at("2 * if (a > 1 and (b < 2 ")).toBe(true);
+    expect(at("if(not (a > 1 ")).toBe(true);
+    expect(at("if(a > 1, b ")).toBe(false);
+    expect(at("if(a > 1, b, c) + ")).toBe(false);
+    expect(at("if(a > max(b, ")).toBe(false);
+    expect(at("if(a > 1, if(b < 2 ")).toBe(true);
+    // A comma or a parenthesis in a quoted name is part of the name.
+    expect(at("if(`a,b(` > 1 ")).toBe(true);
+    // A Gate or Condition is a condition throughout, except among a function's numbers.
+    expect(at("a > 1 ", true)).toBe(true);
+    expect(at("(a > 1 or b < 2) ", true)).toBe(true);
+    expect(at("max(a, ", true)).toBe(false);
+    expect(at("if(a > 1, b ", true)).toBe(false);
+  });
+
+  it("offers the arriving features as names a Set feature can replace", () => {
+    formulaPanel(assignment, { expression: "dc_voltage * 2" });
+    const name = screen.getByRole("combobox", { name: "Name" }) as HTMLInputElement;
+    expect([...name.list!.options].map((item) => item.value)).toEqual(["dc_voltage", "dc-current"]);
+    // A Formula always adds a new name, so it offers none.
+    formulaPanel(formula, { expression: "dc_voltage * 2" });
+    expect((screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).list).toBeNull();
   });
 
   it("gives added constants distinct names and describes their values and flags", () => {

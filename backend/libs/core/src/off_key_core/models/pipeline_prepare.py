@@ -98,6 +98,15 @@ def _setting(component: str, params: dict[str, Any], name: str) -> Any:
     return PREPARE_MODELS[component].model_fields[name].default
 
 
+def _quantile_label(quantile: float) -> str:
+    """A quantile as a percentage in suffix characters: 0.9 is 90, 0.999 is 99p9.
+
+    The composer names features the same way (scope.ts), so both round to six
+    decimals of a percent.
+    """
+    return f"{quantile * 100:.6f}".rstrip("0").rstrip(".").replace(".", "p")
+
+
 def default_suffix(component: str, params: dict[str, Any]) -> str:
     """Short name of a step's added features, following its settings."""
     match component:
@@ -110,7 +119,12 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
             return f"{_CHANGE_SUFFIXES[mode]}{_setting(component, params, 'lag')}"
         case "prepare.rolling":
             statistic = _setting(component, params, "statistic")
-            return f"{statistic}{_setting(component, params, 'window_size')}"
+            window = _setting(component, params, "window_size")
+            if statistic == "quantile":
+                # Two quantiles of one window keep apart: q10_60 and q90_60.
+                label = _quantile_label(_setting(component, params, "quantile"))
+                return f"q{label}_{window}"
+            return f"{statistic}{window}"
         case "prepare.accumulate":
             function = _setting(component, params, "function")
             return "total" if function == "sum" else f"running_{function}"
@@ -210,6 +224,12 @@ class Rolling(Kernel):
         self.ordered = statistic in _ORDERED_STATISTICS
         self.lead = size - 1
         self.window = size
+        if statistic == "slope":
+            # Positions centred on the window sum to zero, so the mean of the
+            # values drops out of the least-squares slope.
+            centre = (size - 1) / 2
+            self._positions = array("d", (index - centre for index in range(size)))
+            self._spread = size * (size * size - 1) / 12
 
     def initial(self) -> State:
         return (array("d"), array("d")) if self.ordered else (array("d"),)
@@ -263,14 +283,8 @@ class Rolling(Kernel):
             case "iqr":
                 return _quantile(ordered, 0.75) - _quantile(ordered, 0.25)
             case "mad":
-                median = _quantile(ordered, 0.5)
-                return _quantile(sorted(abs(item - median) for item in window), 0.5)
-        size = self.size
-        mean = math.fsum(window) / size
-        weights = (index - (size - 1) / 2 for index in range(size))
-        return math.sumprod(weights, (item - mean for item in window)) / (
-            size * (size * size - 1) / 12
-        )
+                return _median_deviation(ordered, _quantile(ordered, 0.5))
+        return math.sumprod(self._positions, window) / self._spread
 
     def accepts(self, state: State) -> bool:
         return _window_state(state, self.size, 2 if self.ordered else 1)
@@ -285,32 +299,68 @@ def _quantile(ordered, fraction: float) -> float:
     return (1 - weight) * ordered[low] + weight * ordered[low + 1]
 
 
+def _deviation(ordered: array, centre: float, rank: int) -> float:
+    """The rank-th smallest distance from centre, counted from 1.
+
+    In a sorted window the rank values nearest to centre lie side by side, so
+    a binary search finds where they start and nothing is sorted again.
+    """
+    low, high = 0, len(ordered) - rank
+    while low < high:
+        middle = (low + high) // 2
+        if centre - ordered[middle] > ordered[middle + rank] - centre:
+            low = middle + 1
+        else:
+            high = middle
+    return max(centre - ordered[low], ordered[low + rank - 1] - centre)
+
+
+def _median_deviation(ordered: array, centre: float) -> float:
+    """The median distance from centre, as the median of the sorted distances."""
+    size = len(ordered)
+    middle = _deviation(ordered, centre, size // 2 + 1)
+    if size % 2:
+        return middle
+    return 0.5 * _deviation(ordered, centre, size // 2) + 0.5 * middle
+
+
 class Accumulate(Kernel):
-    """A constant-size running total or extreme, committed with the observation."""
+    """A constant-size running total or extreme, committed with the observation.
+
+    A total keeps what float addition drops in a second number (Neumaier), so
+    a long run does not drift; the output is their sum.
+    """
 
     def __init__(self, function: str):
         self.function = function
 
     def initial(self) -> State:
-        return (False, 0.0)
+        return (False, 0.0, 0.0)
 
     def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        seen, previous = state
-        if seen:
-            if self.function == "sum":
-                value = previous + value
-            else:
-                value = (min if self.function == "min" else max)(previous, value)
-        value = _finite(value)
-        return (True, value), value
+        seen, previous, carry = state
+        if not seen:
+            return (True, value, 0.0), value
+        if self.function != "sum":
+            value = (min if self.function == "min" else max)(previous, value)
+            return (True, value, 0.0), value
+        total = previous + value
+        if abs(previous) >= abs(value):
+            carry += (previous - total) + value
+        else:
+            carry += (value - total) + previous
+        result = _finite(total + carry)
+        return (True, total, carry), result
 
     def accepts(self, state: State) -> bool:
         return (
-            len(state) == 2
+            len(state) == 3
             and isinstance(state[0], bool)
-            and isinstance(state[1], float)
-            and math.isfinite(state[1])
-            and (state[0] or state[1] == 0.0)
+            and all(
+                isinstance(item, float) and math.isfinite(item) for item in state[1:]
+            )
+            and (state[0] or state[1:] == (0.0, 0.0))
+            and (self.function == "sum" or state[2] == 0.0)
         )
 
 
@@ -341,7 +391,7 @@ class Despike(Kernel):
             return (window, ordered), None
         middle = self.size // 2
         median = ordered[middle]
-        spread = sorted(abs(item - median) for item in window)[middle]
+        spread = _deviation(ordered, median, middle + 1)
         spike = spread > 0 and abs(value - median) > self.threshold * MAD_SCALE * spread
         return (window, ordered), median if spike else value
 

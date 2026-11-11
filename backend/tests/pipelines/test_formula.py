@@ -335,6 +335,23 @@ _ATOMS = ["a", "b", "c", "0", "1", "2", "0.5", "-1", "1e3", "`b`"]
 _UNARY = ["abs", "sqrt", "log", "log1p", "exp"]
 _JOINS = [" + ", " - ", " * ", " / ", " ^ "]
 _NOISE = ["(", ")", ",", " and ", " or ", " not ", " < ", " == ", "=", "$", "min("]
+_COMPARISONS = ["<", "<=", ">", ">=", "==", "!="]
+# The numbers guards compare with; the rows of the guard test land on them.
+_EDGES = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0]
+
+
+def _guard(rng, depth=0):
+    """A condition the range analysis narrows on: features against numbers,
+    on either side, joined by and, or and not."""
+    roll = rng.random()
+    if depth > 1 or roll < 0.55:
+        name, sign = rng.choice("abc"), rng.choice(_COMPARISONS)
+        number = f"{rng.choice(_EDGES):g}"
+        return f"{number} {sign} {name}" if roll < 0.15 else f"{name} {sign} {number}"
+    if roll < 0.7:
+        return f"not ({_guard(rng, depth + 1)})"
+    joined = rng.choice(["and", "or"])
+    return f"({_guard(rng, depth + 1)} {joined} {_guard(rng, depth + 1)})"
 
 
 def _formula(rng, depth=0):
@@ -350,9 +367,12 @@ def _formula(rng, depth=0):
         parts = [_formula(rng, depth + 1) for _ in range(3)]
         return f"clip({', '.join(parts)})"
     if roll < 0.65:
+        return f"-{_formula(rng, depth + 1)}"
+    if roll < 0.72:
         parts = [_formula(rng, depth + 1) for _ in range(4)]
-        return f"if({parts[0]} > {parts[1]}, {parts[2]}, {parts[3]})"
-    if roll < 0.75:
+        condition = _guard(rng) if roll < 0.685 else f"{parts[0]} > {parts[1]}"
+        return f"if({condition}, {parts[2]}, {parts[3]})"
+    if roll < 0.8:
         return f"({_formula(rng, depth + 1)})"
     return f"{_formula(rng, depth + 1)}{rng.choice(_JOINS)}{_formula(rng, depth + 1)}"
 
@@ -371,6 +391,8 @@ def _checked(expression, analysis, row, condition, text) -> bool:
         result = evaluator(expression)(row)
     except PrepareFailure as failure:
         assert failure.reason in {"out_of_domain", "non_finite"}
+        # A value outside a function's domain never comes unannounced.
+        assert failure.reason != "out_of_domain" or analysis.warnings + analysis.errors
         return False
     if condition:
         assert isinstance(result, bool)
@@ -414,3 +436,41 @@ def test_any_text_parses_or_names_its_problem_and_evaluation_only_skips():
             else:
                 skips += 1
     assert parsed > 1000 and evaluated > 1000 and skips > 100
+
+
+def test_guards_narrow_ranges_without_losing_a_value():
+    """Rows sit on the numbers the guards compare with, where narrowing is exact."""
+    rng = random.Random(20261111)
+    bounds = {"a": (-2.0, 3.0), "b": (0.0, 1.0), "c": (None, None)}
+
+    def pick(low, high):
+        inside = [edge for edge in _EDGES if low <= edge <= high]
+        return rng.choice([low, high, *inside, rng.uniform(low, high)])
+
+    narrowed = evaluated = skips = 0
+    for index in range(1500):
+        condition = index % 4 == 0
+        text = (
+            f"if({_guard(rng)}, {_formula(rng, 2)}, {_formula(rng, 2)}) "
+            f"{rng.choice(_COMPARISONS)} {_formula(rng, 3)}"
+            if condition
+            else f"if({_guard(rng)}, {_formula(rng, 2)}, {_formula(rng, 2)})"
+        )
+        try:
+            expression = parse(text, condition=condition)
+            expression.check_names(["a", "b", "c"])
+        except FormulaError:
+            continue
+        analysis = analyze(expression, bounds)
+        narrowed += 1
+        for _ in range(8):
+            row = {
+                "a": pick(-2.0, 3.0),
+                "b": pick(0.0, 1.0),
+                "c": rng.choice([-1e6, 1e6, rng.gauss(0, 10), *_EDGES]),
+            }
+            if _checked(expression, analysis, row, condition, text):
+                evaluated += 1
+            else:
+                skips += 1
+    assert narrowed > 1000 and evaluated > 5000 and skips > 100

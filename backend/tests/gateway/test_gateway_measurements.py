@@ -226,3 +226,28 @@ async def test_chart_evidence_of_several_readings_forwards_each(remote):
         "service_id": "m1",
         "limit": 2000,
     }
+
+
+@pytest.mark.asyncio
+async def test_history_display_options_are_forwarded_without_changing_measurements(
+    remote,
+):
+    response = await get(
+        "readings/r1/measurements/buckets", view="auto", window_ms=15000, buckets=120
+    )
+    assert response.status_code == 200
+    assert remote.await_args.kwargs["params"] == {
+        "buckets": 120,
+        "view": "auto",
+        "window_ms": 15000,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params", [{"view": "smooth"}, {"window_ms": 0}, {"window_ms": 86400001}]
+)
+async def test_invalid_history_display_options_are_rejected(remote, params):
+    response = await get("readings/r1/measurements/buckets", **params)
+    assert response.status_code == 422
+    remote.assert_not_awaited()

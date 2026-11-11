@@ -13,6 +13,10 @@ import type { ReadingHistoryCache } from "@/domain/readings/readingHistoryCache"
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import { buildServiceHistoryModel, MAX_VISIBLE_READINGS } from "./historyModel";
 import { useServiceHistory } from "./useServiceHistory";
+import { HistoryViewControls } from "@/features/charts/HistoryViewControls";
+import { combineHistory, DEFAULT_HISTORY_PREFERENCE, presentHistory } from "@/features/charts/history-presentation";
+import { useHistoryWidth } from "@/features/charts/use-history-width";
+import type { HistoryPreference } from "@/types/telemetry-history";
 
 type Inspection = { startMs: number; endMs: number };
 
@@ -25,6 +29,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const [chosen, setChosen] = useNavigationDraft<string[]>(`${key}:readings`,
     initialReading ? [initialReading] : inputs.slice(0, MAX_VISIBLE_READINGS).map(input => input.stream.id));
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(`${key}:inspection`, undefined);
+  const [preference, setPreference] = useNavigationDraft<HistoryPreference>(`${key}:presentation`, DEFAULT_HISTORY_PREFERENCE);
+  const { ref: chartWidthRef, buckets } = useHistoryWidth();
   const selectedInputs = useMemo(() => {
     const retained = inputs.filter(input => chosen.includes(input.stream.id)).slice(0, MAX_VISIBLE_READINGS);
     return retained.length ? retained : inputs.slice(0, MAX_VISIBLE_READINGS);
@@ -43,9 +49,15 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
-  const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
+  const displayModel = useMemo(() => ({ ...model, readings: model.readings.map(reading => {
+    const view: HistoryPreference = reading.valueType === "boolean" ? { mode: "raw" } : preference;
+    const overview = presentHistory(reading.data, view, buckets);
+    return { ...reading, presentation: inspection ? combineHistory(overview,
+      presentHistory(reading.data, view, buckets, [inspection.startMs, inspection.endMs]), inspection) : overview };
+  }) }), [model, preference, buckets, inspection]);
+  const option = useMemo(() => buildMonitoringChartOption({ model: displayModel, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
-  [model, colors, timeZone, description, inspection]);
+  [displayModel, colors, timeZone, description, inspection]);
   const inspect = useCallback((startMs: number, endMs: number) => {
     if (!domain || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
     setInspection(current => current && Math.abs(current.startMs - startMs) < 1 && Math.abs(current.endMs - endMs) < 1
@@ -74,9 +86,10 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length)) + model.secondarySeries.length;
   const latest = model.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
-  return <section className="ex-preview-history mn-history" aria-label="Monitoring history">
+  return <section ref={chartWidthRef} className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>Inputs and detection</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
+        {model.readings.some(reading => reading.valueType !== "boolean") && <HistoryViewControls value={preference} onChange={setPreference} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>

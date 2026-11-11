@@ -173,6 +173,18 @@ Device details at `/details/:deviceId` show a device's recorded readings with
 category and time-range controls. Readings of a broker that have no device open
 at `/details/broker/:brokerId`.
 
+Numeric history automatically shows bucket averages when readings are too dense
+to distinguish, with a faint band for each bucket's minimum and maximum. Zooming
+in restores individual samples when they fit. Hover a point for its interval,
+range and sample count. Boolean states and detector results remain unchanged.
+
+The waveform button beside the zoom controls switches automatic averaging on or
+off without changing the selected time range. Its highlight indicates automatic
+mode; hover or focus it for the current averaging interval. In Raw mode, a
+reading's **Values** disclosure also exposes exact timestamps and values. If a
+recorded range contains more than 10,000 samples, Raw shows the newest 10,000 and
+asks you to zoom in to inspect earlier values.
+
 ## Data-source activity
 
 Topic and reading circles in the catalogue show activity from a live preview or

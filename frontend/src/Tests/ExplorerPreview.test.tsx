@@ -18,7 +18,7 @@ import { mqttConnection } from "./support/fixtures/system";
 vi.mock("@/components/theme-provider", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 vi.mock("@/features/readings/useReadingMonitoring", () => ({ useReadingMonitoring: vi.fn() }));
 vi.mock("@/features/readings/useStoredRange", async (importOriginal) => {
-  const nothingStored: never[] = [];
+  const nothingStored = { history: undefined, overview: undefined, loading: false, error: "" };
   return { ...await importOriginal<typeof import("@/features/readings/useStoredRange")>(), useStoredRange: vi.fn(() => nothingStored) };
 });
 vi.mock("@/features/charts/EChart", () => ({
@@ -170,7 +170,7 @@ describe("workspace chart navigation and monitoring", () => {
     expect(within(ranges).getByRole("button", { name: "1d" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Reset zoom" }).hasAttribute("disabled")).toBe(true);
     expect(lastChartProps().option.xAxis).toMatchObject([{ min: NOW - 90 * 60_000, max: NOW }]);
-    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 90 * 60_000, 19], [NOW - 10 * 60_000, 20], [NOW - 30_000, 21], [NOW, 22]] }]);
+    expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 90 * 60_000, 19], [NOW - 50 * 60_000, null], [NOW - 10 * 60_000, 20], [NOW - 30_000, 21], [NOW, 22]] }]);
   });
 
   it("keeps inspection through renaming and resets it when the reading's input changes", () => {
@@ -211,18 +211,20 @@ describe("workspace chart navigation and monitoring", () => {
   it("draws stored history before collected values, and asks for the chosen span and inspected window", () => {
     const day = 86_400_000;
     const stored = [{ timestamp: new Date(NOW - 3 * day).toISOString(), value: 10 }, { timestamp: new Date(NOW - 60_000).toISOString(), value: 11 }];
-    vi.mocked(useStoredRange).mockReturnValue(stored);
+    const history = { representation: "raw" as const, points: stored, interval_ms: 0, sample_count: 2,
+      extent: [stored[0]!.timestamp, stored[1]!.timestamp] as [string, string], truncated: false };
+    vi.mocked(useStoredRange).mockReturnValue({ history, overview: history, loading: false, error: "" });
     vi.mocked(useReadingMonitoring).mockReturnValue({ binding: { readingId: "temperature" }, error: "", services: [], evidence: [], anomalies: [],
       telemetry: [{ timestamp: new Date(NOW - 60_000).toISOString(), value: 99 }, { timestamp: new Date(NOW).toISOString(), value: 12 }] });
     render(<ExplorerHistoryChart stream={system.readings[0]!} connection={system.brokers[0]} />);
     const binding = { readingId: "temperature" };
-    expect(useStoredRange).toHaveBeenLastCalledWith(binding, 3_600_000, undefined);
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, 3_600_000, undefined, { mode: "auto" }, 100);
     fireEvent.click(screen.getByRole("button", { name: "All" }));
-    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, undefined);
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, undefined, { mode: "auto" }, 100);
     expect(lastChartProps().option.series).toMatchObject([{ data: [[NOW - 3 * day, 10], [NOW - 60_000, 11], [NOW, 12]] }]);
     act(() => lastChartProps().onViewportChange?.(NOW - 2 * day, NOW - day));
-    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, expect.objectContaining({ startMs: NOW - 2 * day, endMs: NOW - day }));
-    vi.mocked(useStoredRange).mockReset();
+    expect(useStoredRange).toHaveBeenLastCalledWith(binding, undefined, expect.objectContaining({ startMs: NOW - 2 * day, endMs: NOW - day }), { mode: "auto" }, 100);
+    vi.mocked(useStoredRange).mockReturnValue({ history: undefined, overview: undefined, loading: false, error: "" });
   });
 
   it("isolates simultaneous monitor alarms by their persisted service IDs", () => {

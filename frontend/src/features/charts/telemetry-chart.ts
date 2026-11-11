@@ -23,6 +23,8 @@ import {
 import { getChartDomain } from "./telemetry-thresholds";
 import { forecastIntervalText, type DetectorInputSeries } from "./detector-inputs";
 import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
+import { historyBandSeries, historyChartData } from "./history-presentation";
+import type { HistoryPoint, TelemetryHistory } from "@/types/telemetry-history";
 import {
   groupTelemetryEvents,
   buildTelemetryEventMarkPoints,
@@ -113,6 +115,7 @@ interface BuildTelemetryChartModelInput {
   telemetryUnit?: string;
   telemetryColor: string;
   telemetry: TimeValue[];
+  presentation?: TelemetryHistory;
   detectors: readonly TelemetryChartDetector[];
   pendingTelemetryTimestamps?: readonly number[];
   anomalyMarkers: AnomalyMarker[];
@@ -203,6 +206,7 @@ export const buildTelemetryChartModel = ({
   telemetryUnit,
   telemetryColor,
   telemetry,
+  presentation,
   detectors,
   pendingTelemetryTimestamps = [],
   anomalyMarkers,
@@ -223,13 +227,15 @@ export const buildTelemetryChartModel = ({
       unit: telemetryUnit,
       color: telemetryColor,
       data: telemetry,
+      presentation,
     },
     pendingTelemetry: telemetry.filter(([time]) => pendingTimes.has(time)),
     anomalyMarkers: groupTelemetryEvents(anomalyMarkers),
     detectorInputs,
     secondarySeries,
     range,
-    extent: startMs !== undefined && endMs !== undefined ? [startMs, endMs] : undefined,
+    extent: presentation?.extent ? [Date.parse(presentation.extent[0]), Date.parse(presentation.extent[1])]
+      : startMs !== undefined && endMs !== undefined ? [startMs, endMs] : undefined,
   };
 };
 
@@ -283,13 +289,17 @@ export const formatTelemetryTooltip = (
     if (!value || typeof entry.seriesName !== "string") continue;
     const seriesId = typeof entry.seriesId === "string" ? entry.seriesId : "";
     // The band's two lines only draw the interval, which the forecast's own line names.
-    if (seriesId.startsWith("forecast-band:")) continue;
+    if (seriesId.startsWith("forecast-band:") || seriesId.startsWith("history-band:")) continue;
     const unit = units.get(entry.seriesName);
     const formattedValue = unit ? numberFormatter.format(value[1]) : formatNumber(value[1]);
     const interval = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
-    lines.push(
-      `${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${interval}`,
-    );
+    const summary = typeof entry.data === "object" && entry.data !== null && "summary" in entry.data
+      ? (entry.data as { summary?: HistoryPoint }).summary : undefined;
+    lines.push(`${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${summary ? " (mean)" : ""}${interval}`);
+    if (summary) {
+      lines.push(`Min–max: ${formatNumber(summary.minimum!)}–${formatNumber(summary.maximum!)}${unit ? ` ${unit}` : ""} · ${summary.count} readings`);
+      lines.push(`${formatChartTime(Date.parse(summary.start!), timeZone, "tooltip", locale)} – ${formatChartTime(Date.parse(summary.end!), timeZone, "tooltip", locale)}`);
+    }
     const observation = readObservationDetails(entry.data);
     if (observation) {
       lines.push(`Alarm threshold: ${observation.threshold !== null ? formatNumber(observation.threshold) : "unavailable"}`);
@@ -402,27 +412,31 @@ export const buildMonitoringChartOption = ({
   const dayBreakLine = { silent: true, animation: false, symbol: ["none", "none"], label: { show: false }, z: 1,
     data: dayBreaks };
 
+  const historyBands: LineSeriesOption[] = [];
   const telemetrySeries: LineSeriesOption[] = model.readings.map((reading, index) => {
     const valueType = reading.valueType ?? "number";
     const telemetryValueExtent = reading.data.reduce<[number, number] | undefined>((extent, [, value]) =>
       extent ? [Math.min(extent[0], value), Math.max(extent[1], value)] : [value, value], undefined);
+    const display = reading.presentation && historyChartData(reading.presentation);
+    if (display) historyBands.push(...historyBandSeries(reading.id, display, reading.color, index));
     return {
       id: reading.id,
       name: reading.name,
       type: "line",
       xAxisIndex: index,
       yAxisIndex: index,
-      data: reading.data,
+      data: display?.map(point => point.summary ? point : point.value) ?? reading.data,
       smooth: false,
       step: valueType === "boolean" ? "end" : false,
-      showSymbol: reading.data.length === 1,
+      showSymbol: (display?.length ?? reading.data.length) === 1,
       symbolSize: 5,
-      ...(valueType === "number" ? { sampling: "lttb" } : {}),
+      sampling: valueType === "number" && !display ? "lttb" : "none",
       connectNulls: false,
       lineStyle: { color: reading.color, width: 2.25 },
       itemStyle: { color: reading.color },
       emphasis: { disabled: true },
       animation: false,
+      z: 3,
       markPoint: {
         symbol: "circle",
         label: { show: false },
@@ -727,6 +741,7 @@ export const buildMonitoringChartOption = ({
     ],
     series: [
       ...telemetrySeries,
+      ...historyBands,
       ...pendingTelemetrySeries,
       ...inputSeries,
       ...forecastSeries,

@@ -1,9 +1,8 @@
-import { epochMilliseconds } from "@/lib/timestamps";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePollingLoop } from "@/hooks/use-polling";
-import { getTelemetryRange } from "@/lib/charger-api";
+import { getTelemetryHistory } from "@/lib/charger-api";
 import type { ReadingMonitoringBinding } from "@/domain/readings/readingMonitoring";
-import type { TelemetryDataPoint } from "@/types/charger";
+import type { HistoryPreference, TelemetryHistory } from "@/types/telemetry-history";
 
 export const RANGE_PRESETS = [
   { id: "1h", label: "1h", title: "Last hour", spanMs: 3_600_000 },
@@ -14,59 +13,64 @@ export const RANGE_PRESETS = [
 export type RangePresetId = (typeof RANGE_PRESETS)[number]["id"];
 export const rangePreset = (id: string) => RANGE_PRESETS.find((preset) => preset.id === id) ?? RANGE_PRESETS[0];
 
-/** Points per request: each bucket returns its lowest and highest value, so at most twice this. */
-const RANGE_BUCKETS = 600;
-const OVERVIEW_REFRESH_MS = 60_000;
-const DETAIL_DELAY_MS = 250;
-
 type Window = { startMs: number; endMs: number };
-type Loaded = { key: string; points: TelemetryDataPoint[] };
+type Loaded = { scope: string; key: string; data?: TelemetryHistory; error?: string };
+const DEFAULT_VIEW: HistoryPreference = { mode: "auto" };
 
-/**
- * Stored history for a recorded reading: a downsampled overview of the chosen
- * span, refreshed each minute, and a finer fetch of the window being inspected,
- * so zooming in recovers detail the overview's buckets summarised.
- */
-export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined, inspected?: Window) {
+/** Fetch original samples or real bucket statistics. Inspection freezes the overview. */
+export function useStoredRange(binding: ReadingMonitoringBinding | undefined, spanMs: number | undefined,
+  inspected?: Window, preference = DEFAULT_VIEW, buckets = 100) {
   const readingId = binding?.readingId;
-  const overviewKey = readingId ? JSON.stringify([readingId, spanMs ?? "all"]) : undefined;
+  const scope = readingId ? JSON.stringify([readingId, spanMs ?? "all"]) : "";
+  const { mode: view, windowMs } = preference;
+  const key = JSON.stringify([scope, view, windowMs, buckets]);
+  const startMs = inspected?.startMs, endMs = inspected?.endMs;
+  const inspecting = inspected !== undefined;
+  const detailKey = JSON.stringify([key, startMs, endMs]);
   const [overview, setOverview] = useState<Loaded>();
-  const [detail, setDetail] = useState<Loaded & Window>();
+  const [detail, setDetail] = useState<Loaded>();
 
   const loadOverview = useCallback(async (signal: AbortSignal) => {
-    if (!overviewKey || !readingId) return;
+    if (!readingId) return;
     try {
-      const points = await getTelemetryRange(readingId,
-        { startMs: spanMs === undefined ? undefined : Date.now() - spanMs, buckets: RANGE_BUCKETS }, signal);
-      if (!signal.aborted) setOverview({ key: overviewKey, points });
+      const data = await getTelemetryHistory(readingId, {
+        startMs: spanMs === undefined ? undefined : Date.now() - spanMs,
+        buckets, view, windowMs,
+      }, signal);
+      if (!signal.aborted) setOverview({ scope, key, data });
     } catch {
-      // Live and recently collected values still draw; the next refresh retries.
+      if (!signal.aborted) setOverview(previous => ({ scope, key,
+        data: previous?.key === key ? previous.data : undefined,
+        error: "History could not be updated. Retrying automatically." }));
     }
-  }, [overviewKey, readingId, spanMs]);
-  usePollingLoop(loadOverview, { enabled: !!overviewKey, intervalMs: OVERVIEW_REFRESH_MS, schedule: "after-completion",
+  }, [readingId, spanMs, buckets, view, windowMs, scope, key]);
+  usePollingLoop(loadOverview, { enabled: !!readingId && !inspected, intervalMs: 5000, schedule: "after-completion",
     pauseWhenHidden: true, resumeOnVisible: true, startImmediately: true });
 
-  const startMs = inspected?.startMs, endMs = inspected?.endMs;
+  const loadDetail = useCallback(async (signal: AbortSignal) => {
+    if (!readingId || startMs === undefined || endMs === undefined) return;
+    try {
+      const data = await getTelemetryHistory(readingId, { startMs, endMs, buckets, view, windowMs }, signal);
+      if (!signal.aborted) setDetail({ scope, key: detailKey, data });
+    } catch {
+      if (!signal.aborted) setDetail(previous => ({ scope, key: detailKey,
+        data: previous?.key === detailKey ? previous.data : undefined,
+        error: "This interval could not be loaded. Retrying automatically." }));
+    }
+  }, [readingId, startMs, endMs, buckets, view, windowMs, scope, detailKey]);
+  // Debounce drag events; fixed inspection windows also retry after a failed request.
   useEffect(() => {
-    if (!overviewKey || !readingId || startMs === undefined || endMs === undefined) return;
+    if (!readingId || !inspecting) return;
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      getTelemetryRange(readingId, { startMs, endMs, buckets: RANGE_BUCKETS }, controller.signal)
-        .then((points) => { if (!controller.signal.aborted) setDetail({ key: overviewKey, startMs, endMs, points }); })
-        .catch(() => {});
-    }, DETAIL_DELAY_MS);
+    const timer = setTimeout(() => { void loadDetail(controller.signal); }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [overviewKey, readingId, startMs, endMs]);
+  }, [readingId, inspecting, loadDetail]);
+  usePollingLoop(loadDetail, { enabled: !!readingId && !!inspected, intervalMs: 5000, schedule: "after-completion",
+    pauseWhenHidden: true, resumeOnVisible: true, initialRun: false });
 
   return useMemo(() => {
-    const base = overview && overview.key === overviewKey ? overview.points : [];
-    if (!detail || detail.key !== overviewKey || startMs === undefined) return base;
-    // The finer points replace the overview only across the window they cover.
-    const inside = (point: TelemetryDataPoint) => {
-      const time = epochMilliseconds(point.timestamp);
-      return time >= detail.startMs && time <= detail.endMs;
-    };
-    return [...base.filter((point) => !inside(point)), ...detail.points]
-      .sort((left, right) => epochMilliseconds(left.timestamp) - epochMilliseconds(right.timestamp));
-  }, [overview, detail, overviewKey, startMs]);
+    const selected = inspected ? detail?.key === detailKey ? detail : undefined : overview?.key === key ? overview : undefined;
+    return { history: selected?.data, overview: overview?.scope === scope ? overview.data : undefined,
+      loading: !!readingId && !selected, error: selected?.error ?? "" };
+  }, [readingId, inspected, detail, detailKey, overview, key, scope]);
 }

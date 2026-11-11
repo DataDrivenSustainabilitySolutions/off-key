@@ -7,6 +7,7 @@ recorded identity behind them.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +50,25 @@ class MeasurementPage(BaseModel):
 class MeasurementBucket(BaseModel):
     timestamp: str
     value: float
+
+
+class MeasurementSummary(MeasurementBucket):
+    minimum: float
+    maximum: float
+    count: int
+    start: str
+    end: str
+
+
+class MeasurementHistory(BaseModel):
+    """Display-only history; raw samples and bucket means are explicit."""
+
+    representation: Literal["raw", "mean"]
+    points: list[MeasurementSummary | MeasurementBucket]
+    interval_ms: int = 0
+    sample_count: int = 0
+    extent: tuple[str, str] | None = None
+    truncated: bool = False
 
 
 class ChartEvidence(BaseModel):

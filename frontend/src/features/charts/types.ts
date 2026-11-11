@@ -1,5 +1,6 @@
 import type { TimeValue } from "./telemetry-data";
 import type { TelemetryEventGroup } from "./telemetry-events";
+import type { TelemetryHistory } from "@/types/telemetry-history";
 
 /** Series shapes shared by the chart builder and its tooltip. */
 export interface TelemetryChartSeries {
@@ -8,6 +9,7 @@ export interface TelemetryChartSeries {
   unit?: string;
   color: string;
   data: TimeValue[];
+  presentation?: TelemetryHistory;
 }
 export interface MonitoringChartReading extends TelemetryChartSeries {
   inputKey?: string;

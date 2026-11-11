@@ -3,7 +3,7 @@ import { forecastIntervalText } from "./detector-inputs";
 import type { MonitoringChartReading } from "./types";
 import type { DetectionObservation } from "./telemetry-detectors";
 
-type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown; data?: { observation?: DetectionObservation } };
+type Entry = { seriesId?: unknown; seriesName?: unknown; value?: unknown; data?: { observation?: DetectionObservation; summary?: unknown } };
 
 /** Read the exact recorded inputs for a joint result, rather than nearby samples. */
 export function formatMonitoringObservationTooltip(
@@ -15,6 +15,9 @@ export function formatMonitoringObservationTooltip(
   const entries = (Array.isArray(params) ? params : [params]).filter(
     (value): value is Entry => typeof value === "object" && value !== null,
   );
+  // A mean is not an evaluated input. Its tooltip names its interval and range;
+  // detector panes still show their exact recorded observation and inputs.
+  if (entries.some(entry => entry.data?.summary)) return undefined;
   const evaluated = entries.filter(entry => entry.data?.observation?.inputTimestamps);
   const observation = evaluated[0]?.data?.observation;
   if (!observation?.inputTimestamps) return undefined;

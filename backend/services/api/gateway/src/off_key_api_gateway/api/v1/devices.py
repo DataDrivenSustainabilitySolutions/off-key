@@ -6,13 +6,14 @@ resolved inside the installation.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from off_key_core.schemas.devices import (
     Device,
     Measurement,
     MeasurementBucket,
+    MeasurementHistory,
     MeasurementPage,
 )
 from off_key_core.schemas.system import SystemStream
@@ -105,13 +106,27 @@ async def list_measurements(
 
 
 @readings_router.get(
-    "/{reading_id}/measurements/buckets", response_model=list[MeasurementBucket]
+    "/{reading_id}/measurements/buckets",
+    response_model=list[MeasurementBucket] | MeasurementHistory,
 )
 async def list_measurement_buckets(
     reading_id: str,
     start: datetime | None = Query(None, description="Omit for all stored history"),
     end: datetime | None = Query(None, description="Defaults to now"),
     buckets: int = Query(600, ge=10, le=2000, description="Time buckets to return"),
+    view: Literal["auto", "raw"] | None = Query(
+        None,
+        description="Auto returns means with min/max/count for dense ranges, "
+        "original samples for sparse ranges. Raw returns up to the latest "
+        "10,000 original samples with an explicit truncation flag.",
+    ),
+    window_ms: int | None = Query(
+        None,
+        ge=1,
+        le=86_400_000,
+        description="Minimum averaging interval in milliseconds; wider ranges "
+        "may use a coarser interval.",
+    ),
 ):
     """Lowest and highest value per time bucket, so short spikes survive.
 
@@ -128,6 +143,8 @@ async def list_measurement_buckets(
                 "start": query_time(start),
                 "end": query_time(end),
                 "buckets": buckets,
+                "view": view,
+                "window_ms": window_ms,
             }
         ),
     )

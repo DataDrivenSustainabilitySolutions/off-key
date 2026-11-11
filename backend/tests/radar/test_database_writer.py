@@ -253,6 +253,7 @@ def test_build_evidence_record_preserves_static_inference_context(
             "detector_inputs": [
                 {"detector_id": None, "inputs": {"L1_dev": 0.05, "L2_dev": None}}
             ],
+            "forecasts": [],
             "threshold": 100.0,
             "alarm": False,
         }
@@ -283,6 +284,17 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
                 "anomaly_score": 7.5,
                 "threshold": 5.0,
                 "alarm_fired": True,
+                "forecasts": [
+                    {
+                        "detector_id": "seasonal",
+                        "target": "L1",
+                        "slot": "L1",
+                        "lead": 1,
+                        "expected": 16.0,
+                        "lower": 15.2,
+                        "upper": 16.8,
+                    }
+                ],
             },
         },
     )
@@ -294,6 +306,7 @@ def test_build_adaptive_operational_evidence_and_anomaly_semantics(
     [anomaly], _ = writer.projector._build_records([result])
 
     assert evidence["strategy"] == "adaptive_stream"
+    assert evidence["forecasts"] == result.context["adaptive_stream"]["forecasts"]
     assert evidence["p_value"] is None
     assert evidence["anomaly_score"] == 7.5
     assert evidence["threshold"] == 5.0
@@ -871,3 +884,42 @@ def test_evidence_keeps_each_combined_detectors_inputs():
     ]
     assert _normalize_detector_inputs(None) == []
     assert _normalize_detector_inputs({}) == []
+
+
+def test_evidence_keeps_what_each_forecaster_step_expected():
+    from off_key_mqtt_radar.result_records import _normalize_forecasts
+
+    whole = {
+        "detector_id": "timestral",
+        "target": "load",
+        "slot": "load",
+        "lead": 3,
+        "expected": 100.0,
+        "lower": 90.0,
+        "upper": 110.0,
+    }
+    assert _normalize_forecasts([whole]) == [whole]
+    # Without a boundary in the step's own units there is no band, only the
+    # expected value; half a band or an infinite one is no band either.
+    unbanded = whole | {"slot": None, "lower": None, "upper": None}
+    assert _normalize_forecasts(
+        [
+            {"detector_id": "timestral", "target": "load", "lead": 3, "expected": 100},
+            whole | {"slot": 7, "upper": float("inf")},
+            whole | {"slot": None, "lower": 120.0},
+        ]
+    ) == [unbanded, unbanded, unbanded]
+    # An entry that names no step, no feature or no finite expectation is dropped.
+    assert (
+        _normalize_forecasts(
+            [
+                whole | {"detector_id": None},
+                whole | {"target": 3},
+                whole | {"expected": float("nan")},
+                "forecast",
+            ]
+        )
+        == []
+    )
+    assert _normalize_forecasts(None) == []
+    assert _normalize_forecasts({"timestral": whole}) == []

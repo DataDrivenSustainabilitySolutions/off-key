@@ -384,6 +384,16 @@ it (`_expect`), because a pretrained step fetches a forecast its service missed
 while it scores. The key is absent before a forecast exists and outside the
 operational phase.
 
+Evidence stores the entries as `forecasts` (migration 026;
+`_normalize_forecasts` in `result_records.py` keeps an interval only whole), and
+the catalogue API returns them with each evidence row. In the charts,
+`buildDetectorInputSeries` puts each forecast on the line of the feature it was
+made for, which it finds by `detector_id` and `target` among the row's
+`detector_inputs`. The feature's pane then shows the forecast dashed in the
+feature's colour and the interval as a band: two stacked lines, the lower bound
+and the width above it, so only the space between the bounds is filled. A Dojo
+replay does not store forecasts yet.
+
 A pretrained forecaster is a `forecast.` component with learning `pretrained`.
 Its weights live in the forecast service (`off-key-forecast`), never in a RADAR
 worker, so it is not an ABERRANT component and not in `adaptive_catalog.json`:
@@ -836,9 +846,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`cbe2d83999adb3317e55207fd662ccd0ecf0f8bc`, the commit that takes the lane
-out of the composer, on top of migration 025
-(`evidence_cursor`). It shares the current
+`934f8f93832d75a8cf2d8396daa15994167b5ccc`, the commit that stores each
+forecaster step's forecast with the evidence, on top of migration 026
+(`evidence_forecasts`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -846,13 +856,14 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `ad919d98`, returns a design with its lane and without
-its calibration step, where the current release returns it as the editor reads
-it; `386eb796` before it lists no Timestral step in field discovery, `7194e94f`
-has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
-1.4.0, so the rehearsal accepts none of them.
+The previous reference, `cbe2d839`, has no migration 026; `ad919d98` before it
+returns a design with its lane and without its calibration step, where the
+current release returns it as the editor reads it; `386eb796` lists no
+Timestral step in field discovery, `7194e94f` has a catalog without the
+forecaster steps, and `b03157ec` locks ABERRANT 1.4.0, so the rehearsal accepts
+none of them.
 Releases before
-migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
+migration 026 refuse a database that has applied it. Rolling back past migration 026 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.5.0; migration from

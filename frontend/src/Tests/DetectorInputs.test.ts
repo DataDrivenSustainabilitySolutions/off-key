@@ -2,11 +2,11 @@
 import { describe, expect, it } from "vitest";
 import { buildDetectorInputSeries, MAX_DETECTOR_INPUT_SERIES } from "@/features/charts/detector-inputs";
 import { formatMonitoringObservationTooltip } from "@/features/charts/monitoring-tooltip";
-import { buildMonitoringChartOption, buildTelemetryChartModel, buildTelemetryChartOption } from "@/features/charts/telemetry-chart";
+import { buildMonitoringChartOption, buildTelemetryChartModel, buildTelemetryChartOption, formatTelemetryTooltip } from "@/features/charts/telemetry-chart";
 import { collectTelemetryChartDetectors } from "@/features/charts/telemetry-detectors";
 import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
-import type { MonitoringChartEvidence, MonitoringDetectorInputs } from "@/types/monitoring";
+import type { MonitoringChartEvidence, MonitoringDetectorInputs, MonitoringForecast } from "@/types/monitoring";
 import { chartEvidence, trackerResult } from "./support/fixtures/monitoring";
 
 const start = Date.parse("2026-11-03T08:00:00Z");
@@ -107,5 +107,94 @@ describe("detector inputs", () => {
     ], model.readings, String, String);
     expect(text).toContain("L1_dev: 0.02");
     expect(text).toContain("L2_dev: -0.02");
+  });
+});
+
+describe("forecasts of a forecaster step", () => {
+  const load = (value: number): MonitoringDetectorInputs[] => [{ detector_id: null, inputs: { load: value } }];
+  const expected = (value: number, lower: number | null = null, upper: number | null = null): MonitoringForecast =>
+    ({ detector_id: "timestral", target: "load", slot: null, lead: 1, expected: value, lower, upper });
+  const forecast = (seconds: number, value: number, forecasts: MonitoringForecast[] = []) =>
+    ({ ...row(seconds, load(value)), forecasts });
+
+  it("puts each forecast on the line of the feature it was made for", () => {
+    const rows = [forecast(0, 10), forecast(1, 11, [expected(10.5, 9.5, 11.5)]), forecast(2, 12, [expected(11.5, 10.5, 12.5)])];
+    const [line] = buildDetectorInputSeries(rows, time);
+    expect(line!.data).toEqual([[start, 10], [start + 1000, 11], [start + 2000, 12]]);
+    // The first observation had no forecast yet, so the forecast starts at the second.
+    expect(line!.forecast).toEqual([[start + 1000, 10.5, 9.5, 11.5], [start + 2000, 11.5, 10.5, 12.5]]);
+  });
+
+  it("finds the line by detector when several score the same feature, and skips what it cannot place", () => {
+    const inputs: MonitoringDetectorInputs[] = [
+      { detector_id: "timestral", inputs: { load: 10 } }, { detector_id: "forest", inputs: { load: 10 } }];
+    const rows = [{ ...row(0, inputs), forecasts: [expected(9), { ...expected(3), target: "other" },
+      { ...expected(Number.NaN), detector_id: "forest" }] }];
+    const [timestral, forest] = buildDetectorInputSeries(rows, time);
+    expect(timestral!.forecast).toEqual([[start, 9, null, null]]);
+    expect(forest!.forecast).toBeUndefined();
+  });
+
+  it("keeps a forecast without an interval, drops bounds that are not an interval and breaks where one is missing", () => {
+    const rows = [forecast(0, 10, [expected(10)]), forecast(1, 10, [expected(10, 12, 8)]), forecast(2, 10),
+      forecast(3, 10, [expected(10, 9, 11)]), forecast(60, 10, [expected(10, 9, 11)])];
+    const [line] = buildDetectorInputSeries(rows, time);
+    expect(line!.forecast).toEqual([
+      [start, 10, null, null], [start + 1000, 10, null, null], [start + 2000, null, null, null],
+      [start + 3000, 10, 9, 11], [start + 31500, null, null, null], [start + 60000, 10, 9, 11],
+    ]);
+  });
+
+  it("draws the forecast dashed in the feature's pane and the interval as a band between its bounds", () => {
+    const rows = [forecast(0, -1, [expected(-0.5, -2, 1)]), forecast(1, 0, [expected(0.5, -1, 2)])];
+    const telemetry: Array<[number, number]> = [[start, 10], [start + 1000, 11]];
+    const model = buildTelemetryChartModel({ telemetryName: "Load", telemetryColor: "#2563eb", telemetry, detectors: [],
+      anomalyMarkers: [], detectorInputs: buildDetectorInputSeries(rows, time) });
+    const option = buildTelemetryChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Load", viewport: { mode: "live" } });
+    const series = (option.series as Array<{ id?: string }>).filter(item => item.id?.startsWith("forecast"));
+    expect(series).toEqual([
+      expect.objectContaining({ id: "forecast::load", name: "load forecast", xAxisIndex: 1, yAxisIndex: 1,
+        lineStyle: expect.objectContaining({ type: "dashed" }), data: [[start, -0.5, -2, 1], [start + 1000, 0.5, -1, 2]] }),
+      // The lower bound and the width above it are stacked, so the fill starts at the lower bound.
+      expect.objectContaining({ id: "forecast-band::load:lower", stack: "forecast-band::load", stackStrategy: "all",
+        data: [[start, -2], [start + 1000, -1]] }),
+      expect.objectContaining({ id: "forecast-band::load:width", stack: "forecast-band::load", stackStrategy: "all",
+        areaStyle: expect.objectContaining({ opacity: 0.15 }), data: [[start, 3], [start + 1000, 3]] }),
+    ]);
+    expect((series[1] as { areaStyle?: unknown }).areaStyle).toBeUndefined();
+  });
+
+  it("draws no band for a step without an interval", () => {
+    const rows = [forecast(0, 10, [expected(10)]), forecast(1, 11, [expected(10.5)])];
+    const model = buildTelemetryChartModel({ telemetryName: "Load", telemetryColor: "#2563eb", telemetry: [[start, 10]], detectors: [],
+      anomalyMarkers: [], detectorInputs: buildDetectorInputSeries(rows, time) });
+    const option = buildTelemetryChartOption({ model, colors, timeZone: "UTC", accessibleDescription: "Load", viewport: { mode: "live" } });
+    expect((option.series as Array<{ id?: string }>).map(item => item.id).filter(id => id?.startsWith("forecast")))
+      .toEqual(["forecast::load"]);
+  });
+
+  it("names the forecast and its interval once in the hover", () => {
+    const hovered = [
+      { seriesId: "input::load", seriesName: "load", value: [start, 11] },
+      { seriesId: "forecast::load", seriesName: "load forecast", value: [start, 10.5, 9.5, 11.5] },
+      { seriesId: "forecast-band::load:lower", seriesName: "series\u00003", value: [start, 9.5] },
+      { seriesId: "forecast-band::load:width", seriesName: "series\u00004", value: [start, 2] },
+    ];
+    expect(formatTelemetryTooltip(hovered, "UTC", new Map(), "en-US").split("\n").slice(1))
+      .toEqual(["load: 11", "load forecast: 10.5 (9.5 to 11.5)"]);
+    expect(formatTelemetryTooltip([{ ...hovered[1], value: [start, 10.5, null, null] }], "UTC", new Map(), "en-US"))
+      .toContain("load forecast: 10.5");
+    // A service's history names the same in the hover of an evaluated observation.
+    const input: MonitoringInput = {
+      stream: { id: "L1", label: "Load", broker_id: "broker", topic: "L1", category: "Other", value_type: "number", unit: "kW" },
+      binding: { policy: { mode: "original", interval_seconds: 1 } },
+      path: "Charger 07",
+    };
+    const { model } = buildServiceHistoryModel({ serviceId: "phases", inputs: [input], allInputs: [input],
+      histories: new Map([["L1", [{ timestamp: at(0), value: 11 }]]]),
+      evidence: [forecast(0, 11, [expected(10.5, 9.5, 11.5)])], dark: false });
+    const text = formatMonitoringObservationTooltip(
+      [...hovered, { seriesName: "Restarted e-process", data: model.secondarySeries[0]!.data[0] }], model.readings, String, String);
+    expect(text?.split("\n").filter(line => line.startsWith("load"))).toEqual(["load: 11", "load forecast: 10.5 (9.5 to 11.5)"]);
   });
 });

@@ -145,6 +145,7 @@ class CatalogueDataService:
             "tracker_results": row.tracker_results or [],
             "detector_results": row.detector_results or [],
             "detector_inputs": row.detector_inputs or [],
+            "forecasts": row.forecasts or [],
             "threshold": row.threshold,
             "alarm": row.alarm,
             "created": row.created or row.timestamp,
@@ -174,6 +175,7 @@ class CatalogueDataService:
             "tracker_results": row.tracker_results or [],
             "detector_results": row.detector_results or [],
             "detector_inputs": row.detector_inputs or [],
+            "forecasts": row.forecasts or [],
             "threshold": row.threshold,
             "alarm": row.alarm,
         }

@@ -189,6 +189,14 @@ def monitoring_evidence_table(metadata: MetaData) -> Table:
             default=list,
             server_default=text("'[]'"),
         ),
+        # What each forecaster step expected of the observation, with its band.
+        Column(
+            "forecasts",
+            JSON().with_variant(JSONB(), "postgresql"),
+            nullable=False,
+            default=list,
+            server_default=text("'[]'"),
+        ),
         Column("threshold", Float, nullable=False),
         Column("alarm", Boolean, nullable=False, default=False),
         Column(

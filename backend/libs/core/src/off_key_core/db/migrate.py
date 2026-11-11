@@ -107,8 +107,9 @@ def pending_columns(
         }
         excluded_columns["monitoring_pipeline_runs"] = {"final_status"} - columns
     if "monitoring_evidence" in existing:
-        # Migration 015 adds each detector's results to the evidence, and
-        # migration 017 the features each detector scored.
+        # Migration 015 adds each detector's results to the evidence,
+        # migration 017 the features each detector scored and migration 026
+        # what each forecaster step expected.
         columns = {
             column["name"]
             for column in inspect(connection).get_columns("monitoring_evidence")
@@ -116,6 +117,7 @@ def pending_columns(
         excluded_columns["monitoring_evidence"] = {
             "detector_results",
             "detector_inputs",
+            "forecasts",
         } - columns
     retired_columns = dict(RETIRED_COLUMNS)
     if "users" in existing and "member_roles" not in existing:

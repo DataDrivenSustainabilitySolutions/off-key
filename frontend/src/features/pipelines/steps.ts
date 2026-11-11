@@ -80,6 +80,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "adaptive.random_projection": "Fewer dimensions through a fixed random map.",
   "detector:aberrant_seasonal_naive_forecaster": "Expect the value one cycle ago and score the miss.",
   "detector:aberrant_holt_winters_forecaster": "Expect a level, a trend and a repeating cycle, and score the miss.",
+  "forecast.timestral": "Expect what a pretrained model forecasts from the recent values and score the miss.",
   "policy.martingale": "Alarm when evidence of change builds up.",
   "policy.quantile": "Alarm when scores pass a calibrated threshold.",
   "output.evidence": "Store scores, evidence and alarms.",

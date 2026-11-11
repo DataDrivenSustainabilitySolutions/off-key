@@ -14,7 +14,7 @@ from ..utils.mqtt_topics import (
     derive_monitoring_sensor_keys,
     normalize_static_monitoring_topics,
 )
-from .adaptive import ADAPTIVE_MODELS_BY_TYPE
+from .adaptive import ADAPTIVE_MODELS_BY_TYPE, detector_component
 from .pipeline_calibration import EXCEEDANCE_RULE
 from .pipeline_catalog import pipeline_catalog, pipeline_catalog_id, pipeline_components
 from .pipeline_compiler import compile_pipeline, validate_pipeline
@@ -148,7 +148,7 @@ def lower_form_monitor(parsed: FormMonitorConfig) -> PipelineDefinition:
             {
                 "id": "detector",
                 "kind": "detector",
-                "component": f"detector:{parsed.monitoring.model_type}",
+                "component": detector_component(parsed.monitoring.model_type),
                 "params": parsed.monitoring.model_params,
             },
             {

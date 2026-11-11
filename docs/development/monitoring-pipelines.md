@@ -365,8 +365,46 @@ target and sets the forecaster's horizon to the lead. Warm-up is two seasons plu
 `lead - 1` updates and must fit the training window. Forecaster steps give
 `scores` today, so they work in front of `calibrate.fixed_split`; they move to
 the `forecasts` port once a calibration step reads forecasts. The composer lists
-them under Forecaster (`stepFamily`), where pretrained forecasters (`forecast.`
-components) will join them.
+them under Forecaster (`stepFamily`), together with pretrained forecasters.
+
+A pretrained forecaster is a `forecast.` component with learning `pretrained`.
+Its weights live in the forecast service (`off-key-forecast`), never in a RADAR
+worker, so it is not an ABERRANT component and not in `adaptive_catalog.json`:
+`PRETRAINED_FORECASTERS` in `models/adaptive.py` describes it beside the
+generated models, keyed by its component, and `detector_component()` gives the
+component of either kind. The first is `forecast.timestral`, with a `checkpoint`
+(`TIMESTRAL_CHECKPOINTS`, the ones the service offers), a `context_length` (how
+many recent values the model reads), a `minimum_context` (how many values must
+have arrived before the first forecast), and `lead`, `score` and `min_scale` as
+for the other forecasters. It reads one feature and no step that learns. It
+scores and then takes in every observation, as a detector that learns
+continuously does, so it runs wherever one runs: alone or beside detectors of
+either kind, under the fixed split with the calibrated score threshold or under
+a calibration step that keeps adapting. The conformal alarm policy does not run
+on it.
+
+In RADAR, `off_key_mqtt_radar/forecasting.py` gives the service ABERRANT's
+forecaster interface. `ServiceForecaster` keeps the recent values and asks the
+service for quantile forecasts; `forecast_from_quantiles()` turns them into
+ABERRANT's `Forecast`, with the median as the expected value and the
+interquartile range as the spread. `ServiceResidualDetector` is ABERRANT's
+residual detector around it, and `resolve_service_detector()` answers what
+RADAR asks of a resolved ABERRANT detector: configuration, capabilities,
+fingerprint and `build()`. A worker finds the service through
+`FORECAST_API_URL` and `FORECAST_API_TOKEN`. Preflight builds the step without
+calling the service, but a deployment that names no service fails it there,
+on the step, with the issue `forecast_service`.
+
+The first value of a run asks the service to have the checkpoint ready, which
+starts a download if the weights are not there yet. Until a forecast exists
+for an observation, that observation is rejected (`ObservationRejected`): lost
+coverage, not a normal score. A run does not learn a rejected observation, so
+the adapter keeps the value itself and the forecaster's series has no gap. The
+weights never change, so a forecast the service missed is made later from the
+same values, and scores after an outage are the ones an undisturbed run gives.
+A service that hangs is left alone for
+15 seconds after a slow failure. A service that does not offer the checkpoint
+ends the run (`FatalExecutionError`), because no later value could be scored.
 
 Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
 a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
@@ -736,8 +774,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`386eb796a735aa60dae48cd41788b0e950a2099d`, the commit that adds the forecaster
-steps to the catalog, on top of migration 025
+`ad919d98e56a4e0e3dbcb8c3254f51e034d38251`, the commit that completes the
+Timestral forecaster step, on top of migration 025
 (`evidence_cursor`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -746,8 +784,9 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `7194e94f`, has a catalog without the forecaster steps;
-`b03157ec` before it locks ABERRANT 1.4.0, so the rehearsal accepts neither.
+The previous reference, `386eb796`, lists no Timestral step in field discovery;
+`7194e94f` before it has a catalog without the forecaster steps, and `b03157ec`
+locks ABERRANT 1.4.0, so the rehearsal accepts none of them.
 Releases before
 migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as

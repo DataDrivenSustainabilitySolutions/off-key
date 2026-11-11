@@ -12,16 +12,20 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
-from off_key_core.models.adaptive import aberrant_model
+from off_key_core.models.adaptive import PRETRAINED_FORECASTERS, aberrant_model
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
     AdaptiveStreamState,
 )
 from off_key_mqtt_radar.config.config import AnomalyDetectionConfig
-from off_key_mqtt_radar.execution_errors import ObservationRejected
+from off_key_mqtt_radar.execution_errors import (
+    FatalExecutionError,
+    ObservationRejected,
+)
 from pydantic import ValidationError
 
+from tests.support import forecast_service
 from tests.support.form_pipeline import form_radar_config
 
 FAST_PARAMS: dict[str, dict[str, Any]] = {
@@ -96,17 +100,19 @@ def _runtime_config(
 ) -> AnomalyDetectionConfig:
     params = _params(model_type)
     validated_params = validate_adaptive_model_params(model_type, params)
-    minimum = max(
-        2,
-        get_model_spec(ADAPTIVE_MODELS_BY_TYPE[model_type]["catalog_id"])
-        .capabilities(
-            aberrant_model(ADAPTIVE_MODELS_BY_TYPE[model_type], validated_params)[
-                "params"
-            ]
+    if model_type in PRETRAINED_FORECASTERS:
+        warmup = validated_params["minimum_context"] + validated_params["lead"] - 1
+    else:
+        warmup = (
+            get_model_spec(ADAPTIVE_MODELS_BY_TYPE[model_type]["catalog_id"])
+            .capabilities(
+                aberrant_model(ADAPTIVE_MODELS_BY_TYPE[model_type], validated_params)[
+                    "params"
+                ]
+            )
+            .warmup.minimum
         )
-        .warmup.minimum
-        or 0,
-    )
+    minimum = max(2, warmup or 0)
     if preprocessing_steps is None and model_type == "aberrant_half_space_trees":
         preprocessing_steps = [{"type": "min_max_scaler"}]
     adaptive = AdaptiveStreamConfig(
@@ -157,7 +163,7 @@ def _record(detector, scores: list[float]) -> list[float]:
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 29
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 30
     for definition in ADAPTIVE_MODELS_BY_TYPE.values():
         spec = get_model_spec(definition["catalog_id"])
         assert spec.load()
@@ -172,7 +178,9 @@ def test_catalog_contains_only_supported_numeric_detectors() -> None:
 def test_every_released_detector_runs_warmup_calibration_and_operational(
     model_type: str,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
+    forecast_service.start(monkeypatch, tmp_path)
     config = _runtime_config(model_type)
     detector = AdaptiveStreamDetectionService(config)
     count = _feature_count(model_type)
@@ -389,6 +397,114 @@ def test_holt_winters_forecaster_at_lead_one_is_the_seasonal_residual_detector()
     assert scores("aberrant_holt_winters_forecaster") == pytest.approx(
         scores("aberrant_seasonal_residual_detector")
     )
+
+
+def _timestral(lead: int = 1, training: int = 20, **params) -> AnomalyDetectionConfig:
+    adaptive = AdaptiveStreamConfig(
+        model_type="forecast.timestral",
+        model_params={"context_length": 32, "minimum_context": 16, "lead": lead}
+        | params,
+        training_window_size=training,
+        calibration_window_size=4,
+    )
+    return _config(adaptive, _features(1))
+
+
+@pytest.mark.parametrize("lead", [1, 3])
+def test_timestral_step_scores_a_break_in_the_cycle_through_the_service(
+    monkeypatch, tmp_path, lead
+):
+    service = forecast_service.start(monkeypatch, tmp_path, season_length=4)
+    pattern = [0.0, 10.0, 0.0, -10.0]
+    detector = AdaptiveStreamDetectionService(_timestral(lead))
+    scores = [
+        detector.process_data_point({"x0": 100.0 + pattern[index % 4]}).anomaly_score
+        for index in range(40)
+    ]
+    spike = detector.process_data_point({"x0": 110.0})
+
+    assert detector.state is AdaptiveStreamState.OPERATIONAL
+    assert max(scores[24:]) < 0.5
+    assert spike.anomaly_score > 10 * max(scores[24:], default=0.0) + 1
+    # The first value asks for the model, then one forecast per value from the
+    # sixteenth on; the weights stay in the service.
+    assert service["calls"] == [
+        ("POST", "http://forecast/v1/downloads"),
+        *[("POST", "http://forecast/v1/forecast")] * 26,
+    ]
+    assert detector.model_capabilities["warmup"] == {
+        "minimum": 16 + lead - 1,
+        "unit": "events",
+    }
+
+
+def test_timestral_warmup_must_fit_the_training_window(monkeypatch, tmp_path):
+    forecast_service.start(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="at least 18 updates"):
+        AdaptiveStreamDetectionService(_timestral(lead=3, training=17))
+
+
+def test_timestral_checkpoint_restores_without_its_connection(monkeypatch, tmp_path):
+    forecast_service.start(monkeypatch, tmp_path, season_length=4)
+    config = _timestral(lead=2)
+    detector = AdaptiveStreamDetectionService(config)
+    for index in range(30):
+        detector.process_data_point({"x0": 100.0 + index % 4})
+
+    checkpoint = pickle.loads(pickle.dumps(detector.export_checkpoint()))
+    restored = AdaptiveStreamDetectionService.from_checkpoint_data(checkpoint, config)
+    expected = detector.process_data_point({"x0": 140.0})
+    result = restored.process_data_point({"x0": 140.0})
+
+    assert restored.state is AdaptiveStreamState.OPERATIONAL
+    assert result.anomaly_score == expected.anomaly_score > 1
+    assert restored.detector_fingerprint == detector.detector_fingerprint
+
+
+def test_timestral_outage_rejects_observations_and_the_run_recovers(
+    monkeypatch, tmp_path
+):
+    service = forecast_service.start(monkeypatch, tmp_path, season_length=4)
+    detector = AdaptiveStreamDetectionService(_timestral())
+    for index in range(30):
+        detector.process_data_point({"x0": 100.0 + index % 4})
+
+    # The service goes away: the value before the outage is still compared
+    # with its forecast, the next has none.
+    monkeypatch.setitem(service, "down", True)
+    assert math.isfinite(detector.process_data_point({"x0": 102.0}).anomaly_score)
+    for _ in range(3):
+        with pytest.raises(ObservationRejected, match="No forecast to compare with"):
+            detector.process_data_point({"x0": 103.0})
+    assert detector.state is AdaptiveStreamState.OPERATIONAL
+
+    monkeypatch.setitem(service, "down", False)
+    result = detector.process_data_point({"x0": 140.0})
+    assert result.anomaly_score > 1 and result.is_anomaly
+
+
+def test_timestral_run_ends_when_the_service_does_not_offer_the_checkpoint(
+    monkeypatch, tmp_path
+):
+    forecast_service.start(
+        monkeypatch, tmp_path, checkpoints=("mistralai/Timestral-28M",)
+    )
+    detector = AdaptiveStreamDetectionService(_timestral())
+
+    with pytest.raises(FatalExecutionError, match="does not offer") as error:
+        detector.process_data_point({"x0": 100.0})
+    assert "mistralai/Timestral-5M" in str(error.value)
+    assert detector.state is AdaptiveStreamState.FAILED
+
+
+def test_timestral_settings_are_checked_before_a_run_starts(monkeypatch, tmp_path):
+    forecast_service.start(monkeypatch, tmp_path)
+    with pytest.raises(ValidationError, match="minimum_context"):
+        _timestral(context_length=16, minimum_context=32)
+    with pytest.raises(ValidationError):
+        _timestral(checkpoint="mistralai/Timestral-1B")
+    with pytest.raises(ValidationError):
+        _timestral(horizon=4)
 
 
 def test_pca_initialization_cannot_be_shortened_by_model_warmup():

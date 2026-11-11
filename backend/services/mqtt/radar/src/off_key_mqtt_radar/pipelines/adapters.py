@@ -12,6 +12,7 @@ def resolved_detector_config(
 ) -> ResolvedDetectorConfig:
     from off_key_core.models.adaptive import (
         ADAPTIVE_MODELS_BY_TYPE,
+        PRETRAINED_FORECASTERS,
         aberrant_model,
         bind_detector_parameters,
     )
@@ -28,12 +29,17 @@ def resolved_detector_config(
     # transforms do. Resolve it here to preserve existing graph fingerprints.
     if "seed" in params and params["seed"] is None:
         params["seed"] = plan.compiled.definition.settings.seed
-    config = DetectorConfig.from_mapping(
-        {
-            "version": 1,
-            "model": aberrant_model(definition, params),
-        }
-    ).resolve()
+    if model_type in PRETRAINED_FORECASTERS:
+        from ..forecasting import resolve_service_detector
+
+        # Its settings are not Aberrant's to complete, so the defaults go in here.
+        config = resolve_service_detector(
+            aberrant_model(definition, definition["default_parameters"] | params)
+        )
+    else:
+        config = DetectorConfig.from_mapping(
+            {"version": 1, "model": aberrant_model(definition, params)}
+        ).resolve()
     capabilities = config.capabilities
     if capabilities.higher_is_more_anomalous is not True:
         raise ValueError("Monitoring requires higher scores to mean more anomalous")

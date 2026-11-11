@@ -92,7 +92,6 @@ test("one sidebar holds workspaces, saved items, the catalogue tree and account 
   expect(await catalogue.locator("li").count()).toBeLessThan(60);
   const footerBox = await bounds(footer);
   expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(800);
-  await expect(footer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
   await expect(footer.getByRole("button", { name: "Account menu", exact: true })).toBeInViewport();
   await expectNoSidebarOverflow(page);
 
@@ -144,17 +143,25 @@ test("one sidebar holds workspaces, saved items, the catalogue tree and account 
     await capture(page, testInfo, `sidebar-desktop-${appearance.toLowerCase()}`);
   }
 
+  const expandedMain = await bounds(main);
+  const heading = page.getByRole("heading", { name: "Sources", exact: true });
+  const expandedHeading = await bounds(heading);
   await sidebar.getByRole("button", { name: "Hide sidebar", exact: true }).click();
   const show = page.getByRole("button", { name: "Show sidebar", exact: true });
   await expect(show).toBeFocused();
   await expect(sidebar).toHaveAttribute("inert", "");
   await expect.poll(async () => (await bounds(main)).x).toBe(0);
   expect((await bounds(main)).width).toBe(1280);
+  expect((await bounds(main)).y).toBe(expandedMain.y);
+  expect((await bounds(main)).height).toBe(expandedMain.height);
+  expect((await bounds(heading)).y).toBe(expandedHeading.y);
   await capture(page, testInfo, "sidebar-collapsed-dark");
   await page.reload();
   await expect(show).toBeVisible();
   await show.click();
   await expect(sidebar.getByRole("button", { name: "Hide sidebar", exact: true })).toBeFocused();
+  expect((await bounds(main)).y).toBe(expandedMain.y);
+  expect((await bounds(heading)).y).toBe(expandedHeading.y);
   await setAppearance(page, "Light");
   // Browsing, searching and expanding never wrote anything.
   expect(api.writes).toEqual([]);
@@ -201,6 +208,11 @@ test("phones use one focus-trapped drawer that closes on navigation and returns 
     await expect(page.getByRole("separator", { name: "Resize sidebar", exact: true })).toHaveCount(0);
     const showBox = await bounds(show);
     expect(showBox.width).toBeGreaterThanOrEqual(44);
+    const main = page.locator(".app-main");
+    const initialMain = await bounds(main);
+    const heading = page.getByRole("heading", { name: "Monitoring", exact: true });
+    await expect(heading).toBeVisible();
+    expect((await bounds(heading)).y).toBeGreaterThanOrEqual(showBox.y + showBox.height);
     await expectNoHorizontalScroll(page);
 
     await show.click();
@@ -208,6 +220,7 @@ test("phones use one focus-trapped drawer that closes on navigation and returns 
     await expect(drawer).toBeFocused();
     const drawerBox = await bounds(drawer);
     expect(drawerBox.x + drawerBox.width).toBeLessThan(width);
+    expect(await bounds(main)).toEqual(initialMain);
     await expect(drawer.getByRole("button", { name: "Account menu", exact: true })).toBeInViewport();
     const close = drawer.getByRole("button", { name: "Close navigation", exact: true });
     await close.focus();
@@ -236,7 +249,7 @@ test("phones use one focus-trapped drawer that closes on navigation and returns 
     if (await expand.count()) await expand.click();
     // The drawer's middle scrolls as one, bringing the catalogue up under saved items.
     await drawer.locator(".app-sidebar-body").evaluate(element => { element.scrollTop = element.scrollHeight; });
-    await expect(drawer.getByRole("button", { name: "Settings", exact: true })).toBeInViewport();
+    await expect(drawer.getByRole("button", { name: "Account menu", exact: true })).toBeInViewport();
     await capture(page, testInfo, `sidebar-mobile-${appearance.toLowerCase()}`);
     await page.keyboard.press("Escape");
   }
@@ -270,6 +283,6 @@ test("read-only, empty and unavailable catalogues keep a coherent sidebar", asyn
   await installSidebarMockApi(failing, { catalogueError: true });
   await failing.goto("/");
   await expect(failing.getByRole("complementary", { name: "Sidebar", exact: true }).getByRole("alert")).toContainText("could not be loaded");
-  await expect(failing.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+  await expect(failing.getByRole("button", { name: "Account menu", exact: true })).toBeVisible();
   await failing.close();
 });

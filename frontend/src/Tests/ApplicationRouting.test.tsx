@@ -106,7 +106,7 @@ describe("application home", () => {
     expect(workspaces.getAllByRole("link").map(link => link.textContent)).toEqual(["Monitoring", "Sources", "Reporting"]);
     expect(workspaces.getByRole("link", { name: "Reporting" }).getAttribute("aria-current")).toBe("page");
     expect(sidebar.getByRole("navigation", { name: "Catalogue" })).toBeTruthy();
-    expect(sidebar.getByRole("button", { name: "Settings" })).toBeTruthy();
+    expect(sidebar.getByRole("button", { name: "Account menu" })).toBeTruthy();
     fireEvent.click(workspaces.getByRole("link", { name: "Monitoring" }));
     await screen.findByRole("heading", { name: "Monitoring home" });
     expect(router.state.location.pathname).toBe("/");
@@ -130,11 +130,12 @@ describe("application home", () => {
     await waitFor(() => expect(loadExplorerPreferences(null).sidebarOpen).toBe(true));
   });
 
-  it("opens settings from the sidebar footer above the current page without remounting it", async () => {
+  it("opens settings from the sidebar account menu above the current page without remounting it", async () => {
     const router = visit("/anomalies?source=kept");
     const page = await screen.findByRole("heading", { name: "Reporting" });
-    const settings = within(screen.getByRole("complementary", { name: "Sidebar" })).getByRole("button", { name: "Settings" });
-    fireEvent.click(settings);
+    const account = within(screen.getByRole("complementary", { name: "Sidebar" })).getByRole("button", { name: "Account menu" });
+    fireEvent.keyDown(account, { key: "Enter" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Preferences" }));
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(await within(dialog).findByRole("heading", { name: "Appearance", level: 2 })).toBeTruthy();
     expect(router.state.location.pathname).toBe("/anomalies");
@@ -144,7 +145,7 @@ describe("application home", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
     expect(screen.getByRole("heading", { name: "Reporting" })).toBe(page);
     expect(router.state.location.search).toBe("?source=kept");
-    await waitFor(() => expect(document.activeElement).toBe(settings));
+    await waitFor(() => expect(document.activeElement).toBe(account));
   });
 
   it("uses one focus-trapped drawer on phones, closes it on navigation and returns focus to its trigger", async () => {

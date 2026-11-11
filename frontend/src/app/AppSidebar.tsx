@@ -1,6 +1,5 @@
 import type { Ref } from "react";
 import { X } from "lucide-react";
-import { BrandHome } from "@/components/BrandHome";
 import { WORKSPACE_PATHS } from "@/features/workspace/application-navigation";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
 import { SavedNavigation } from "@/features/workspace/SavedNavigation";
@@ -21,18 +20,15 @@ type Props = {
 
 /**
  * The application's one navigation spine: workspaces at the top, saved and
- * catalogue navigation in the middle, settings and account at the bottom.
+ * catalogue navigation in the middle, and the account menu at the bottom.
  */
 export function AppSidebar({ onHide, onNavigate, drawer, hideRef, searchRef }: Props) {
   const { sectionHref } = useCatalogue();
   return <div className="app-sidebar" id={SIDEBAR_ID}>
-    <div className="app-sidebar-header">
-      <BrandHome variant="wordmark" onNavigate={onNavigate} />
-      {drawer
+    <WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} onNavigate={onNavigate}
+      toggle={drawer
         ? <button ref={hideRef} type="button" className="app-sidebar-toggle" aria-label="Close navigation" onClick={onHide}><X size={16} aria-hidden="true" /></button>
-        : <SidebarToggle ref={hideRef} open onClick={onHide} />}
-    </div>
-    <WorkspaceNavigation hrefs={Object.fromEntries(WORKSPACE_PATHS.map(path => [path, sectionHref(path)]))} onNavigate={onNavigate} />
+        : <SidebarToggle ref={hideRef} open onClick={onHide} />} />
     <div className="app-sidebar-body">
       <SavedNavigation onNavigate={onNavigate} />
       <WorkspaceCatalogue onDismiss={onNavigate} searchRef={searchRef} />

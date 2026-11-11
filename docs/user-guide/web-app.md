@@ -93,7 +93,8 @@ chosen source.
 ### Showing and hiding the sidebar
 
 **Hide sidebar** gives the page the full width; **Show sidebar** at the top left
-brings the sidebar back. Drag the sidebar's right edge to resize it, or focus the
+brings the sidebar back. Toggling it keeps the page at the same vertical position.
+Drag the sidebar's right edge to resize it, or focus the
 edge and use the arrow keys. Double-click the edge to restore the default width.
 The width, whether the sidebar is shown, open branches, folded categories, the
 chosen collection and the **Recently active** filter are remembered for your
@@ -128,8 +129,8 @@ holds all of them. Controls a role does not cover stay hidden.
 
 ## Settings and system status
 
-Open **Settings** at the bottom of the sidebar (or **Preferences** in the account
-menu) to choose **Light**, **Dark**, or **Follow system** under **Appearance**. Changes apply immediately and are saved in this browser on
+Open **Preferences** from the account menu at the bottom of the sidebar
+to choose **Light**, **Dark**, or **Follow system** under **Appearance**. Changes apply immediately and are saved in this browser on
 this device. Follow system also responds to changes in the device's appearance.
 Settings opens over the current page, preserving your workspace and unsaved input.
 Close it with the close button or Escape to return to the page.

@@ -218,6 +218,17 @@ A design has no strategy to choose. Three settings decide how it detects:
   that learns continuously, or a pretrained one, alarms on the **Calibrated
   score threshold**.
 
+A pretrained forecaster, such as the **Timestral forecaster**, does not carry
+its model: the weights live in the deployment's forecast service. The step's
+settings list every checkpoint under **Model weights** with its size and state:
+**Ready**, **Not downloaded**, **Downloading** with its progress, or **Download
+failed** with the reason. **Download** fetches a checkpoint before a monitor
+needs it, and **Try again** repeats a failed download; both need the permission
+to manage monitors. A monitor that starts before its checkpoint is ready scores
+nothing until the download ends, and its coverage shows the values it lost.
+Where the deployment has no forecast service, the step is greyed out in **Add
+step** with that reason and cannot be chosen as a detector model.
+
 When a change also moves steps or the detection rule, a notice says what
 changed, and **Undo** reverses all of it.
 In **Service settings**, **Before the first alarm** shows the observations Prepare steps need first, then

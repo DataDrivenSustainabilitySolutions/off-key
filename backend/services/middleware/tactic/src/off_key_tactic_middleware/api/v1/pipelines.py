@@ -3,10 +3,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from off_key_core.auth.permissions import Permission
 from off_key_core.models.pipeline_reports import bounded_validation_report
 from off_key_core.models.pipelines import pipeline_catalog, validate_pipeline
+from off_key_core.schemas.forecast import ForecastModelInfo
 from off_key_core.schemas.pipelines import (
+    ForecastModelCatalog,
+    ForecastModelDownload,
     PipelineActivationRequest,
     PipelineActivationView,
     PipelineApplyRequest,
@@ -36,6 +40,7 @@ from ...provider import (
     get_pipeline_activations,
     get_pipeline_library,
 )
+from ...services.pipelines import forecast_models
 from ...services.pipelines.activation import PipelineActivations
 from ...services.pipelines.library import PipelineLibrary
 from ..collection_auth import current_member, require_permission
@@ -72,6 +77,28 @@ async def invoke(operation):
 @router.get("/pipelines/catalog", response_model=PipelineCatalog)
 async def catalog():
     return pipeline_catalog(get_tactic_settings().config.pipeline_authoring_enabled)
+
+
+@router.get("/pipelines/forecast-models", response_model=ForecastModelCatalog)
+async def list_forecast_models():
+    """The forecast service's checkpoints and whether each is downloaded."""
+    return await run_in_threadpool(forecast_models.forecast_models)
+
+
+@router.post(
+    "/pipelines/forecast-models/downloads",
+    response_model=ForecastModelInfo,
+    status_code=202,
+    dependencies=[Depends(manage_monitors)],
+)
+async def download_forecast_model(change: ForecastModelDownload):
+    """Have the forecast service download a checkpoint; it answers at once."""
+    try:
+        return await run_in_threadpool(forecast_models.request_download, change.model)
+    except forecast_models.ForecastServiceUnreachable as exc:
+        raise HTTPException(
+            503, "The forecast service does not answer. Try again shortly."
+        ) from exc
 
 
 @router.get("/pipelines", response_model=PipelineListPage)

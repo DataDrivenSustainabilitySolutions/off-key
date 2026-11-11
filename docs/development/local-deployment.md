@@ -256,8 +256,9 @@ make local-up LOCAL_ARGS=--forecast
 
 This opt-in profile builds and starts the
 [forecast service](../operations/forecast-service.md) and gives TACTIC and the
-Dojo workers its address for this start. Without it, a design with a Timestral
-step fails preflight (`forecast_service`). The image carries CPU PyTorch, so its
+Dojo workers its address for this start. Without it, the composer shows the
+Timestral step greyed out, and a design that holds one fails preflight
+(`forecast_service`). The image carries CPU PyTorch, so its
 first build takes longer than the others. Weights download from the Hugging Face
 Hub on first use into the project's `forecast_models` volume. As with the broker
 fixture, a later start without `--forecast` leaves the service running but stops

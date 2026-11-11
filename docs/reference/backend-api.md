@@ -193,6 +193,8 @@ here; changes need `manage_monitors`.
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint | Path ids |
 | `GET` | `/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node | `selected_node_id` |
 | `GET` | `/pipeline-components` | Components a design may use, with parameter schemas, and the starting templates | None |
+| `GET` | `/forecast-models` | Models of the forecast service that pretrained forecaster steps use, each with its download `status`, `progress` and `error`; `service` is `not_deployed` or `unreachable` when there is none to list | None |
+| `POST` | `/forecast-models/downloads` | Have the forecast service download a model's weights (HTTP 202); poll the list for progress | Body: `model` |
 | `POST` | `/pipeline-activations` | Run a published revision as a monitor (HTTP 202) | Body: `revision_id`, `bindings`, `display_name`, `idempotency_key`, optional `replace_monitor_id` |
 | `GET` | `/pipeline-activations/{activation_id}` | Progress of an activation: `phase`, `monitor_id`, issues | Path: `activation_id` |
 | `POST` | `/pipeline-activations/{activation_id}/cancel` | Cancel an activation that has not finished | Path: `activation_id` |
@@ -440,6 +442,8 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/monitors/pipelines/apply` | Save, publish and activate a design in one step |
 | `POST` | `/monitors/pipelines/validate` | Check an unsaved design without creating a library record |
 | `GET` | `/monitors/pipelines/catalog` | Components a design may use, with parameter schemas, and the starting templates |
+| `GET` | `/monitors/pipelines/forecast-models` | The forecast service's models and their download state, asked with TACTIC's token |
+| `POST` | `/monitors/pipelines/forecast-models/downloads` | Have the forecast service download a model's weights |
 | `GET` | `/monitors/pipelines/{pipeline_id}` | One design with its draft, version and revisions |
 | `PATCH` | `/monitors/pipelines/{pipeline_id}` | Rename, describe or archive a design |
 | `PUT` | `/monitors/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout |

@@ -181,6 +181,7 @@ export function addBlocker(
   definition: PipelineDefinition,
   component: PipelineComponent,
 ): string | undefined {
+  if (component.unavailable) return component.unavailable;
   if (definition.nodes.length >= PIPELINE_LIMITS.nodes)
     return `The design has reached its ${PIPELINE_LIMITS.nodes}-component limit.`;
   if (component.kind === "detector" && detectorIds(definition).length)

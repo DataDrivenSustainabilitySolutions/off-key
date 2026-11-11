@@ -1,7 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode, type RefObject } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { CircleCheck, Plus, TriangleAlert, X } from "lucide-react";
 import type { PipelineCatalog } from "./contracts";
+import { useForecastModels, usesForecastService, withForecastService } from "./forecastModels";
 import PipelineCanvas from "./PipelineCanvas";
 import { PipelineFeatures } from "./PipelineFeatures";
 import { PipelineInspector } from "./PipelineInspector";
@@ -71,9 +72,18 @@ function useCoveredEdges(stage: boolean, canvas: RefObject<HTMLElement | null>, 
 
 /** One canvas-first workspace for creation, saved designs and running graphs. */
 export function PipelineWorkbench({
-  catalog, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
+  catalog: offered, validation, settings, actions, inspectorPanel, onInspectorPanelChange,
   onUndo, onRedo, issuesRequest = 0, input, startup, validationError, onRetryValidation, stage = false, header, ...props
 }: Props) {
+  // A step whose model lives in the forecast service is offered only where the deployment
+  // has one; a design that is only shown asks when it holds such a step.
+  const forecast = useForecastModels(props.readOnly
+    ? props.document.definition.nodes.some((node) => usesForecastService(node.component))
+    : offered.components.some((component) => usesForecastService(component.id)));
+  const catalog = useMemo(
+    () => ({ ...offered, components: withForecastService(offered.components, forecast.catalog) }),
+    [offered, forecast.catalog],
+  );
   useUndoShortcuts(!props.readOnly && !!onUndo && !!onRedo, () => onUndo?.(), () => onRedo?.());
   const [issuesOpen, setIssuesOpen] = useState(false);
   // Keep the last result on screen while an edit is re-checked, instead of flickering away.
@@ -262,7 +272,7 @@ export function PipelineWorkbench({
   }}>
     <PipelineInspector document={props.document} catalog={catalog} selected={props.selected}
       validation={validation} lastValidation={lastValidation} readOnly={props.readOnly} onSelect={select}
-      onChange={props.onChange} input={input}
+      onChange={props.onChange} input={input} forecast={forecast}
       header={<div className="pl-inspector-heading">
         <h3 ref={heading} tabIndex={-1}>{panel === "service" ? "Service settings" : "Step settings"}</h3>
         <button type="button" onClick={close} aria-label="Close settings" title="Collapse settings">

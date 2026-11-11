@@ -1,5 +1,7 @@
 import { apiUtils } from "@/lib/api-client";
 import type {
+  ForecastModelCatalog,
+  ForecastModelInfo,
   PipelineActivationView,
   PipelineApplyRequest,
   PipelineCatalog,
@@ -40,6 +42,14 @@ export const pipelinesApi = {
         redirectOnUnauthorized: false,
       })
       .then(normalizeCatalog),
+  /** The forecast service's checkpoints and their download state, for pretrained forecasters. */
+  forecastModels: (signal?: AbortSignal) =>
+    apiUtils.get<ForecastModelCatalog>("/v1/forecast-models", {
+      signal,
+      redirectOnUnauthorized: false,
+    }),
+  downloadForecastModel: (model: string) =>
+    apiUtils.post<ForecastModelInfo>("/v1/forecast-models/downloads", { model }),
   list: (query: PipelineListQuery = {}, signal?: AbortSignal) =>
     apiUtils.get<PipelineListPage>(base, {
       signal,

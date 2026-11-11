@@ -26,6 +26,7 @@ from off_key_core.schemas.radar import AdaptiveStreamConfig
 
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
+from .forecast_band import forecast_entry
 from .fusion import RankFusion, threshold_count
 from .memory import process_rss_mb
 from .models import AnomalyResult, inference_key
@@ -281,6 +282,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         bound = self._validated_observation(data)
         self._scored_features = None
         self._detector_results: list[dict[str, Any]] | None = None
+        self._forecasts: list[dict[str, Any]] | None = None
         self._diagnose(
             self.diagnostics.begin, self.processed_count + 1, self.state.value
         )
@@ -438,6 +440,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         else:
             score = self._score(data)
             is_anomaly = score > self.threshold
+        # Combined detectors meet as ranks, so no step's own score has a threshold.
+        self._expect(None if self.plan.fused else self.threshold)
         self._learn(data)
         self.operational_count += 1
         self.processed_count += 1
@@ -446,6 +450,23 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         return self._result(
             data, score, is_anomaly, "operational", topic, charger_id, started
         )
+
+    def _expect(self, threshold: float | None) -> None:
+        """Keep what each forecaster step expected of the scored observation.
+
+        `threshold` is the boundary on a single step's own score, if there is one.
+        """
+        entries = []
+        for identifier, graph in zip(self.online_ids, self.pipelines, strict=False):
+            features = self._scored_features
+            if self.plan.fused:
+                features = (features or {}).get(identifier)
+            entry = forecast_entry(
+                self.plan, identifier, graph.model, features, threshold
+            )
+            if entry is not None:
+                entries.append(entry)
+        self._forecasts = entries or None
 
     def _score(self, data: dict[str, float]) -> float:
         self._diagnose(self.diagnostics.select_pass, "score")
@@ -722,6 +743,8 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                         if self.plan.fused and self._detector_results is not None
                         else {}
                     ),
+                    # What each forecaster step expected, and its band.
+                    **({"forecasts": self._forecasts} if self._forecasts else {}),
                 },
             },
         )

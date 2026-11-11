@@ -354,8 +354,8 @@ policy. Detectors give `scores`; the calibration step turns them into `p_values`
 for the policy. `calibrate.fixed_split` is what both lanes did: the learned
 steps freeze and the calibration window gives conformal ranks. It owns `fusion`;
 the policy keeps its own parameters, including the quantile. Every other
-calibration step keeps adapting (see below). A `forecasts` port type is reserved
-for forecasters.
+calibration step keeps adapting (see below). A forecaster step gives `forecasts`,
+which only a calibration step reads.
 
 A forecaster step is a detector that scores one feature by how far it misses the
 forecast made for it. `FORECASTER_IDS` in `models/adaptive.py` lists them; each
@@ -364,10 +364,25 @@ is ABERRANT's `residual_detector` around one forecaster (`seasonal_naive`,
 many updates ahead it forecasts, and `score`. `aberrant_model()` nests them into
 the residual detector's configuration, binds the step's single feature as the
 target and sets the forecaster's horizon to the lead. Warm-up is two seasons plus
-`lead - 1` updates and must fit the training window. Forecaster steps give
-`scores` today, so they work in front of `calibrate.fixed_split`; they move to
-the `forecasts` port once a calibration step reads forecasts. The composer lists
-them under Forecaster (`stepFamily`), together with pretrained forecasters.
+`lead - 1` updates and must fit the training window. The composer lists them
+under Forecaster (`stepFamily`), together with pretrained forecasters.
+
+A forecaster step's port is `forecasts`: the score, and with it the forecast the
+observation was scored against. Any calibration step reads it as it reads
+`scores` (`_check_ports`, `takes()` in the editor), beside other detectors or
+alone. A scored result then says what each forecaster step expected, in
+`context["adaptive_stream"]["forecasts"]` (`forecast_band.py`): one entry per
+step with `detector_id`, `target`, `lead`, `expected` (the forecast's point at
+that lead) and `slot`, the reading the target is when no step changed its
+values, or null. `lower` and `upper` are the calibrated interval, the target
+values whose score stays at or below the boundary the observation met
+(`aberrant.forecast.scores.interval`), so a value outside it is above the
+boundary. They are null without a boundary in the step's own score units:
+detectors combined into ranks, or a boundary that is still infinite. A run
+reads the forecast after the step scored the observation and before it learns
+it (`_expect`), because a pretrained step fetches a forecast its service missed
+while it scores. The key is absent before a forecast exists and outside the
+operational phase.
 
 A pretrained forecaster is a `forecast.` component with learning `pretrained`.
 Its weights live in the forecast service (`off-key-forecast`), never in a RADAR

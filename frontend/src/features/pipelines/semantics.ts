@@ -54,6 +54,14 @@ export function inputKind(component: PipelineComponent | undefined) {
     : undefined;
 }
 
+/** Whether a step takes what a connection carries. A calibration step reads a
+ * forecaster's forecasts as it reads a detector's scores. */
+export function takes(component: PipelineComponent | undefined, carried: DataKind | undefined) {
+  const input = inputKind(component);
+  return !!carried && (input === carried
+    || (component?.kind === "calibration" && carried === "forecasts"));
+}
+
 export function outputKind(
   node: PipelineNode,
   component: PipelineComponent | undefined,

@@ -179,9 +179,17 @@ def test_the_score_threshold_needs_a_detector_that_takes_in_every_observation():
 def test_every_detector_gives_scores_and_the_calibration_step_p_values():
     components = {item.id: item for item in pipeline_components()}
 
+    # A forecaster step hands its forecast on with the score.
     assert {
-        item.output_type for item in components.values() if item.kind == "detector"
+        item.output_type
+        for item in components.values()
+        if item.kind == "detector" and "forecast" not in item.id
     } == {"scores"}
+    assert {
+        item.output_type
+        for item in components.values()
+        if item.kind == "detector" and "forecast" in item.id
+    } == {"forecasts"}
     assert {
         item.learning for item in components.values() if item.kind == "detector"
     } == {"batch", "online", "pretrained"}

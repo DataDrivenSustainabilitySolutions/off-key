@@ -15,6 +15,7 @@ import {
   dataKinds,
   GRID_STEP,
   inputKind,
+  takes,
   NODE_SIZE,
   nodePosition,
   outputKind,
@@ -421,7 +422,7 @@ export function connectionIssue(
   const input = inputKind(toComponent);
   if (!output) return "Evidence output is terminal.";
   if (!input) return "Aligned inputs have no incoming port.";
-  if (output !== input)
+  if (!takes(toComponent, output))
     return `Cannot connect ${dataKinds[output].label} to ${dataKinds[input].label}.`;
   if (!replace && occupiedInput(definition, target))
     return "This input is occupied. Disconnect it before choosing a replacement.";
@@ -481,7 +482,7 @@ export function insertBlocker(
     return "Compatible component metadata is required before inserting here.";
   const carried = outputKind(from, fromComponent);
   const produces = component.kind === "output" ? undefined : (component.output_type ?? "features");
-  if (!carried || inputKind(component) !== carried || produces !== inputKind(toComponent))
+  if (!carried || !takes(component, carried) || !takes(toComponent, produces))
     return `Does not fit a connection that carries ${dataKinds[carried ?? "features"].label.toLowerCase()}.`;
   return learningBlocker(definition, link.target, component, components);
 }

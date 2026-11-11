@@ -89,7 +89,7 @@ def test_timestral_is_a_pretrained_forecaster_step_of_its_own():
 
     assert detector_component(TIMESTRAL) == TIMESTRAL
     assert (component.kind, component.learning) == ("detector", "pretrained")
-    assert component.output_type == "scores"
+    assert component.output_type == "forecasts"
     assert "forecast" in component.description
     assert {field.name for field in component.fields} == {
         "checkpoint",

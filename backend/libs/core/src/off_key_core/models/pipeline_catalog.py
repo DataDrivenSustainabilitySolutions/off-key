@@ -308,7 +308,9 @@ def pipeline_components() -> list[PipelineComponent]:
                 learning=component_learning(detector_component(identifier)),
                 parameter_schema=schema,
                 fields=component_fields(schema),
-                output_type="scores",
+                # A forecaster hands its forecast on with the score, so the
+                # calibration step can give the band its boundary leaves.
+                output_type="forecasts" if "forecaster_id" in model else "scores",
             )
         )
     return result

@@ -23,6 +23,7 @@
 .pl-canvas-wrap {
   --pl-features: #0f766e;
   --pl-scores: #6d28d9;
+  --pl-forecasts: #a21caf;
   --pl-p_values: #1d4ed8;
   --pl-decisions: #b45309;
   --pl-evidence: #475569;
@@ -45,6 +46,7 @@
 .dark .pl-canvas-wrap {
   --pl-features: #5eead4;
   --pl-scores: #c4b5fd;
+  --pl-forecasts: #f0abfc;
   --pl-p_values: #93c5fd;
   --pl-decisions: #fcd34d;
   --pl-evidence: #cbd5e1;
@@ -56,6 +58,10 @@
 .pl-data--scores {
   color: var(--pl-scores);
   --pl-data-color: var(--pl-scores);
+}
+.pl-data--forecasts {
+  color: var(--pl-forecasts);
+  --pl-data-color: var(--pl-forecasts);
 }
 .pl-data--p_values {
   color: var(--pl-p_values);

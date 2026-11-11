@@ -210,7 +210,7 @@ stack_interpolation_environment:
   FORECAST_MEMORY_RESERVATION: "{{ forecast_memory_reservation }}"
   FORECAST_CPU_RESERVATION: "{{ forecast_cpu_reservation }}"
   TRAEFIK_DYNAMIC_HASH: "{{ (lookup('template', stack_source_dir ~ '/traefik-dynamic.yml.j2') | hash('sha1'))[:12] }}"
-  LANDING_PAGE_HASH: "{{ ((lookup('template', stack_source_dir ~ '/landing.html.j2') ~ lookup('template', stack_source_dir ~ '/landing.md.j2') ~ lookup('template', stack_source_dir ~ '/landing-llms.txt.j2') ~ lookup('file', stack_source_dir ~ '/landing-nginx.conf')) | hash('sha1'))[:12] }}"
+  LANDING_PAGE_HASH: "{{ ((lookup('template', stack_source_dir ~ '/landing.html.j2') ~ lookup('template', stack_source_dir ~ '/landing.md.j2') ~ lookup('template', stack_source_dir ~ '/landing-llms.txt.j2') ~ lookup('file', stack_source_dir ~ '/landing-nginx.conf') ~ lookup('file', stack_source_dir ~ '/landing-assets.json')) | hash('sha1'))[:12] }}"
   EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
   CONFIG_NAME_PREFIX: "{{ stack_config_prefix }}"
   BROKER_ROUTE_NFS_ADDR: "{{ broker_route_nfs_addr | default('') }}"

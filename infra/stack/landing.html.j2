@@ -1,4 +1,15 @@
 <!doctype html>
+{% set hero_slides = [
+  ('bridge', 'strain', 'hero-bridge-v1.jpg', 1942, 'a steel bridge'),
+  ('pipes', 'flow', 'hero-pipes-v1.webp', 1944, 'an industrial pipe rack'),
+  ('conveyor', 'quality', 'hero-conveyor-v1.webp', 1942, 'a powered roller conveyor'),
+  ('solar', 'yield', 'hero-solar-v2.webp', 1944, 'a solar canopy with paired steel support columns'),
+  ('cooling', 'efficiency', 'hero-cooling-bank-v1.webp', 1942, 'an industrial cooling bank'),
+  ('gantry', 'precision', 'hero-robotic-gantry-v1.webp', 1942, 'an overhead robotic gantry'),
+  ('cables', 'traffic', 'hero-data-cable-runway-v1.webp', 1942, 'a data-centre cable runway'),
+  ('irrigation', 'pressure', 'hero-irrigation-span-v2.webp', 1944, 'a centre-pivot irrigation span')
+] %}
+{% set hero_cycle_seconds = hero_slides | length * 10 %}
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -12,7 +23,7 @@
   <link rel="describedby" type="text/plain" href="/llms.txt" title="llms.txt">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20width%3D%2264%22%20height%3D%2264%22%20role%3D%22img%22%3E%0A%20%20%3Ctitle%3EAberration%3C%2Ftitle%3E%0A%20%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20fill%3D%22%23000%22%2F%3E%0A%20%20%3Cpath%20id%3D%22mark%22%20fill%3D%22%23fff%22%20d%3D%22M10%2010H38V20H20V54H10ZM44%2010H54V54H26V44H44Z%22%2F%3E%0A%3C%2Fsvg%3E%0A">
   <style>
-    /* Self-contained landing page: the production CSP disallows scripts and external assets. */
+    /* Script-free landing page with photographs served from the same origin. */
     .site-footer {
       border-top: 1px solid var(--line);
     }
@@ -667,49 +678,43 @@
     .hero-photo img { display:block; width:100%; height:100%; object-fit:cover; object-position:center top; }
     .hero-photo img + img { position:absolute; inset:0; opacity:0; }
     .hero-photo::after { content:""; position:absolute; pointer-events:none; inset:auto 0 0; height:50px; background:linear-gradient(transparent,#ededeb); }
-    /* Eight seconds per photograph, with two-second fades in a forty-second loop.
+    /* Eight seconds per photograph, with two-second fades between scenes.
        Earlier overlays fade out only after the next is opaque, avoiding three-way blends. */
-    @keyframes hero-pipes-crossfade {
-      0%,20%,55%,100% { opacity:0; }
-      25%,50% { opacity:1; }
+    {% for subject, word, file, width, description in hero_slides %}{% if not loop.first %}
+    @keyframes hero-{{ subject }}-crossfade {
+      0%,{{ (loop.index0 * 10 - 2) * 100 / hero_cycle_seconds }}% { opacity:0; }
+      {{ loop.index0 * 1000 / hero_cycle_seconds }}%,{{ (hero_cycle_seconds - 2 if loop.last else loop.index * 10) * 100 / hero_cycle_seconds }}% { opacity:1; }
+      {% if not loop.last %}{{ (loop.index * 10 + 2) * 100 / hero_cycle_seconds }}%,{% endif %}100% { opacity:0; }
     }
-    @keyframes hero-conveyor-crossfade {
-      0%,45%,80%,100% { opacity:0; }
-      50%,75% { opacity:1; }
-    }
-    @keyframes hero-solar-crossfade {
-      0%,70% { opacity:0; }
-      75%,95% { opacity:1; }
-      100% { opacity:0; }
-    }
+    {% endif %}{% endfor %}
     /* SmoothUI Fade Through (https://smoothui.dev/docs/components/fade-through):
        One-second exit, then one-second enter, spanning the image's two-second fade.
-       The swap at 9s (22.5%) aligns with the photo crossfade midpoint;
-       ten-second phase offsets keep every word on the same forty-second loop. */
+       The swap at 9s aligns with the photo crossfade midpoint;
+       ten-second phase offsets keep every word on the same loop as the images. */
     @keyframes hero-word-fade-through {
-      0%,22.5% {
+      0%,{{ 900 / hero_cycle_seconds }}% {
         opacity:0; transform:translateY(6px) scale(.99); filter:blur(2px);
         animation-timing-function:cubic-bezier(.2,0,0,1);
       }
-      25%,45% {
+      {{ 1000 / hero_cycle_seconds }}%,{{ 1800 / hero_cycle_seconds }}% {
         opacity:1; transform:translateY(0) scale(1); filter:blur(0);
         animation-timing-function:cubic-bezier(.4,0,1,1);
       }
-      47.5%,100% { opacity:0; transform:translateY(-4px) scale(1); filter:blur(0); }
+      {{ 1900 / hero_cycle_seconds }}%,100% { opacity:0; transform:translateY(-4px) scale(1); filter:blur(0); }
     }
     /* Only the current word contributes its natural width. Switch layout when
        the outgoing word is fully transparent and the next starts entering. */
     @keyframes hero-word-layout {
-      0%,47.5%,100% { position:absolute; }
-      22.5% { position:relative; }
+      0%,{{ 1900 / hero_cycle_seconds }}%,100% { position:absolute; }
+      {{ 900 / hero_cycle_seconds }}% { position:relative; }
     }
     @media (prefers-reduced-motion:no-preference) {
-      .hero-photo--pipes { animation:hero-pipes-crossfade 40s ease-in-out infinite; }
-      .hero-photo--conveyor { animation:hero-conveyor-crossfade 40s ease-in-out infinite; }
-      .hero-photo--solar { animation:hero-solar-crossfade 40s ease-in-out infinite; }
+      {% for subject, word, file, width, description in hero_slides %}{% if not loop.first %}
+      .hero-photo--{{ subject }} { animation:hero-{{ subject }}-crossfade {{ hero_cycle_seconds }}s ease-in-out infinite; }
+      {% endif %}{% endfor %}
       .hero-word {
-        animation:hero-word-fade-through 40s linear var(--word-delay) infinite,
-                  hero-word-layout 40s steps(1,end) var(--word-delay) infinite;
+        animation:hero-word-fade-through {{ hero_cycle_seconds }}s linear var(--word-delay) infinite,
+                  hero-word-layout {{ hero_cycle_seconds }}s steps(1,end) var(--word-delay) infinite;
       }
     }
     .hero-title { position:relative; text-align:center; padding:18px 32px 46px; }
@@ -718,10 +723,10 @@
     .hero-title .hero-promise { font-size:clamp(20px,2vw,27px); line-height:1.3; color:#646762; letter-spacing:-.025em; margin:10px 0 0; }
     .hero-words { display:inline-grid; position:relative; vertical-align:baseline; white-space:nowrap; }
     .hero-word { grid-area:1 / 1; position:absolute; opacity:0; font-weight:700; color:#111313; }
-    .hero-word--bridge { --word-delay:-10s; position:relative; opacity:1; }
-    .hero-word--pipes { --word-delay:0s; }
-    .hero-word--conveyor { --word-delay:10s; }
-    .hero-word--solar { --word-delay:20s; }
+    .hero-word--bridge { position:relative; opacity:1; }
+    {% for subject, word, file, width, description in hero_slides %}
+    .hero-word--{{ subject }} { --word-delay:{{ (loop.index0 - 1) * 10 }}s; }
+    {% endfor %}
     .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
     .hero-summary { display:flex; justify-content:space-between; align-items:center; gap:40px; max-width:980px; margin:30px auto 0; padding-top:20px; border-top:1px solid #cdd0ca; text-align:left; }
     .hero-summary p { max-width:520px; margin:0; color:#595e57; font-size:14px; line-height:1.6; }
@@ -754,17 +759,15 @@
 <path d="M7 17 17 7M7 7h10v10"/></svg></a></nav>
 </div></header><main id="main">
 <section class="hero" aria-labelledby="headline">
-  {% from 'landing-hero.b64.j2' import hero_bridge, hero_pipes, hero_conveyor, hero_solar %}
   <figure class="hero-photo">
-    <img src="{{ hero_bridge }}" width="1942" height="809" fetchpriority="high" alt="Generated photograph looking along the underside of a steel bridge.">
-    <img class="hero-photo--pipes" src="{{ hero_pipes }}" width="1944" height="809" decoding="async" alt="Generated photograph looking along an overhead industrial pipe rack.">
-    <img class="hero-photo--conveyor" src="{{ hero_conveyor }}" width="1942" height="809" decoding="async" alt="Generated photograph looking along the underside of a powered roller conveyor.">
-    <img class="hero-photo--solar" src="{{ hero_solar }}" width="1944" height="809" decoding="async" alt="Generated photograph looking along the underside of a solar canopy with paired steel support columns.">
+    {% for subject, word, file, width, description in hero_slides %}
+    <img class="hero-photo--{{ subject }}" src="/assets/{{ file }}" width="{{ width }}" height="809" {% if loop.first %}fetchpriority="high"{% else %}decoding="async"{% endif %} alt="Generated photograph looking along the underside of {{ description }}.">
+    {% endfor %}
   </figure>
   <div class="hero-title">
     <p class="mono">Anomaly detection for physical &amp; digital systems</p>
     <h1 id="headline">Every system has a pattern.</h1>
-    <p class="hero-promise"><span class="visually-hidden">Detect when strain, flow, quality or yield changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words">{% for subject, word in [('bridge', 'strain'), ('pipes', 'flow'), ('conveyor', 'quality'), ('solar', 'yield')] %}<span class="hero-word hero-word--{{ subject }}">{{ word }}</span>{% endfor %}</span><span class="hero-promise-suffix"> changes.</span></span></p>
+    <p class="hero-promise"><span class="visually-hidden">Detect when strain, flow, quality, yield, efficiency, precision, traffic or pressure changes.</span><span aria-hidden="true"><span class="hero-promise-prefix">Detect when </span><span class="hero-words">{% for subject, word, file, width, description in hero_slides %}<span class="hero-word hero-word--{{ subject }}">{{ word }}</span>{% endfor %}</span><span class="hero-promise-suffix"> changes.</span></span></p>
     <div class="hero-summary">
       <p>Continuous anomaly detection for sensor telemetry<br>and digital data streams.</p>
       <a class="text-link" href="#platform">Explore the platform <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>

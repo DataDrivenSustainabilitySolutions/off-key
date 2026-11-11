@@ -1,8 +1,10 @@
-"""Fingerprint the hero photographs for the script-free public landing page."""
+"""Fingerprint hero photographs and embed the landing page's product screenshot."""
 
 import argparse
+import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,12 +25,47 @@ SOURCES = {
     ),
 }
 DESTINATION = ROOT / "infra/stack/landing-assets.json"
+PRODUCT_IMAGE = ROOT / "assets/landing/product-evidence-v1.webp"
+LANDING_HTML = ROOT / "infra/stack/landing.html.j2"
+
+
+def product_screenshot(parser, check):
+    """Keep the small screenshot inside the existing versioned HTML config."""
+    data = PRODUCT_IMAGE.read_bytes()
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP" or len(data) >= 200_000:
+        parser.exit(1, "Invalid or oversized product screenshot.\n")
+    image = base64.b64encode(data).decode("ascii")
+    markup = (
+        "<!-- BEGIN PRODUCT SCREENSHOT -->\n"
+        f'<img class="product-screenshot" src="data:image/webp;base64,{image}" '
+        'width="1440" height="1000" loading="lazy" decoding="async" '
+        'alt="Aberration Reporting: outlet pressure and its detection evidence '
+        'on a shared timeline, with an example change marked in the reading.">\n'
+        "<!-- END PRODUCT SCREENSHOT -->"
+    )
+    original = LANDING_HTML.read_text()
+    updated, count = re.subn(
+        r"<!-- BEGIN PRODUCT SCREENSHOT -->.*?<!-- END PRODUCT SCREENSHOT -->",
+        lambda _: markup,
+        original,
+        flags=re.DOTALL,
+    )
+    if count != 1:
+        parser.exit(1, "Expected one product screenshot slot in the landing page.\n")
+    if check:
+        if original != updated:
+            parser.exit(
+                1, "Run python3 assets/landing/export.py to refresh the screenshot.\n"
+            )
+    else:
+        LANDING_HTML.write_text(updated, encoding="utf-8")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
+    product_screenshot(parser, args.check)
     assets = []
     for name, (mime_type, source) in SOURCES.items():
         data = source.read_bytes()

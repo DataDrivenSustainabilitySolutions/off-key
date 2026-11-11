@@ -8,38 +8,49 @@ Detect when strain, traffic, flow, quality, yield, efficiency, precision or pres
 
 ## At a glance
 
-| Stage | What it is |
+| Workspace | What it does |
 | --- | --- |
-| Input | MQTT telemetry |
-| Processing | Streaming pipelines |
-| Calibration | Conformal scores |
-| Output | Reviewable evidence |
+| Sources | Connect MQTT sources and choose which readings to record |
+| Monitoring | Design and run visual detection pipelines |
+| Reporting | Inspect changes alongside their readings and detection evidence |
+| Dojo | Replay recorded data, compare runs and refine a design |
 
-The hero cycles through generated photographs of a steel bridge, a data-centre cable runway, an industrial pipe rack, a powered roller conveyor, a solar canopy, an industrial cooling bank, an overhead robotic gantry and a centre-pivot irrigation span. These illustrate connected infrastructure; they are not photographs of Aberration hardware or customer installations. The signal charts illustrate a stream leaving its calibrated reference band; they are not live telemetry or measured results.
+The hero cycles through generated photographs of a steel bridge, a data-centre cable runway, an industrial pipe rack, a powered roller conveyor, a solar canopy, an industrial cooling bank, an overhead robotic gantry and a centre-pivot irrigation span. These illustrate connected infrastructure; they are not photographs of Aberration hardware or customer installations. The product screenshot shows the actual Reporting interface with illustrative cooling-circuit data, not customer telemetry or a performance benchmark. The example monitoring flow is a simplified explanation, not a screenshot.
 
 ## From raw signal. To informed decision.
 
-A continuous path from connected telemetry to evidence you can act on. Built around the relationships in your data.
+Bring your readings into one workspace. Build monitors around your system, investigate the changes they flag, and test your next design on recorded data.
 
-1. **Connect — read the system.** Bring your data streams together. Observe measurements in the context of the system they belong to.
-2. **Calibrate — define normal.** Learn from baseline data. Calibrate anomaly scores with conformal methods to establish a meaningful reference.
-3. **Detect — find the break.** Accumulate evidence as observations arrive. Surface changes that depart from the calibrated baseline.
-4. **Understand — follow the evidence.** Review detected changes alongside the telemetry behind them. Move from an anomaly to a clearer picture.
+## See the change. Keep the context.
 
-## A threshold tells you when. Context tells you why.
+Inspect a detected change alongside the readings behind it. Follow the original signal and the detection evidence on a shared timeline, then zoom in on the period that matters.
 
-An isolated reading is only part of the story. Follow how signals relate, how evidence accumulates, and where a system starts to change.
+## Build a monitor around your system.
 
-- **Temporal:** Follow change as observations arrive.
-- **Multivariate:** Read relationships across data streams.
-- **Calibrated:** Ground anomaly scores in baseline data.
-- **Reviewable:** Keep the signal beside the evidence.
+A single reading or a set of related signals. A fixed reference or a baseline that adapts. Shape the detection to the way your system behaves.
 
-## Statistical rigor. Operational reality.
+- **Choose what to collect.** Connect MQTT sources, organise their readings, and decide what to record. Keep the history you need for monitoring and investigation.
+- **Make the logic visible.** Prepare and combine signals, choose detection steps, and connect them in a visual pipeline. Save a design to use again.
+- **Follow it as it runs.** See monitor status and review the evidence as new readings arrive. Move from a flagged change back to the underlying data.
 
-Detection is more than an unusual data point. Aberration brings streaming pipelines, conformal calibration, and accumulated evidence into one system. So you can investigate change with a meaningful reference.
+An example monitoring flow: outlet pressure and flow rate → prepare and combine → learn and detect → collect the evidence. Designed visually, applied as the data arrives.
 
-## Detect the unexpected.
+## Try it on the past. Before it watches the present.
+
+Replay recorded readings or a CSV through a detection pipeline in the Dojo. See what it would have flagged, compare your options, and take a tested design into monitoring.
+
+1. **Replay — give a design some history.** Choose recorded data or upload a dataset. Replay it in time order through the same detection logic used in live monitoring.
+2. **Compare — find out what it catches.** Label known events and compare runs. Look at detected changes, detection delays, and false alarms together.
+3. **Refine — take the better design forward.** Adjust the pipeline, run it again, and reuse the design in monitoring when you are ready.
+
+Recorded data → test and compare → live monitoring. One workflow. Room to improve.
+{% if docs_base_url | default('') %}
+[Explore the workflow]({{ docs_base_url }}/user-guide/monitoring/)
+{% endif %}
+
+## Start with a signal.
+
+Connect. Detect. Understand.
 
 [Open dashboard]({{ frontend_base_url }}/)
 

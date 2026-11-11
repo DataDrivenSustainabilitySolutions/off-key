@@ -831,8 +831,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`ad919d98e56a4e0e3dbcb8c3254f51e034d38251`, the commit that completes the
-Timestral forecaster step, on top of migration 025
+`cbe2d83999adb3317e55207fd662ccd0ecf0f8bc`, the commit that takes the lane
+out of the composer, on top of migration 025
 (`evidence_cursor`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -841,9 +841,11 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `386eb796`, lists no Timestral step in field discovery;
-`7194e94f` before it has a catalog without the forecaster steps, and `b03157ec`
-locks ABERRANT 1.4.0, so the rehearsal accepts none of them.
+The previous reference, `ad919d98`, returns a design with its lane and without
+its calibration step, where the current release returns it as the editor reads
+it; `386eb796` before it lists no Timestral step in field discovery, `7194e94f`
+has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
+1.4.0, so the rehearsal accepts none of them.
 Releases before
 migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as

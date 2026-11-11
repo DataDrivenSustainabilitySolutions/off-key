@@ -24,7 +24,7 @@ from tests.support.pipelines import template
 
 
 def test_generated_catalog_matches_pinned_runtime():
-    assert ABERRANT_VERSION == __version__ == "1.4.0"
+    assert ABERRANT_VERSION == __version__ == "1.5.0"
     assert generate_catalog() == CATALOG
 
 

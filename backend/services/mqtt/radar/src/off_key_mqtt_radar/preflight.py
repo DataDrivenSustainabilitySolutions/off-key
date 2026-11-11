@@ -25,11 +25,14 @@ from off_key_core.utils.json_budget import bounded_utf8_text
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .boundary import ScoreBoundary, adapts
 from .config.config import AnomalyDetectionConfig
+from .mixed_detector import learning_ids, streaming_ids
 from .pipelines.adapters import adaptive_graph, resolved_detector_config
 from .pipelines.batch import BatchFeatureGraph
 from .pipelines.plan import ExecutionPlan
 from .pipelines.prepare import PrepareStage
+from .pipelines.pyod import node_detector
 from .pipelines.resources import estimate_resources
 
 
@@ -59,24 +62,7 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
     resources = estimate_resources(plan, config.memory_limit_mb)
     if plan.stage is not None:
         PrepareStage(plan)
-    readiness = []
-    capabilities = None
-    if execution.definition.lane == "adaptive_stream":
-        readiness, capabilities = _adaptive_preflight(plan)
-    else:
-        from .detector import StaticConformalDetectionService
-
-        BatchFeatureGraph(plan)
-        detector = StaticConformalDetectionService(config)
-        try:
-            if plan.fused:
-                for identifier in plan.detector_ids:
-                    with _detector(identifier):
-                        detector._create_pyod_detector(plan.nodes[identifier])
-            else:
-                detector._create_pyod_detector()
-        finally:
-            detector.shutdown()
+    readiness, capabilities = _build_detectors(plan, config)
     return dict(
         ok=True,
         fingerprint=execution.fingerprint,
@@ -114,6 +100,50 @@ def preflight(execution: PipelineExecutionConfig, *, memory_limit_mb=None) -> di
     )
 
 
+def _build_detectors(
+    plan: ExecutionPlan, config: AnomalyDetectionConfig
+) -> tuple[list[dict], dict | None]:
+    """Build every detector and the calibration step as the run will."""
+    boundary = adapts(plan)
+    if boundary:
+        ScoreBoundary(plan)
+    online, fitted_once = streaming_ids(plan), learning_ids(plan, "batch")
+    if not online and not boundary:
+        return _static_preflight(plan, config)
+    readiness, capabilities = [], None
+    if online:
+        # Detectors that learn in different ways: build each as its run will.
+        readiness, capabilities = _adaptive_preflight(
+            plan, online if fitted_once else None
+        )
+    if fitted_once:
+        BatchFeatureGraph(plan, fitted_once)
+        seed = plan.compiled.definition.settings.seed
+        for identifier in fitted_once:
+            with _detector(identifier):
+                node_detector(plan.nodes[identifier], seed)
+    return readiness, capabilities
+
+
+def _static_preflight(
+    plan: ExecutionPlan, config: AnomalyDetectionConfig
+) -> tuple[list[dict], dict | None]:
+    from .detector import StaticConformalDetectionService
+
+    BatchFeatureGraph(plan)
+    detector = StaticConformalDetectionService(config)
+    try:
+        if plan.fused:
+            for identifier in plan.detector_ids:
+                with _detector(identifier):
+                    detector._create_pyod_detector(plan.nodes[identifier])
+        else:
+            detector._create_pyod_detector()
+    finally:
+        detector.shutdown()
+    return [], None
+
+
 class DetectorConfigurationError(Exception):
     """A detector's configuration failed; carries which detector it was."""
 
@@ -138,11 +168,13 @@ class _detector:
         return False
 
 
-def _adaptive_preflight(plan: ExecutionPlan) -> tuple[list[dict], dict | None]:
+def _adaptive_preflight(
+    plan: ExecutionPlan, detector_ids: list[str] | None = None
+) -> tuple[list[dict], dict | None]:
     """Build every detector's graph, as the run will; report steps once each."""
     readiness: dict[str, dict] = {}
     capabilities = {}
-    for identifier in plan.detector_ids:
+    for identifier in plan.detector_ids if detector_ids is None else detector_ids:
         with _detector(identifier):
             config = resolved_detector_config(plan, identifier)
             graph, _ = adaptive_graph(plan, config=config, detector_id=identifier)

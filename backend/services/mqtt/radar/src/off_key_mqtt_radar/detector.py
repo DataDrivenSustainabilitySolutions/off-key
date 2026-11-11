@@ -3,7 +3,6 @@ scored with conformal p-values and martingale alarms."""
 
 import concurrent.futures
 import hashlib
-import importlib
 import json
 import logging
 import math
@@ -15,10 +14,7 @@ from time import perf_counter_ns
 from typing import Any
 
 import numpy as np
-from off_key_core.models.static import (
-    get_static_model_definition,
-    validate_static_model_params,
-)
+from off_key_core.models.static import validate_static_model_params
 from off_key_core.schemas.radar import StaticBaselineConfig
 
 from .alarm_calibration import resolve_tracker_thresholds
@@ -36,6 +32,7 @@ from .pipelines.batch import (
 )
 from .pipelines.execution import PipelineExecutionMixin
 from .pipelines.prepare import Withheld
+from .pipelines.pyod import calibrated_detector, instantiate_pyod, seeded_params
 
 
 class StaticConformalState(Enum):
@@ -570,17 +567,12 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         )
 
     def _calibrated_detector(self, node, training_matrix, calibration_matrix):
-        from nonconform import ConformalDetector, Split
-
-        detector = self._create_pyod_detector(node)
-        detector.fit(training_matrix)
-        conformal_detector = ConformalDetector(
-            detector=detector,
-            strategy=Split(n_calib=0.1),
-            score_polarity="auto",
-            seed=self.static_config.seed,
+        return calibrated_detector(
+            self._create_pyod_detector(node),
+            training_matrix,
+            calibration_matrix,
+            self.static_config.seed,
         )
-        return conformal_detector.calibrate(calibration_matrix)
 
     def _fit_baseline_matrices(self, training_matrix, calibration_matrix):
         """Fit and calibrate with an already materialized numerical schema."""
@@ -624,23 +616,13 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             params = validate_static_model_params(
                 model_type, node.params, include_defaults=False
             )
-        definition = get_static_model_definition(model_type)
-        if (
-            self.static_config.seed is not None
-            and "random_state" in definition.parameters.model_fields
-        ):
-            params.setdefault("random_state", self.static_config.seed)
+        params = seeded_params(model_type, params, self.static_config.seed)
         return self._instantiate_pyod_detector(model_type, params)
 
     def _instantiate_pyod_detector(
         self, model_type: str, params: dict[str, Any]
     ) -> Any:
-        definition = get_static_model_definition(model_type)
-        module, _, name = definition.import_path.rpartition(".")
-        detector_class = getattr(importlib.import_module(module), name)
-        return detector_class(
-            **validate_static_model_params(model_type, params, include_defaults=False)
-        )
+        return instantiate_pyod(model_type, params)
 
     def _submit_training(self) -> None:
         self._training_future = self._training_executor.submit(

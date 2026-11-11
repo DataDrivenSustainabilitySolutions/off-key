@@ -32,21 +32,41 @@ class BatchFeatureGraph:
     crossing the cut, and only the learned stage runs here.
     """
 
-    def __init__(self, plan: ExecutionPlan):
+    def __init__(self, plan: ExecutionPlan, detector_ids: list[str] | None = None):
+        """Every learned step, or only those the given detectors read.
+
+        A design whose other detectors learn continuously fits only the steps
+        of its detectors fitted once; the others run in Aberrant graphs.
+        """
         self.plan = plan
+        self.detector_ids = (
+            list(plan.detector_ids) if detector_ids is None else list(detector_ids)
+        )
+        if detector_ids is None:
+            self.nodes = list(plan.learned_nodes)
+        else:
+            needed = frozenset().union(*(plan.reads(item) for item in detector_ids))
+            self.nodes = [node for node in plan.learned_nodes if node.id in needed]
         self.components = {
             node.id: batch_component(node)
-            for node in plan.learned_nodes
+            for node in self.nodes
             if node.component not in BATCH_PASSTHROUGH
         }
         self.scopes = {
             node.id: step_scope(
                 node.component, node.params, plan.names(plan.parents(node.id)[0])
             )
-            for node in plan.learned_nodes
+            for node in self.nodes
             if is_scoped(node.component, node.params)
         }
         self.fitted = False
+
+    def __setstate__(self, state):
+        # Graphs pickled before branches could be fitted alone fitted them all.
+        self.__dict__.update(state)
+        if "nodes" not in state:
+            self.nodes = list(self.plan.learned_nodes)
+            self.detector_ids = list(self.plan.detector_ids)
 
     def fit_transform(self, matrix: np.ndarray) -> np.ndarray:
         return self.fit_transform_all(matrix)[self.plan.feature_output_id]
@@ -90,14 +110,17 @@ class BatchFeatureGraph:
             raise ValueError("Batch graph requires finite inputs")
         available = self._inputs(matrix)
         remaining = Counter(
-            parent
-            for node in self.plan.learned_nodes
-            for parent in self.plan.parents(node.id)
+            parent for node in self.nodes for parent in self.plan.parents(node.id)
         )
         # What the detectors read stays until the pass ends.
-        outputs = list(dict.fromkeys(self.plan.detector_inputs.values()))
+        outputs = list(
+            dict.fromkeys(
+                self.plan.detector_inputs[identifier]
+                for identifier in self.detector_ids
+            )
+        )
         remaining.update(outputs)
-        for node in self.plan.learned_nodes:
+        for node in self.nodes:
             started = perf_counter_ns()
             parents = self.plan.parents(node.id)
             current = available[parents[0]]

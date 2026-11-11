@@ -7,6 +7,8 @@ largest surprise (max) or the mean. Counts stay integers, so ties are exact.
 
 from __future__ import annotations
 
+import bisect
+from collections import deque
 from typing import Any
 
 import numpy as np
@@ -105,3 +107,64 @@ class RankFusion:
 def threshold_count(fusion: RankFusion, quantile: float) -> int:
     """The policy's quantile of the calibration observations' combined counts."""
     return int(np.quantile(fusion.calibration_counts(), quantile, method="higher"))
+
+
+class RollingRanks:
+    """Each detector's latest scores, for a boundary that keeps adapting.
+
+    A fixed split ranks every later score against the frozen calibration
+    scores. A boundary that adapts follows its detectors instead: each new
+    score is ranked against that detector's last n scores, n being the
+    calibration window, and then joins them. The combined surprise is one
+    value, which the calibration method sees as its score.
+
+    A share alone stops at 1: a score just above the window and one far above
+    it would tie, and a boundary that has reached 1 could never be exceeded.
+    So a score above its whole window adds how far above, in units of the
+    window's range.
+    """
+
+    def __init__(self, calibration: Any, fusion: str):
+        frozen = RankFusion(calibration, fusion)
+        self.fusion = fusion
+        self.size = frozen.size
+        self.detectors = frozen.detectors
+        columns = frozen.calibration.T.tolist()
+        self.windows = [deque(column, maxlen=self.size) for column in columns]
+        self.sorted = [sorted(column) for column in columns]
+        # Each calibration observation, ranked within the calibration window.
+        self.seed = [
+            frozen.value(count) for count in frozen.calibration_counts().tolist()
+        ]
+
+    def surprises(self, scores: list[float]) -> list[float]:
+        """Each detector's surprise: the share of its latest scores below the
+        new one, plus the distance above them all in units of their range."""
+        if len(scores) != self.detectors:
+            raise ValueError(
+                f"Expected {self.detectors} detector scores; got {len(scores)}"
+            )
+        surprises = []
+        for ordered, score in zip(self.sorted, scores, strict=True):
+            surprise = bisect.bisect_left(ordered, score) / self.size
+            if score > ordered[-1]:
+                # A window of equal scores has no range; its level stands in.
+                scale = ordered[-1] - ordered[0] or abs(ordered[-1]) or 1.0
+                surprise += (score - ordered[-1]) / scale
+            surprises.append(surprise)
+        return surprises
+
+    def value(self, surprises: list[float]) -> float:
+        """The combined surprise: the largest, or their mean."""
+        if self.fusion == "max":
+            return max(surprises)
+        return sum(surprises) / self.detectors
+
+    def push(self, scores: list[float]) -> None:
+        """Each detector's oldest score leaves its window and the new one joins."""
+        for window, ordered, score in zip(
+            self.windows, self.sorted, scores, strict=True
+        ):
+            del ordered[bisect.bisect_left(ordered, window[0])]
+            window.append(score)
+            bisect.insort_left(ordered, score)

@@ -137,16 +137,22 @@ def main() -> None:
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    target = files("off_key_core.models").joinpath("adaptive_catalog.json")
-    rendered = json.dumps(generate_catalog(), indent=2, sort_keys=True) + "\n"
-    if args.write:
-        target.write_text(rendered)
-    elif target.read_text() != rendered:
-        parser.exit(
-            1,
-            "RADAR catalog differs from the runtime; "
-            "regenerate adaptive_catalog.json\n",
+    from .calibration_catalog import generate_calibration_catalog
+
+    for name, generate in (
+        ("adaptive_catalog.json", generate_catalog),
+        ("calibration_catalog.json", generate_calibration_catalog),
+    ):
+        target = files("off_key_core.models").joinpath(name)
+        rendered = (
+            json.dumps(generate(), indent=2, sort_keys=True, allow_nan=False) + "\n"
         )
+        if args.write:
+            target.write_text(rendered)
+        elif not target.is_file() or target.read_text() != rendered:
+            parser.exit(
+                1, f"RADAR catalog differs from the runtime; regenerate {name}\n"
+            )
 
 
 if __name__ == "__main__":

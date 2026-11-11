@@ -51,8 +51,8 @@ NOT_READ_BY_RADAR = {
 RADAR_NAMES = {"mqtt_qos": "RADAR_SUBSCRIPTION_QOS"}
 GOLDEN_FINGERPRINTS = {
     "static": "cd363666f4a75b2605b4a63ae716b2a9014d5ec23b353683c67c67e5fbfc1cda",
-    # The explicit library version changes for the reviewed 1.3 -> 1.4 migration.
-    "adaptive": "846fb962090d740cda65db977e4a29031fb6fce823339b1df243d6a9c72772d6",
+    # The explicit library version changes with every Aberrant upgrade.
+    "adaptive": "396721d83acac59de08bc290cb164ee8635aab90516fa34befa38c7a2a0a2d5f",
     "pipeline": "37c1d6eb6eafa0b78256f464c20f737baaa6f821aa7f72458dec004805c818f8",
 }
 

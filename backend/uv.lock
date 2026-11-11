@@ -27,60 +27,22 @@ members = [
 [[package]]
 name = "aberrant"
 version = "1.5.0"
-source = { url = "https://github.com/OliverHennhoefer/aberrant/archive/04a857056352f72d1bd68a5ea824b36a55c4d917.tar.gz" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "numpy" },
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { hash = "sha256:09534917503ff5e0d02ab9911ef6f45070eaeccd222d84bf60ee988dc42348e2" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/e2/3c4e07d9b4952be2984289a6951d50db4b5c39b3ab493e576d0206198130/aberrant-1.5.0.tar.gz", hash = "sha256:2576641b148a82af7e2e1e78305e6b50482b36d3a241a67f56115d607cd07bba", size = 2757318, upload-time = "2026-11-11T08:46:13.605Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/cd/2534fbc69771907861d13acb7c4a5deb46bc21a6e7bc998a34d89a1e4fe8/aberrant-1.5.0-py3-none-any.whl", hash = "sha256:ec811512c446fe559286a9b1f6215796ca193ba12bf2860c185c24964fa3f77b", size = 282432, upload-time = "2026-11-11T08:46:12.045Z" },
+]
 
 [package.optional-dependencies]
 faiss = [
     { name = "faiss-cpu" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "faiss-cpu", marker = "extra == 'all'", specifier = ">=1.10.0,<2.0.0" },
-    { name = "faiss-cpu", marker = "extra == 'faiss'", specifier = ">=1.10.0,<2.0.0" },
-    { name = "filelock", specifier = ">=4.2.7,<5.0.0" },
-    { name = "hypothesis", marker = "extra == 'all'", specifier = ">=6.0.0,<7.0.0" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0.0,<7.0.0" },
-    { name = "mkdocstrings-python", marker = "extra == 'all'", specifier = ">=2.0.7,<3.0.0" },
-    { name = "mkdocstrings-python", marker = "extra == 'docs'", specifier = ">=2.0.7,<3.0.0" },
-    { name = "mypy", marker = "extra == 'all'", specifier = ">=1.13.0,<3.0.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0,<3.0.0" },
-    { name = "numpy", specifier = ">=2.2.3,<3.0.0" },
-    { name = "pip-audit", marker = "extra == 'all'", specifier = "==2.10.1" },
-    { name = "pip-audit", marker = "extra == 'security'", specifier = "==2.10.1" },
-    { name = "pre-commit", marker = "extra == 'all'", specifier = ">=4.0.0,<5.0.0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.0,<5.0.0" },
-    { name = "pygments", marker = "extra == 'all'", specifier = ">=2.20.0" },
-    { name = "pygments", marker = "extra == 'docs'", specifier = ">=2.20.0" },
-    { name = "pytest", marker = "extra == 'all'", specifier = ">=8.0.0,<10.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0,<10.0.0" },
-    { name = "pytest-benchmark", marker = "extra == 'all'", specifier = ">=5.3.1,<6.0.0" },
-    { name = "pytest-benchmark", marker = "extra == 'benchmark'", specifier = ">=5.3.1,<6.0.0" },
-    { name = "pytest-cov", marker = "extra == 'all'", specifier = ">=6.0.0,<8.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0,<8.0.0" },
-    { name = "river", marker = "extra == 'all'", specifier = ">=0.22.0,<1.0.0" },
-    { name = "river", marker = "extra == 'benchmark'", specifier = ">=0.22.0,<1.0.0" },
-    { name = "ruff", marker = "extra == 'all'", specifier = ">=0.8.0,<1.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0,<1.0.0" },
-    { name = "scikit-learn", marker = "extra == 'all'", specifier = ">=1.9.1,<2.0.0" },
-    { name = "scikit-learn", marker = "extra == 'dev'", specifier = ">=1.9.1,<2.0.0" },
-    { name = "scikit-learn", marker = "extra == 'eval'", specifier = ">=1.9.1,<2.0.0" },
-    { name = "scipy", specifier = ">=1.17.1,<2.0.0" },
-    { name = "torch", marker = "extra == 'all'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "torch", marker = "extra == 'dev'", specifier = ">=2.6.0,<3.0.0" },
-    { name = "torch", marker = "extra == 'dl'", specifier = ">=2.6.0,<3.0.0" },
-    { name = "tqdm", specifier = ">=4.67.1,<5.0.0" },
-    { name = "zensical", marker = "extra == 'all'", specifier = ">=0.0.45,<0.1.0" },
-    { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.0.45,<0.1.0" },
-]
-provides-extras = ["all", "benchmark", "dev", "dl", "docs", "eval", "faiss", "security"]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -2169,7 +2131,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aberrant", extras = ["faiss"], url = "https://github.com/OliverHennhoefer/aberrant/archive/04a857056352f72d1bd68a5ea824b36a55c4d917.tar.gz" },
+    { name = "aberrant", extras = ["faiss"], specifier = "==1.5.0" },
     { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<3" },
     { name = "numpy", specifier = ">=1.24.0" },

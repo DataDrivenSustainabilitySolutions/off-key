@@ -17,8 +17,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..schemas.pipelines import (
+    AccumulateParameters,
     AggregateParameters,
     ChangeParameters,
+    ConditionParameters,
+    ConstantParameters,
     DespikeParameters,
     FormulaParameters,
     GateParameters,
@@ -27,6 +30,7 @@ from ..schemas.pipelines import (
     PipelineValidation,
     RangeParameters,
     RollingParameters,
+    SetFeatureParameters,
     SmoothParameters,
 )
 
@@ -40,10 +44,23 @@ PREPARE_MODELS: dict[str, type[PipelineModel]] = {
     "prepare.aggregate": AggregateParameters,
     "prepare.formula": FormulaParameters,
     "prepare.gate": GateParameters,
+    "prepare.constant": ConstantParameters,
+    "prepare.condition": ConditionParameters,
+    "prepare.set": SetFeatureParameters,
+    "prepare.accumulate": AccumulateParameters,
 }
 PREPARE_COMPONENTS = frozenset(PREPARE_MODELS)
 # Steps over the whole row; they keep no state and have output from the start.
-ROW_COMPONENTS = frozenset({"prepare.aggregate", "prepare.formula", "prepare.gate"})
+ROW_COMPONENTS = frozenset(
+    {
+        "prepare.aggregate",
+        "prepare.formula",
+        "prepare.gate",
+        "prepare.constant",
+        "prepare.condition",
+        "prepare.set",
+    }
+)
 # Steps that map each feature they use to one value, through a Kernel.
 LANE_COMPONENTS = PREPARE_COMPONENTS - ROW_COMPONENTS
 # Past values all Prepare windows hold together, across their features.
@@ -52,7 +69,9 @@ MAX_WINDOW_VALUES = 50_000
 MAD_SCALE = 1.4826
 REJECTION_REASONS = ("non_finite", "out_of_domain", "out_of_range")
 _CHANGE_SUFFIXES = {"difference": "diff", "percent": "pct", "lag": "lag"}
-_ORDERED_STATISTICS = frozenset({"median", "min", "max", "range"})
+_ORDERED_STATISTICS = frozenset(
+    {"median", "min", "max", "range", "quantile", "iqr", "mad"}
+)
 
 State = tuple[Any, ...]
 Bounds = tuple[float | None, float | None]
@@ -92,6 +111,9 @@ def default_suffix(component: str, params: dict[str, Any]) -> str:
         case "prepare.rolling":
             statistic = _setting(component, params, "statistic")
             return f"{statistic}{_setting(component, params, 'window_size')}"
+        case "prepare.accumulate":
+            function = _setting(component, params, "function")
+            return "total" if function == "sum" else f"running_{function}"
         case "prepare.math":
             function = _setting(component, params, "function")
             return "scaled" if function == "linear" else function
@@ -181,9 +203,10 @@ class Exponential(Kernel):
 class Rolling(Kernel):
     """A statistic of the last n values, from the n-th value on."""
 
-    def __init__(self, size: int, statistic: str):
+    def __init__(self, size: int, statistic: str, quantile: float = 0.5):
         self.size = size
         self.statistic = statistic
+        self.quantile = quantile
         self.ordered = statistic in _ORDERED_STATISTICS
         self.lead = size - 1
         self.window = size
@@ -213,6 +236,8 @@ class Rolling(Kernel):
         size = self.size
         middle = size // 2
         match self.statistic:
+            case "sum":
+                return math.fsum(window)
             case "mean":
                 return math.fsum(window) / size
             case "std":
@@ -227,10 +252,66 @@ class Rolling(Kernel):
                 return ordered[0]
             case "max":
                 return ordered[-1]
-        return ordered[-1] - ordered[0]
+            case "range":
+                return ordered[-1] - ordered[0]
+        return self._extended_statistic(window, ordered)
+
+    def _extended_statistic(self, window: array, ordered: array) -> float:
+        match self.statistic:
+            case "quantile":
+                return _quantile(ordered, self.quantile)
+            case "iqr":
+                return _quantile(ordered, 0.75) - _quantile(ordered, 0.25)
+            case "mad":
+                median = _quantile(ordered, 0.5)
+                return _quantile(sorted(abs(item - median) for item in window), 0.5)
+        size = self.size
+        mean = math.fsum(window) / size
+        weights = (index - (size - 1) / 2 for index in range(size))
+        return math.sumprod(weights, (item - mean for item in window)) / (
+            size * (size * size - 1) / 12
+        )
 
     def accepts(self, state: State) -> bool:
         return _window_state(state, self.size, 2 if self.ordered else 1)
+
+
+def _quantile(ordered, fraction: float) -> float:
+    position = (len(ordered) - 1) * fraction
+    low = int(position)
+    weight = position - low
+    if weight == 0:
+        return ordered[low]
+    return (1 - weight) * ordered[low] + weight * ordered[low + 1]
+
+
+class Accumulate(Kernel):
+    """A constant-size running total or extreme, committed with the observation."""
+
+    def __init__(self, function: str):
+        self.function = function
+
+    def initial(self) -> State:
+        return (False, 0.0)
+
+    def advance(self, state: State, value: float) -> tuple[State, float | None]:
+        seen, previous = state
+        if seen:
+            if self.function == "sum":
+                value = previous + value
+            else:
+                value = (min if self.function == "min" else max)(previous, value)
+        value = _finite(value)
+        return (True, value), value
+
+    def accepts(self, state: State) -> bool:
+        return (
+            len(state) == 2
+            and isinstance(state[0], bool)
+            and isinstance(state[1], float)
+            and math.isfinite(state[1])
+            and (state[0] or state[1] == 0.0)
+        )
 
 
 class Despike(Kernel):
@@ -369,7 +450,9 @@ def kernel(component: str, params: dict[str, Any]) -> Kernel:
     if isinstance(settings, ChangeParameters):
         return Change(settings.lag, settings.mode)
     if isinstance(settings, RollingParameters):
-        return Rolling(settings.window_size, settings.statistic)
+        return Rolling(settings.window_size, settings.statistic, settings.quantile)
+    if isinstance(settings, AccumulateParameters):
+        return Accumulate(settings.function)
     if isinstance(settings, MathParameters):
         return Function(settings.function, settings.scale, settings.offset)
     assert isinstance(settings, RangeParameters)
@@ -445,6 +528,38 @@ def _range_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
     return kept
 
 
+def _rolling_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
+    low, high = bounds
+    statistic = _setting("prepare.rolling", params, "statistic")
+    if statistic in {"mean", "median", "min", "max", "quantile"}:
+        return bounds
+    if statistic == "sum":
+        size = _setting("prepare.rolling", params, "window_size")
+        return (
+            None if low is None else low * size,
+            None if high is None else high * size,
+        )
+    if statistic == "slope":
+        return (
+            (low - high, high - low)
+            if low is not None and high is not None
+            else (None, None)
+        )
+    if statistic in {"range", "iqr", "mad"} and low is not None and high is not None:
+        return 0.0, high - low
+    return 0.0, None
+
+
+def _accumulated_bounds(params: dict[str, Any], bounds: Bounds) -> Bounds:
+    if _setting("prepare.accumulate", params, "function") != "sum":
+        return bounds
+    low, high = bounds
+    return (
+        0.0 if low is not None and low >= 0 else None,
+        0.0 if high is not None and high <= 0 else None,
+    )
+
+
 def prepared_bounds(component: str, params: dict[str, Any], bounds: Bounds) -> Bounds:
     """The range of a step's output for inputs within bounds; None is open."""
     low, high = bounds
@@ -460,13 +575,9 @@ def prepared_bounds(component: str, params: dict[str, Any], bounds: Bounds) -> B
             elif mode == "difference" and low is not None and high is not None:
                 result = (low - high, high - low)
         case "prepare.rolling":
-            statistic = _setting(component, params, "statistic")
-            if statistic in {"mean", "median", "min", "max"}:
-                result = bounds
-            elif statistic == "range" and low is not None and high is not None:
-                result = (0.0, high - low)
-            else:
-                result = (0.0, None)
+            result = _rolling_bounds(params, bounds)
+        case "prepare.accumulate":
+            result = _accumulated_bounds(params, bounds)
         case "prepare.math":
             result = _function_bounds(params, bounds)
         case "prepare.range":

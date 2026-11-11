@@ -50,7 +50,9 @@ export function CombinedName({ node, component, issues, readOnly, onChange }: {
       aria-invalid={errors.length > 0} aria-describedby={`${id}-name-help ${id}-name-errors`}
       onChange={(event) => set("name", event.target.value || undefined)} />
     <small className="pl-help" id={`${id}-name-help`}>
-      The computed feature, in letters, digits and underscores. Leave empty for {fallback}.
+      {node.component === "prepare.set"
+        ? `The feature to add or replace. Other features stay unchanged. Leave empty for ${fallback}.`
+        : `The computed feature, in letters, digits and underscores. Leave empty for ${fallback}.`}
     </small>
     <Errors id={`${id}-name-errors`} issues={errors} />
   </div>;
@@ -77,13 +79,15 @@ export function PipelineFormula({ node, component, features, featureLabels, read
   const area = useRef<HTMLTextAreaElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const gate = node.component === "prepare.gate";
-  const field = gate ? "condition" : "expression";
+  const condition = gate || node.component === "prepare.condition";
+  const formula = node.component === "prepare.formula";
+  const field = condition ? "condition" : "expression";
   const text = typeof node.params[field] === "string" ? node.params[field] : "";
   const errors = errorsOf(issues, field);
   const set = setter(node, onChange);
   const help = component.fields.find((item) => item.name === field)?.description;
   // A Formula for each feature runs once per chosen feature, with x standing for it.
-  const each = gate ? undefined : formulaEach(node);
+  const each = formula ? formulaEach(node) : undefined;
   const names = each ? [EACH_VARIABLE, ...features] : features;
   const labels = each ? { ...featureLabels, [EACH_VARIABLE]: "each chosen feature" } : featureLabels;
   // The caret while the field has focus and nothing is selected; suggestions follow it.
@@ -92,7 +96,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
   const [dismissed, setDismissed] = useState<string>();
   const word = caret === undefined || readOnly ? undefined : typedWord(text, caret);
   const key = word && `${word.start}:${word.prefix}`;
-  const options = word && key !== dismissed ? suggestions(word, names, labels, gate) : [];
+  const options = word && key !== dismissed ? suggestions(word, names, labels, condition || /\bif\s*\(/.test(text)) : [];
   const open = options.length > 0;
   const current = Math.min(active, Math.max(options.length - 1, 0));
   // The chosen suggestion stays in view, in the list and in a panel that scrolls.
@@ -170,7 +174,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
       : `Replaces ${each.length ? listed(each) : "the chosen features"} with their results.`
     : add ? `Keeps the features and adds ${name}.` : `Replaces the features the formula reads with ${name}.`;
   return <div className="pl-formula">
-    {!gate && <div className="pl-field">
+    {formula && <div className="pl-field">
       <span id={`${id}-mode`}>Computes</span>
       <div className="pl-segmented" role="group" aria-labelledby={`${id}-mode`}>
         <button type="button" disabled={readOnly} aria-pressed={!each} onClick={() => each && setMode(false)}>One feature</button>
@@ -202,10 +206,10 @@ export function PipelineFormula({ node, component, features, featureLabels, read
       <Errors id={`${id}-each-errors`} issues={errorsOf(issues, "apply_to")} />
     </fieldset>}
     <div className="pl-field">
-      <label htmlFor={`${id}-text`}>{gate ? "Condition" : "Formula"}</label>
+      <label htmlFor={`${id}-text`}>{condition ? "Condition" : "Formula"}</label>
       <div className="pl-formula-input">
         <textarea ref={area} id={`${id}-text`} className="pl-code" rows={3} maxLength={512} value={text}
-          placeholder={gate ? "dc_current > 1" : each ? "x / mean - 1" : "dc_voltage * dc_current"} disabled={readOnly}
+          placeholder={condition ? "dc_current > 1" : each ? "x / mean - 1" : "dc_voltage * dc_current"} disabled={readOnly}
           spellCheck={false} autoComplete="off" autoCapitalize="off" autoCorrect="off"
           aria-invalid={errors.length > 0} aria-describedby={`${id}-errors ${id}-help`}
           aria-autocomplete="list" aria-controls={open ? listId : undefined}
@@ -241,7 +245,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
       {help && <small className="pl-help" id={`${id}-help`}>{help}</small>}
     </div>
     {!gate && <>
-      <div className="pl-field">
+      {formula && <div className="pl-field">
         <span id={`${id}-result`}>Result</span>
         <div className="pl-segmented" role="group" aria-labelledby={`${id}-result`}>
           {(["replace", "add"] as const).map((result) => <button key={result} type="button" disabled={readOnly}
@@ -251,7 +255,10 @@ export function PipelineFormula({ node, component, features, featureLabels, read
           </button>)}
         </div>
         <small className="pl-help">{outcome}</small>
-      </div>
+      </div>}
+      {node.component === "prepare.condition" && <p className="pl-help">
+        Keeps every observation and adds {name}: 1 when the condition holds, 0 otherwise.
+      </p>}
       {each
         ? add && <div className="pl-field">
           <label htmlFor={`${id}-suffix`}>Suffix</label>

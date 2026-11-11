@@ -1125,14 +1125,44 @@ class RollingParameters(PrepareScopeParameters):
             "step's output as new features."
         ),
     )
-    statistic: Literal["mean", "median", "min", "max", "std", "range"] = Field(
+    statistic: Literal[
+        "mean",
+        "median",
+        "min",
+        "max",
+        "std",
+        "range",
+        "sum",
+        "quantile",
+        "iqr",
+        "mad",
+        "slope",
+    ] = Field(
         default="mean",
         description=(
-            "Statistic of the window; std is the sample standard deviation and "
-            "range is max minus min."
+            "Statistic of the window. std uses n - 1; iqr is the interquartile "
+            "range; mad is the unscaled median absolute deviation. Quantiles "
+            "use linear interpolation. Slope is a fitted change per observation."
         ),
     )
     window_size: int = _window(60, "Recent observations the statistic covers.")
+    quantile: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description="Quantile to compute, from 0 to 1; used only by quantile.",
+    )
+
+
+class AccumulateParameters(PrepareScopeParameters):
+    result: Literal["replace", "add"] = Field(default="add", title="Result")
+    function: Literal["sum", "min", "max"] = Field(
+        default="sum",
+        description=(
+            "Total, minimum or maximum since this step's first accepted observation. "
+            "Restoring a checkpoint continues the accumulation; a new run starts over."
+        ),
+    )
 
 
 class MathParameters(PrepareScopeParameters):
@@ -1231,7 +1261,8 @@ class FormulaParameters(PipelineModel):
         description=(
             "Arithmetic over the features arriving here, such as "
             "dc_voltage * dc_current, with + - * / ^, parentheses, and abs, sqrt, "
-            "log, log1p, exp, min, max and clip. Write a name with other "
+            "log, log1p, exp, min, max, clip and if(condition, when_true, when_false). "
+            "Only the chosen branch of if is evaluated. Write a name with other "
             "characters between backticks. In a formula for each feature, x "
             "stands for that feature."
         ),
@@ -1291,5 +1322,41 @@ class GateParameters(PipelineModel):
             "Observations where it is false are recorded but neither learned nor "
             "scored, such as dc_current > 1. Compare with < <= > >= == != and "
             "join with and, or and not."
+        ),
+    )
+
+
+class ConstantParameters(PipelineModel):
+    name: str | None = _combined_name("constant")
+    value: float = Field(
+        default=0.0,
+        description="Add this named value to each observation for later steps to use.",
+    )
+
+
+class ConditionParameters(PipelineModel):
+    name: str | None = _combined_name("condition")
+    condition: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Condition",
+        description=(
+            "Add 1 when this condition holds and 0 otherwise, keeping the observation. "
+            "Use comparisons with and, or, not; later steps can read the flag "
+            "with flag == 1."
+        ),
+    )
+
+
+class SetFeatureParameters(PipelineModel):
+    name: str = Field(default="feature", min_length=1, max_length=120, title="Name")
+    expression: str = Field(
+        min_length=1,
+        max_length=512,
+        title="Formula",
+        description=(
+            "Compute this feature from the incoming values. Replace only the named "
+            "feature if it exists, or add it. All other features stay unchanged. "
+            "Use if(condition, when_true, when_false) to choose a value."
         ),
     )

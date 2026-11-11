@@ -31,7 +31,14 @@ from .pipeline_scope import MAX_FEATURE_NAME_LENGTH, ScopeError, adds, step_scop
 
 Row = Mapping[str, float]
 Columns = list[FeatureDescription]
-_DEFAULT_NAMES = {"prepare.formula": "formula"}
+_DEFAULT_NAMES = {
+    "prepare.formula": "formula",
+    "prepare.constant": "constant",
+    "prepare.condition": "condition",
+    "prepare.set": "feature",
+}
+_CONDITIONS = frozenset({"prepare.gate", "prepare.condition"})
+NAMED_COMPONENTS = frozenset({"prepare.constant", "prepare.condition", "prepare.set"})
 
 
 def _setting(component: str, params: Mapping[str, Any], name: str) -> Any:
@@ -50,10 +57,10 @@ def combined_name(component: str, params: Mapping[str, Any]) -> str:
 
 
 def expression(component: str, params: Mapping[str, Any]) -> Expression:
-    """A Formula's expression or a Gate's condition; errors name their setting."""
-    parameter = "condition" if component == "prepare.gate" else "expression"
+    """A numeric expression or condition; errors name their setting."""
+    parameter = parsed_parameter(component)
     try:
-        return parse(params[parameter], condition=component == "prepare.gate")
+        return parse(params[parameter], condition=component in _CONDITIONS)
     except FormulaError as error:
         error.parameter = parameter
         raise
@@ -139,7 +146,7 @@ def _checked(component: str, params: Mapping[str, Any], names: Sequence[str]):
 
 
 def parsed_parameter(component: str) -> str:
-    return "condition" if component == "prepare.gate" else "expression"
+    return "condition" if component in _CONDITIONS else "expression"
 
 
 def _finite(value: float) -> float:
@@ -237,7 +244,18 @@ class Gate:
         return bool(self.evaluate(row))
 
 
-RowStep = Aggregate | Formula | FormulaForEach | Gate
+@dataclass(frozen=True)
+class NamedValue:
+    """Write one feature; dictionary assignment keeps an existing field's order."""
+
+    name: str
+    evaluate: Callable[[Row], Any]
+
+    def apply(self, row: Row) -> dict[str, float]:
+        return {**row, self.name: _finite(float(self.evaluate(row)))}
+
+
+RowStep = Aggregate | Formula | FormulaForEach | Gate | NamedValue
 
 
 def row_step(
@@ -252,9 +270,14 @@ def row_step(
             combined_name(component, params),
             scope.add,
         )
+    if component == "prepare.constant":
+        value = _setting(component, params, "value")
+        return NamedValue(combined_name(component, params), lambda _row: value)
     parsed = _checked(component, params, inputs)
     if component == "prepare.gate":
         return Gate(parsed, evaluator(parsed))
+    if component in NAMED_COMPONENTS:
+        return NamedValue(combined_name(component, params), evaluator(parsed))
     if for_each(component, params):
         return FormulaForEach(parsed, evaluator(parsed), each_scope(params, inputs))
     return Formula(
@@ -308,8 +331,10 @@ def _hull(bounds: list[Bounds], function: str) -> Bounds:
 def combined_columns(
     component: str, params: Mapping[str, Any], columns: Columns
 ) -> Columns:
-    """The features after an Aggregate, Formula or Gate."""
+    """The features after a stateless row operation."""
     names = [item.name for item in columns]
+    if component in NAMED_COMPONENTS:
+        return _named_columns(component, params, columns)
     if component == "prepare.gate":
         _checked(component, params, names)
         return columns
@@ -345,6 +370,40 @@ def combined_columns(
             name=name, slots=lineage, minimum=low, maximum=high, raw=False
         ),
     ]
+
+
+def _named_columns(
+    component: str, params: Mapping[str, Any], columns: Columns
+) -> Columns:
+    name = combined_name(component, params)
+    names = [item.name for item in columns]
+    if name in names and component != "prepare.set":
+        raise ScopeError(f"{name} already exists. Choose another name.", "name")
+    used = ()
+    if component == "prepare.constant":
+        low = high = _setting(component, params, "value")
+    else:
+        parsed = _checked(component, params, names)
+        used = parsed.names
+        analysis = analyze(parsed, _bounds(columns))
+        if component == "prepare.condition":
+            low, high = (
+                (0.0, 1.0) if analysis.truth is None else (float(analysis.truth),) * 2
+            )
+        else:
+            low, high = analysis.low, analysis.high
+    result = FeatureDescription(
+        name=name,
+        raw=False,
+        minimum=low,
+        maximum=high,
+        slots=sorted(
+            {slot for item in columns if item.name in used for slot in item.slots}
+        ),
+    )
+    if name in names:
+        return [result if item.name == name else item for item in columns]
+    return [*columns, result]
 
 
 def _each_bounds(columns: Columns, name: str) -> dict[str, Bounds]:
@@ -399,7 +458,12 @@ def value_issues(
     labels: Mapping[str, str],
 ) -> list[ValueIssue]:
     """Warn where some observations will be skipped, refuse where all would be."""
-    if component in {"prepare.formula", "prepare.gate"}:
+    if component in {
+        "prepare.formula",
+        "prepare.gate",
+        "prepare.condition",
+        "prepare.set",
+    }:
         return _expression_issues(component, params, columns, labels)
     names = [item.name for item in columns]
     scope = step_scope(component, dict(params), names)
@@ -508,7 +572,14 @@ def _each_issues(
 
 
 VALUE_CHECKED = frozenset(
-    {"prepare.math", "prepare.change", "prepare.formula", "prepare.gate"}
+    {
+        "prepare.math",
+        "prepare.change",
+        "prepare.formula",
+        "prepare.gate",
+        "prepare.condition",
+        "prepare.set",
+    }
 )
 
 __all__ = [

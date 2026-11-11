@@ -107,12 +107,13 @@ def _prepare_state(plan: ExecutionPlan) -> int:
 
     A step that needs order statistics keeps a sorted copy as well. A pass
     stages new arrays before the old ones are released, so twice the arrays can
-    be alive at once. Aggregate, Formula and Gate keep no state.
+    be alive at once. Row operations keep no state.
     """
     if plan.stage is None:
         return 0
     header = sys.getsizeof(array("d"))
     total = 0
+    scratch = 0
     for identifier in plan.stage.steps:
         node = plan.nodes[identifier]
         if node.component not in LANE_COMPONENTS:
@@ -121,12 +122,23 @@ def _prepare_state(plan: ExecutionPlan) -> int:
         initial = step.initial()
         arrays = sum(isinstance(item, array) for item in initial)
         lane = sys.getsizeof(initial) + arrays * (header + 8 * step.window)
-        lane += 2 * sys.getsizeof(0.0) if not arrays and initial else 0
+        lane += sum(
+            sys.getsizeof(item) for item in initial if not isinstance(item, array)
+        )
+        if node.component == "prepare.rolling" and node.params["statistic"] == "mad":
+            # One lane's deviations, list overallocation and sort workspace.
+            capacity = step.window + (step.window + 7) // 8 + 6
+            scratch = max(
+                scratch,
+                sys.getsizeof([])
+                + step.window * sys.getsizeof(0.0)
+                + (capacity + step.window // 2) * calcsize("P"),
+            )
         scope = step_scope(
             node.component, node.params, plan.names(plan.parents(identifier)[0])
         )
         total += 2 * len(scope.selected) * lane
-    return total
+    return total + scratch
 
 
 def _fusion_state(plan: ExecutionPlan) -> int:

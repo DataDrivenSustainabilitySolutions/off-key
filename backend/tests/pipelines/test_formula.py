@@ -82,6 +82,46 @@ def test_conditions_compare_and_join(text, row, expected):
     assert holds(text, **row) is expected
 
 
+@pytest.mark.parametrize("x", [-2.0, 0.0, 2.0])
+def test_conditional_formulas_evaluate_only_the_selected_branch(x):
+    assert value("if(x != 0, 1 / x, 0)", x=x) == (1 / x if x else 0)
+    assert value("if(x > 0, log(x), if(x < 0, -x, 0))", x=x) == (
+        math.log(x) if x > 0 else abs(x)
+    )
+    assert value("if(1 == 1, 7, sqrt(-1))") == 7
+    assert holds("if(x > 0, x, 0) >= 0", x=x)
+
+
+@pytest.mark.parametrize("text", ["if(a, 1, 0)", "if(a > 0, a > 1, 0)", "if(a > 0, 1)"])
+def test_conditional_arguments_have_explicit_kinds(text):
+    assert problem(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "if(x != 0, 1 / x, 0)",
+        "if(x > 0, log(x), 0)",
+        "if(x >= 0, sqrt(x), sqrt(-x))",
+        "if(not (x <= 0), log(x), 0)",
+        "if(0 < x and x < 2, log(x), 0)",
+        "if(x <= 0 or x >= 2, 0, log(x))",
+        "if(1 > 0, 1, 1 / 0)",
+    ],
+)
+def test_conditional_range_analysis_respects_guards(text):
+    analysis = analyze(parse(text), {"x": (-2.0, 2.0)})
+    assert analysis.errors == analysis.warnings == []
+
+
+def test_conditionally_invalid_values_warn_without_blocking_the_valid_branch():
+    analysis = analyze(parse("if(x > 0, sqrt(-1), 0)"), {"x": (-1.0, 1.0)})
+    assert analysis.errors == [] and len(analysis.warnings) == 1
+    assert analyze(parse("if(x > 0, sqrt(-1), 1 / 0)"), {}).errors
+    bounded = analyze(parse("if(x > 0, 2, -3)"), {})
+    assert (bounded.low, bounded.high) == (-3, 2)
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
@@ -310,7 +350,8 @@ def _formula(rng, depth=0):
         parts = [_formula(rng, depth + 1) for _ in range(3)]
         return f"clip({', '.join(parts)})"
     if roll < 0.65:
-        return f"-{_formula(rng, depth + 1)}"
+        parts = [_formula(rng, depth + 1) for _ in range(4)]
+        return f"if({parts[0]} > {parts[1]}, {parts[2]}, {parts[3]})"
     if roll < 0.75:
         return f"({_formula(rng, depth + 1)})"
     return f"{_formula(rng, depth + 1)}{rng.choice(_JOINS)}{_formula(rng, depth + 1)}"

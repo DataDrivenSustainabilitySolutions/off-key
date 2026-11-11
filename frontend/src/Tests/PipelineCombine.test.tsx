@@ -6,6 +6,7 @@ import {
   type PipelineNode,
 } from "@/features/pipelines/contracts";
 import { suggestions, typedWord } from "@/features/pipelines/formula";
+import { addComponent } from "@/features/pipelines/model";
 import { PipelineFormula } from "@/features/pipelines/PipelineFormula";
 import { PipelineLearningSummary } from "@/features/pipelines/PipelineLearningSummary";
 import { PipelineScope } from "@/features/pipelines/PipelineScope";
@@ -34,6 +35,10 @@ const aggregate = component("prepare.aggregate", [
 ]);
 const formula = component("prepare.formula", [text("expression", "Formula", true), text("name", "Name"), result]);
 const gate = component("prepare.gate", [text("condition", "Condition", true)]);
+const condition = component("prepare.condition", [text("condition", "Condition", true), text("name", "Name")]);
+const assignment = component("prepare.set", [text("expression", "Formula", true), text("name", "Name")]);
+const constant = component("prepare.constant", [text("name", "Name"),
+  { name: "value", label: "Value", type: "number", default: 0, has_default: true }]);
 
 const node = (step: PipelineComponent, params: PipelineNode["params"] = {}): PipelineNode =>
   ({ id: "step", kind: "transform", component: step.id, params });
@@ -272,5 +277,58 @@ describe("the Prepare summary", () => {
     } as unknown as PipelineState;
     render(<PipelineLearningSummary state={state} />);
     expect(screen.getByText("Held back by a Gate").nextSibling?.textContent).toBe("7");
+  });
+});
+
+describe("numeric primitives", () => {
+  it("edits a reusable condition without offering filtering or replacement controls", () => {
+    const changes = formulaPanel(condition, { name: "running", condition: "dc_voltage > 10" });
+    expect(screen.getByText("Keeps every observation and adds running: 1 when the condition holds, 0 otherwise.")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Computes" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Result" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Condition" }), { target: { value: "dc_voltage > 20" } });
+    expect(changes[changes.length - 1]).toEqual({ name: "running", condition: "dc_voltage > 20" });
+    expect(stepFields(node(condition), condition)).toEqual([]);
+  });
+
+  it("assigns an existing feature without removing the formula's other inputs", () => {
+    const changes = formulaPanel(assignment, { name: "dc-current", expression: "if(dc_voltage > 0, 1, 0)" });
+    expect(screen.getByText(/Other features stay unchanged/)).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Result" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "For each feature" })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "dc_voltage" } });
+    expect(changes[changes.length - 1]?.name).toBe("dc_voltage");
+    expect(stepFields(node(assignment), assignment)).toEqual([]);
+  });
+
+  it("suggests conditional expressions and Boolean operators inside their conditions", () => {
+    expect(suggestions({ prefix: "if", quoted: false }, [], {}, false)[0]?.value).toBeUndefined();
+    expect(suggestions({ prefix: "i", quoted: false }, [], {}, false).some(item => item.value === "if")).toBe(true);
+    formulaPanel(formula, { expression: "if(dc_voltage > 0 an" });
+    caretAtEnd();
+    expect(screen.getByRole("option", { name: /and/ })).toBeTruthy();
+  });
+
+  it("gives added constants distinct names and describes their values and flags", () => {
+    let document = { definition, layout: { nodes: {} } };
+    document = addComponent(document, constant);
+    document = addComponent(document, constant);
+    expect(document.definition.nodes.map(item => combinedName(item, constant))).toEqual(["constant", "constant_2"]);
+    expect(summary(constant, { name: "limit", value: 42 }).text).toBe("limit = 42");
+    expect(summary(condition, { name: "high", condition: "dc_voltage > 42" }).text)
+      .toBe("high: 1 when dc_voltage > 42, otherwise 0");
+    for (const step of [constant, condition, assignment]) expect(stepFamily(step.kind, step.id)).toBe("combine");
+  });
+
+  it("offers a quantile setting only for the quantile statistic", () => {
+    const rolling = component("prepare.rolling", [
+      { name: "statistic", label: "Statistic", type: "enum", default: "mean", has_default: true },
+      { name: "quantile", label: "Quantile", type: "number", default: .5, has_default: true },
+    ]);
+    expect(stepFields(node(rolling), rolling).map(field => field.name)).toEqual(["statistic"]);
+    expect(stepFields(node(rolling, { statistic: "quantile" }), rolling).map(field => field.name))
+      .toEqual(["statistic", "quantile"]);
+    expect(summary(rolling, { statistic: "quantile", quantile: .9, window_size: 5 }).text)
+      .toBe("Quantile 0.9 of last 5");
   });
 });

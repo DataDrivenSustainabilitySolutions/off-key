@@ -97,6 +97,9 @@ def normalized_parameters(
         or PARAMETER_MODELS[node.component]
     )
     params = model.model_validate(node.params).model_dump(mode="json")
+    if node.component == "prepare.rolling" and params["statistic"] != "quantile":
+        # Preserve the executable fingerprints of existing rolling steps.
+        params.pop("quantile", None)
     if node.component in POLICY_MODELS:
         # The calibration step combines detectors now; schema 1 designs move
         # their setting there when they are read.

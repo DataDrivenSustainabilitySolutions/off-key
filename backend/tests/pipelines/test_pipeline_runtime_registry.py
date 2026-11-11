@@ -26,6 +26,9 @@ ROW_SETTINGS = {
     "prepare.aggregate": {},
     "prepare.formula": {"expression": "a * b"},
     "prepare.gate": {"condition": "a > 1"},
+    "prepare.constant": {},
+    "prepare.condition": {"condition": "a > 1"},
+    "prepare.set": {"name": "a", "expression": "a + b"},
 }
 
 

@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from .pipeline_formula_guards import assume
 from .pipeline_prepare import Bounds, PrepareFailure
 
 MAX_EXPRESSION_LENGTH = 512
@@ -35,6 +36,7 @@ FUNCTIONS: dict[str, tuple[int, int | None]] = {
     "min": (2, None),
     "max": (2, None),
     "clip": (3, 3),
+    "if": (3, 3),
 }
 COMPARISONS = ("<=", ">=", "==", "!=", "<", ">")
 KEYWORDS = frozenset({"and", "or", "not"})
@@ -49,6 +51,7 @@ _ARITY = {
     "min": "at least 2 values",
     "max": "at least 2 values",
     "clip": "3 values: the value, its low and its high end",
+    "if": "3 arguments: a condition, its true value and its false value",
 }
 
 
@@ -310,6 +313,11 @@ class _Parser:
 
 def _check_kind(term: Term) -> str:
     """number or condition; operands of the wrong kind are errors."""
+    if term.kind == "call" and term.value == "if":
+        _expect(term.args[0], "condition")
+        for operand in term.args[1:]:
+            _expect(operand, "number")
+        return "number"
     match term.kind:
         case "compare":
             for operand in term.args:
@@ -525,7 +533,14 @@ def _compile(term: Term) -> Evaluate:
             left, right = args
             apply = (_COMPARE if term.kind == "compare" else _ARITHMETIC)[term.value]
             return lambda row: apply(left(row), right(row))
+    return _compile_call(term, args)
+
+
+def _compile_call(term: Term, args: list[Evaluate]) -> Evaluate:
     function = term.value
+    if function == "if":
+        condition, when_true, when_false = args
+        return lambda row: when_true(row) if condition(row) else when_false(row)
     if function in _UNARY:
         (inner,) = args
         unary = _UNARY[function]
@@ -661,11 +676,13 @@ class _Ranges:
         bounds: Mapping[str, Bounds],
         labels: Mapping[str, str],
         analysis: Analysis,
+        nonzero: frozenset[str] = frozenset(),
     ):
         self.expression = expression
         self.bounds = bounds
         self.labels = labels
         self.analysis = analysis
+        self.nonzero_names = nonzero
 
     def describe(self, term: Term) -> str:
         return self.expression.describe(term, self.labels)
@@ -703,6 +720,8 @@ class _Ranges:
 
     def nonzero(self, term: Term, value: Interval, subject: str) -> None:
         """Dividing by a value that can be 0 skips those observations."""
+        if term.kind == "name" and term.value in self.nonzero_names:
+            return
         name = self.describe(term)
         itself = subject.endswith(name)
         if value == (0.0, 0.0) and _constant(term) is not None:
@@ -767,6 +786,8 @@ class _Ranges:
 
     def call(self, term: Term) -> Interval:
         function = term.value
+        if function == "if":
+            return self.choose(term)
         values = [self.number(operand) for operand in term.args]
         if function in {"log", "log1p", "sqrt"}:
             (value,) = values
@@ -794,13 +815,62 @@ class _Ranges:
         pick = min if function == "min" else max
         return pick(low for low, _ in values), pick(high for _, high in values)
 
+    def branch(self, condition: Term, truth: bool) -> _Ranges | None:
+        refined = assume(condition, truth, self.bounds, self.nonzero_names)
+        if refined is None:
+            return None
+        bounds, nonzero = refined
+        return _Ranges(self.expression, bounds, self.labels, Analysis(), nonzero)
+
+    def include(self, other: _Ranges, *, conditional: bool) -> None:
+        for warning in other.analysis.warnings:
+            self.analysis.warn(warning)
+        for error in other.analysis.errors:
+            if conditional:
+                self.analysis.warn(
+                    "For observations selecting this branch: "
+                    + error.replace("every observation", "the observation")
+                )
+            else:
+                self.analysis.fail(error)
+
+    def choose(self, term: Term) -> Interval:
+        condition, yes, no = term.args
+        truth = self.condition(condition)
+        outcomes = []
+        for selected, value in ((True, yes), (False, no)):
+            if truth is not None and truth != selected:
+                continue
+            branch = self.branch(condition, selected)
+            if branch is not None:
+                outcomes.append((branch.number(value), branch))
+        for _, branch in outcomes:
+            self.include(branch, conditional=len(outcomes) > 1)
+        if outcomes and all(branch.analysis.errors for _, branch in outcomes):
+            self.analysis.fail(
+                "Every selected branch of if would skip the observation."
+            )
+        if not outcomes:
+            return -INF, INF
+        return min(value[0] for value, _ in outcomes), max(
+            value[1] for value, _ in outcomes
+        )
+
     def condition(self, term: Term) -> bool | None:
         match term.kind:
             case "not":
                 inner = self.condition(term.args[0])
                 return None if inner is None else not inner
             case "logic":
-                left, right = (self.condition(operand) for operand in term.args)
+                left = self.condition(term.args[0])
+                required = term.value == "and"
+                if left is not None and left != required:
+                    return left
+                branch = self.branch(term.args[0], required)
+                if branch is None:
+                    return not required
+                right = branch.condition(term.args[1])
+                self.include(branch, conditional=left is None)
                 if term.value == "and":
                     if left is False or right is False:
                         return False

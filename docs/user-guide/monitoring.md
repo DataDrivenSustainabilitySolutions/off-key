@@ -267,15 +267,21 @@ their windows never restart.
 - **Change** adds the difference or percent change since **Lag** observations
   back, or the value from then.
 - **Rolling statistic** adds the mean, median, minimum, maximum, standard
-  deviation or range of the last **Window** values.
+  deviation, range, sum, quantile, interquartile range (IQR), median absolute
+  deviation (MAD), or fitted slope of the last **Window** values. Quantiles use
+  linear interpolation; MAD is unscaled. Slope measures change per observation,
+  not per second.
+- **Accumulate** adds a running total, minimum or maximum. It starts with the
+  first observation reaching the step, continues across checkpoint recovery,
+  and starts over in a new run. A total of a 0/1 feature counts its true values.
 - **Math** takes a logarithm, square root, absolute value or square, or computes
   scale × x + offset.
 - **Range check** clips values to **Low** and **High**, or skips observations
   outside them.
 
 Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
-**Change** and **Rolling statistic** add features by default, such as
-`dc_voltage_diff1` and `dc_voltage_mean60`; the others replace values. A step
+**Change**, **Rolling statistic** and **Accumulate** add features by default, such as
+`dc_voltage_diff1`, `dc_voltage_mean60` and `dc_voltage_total`; the others replace values. A step
 with a window has its first value once the window is full, and steps in a chain
 add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
 the 11th observation, and its settings say **Ready after 11 observations**.
@@ -306,11 +312,33 @@ value from the first observation.
   with other characters goes between backticks, such as `` `dc-voltage` ``; the
   buttons below the formula insert the features that arrive.
 
+`if(condition, when_true, when_false)` chooses a numeric value. Only the selected
+branch is evaluated, so `if(dc_current != 0, power / dc_current, 0)` can handle
+zero current without skipping the observation. Conditions use comparisons and
+`and`, `or`, `not`; conditional formulas can be nested.
+
 Both keep the features they use and add the result, named by **Name**, or
 `formula` and the function's name, such as `mean`, when it is empty. A second
 Formula or Aggregate that would compute a name an earlier one already uses
 starts with its own, such as `formula_2` or `mean_2`. **Replace
 features** removes the features they use instead.
+
+Three more Combine steps provide small building blocks for later calculations:
+
+- **Constant** adds a named value to every observation, such as `limit = 80`.
+  Downstream formulas and conditions can reuse that feature.
+- **Condition** adds a numeric flag: 1 when its condition holds, 0 otherwise.
+  It keeps every observation. For example, `temperature > limit` can feed a
+  three-observation rolling sum, then another Condition checking whether that
+  sum is at least two. Use `flag == 1` to combine flags in further conditions.
+- **Set feature** computes a named feature, replacing it in its existing position
+  if present or adding it if new. Other features remain unchanged. For example,
+  set `current` to `if(running == 1, current, 0)` while preserving voltage and
+  temperature. Unlike Formula's **Replace features**, it replaces only the named
+  feature, even when the expression reads several inputs.
+
+Constant and Condition require a free output name. Set feature explicitly allows
+replacement. These steps run before learned scaling and projection, like Formula.
 
 **For each feature** runs one Formula once per feature chosen under **For
 each**, with `x` standing for that feature, so `x / i_mean - 1` on `L1`, `L2`

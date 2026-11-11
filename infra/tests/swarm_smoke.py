@@ -171,12 +171,13 @@ def images(release, revision):
         and os.getenv("GITHUB_REF") == "refs/heads/main"
     ):
         # This run's publish job pushed these images before the lane started.
-        # Allow brief registry propagation, then verify each digest's revision.
+        # A registry lookup can consume 60 seconds on its own. Leave time for
+        # retries after a slow request, while still verifying each digest's revision.
         for name in sorted(APPLICATION_IMAGES):
             release["images"][name] = wait(
                 lambda name=name: pin(release["images"][name], revision, sources[name]),
                 f"published {name} image",
-                timeout=60,
+                timeout=300,
             )
         return
     if os.getenv("OFFKEY_REHEARSAL_IMAGES") == "loaded":

@@ -66,7 +66,7 @@ LANDING_PATHS = {
     "infra/stack/landing.html.j2",
     "infra/stack/landing.md.j2",
     "infra/stack/landing-llms.txt.j2",
-    "infra/stack/landing-hero.b64.j2",
+    "infra/stack/landing-assets.json",
 }
 # Frontend files that change the image or its dependencies select everything.
 FRONTEND_BROAD = {

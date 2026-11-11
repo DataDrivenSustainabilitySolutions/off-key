@@ -41,9 +41,17 @@ def _seeded(constructor: Callable[..., Any]) -> Callable[[dict], Any]:
     return build
 
 
+def _min_max_scaler(params: dict) -> MinMaxScaler:
+    # Normalized params carry feature_range as a JSON list; scikit-learn wants a tuple.
+    params = dict(params)
+    if "feature_range" in params:
+        params["feature_range"] = tuple(params["feature_range"])
+    return MinMaxScaler(**params)
+
+
 BATCH_BUILDERS: dict[str, Callable[[dict], Any]] = {
     "static.standard_scaler": lambda params: StandardScaler(**params),
-    "static.min_max_scaler": lambda params: MinMaxScaler(**params),
+    "static.min_max_scaler": _min_max_scaler,
     # Median and interquartile range; a zero range divides by 1, as online.
     "static.robust_scaler": lambda params: RobustScaler(**params),
     "static.pca": _seeded(PCA),

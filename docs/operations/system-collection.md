@@ -2,7 +2,8 @@
 
 **Sources** opens a dedicated broker/topic/reading workspace. Select a broker or topic folder to inspect its recording scope; catalogue editing is available in its settings. Verified members whose role manages sources can save
 brokers, entities, concrete MQTT topics, payload fields and collections;
-members can inspect them. The installation-wide database is authoritative.
+members can inspect them. A broker entry is either an MQTT broker or an
+[HTTP API](#http-sources) that is polled. The installation-wide database is authoritative.
 Export/import uses only `aberration-system` schema version 1. Credentials, host
 allowlists, TLS requirements and private network routes stay with the operator.
 
@@ -10,7 +11,7 @@ allowlists, TLS requirements and private network routes stay with the operator.
 
 ```mermaid
 flowchart LR
-  B[Configured MQTT brokers] --> I[Selected TACTIC subscriptions]
+  B[Configured MQTT brokers and HTTP APIs] --> I[Selected TACTIC subscriptions and polls]
   I --> E[Internal EMQX envelopes]
   E --> C[Bounded opt-in collector]
   C --> H[Numeric history and latest state]
@@ -28,6 +29,62 @@ Accepted numeric observations use `telemetry/<entity>/<reading>` and the existin
 Persistent subscriptions run independently of views and login sessions. Temporary
 **Connect** previews use bounded memory and do not enable recording. Opening a
 recorded reading loads existing history, then follows new stored observations.
+
+## HTTP sources
+
+A broker entry of type **HTTP API** is a server that TACTIC asks, instead of a
+broker that sends. It saves a host, a port and whether to use TLS. Each reading
+names a request path with an optional query, such as
+`/v1/stations/7/latest?units=metric`, and the JSON Pointer of its value in the
+reply. Readings that share a path share one request. From there a reply is
+handled like an MQTT message: the same payload decoding, the same collector and
+the same history. Numbers sent as JSON strings, such as `"21.5"`, are accepted
+for number readings from either kind of source.
+
+TACTIC sends `GET` requests only, to the saved host and port only. It does not
+follow redirects, reads at most 64 KiB of a reply and keeps one connection open
+per source. A path starts with `/` and holds no spaces, `+` or `#`;
+percent-encode those characters.
+
+- **Polling rate:** a source sends nothing by itself, so its readings record at
+  an interval and never at Original rate. Each path is asked as often as its
+  most frequent recorded reading samples, and never more often than
+  `SYSTEM_HTTP_MIN_POLL_SECONDS`. A **View live** preview asks every 5 seconds,
+  or that minimum if it is longer.
+- **Source timestamp:** many APIs repeat their latest measurement until a new
+  one exists. Give the reading the JSON Pointer of the time the reply states,
+  such as `/observed_at`, and a poll that repeats that time is not recorded
+  again. The recorded time stays the time of the poll that first saw the value.
+  Previews show every poll.
+- **Refusals:** `401` and `403` stop the source at once. So does a source whose
+  every path answers a redirect or another client error. It reports the answer
+  and is tried again after five minutes, then less often, up to once an hour;
+  **Reconnect recording** tries at once. A login that was refused is therefore
+  not sent again every few seconds.
+- **Outages:** server errors, `408`, `429` and network failures are retried
+  with backoff, and `Retry-After` is honoured up to one hour. One failing path
+  is asked less often, up to every five minutes, while the others continue; the
+  source reports how many paths return no data.
+
+HTTP sources have their own operator settings:
+
+| Setting | Purpose |
+| --- | --- |
+| `SYSTEM_HTTP_ALLOWED_ORIGINS` | JSON list of origins, such as `["https://api.example.com", "http://10.0.0.7:8080"]`. An origin fixes scheme, host and port, so a catalogue edit can neither reach another port nor turn TLS off |
+| `SYSTEM_HTTP_CREDENTIALS` | Private JSON mapping from a credential reference to one login. `{"token": "…"}` sends `Authorization: Bearer …`; `{"username": "…", "password": "…"}` sends Basic authentication; `{"token": "…", "header": "X-API-Key"}` sends the token as written under that header |
+| `SYSTEM_HTTP_MIN_POLL_SECONDS` | Shortest time between two requests for one path (default 1) |
+
+`SYSTEM_LIVE_ALLOWED_HOSTS`, `SYSTEM_LIVE_CREDENTIALS` and broker routes never
+apply to an HTTP source, so an MQTT login is never sent in a request header. A
+host listed in `SYSTEM_LIVE_SOCKS_PROXIES` is reached through that SOCKS5 proxy
+with either protocol; that is how an API inside a source network is reached.
+TLS uses the system CA store and checks the host name, with no option to skip
+it. A deployment sets `system_http_allowed_origins` in its inventory and
+`system_http_credentials` in its vault.
+
+**Check connections** sends one request for the path of the source's first
+reading. Without a reading it asks for `/`, and any answer except `401` shows
+that the server is there.
 
 ## Explicit collection
 
@@ -124,9 +181,9 @@ provider-specific imports and old accepted topics are not supported.
 ## Operator access and retention
 
 `SYSTEM_COLLECTION_ENABLED` controls persistent ingress independently of
-`SYSTEM_LIVE_ENABLED`. Broker allowlists, credential references, SOCKS routes and
-broker routes are private operator configuration; the application model names no
-source. Catalogue exports contain no credentials.
+`SYSTEM_LIVE_ENABLED`. Broker allowlists, HTTP origins, credential references,
+SOCKS routes and broker routes are private operator configuration; the
+application model names no source. Catalogue exports contain no credentials.
 
 Internal publishing uses the configured EMQX TLS/authentication defaults and the
 private `SYSTEM_COLLECTION_MQTT_USERNAME`, `SYSTEM_COLLECTION_MQTT_API_KEY` and
@@ -188,7 +245,8 @@ created once by an operator:
 
 ## MQTT client policy
 
-The services use separate Paho clients. Their connection policies differ on
+[HTTP sources](#http-sources) use no MQTT client upstream; from the ingress
+publisher on they share this path. The services use separate Paho clients. Their connection policies differ on
 purpose in some places and have drifted in others; this table is the current
 record, so a change to one client is visible against the rest.
 

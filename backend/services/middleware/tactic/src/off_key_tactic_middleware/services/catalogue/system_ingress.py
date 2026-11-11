@@ -1,10 +1,12 @@
-"""Long-lived selected subscriptions forward raw envelopes through internal EMQX.
+"""Long-lived selected subscriptions and polls forward raw envelopes through
+internal EMQX.
 
 Admission, sampling, persistence and accepted detector output remain exclusively
 owned by mqtt-proxy. No view lease or browser connection controls this worker.
 """
 
 import asyncio
+import json
 import time
 from collections import deque
 from contextlib import suppress
@@ -18,6 +20,7 @@ from off_key_core.db.base import get_async_engine, get_async_session_local
 from off_key_core.db.locks import SYSTEM_INGRESS_LOCK
 from off_key_core.db.system import SystemCollectionConfiguration
 from off_key_core.db.worker_ownership import WorkerOwnership
+from off_key_core.schemas.collection_policy import CollectionPolicy
 from off_key_core.schemas.collection_status import (
     INGRESS_APPLIED,
     INGRESS_CONNECTING,
@@ -27,7 +30,7 @@ from off_key_core.schemas.collection_status import (
 from off_key_core.schemas.collection_wire import encode_ingress_envelope
 from off_key_core.schemas.system_collection import SystemCollectionDefinition
 from off_key_core.utils.mqtt_lifecycle import close_client
-from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES
+from off_key_core.utils.payload_decode import MAX_PAYLOAD_BYTES, resolve_pointer
 from paho.mqtt.client import MQTT_ERR_SUCCESS, Client
 from paho.mqtt.enums import CallbackAPIVersion
 from sqlalchemy import select, text, update
@@ -35,7 +38,8 @@ from sqlalchemy import select, text, update
 from ...config.config import get_tactic_settings
 from ...config.system_live import get_system_live_settings
 from .arrival_cadence import ArrivalCadence
-from .broker_access import resolve_broker
+from .broker_access import ResolvedHttpSource, peer, resolve_broker
+from .system_live_http import HttpPollWorker
 from .system_live_mqtt import LiveMqttWorker
 
 # A deadline that has always passed: the broker's client gave up after a refusal.
@@ -55,6 +59,8 @@ class PendingMessage:
     size: int
     received_at: float
     retained: bool
+    # Readings whose source timestamp did not change with this reply.
+    unchanged: frozenset = frozenset()
 
 
 class SystemIngress:
@@ -81,6 +87,8 @@ class SystemIngress:
         self.readings = {}
         self.cadences = {}
         self._received_at_us = {}
+        # Per HTTP reading: the source timestamp of the reply forwarded last.
+        self.source_stamps = {}
         self.generation = None
         self.output = None
         self.task = None
@@ -175,6 +183,16 @@ class SystemIngress:
                 for key, timestamp in self._received_at_us.items()
                 if key[1] in self.bindings.get(key[0], {})
             }
+            stamped = {
+                stream.definition.id
+                for stream in definition.streams(selected_only=True)
+                if stream.definition.timestamp_pointer is not None
+            }
+            self.source_stamps = {
+                key: stamp
+                for key, stamp in self.source_stamps.items()
+                if key in stamped
+            }
             for connection in definition.document.connections:
                 topics = self.bindings.get(connection.id)
                 if not topics:
@@ -182,8 +200,9 @@ class SystemIngress:
                 self._connect(connection, topics, definition.generation)
 
     def _connect(self, connection, topics, generation, *, quiet=False):
-        """Start one broker client; a quiet retry keeps the reported failure
-        until the broker is connected again."""
+        """Start one source client; a quiet retry keeps the reported failure
+        until the source is connected again."""
+        source = peer(connection).capitalize()
         access = self.access_resolver(connection) if self.access_resolver else None
         self.sources[connection.id] = (connection, topics)
         if quiet and connection.id in self.states:
@@ -196,30 +215,43 @@ class SystemIngress:
         if resolved == "host_not_allowed":
             state.update(
                 state="blocked",
-                message="Broker access is not configured by the operator.",
+                message=f"{source} access is not configured by the operator.",
             )
             return
         if resolved == "credential_missing":
             state.update(
                 state="blocked",
-                message="Broker credentials are not configured by the operator.",
+                message=f"{source} credentials are not configured by the operator.",
             )
             return
         connection = resolved.connection
         attempt = object()
+
+        def receive(topic, payload, retained):
+            self._receive(generation, connection.id, topic, payload, retained, attempt)
+
+        def report(phase, message):
+            self._state(generation, connection.id, phase, message, attempt)
+
         try:
-            worker = LiveMqttWorker(
-                connection,
-                list(topics),
-                resolved.credential,
-                lambda topic, payload, retained: self._receive(
-                    generation, connection.id, topic, payload, retained, attempt
-                ),
-                lambda phase, message: self._state(
-                    generation, connection.id, phase, message, attempt
-                ),
-                proxy=resolved.proxy,
-            )
+            if isinstance(resolved, ResolvedHttpSource):
+                worker = HttpPollWorker(
+                    connection,
+                    self._poll_intervals(topics),
+                    resolved.credential,
+                    receive,
+                    report,
+                    proxy=resolved.proxy,
+                )
+            else:
+                worker = LiveMqttWorker(
+                    connection,
+                    list(topics),
+                    resolved.credential,
+                    receive,
+                    report,
+                    proxy=resolved.proxy,
+                )
             self.workers.append(worker)
             self.source_workers[connection.id] = worker
             self.attempts[connection.id] = attempt
@@ -231,8 +263,22 @@ class SystemIngress:
             self.quiet.discard(connection.id)
             self.deadlines.pop(connection.id, None)
             state.update(
-                state="error", message="Broker connection could not be initialized."
+                state="error",
+                message=f"{source} connection could not be initialized.",
             )
+
+    def _poll_intervals(self, topics):
+        """How often each request path is asked: as often as its most frequent
+        recorded reading samples, within the operator's limit. A reading set to
+        every message has no rate of its own and uses the default interval."""
+        fallback = CollectionPolicy().interval_seconds
+        return {
+            address: max(
+                self.settings.SYSTEM_HTTP_MIN_POLL_SECONDS,
+                min(stream.policy.cadence or fallback for stream in streams),
+            )
+            for address, streams in topics.items()
+        }
 
     def _state(self, generation, connection_id, phase, message, attempt=None):
         with self.guard:
@@ -295,14 +341,13 @@ class SystemIngress:
                     self.settings.SYSTEM_COLLECTION_RETRY_MAX_SECONDS,
                 )
                 state = self.states[connection_id]
+                source = peer(self.sources[connection_id][0])
                 if refused:
-                    message = (
-                        f"{state['message'] or 'The broker refused the connection.'}"
-                        f" {RETRY_HINT}"
-                    )
+                    fallback = f"The {source} refused the connection."
+                    message = f"{state['message'] or fallback} {RETRY_HINT}"
                 else:
                     message = (
-                        f"Could not reach the broker within {timeout} seconds, "
+                        f"Could not reach the {source} within {timeout} seconds, "
                         f"so recording from it is paused. {RETRY_HINT}"
                     )
                 state.update(state="error", message=message)
@@ -372,6 +417,9 @@ class SystemIngress:
             ):
                 self.dropped += 1
                 return
+            unchanged = self._unchanged(decoded, streams)
+            if len(unchanged) == len(streams):
+                return  # The source measured nothing new since the last poll.
             self.pending.append(
                 PendingMessage(
                     generation,
@@ -382,9 +430,39 @@ class SystemIngress:
                     size,
                     received_at_us / 1_000_000,
                     retained,
+                    unchanged,
                 )
             )
             self.pending_bytes += size
+
+    def _unchanged(self, decoded, streams) -> frozenset:
+        """Readings whose source timestamp in this reply equals the one forwarded
+        last. A reply without a readable timestamp counts as new."""
+        stamped = [
+            stream
+            for stream in streams
+            if stream.definition.timestamp_pointer is not None
+        ]
+        if not stamped:
+            return frozenset()
+        try:
+            document = json.loads(decoded)
+        except (ValueError, RecursionError):
+            return frozenset()
+        unchanged = set()
+        for stream in stamped:
+            identity = stream.definition.id
+            try:
+                stamp = resolve_pointer(document, stream.definition.timestamp_pointer)
+            except (KeyError, IndexError, TypeError, ValueError):
+                stamp = None
+            if isinstance(stamp, bool) or not isinstance(stamp, (str, int, float)):
+                self.source_stamps.pop(identity, None)
+            elif self.source_stamps.get(identity) == stamp:
+                unchanged.add(identity)
+            else:
+                self.source_stamps[identity] = stamp
+        return frozenset(unchanged)
 
     async def _acknowledge(self, publications):
         try:
@@ -418,9 +496,13 @@ class SystemIngress:
                     or self.attempts.get(item.connection_id) is not item.attempt
                 ):
                     continue
-                streams = list(
-                    self.bindings.get(item.connection_id, {}).get(item.topic, [])
-                )
+                streams = [
+                    stream
+                    for stream in self.bindings.get(item.connection_id, {}).get(
+                        item.topic, []
+                    )
+                    if stream.definition.id not in item.unchanged
+                ]
             for stream in streams:
                 result = output.publish(
                     stream.ingress_topic, item.envelope, qos=1, retain=True

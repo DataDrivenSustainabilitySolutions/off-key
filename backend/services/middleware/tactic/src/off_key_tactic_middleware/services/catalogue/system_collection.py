@@ -189,13 +189,18 @@ class SystemCollectionService:
             if connection.id not in selected:
                 continue
             resolved = resolve_broker(settings, connection, access(connection))
+            polled = connection.protocol == "http"
             if resolved == "host_not_allowed":
                 raise ValidationError(
-                    "A selected broker is outside the operator's broker allowlist."
+                    "A selected HTTP source is outside the operator's HTTP "
+                    "origin allowlist."
+                    if polled
+                    else "A selected broker is outside the operator's broker allowlist."
                 )
             if resolved == "credential_missing":
+                source = "HTTP source" if polled else "broker"
                 raise ValidationError(
-                    "A selected broker's credential reference "
+                    f"A selected {source}'s credential reference "
                     "is not configured by the operator."
                 )
 

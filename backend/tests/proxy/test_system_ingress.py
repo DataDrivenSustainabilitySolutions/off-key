@@ -1,5 +1,6 @@
 """Distinct upstream observations must retain distinct persistence identities."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -23,6 +24,8 @@ from off_key_tactic_middleware.services.catalogue.arrival_cadence import Arrival
 from off_key_tactic_middleware.services.catalogue.broker_access import (
     BrokerRouteAccess,
 )
+
+from tests.support.http_source import Reply, http_source
 
 
 def definition(host="127.0.0.1"):
@@ -276,6 +279,7 @@ class FakeWorker:
         self, connection, topics, credential, on_message, on_state, proxy=None, **_
     ):
         self.connection = connection
+        self.topics = topics
         self.credential = credential
         self.proxy = proxy
         self.on_state = on_state
@@ -599,3 +603,220 @@ async def test_lost_owner_cannot_publish_pending_ingress(monkeypatch):
         await ingress._forward_pending()
     ingress.output.publish.assert_not_called()
     assert ingress.readings == {}
+
+
+def http_definition(port=8080):
+    """Two readings of one status reply, one with a source timestamp, and a
+    reading of a second path that records every message."""
+    document = SystemDocument.model_validate(
+        {
+            "connections": [
+                {
+                    "id": "api",
+                    "label": "API",
+                    "protocol": "http",
+                    "host": "127.0.0.1",
+                    "port": port,
+                }
+            ],
+            "streams": [
+                {
+                    "id": "temperature",
+                    "label": "Temperature",
+                    "connection_id": "api",
+                    "topic": "/status",
+                    "payload_pointer": "/temperature",
+                    "timestamp_pointer": "/measured_at",
+                    "policy": {"mode": "sample", "interval_seconds": 30},
+                },
+                {
+                    "id": "humidity",
+                    "label": "Humidity",
+                    "connection_id": "api",
+                    "topic": "/status",
+                    "payload_pointer": "/humidity",
+                    "policy": {"mode": "sample", "interval_seconds": 5},
+                },
+                {
+                    "id": "power",
+                    "label": "Power",
+                    "connection_id": "api",
+                    "topic": "/meter?phase=1",
+                    "policy": {"mode": "original"},
+                },
+            ],
+        }
+    )
+    return SystemCollectionDefinition(
+        document=document, bindings=build_bindings(document), generation="test"
+    )
+
+
+def polling_ingress(monkeypatch, port=8080, **settings):
+    FakeWorker.created = []
+    monkeypatch.setattr(
+        system_ingress,
+        "get_system_live_settings",
+        lambda: SystemLiveSettings(
+            SYSTEM_HTTP_ALLOWED_ORIGINS=[f"http://127.0.0.1:{port}"], **settings
+        ),
+    )
+    monkeypatch.setattr(system_ingress, "LiveMqttWorker", None)
+    ingress = system_ingress.SystemIngress()
+    published = []
+
+    def publish(topic, envelope, **_):
+        published.append((topic, json.loads(envelope)))
+        return SimpleNamespace(rc=0, is_published=lambda: True)
+
+    ingress.output = SimpleNamespace(is_connected=lambda: True, publish=publish)
+    return ingress, published
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("minimum", "intervals"),
+    [
+        # The most frequent reading of a path sets its interval; a reading that
+        # records every message has no rate of its own and takes the default.
+        (1, {"/status": 5, "/meter?phase=1": 10}),
+        (20, {"/status": 20, "/meter?phase=1": 20}),
+    ],
+)
+async def test_an_http_source_is_polled_as_often_as_its_readings_record(
+    monkeypatch, minimum, intervals
+):
+    ingress, _ = polling_ingress(monkeypatch, SYSTEM_HTTP_MIN_POLL_SECONDS=minimum)
+    monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)
+
+    await ingress._configure(http_definition())
+
+    (worker,) = FakeWorker.created
+    assert worker.started and worker.connection.protocol == "http"
+    assert worker.topics == intervals
+    assert ingress.states["api"] == {"state": "connecting", "message": None}
+
+
+@pytest.mark.asyncio
+async def test_a_broker_allowlist_does_not_open_an_http_source(monkeypatch):
+    ingress, _ = polling_ingress(
+        monkeypatch, port=9090, SYSTEM_LIVE_ALLOWED_HOSTS=["127.0.0.1"]
+    )
+    monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)
+
+    await ingress._configure(http_definition())
+
+    assert FakeWorker.created == []
+    assert ingress.states["api"] == {
+        "state": "blocked",
+        "message": "Server access is not configured by the operator.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_poll_without_a_new_source_timestamp_is_not_recorded_again(
+    monkeypatch,
+):
+    ingress, published = polling_ingress(monkeypatch)
+    monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)
+    catalog = http_definition()
+    await ingress._configure(catalog)
+    (worker,) = FakeWorker.created
+    topics = {
+        stream.definition.id: stream.ingress_topic for stream in catalog.streams()
+    }
+
+    async def poll(reply):
+        published.clear()
+        worker.on_message("/status", json.dumps(reply).encode(), False)
+        await ingress._forward_pending()
+        return sorted(topic for topic, _ in published)
+
+    both = sorted([topics["temperature"], topics["humidity"]])
+    first = {"temperature": 20, "humidity": 40, "measured_at": "2026-11-11T10:00:00Z"}
+    assert await poll(first) == both
+    # The same measurement again: only the reading without a timestamp records.
+    assert await poll({**first, "humidity": 41}) == [topics["humidity"]]
+    assert await poll({**first, "measured_at": "2026-11-11T10:00:30Z"}) == both
+    # A reply without a readable timestamp counts as new, every time.
+    assert await poll({"temperature": 20, "humidity": 40}) == both
+    assert await poll({"temperature": 20, "humidity": 40}) == both
+    assert await poll(["not", "an", "object"]) == both
+    assert ingress.dropped == 0
+
+
+@pytest.mark.asyncio
+async def test_an_http_source_that_gives_up_is_retried_like_a_broker(monkeypatch):
+    ingress, _ = polling_ingress(monkeypatch, SYSTEM_COLLECTION_RETRY_SECONDS=300)
+    monkeypatch.setattr(system_ingress, "HttpPollWorker", FakeWorker)
+    now = [0.0]
+    ingress.clock = lambda: now[0]
+    await ingress._configure(http_definition())
+    (first,) = FakeWorker.created
+
+    first.on_state("error", "The server rejected the connection credentials.")
+    await ingress._supervise()
+    assert first.stopped and ingress.workers == []
+    assert ingress.states["api"] == {
+        "state": "error",
+        "message": "The server rejected the connection credentials. "
+        + system_ingress.RETRY_HINT,
+    }
+
+    now[0] = 300
+    await ingress._supervise()
+    second = FakeWorker.created[1]
+    second.on_state("reconnecting", "Server unavailable.")
+    now[0] = 400
+    await ingress._supervise()
+    assert "Could not reach the server within" in ingress.states["api"]["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_a_polled_http_reply_reaches_the_collector(monkeypatch):
+    replies = iter(range(1000))
+
+    def status():
+        return Reply(
+            body=json.dumps(
+                {"temperature": "21.5", "humidity": next(replies), "measured_at": 7}
+            ).encode()
+        )
+
+    with http_source({"/status": status, "/meter?phase=1": Reply(body=b"230")}) as api:
+        ingress, _ = polling_ingress(monkeypatch, port=api.port)
+        catalog = http_definition(api.port)
+        for stream in catalog.document.streams:
+            stream.policy.interval_seconds = 1
+        buffer = CollectionBuffer()
+        buffer.configure(catalog)
+
+        def publish(topic, envelope, **_):
+            buffer.receive(
+                MQTTMessage(topic, json.loads(envelope), datetime.now(UTC), 1, False)
+            )
+            return SimpleNamespace(rc=0, is_published=lambda: True)
+
+        ingress.output = SimpleNamespace(is_connected=lambda: True, publish=publish)
+        await ingress._configure(catalog)
+        values = {}
+        try:
+            async with asyncio.timeout(20):
+                while len(values.get("humidity", [])) < 2 or "power" not in values:
+                    await ingress._forward_pending()
+                    for item in buffer.take():
+                        values.setdefault(item.stream.definition.id, []).append(
+                            item.value
+                        )
+                    await asyncio.sleep(0.02)
+            assert ingress.states["api"] == {"state": "connected", "message": None}
+        finally:
+            await ingress._stop_workers()
+
+    # A number sent as text is a number, and its unchanged timestamp records once.
+    assert values["temperature"] == [21.5]
+    # Each later poll is a new observation of the reading without a timestamp.
+    assert values["humidity"] == sorted(set(values["humidity"]))
+    assert values["power"][0] == 230
+    assert set(api.paths()) == {"/status", "/meter?phase=1"}

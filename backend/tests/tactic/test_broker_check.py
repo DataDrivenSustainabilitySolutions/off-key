@@ -12,7 +12,12 @@ from off_key_api_gateway.api.v1 import catalogue as gateway
 from off_key_core.auth.permissions import ADMIN_ROLE, MEMBER_ROLE
 from off_key_core.db.base import get_db_async
 from off_key_core.db.models import User
-from off_key_core.schemas.system import SystemConnection, SystemConnectionCheckScope
+from off_key_core.schemas.system import (
+    SystemConnection,
+    SystemConnectionCheckScope,
+    SystemDocument,
+    SystemSnapshot,
+)
 from off_key_tactic_middleware.api.collection_auth import current_member
 from off_key_tactic_middleware.api.v1 import system as system_api
 from off_key_tactic_middleware.config.system_live import (
@@ -24,6 +29,7 @@ from off_key_tactic_middleware.services.catalogue.system import SystemService
 from paho.mqtt.client import WebsocketConnectionError
 from socks import ProxyError
 
+from tests.support.http_source import Reply, http_source
 from tests.support.mqtt import mqtt_broker, wait_until, withholding_server
 from tests.support.system_live import snapshot
 
@@ -238,3 +244,131 @@ async def test_gateway_forwards_a_reconnect_with_the_member_token(monkeypatch):
         json_data={"connection_id": "broker"},
         headers={"Authorization": "Bearer token"},
     )
+
+
+def _http(port, **fields):
+    return SystemConnection(
+        id="api", label="API", protocol="http", host="127.0.0.1", port=port, **fields
+    )
+
+
+def _http_checker(port, **overrides):
+    return _checker(
+        SYSTEM_HTTP_ALLOWED_ORIGINS=[f"http://127.0.0.1:{port}"], **overrides
+    )
+
+
+async def test_an_http_source_is_asked_once_for_a_readings_path():
+    with http_source({"/api/status": Reply(body=b'{"ok": true}')}) as server:
+        result = await _http_checker(server.port).check(
+            _http(server.port), path="/api/status"
+        )
+        assert (result.status, result.message) == ("reachable", None)
+        assert result.latency_ms is not None
+        assert server.paths() == ["/api/status"]
+
+
+@pytest.mark.parametrize(
+    ("answer", "path", "status", "message"),
+    [
+        (
+            Reply(401),
+            "/api/status",
+            "auth_rejected",
+            "The server answered but rejected the saved credentials.",
+        ),
+        (
+            Reply(404),
+            "/api/status",
+            "refused",
+            "The server answered HTTP 404 at the request path of its first reading.",
+        ),
+        (
+            Reply(302, headers={"Location": "/elsewhere"}),
+            "/api/status",
+            "refused",
+            "The server answered HTTP 302 at the request path of its first reading.",
+        ),
+        (
+            Reply(404),
+            None,
+            "reachable",
+            "The server answered HTTP 404 at /. Add a reading to check its "
+            "request path.",
+        ),
+    ],
+)
+async def test_http_answers_are_classified_without_their_content(
+    answer, path, status, message
+):
+    with http_source({path or "/": answer}) as server:
+        result = await _http_checker(server.port).check(_http(server.port), path=path)
+        assert (result.status, result.message) == (status, message)
+        assert len(server.requests) == 1
+
+
+async def test_an_http_check_sends_the_named_credential_only_to_its_origin():
+    with http_source({"/": Reply()}) as server:
+        checker = _http_checker(
+            server.port, SYSTEM_HTTP_CREDENTIALS={"named": {"token": "abc"}}
+        )
+        allowed = await checker.check(_http(server.port, credential_ref="named"))
+        other_port = await checker.check(_http(_closed_port(), credential_ref="named"))
+        tls = await checker.check(_http(server.port, tls=True, credential_ref="named"))
+        absent = await checker.check(_http(server.port, credential_ref="absent"))
+
+        assert allowed.status == "reachable"
+        assert server.requests[0][1]["Authorization"] == "Bearer abc"
+        assert len(server.requests) == 1
+    for result in (other_port, tls):
+        assert (result.status, result.message) == (
+            "blocked",
+            "The server is not in the operator's HTTP origin allowlist.",
+        )
+    assert absent.status == "blocked"
+
+
+async def test_an_unreachable_or_foreign_http_port_is_named():
+    port = _closed_port()
+    closed = await _http_checker(port).check(_http(port))
+    assert (closed.status, closed.message) == (
+        "unreachable",
+        "Nothing accepts connections on this host and port.",
+    )
+    async with mqtt_broker() as (_, port):
+        foreign = await _http_checker(port).check(_http(port))
+    assert foreign.status in {"refused", "timeout"}
+    assert "server" in foreign.message
+
+
+def test_the_check_asks_an_http_source_for_its_first_readings_path(monkeypatch):
+    app, checker = _api(monkeypatch, role=ADMIN_ROLE)
+    saved = SystemSnapshot(
+        revision=1,
+        storage_origin="saved",
+        document=SystemDocument(
+            connections=[
+                {"id": "api", "label": "API", "protocol": "http", "host": "api"},
+                {"id": "bare", "label": "Bare", "protocol": "http", "host": "bare"},
+            ],
+            streams=[
+                {
+                    "id": name,
+                    "label": name,
+                    "connection_id": "api",
+                    "topic": f"/v1/{name}",
+                }
+                for name in ("status", "meter")
+            ],
+        ),
+    )
+    monkeypatch.setattr(SystemService, "read", AsyncMock(return_value=saved))
+    with TestClient(app) as client:
+        for connection in ("api", "bare"):
+            response = client.post(
+                "/system/connections/check", json={"connection_id": connection}
+            )
+            assert response.json()["status"] == "blocked"
+
+    paths = [call.kwargs["path"] for call in checker.check.await_args_list]
+    assert paths == ["/v1/status", None]

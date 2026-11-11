@@ -106,6 +106,10 @@ export default function ExplorerPreview({
     : phases[status.phase];
   const topicCount = useMemo(() => new Set(related.map((item) => JSON.stringify([item.broker_id, item.topic]))).size, [related]);
   const isReading = node.entityKind === "stream";
+  const polled = brokersById.get(node.connectionId ?? "")?.protocol === "http";
+  // The whole system and an entity can hold readings of both kinds of source.
+  const addresses = polled ? "Request paths"
+    : related.some(item => brokersById.get(item.broker_id)?.protocol === "http") ? "Topics and paths" : "MQTT topics";
   const ancestry = navigationTrail(index, node.key);
   const parent = isReading ? ancestry.slice().reverse().find(ancestor => ancestor.kind === "device" || ancestor.kind === "connection") : undefined;
   const trail = <nav className="ex-preview-trail" aria-label="Catalogue ancestry">
@@ -115,7 +119,7 @@ export default function ExplorerPreview({
   </nav>;
   const title = isReading ? stream?.label ?? node.label : node.label;
   const kind = isReading ? "Reading" : node.kind === "connection" ? "Broker"
-    : node.kind === "device" ? "Entity" : node.kind === "topic" ? "Topic path" : "System";
+    : node.kind === "device" ? "Entity" : node.kind === "topic" ? polled ? "Request path" : "Topic path" : "System";
   const icon = node.kind === "connection" ? <Box size={22} /> : node.kind === "device" ? <Cpu size={22} />
     : stream ? <Radio size={22} /> : <Folder size={22} />;
   const Title = pageTitle ? "h1" : "h2";
@@ -164,7 +168,7 @@ export default function ExplorerPreview({
     {stream && <dl><dt>Value type</dt><dd>{stream.value_type}</dd>
       <dt>Category</dt><dd>{stream.category || "Other"}</dd>
     </dl>}
-    {broker && <><dl><dt>Protocol</dt><dd>MQTT · {broker.transport === "websocket" ? "WebSocket" : "TCP"}</dd>
+    {broker && <><dl><dt>Protocol</dt><dd>{broker.protocol === "http" ? "HTTP" : `MQTT · ${broker.transport === "websocket" ? "WebSocket" : "TCP"}`}</dd>
       <dt>TLS</dt><dd>{broker.tls ? "Enabled" : "Disabled"}</dd>
     </dl><Binding label="Endpoint" value={`${broker.host}:${broker.port}`} />
       {broker.websocket_path && <Binding label="WebSocket path" value={broker.websocket_path} />}
@@ -174,8 +178,9 @@ export default function ExplorerPreview({
       {entity.parent_id && <><dt>Parent entity</dt><dd>{entitiesById.get(entity.parent_id)?.label ?? entity.parent_id}</dd></>}
     </dl><Binding label="Entity ID" value={entity.id} /></>}
     {(stream?.topic ?? node.topic) !== undefined && <Binding key={stream?.topic ?? node.topic}
-      label={stream || related.length > 0 ? "MQTT topic" : "Topic path"} value={(stream?.topic ?? node.topic)!} />}
+      label={polled ? "Request path" : stream || related.length > 0 ? "MQTT topic" : "Topic path"} value={(stream?.topic ?? node.topic)!} />}
     {stream?.payload_pointer && <Binding key={stream.payload_pointer} label="Payload field" value={stream.payload_pointer} />}
+    {stream?.timestamp_pointer && <Binding key={stream.timestamp_pointer} label="Source timestamp" value={stream.timestamp_pointer} />}
     {!stream && related.length > 0 && <div className="ex-preview-related">
       <span>Configured readings</span>
       <ul>{related.slice(0, 10).map((item) => <li key={item.id}>{item.label}<small>{item.unit || item.value_type}</small></li>)}</ul>
@@ -220,7 +225,7 @@ export default function ExplorerPreview({
           stream={stream} connection={readingConnection} snapshot={snapshot} binding={savedBinding} historyCache={historyCache} />}
       </> : <div className="ex-preview-metrics">
         <div><strong>{number.format(related.length)}</strong><span>Readings</span></div>
-        <div><strong>{number.format(topicCount)}</strong><span>MQTT topics</span></div>
+        <div><strong>{number.format(topicCount)}</strong><span>{addresses}</span></div>
         {snapshot?.isAggregate && <div><strong>{number.format(snapshot.rate)}</strong><span>Arrivals / second</span></div>}
       </div>}
       {collapseDefinition ? <section className="ex-preview-details is-collapsible" aria-label="Source details">

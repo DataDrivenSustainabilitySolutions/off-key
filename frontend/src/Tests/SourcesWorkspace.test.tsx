@@ -234,6 +234,33 @@ describe("dedicated Sources configuration", () => {
       { scope: { kind: "broker", broker_id: "broker" }, operation: "inherit" }] }), expect.anything());
   }, 15000);
 
+  describe("an HTTP source", () => {
+    beforeEach(() => {
+      saved.document.brokers[0] = { ...saved.document.brokers[0]!, protocol: "http", port: 443, tls: true };
+      for (const reading of saved.document.readings) reading.topic = `/v1/${reading.id}`;
+    });
+
+    it("starts recording at an interval, because it sends nothing by itself", async () => {
+      mount();
+      const overview = await screen.findByRole("region", { name: "Broker overview" });
+      fireEvent.click(within(overview).getByRole("button", { name: "Record Workshop broker" }));
+      await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+      expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{
+        scope: { kind: "broker", broker_id: "broker" }, operation: "set", policy: { mode: "sample", interval_seconds: 60 }, include_future_readings: true }] }), expect.anything());
+    });
+
+    it("offers intervals only, also for a single reading", async () => {
+      mount("/sources?broker=broker");
+      const choice = await screen.findByRole("radiogroup", { name: "Recording" });
+      expect(within(choice).getAllByRole("radio").map(option => (option as HTMLInputElement).value)).toEqual(["off", "sample"]);
+      expect((within(choice).getByLabelText("Seconds between samples") as HTMLInputElement).value).toBe("60");
+      fireEvent.click(within(screen.getByRole("group", { name: /Readings/ })).getByRole("checkbox", { name: /power/ }));
+      await waitFor(() => expect(apiUtils.put).toHaveBeenCalledOnce());
+      expect(apiUtils.put).toHaveBeenCalledWith("/v1/recording", expect.objectContaining({ rule_changes: [{
+        scope: { kind: "reading", broker_id: "broker", reading_id: "power" }, operation: "set", policy: { mode: "sample", interval_seconds: 60 } }] }), expect.anything());
+    });
+  });
+
   it("members inspect acknowledged policies without recording write controls", async () => {
     saved.can_edit = false;
     mount("/sources?broker=broker");

@@ -71,6 +71,8 @@ service_environment:
     SYSTEM_LIVE_ALLOWED_HOSTS: "{{ system_live_allowed_hosts | default([]) | to_json }}"
     SYSTEM_LIVE_CREDENTIALS: "{{ system_live_credentials | default({}) | to_json }}"
     SYSTEM_LIVE_SOCKS_PROXIES: "{{ system_live_socks_proxies | default({}) | to_json }}"
+    SYSTEM_HTTP_ALLOWED_ORIGINS: "{{ system_http_allowed_origins | default([]) | to_json }}"
+    SYSTEM_HTTP_CREDENTIALS: "{{ system_http_credentials | default({}) | to_json }}"
     TACTIC_RADAR_WORKLOAD_LIFECYCLE: "{{ tactic_radar_workload_lifecycle }}"
     TACTIC_SERVICE_NAME: "{{ tactic_service_name }}"
     TACTIC_SERVICE_VERSION: "{{ tactic_service_version }}"

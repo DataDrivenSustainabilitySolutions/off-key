@@ -874,9 +874,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`c5f451750487053dddad12454b8d58730734c1e1`, the commit that compares
-calibration methods in the Dojo, on top of migration 027
-(`dojo_method_alarms`). It shares the current
+`535b29cd791b6f30433202720f6543408879d3a3`, the commit that brings the
+stored forecasts and the Dojo's comparison of calibration methods together, on
+top of migration 027 (`dojo_method_alarms`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -884,12 +884,12 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `cbe2d839`, has no migration 027; `ad919d98` before it
-returns a design with its lane and without its calibration step, where the
-current release returns it as the editor reads it, `386eb796` lists no
-Timestral step in field discovery, `7194e94f` has a catalog without the
-forecaster steps, and `b03157ec` locks ABERRANT 1.4.0, so the rehearsal
-accepts none of them.
+The previous reference, `934f8f93`, has no migration 027; `cbe2d839` before it
+has no migration 026, `ad919d98` returns a design with its lane and without
+its calibration step, where the current release returns it as the editor
+reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
+has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
+1.4.0, so the rehearsal accepts none of them.
 Releases before
 migration 027 refuse a database that has applied it. Rolling back past migration 027 means restoring a verified
 backup, as

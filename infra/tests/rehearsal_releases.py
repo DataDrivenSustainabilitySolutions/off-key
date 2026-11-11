@@ -1,7 +1,8 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the commit that compares calibration methods in the Dojo,
-carrying migration 027 and Aberrant 1.5.0 numerics. It is not
+The reference is the commit that brings the stored forecasts and the Dojo's
+comparison of calibration methods together, carrying migrations 026 and 027
+and Aberrant 1.5.0 numerics. It is not
 an eligible production release and proves no pre-feature compatibility.
 """
 
@@ -21,7 +22,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "c5f451750487053dddad12454b8d58730734c1e1"
+COMPATIBLE_REVISION = "535b29cd791b6f30433202720f6543408879d3a3"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

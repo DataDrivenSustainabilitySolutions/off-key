@@ -1,5 +1,5 @@
-import type { InputSlot } from "@/types/pipelines.generated";
-import type { DatasetSeriesView, LabelSuggestion, RunPromotion, RunSummary } from "@/types/dojo.generated";
+import type { InputSlot, PipelineDefinition } from "@/types/pipelines.generated";
+import type { DatasetSeriesView, LabelSuggestion, MethodMetrics, RunPromotion, RunSummary } from "@/types/dojo.generated";
 import { templateHref } from "@/domain/monitoring/monitoringView";
 import { featureName } from "../pipelines/slots";
 
@@ -77,6 +77,29 @@ export function formatDuration(seconds: number | null | undefined) {
 
 export const formatRate = (value: number | null | undefined) =>
   value == null ? "–" : `${Math.round(value * 100)} %`;
+
+/** A share that is often below one percent: 0.25 %, 3.1 %, 42 %. */
+export const formatShare = (value: number | null | undefined) =>
+  value == null ? "–" : `${(value * 100).toLocaleString(undefined, { maximumSignificantDigits: 2 })} %`;
+
+/** A design that alarms on a conformal martingale has no boundary on its scores to try other methods on. */
+export function comparesCalibration(definition: Pick<PipelineDefinition, "nodes">) {
+  const nodes = definition.nodes ?? [];
+  return nodes.some(node => node.kind === "calibration") && !nodes.some(node => node.component === "policy.martingale");
+}
+
+/** Compared calibration methods, best first: most labels detected, then fewest false alarms
+ * per day, then the shortest delay. A method that stopped early goes last. */
+export function rankMethods(methods: MethodMetrics[]) {
+  const key = (item: MethodMetrics) => [item.failed ? 1 : 0, -(item.detection_rate ?? -1),
+    item.false_alarms_per_day ?? Infinity, item.median_delay_seconds ?? Infinity];
+  return methods.map((item, index) => ({ item, index, key: key(item) })).sort((a, b) => {
+    for (let position = 0; position < a.key.length; position += 1) {
+      if (a.key[position] !== b.key[position]) return a.key[position]! < b.key[position]! ? -1 : 1;
+    }
+    return a.index - b.index;
+  }).map(entry => entry.item);
+}
 
 export const formatPerDay = (value: number | null | undefined) =>
   value == null ? "–" : (value >= 10 ? Math.round(value) : Math.round(value * 100) / 100).toLocaleString();

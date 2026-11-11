@@ -62,7 +62,12 @@ FINISH = text(
     "finished_at = now(), "
     "heartbeat_at = now(), points_read = :points_read, "
     "result_count = :result_count, alarm_count = :alarm_count, "
-    "stats = CAST(:stats AS jsonb) "
+    "stats = CAST(:stats AS jsonb), "
+    # The one thing a worker adds to a run's settings: which of the compared
+    # calibration methods failed on its scores, and why.
+    "config = CASE WHEN CAST(:failed AS jsonb) IS NULL THEN config ELSE "
+    "jsonb_set(config, '{calibration_comparison,failed}', CAST(:failed AS jsonb)) "
+    "END "
     "WHERE id = :id AND worker = :worker AND status = 'running'"
 )
 RELEASE = text(
@@ -125,6 +130,10 @@ class _Run:
             "alarm_count": replay.alarm_count if replay else 0,
             "stats": _json(replay.stats() if replay else {}),
         }
+
+    def failed_methods(self) -> str | None:
+        comparison = self.replay.comparison if self.replay else None
+        return _json(comparison.failed) if comparison and comparison.failed else None
 
 
 def _json(value) -> str:
@@ -242,7 +251,8 @@ class DojoWorker:
             # Install the resource in the worker thread so cancellation while
             # joining that thread still leaves it visible to execute's cleanup.
             run.replay = Replay(
-                detection_config(execution, alignment, self.options.memory_limit_mb)
+                detection_config(execution, alignment, self.options.memory_limit_mb),
+                config.get("calibration_comparison"),
             )
 
         await _compute(initialize)
@@ -317,6 +327,7 @@ class DojoWorker:
                 score=item.score,
                 threshold=item.threshold,
                 alarm=item.alarm,
+                method_alarms=item.method_alarms,
             )
             for item in run.pending
         ]
@@ -357,6 +368,7 @@ class DojoWorker:
                     **run.progress(self.options.worker_id),
                     "status": status,
                     "error": error,
+                    "failed": run.failed_methods(),
                 },
             )
             if outcome.rowcount:

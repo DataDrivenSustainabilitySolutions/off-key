@@ -158,6 +158,35 @@ export type LabelView = {
   created_at: string;
 };
 
+export type MethodComparison = {
+  run_id: string;
+  run_name: string;
+  alpha: number;
+  consecutive: number;
+  results: number;
+  scored_from: string | null;
+  scored_to: string | null;
+  labels_total: number;
+  evaluated_seconds: number;
+  methods: Array<MethodMetrics>;
+};
+
+export type MethodMetrics = {
+  method: string;
+  name: string;
+  family: "fixed" | "conformal" | "bayesian";
+  own: boolean;
+  failed: string | null;
+  alarm_count: number;
+  alarm_share: number | null;
+  labels_scored: number;
+  labels_detected: number;
+  detection_rate: number | null;
+  median_delay_seconds: number | null;
+  false_alarms: number;
+  false_alarms_per_day: number | null;
+};
+
 export type PromotedBinding = {
   slot_id: string;
   slot_label: string;
@@ -182,6 +211,7 @@ export type RunCreate = {
   definition: PipelineDefinition;
   bindings: Record<string, string>;
   alignment?: RunAlignment;
+  compare_calibration?: boolean;
 };
 
 export type RunListPage = {
@@ -261,6 +291,7 @@ export type RunSummary = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  compares_calibration?: boolean;
 };
 
 export type RunView = {
@@ -278,6 +309,7 @@ export type RunView = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  compares_calibration?: boolean;
   definition: Record<string, unknown>;
   bindings: Array<RunBinding>;
   alignment: RunAlignment;

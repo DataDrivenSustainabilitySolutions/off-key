@@ -61,6 +61,8 @@
 .dj-metric-best { font-weight: 600; }
 .dj-compare-picker { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 16px; font-size: var(--text-caption); }
 .dj-compare-picker label { display: inline-flex; gap: 6px; align-items: center; }
+.dj-check { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: var(--text-caption); font-weight: 500; }
+.dj-method-own { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--ex-line); border-radius: 999px; font-size: var(--text-caption); font-weight: 400; color: var(--ex-muted); }
 @media (max-width: 760px) {
   .dj-labels li { grid-template-columns: 1fr; gap: 4px; }
   .dj-chart { height: 340px; }

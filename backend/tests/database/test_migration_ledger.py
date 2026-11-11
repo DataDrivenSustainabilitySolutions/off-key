@@ -96,6 +96,9 @@ APPLIED_CHECKSUMS = {
     "026_evidence_forecasts.sql": (
         "4e6fba6b814142bfff166ae94acbf2600fbb98d5f117ae4ac0ed02351e85fa9f"
     ),
+    "027_dojo_method_alarms.sql": (
+        "400e0715e1c3222b1b769327b824c7ee6af858ca046baac33fe746421080ff9f"
+    ),
 }
 
 # Tables added after the ledger, by the migration that introduced them. A new

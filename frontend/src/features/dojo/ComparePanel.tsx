@@ -8,6 +8,7 @@ import { useChartColors } from "../charts/use-chart-colors";
 import { dojoApi } from "./api";
 import { datasetChartOption } from "./dojo-chart";
 import { useRunAlarms, useSeriesPoints } from "./hooks";
+import { MethodsPanel } from "./MethodsPanel";
 import { formatDuration, formatInstant, formatPerDay, formatRate, runName } from "./model";
 
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -84,7 +85,7 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
   if (!finished.length) return <div className="dj-section"><p className="dj-help">Comparisons need finished runs. Start a run
     from the Runs tab; it appears here once it has finished.</p></div>;
   const shown = comparison && comparison.runs.map(item => item.run_id).join(",") === chosenKey ? comparison : null;
-  return <div className="dj-section">
+  return <><div className="dj-section">
     <div className="dj-section-head"><h2>Runs{" "}
       <span className="dj-muted">{chosen.length} of at most {DOJO_LIMITS.comparedRuns} compared</span></h2></div>
     <div className="dj-compare-picker" role="group" aria-label={`Runs to compare, at most ${DOJO_LIMITS.comparedRuns}`}>
@@ -127,5 +128,6 @@ export function ComparePanel({ dataset, runs, labels }: { dataset: DatasetView; 
       <p className="dj-help">A label counts as detected when the run alarmed inside it. Each alarm that begins outside every
         label is one false alarm, so an alarm held for many values counts once. Labels before the first score are not scored.</p>
     </>}
-  </div>;
+  </div>
+  <MethodsPanel runs={finished} labelsKey={labelsKey} /></>;
 }

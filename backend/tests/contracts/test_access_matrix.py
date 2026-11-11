@@ -110,6 +110,7 @@ TACTIC_ACCESS = {
         "GET /api/v1/dojo/runs/{run_id}",
         "POST /api/v1/dojo/runs/{run_id}/cancel",
         "GET /api/v1/dojo/runs/{run_id}/metrics",
+        "GET /api/v1/dojo/runs/{run_id}/calibration",
         "GET /api/v1/dojo/runs/{run_id}/results",
     },
     "manage_monitors": {
@@ -243,6 +244,7 @@ GATEWAY_ACCESS = {
         "GET /v1/dojo/runs/{run_id}",
         "POST /v1/dojo/runs/{run_id}/cancel",
         "GET /v1/dojo/runs/{run_id}/metrics",
+        "GET /v1/dojo/runs/{run_id}/calibration",
         "GET /v1/dojo/runs/{run_id}/results",
     },
     "manage_members": {

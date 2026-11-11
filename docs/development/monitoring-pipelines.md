@@ -529,6 +529,34 @@ score seen. Several detectors need that for any method, and
 of its window about once in n scores. The compiler warns below that
 (`minimum_window`).
 
+#### Comparing calibration methods in the Dojo
+
+A Dojo run can try the other calibration methods beside its own
+(`compare_calibration`). TACTIC stores the plan with the run
+(`calibration_comparison` in `dojo_runs.config`, from
+`models/dojo_runs.py`): the run's own method, the methods to try in order, and
+the `alpha` and `consecutive` they share. The replay installs a
+`CalibrationComparison` (`calibration_comparison.py`) on the detector service.
+The service hands it the calibration window where its own step starts, and then
+the detector scores of every operational observation after the detectors took
+it in, so each method sees exactly what a run with that calibration step would.
+Several detectors meet as in a run: against their latest scores for a method
+that adapts (`RollingRanks`), against their calibration scores for the fixed
+split (`RankFusion`). `tests/radar/test_calibration_comparison.py` holds each
+compared method to the alarms of a replay whose design has that step.
+
+A monitor never has a comparison; only `Replay` sets one. Each result carries
+`method_alarms`, one bit per method in the plan's order, stored in
+`dojo_run_results.method_alarms` (migration 027) and null before the run is
+operational. A method that raises leaves the comparison and the worker writes
+the reason to `calibration_comparison.failed` when the run ends; such a method
+keeps the counts of what it found and gets no share or rate, which would be
+over results it never judged. TACTIC scores
+each method on read like a run of its own (`DojoMetrics.calibration`), so a
+moved label re-scores the methods too. All 15 adapting methods together cost
+about 2 ms per observation, mostly the Bayesian ones, which is why the
+comparison is asked for per run.
+
 #### The editor without a lane
 
 The composer has no strategy switch and no `strategy.ts`. `learning.ts` holds
@@ -846,9 +874,9 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`934f8f93832d75a8cf2d8396daa15994167b5ccc`, the commit that stores each
-forecaster step's forecast with the evidence, on top of migration 026
-(`evidence_forecasts`). It shares the current
+`535b29cd791b6f30433202720f6543408879d3a3`, the commit that brings the
+stored forecasts and the Dojo's comparison of calibration methods together, on
+top of migration 027 (`dojo_method_alarms`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
 while the backend rolls back. It also serves the current REST paths and field
@@ -856,14 +884,14 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `cbe2d839`, has no migration 026; `ad919d98` before it
-returns a design with its lane and without its calibration step, where the
-current release returns it as the editor reads it; `386eb796` lists no
-Timestral step in field discovery, `7194e94f` has a catalog without the
-forecaster steps, and `b03157ec` locks ABERRANT 1.4.0, so the rehearsal accepts
-none of them.
+The previous reference, `934f8f93`, has no migration 027; `cbe2d839` before it
+has no migration 026, `ad919d98` returns a design with its lane and without
+its calibration step, where the current release returns it as the editor
+reads it, `386eb796` lists no Timestral step in field discovery, `7194e94f`
+has a catalog without the forecaster steps, and `b03157ec` locks ABERRANT
+1.4.0, so the rehearsal accepts none of them.
 Releases before
-migration 026 refuse a database that has applied it. Rolling back past migration 026 means restoring a verified
+migration 027 refuse a database that has applied it. Rolling back past migration 027 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.
 The binary rollback floor for this release is ABERRANT 1.5.0; migration from

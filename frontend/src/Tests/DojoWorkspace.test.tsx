@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DojoWorkspace } from "@/features/dojo/DojoWorkspace";
 import { dojoApi } from "@/features/dojo/api";
 import { pipelinesApi } from "@/features/pipelines/api";
-import type { Comparison, DatasetView, LabelView, RunMetrics, RunSummary } from "@/types/dojo.generated";
+import type { Comparison, DatasetView, LabelView, MethodMetrics, RunMetrics, RunSummary } from "@/types/dojo.generated";
 import { DOJO_LIMITS } from "@/types/dojo.generated";
 import { fromLocalInput } from "@/features/dojo/model";
 
@@ -33,6 +33,7 @@ vi.mock("@/features/dojo/api", () => ({ dojoApi: {
   datasets: vi.fn(), dataset: vi.fn(), importCsv: vi.fn(), importHistory: vi.fn(), changeDataset: vi.fn(), deleteDataset: vi.fn(),
   points: vi.fn(), labels: vi.fn(), labelSuggestions: vi.fn(), createLabel: vi.fn(), createLabels: vi.fn(), changeLabel: vi.fn(), deleteLabel: vi.fn(), runs: vi.fn(), run: vi.fn(),
   createRun: vi.fn(), cancelRun: vi.fn(), deleteRun: vi.fn(), promoteRun: vi.fn(), results: vi.fn(), metrics: vi.fn(), compare: vi.fn(),
+  calibration: vi.fn(),
 } }));
 vi.mock("@/features/pipelines/api", () => ({ pipelinesApi: { catalog: vi.fn(), list: vi.fn(), get: vi.fn() } }));
 
@@ -273,6 +274,73 @@ describe("Dojo workspace", () => {
     await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalledWith(expect.objectContaining({
       dataset_id: "d1", name: "Isolation forest", bindings: { current: "s2", voltage: "s1" },
       alignment: { freshness_seconds: 30, max_skew_seconds: 5 } })));
+  });
+
+  it("asks for a comparison of calibration methods only where a design has a score boundary", async () => {
+    const design = (id: string, name: string, policy: string) => ({ id, name, layout: { nodes: {} }, definition: {
+      schema_version: 2, input_slots: [{ id: "current", label: "Current", unit: "A" }], edges: [], settings: {},
+      nodes: [{ id: "calibrate", kind: "calibration", component: "calibrate.fixed_split" },
+        { id: "policy", kind: "policy", component: policy }] } });
+    vi.mocked(pipelinesApi.catalog).mockResolvedValue({ templates: [design("t1", "Threshold", "policy.quantile"),
+      design("t2", "Martingale", "policy.martingale")] } as never);
+    vi.mocked(pipelinesApi.list).mockResolvedValue({ items: [], next_offset: null });
+    vi.mocked(dojoApi.createRun).mockResolvedValue({} as never);
+    mount("/dojo?dataset=d1&tab=runs");
+    fireEvent.click(await screen.findByRole("button", { name: "New run" }));
+    const dialog = await screen.findByRole("dialog", { name: "New run" });
+    await within(dialog).findByRole("option", { name: "Martingale" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Design" }), { target: { value: "template:t2" } });
+    const refused = await within(dialog).findByRole("checkbox", { name: "Compare calibration methods" }) as HTMLInputElement;
+    expect(refused.disabled).toBe(true);
+    within(dialog).getByText(/alarms on a conformal martingale/);
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Design" }), { target: { value: "template:t1" } });
+    await within(dialog).findByText(/The run takes longer/);
+    const offered = within(dialog).getByRole("checkbox", { name: "Compare calibration methods" }) as HTMLInputElement;
+    expect(offered.disabled).toBe(false);
+    fireEvent.click(offered);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start run" }));
+    await waitFor(() => expect(dojoApi.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Threshold", compare_calibration: true })));
+  });
+
+  it("ranks the calibration methods a run also tried", async () => {
+    vi.mocked(dojoApi.runs).mockResolvedValue({ items: [{ ...run("r1", "Forest"), compares_calibration: true },
+      run("r2", "Baseline")], next_offset: null });
+    vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
+      runs: [metrics("r1", "Forest", 1, 2), metrics("r2", "Baseline", 0, 0)] });
+    const method = (id: string, name: string, family: MethodMetrics["family"], detected: number, perDay: number,
+      extra: Partial<MethodMetrics> = {}): MethodMetrics => ({ method: id, name, family, own: false, failed: null,
+      alarm_count: 4, alarm_share: 0.0125, labels_scored: 2, labels_detected: detected, detection_rate: detected / 2,
+      median_delay_seconds: 120, false_alarms: perDay, false_alarms_per_day: perDay, ...extra });
+    vi.mocked(dojoApi.calibration).mockResolvedValue({ run_id: "r1", run_name: "Forest", alpha: 0.01, consecutive: 2,
+      results: 320, scored_from: T0, scored_to: "2024-01-01T02:00:00Z", labels_total: 2, evaluated_seconds: 6000,
+      methods: [method("fixed_split", "Fixed split", "fixed", 1, 3, { own: true }), method("aci", "ACI", "conformal", 2, 5),
+        method("pid", "Conformal PID", "conformal", 2, 1), method("nig", "Discounted Bayes", "bayesian", 2, 0,
+          { failed: "ArithmeticError: no boundary", alarm_share: null, detection_rate: null,
+            false_alarms_per_day: null })] });
+    mount("/dojo?dataset=d1&tab=compare");
+    const table = await screen.findByRole("table", { name: "Calibration methods" });
+    expect(dojoApi.calibration).toHaveBeenCalledWith("r1", expect.any(AbortSignal));
+    // Most labels detected first, then fewest false alarms per day; a method that stopped goes last.
+    expect(within(table).getAllByRole("row").slice(1).map(row => within(row).getAllByRole("cell")[0]!.textContent)).toEqual([
+      "Conformal PIDConformal", "ACIConformal", "Fixed splitThis runFixed",
+      "Discounted BayesBayesian · stopped early: ArithmeticError: no boundary"]);
+    // It shows what it found before it stopped, without a rate over results it never judged.
+    const stopped = within(table).getByRole("row", { name: /Discounted Bayes/ });
+    expect(within(stopped).getAllByRole("cell").slice(1, 3).map(cell => cell.textContent)).toEqual(["2", "–"]);
+    const best = within(table).getByRole("row", { name: /Conformal PID/ });
+    expect(within(best).getAllByRole("cell")[5]!.className).toBe("dj-metric-best");
+    within(best).getByText("1.3 %");
+    screen.getByText(/every method judged the same 320 results/);
+    screen.getByText(/alarm rate of 1 % and alarming after 2 scores in a row/);
+  });
+
+  it("says how to get a comparison of calibration methods when no run has one", async () => {
+    vi.mocked(dojoApi.compare).mockResolvedValue({ dataset_id: "d1", labels: [label],
+      runs: [metrics("r1", "Forest", 1, 2), metrics("r2", "Baseline", 0, 0)] });
+    mount("/dojo?dataset=d1&tab=compare");
+    await screen.findByText(/No finished run has compared calibration methods yet/);
+    expect(dojoApi.calibration).not.toHaveBeenCalled();
   });
 
   it("compares finished runs and marks the better one", async () => {

@@ -18,6 +18,8 @@ from off_key_core.models.dojo_runs import DOJO_SENSOR_KEY_STRATEGY
 from off_key_core.schemas.dojo import RunAlignment
 from off_key_core.schemas.pipelines import PipelineExecutionConfig
 
+from ..adaptive_detector import AdaptiveStreamDetectionService
+from ..calibration_comparison import CalibrationComparison
 from ..config.config import AnomalyDetectionConfig
 from ..coverage import CoverageTracker
 from ..detector_handle import DetectorHandle
@@ -40,6 +42,9 @@ class ReplayResult:
     score: float | None
     threshold: float | None
     alarm: bool
+    # One bit per compared calibration method that would alarm; none where
+    # the run compares no methods or was still learning.
+    method_alarms: int | None = None
 
 
 class _ReplayClock:
@@ -78,7 +83,10 @@ def detection_config(
 class Replay:
     """Feed points in time order; collect one compact row per detector result."""
 
-    def __init__(self, config: AnomalyDetectionConfig) -> None:
+    def __init__(
+        self, config: AnomalyDetectionConfig, comparison: dict[str, Any] | None = None
+    ) -> None:
+        """`comparison` is the run's ``calibration_comparison``, if it has one."""
         self._clock = _ReplayClock()
         required = TopicParser.derive_required_sensors(
             config.subscription_topics, sensor_key_strategy=SENSOR_KEY_STRATEGY
@@ -99,7 +107,18 @@ class Replay:
             else None
         )
         service_cls = detector_service_class(config)
-        self.detector = DetectorHandle(service_cls(config))
+        service = service_cls(config)
+        self.comparison: CalibrationComparison | None = None
+        if comparison is not None:
+            if not isinstance(service, AdaptiveStreamDetectionService):
+                raise ValueError("Only a boundary on scores can be compared")
+            self.comparison = service.comparison = CalibrationComparison(
+                service.plan,
+                comparison["methods"],
+                alpha=comparison["alpha"],
+                consecutive=comparison["consecutive"],
+            )
+        self.detector = DetectorHandle(service)
         self.coverage = CoverageTracker()
         self.processor = MessageProcessor(
             detector=self.detector,
@@ -167,6 +186,7 @@ class Replay:
                 else None
             ),
             alarm=bool(result.is_anomaly),
+            method_alarms=context.get("method_alarms"),
         )
 
     def stats(self) -> dict[str, int]:

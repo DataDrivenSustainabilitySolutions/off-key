@@ -27,6 +27,7 @@ from off_key_core.schemas.dojo import (
     LabelSuggestionList,
     LabelSuggestionQuery,
     LabelView,
+    MethodComparison,
     RunCreate,
     RunListPage,
     RunListQuery,
@@ -244,6 +245,13 @@ async def get_run_metrics(
     run_id: str, metrics: DojoMetrics = Depends(get_dojo_metrics)
 ):
     return await metrics.run(run_id)
+
+
+@router.get("/runs/{run_id}/calibration", response_model=MethodComparison)
+async def compare_run_calibration(
+    run_id: str, metrics: DojoMetrics = Depends(get_dojo_metrics)
+):
+    return await metrics.calibration(run_id)
 
 
 @router.get("/runs/{run_id}/results", response_model=RunResultsPage)

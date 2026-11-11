@@ -24,6 +24,7 @@ from aberrant.compose import (
 from off_key_core.models import ABERRANT_VERSION
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 
+from .calibration_comparison import CalibrationComparison
 from .config.config import AnomalyDetectionConfig
 from .execution_errors import FatalExecutionError, ObservationRejected
 from .forecast_band import forecast_entry
@@ -61,6 +62,9 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         # The detectors that learn continuously, each in its own Aberrant graph.
         self.online_ids: list[str] = self._online_ids()
         self._scored_features: dict[str, float] | None = None
+        # Other calibration methods tried on this run's scores; a Dojo replay
+        # installs it, a monitor never has one.
+        self.comparison: CalibrationComparison | None = None
         # The bound readings of the current observation, before any Prepare step.
         self._bound: dict[str, float] = {}
         self.config = config
@@ -283,6 +287,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         self._scored_features = None
         self._detector_results: list[dict[str, Any]] | None = None
         self._forecasts: list[dict[str, Any]] | None = None
+        self._method_alarms: int | None = None
         self._diagnose(
             self.diagnostics.begin, self.processed_count + 1, self.state.value
         )
@@ -420,6 +425,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                 abs(self.threshold),
                 max(self.calibration_scores) - min(self.calibration_scores),
             )
+            self._start_comparison([[item] for item in self.calibration_scores])
             self.state = AdaptiveStreamState.OPERATIONAL
             self._log_calibrated()
         return self._result(
@@ -443,6 +449,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         # Combined detectors meet as ranks, so no step's own score has a threshold.
         self._expect(None if self.plan.fused else self.threshold)
         self._learn(data)
+        # Like the run's own step, they see only what every detector took in.
+        self._compare(
+            [item["score"] for item in self._detector_results or []]
+            if self.plan.fused
+            else [score]
+        )
         self.operational_count += 1
         self.processed_count += 1
         if is_anomaly:
@@ -450,6 +462,18 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
         return self._result(
             data, score, is_anomaly, "operational", topic, charger_id, started
         )
+
+    def _start_comparison(self, calibration: list[list[float]]) -> None:
+        """Give a replay's other calibration methods the calibration window,
+        one row of detector scores per observation."""
+        if self.comparison is not None:
+            self.comparison.start(calibration)
+
+    def _compare(self, scores: list[float]) -> None:
+        """Let a replay's other calibration methods judge the detector scores
+        of the current observation."""
+        if self.comparison is not None:
+            self._method_alarms = self.comparison.observe(scores)
 
     def _expect(self, threshold: float | None) -> None:
         """Keep what each forecaster step expected of the scored observation.
@@ -602,6 +626,7 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
     def _freeze_fusion(self) -> None:
         """The threshold: the policy's quantile of the calibration observations'
         combined surprises, each against the other calibration scores."""
+        self._start_comparison(self.calibration_scores)
         self.fusion = RankFusion(self.calibration_scores, self.plan.fusion)
         self.threshold_count = threshold_count(
             self.fusion, self.adaptive_config.threshold_config.quantile
@@ -745,6 +770,12 @@ class AdaptiveStreamDetectionService(PipelineExecutionMixin):
                     ),
                     # What each forecaster step expected, and its band.
                     **({"forecasts": self._forecasts} if self._forecasts else {}),
+                    # One bit per compared calibration method that would alarm.
+                    **(
+                        {"method_alarms": self._method_alarms}
+                        if self._method_alarms is not None
+                        else {}
+                    ),
                 },
             },
         )

@@ -178,6 +178,13 @@ class RunCreate(DojoModel):
         "of the dataset.",
     )
     alignment: RunAlignment = Field(default_factory=RunAlignment)
+    compare_calibration: bool = Field(
+        default=False,
+        description="Also try every other calibration method on the run's "
+        "detector scores, for `GET /v1/dojo/runs/{run_id}/calibration`. The "
+        "replay takes longer. A design whose detection rule is the conformal "
+        "martingale has no boundary on its scores and is refused.",
+    )
 
 
 class RunBinding(DojoModel):
@@ -201,6 +208,11 @@ class RunSummary(DojoModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    compares_calibration: bool = Field(
+        default=False,
+        description="The run also tries the other calibration methods on its "
+        "scores; `GET /v1/dojo/runs/{run_id}/calibration` compares them.",
+    )
 
 
 class RunView(RunSummary):
@@ -430,6 +442,65 @@ class RunMetrics(DojoModel):
         "no time outside the labels was scored."
     )
     labels: list[LabelOutcome] = Field(max_length=MAX_DATASET_LABELS)
+
+
+class MethodMetrics(DojoModel):
+    """One calibration method on the detector scores of one run."""
+
+    method: str = Field(description="'fixed_split', or an adapting method's id.")
+    name: str
+    family: Literal["fixed", "conformal", "bayesian"]
+    own: bool = Field(
+        description="The run's own calibration step, with the settings of the "
+        "design. Every other method ran with its defaults."
+    )
+    failed: str | None = Field(
+        description="Why the method stopped on these scores. Its counts then "
+        "cover only the results before it stopped, and it has no share or "
+        "rate, which would be over results it never judged."
+    )
+    alarm_count: int = Field(description="Results on which the method alarmed.")
+    alarm_share: float | None = Field(
+        description="alarm_count over the results the methods judged."
+    )
+    labels_scored: int = Field(
+        description="Labels the run scored; a method that stopped may not "
+        "have reached all of them."
+    )
+    labels_detected: int
+    detection_rate: float | None
+    median_delay_seconds: float | None
+    false_alarms: int = Field(description="Alarm onsets outside every label.")
+    false_alarms_per_day: float | None
+
+
+class MethodComparison(DojoModel):
+    """Calibration methods side by side on one finished run.
+
+    Every method saw the same detector scores in the same order: first the
+    calibration window, then each scored observation. They share one alarm
+    rate and one number of exceedances in a row, so only the method differs.
+    """
+
+    run_id: str
+    run_name: str
+    alpha: float = Field(description="The alarm rate every method aimed at.")
+    consecutive: int = Field(
+        description="Scores above the boundary in a row that raise an alarm."
+    )
+    results: int = Field(description="Results the methods judged.")
+    scored_from: datetime | None = Field(
+        description="First result the methods judged; the run's own step "
+        "started there too."
+    )
+    scored_to: datetime | None
+    labels_total: int
+    evaluated_seconds: float = Field(
+        description="Judged time outside every label, the base of the rates."
+    )
+    methods: list[MethodMetrics] = Field(
+        max_length=64, description="The run's own step first."
+    )
 
 
 class ComparisonQuery(DojoModel):

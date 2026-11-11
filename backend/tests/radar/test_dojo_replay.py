@@ -15,9 +15,15 @@ from off_key_core.db.models import (
     DojoRunResult,
     DojoSeries,
 )
-from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, series_topic
+from off_key_core.models.dojo_runs import (
+    BoundSeries,
+    bind_dataset,
+    calibration_comparison,
+    series_topic,
+)
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import RunAlignment
+from off_key_mqtt_radar import calibration_comparison as comparison_module
 from off_key_mqtt_radar.dojo.replay import Replay, ReplayResult, detection_config
 from off_key_mqtt_radar.dojo.settings import DojoWorkerSettings
 from off_key_mqtt_radar.dojo.worker import (
@@ -146,7 +152,9 @@ async def dojo_engine(member_database):
     return engine, sessions
 
 
-async def seed(sessions, *, points=120, definition=None, status="queued"):
+async def seed(
+    sessions, *, points=120, definition=None, status="queued", comparison=None
+):
     bound = execution(definition=definition)
     async with sessions() as session:
         session.add(
@@ -192,6 +200,7 @@ async def seed(sessions, *, points=120, definition=None, status="queued"):
                         {"id": item.reading_id, "topic": item.accepted_topic}
                         for item in bound.bindings
                     ],
+                    **({"calibration_comparison": comparison} if comparison else {}),
                 },
                 cancel_requested=False,
                 points_total=points * len(bound.bindings),
@@ -238,6 +247,53 @@ async def test_worker_replays_a_queued_run_and_stores_its_results(dojo_engine):
     assert (run.points_read, run.result_count, results) == (360, 120, 120)
     assert run.worker == "w1" and run.finished_at is not None
     assert set(run.stats) <= {"stale_sensor_block", "waiting_for_all"}
+
+
+@pytest.mark.asyncio
+async def test_worker_stores_which_compared_methods_would_alarm(dojo_engine):
+    engine, sessions = dojo_engine
+    comparison = calibration_comparison(compile_pipeline(quick()))
+    await seed(sessions, points=200, comparison=comparison)
+    worker = DojoWorker(engine, WorkerOptions(worker_id="w1", write_batch=50))
+    assert await worker.run_once() is True
+    run, _ = await stored_run(sessions)
+    assert run.status == "succeeded", run.error
+    # Nothing failed, so the worker left the run's settings as they were.
+    assert run.config["calibration_comparison"] == comparison
+    async with sessions() as session:
+        rows = (
+            await session.execute(
+                select(DojoRunResult.phase, DojoRunResult.method_alarms).order_by(
+                    DojoRunResult.sequence
+                )
+            )
+        ).all()
+    judged = [mask for phase, mask in rows if phase == "operational"]
+    # Every result after the calibration window is judged by all 15 methods.
+    assert judged and all(mask is not None for mask in judged)
+    assert all(0 <= mask < 1 << 15 for mask in judged)
+    assert all(mask is None for phase, mask in rows if phase != "operational")
+
+
+@pytest.mark.asyncio
+async def test_worker_records_a_compared_method_that_failed(dojo_engine, monkeypatch):
+    engine, sessions = dojo_engine
+    comparison = {"own": "fixed_split", "methods": ["aci"], "alpha": 0.1}
+    await seed(sessions, points=200, comparison={**comparison, "consecutive": 1})
+
+    def broken(self, scores, value):
+        raise ArithmeticError("no boundary")
+
+    monkeypatch.setattr(comparison_module._Adapting, "exceeded", broken)
+    worker = DojoWorker(engine, WorkerOptions(worker_id="w1"))
+    assert await worker.run_once() is True
+    run, results = await stored_run(sessions)
+    # The run itself is untouched by a method that fails beside it.
+    assert (run.status, results) == ("succeeded", 200)
+    assert run.config["calibration_comparison"]["failed"] == {
+        "aci": "ArithmeticError: no boundary"
+    }
+    assert run.config["calibration_comparison"]["methods"] == ["aci"]
 
 
 @pytest.mark.asyncio
@@ -411,7 +467,7 @@ async def test_cancelled_initialization_closes_the_late_replay(
     entered, release, closed = asyncio.Event(), threading.Event(), threading.Event()
     loop = asyncio.get_running_loop()
 
-    def initialize(_):
+    def initialize(*_):
         loop.call_soon_threadsafe(entered.set)
         if not release.wait(15):
             raise RuntimeError("test did not release initialization")

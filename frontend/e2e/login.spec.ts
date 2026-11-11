@@ -19,7 +19,7 @@ test("sign-in resumes a protected link through a reload and an expired session",
   await page.goto(destination);
   await expect(page).toHaveURL(url => url.pathname === "/login" && url.searchParams.get("returnTo") === destination);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Sign in", exact: true })).toBeVisible();
   await signIn(page);
   await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === destination);
   await expect(page.getByRole("main", { name: "Sources workspace" })).toBeVisible();

@@ -21,7 +21,7 @@ export function TelemetryDetectorControls({ detectors, selected, unavailableIds,
             <select
               value={selected[pane]}
               onChange={(event) => onSelect(pane, event.target.value)}
-              className="h-9 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none md:h-9 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {options.map((detector) => (
                 <option key={detector.id} value={detector.id} disabled={unavailableIds?.has(detector.id)}>

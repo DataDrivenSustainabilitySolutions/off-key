@@ -89,7 +89,12 @@ def disposable_database():
 async def member_database():
     """Isolate real account lifecycle tests in a disposable PostgreSQL schema."""
     from off_key_core.auth.permissions import BUILT_IN_ROLES
-    from off_key_core.db.models import MemberRole, RememberedSession, User
+    from off_key_core.db.models import (
+        MemberRole,
+        RememberedSession,
+        RevokedAccessToken,
+        User,
+    )
     from sqlalchemy import insert, text
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -112,6 +117,7 @@ async def member_database():
             )
             await connection.run_sync(User.__table__.create)
             await connection.run_sync(RememberedSession.__table__.create)
+            await connection.run_sync(RevokedAccessToken.__table__.create)
         yield engine, async_sessionmaker(engine, expire_on_commit=False)
     finally:
         await engine.dispose()

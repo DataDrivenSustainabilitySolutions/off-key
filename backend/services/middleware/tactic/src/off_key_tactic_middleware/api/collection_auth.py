@@ -5,8 +5,12 @@ from functools import cache
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from off_key_core.auth.permissions import Permission
-from off_key_core.auth.tokens import InvalidAccessToken, decode_access_token
-from off_key_core.db.models import User
+from off_key_core.auth.tokens import (
+    InvalidAccessToken,
+    access_token_digest,
+    decode_access_token,
+)
+from off_key_core.db.models import RememberedSession, RevokedAccessToken, User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +34,26 @@ async def current_member(
             else "Invalid access token"
         )
         raise HTTPException(401, detail) from exc
-    user = await session.scalar(
-        select(User).where(User.id == claims.user_id, User.email == claims.sub)
+    statement = select(User).where(
+        User.id == claims.user_id,
+        User.email == claims.sub,
+        ~select(RevokedAccessToken.token_hash)
+        .where(
+            RevokedAccessToken.token_hash
+            == access_token_digest(credentials.credentials)
+        )
+        .exists(),
     )
+    if claims.session_family is not None:
+        statement = statement.where(
+            select(RememberedSession.token_hash)
+            .where(
+                RememberedSession.family_id == claims.session_family,
+                RememberedSession.user_id == claims.user_id,
+            )
+            .exists()
+        )
+    user = await session.scalar(statement)
     if (
         user is None
         or not user.is_verified

@@ -19,6 +19,7 @@ def get_engine():
     return create_engine(
         db_settings.database_url,
         echo=runtime_settings.DEBUG,
+        hide_parameters=True,
         echo_pool=False,
         pool_pre_ping=True,
         pool_size=10,
@@ -34,6 +35,7 @@ def get_async_engine():
     return create_async_engine(
         db_settings.async_database_url,
         echo=runtime_settings.DEBUG,
+        hide_parameters=True,
         pool_pre_ping=True,
         pool_size=db_settings.POSTGRES_ASYNC_POOL_SIZE,
         max_overflow=db_settings.POSTGRES_ASYNC_MAX_OVERFLOW,
@@ -99,5 +101,7 @@ async def get_db_async():
             await db.commit()
         except Exception as e:
             await db.rollback()
-            logger.warning(f"Database transaction rolled back: {e!s}")
+            logger.warning(
+                "event=database.transaction_rolled_back error_type=%s", type(e).__name__
+            )
             raise

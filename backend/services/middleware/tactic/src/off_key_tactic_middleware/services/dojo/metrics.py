@@ -2,19 +2,24 @@
 
 Metrics are computed when they are read, from the stored results and the
 current labels, so a corrected label re-scores every run without a replay.
-Only alarm rows leave the database: one ordered pass marks where each alarm
-begins, and everything else is arithmetic over the labels.
+Only one aggregate per label leaves the database. Both metrics products are
+cached until labels change, with a shared scan limit and calculation deadlines.
 
 A run that tried other calibration methods kept, for each result, which of
 them would have alarmed. Each method is scored like a run of its own.
 """
 
+import asyncio
+import hashlib
+import json
 from bisect import bisect_right
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, replace
 from datetime import datetime
 from statistics import median
 
+from off_key_core.db.locks import DOJO_METRICS_LOCK
 from off_key_core.db.models import DojoDataset, DojoLabel, DojoRun, DojoRunResult
 from off_key_core.models.dojo_runs import FIXED_METHOD, result_kind
 from off_key_core.models.pipeline_calibration import CALIBRATORS
@@ -26,12 +31,16 @@ from off_key_core.schemas.dojo import (
     MethodMetrics,
     RunMetrics,
 )
-from sqlalchemy import false, func, or_, select
+from pydantic import BaseModel
+from sqlalchemy import DateTime, case, false, func, literal, select, text
+from sqlalchemy.dialects.postgresql import array
+from sqlalchemy.exc import DBAPIError
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from .labels import dataset_labels, label_view
 
 DAY_SECONDS = 86_400.0
+METRICS_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -146,77 +155,184 @@ def _per_day(evaluation: Evaluation) -> float | None:
     return evaluation.false_alarms * DAY_SECONDS / evaluation.evaluated_seconds
 
 
+@dataclass(frozen=True)
+class Scan:
+    scored_from: datetime | None
+    scored_to: datetime | None
+    results: int
+    evaluations: list[tuple[Evaluation, int]]
+
+
 class DojoMetrics:
     def __init__(self, session):
         self.session = session
 
+    @asynccontextmanager
+    async def _budget(self):
+        try:
+            async with asyncio.timeout(METRICS_TIMEOUT_SECONDS):
+                yield
+        except TimeoutError:
+            await self.session.rollback()
+            raise ConflictError(
+                "Dojo metrics exceeded the calculation time limit"
+            ) from None
+
     async def run(self, run_id: str) -> RunMetrics:
-        run = await self._run(run_id)
-        labels = await dataset_labels(self.session, run.dataset_id)
-        return await self._metrics(run, labels)
+        async with self._budget():
+            run = await self._run(run_id)
+            labels = await dataset_labels(self.session, run.dataset_id)
+            return await self._metrics(run, labels)
 
     async def compare(self, dataset_id: str, query: ComparisonQuery) -> Comparison:
-        dataset = await self.session.get(DojoDataset, dataset_id)
-        if dataset is None:
-            raise NotFoundError("Dataset not found")
-        runs = [await self._run(run_id) for run_id in query.run_ids]
-        elsewhere = [run.id for run in runs if run.dataset_id != dataset.id]
-        if elsewhere:
-            raise ValidationError(
-                "Compare runs of one dataset; "
-                f"{', '.join(map(repr, elsewhere))} ran on another"
+        async with self._budget():
+            dataset = await self.session.get(DojoDataset, dataset_id)
+            if dataset is None:
+                raise NotFoundError("Dataset not found")
+            runs = [await self._run(run_id) for run_id in query.run_ids]
+            elsewhere = [run.id for run in runs if run.dataset_id != dataset.id]
+            if elsewhere:
+                raise ValidationError(
+                    "Compare runs of one dataset; "
+                    f"{', '.join(map(repr, elsewhere))} ran on another"
+                )
+            labels = await dataset_labels(self.session, dataset.id)
+            return Comparison(
+                dataset_id=dataset.id,
+                labels=[label_view(label) for label in labels],
+                runs=[await self._metrics(run, labels) for run in runs],
             )
-        labels = await dataset_labels(self.session, dataset.id)
-        return Comparison(
-            dataset_id=dataset.id,
-            labels=[label_view(label) for label in labels],
-            runs=[await self._metrics(run, labels) for run in runs],
-        )
 
     async def calibration(self, run_id: str) -> MethodComparison:
         """The run's own calibration step beside every method it also tried."""
-        run = await self._run(run_id)
-        plan = run.config.get("calibration_comparison")
-        if plan is None:
+        async with self._budget():
+            run = await self._run(run_id)
+            if run.config.get("calibration_comparison") is None:
+                raise ConflictError(
+                    "The run compared no calibration methods; start a run that does"
+                )
+            labels = await dataset_labels(self.session, run.dataset_id)
+            return await self._cached(
+                run, labels, "calibration", MethodComparison, self._calibration
+            )
+
+    async def _run(self, run_id: str) -> DojoRun:
+        run = await self.session.get(DojoRun, run_id)
+        if run is None:
+            raise NotFoundError("Run not found")
+        if run.status != "succeeded":
             raise ConflictError(
-                "The run compared no calibration methods; start a run that does"
+                f"Run {run.id!r} is {run.status}; only a finished run has metrics"
             )
-        labels = await dataset_labels(self.session, run.dataset_id)
-        intervals = [
-            Interval(label.id, label.start_at, label.end_at) for label in labels
+        return run
+
+    async def _metrics(self, run: DojoRun, labels: list[DojoLabel]) -> RunMetrics:
+        return await self._cached(run, labels, "run", RunMetrics, self._calculate)
+
+    async def _cached[T: BaseModel](
+        self,
+        run: DojoRun,
+        labels: list[DojoLabel],
+        kind: str,
+        model: type[T],
+        calculate: Callable[[DojoRun, list[DojoLabel]], Awaitable[T]],
+    ) -> T:
+        key = hashlib.sha256(
+            json.dumps(
+                [
+                    1,
+                    run.result_count,
+                    run.alarm_count,
+                    run.config.get("calibration_comparison")
+                    if kind == "calibration"
+                    else None,
+                    [
+                        (label.id, label.start_at.isoformat(), label.end_at.isoformat())
+                        for label in labels
+                    ],
+                ],
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        cache = (run.metrics_cache or {}).get(kind, {})
+        if cache.get("key") == key:
+            return model.model_validate(cache["value"])
+        # One uncached scan across all replicas; readers never queue for a slot.
+        if not await self.session.scalar(
+            text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": DOJO_METRICS_LOCK}
+        ):
+            raise ConflictError("Dojo metrics are being calculated; retry shortly")
+        try:
+            await self.session.execute(text("SET LOCAL statement_timeout = '25s'"))
+            # Another request may have committed after our initial read. Preserve
+            # its other metrics product and reuse its result if the key matches.
+            await self.session.refresh(run, attribute_names=["metrics_cache"])
+            cache = (run.metrics_cache or {}).get(kind, {})
+            if cache.get("key") == key:
+                result = model.model_validate(cache["value"])
+            else:
+                result = await calculate(run, labels)
+                run.metrics_cache = (run.metrics_cache or {}) | {
+                    kind: {"key": key, "value": result.model_dump(mode="json")}
+                }
+            await self.session.commit()
+            return result
+        except DBAPIError as exc:
+            await self.session.rollback()
+            if getattr(exc.orig, "sqlstate", None) == "57014":
+                raise ConflictError(
+                    "Dojo metrics exceeded the calculation time limit"
+                ) from None
+            raise
+        except BaseException:
+            await self.session.rollback()
+            raise
+
+    async def _calculate(self, run: DojoRun, labels: list[DojoLabel]) -> RunMetrics:
+        scan = await self._scan(
+            run.id,
+            [Interval(label.id, label.start_at, label.end_at) for label in labels],
+        )
+        evaluation, _ = scan.evaluations[0]
+        delays = [
+            item.delay_seconds
+            for item in evaluation.labels
+            if item.delay_seconds is not None
         ]
-        judged = DojoRunResult.method_alarms.is_not(None)
-        scored_from, scored_to, results = (
-            await self.session.execute(
-                select(
-                    func.min(DojoRunResult.timestamp),
-                    func.max(DojoRunResult.timestamp),
-                    func.count(),
-                ).where(DojoRunResult.run_id == run.id, judged)
-            )
-        ).one()
-        rows = await self._method_alarms(run.id)
+        return RunMetrics(
+            run_id=run.id,
+            run_name=run.name,
+            strategy=result_kind(run.config["execution"]["definition"]),
+            scored_from=scan.scored_from,
+            scored_to=scan.scored_to,
+            labels_total=len(labels),
+            labels_scored=evaluation.labels_scored,
+            labels_detected=evaluation.labels_detected,
+            detection_rate=_rate(evaluation.labels_detected, evaluation.labels_scored),
+            median_delay_seconds=median(delays) if delays else None,
+            max_delay_seconds=max(delays) if delays else None,
+            alarm_count=run.alarm_count,
+            false_alarms=evaluation.false_alarms,
+            evaluated_seconds=evaluation.evaluated_seconds,
+            false_alarms_per_day=_per_day(evaluation),
+            labels=evaluation.labels,
+        )
+
+    async def _calibration(
+        self, run: DojoRun, labels: list[DojoLabel]
+    ) -> MethodComparison:
+        plan = run.config["calibration_comparison"]
+        scan = await self._scan(
+            run.id,
+            [Interval(label.id, label.start_at, label.end_at) for label in labels],
+            method_count=len(plan["methods"]),
+        )
         failed = plan.get("failed", {})
         methods = []
-        evaluated = 0.0
         for position, method in enumerate([plan["own"], *plan["methods"]]):
-            if position == 0:
-                alarms = [
-                    Alarm(timestamp, not before)
-                    for timestamp, alarm, _, before, _ in rows
-                    if alarm
-                ]
-            else:
-                bit = 1 << (position - 1)
-                alarms = [
-                    Alarm(timestamp, not before & bit)
-                    for timestamp, _, mask, _, before in rows
-                    if mask & bit
-                ]
-            evaluation = evaluate(intervals, alarms, scored_from, scored_to)
-            evaluated = evaluation.evaluated_seconds
-            # A method that stopped judged only part of the run: what it found
-            # is counted, but no rate over the whole run is its own.
+            evaluation, alarm_count = scan.evaluations[position]
+            # A method that stopped retains its counts, but has no full-run rate.
             stopped = method in failed
             delays = [
                 item.delay_seconds
@@ -238,10 +354,8 @@ class DojoMetrics:
                     ),
                     own=position == 0,
                     failed=failed.get(method),
-                    alarm_count=len(alarms),
-                    alarm_share=(
-                        len(alarms) / results if results and not stopped else None
-                    ),
+                    alarm_count=alarm_count,
+                    alarm_share=None if stopped else _rate(alarm_count, scan.results),
                     labels_scored=evaluation.labels_scored,
                     labels_detected=evaluation.labels_detected,
                     detection_rate=(
@@ -259,123 +373,104 @@ class DojoMetrics:
             run_name=run.name,
             alpha=plan["alpha"],
             consecutive=plan["consecutive"],
-            results=results,
-            scored_from=scored_from,
-            scored_to=scored_to,
+            results=scan.results,
+            scored_from=scan.scored_from,
+            scored_to=scan.scored_to,
             labels_total=len(labels),
-            evaluated_seconds=evaluated,
+            evaluated_seconds=scan.evaluations[0][0].evaluated_seconds,
             methods=methods,
         )
 
-    async def _method_alarms(self, run_id: str) -> list[tuple]:
-        """The judged results on which the run or any method alarmed, each with
-        what the result before it did: time, alarm, methods, and both before."""
+    async def _scan(
+        self, run_id: str, labels: list[Interval], method_count: int | None = None
+    ) -> Scan:
+        # Windows run before filtering judged rows. One aggregate per label
+        # leaves PostgreSQL, even when all five million results/methods alarm.
         order = DojoRunResult.sequence
-        ordered = (
-            select(
-                DojoRunResult.sequence,
-                DojoRunResult.timestamp,
-                DojoRunResult.alarm,
-                DojoRunResult.method_alarms,
-                func.coalesce(
-                    func.lag(DojoRunResult.alarm).over(order_by=order), false()
-                ).label("alarm_before"),
-                func.coalesce(
-                    func.lag(DojoRunResult.method_alarms).over(order_by=order), 0
-                ).label("methods_before"),
+        columns = [
+            DojoRunResult.timestamp,
+            DojoRunResult.score,
+            DojoRunResult.alarm,
+            func.coalesce(
+                func.lag(DojoRunResult.alarm).over(order_by=order), false()
+            ).label("alarm_before"),
+        ]
+        if method_count is not None:
+            columns.extend(
+                [
+                    DojoRunResult.method_alarms,
+                    func.coalesce(
+                        func.lag(DojoRunResult.method_alarms).over(order_by=order), 0
+                    ).label("methods_before"),
+                ]
             )
-            .where(DojoRunResult.run_id == run_id)
-            .subquery()
-        )
-        columns = ordered.c
-        return [
-            tuple(row)
-            for row in (
-                await self.session.execute(
-                    select(
-                        columns.timestamp,
-                        columns.alarm,
-                        columns.method_alarms,
-                        columns.alarm_before,
-                        columns.methods_before,
-                    )
-                    .where(
-                        columns.method_alarms.is_not(None),
-                        or_(columns.alarm, columns.method_alarms != 0),
-                    )
-                    .order_by(columns.sequence)
+        ordered = select(*columns).where(DojoRunResult.run_id == run_id).subquery()
+        c = ordered.c
+        group = literal(0)
+        if labels:
+            starts = array(
+                [label.start_at for label in labels], type_=DateTime(timezone=True)
+            )
+            ends = array(
+                [label.end_at for label in labels], type_=DateTime(timezone=True)
+            )
+            # Binary search matches evaluate(): inclusive ends, later label at
+            # touching boundaries, and zero for rows outside every label.
+            bucket = func.width_bucket(c.timestamp, starts)
+            group = case((c.timestamp <= ends[bucket], bucket), else_=0)
+        alarm_columns = [(c.alarm, c.alarm_before)]
+        if method_count is not None:
+            alarm_columns.extend(
+                (
+                    c.method_alarms.bitwise_and(1 << i) != 0,
+                    c.methods_before.bitwise_and(1 << i) != 0,
                 )
-            ).all()
-        ]
-
-    async def _run(self, run_id: str) -> DojoRun:
-        run = await self.session.get(DojoRun, run_id)
-        if run is None:
-            raise NotFoundError("Run not found")
-        if run.status != "succeeded":
-            raise ConflictError(
-                f"Run {run.id!r} is {run.status}; only a finished run has metrics"
+                for i in range(method_count)
             )
-        return run
-
-    async def _metrics(self, run: DojoRun, labels: list[DojoLabel]) -> RunMetrics:
-        scored_from, scored_to = (
-            await self.session.execute(
-                select(
-                    func.min(DojoRunResult.timestamp).filter(
-                        DojoRunResult.score.is_not(None)
+        aggregates = []
+        for alarm, before in alarm_columns:
+            aggregates.extend(
+                [
+                    func.min(c.timestamp).filter(alarm),
+                    func.count().filter(alarm),
+                    func.count().filter(alarm & ~before),
+                ]
+            )
+        statement = select(
+            group.label("label_index"),
+            func.min(c.timestamp).filter(c.score.is_not(None))
+            if method_count is None
+            else func.min(c.timestamp),
+            func.max(c.timestamp),
+            func.count(),
+            *aggregates,
+        ).group_by(group)
+        if method_count is not None:
+            statement = statement.where(c.method_alarms.is_not(None))
+        rows = (await self.session.execute(statement)).all()
+        scored_from = min((row[1] for row in rows if row[1] is not None), default=None)
+        scored_to = max((row[2] for row in rows if row[2] is not None), default=None)
+        evaluations = []
+        for position in range(len(alarm_columns)):
+            offset = 4 + position * 3
+            first = sorted(
+                [
+                    Alarm(row[offset], False)
+                    for row in rows
+                    if row[0] and row[offset] is not None
+                ],
+                key=lambda alarm: alarm.timestamp,
+            )
+            evaluation = evaluate(labels, first, scored_from, scored_to)
+            evaluations.append(
+                (
+                    replace(
+                        evaluation,
+                        false_alarms=sum(
+                            row[offset + 2] for row in rows if row[0] == 0
+                        ),
                     ),
-                    func.max(DojoRunResult.timestamp),
-                ).where(DojoRunResult.run_id == run.id)
+                    sum(row[offset + 1] for row in rows),
+                )
             )
-        ).one()
-        evaluation = evaluate(
-            [Interval(label.id, label.start_at, label.end_at) for label in labels],
-            await self._alarms(run.id),
-            scored_from,
-            scored_to,
-        )
-        delays = [
-            item.delay_seconds
-            for item in evaluation.labels
-            if item.delay_seconds is not None
-        ]
-        return RunMetrics(
-            run_id=run.id,
-            run_name=run.name,
-            strategy=result_kind(run.config["execution"]["definition"]),
-            scored_from=scored_from,
-            scored_to=scored_to,
-            labels_total=len(labels),
-            labels_scored=evaluation.labels_scored,
-            labels_detected=evaluation.labels_detected,
-            detection_rate=_rate(evaluation.labels_detected, evaluation.labels_scored),
-            median_delay_seconds=median(delays) if delays else None,
-            max_delay_seconds=max(delays) if delays else None,
-            alarm_count=run.alarm_count,
-            false_alarms=evaluation.false_alarms,
-            evaluated_seconds=evaluation.evaluated_seconds,
-            false_alarms_per_day=_per_day(evaluation),
-            labels=evaluation.labels,
-        )
-
-    async def _alarms(self, run_id: str) -> list[Alarm]:
-        previous = func.lag(DojoRunResult.alarm).over(order_by=DojoRunResult.sequence)
-        ordered = (
-            select(
-                DojoRunResult.sequence,
-                DojoRunResult.timestamp,
-                DojoRunResult.alarm,
-                func.coalesce(previous, false()).label("previous"),
-            )
-            .where(DojoRunResult.run_id == run_id)
-            .subquery()
-        )
-        rows = (
-            await self.session.execute(
-                select(ordered.c.timestamp, ordered.c.previous)
-                .where(ordered.c.alarm)
-                .order_by(ordered.c.sequence)
-            )
-        ).all()
-        return [Alarm(timestamp, not previous) for timestamp, previous in rows]
+        return Scan(scored_from, scored_to, sum(row[3] for row in rows), evaluations)

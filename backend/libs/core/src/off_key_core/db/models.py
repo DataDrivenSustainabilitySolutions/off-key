@@ -27,6 +27,7 @@ from ..auth.permissions import (
     Permission,
     role_permissions,
 )
+from .access_sessions import RevokedAccessToken as RevokedAccessToken
 from .base import Base
 from .dojo import DojoDataset as DojoDataset
 from .dojo import DojoLabel as DojoLabel

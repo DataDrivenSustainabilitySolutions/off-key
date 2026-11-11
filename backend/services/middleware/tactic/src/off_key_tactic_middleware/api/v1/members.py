@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from off_key_core.auth.permissions import Permission
 from off_key_core.db.models import User
 from off_key_core.schemas.members import (
@@ -17,7 +18,7 @@ from off_key_core.schemas.user import ForgotPasswordRequest
 from ...provider import get_member_service, get_remembered_session_service
 from ...services.accounts.members import MemberService
 from ...services.accounts.remembered_sessions import RememberedSessionService
-from ..collection_auth import current_member, require_permission
+from ..collection_auth import bearer, current_member, require_permission
 from ..errors import DomainErrorRoute
 
 router = APIRouter(prefix="/members", tags=["members"], route_class=DomainErrorRoute)
@@ -58,6 +59,16 @@ async def revoke_remembered_session(
 @router.get("/me", response_model=MemberProfile)
 async def me(user: User = Depends(current_member)):
     return user
+
+
+@router.post("/sessions/revoke-access")
+async def revoke_access_session(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    service: RememberedSessionService = Depends(remembered_session_service),
+):
+    if credentials is not None:
+        await service.revoke_access(credentials.credentials)
+    return {"message": "Access session ended"}
 
 
 @router.get(

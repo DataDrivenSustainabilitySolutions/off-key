@@ -1,11 +1,13 @@
 """Batched database writes in the MQTT proxy."""
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from off_key_core.config.logs import JsonFormatter, KeyValueFormatter
 from off_key_core.db.worker_ownership import WorkerOwnershipLost
 from off_key_mqtt_proxy.telemetry import DatabaseWriter, PermanentRecordError
 from off_key_mqtt_proxy.telemetry_models import (
@@ -350,3 +352,29 @@ def test_retrying_reflects_in_flight_batch_status(status, retrying):
     writer.processing_batches["a"] = WriteBatch(status=status)
 
     assert writer.is_retrying is retrying
+
+
+async def test_database_retry_diagnostics_do_not_keep_driver_values(
+    monkeypatch, caplog
+):
+    from off_key_mqtt_proxy import telemetry
+
+    secret = "synthetic-private-database-value"
+    error = IntegrityError(
+        "insert", (secret,), ValueError(secret), hide_parameters=True
+    )
+    writer = _writer()
+    writer.config.get_jittered_backoff_delay = lambda attempt: 0.0
+    writer._persist_owned_batch = AsyncMock(side_effect=error)
+    batch = WriteBatch(records=[_record()])
+    writer.processing_batches["redaction"] = batch
+    test_logger = logging.getLogger("test.database.retry")
+    monkeypatch.setattr(telemetry, "logger", test_logger)
+    caplog.set_level(logging.ERROR, logger=test_logger.name)
+    await writer._process_batch_with_retry("redaction")
+    assert secret not in batch.last_error
+    assert "IntegrityError" in batch.last_error
+    records = [record for record in caplog.records if record.name == test_logger.name]
+    assert records
+    for formatter in (JsonFormatter(), KeyValueFormatter("%(message)s")):
+        assert all(secret not in formatter.format(record) for record in records)

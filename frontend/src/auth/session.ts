@@ -98,10 +98,10 @@ export const subscribeToSession = (onChange: () => void): (() => void) => {
   };
 };
 
-const sessionRequest = (endpoint: string) => fetch(getApiUrl(endpoint), {
+const sessionRequest = (endpoint: string, token?: string | null) => fetch(getApiUrl(endpoint), {
   method: 'POST',
   credentials: 'include',
-  headers: { 'X-Off-Key-Session': '1' },
+  headers: { 'X-Off-Key-Session': '1', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
 
@@ -134,8 +134,9 @@ export const refreshSession = (): Promise<string | null> => {
 };
 
 export const endSession = (): Promise<void> => {
+  const token = tokenManager.getToken();
   tokenManager.removeToken();
-  logoutRequest ??= sessionRequest(API_CONFIG.ENDPOINTS.AUTH.LOGOUT)
+  logoutRequest ??= sessionRequest(API_CONFIG.ENDPOINTS.AUTH.LOGOUT, token)
     .then(() => undefined)
     .finally(() => { logoutRequest = null; });
   return logoutRequest;

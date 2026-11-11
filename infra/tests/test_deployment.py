@@ -246,6 +246,20 @@ class DeploymentTests(unittest.TestCase):
             & set(services["tactic"]["networks"])
         )
 
+    def test_public_content_drops_credentials_without_changing_auth_routes(self):
+        routes = self.results["prod"]["routes"]
+        for name in ("docs", "frontend"):
+            self.assertIn("public-content", routes["routers"][name]["middlewares"])
+        headers = routes["middlewares"]["public-content"]["headers"][
+            "customRequestHeaders"
+        ]
+        self.assertEqual(headers, {"Cookie": "", "Authorization": ""})
+        for name in ("api", "oauth2", "emqx", "traefik-dashboard", "grafana"):
+            if name in routes["routers"]:
+                self.assertNotIn(
+                    "public-content", routes["routers"][name].get("middlewares", [])
+                )
+
     def test_docs_are_public_and_isolated_from_application_credentials(self):
         result = self.results["prod"]
         docs = result["config"]["services"]["docs"]
@@ -257,7 +271,7 @@ class DeploymentTests(unittest.TestCase):
         route = result["routes"]["routers"]["docs"]
         self.assertEqual(route["rule"], "Host(`docs.aberration.app`)")
         self.assertEqual(route["service"], "docs")
-        self.assertFalse(route.get("middlewares"))
+        self.assertEqual(route.get("middlewares"), ["public-content"])
         self.assertEqual(
             result["routes"]["services"]["docs"]["loadBalancer"]["servers"],
             [{"url": "http://off-key_docs:80"}],

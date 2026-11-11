@@ -3,10 +3,16 @@
 import secrets
 from datetime import UTC, datetime, timedelta
 
+from off_key_core.auth.tokens import (
+    InvalidAccessToken,
+    access_token_digest,
+    decode_access_token_with_expiry,
+)
 from off_key_core.config.logs import log_security_event
-from off_key_core.db.models import RememberedSession, User
+from off_key_core.db.models import RememberedSession, RevokedAccessToken, User
 from off_key_core.schemas.sessions import REMEMBERED_SESSION_SECONDS
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...domain import AuthenticationError
@@ -62,7 +68,24 @@ class RememberedSessionService:
             issued_at=now,
         )
         await self.session.commit()
-        return {"token": token, "expires_in": REMEMBERED_SESSION_SECONDS}
+        return {
+            "token": token,
+            "expires_in": REMEMBERED_SESSION_SECONDS,
+            "session_family": digest_token(token),
+        }
+
+    async def _lock_family(self, token: str) -> str | None:
+        family = await self.session.scalar(
+            select(RememberedSession.family_id).where(
+                RememberedSession.token_hash == digest_token(token)
+            )
+        )
+        if family is not None:
+            await self.session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:family, 0))"),
+                {"family": "off-key-session:" + family},
+            )
+        return family
 
     async def refresh(self, token: str) -> dict:
         """Exchange a day-old remembered secret for a new one in the same lifetime.
@@ -70,6 +93,8 @@ class RememberedSessionService:
         Presenting a secret that was replaced outside the grace window means it
         was copied, so the whole sign-in is revoked.
         """
+        await self._lock_family(token)
+        # The read after the family lock gets a new READ COMMITTED snapshot.
         now = datetime.now(UTC)
         result = (
             await self.session.execute(
@@ -95,6 +120,7 @@ class RememberedSessionService:
             "id": user.id,
             "email": user.email,
             "session_version": user.session_version,
+            "session_family": remembered.family_id,
         }
         if remembered.replaced_at is not None:
             if now - _utc(remembered.replaced_at) <= ROTATION_GRACE:
@@ -130,12 +156,27 @@ class RememberedSessionService:
         }
 
     async def revoke(self, token: str) -> None:
-        family = (
-            select(RememberedSession.family_id)
-            .where(RememberedSession.token_hash == digest_token(token))
-            .scalar_subquery()
-        )
+        family = await self._lock_family(token)
+        if family is None:
+            return
         await self.session.execute(
             delete(RememberedSession).where(RememberedSession.family_id == family)
+        )
+        await self.session.commit()
+
+    async def revoke_access(self, token: str) -> None:
+        try:
+            _, expires_at = decode_access_token_with_expiry(token)
+        except InvalidAccessToken:
+            return  # Expired/invalid tokens already cannot authorize requests.
+        await self.session.execute(
+            delete(RevokedAccessToken).where(
+                RevokedAccessToken.expires_at <= datetime.now(UTC)
+            )
+        )
+        await self.session.execute(
+            insert(RevokedAccessToken)
+            .values(token_hash=access_token_digest(token), expires_at=expires_at)
+            .on_conflict_do_nothing()
         )
         await self.session.commit()

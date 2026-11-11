@@ -1,11 +1,14 @@
 """Dojo labels and event metrics: labels as events, alarms scored against them."""
 
+import asyncio
+import tracemalloc
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from off_key_core.db.base import get_db_async
+from off_key_core.db.locks import DOJO_METRICS_LOCK
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
@@ -16,6 +19,7 @@ from off_key_core.db.models import (
     DojoSeries,
     User,
 )
+from off_key_core.models.pipeline_calibration import CALIBRATORS
 from off_key_core.schemas.dojo import (
     MAX_COMPARED_RUNS,
     ComparisonQuery,
@@ -41,7 +45,7 @@ from off_key_tactic_middleware.services.dojo.metrics import (
 )
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from pydantic import ValidationError as SchemaError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from tests.support.env import set_auth_env
 from tests.support.http import asgi_client
@@ -216,6 +220,74 @@ async def finished_run(
         )
         await session.commit()
     return run_id
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(120)
+async def test_maximum_run_metrics_keep_python_memory_bounded(sessions):
+    _, factory = sessions
+    _, view = await dataset(factory)
+    methods = ["fixed_split", *[method for method in CALIBRATORS if method != "aci"]]
+    run_id = await finished_run(
+        factory,
+        view,
+        alarm_minutes=set(),
+        comparison={"own": "aci", "methods": methods, "alpha": 0.05, "consecutive": 1},
+    )
+    size = 5_000_000
+    label_count = labels_module.MAX_DATASET_LABELS
+    label_seconds = size // label_count
+    async with factory() as session:
+        await session.execute(
+            text("DELETE FROM dojo_run_results WHERE run_id = :id"), {"id": run_id}
+        )
+        await session.execute(
+            text("""
+                INSERT INTO dojo_run_results
+                    (run_id, sequence, timestamp, phase, score, alarm, method_alarms)
+                SELECT :id, n, CAST(:start AS timestamptz)
+                    + (n - 1) * interval '1 second',
+                    'ready', 1.0, true, :mask
+                FROM generate_series(1, :size) n
+            """),
+            {"id": run_id, "start": T0, "size": size, "mask": (1 << len(methods)) - 1},
+        )
+        run = await session.get(DojoRun, run_id)
+        run.points_total = run.points_read = run.result_count = run.alarm_count = size
+        session.add_all(
+            DojoLabel(
+                id=f"label-{index}",
+                dataset_id=view.id,
+                start_at=T0 + timedelta(seconds=index * label_seconds),
+                end_at=T0 + timedelta(seconds=(index + 1) * label_seconds),
+                note="",
+            )
+            for index in range(label_count)
+        )
+        await session.commit()
+    tracemalloc.start()
+    try:
+        async with factory() as session:
+            service = DojoMetrics(session)
+            result = await service.run(run_id)
+            compared = await service.calibration(run_id)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert result.labels_detected == result.labels_scored == label_count
+    assert result.false_alarms == 0
+    assert result.max_delay_seconds == 0
+    assert result.alarm_count == size
+    assert peak < 64 * 1024 * 1024
+
+    assert compared.results == size
+    assert len(compared.methods) == len(methods) + 1
+    assert all(
+        method.alarm_count == size
+        and method.labels_detected == label_count
+        and method.false_alarms == 0
+        for method in compared.methods
+    )
 
 
 def label(start, end, note=""):
@@ -440,6 +512,90 @@ async def test_results_can_be_read_as_alarms_only(sessions):
     assert rest.next_after is None
 
 
+async def test_metrics_cache_avoids_rescanning_and_label_edits_invalidate_it(
+    sessions, monkeypatch
+):
+    _, factory = sessions
+    creator, view = await dataset(factory)
+    run_id = await finished_run(factory, view, alarm_minutes={20, 21, 22})
+    async with factory() as session:
+        label_service = DojoLabels(session)
+        problem = await label_service.create(view.id, label(20, 25), created_by=creator)
+        service = DojoMetrics(session)
+        scan = service._scan
+        calls = []
+
+        async def counted(*args):
+            calls.append(args[0])
+            return await scan(*args)
+
+        monkeypatch.setattr(service, "_scan", counted)
+        first = await service.run(run_id)
+        assert await service.run(run_id) == first
+        assert (
+            await service.compare(view.id, ComparisonQuery(run_ids=[run_id]))
+        ).runs == [first]
+        assert len(calls) == 1
+        await label_service.change(view.id, problem.id, LabelChange(start_at=at(23)))
+        assert (await service.run(run_id)).labels_detected == 0
+        assert len(calls) == 2
+
+
+@pytest.mark.parametrize("endpoint", ["run", "calibration"])
+async def test_uncached_metrics_fail_fast_when_another_replica_is_scanning(
+    sessions, endpoint
+):
+    engine, factory = sessions
+    _, view = await dataset(factory)
+    run_id = await finished_run(
+        factory,
+        view,
+        alarm_minutes=set(),
+        comparison={"own": "aci", "methods": ["pid"], "alpha": 0.05, "consecutive": 1},
+        method_minutes=(set(),),
+    )
+    async with engine.begin() as blocker:
+        await blocker.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": DOJO_METRICS_LOCK}
+        )
+        async with factory() as session:
+            with pytest.raises(ConflictError, match="retry shortly"):
+                await asyncio.wait_for(
+                    getattr(DojoMetrics(session), endpoint)(run_id), 1
+                )
+
+
+@pytest.mark.parametrize("endpoint", ["run", "calibration"])
+async def test_metrics_deadline_releases_its_database_slot(
+    sessions, monkeypatch, endpoint
+):
+    from off_key_tactic_middleware.services.dojo import metrics
+
+    engine, factory = sessions
+    _, view = await dataset(factory)
+    run_id = await finished_run(
+        factory,
+        view,
+        alarm_minutes=set(),
+        comparison={"own": "aci", "methods": ["pid"], "alpha": 0.05, "consecutive": 1},
+        method_minutes=(set(),),
+    )
+    monkeypatch.setattr(metrics, "METRICS_TIMEOUT_SECONDS", 0.1)
+    async with factory() as session:
+        service = DojoMetrics(session)
+
+        async def stuck(*args, **kwargs):
+            await asyncio.sleep(60)
+
+        monkeypatch.setattr(service, "_scan", stuck)
+        with pytest.raises(ConflictError, match="time limit"):
+            await getattr(service, endpoint)(run_id)
+    async with engine.begin() as connection:
+        assert await connection.scalar(
+            text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": DOJO_METRICS_LOCK}
+        )
+
+
 @pytest.mark.asyncio
 async def test_deleting_a_dataset_removes_its_labels(sessions):
     _, factory = sessions
@@ -512,3 +668,58 @@ async def test_routes_label_a_dataset_and_compare_runs(sessions):
     assert overlapping.status_code == 409
     assert deleted.status_code == 204
     assert anonymous.status_code == 401
+
+
+async def test_calibration_and_run_caches_survive_alternating_reads_and_label_changes(
+    sessions, monkeypatch
+):
+    _, factory = sessions
+    creator, view = await dataset(factory)
+    run_id = await finished_run(
+        factory,
+        view,
+        alarm_minutes={20, 21},
+        comparison={"own": "aci", "methods": ["pid"], "alpha": 0.05, "consecutive": 1},
+        method_minutes=({23, 24},),
+    )
+    async with factory() as session:
+        service = DojoMetrics(session)
+        scan = service._scan
+        calls = []
+
+        async def counted(*args, **kwargs):
+            calls.append(kwargs.get("method_count"))
+            return await scan(*args, **kwargs)
+
+        monkeypatch.setattr(service, "_scan", counted)
+        first = await service.run(run_id)
+        compared = await service.calibration(run_id)
+        assert await service.run(run_id) == first
+        assert await service.calibration(run_id) == compared
+        assert calls == [None, 1]
+        labels = DojoLabels(session)
+        problem = await labels.create(view.id, label(20, 25), created_by=creator)
+        compared = await service.calibration(run_id)
+        assert [m.labels_detected for m in compared.methods] == [1, 1]
+        first = await service.run(run_id)
+        assert first.labels_detected == 1
+        await labels.change(view.id, problem.id, LabelChange(note="clarified"))
+        assert await service.calibration(run_id) == compared
+        assert await service.run(run_id) == first
+        assert len(calls) == 4
+        await labels.change(view.id, problem.id, LabelChange(start_at=at(22)))
+        assert [
+            m.labels_detected for m in (await service.calibration(run_id)).methods
+        ] == [0, 1]
+        await labels.remove(view.id, problem.id)
+        compared = await service.calibration(run_id)
+        assert compared.labels_total == 0
+        assert [m.false_alarms for m in compared.methods] == [1, 1]
+        # Failed-method metadata is also part of the calibration cache identity.
+        run = await session.get(DojoRun, run_id)
+        run.config = run.config | {
+            "calibration_comparison": run.config["calibration_comparison"]
+            | {"failed": {"pid": "stopped"}}
+        }
+        await session.commit()
+        assert (await service.calibration(run_id)).methods[1].alarm_share is None

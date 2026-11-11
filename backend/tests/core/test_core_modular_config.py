@@ -86,6 +86,9 @@ def test_db_engine_is_lazily_cached(monkeypatch):
     db_base.get_engine()
     db_base.get_async_engine()
 
+    assert db_base.get_engine().hide_parameters is True
+    assert db_base.get_async_engine().sync_engine.hide_parameters is True
+
     assert db_base.get_engine.cache_info().currsize == 1
     assert db_base.get_async_engine.cache_info().currsize == 1
 

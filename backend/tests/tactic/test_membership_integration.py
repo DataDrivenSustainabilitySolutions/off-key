@@ -47,15 +47,22 @@ async def test_remembered_session_grace_accepts_a_naive_replacement_time():
     # issued_at and expires_at are normalised to UTC; replaced_at must be too.
     remembered = SimpleNamespace(
         session_version=1,
+        family_id="a" * 64,
         replaced_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5),
     )
     user = SimpleNamespace(
         id=1, email="a@example.com", session_version=1, is_active=True, is_verified=True
     )
     session = AsyncMock()
+    session.scalar.return_value = remembered.family_id
     session.execute.return_value = SimpleNamespace(first=lambda: (remembered, user))
     claims = await RememberedSessionService(session).refresh("token")
-    assert claims == {"id": 1, "email": "a@example.com", "session_version": 1}
+    assert claims == {
+        "id": 1,
+        "email": "a@example.com",
+        "session_version": 1,
+        "session_family": remembered.family_id,
+    }
     session.commit.assert_awaited_once()
 
 
@@ -83,7 +90,12 @@ async def test_remembered_sessions_store_hashes_expire_and_revoke_individually(
         claims = await service.refresh(first["token"])
         rotated = claims.pop("token")
         assert claims.pop("expires_in") <= 30 * 24 * 60 * 60
-        assert claims == {"id": user_id, "email": user.email, "session_version": 1}
+        assert claims == {
+            "id": user_id,
+            "email": user.email,
+            "session_version": 1,
+            "session_family": stored.family_id,
+        }
         replacement = await session.get(
             RememberedSession, hashlib.sha256(rotated.encode()).hexdigest()
         )

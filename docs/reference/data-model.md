@@ -31,6 +31,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `monitoring_evidence_clock` | `id = 1` | Durable watermark serializing evidence creation times through commit, so forward cursors cannot skip late commits |
 | `anomaly_identity` | `anomaly_id` | Stable identifier mapped to an anomaly composite key |
 | `remembered_sessions` | `token_hash` | Rotating remember-me refresh tokens grouped by session family |
+| `revoked_access_tokens` | `token_hash` | Hashed access tokens revoked at logout, retained until their expiry |
 
 ### Catalogue and collection
 

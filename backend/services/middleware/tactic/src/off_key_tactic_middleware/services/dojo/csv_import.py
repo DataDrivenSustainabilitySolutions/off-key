@@ -11,11 +11,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from off_key_core.schemas.dojo import CsvImportQuery
+from off_key_core.schemas.dojo import MAX_DATASET_SERIES, CsvImportQuery
 
 from ...domain import ValidationError
 
 DELIMITERS = (",", ";", "\t", "|")
+# Limit input before the C parser allocates a field for each delimiter. A quoted
+# record can span many physical lines, so its budget resets only after parsing.
+MAX_RECORD_CHARS = 64 * 1024
+MAX_SERIES_NAME_CHARS = 256
 # Epoch numbers this large are milliseconds; seconds reach it only in 5138.
 MILLISECOND_EPOCH = 1e11
 
@@ -99,6 +103,8 @@ def _layout(header: list[str], query: CsvImportQuery) -> _Layout:
         raise ValidationError("A wide CSV needs at least one value column")
     if any(not name for name in names):
         raise ValidationError("Every value column needs a header name")
+    if any(len(name) > MAX_SERIES_NAME_CHARS for name in names):
+        raise ValidationError("Series names hold at most 256 characters")
     if len(set(names)) != len(names):
         raise ValidationError("Value column names must be unique")
     return _Layout(time_index=time_index, value_columns=columns)
@@ -120,6 +126,10 @@ def _row_points(
             continue
         if not name:
             raise ValidationError(f"Line {line}: the series name is empty")
+        if len(name) > MAX_SERIES_NAME_CHARS:
+            raise ValidationError(
+                f"Line {line}: series names hold at most 256 characters"
+            )
         try:
             value = parse_value(cell, decimal_comma=decimal_comma)
         except ValueError:
@@ -127,6 +137,45 @@ def _row_points(
                 f"Line {line}: {cell!r} in {name!r} is not a finite number"
             ) from None
         yield name, timestamp, value
+
+
+class _RecordLines:
+    def __init__(self, text, first: str):
+        self.text = text
+        self.first: str | None = first
+        self.used = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.first is not None:
+            line, self.first = self.first, None
+        else:
+            line = self.text.readline(MAX_RECORD_CHARS - self.used + 1)
+        if not line:
+            raise StopIteration
+        self.used += len(line)
+        if self.used > MAX_RECORD_CHARS:
+            raise ValidationError("A CSV record holds at most 65,536 characters")
+        return line
+
+
+def _rows(text, first: str, delimiter: str) -> Iterator[list[str]]:
+    lines = _RecordLines(text, first)
+    reader = csv.reader(lines, delimiter=delimiter, strict=True)
+    try:
+        for row in reader:
+            if len(row) > MAX_DATASET_SERIES + 1:
+                raise ValidationError(
+                    f"A CSV record holds at most {MAX_DATASET_SERIES + 1} columns"
+                )
+            lines.used = 0
+            yield row
+    except UnicodeDecodeError:
+        raise ValidationError("The CSV must be UTF-8 text") from None
+    except csv.Error as exc:
+        raise ValidationError(f"The CSV could not be read: {exc}") from None
 
 
 def read_points(
@@ -139,19 +188,22 @@ def read_points(
     """
     try:
         text = io.TextIOWrapper(io.BytesIO(body), encoding="utf-8-sig", newline="")
-        first = text.readline()
+        first = text.readline(MAX_RECORD_CHARS + 1)
     except UnicodeDecodeError:
         raise ValidationError("The CSV must be UTF-8 text") from None
+    if len(first) > MAX_RECORD_CHARS:
+        raise ValidationError("A CSV record holds at most 65,536 characters")
     if not first.strip():
         raise ValidationError("The CSV is empty")
     delimiter = query.delimiter or detect_delimiter(first)
-    header = next(csv.reader([first], delimiter=delimiter))
+    rows = _rows(text, first, delimiter)
+    header = next(rows)
     layout = _layout(header, query)
     decimal_comma = delimiter != ","
 
     def points() -> Iterator[tuple[str, datetime, float]]:
         try:
-            for line, row in enumerate(csv.reader(text, delimiter=delimiter), start=2):
+            for line, row in enumerate(rows, start=2):
                 if any(cell.strip() for cell in row):
                     yield from _row_points(line, row, layout, decimal_comma)
         except UnicodeDecodeError:

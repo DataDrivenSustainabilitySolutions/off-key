@@ -155,3 +155,18 @@ async def test_logout_revokes_and_always_clears_browser_cookie(session_api, fail
         assert response.status_code == (503 if failure else 200)
         assert "Max-Age=0" in response.headers["set-cookie"]
         assert tactic.calls[-1][0].endswith("/revoke")
+
+
+async def test_logout_forwards_bearer_without_a_remembered_cookie(session_api):
+    app, tactic = session_api
+    async with asgi_client(app, base_url="https://test") as client:
+        result = await client.post(
+            "/logout", headers=HEADERS | {"Authorization": "Bearer signed-token"}
+        )
+    assert result.status_code == 200
+    assert tactic.calls == [
+        (
+            "/api/v1/members/sessions/revoke-access",
+            {"headers": {"Authorization": "Bearer signed-token"}},
+        )
+    ]

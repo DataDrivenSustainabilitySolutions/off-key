@@ -479,3 +479,30 @@ async def test_routes_upload_csv_for_administrators_only(dojo_database):
     assert created.json()["series"][0]["name"] == "a"
     assert invalid.status_code == 422
     assert "Line 2" in invalid.json()["detail"]
+
+
+@pytest.mark.parametrize("delimiter", [",", ";", "\t", "|"])
+@pytest.mark.parametrize("position", ["header", "row", "quoted"])
+def test_csv_record_budget_precedes_field_expansion(delimiter, position):
+    from off_key_tactic_middleware.services.dojo.csv_import import MAX_RECORD_CHARS
+
+    dense = delimiter * (MAX_RECORD_CHARS + 1)
+    body = {
+        "header": dense,
+        "row": f"time{delimiter}a\n1{delimiter}1{dense}\n",
+        "quoted": f'time{delimiter}a\n"'
+        + ("x\n" * MAX_RECORD_CHARS)
+        + f'"{delimiter}1\n',
+    }[position]
+    with pytest.raises(ValidationError, match="record holds at most"):
+        points(body, delimiter=delimiter)
+
+
+def test_csv_bounds_unused_long_columns_and_handles_quoted_multiline_records():
+    with pytest.raises(ValidationError, match="65 columns"):
+        points("series,timestamp,value\na,1,2" + "," * 70, layout="long")
+    declared, rows = points('time,"sensor,one"\n"2026-03-01\n",2\n')
+    assert declared == ["sensor,one"]
+    assert rows == [("sensor,one", T0, 2.0)]
+    with pytest.raises(ValidationError, match="could not be read"):
+        points('time,"unfinished')

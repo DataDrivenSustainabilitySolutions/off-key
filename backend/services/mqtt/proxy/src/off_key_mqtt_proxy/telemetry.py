@@ -9,6 +9,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any, TypeGuard, cast
 
+from off_key_core.config.logging_errors import safe_error_text
 from off_key_core.config.logs import log_performance, logger
 from off_key_core.db.models import Telemetry
 from off_key_core.db.worker_ownership import WorkerOwnership
@@ -320,11 +321,11 @@ class DatabaseWriter:
                         "batch_id": batch_id,
                         "batch_size": batch_size,
                         "attempt": attempt + 1,
-                        "error": str(e),
+                        "error": safe_error_text(e),
                     },
                     exc_info=True,
                 )
-                batch.last_error = str(e)
+                batch.last_error = safe_error_text(e)
 
         # All attempts failed
         batch.status = WriteStatus.FAILED
@@ -463,7 +464,7 @@ class DatabaseWriter:
 
         except SQLAlchemyError as e:
             if _is_permanent_record_error(e):
-                raise PermanentRecordError(str(e.orig)) from e
+                raise PermanentRecordError(safe_error_text(e)) from e
             logger.error(
                 "event=db_writer.batch_db_error batch_size=%s error=%s",
                 batch_size,
@@ -471,7 +472,7 @@ class DatabaseWriter:
                 extra={
                     **self._log_context,
                     "batch_size": batch_size,
-                    "error": str(e),
+                    "error": safe_error_text(e),
                 },
                 exc_info=True,
             )
@@ -485,7 +486,7 @@ class DatabaseWriter:
                 extra={
                     **self._log_context,
                     "batch_size": batch_size,
-                    "error": str(e),
+                    "error": safe_error_text(e),
                 },
                 exc_info=True,
             )

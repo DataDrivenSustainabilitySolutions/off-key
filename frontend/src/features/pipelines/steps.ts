@@ -63,7 +63,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.smooth": "Average recent values to calm noise.",
   "prepare.despike": "Replace sudden spikes with the recent median.",
   "prepare.change": "Add the change since earlier observations.",
-  "prepare.rolling": "Add a sum, quantile, spread or trend of recent values.",
+  "prepare.rolling": "Add a sum, quantile, spread, trend, shape or score of recent values.",
   "prepare.accumulate": "Keep a running total, minimum or maximum.",
   "prepare.math": "Take a log, root, absolute value, square or scale.",
   "prepare.range": "Clip values to a range, or skip observations outside it.",

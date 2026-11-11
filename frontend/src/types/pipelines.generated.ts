@@ -691,7 +691,7 @@ export type RollingParameters = {
   apply_to?: Array<string> | null;
   result?: "replace" | "add";
   suffix?: string | null;
-  statistic?: "mean" | "median" | "min" | "max" | "std" | "range" | "sum" | "quantile" | "iqr" | "mad" | "slope";
+  statistic?: "mean" | "median" | "min" | "max" | "std" | "range" | "sum" | "quantile" | "iqr" | "mad" | "slope" | "zscore" | "robust_zscore" | "rank" | "rms" | "skewness" | "kurtosis";
   window_size?: number;
   quantile?: number;
 };

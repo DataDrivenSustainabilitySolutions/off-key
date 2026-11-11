@@ -5,7 +5,13 @@ const FUNCTIONS: Record<string, string> = {
   abs: "abs(x)", sqrt: "sqrt(x)", log: "log(x)", log1p: "log1p(x)", exp: "exp(x)",
   min: "min(a, b, …)", max: "max(a, b, …)", clip: "clip(x, low, high)",
   if: "if(condition, when_true, when_false)",
+  mean: "mean(a, b, …)", sum: "sum(a, b, …)", hypot: "hypot(a, b, …)",
+  sign: "sign(x): -1, 0 or 1", round: "round(x)", floor: "floor(x)", ceil: "ceil(x)",
+  mod: "mod(x, divisor)", sin: "sin(radians)", cos: "cos(radians)", atan2: "atan2(y, x)",
+  pi: "pi()",
 };
+/** Functions that take no value: accepting one writes its parentheses closed. */
+export const CONSTANTS = new Set(["pi"]);
 const KEYWORDS: Record<string, string> = { and: "both hold", or: "either holds", not: "the opposite" };
 
 export type Suggestion = { kind: "feature" | "function" | "keyword"; value: string; detail?: string };
@@ -45,7 +51,8 @@ export function typedWord(text: string, caret: number) {
 }
 
 /** What can complete a word: the arriving features first, then functions or, in a
- * condition, and, or and not. Names that start with the word come before ones that hold it. */
+ * condition, and, or and not. Features that start with the word come before ones that
+ * hold it; a function or a keyword is offered only by its beginning. */
 export function suggestions(
   word: { prefix: string; quoted: boolean },
   features: string[],
@@ -62,7 +69,7 @@ export function suggestions(
   ];
   const rank = (item: Suggestion) => {
     const value = item.value.toLocaleLowerCase();
-    return value.startsWith(typed) ? 0 : value.includes(typed) ? 1 : 2;
+    return value.startsWith(typed) ? 0 : item.kind === "feature" && value.includes(typed) ? 1 : 2;
   };
   const found = all.filter((item) => rank(item) < 2)
     .sort((left, right) => rank(left) - rank(right));

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { inCondition, suggestions, typedWord, type Suggestion } from "./formula";
+import { CONSTANTS, inCondition, suggestions, typedWord, type Suggestion } from "./formula";
 import { addedName, addsByDefault, combinedName, EACH_VARIABLE, eachSuffix, formulaEach, formulaName, listed } from "./scope";
 
 type Fix = { start: number; end: number; text: string };
@@ -135,9 +135,11 @@ export function PipelineFormula({ node, component, features, featureLabels, read
     if (!word) return;
     if (item.kind === "feature") return write(word.start, word.end, formulaName(item.value));
     if (item.kind === "keyword") return write(word.start, word.end, `${item.value} `);
-    // A function opens its parentheses, and the caret goes between them.
+    // A function opens its parentheses, and the caret goes between them, or behind
+    // them where the function takes no value.
     const called = text[word.end] === "(";
-    write(word.start, word.end, called ? item.value : `${item.value}()`, item.value.length + 1);
+    write(word.start, word.end, called ? item.value : `${item.value}()`,
+      item.value.length + (CONSTANTS.has(item.value) && !called ? 2 : 1));
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!open) return;

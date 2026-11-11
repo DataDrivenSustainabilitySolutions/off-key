@@ -15,6 +15,7 @@ from off_key_core.models.pipeline_prepare import (
     PrepareFailure,
     default_suffix,
     kernel,
+    prepared_bounds,
 )
 from off_key_core.models.pipeline_scope import ScopeError
 from off_key_core.models.pipelines import (
@@ -177,6 +178,108 @@ def test_new_window_statistics_match_independent_references(statistic, size):
             "slope": np.polyfit(np.arange(size), window, 1)[0],
         }[statistic]
         assert actual == pytest.approx(expected)
+
+
+def _reference(statistic, window):
+    """numpy's value of a statistic that places or describes the latest value."""
+    latest, size = window[-1], len(window)
+    deviations = window - window.mean()
+    second = np.mean(deviations**2)
+    match statistic:
+        case "zscore":
+            return deviations[-1] / window.std(ddof=1)
+        case "rank":
+            ties = np.sum(window == latest) - 1
+            return (np.sum(window < latest) + ties / 2) / (size - 1)
+        case "rms":
+            return np.sqrt(np.mean(window**2))
+        case "skewness":
+            return np.mean(deviations**3) / second**1.5
+        case "kurtosis":
+            return np.mean(deviations**4) / second**2 - 3
+    median = np.median(window)
+    distances = np.abs(window - median)
+    spread = 1.4826 * np.median(distances) or math.sqrt(math.pi / 2) * distances.mean()
+    return (latest - median) / spread
+
+
+SCORES = ["zscore", "robust_zscore", "rank", "rms", "skewness", "kurtosis"]
+
+
+@pytest.mark.parametrize("statistic", SCORES)
+@pytest.mark.parametrize("size", [2, 3, 8, 21])
+def test_scores_and_shape_statistics_match_numpy_within_their_limits(statistic, size):
+    rng = random.Random(size)
+    # Repeated values make ties and windows where more than half are equal.
+    values = [
+        float(rng.choice([0, 0, 0, rng.randint(-3, 3), rng.gauss(50, 3)]))
+        for _ in range(200)
+    ]
+    params = {"statistic": statistic, "window_size": size}
+    step = kernel("prepare.rolling", params)
+    low, high = prepared_bounds("prepare.rolling", params, (None, None))
+    state = step.initial()
+    for index, value in enumerate(values):
+        state, actual = step.advance(pickle.loads(pickle.dumps(state)), value)
+        assert step.accepts(state)
+        if index + 1 < size:
+            assert actual is None
+            continue
+        window = np.array(values[index + 1 - size : index + 1])
+        assert (low is None or actual >= low) and (high is None or actual <= high)
+        if np.all(window == window[0]) and statistic != "rms":
+            # One value says nothing about spread or shape; rank sits in the middle.
+            assert actual == (0.5 if statistic == "rank" else 0.0)
+        else:
+            assert actual == pytest.approx(_reference(statistic, window), abs=1e-9)
+
+
+def test_scores_stay_finite_where_their_powers_would_not():
+    huge = [1e200, -1e200, 3e200, 0.0, 2e200]
+    tiny = [1e-200, -1e-200, 3e-200, 0.0, 2e-200]
+    for statistic in ("zscore", "robust_zscore", "skewness", "kurtosis"):
+        results = []
+        for values in (huge, tiny, [1.0, -1.0, 3.0, 0.0, 2.0]):
+            step = kernel("prepare.rolling", {"statistic": statistic, "window_size": 5})
+            state = step.initial()
+            for value in values:
+                state, result = step.advance(state, value)
+            results.append(result)
+        # Scores compare values with each other, so the scale drops out.
+        assert results[0] == pytest.approx(results[2])
+        assert results[1] == pytest.approx(results[2])
+    step = kernel("prepare.rolling", {"statistic": "rms", "window_size": 2})
+    state, _ = step.advance(step.initial(), 1e200)
+    with pytest.raises(PrepareFailure, match="finite"):
+        step.advance(state, 1e200)
+
+
+def test_a_robust_score_survives_a_window_that_is_mostly_one_value():
+    step = kernel("prepare.rolling", {"statistic": "robust_zscore", "window_size": 5})
+    state = step.initial()
+    for value in [0.0, 0.0, 0.0, 0.0, 5.0]:
+        state, score = step.advance(state, value)
+    # The MAD is 0, so the mean absolute deviation, 1, stands in for it.
+    assert score == pytest.approx(5 / math.sqrt(math.pi / 2))
+
+
+def test_scores_have_ranges_a_unit_interval_detector_can_rely_on():
+    def bounds(statistic, size=60, incoming=(None, None)):
+        params = {"statistic": statistic, "window_size": size}
+        return prepared_bounds("prepare.rolling", params, incoming)
+
+    assert bounds("rank") == (0.0, 1.0)
+    assert bounds("zscore", 4) == (-1.5, 1.5)
+    assert bounds("skewness", 5) == (-1.5, 1.5)
+    assert bounds("kurtosis", 5) == (-2.0, 0.25)
+    assert bounds("kurtosis", 2) == (-2.0, 0.0)
+    assert bounds("robust_zscore") == (None, None)
+    assert bounds("rms") == (0.0, None)
+    assert bounds("rms", incoming=(-3.0, 2.0)) == (0.0, 3.0)
+    assert bounds("rms", incoming=(1.0, 2.0)) == (1.0, 2.0)
+    assert default_suffix("prepare.rolling", {"statistic": "robust_zscore"}) == (
+        "robust_zscore60"
+    )
 
 
 @pytest.mark.parametrize(

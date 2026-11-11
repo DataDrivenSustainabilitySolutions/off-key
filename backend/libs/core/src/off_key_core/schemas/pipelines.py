@@ -1137,12 +1137,24 @@ class RollingParameters(PrepareScopeParameters):
         "iqr",
         "mad",
         "slope",
+        "zscore",
+        "robust_zscore",
+        "rank",
+        "rms",
+        "skewness",
+        "kurtosis",
     ] = Field(
         default="mean",
         description=(
             "Statistic of the window. std uses n - 1; iqr is the interquartile "
             "range; mad is the unscaled median absolute deviation. Quantiles "
-            "use linear interpolation. Slope is a fitted change per observation."
+            "use linear interpolation. Slope is a fitted change per observation. "
+            "zscore and robust_zscore say how far the latest value lies from the "
+            "window's mean in standard deviations, or from its median in scaled "
+            "MADs. rank places the latest value among the window's values, from "
+            "0 for the lowest to 1 for the highest. rms is the root mean square; "
+            "skewness and kurtosis describe the shape, kurtosis as excess over "
+            "a normal distribution."
         ),
     )
     window_size: int = _window(60, "Recent observations the statistic covers.")
@@ -1260,8 +1272,9 @@ class FormulaParameters(PipelineModel):
         title="Formula",
         description=(
             "Arithmetic over the features arriving here, such as "
-            "dc_voltage * dc_current, with + - * / ^, parentheses, and abs, sqrt, "
-            "log, log1p, exp, min, max, clip and if(condition, when_true, when_false). "
+            "dc_voltage * dc_current, with + - * / ^, parentheses and functions "
+            "such as abs, sqrt, log, round, mod, min, max, mean and "
+            "if(condition, when_true, when_false); typing lists them all. "
             "Only the chosen branch of if is evaluated. Write a name with other "
             "characters between backticks. In a formula for each feature, x "
             "stands for that feature."

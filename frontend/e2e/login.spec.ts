@@ -22,7 +22,8 @@ test("sign-in resumes a protected link through a reload and an expired session",
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await signIn(page);
   await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === destination);
-  await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Sources workspace" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Reading preview" }).getByRole("button", { name: "Rename reading" })).toHaveText("Air temperature");
 
   const expire = (route: Route) => route.fulfill({ status: 401, json: { detail: "Session expired" } });
   await page.route("**/api/v1/catalogue", expire);
@@ -31,5 +32,6 @@ test("sign-in resumes a protected link through a reload and an expired session",
   await page.unroute("**/api/v1/catalogue", expire);
   await signIn(page);
   await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === destination);
-  await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Sources workspace" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Reading preview" }).getByRole("button", { name: "Rename reading" })).toHaveText("Air temperature");
 });

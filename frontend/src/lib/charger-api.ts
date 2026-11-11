@@ -37,14 +37,6 @@ const get = <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
     ? apiUtils.get<T>(endpoint, { signal })
     : apiUtils.get<T>(endpoint);
 
-/** Stored history downsampled to each bucket's extremes; no startMs means all of it. */
-export const getTelemetryRange = (
-  readingId: string,
-  range: { startMs?: number; endMs?: number; buckets?: number },
-  signal?: AbortSignal,
-): Promise<TelemetryDataPoint[]> =>
-  get<TelemetryDataPoint[]>(API_CONFIG.ENDPOINTS.READINGS.BUCKETS(readingId, range), signal);
-
 /** Original samples or labelled means, calculated from the stored measurements. */
 export const getTelemetryHistory = async (
   readingId: string,

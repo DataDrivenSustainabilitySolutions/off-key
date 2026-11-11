@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 pytestmark = pytest.mark.radar_integration
 
 
-def execution(*, projection=False):
+def execution(*, projection=False, scaler="static.standard_scaler"):
     nodes = [
         dict(id="input", kind="source", component="source.aligned"),
         dict(
@@ -36,7 +36,7 @@ def execution(*, projection=False):
             component="features.select",
             params={"features": ["z"]},
         ),
-        dict(id="scale", kind="transform", component="static.standard_scaler"),
+        dict(id="scale", kind="transform", component=scaler),
         dict(
             id="raw",
             kind="transform",
@@ -184,6 +184,23 @@ def test_real_static_run_checkpoint_preview_and_fatal_policy_boundary(monkeypatc
         service.shutdown()
         if restored is not None:
             restored.shutdown()
+
+
+def test_static_min_max_scaler_trains_and_scores():
+    # Normalized params hand feature_range over as a JSON list.
+    config = AnomalyDetectionConfig(
+        pipeline=execution(scaler="static.min_max_scaler"), checkpoint_interval=10000
+    )
+    service = StaticConformalDetectionService(config)
+    try:
+        for index in range(25):
+            service.process_data_point({"sensor/z": index, "sensor/a": index % 4})
+        service._training_future.result(timeout=30)
+        assert service.process_data_point({"sensor/z": 5, "sensor/a": 2}).should_persist
+        state = PipelineRuntimeState.model_validate(service.get_pipeline_state())
+        assert state.batch_training.frozen
+    finally:
+        service.shutdown()
 
 
 def test_non_finite_features_while_scoring_skip_one_observation(monkeypatch):

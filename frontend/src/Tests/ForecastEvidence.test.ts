@@ -5,7 +5,8 @@ import { buildForecastChartSeries, formatForecastTooltip } from "@/features/char
 import { buildServiceHistoryModel } from "@/features/monitoring/historyModel";
 import { buildMonitoringChartOption } from "@/features/charts/telemetry-chart";
 import { historyPresentation } from "@/features/monitoring/historyPresentation";
-import type { MonitoringForecast } from "@/types/monitoring";
+import { futureForecastPoints, nextForecastView } from "@/features/charts/forecast-future";
+import type { MonitoringForecast, MonitoringIssuedForecast } from "@/types/monitoring";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
 import type { PipelineServiceView } from "@/types/pipelines.generated";
 import { chartEvidence } from "./support/fixtures/monitoring";
@@ -24,6 +25,11 @@ const input: MonitoringInput = { stream: { id: "reading", label: "Frequency", br
   category: "Other", value_type: "number", unit: "Hz" }, binding: { policy: { mode: "original", interval_seconds: 1 } }, path: "Meter" };
 const presentation = { bindings: { input_1: "reading" }, rawInputs: {}, intervalLabel: "NexCP interval" };
 const colors = { foreground: "#111", mutedForeground: "#666", border: "#ddd", popover: "#fff", popoverForeground: "#111", muted: "#eee", primary: "#3a7e72" };
+const issued = (origin = 0.925): MonitoringIssuedForecast => ({
+  issued_at: at(origin + 0.2), origin_step: 20, origin_time: at(origin), time_basis: "estimated_cadence", step_seconds: 1,
+  points: [1, 2, 3].map(lead => ({ lead, target_step: 20 + lead, target_time: at(origin + lead),
+    expected: 50 + lead / 10, lower: 49.9, upper: 50.5 })),
+});
 
 describe("forecast evidence presentation", () => {
   it("overlays a raw forecast at its exact input timestamp and removes the repeated input", () => {
@@ -117,5 +123,62 @@ describe("forecast evidence presentation", () => {
     expect(formatForecastTooltip([{ value: [start + 1000, 51] }, ...entries], String, String, "NexCP interval")).toBeUndefined();
     expect(formatForecastTooltip([{ seriesId: "reading:reading", seriesName: "Frequency", value: [start + 1000, 51] }, ...entries], String, String, "NexCP interval"))
       .toContain("No evaluated forecast for this input sample.");
+  });
+
+  it("cycles overlay, ahead and data without altering residuals or underlying values", () => {
+    const series = buildForecastEvidence([row(1, [forecast({ issued: issued(), lead: 3 })])], presentation.bindings)[0]!;
+    series.future = futureForecastPoints(series.issued, start + 925, series.lead);
+    expect(nextForecastView(nextForecastView(nextForecastView("overlay")))).toBe("overlay");
+    const views = ["overlay", "ahead", "data"] as const;
+    const charts = views.map(view => buildForecastChartSeries(series, 0, 1, "blue", "red", view));
+    expect(charts.map(chart => chart.some(line => line.id === `forecast:${series.id}`))).toEqual([true, false, false]);
+    expect(charts.map(chart => chart.some(line => line.id === `future:${series.id}`))).toEqual([true, true, false]);
+    expect(charts.map(chart => chart.find(line => line.id === `residual:${series.id}`)?.data))
+      .toEqual([charts[0]!.find(line => line.id === `residual:${series.id}`)!.data,
+        charts[0]!.find(line => line.id === `residual:${series.id}`)!.data,
+        charts[0]!.find(line => line.id === `residual:${series.id}`)!.data]);
+    expect(buildForecastChartSeries(series, 0, -1, "blue", "red", "data")).toEqual([]);
+    const future = charts[1]!.find(line => line.id === `future:${series.id}`)!;
+    expect(future.data).toHaveLength(4); // Exact observed origin plus three real predictions.
+    expect(future.markLine?.data).toHaveLength(2); // Origin boundary and the calibrated lead's interval.
+    expect(charts[1]!.find(line => line.id === `future-bounds:${series.id}:upper`)?.data)
+      .toEqual([[start + 1925, null], [start + 2925, null], [start + 3925, 50.5]]);
+  });
+
+  it("extends the shared time extent and never computes residuals for future values", () => {
+    const { model } = buildServiceHistoryModel({ serviceId: "monitor", inputs: [input], allInputs: [input], presentation,
+      evidence: [row(1, [forecast({ issued: issued(), lead: 3 })])],
+      histories: new Map([["reading", [{ timestamp: at(0.925), value: 50.2 }]]]), dark: false });
+    expect(model.extent?.[1]).toBe(start + 3925);
+    const option = buildMonitoringChartOption({ model: { ...model, secondarySeries: [], forecastView: "ahead", showResiduals: false },
+      colors, timeZone: "UTC", accessibleDescription: "Ahead", viewport: { mode: "live" }, layout: "monitoring" });
+    expect(option.grid).toHaveLength(1);
+    const series = model.forecasts![0]!;
+    expect(buildForecastChartSeries(series, 0, 1, "blue", "red").find(line => line.id === `residual:${series.id}`)?.data)
+      .toHaveLength(1);
+  });
+
+  it("uses only targets beyond observed history and does not reuse an old issuance after failure", () => {
+    const make = (rows = [row(1, [forecast({ issued: issued(), lead: 3 })])], operational = true) => buildServiceHistoryModel({
+      serviceId: "monitor", inputs: [input], allInputs: [input], presentation, operational, evidence: rows,
+      histories: new Map([["reading", [{ timestamp: at(2.925), value: 50.4 }]]]), dark: false,
+    }).model.forecasts![0]!;
+    expect(make().future?.map(point => point.lead)).toEqual([3]);
+    expect(make(undefined, false).future).toEqual([]);
+    expect(make([row(1, [forecast({ issued: issued() })]), row(2)]).future).toEqual([]);
+    expect(make([row(1, [forecast({ issued: issued() })]), row(2, [])]).future).toEqual([]);
+    expect(futureForecastPoints({ ...issued(), time_basis: "unavailable" }, start + 925, 3)).toEqual([]);
+    expect(futureForecastPoints({ ...issued(), origin_time: "invalid" }, start + 925, 3)).toEqual([]);
+    expect(futureForecastPoints(undefined, start + 925, 3)).toEqual([]);
+  });
+
+  it("explains issue and estimated target times without claiming an observed outcome", () => {
+    const point = futureForecastPoints(issued(), start + 925, 3)[2]!;
+    const tooltip = formatForecastTooltip([{ seriesId: "future:signal", seriesName: "Frequency forecast ahead",
+      value: [point.time, point.expected], data: { futureForecast: point } }], String, String, "NexCP interval")!;
+    expect(tooltip).toContain("Estimated target:");
+    expect(tooltip).toContain("NexCP interval at issue: 49.9 to 50.5");
+    expect(tooltip).toContain("Outcome not yet observed");
+    expect(tooltip).not.toMatch(/Residual:|Service alarm:/);
   });
 });

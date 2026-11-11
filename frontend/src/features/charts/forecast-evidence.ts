@@ -1,4 +1,5 @@
-import type { MonitoringChartEvidence } from "@/types/monitoring";
+import type { MonitoringChartEvidence, MonitoringIssuedForecast } from "@/types/monitoring";
+import type { FutureForecastPoint } from "./forecast-future";
 import { epochMilliseconds } from "@/lib/timestamps";
 import { getPauseLimit } from "./telemetry-data";
 
@@ -20,6 +21,8 @@ export interface ForecastEvidenceSeries {
   lead: number | null;
   readingId?: string;
   slot: string | null;
+  issued?: MonitoringIssuedForecast | null;
+  future?: FutureForecastPoint[];
   data: Array<{ value: ForecastValue; forecastObservation?: ForecastObservation }>;
 }
 
@@ -29,8 +32,8 @@ export const forecastLeadKey = (lead: number | null) => lead === null ? "unknown
 export const formatForecastValue = (value: number) => String(Number(value.toPrecision(8)));
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-/** Keep each detector/target/lead separate. Evidence records evaluated forecasts,
- * not future trajectories; never infer future timestamps from a lead in updates. */
+/** Keep each detector/target/lead separate and retain only its newest issuance.
+ * Evaluated predictions stay historical; future points need explicit target times. */
 export function buildForecastEvidence(
   rows: readonly MonitoringChartEvidence[],
   bindings: Readonly<Record<string, string>> = {},
@@ -62,6 +65,7 @@ export function buildForecastEvidence(
         series.set(id, line);
       }
       const bounded = finite(forecast.lower) && finite(forecast.upper) && forecast.lower <= forecast.upper;
+      line.issued = forecast.issued ?? null;
       const observed = inputs?.inputs[forecast.target];
       const observation: ForecastObservation = { time: targetTime, evaluationTime: time, expected: forecast.expected,
         observed: finite(observed) ? observed : null,
@@ -74,7 +78,10 @@ export function buildForecastEvidence(
       line.data.push({ value: [targetTime, forecast.expected, observation.lower, observation.upper], forecastObservation: observation });
     }
     for (const line of series.values()) {
-      if (!seen.has(line.id)) line.data.push({ value: [time, null, null, null] });
+      if (!seen.has(line.id)) {
+        line.data.push({ value: [time, null, null, null] });
+        line.issued = null;
+      }
     }
     previous = time;
   }

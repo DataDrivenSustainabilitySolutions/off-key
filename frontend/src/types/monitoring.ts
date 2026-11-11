@@ -284,6 +284,25 @@ export interface MonitoringForecast {
   expected: number;
   lower: number | null;
   upper: number | null;
+  /** Issued after learning this observation; absent in older evidence. */
+  issued?: MonitoringIssuedForecast | null;
+}
+
+export interface MonitoringIssuedForecast {
+  issued_at: string;
+  origin_step: number;
+  origin_time: string | null;
+  time_basis: "estimated_cadence" | "unavailable";
+  step_seconds: number | null;
+  points: Array<{
+    lead: number;
+    target_step: number;
+    target_time: string | null;
+    expected: number;
+    /** Calibrated at issuance, only for the detector's configured lead. */
+    lower: number | null;
+    upper: number | null;
+  }>;
 }
 
 /** One detector's score, and its surprise against its own calibration scores. */

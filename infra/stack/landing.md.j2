@@ -15,25 +15,35 @@ Detect when strain, traffic, flow, quality, yield, efficiency, precision or pres
 | Reporting | Inspect changes alongside their readings and detection evidence |
 | Dojo | Replay recorded data, compare runs and refine a design |
 
-The hero cycles through generated photographs of a steel bridge, a data-centre cable runway, an industrial pipe rack, a powered roller conveyor, a solar canopy, an industrial cooling bank, an overhead robotic gantry and a centre-pivot irrigation span. These illustrate connected infrastructure; they are not photographs of Aberration hardware or customer installations. The product screenshot shows the actual Reporting interface with illustrative cooling-circuit data, not customer telemetry or a performance benchmark. The example monitoring flow is a simplified explanation, not a screenshot.
+The hero cycles through generated photographs of a steel bridge, a data-centre cable runway, an industrial pipe rack, a powered roller conveyor, a solar canopy, an industrial cooling bank, an overhead robotic gantry and a centre-pivot irrigation span. These illustrate connected infrastructure; they are not photographs of Aberration hardware or customer installations. The product screenshots show the actual visual composer and Reporting interface. The cooling-circuit configuration and telemetry are illustrative examples, not customer data or a performance benchmark.
 
 ## From raw signal. To informed decision.
 
 Bring your readings into one workspace. Build monitors around your system, investigate the changes they flag, and test your next design on recorded data.
 
+## Available pipeline components
+
+- **36 detection models:** statistical, machine-learning and forecast-based detection.
+- **26 signal transforms:** prepare, scale and project the readings that matter.
+- **16 calibration methods:** give anomaly scores a meaningful decision boundary.
+
+These are component counts from the application's catalogue. Detection models include batch, adaptive and forecast-residual implementations; pretrained forecasting requires its model checkpoint to be available.
+
+## Build the logic. See every step.
+
+Connect your readings, prepare the inputs and run detectors in parallel. Calibrate their scores, choose a detection rule and keep the evidence. Every step is visible and configurable.
+
+The actual visual composer shows an example cooling circuit: pressure, flow and temperature inputs pass through standard scaling, parallel Isolation Forest and Local Outlier Factor detectors, a conformal detection rule and evidence output.
+
 ## See the change. Keep the context.
 
-Inspect a detected change alongside the readings behind it. Follow the original signal and the detection evidence on a shared timeline, then zoom in on the period that matters.
+A flag is the start of an investigation. Follow it back to the readings, inspect the detection evidence and see how the system behaved before and after.
 
-## Build a monitor around your system.
+- **Collect the right signals.** Connect MQTT sources, organise their readings and choose what to record. Monitor one signal or a set of related inputs.
+- **See why it was flagged.** Review readings and detection evidence on a shared timeline. Zoom into a transient, a gradual drift or a change in operating behaviour.
+- **Keep improving the monitor.** Check its operational status, copy recorded readings into the Dojo and test an adjusted design against the same history.
 
-A single reading or a set of related signals. A fixed reference or a baseline that adapts. Shape the detection to the way your system behaves.
-
-- **Choose what to collect.** Connect MQTT sources, organise their readings, and decide what to record. Keep the history you need for monitoring and investigation.
-- **Make the logic visible.** Prepare and combine signals, choose detection steps, and connect them in a visual pipeline. Save a design to use again.
-- **Follow it as it runs.** See monitor status and review the evidence as new readings arrive. Move from a flagged change back to the underlying data.
-
-An example monitoring flow: outlet pressure and flow rate → prepare and combine → learn and detect → collect the evidence. Designed visually, applied as the data arrives.
+The Reporting screenshot uses illustrative cooling-circuit data with operating variation, a pressure transient and a developing restriction.
 
 ## Try it on the past. Before it watches the present.
 

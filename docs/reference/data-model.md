@@ -126,6 +126,14 @@ Use this page when mapping API behaviour to persisted entities and relationships
   around the feature in **Detector inputs**. Migration
   `026_evidence_forecasts.sql` adds the column with an empty default, so
   earlier rows and designs without a forecaster step have none.
+  Each entry can additionally carry `issued`, the forecast produced after
+  learning that observation: `issued_at`, `origin_step`, `origin_time`,
+  `time_basis`, `step_seconds`, and up to 64 real `points`. Each point has `lead`,
+  `target_step`, `target_time`, `expected`, `lower` and `upper`. Target time is
+  nullable; `estimated_cadence` explicitly identifies a projection from recent
+  observation timing. Only the detector's calibrated lead has bounds, using
+  the boundary at issuance. `issued: null` means no new forecast was available.
+  This additive JSON contract uses the existing column and requires no migration.
 
 ### Monitoring workload intent
 

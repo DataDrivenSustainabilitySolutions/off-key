@@ -435,6 +435,35 @@ feature's colour and the interval as a band: two stacked lines, the lower bound
 and the width above it, so only the space between the bounds is filled. A Dojo
 replay does not store forecasts yet.
 
+After a successful learn pass, `_issue` captures the newly issued forecast in
+each entry's optional `issued` member. `forecast_issuance.py` reads Aberrant
+1.5's checkpointed `_issued` deque in one isolated adapter; it does not make
+another forecast-service request. An unavailable newest forecast clears the
+issuance. Only the configured detector lead gets a calibrated interval. Adaptive
+calibrators supply their next boundary after learning the current judgement;
+that interval is a snapshot at issue, not a guarantee about later boundaries.
+At most 64 actual model points are stored, retaining the endpoints and calibrated
+lead. Predictions are never interpolated to manufacture evidence.
+
+`attach_observation_metadata` adds the origin's actual reading time (aligned
+observation time for transformed targets). `ForecastTimeline` estimates step
+duration from the median of up to eight consecutive intervals, after at least
+three intervals agree within 20%. Repeated, missing, backwards or discontinuous
+times reset or withhold timing. This disposable estimator warms again after a
+restart and does not affect model checkpoints or detection. Persisted target
+times are explicitly marked `estimated_cadence`; untimed forecasts retain their
+model-update coordinates. `forecast_records.py` bounds and validates this nested
+JSON before the existing `forecasts` column and catalogue API carry it through.
+
+In the service Evidence tab, `forecastView` controls only forecast visibility:
+Overlay includes historical and future forecasts, Forecast ahead includes the
+latest future trajectory, and Data only hides both. All retain the same time
+extent, reading data and lead selection. Residuals have their own visibility
+setting. Future points are clipped after the latest observed sample and do not
+enter residual calculations. The current calibrated lead's future interval is a
+whisker; other leads are not presented as calibrated. Legacy evidence remains
+usable without an `issued` member.
+
 A pretrained forecaster is a `forecast.` component with learning `pretrained`.
 Its weights live in the forecast service (`off-key-forecast`), never in a RADAR
 worker, so it is not an ABERRANT component and not in `adaptive_catalog.json`:

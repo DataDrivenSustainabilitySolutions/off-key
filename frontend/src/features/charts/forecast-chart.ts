@@ -2,6 +2,8 @@ import type { LineSeriesOption } from "echarts/charts";
 import type { ForecastEvidenceSeries, ForecastObservation, ForecastValue } from "./forecast-evidence";
 import { intervalStatus } from "./forecast-evidence";
 import type { DetectionObservation } from "./telemetry-detectors";
+import type { ForecastView, FutureForecastPoint } from "./forecast-future";
+import { buildFutureChartSeries, formatFutureTooltip } from "./forecast-future-chart";
 
 /** Stack the width on the lower bound, including when the interval crosses zero. */
 function intervalSeries(id: string, data: ForecastValue[], pane: number, color: string): LineSeriesOption[] {
@@ -17,7 +19,7 @@ function intervalSeries(id: string, data: ForecastValue[], pane: number, color: 
 }
 
 export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane: number, residualPane: number,
-  color: string, alarmColor: string): LineSeriesOption[] {
+  color: string, alarmColor: string, view: ForecastView = "overlay"): LineSeriesOption[] {
   const common: LineSeriesOption = { type: "line", showSymbol: forecast.data.length === 1, symbolSize: 5,
     connectNulls: false, encode: { x: 0, y: 1 }, emphasis: { disabled: true }, animation: false };
   const residuals = forecast.data.map(({ value: [time], forecastObservation: point }) => ({
@@ -26,11 +28,13 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
       point?.upper == null ? null : point.upper - point.expected] as ForecastValue,
     forecastObservation: point,
   }));
-  return [
+  const history: LineSeriesOption[] = [
     ...intervalSeries(forecast.id, forecast.data.map(point => point.value), pane, color),
     { ...common, id: `forecast:${forecast.id}`, name: `${forecast.name} forecast`,
       xAxisIndex: pane, yAxisIndex: pane, data: forecast.data,
       lineStyle: { color, width: 1.8, type: "dashed" }, itemStyle: { color }, z: 4 },
+  ];
+  const residualSeries: LineSeriesOption[] = [
     ...intervalSeries(`residual:${forecast.id}`, residuals.map(point => point.value), residualPane, color),
     { ...common, id: `residual:${forecast.id}`, name: `${forecast.name} residual`,
       xAxisIndex: residualPane, yAxisIndex: residualPane, data: residuals,
@@ -41,20 +45,27 @@ export function buildForecastChartSeries(forecast: ForecastEvidenceSeries, pane:
         point.forecastObservation && intervalStatus(point.forecastObservation) === "Outside interval"
           ? [{ name: "Outside calibrated interval", coord: [point.value[0], point.value[1]!], itemStyle: { color: alarmColor } }] : []) } },
   ];
+  return [
+    ...(view === "overlay" ? history : []),
+    ...(view !== "data" ? buildFutureChartSeries(forecast, pane, color) : []),
+    ...(residualPane >= 0 ? residualSeries : []),
+  ];
 }
 
 type TooltipEntry = { seriesId?: string; seriesName?: string; value?: unknown;
-  data?: { forecastObservation?: ForecastObservation; observation?: DetectionObservation } };
+  data?: { forecastObservation?: ForecastObservation; observation?: DetectionObservation; futureForecast?: FutureForecastPoint } };
 
 /** Never show a neighbouring forecast as if it evaluated the hovered sample. */
 export function formatForecastTooltip(params: unknown, time: (value: number) => string,
-  number: (value: number) => string, intervalLabel: string): string | undefined {
+  number: (value: number) => string, intervalLabel: string, showMissing = true): string | undefined {
   const entries = (Array.isArray(params) ? params : [params]).filter((entry): entry is TooltipEntry => !!entry && typeof entry === "object");
   const anchor = entries.find(entry => Array.isArray(entry.value));
   if (!Array.isArray(anchor?.value)) return undefined;
   const timestamp = Number(anchor.value[0]);
+  const future = formatFutureTooltip(entries, timestamp, time, number, intervalLabel);
+  if (future) return future;
   const points = entries.filter(entry => entry.data?.forecastObservation?.time === timestamp);
-  if (!points.length) return anchor.seriesId?.startsWith("reading:") || anchor.seriesId?.startsWith("pending-reading:")
+  if (!points.length) return showMissing && (anchor.seriesId?.startsWith("reading:") || anchor.seriesId?.startsWith("pending-reading:"))
     ? [time(timestamp), `${anchor.seriesName}: ${number(Number(anchor.value[1]))}`, "No evaluated forecast for this input sample."].join("\n")
     : undefined;
   const lines = [time(timestamp)];

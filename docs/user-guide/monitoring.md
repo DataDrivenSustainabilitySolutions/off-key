@@ -122,6 +122,14 @@ the same interval shifted by the forecast around zero. Red dots mark observation
 outside that interval; vertical red lines still mark the service's alarm decision,
 which can also depend on persistence or a combined policy.
 
+The small chart button cycles through **Overlay → Forecast ahead → Data only**.
+Overlay includes evaluated predictions and the newly issued future forecast;
+Forecast ahead keeps the observations but hides historical predictions; Data
+only hides both forecast lines and their intervals. Its icon and tooltip show
+the current view. Switching preserves the selected lead, zoom and pipeline
+smoothing. **Show residuals** independently collapses or restores the lower
+panel; it always uses evaluated observations, never future values.
+
 **Forecast lead** selects a recorded lead in both charts together. Leads count
 updates, not seconds. **Latest forecast results** compares the latest available
 evaluation of each lead, including its timestamp, residual, interval and result;
@@ -135,8 +143,18 @@ the saved calibration step identifies that method; otherwise it says **Calibrate
 interval**. No nominal confidence percentage is inferred. Missing bounds remain
 unavailable, including configurations where a combined policy has no boundary for
 an individual detector. A point forecast and residual can still be displayed.
-These charts show forecasts whose target observations have arrived. Future
-trajectories and unrecorded leads are not reconstructed from evaluated evidence.
+Future values come from the forecast actually issued after the latest evaluated
+observation. Target times are estimates based on recent, consistent observation
+cadence; leads still count updates. After a restart or irregular timestamps,
+the future line waits until timing is available. Old evidence and a forecast
+service outage can also have no future trajectory. The chart never shifts an
+evaluated prediction into the future or revives an older issuance as the latest.
+
+Only the configured lead has a calibrated future interval, shown as a vertical
+interval at that point. Other leads from the model remain point predictions.
+Future bounds use the calibration boundary at issue, which may subsequently
+adapt. Hover shows issue time, origin and estimated target time. A one-update
+forecaster provides one future point, not an invented longer horizon.
 
 Telemetry and evidence use the same payload
 event timestamp and share zoom and crosshair, so observations from one inference

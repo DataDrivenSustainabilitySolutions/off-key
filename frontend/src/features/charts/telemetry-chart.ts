@@ -12,6 +12,7 @@ import { buildDetectionSeriesOption, buildThresholdSeriesOption } from "./teleme
 import { formatMonitoringObservationTooltip } from "./monitoring-tooltip";
 import { buildForecastChartSeries, formatForecastTooltip } from "./forecast-chart";
 import { formatForecastValue, type ForecastEvidenceSeries } from "./forecast-evidence";
+import type { ForecastView } from "./forecast-future";
 
 import type { AnomalyMarker } from "@/lib/anomaly-utils";
 import type { TimeValue } from "./telemetry-data";
@@ -81,6 +82,8 @@ export interface MonitoringChartModel {
   readings: MonitoringChartReading[];
   forecasts?: ForecastEvidenceSeries[];
   intervalLabel?: string;
+  forecastView?: ForecastView;
+  showResiduals?: boolean;
   /** The features the detectors scored, in their own pane under the readings. */
   detectorInputs?: DetectorInputSeries[];
   secondarySeries: SecondaryChartSeries[];
@@ -333,11 +336,12 @@ export const buildMonitoringChartOption = ({
   const hasAdaptivePane = model.secondarySeries.some((series) => series.pane === "adaptive");
   const detectorInputs = model.detectorInputs ?? [];
   const forecasts = model.forecasts ?? [];
+  const residualForecasts = model.showResiduals === false ? [] : forecasts;
   const hasInputsPane = detectorInputs.length > 0 || forecasts.some(forecast => !forecast.readingId);
   const panes = [
     ...model.readings.map(reading => reading.id),
     ...(hasInputsPane ? ["inputs"] : []),
-    ...forecasts.map(forecast => `residual:${forecast.id}`),
+    ...residualForecasts.map(forecast => `residual:${forecast.id}`),
     ...(hasStaticPane ? ["static"] : []),
     ...(hasAdaptivePane ? ["adaptive"] : []),
   ] as const;
@@ -549,7 +553,8 @@ export const buildMonitoringChartOption = ({
   const evaluatedForecastSeries = forecasts.flatMap((forecast, index) => {
     const readingPane = model.readings.findIndex(reading => reading.inputKey === forecast.readingId);
     return buildForecastChartSeries(forecast, readingPane < 0 ? inputsPane : readingPane,
-      panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.alarmBoundary ?? "#dc2626");
+      panes.indexOf(`residual:${forecast.id}`), palette[index % palette.length]!, colors.alarmBoundary ?? "#dc2626",
+      model.forecastView ?? "overlay");
   });
 
   const ruledPanes = new Set<number>();
@@ -611,7 +616,8 @@ export const buildMonitoringChartOption = ({
       axisPointer: { type: "cross" },
       formatter: (params: unknown) =>
         (forecasts.length ? formatForecastTooltip(params,
-          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval") : undefined)
+          time => formatChartTime(time, timeZone, "tooltip", locale), formatForecastValue, model.intervalLabel ?? "Calibrated interval",
+          !model.forecastView || model.forecastView === "overlay") : undefined)
           ?? (monitoring ? formatMonitoringObservationTooltip(params, model.readings,
           time => formatChartTime(time, timeZone, "tooltip", locale), formatNumber) : undefined)
           ?? formatTelemetryTooltip(params, timeZone, units, locale),
@@ -654,7 +660,7 @@ export const buildMonitoringChartOption = ({
             },
           ]
         : []),
-      ...forecasts.map(forecast => ({
+      ...residualForecasts.map(forecast => ({
         id: `residual-values:${forecast.id}`, type: "value" as const, scale: true,
         min: ({ min }: { min: number }) => Math.min(0, min),
         max: ({ max }: { max: number }) => Math.max(0, max),

@@ -16,6 +16,8 @@ import { useServiceHistory } from "./useServiceHistory";
 import { useHistoryPresentation } from "./useHistoryPresentation";
 import { ForecastControls } from "./ForecastControls";
 import { forecastLeadKey } from "@/features/charts/forecast-evidence";
+import { FORECAST_VIEW_LABELS, type ForecastView } from "@/features/charts/forecast-future";
+import { ForecastViewButton } from "./ForecastViewButton";
 
 type Inspection = { startMs: number; endMs: number };
 
@@ -30,6 +32,8 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const [inspection, setInspection] = useNavigationDraft<Inspection | undefined>(`${key}:inspection`, undefined);
   const [chosenLead, setChosenLead] = useNavigationDraft<string>(`${key}:lead`, "");
   const [showScores, setShowScores] = useNavigationDraft<boolean>(`${key}:scores`, false);
+  const [forecastView, setForecastView] = useNavigationDraft<ForecastView>(`${key}:forecast-view`, "overlay");
+  const [showResiduals, setShowResiduals] = useNavigationDraft<boolean>(`${key}:residuals`, true);
   const presentation = useHistoryPresentation(service.id);
   const selectedInputs = useMemo(() => {
     const retained = inputs.filter(input => chosen.includes(input.stream.id)).slice(0, MAX_VISIBLE_READINGS);
@@ -49,14 +53,14 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const forecasts = completeModel.forecasts ?? [];
   const lead = forecasts.some(forecast => forecastLeadKey(forecast.lead) === chosenLead) ? chosenLead : forecastLeadKey(forecasts[0]?.lead ?? null);
   const intervalLabel = presentation.presentation?.intervalLabel ?? "Calibrated interval";
-  const model = useMemo(() => ({ ...completeModel, intervalLabel,
+  const model = useMemo(() => ({ ...completeModel, intervalLabel, forecastView, showResiduals,
     forecasts: completeModel.forecasts?.filter(forecast => forecastLeadKey(forecast.lead) === lead),
     secondarySeries: completeModel.forecasts?.length && !showScores ? [] : completeModel.secondarySeries,
-  }), [completeModel, intervalLabel, lead, showScores]);
+  }), [completeModel, intervalLabel, lead, showScores, forecastView, showResiduals]);
   const domain = getChartDomain(model.extent);
   const description = `${selectedInputs.length} displayed ${selectedInputs.length === 1 ? "reading" : "readings"} of ${inputs.length} monitored ${inputs.length === 1 ? "input" : "inputs"}: ${selectedInputs.map(input => input.stream.label).join(", ")}. `
     + `${inputs.length > 1 ? "Joint detector result across all inputs; no per-sensor attribution. " : ""}`
-    + `${forecasts.length ? `Forecasts and ${intervalLabel.toLowerCase()} on the target scale; signed residuals below. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
+    + `${forecasts.length ? `${FORECAST_VIEW_LABELS[forecastView]}; ${showResiduals ? "signed residuals below; " : ""}future times are estimated from recent cadence. ` : ""}Independent value scales, shared time, hover and zoom. Times in ${timeZone}.`;
   const option = useMemo(() => buildMonitoringChartOption({ model, colors, timeZone, accessibleDescription: description,
     viewport: inspection ? { mode: "absolute", ...inspection } : { mode: "live" }, layout: "monitoring" }),
   [model, colors, timeZone, description, inspection]);
@@ -86,12 +90,13 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
   const problem = errors.length ? `${errors.join(" ")} Retrying automatically.` : "";
   const stage = service.operational_status.stage.replace(/_/g, " ");
   const panes = model.readings.length + Number(Boolean(model.detectorInputs?.length) || Boolean(model.forecasts?.some(forecast => !forecast.readingId)))
-    + (model.forecasts?.length ?? 0) + new Set(model.secondarySeries.map(series => series.pane)).size;
+    + (showResiduals ? model.forecasts?.length ?? 0 : 0) + new Set(model.secondarySeries.map(series => series.pane)).size;
   const latest = completeModel.secondarySeries[0]?.latestObservation;
   const modelName = service.model_type?.replace(/^aberrant_/, "").replace(/_/g, " ");
   return <section className="ex-preview-history mn-history" aria-label="Monitoring history">
     <div className="ex-preview-section-heading"><h3>{forecasts.length ? "Forecast and deviations" : "Inputs and detection"}</h3>
       {model.extent && <div className="ex-history-tools" role="group" aria-label="Chart controls">
+        {forecasts.length > 0 && <ForecastViewButton view={forecastView} onChange={setForecastView} />}
         <button aria-label="Zoom in" title="Zoom in" disabled={!domain} onClick={() => zoom(0.5)}><Plus size={15} /></button>
         <button aria-label="Zoom out" title="Zoom out" disabled={!inspection} onClick={() => zoom(2)}><Minus size={15} /></button>
         <button disabled={!inspection} onClick={() => setInspection(undefined)}><RotateCcw size={13} />{inspection ? "Return to live" : "Live"}</button>
@@ -112,6 +117,7 @@ export function MonitoringHistory({ service, inputs, connections, historyCache, 
     {selection.controlCatalog.length > 1 && <TelemetryDetectorControls detectors={selection.controlCatalog}
       selected={selection.selectedDetectorIds} unavailableIds={selection.unavailableIds} onSelect={selection.onSelect} />}
     {forecasts.length > 0 && <ForecastControls forecasts={forecasts} lead={lead} onLead={setChosenLead}
+      view={forecastView} showResiduals={showResiduals} onResiduals={setShowResiduals}
       showScores={showScores} onScores={setShowScores} intervalLabel={intervalLabel} timeZone={timeZone} />}
     {forecasts.length > 0 && presentation.error && <p className="mn-history-problem" role="status">{presentation.error} <button onClick={presentation.retry}>Retry</button></p>}
     {model.extent ? <>

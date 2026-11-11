@@ -4,7 +4,8 @@ import type { MonitoringChartEvidence } from "@/types/monitoring";
 import type { MonitoringChartModel } from "@/features/charts/telemetry-chart";
 import { normalizeTelemetry } from "@/features/charts/telemetry-data";
 import { buildDetectorInputSeries } from "@/features/charts/detector-inputs";
-import { buildForecastEvidence, leadLabel } from "@/features/charts/forecast-evidence";
+import { buildForecastEvidence, latestForecast, leadLabel } from "@/features/charts/forecast-evidence";
+import { futureForecastPoints } from "@/features/charts/forecast-future";
 import type { HistoryPresentation } from "./historyPresentation";
 import { buildSelectedDetectorSeries, collectMonitoringChartDetectors, type SelectedDetectorIds } from "@/features/charts/telemetry-detectors";
 import type { MonitoringInput } from "@/domain/monitoring/serviceModel";
@@ -66,6 +67,11 @@ export function buildServiceHistoryModel({
   const forecasts = buildForecastEvidence(rows, presentation?.bindings);
   for (const forecast of forecasts) {
     const reading = readings.find(reading => reading.inputKey === forecast.readingId);
+    const observedThrough = Math.max(reading?.data[reading.data.length - 1]?.[0] ?? -Infinity,
+      latestForecast(forecast)?.time ?? -Infinity);
+    forecast.future = operational ? futureForecastPoints(forecast.issued, observedThrough, forecast.lead) : [];
+    const end = forecast.future[forecast.future.length - 1]?.time;
+    if (end !== undefined && (last === undefined || end > last)) last = end;
     if (reading) forecast.name = `${reading.name}${reading.unit ? ` (${reading.unit})` : ""} · ${leadLabel(forecast.lead)}`
       + (forecasts.some(other => other.id !== forecast.id && other.readingId === forecast.readingId && other.lead === forecast.lead)
         ? ` · ${forecast.detectorId}` : "");

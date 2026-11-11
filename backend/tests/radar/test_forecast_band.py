@@ -30,6 +30,8 @@ def design(
     scaled: bool = False,
     beside: bool = False,
     score: str = "scaled",
+    lead: int = 1,
+    smooth: bool = False,
 ) -> PipelineDefinition:
     """Reading a through a forecaster step into one calibration step."""
     adapts = calibration != "calibrate.fixed_split"
@@ -45,7 +47,7 @@ def design(
             "id": "forecaster",
             "kind": "detector",
             "component": FORECASTER,
-            "params": {"season_length": 4, "score": score},
+            "params": {"season_length": 4, "score": score, "lead": lead},
         },
         {
             "id": "calibrate",
@@ -67,6 +69,17 @@ def design(
         {"source": "policy", "target": "output"},
     ]
     source = "only_a"
+    if smooth:
+        nodes.append(
+            {
+                "id": "smooth",
+                "kind": "transform",
+                "component": "prepare.smooth",
+                "params": {"method": "rolling", "window_size": 3},
+            }
+        )
+        edges.append({"source": source, "target": "smooth"})
+        source = "smooth"
     if scaled:
         nodes.append(
             {
@@ -75,7 +88,7 @@ def design(
                 "component": "adaptive.standard_scaler",
             }
         )
-        edges.append({"source": "only_a", "target": "scale"})
+        edges.append({"source": source, "target": "scale"})
         source = "scale"
     edges.append({"source": source, "target": "forecaster"})
     if beside:

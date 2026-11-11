@@ -12,6 +12,7 @@ from off_key_core.utils.mqtt_topics import TopicMetadataExtractor
 from off_key_core.utils.timestamps import parse_utc_timestamp
 
 from .config.runtime import get_radar_checkpoint_settings
+from .forecast_records import normalize_issued_forecast
 from .models import (
     AnomalyResult,
     inference_key,
@@ -126,6 +127,16 @@ def _normalize_forecasts(value: Any) -> list[dict[str, Any]]:
                 "expected": expected,
                 "lower": lower if banded else None,
                 "upper": upper if banded else None,
+                **(
+                    {
+                        "issued": normalize_issued_forecast(
+                            candidate["issued"],
+                            _optional_nonnegative_int(candidate.get("lead")),
+                        )
+                    }
+                    if "issued" in candidate
+                    else {}
+                ),
             }
         )
     return forecasts

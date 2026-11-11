@@ -74,7 +74,10 @@ class ChartEvidence(BaseModel):
         default_factory=list,
         description="What each forecaster step expected of the observation: "
         "the step, the feature it scores, the expected value and, when the "
-        "boundary is in the step's own score units, the band around it.",
+        "boundary is in the step's own score units, the band around it. Optional "
+        "issued evidence contains the next real forecast trajectory, its issue "
+        "and origin times, model update indices and explicitly estimated target "
+        "times. Only the calibrated lead carries a calibrated interval.",
     )
     threshold: float
     alarm: bool
@@ -110,7 +113,10 @@ class Evidence(BaseModel):
         default_factory=list,
         description="What each forecaster step expected of the observation: "
         "the step, the feature it scores, the expected value and, when the "
-        "boundary is in the step's own score units, the band around it.",
+        "boundary is in the step's own score units, the band around it. Optional "
+        "issued evidence contains the next real forecast trajectory, its issue "
+        "and origin times, model update indices and explicitly estimated target "
+        "times. Only the calibrated lead carries a calibrated interval.",
     )
     threshold: float
     alarm: bool

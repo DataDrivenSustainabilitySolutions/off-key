@@ -1,9 +1,9 @@
 .dj-page { min-width: 0; }
 .dj-header { display: flex; gap: 18px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: 24px; }
-.dj-header h1 { font-size: var(--text-title1); font-weight: 550; line-height: var(--leading-title1); letter-spacing: -.02em; margin: 0; overflow-wrap: anywhere; }
+.dj-header h1 { font-size: var(--text-title1); font-weight: var(--heading-weight); line-height: var(--leading-title1); letter-spacing: var(--heading-tracking); margin: 0; overflow-wrap: anywhere; }
 .dj-header p { color: var(--ex-muted); font-size: var(--text-body); margin: 8px 0 0; max-width: 640px; }
 .dj-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ex-shell .dj-action { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--ex-line); border-radius: 6px; font-size: var(--text-control); color: var(--ex-ink); }
+.ex-shell .dj-action { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--ex-line); border-radius: var(--radius-control); font-size: var(--text-control); color: var(--ex-ink); }
 .ex-shell .dj-action:hover:not(:disabled) { background: var(--ex-hover); }
 .ex-shell .dj-link { color: var(--ex-accent); font-size: var(--text-caption); padding: 0; }
 .ex-shell .dj-danger { color: hsl(var(--destructive)); font-size: var(--text-caption); padding: 0; }
@@ -27,7 +27,7 @@
 .dj-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 12px 0; font-size: var(--text-caption); font-weight: 500; }
 .dj-field small { color: var(--ex-muted); font-weight: 400; }
 .dj-field input:not([type="checkbox"]):not([type="radio"]),.dj-field select,.dj-field textarea {
-  width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--background));
+  width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius-control); background: hsl(var(--background));
   color: hsl(var(--foreground)); padding: 8px 10px; font-size: var(--text-caption); font-weight: 400; font-family: inherit; }
 .dj-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; }
 .dj-choices { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 400; }
@@ -36,7 +36,7 @@
 .dj-error { color: hsl(var(--destructive)); font-size: var(--text-caption); margin: 10px 0 0; overflow-wrap: anywhere; }
 .dj-dialog { width: min(640px, calc(100vw - 32px)); }
 .dj-dialog h2 { font-size: var(--text-title3); font-weight: 550; margin: 0 0 6px; }
-.dj-reading-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 220px; overflow: auto; border: 1px solid var(--ex-line); border-radius: 6px; }
+.dj-reading-list { list-style: none; padding: 0; margin: 6px 0 0; max-height: 220px; overflow: auto; border: 1px solid var(--ex-line); border-radius: var(--radius-control); }
 .dj-reading-list li { padding: 7px 10px; border-bottom: 1px solid var(--ex-line); font-weight: 400; }
 .dj-reading-list li:last-child { border-bottom: 0; }
 .dj-reading-list label { display: flex; gap: 8px; align-items: center; }
@@ -48,7 +48,7 @@
 .dj-promoted small { color: var(--ex-muted); font-size: var(--text-caption); }
 .dj-labels { list-style: none; padding: 0; margin: 14px 0 0; }
 .dj-labels li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--ex-line); }
-.dj-labels input { width: 100%; border: 1px solid transparent; background: transparent; color: var(--ex-ink); border-radius: 5px; padding: 4px 6px; font: inherit; font-size: var(--text-caption); }
+.dj-labels input { width: 100%; border: 1px solid transparent; background: transparent; color: var(--ex-ink); border-radius: var(--radius-control); padding: 4px 6px; font: inherit; font-size: var(--text-caption); }
 .dj-labels input:hover,.dj-labels input:focus { border-color: var(--ex-line); }
 .dj-suggestion-list li { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; }
 .dj-suggestion-actions { display: inline-flex; gap: 8px; }
@@ -73,7 +73,7 @@
 .dj-binding { display: contents; }
 .dj-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ex-accent); margin-bottom: 22px; font-size: var(--text-caption); text-decoration: none; }
 .dj-detail-header { display: flex; gap: 18px; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-.dj-detail-header h1 { font-size: var(--text-title1); font-weight: 550; line-height: var(--leading-title1); letter-spacing: -.02em; margin: 0; overflow-wrap: anywhere; }
+.dj-detail-header h1 { font-size: var(--text-title1); font-weight: var(--heading-weight); line-height: var(--leading-title1); letter-spacing: var(--heading-tracking); margin: 0; overflow-wrap: anywhere; }
 .dj-detail-header small { display: block; color: var(--ex-muted); margin-top: 6px; font-size: var(--text-caption); }
 .dj-detail-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .dj-summary { display: flex; flex-wrap: wrap; gap: 22px 40px; border-bottom: 1px solid var(--ex-line); padding-bottom: 24px; margin: 0; }
@@ -83,7 +83,7 @@
 .dj-tabs { display: flex; gap: 20px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--ex-line); margin-top: 25px; }
 .ex-shell .dj-tabs button { flex-shrink: 0; padding: 10px 0; font-size: var(--text-control); color: var(--ex-muted); border-bottom: 2px solid transparent; }
 .ex-shell .dj-tabs button[aria-selected="true"] { color: var(--ex-ink); border-bottom-color: var(--ex-accent); }
-.ex-shell .dj-primary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 6px; background: var(--ex-accent); color: var(--ex-bg); font-weight: 500; font-size: var(--text-control); }
+.ex-shell .dj-primary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: var(--radius-control); background: var(--ex-accent); color: var(--ex-bg); font-weight: 500; font-size: var(--text-control); }
 .dj-empty { padding: 48px 0 24px; border-top: 1px solid var(--ex-line); }
 .dj-empty h2 { font-size: var(--text-title3); font-weight: 500; margin: 0 0 8px; }
 .dj-empty p { color: var(--ex-muted); font-size: var(--text-body); }

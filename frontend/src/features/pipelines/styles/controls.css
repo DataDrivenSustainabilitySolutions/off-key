@@ -21,14 +21,14 @@
 
 .pl-header :is(h1, h2) {
   font-size: var(--text-title2);
-  letter-spacing: -0.015em;
+  letter-spacing: var(--heading-tracking);
 }
 
 .pl-setup-header h1 {
   font-size: var(--text-title1);
-  font-weight: 550;
+  font-weight: var(--heading-weight);
   line-height: var(--leading-title1);
-  letter-spacing: -0.02em;
+  letter-spacing: var(--heading-tracking);
 }
 
 .pl-header h3 {
@@ -70,7 +70,7 @@
 .pl-library button {
   font-size: var(--text-caption);
   border: 1px solid hsl(var(--border));
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 7px 10px;
   background: hsl(var(--background));
   cursor: pointer;
@@ -121,7 +121,7 @@
   width: 100%;
   min-width: 0;
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   padding: 8px 10px;

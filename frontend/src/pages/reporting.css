@@ -2,7 +2,7 @@
 .rp-metrics { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; }
 .rp-events { min-width: 0; }
 .rp-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
-.rp-filters select { height: 32px; max-width: 240px; padding: 0 28px 0 10px; border: 1px solid hsl(var(--input)); border-radius: 6px; background-color: hsl(var(--card)); color: hsl(var(--foreground)); font-size: var(--text-caption); outline: none; }
+.rp-filters select { height: 32px; max-width: 240px; padding: 0 28px 0 10px; border: 1px solid hsl(var(--input)); border-radius: var(--radius-control); background-color: hsl(var(--card)); color: hsl(var(--foreground)); font-size: var(--text-caption); outline: none; }
 .rp-filters select:focus-visible { border-color: hsl(var(--ring)); box-shadow: 0 0 0 2px hsl(var(--ring) / .2); }
 .rp-filters select:disabled { opacity: .5; cursor: not-allowed; }
 .rp-count { margin-left: auto; font-size: var(--text-caption); color: hsl(var(--muted-foreground)); }
@@ -20,8 +20,7 @@ tbody:first-of-type .rp-day th { padding-top: 14px; }
 .rp-time { color: hsl(var(--muted-foreground)); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rp-readings { max-width: 26rem; }
 .rp-readings > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.rp-reading { flex-shrink: 0; padding: 4px 10px; border-radius: 999px; background: rgb(224 242 254); color: rgb(7 89 133); font-size: var(--text-caption); font-weight: 500; }
-.dark .rp-reading { background: rgb(8 47 73 / .4); color: rgb(186 230 253); }
+.rp-reading { flex-shrink: 0; padding: 4px 10px; border-radius: var(--radius-control); background: hsl(var(--primary) / .1); color: hsl(var(--primary)); font-size: var(--text-caption); font-weight: 500; }
 .rp-sensors { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: var(--text-caption); }
 .rp-type { color: hsl(var(--muted-foreground)); }
 .rp-actions { width: 1%; padding-right: 0 !important; text-align: right; }

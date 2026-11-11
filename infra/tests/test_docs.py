@@ -1,12 +1,11 @@
 """The published docs list every page and every workflow, and stay inside docs/."""
 
-import importlib.util
 import re
 import tomllib
 import unittest
 
 import yaml
-from support import ROOT
+from support import ROOT, load_script
 
 REPOSITORY = ROOT.parent
 DOCS = REPOSITORY / "docs"
@@ -60,11 +59,7 @@ class DocsTests(unittest.TestCase):
         self.assertEqual(
             sorted(name for name in rows if name.endswith(".yml")), workflows
         )
-        spec = importlib.util.spec_from_file_location(
-            "pin_release", ROOT / "scripts/pin_release.py"
-        )
-        release = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(release)
+        release = load_script("pin_release")
         for filename in workflows:
             with self.subTest(workflow=filename):
                 workflow = yaml.load(

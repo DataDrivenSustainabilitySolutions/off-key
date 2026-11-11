@@ -21,7 +21,7 @@ import {
   type SelectedDetectorIds,
 } from "./telemetry-detectors";
 import { getChartDomain } from "./telemetry-thresholds";
-import type { DetectorInputSeries } from "./detector-inputs";
+import { forecastIntervalText, type DetectorInputSeries } from "./detector-inputs";
 import { localMidnights, timeAxisLabelFormatter } from "./time-axis";
 import {
   groupTelemetryEvents,
@@ -234,6 +234,7 @@ export const buildTelemetryChartModel = ({
 };
 
 type TooltipEntry = {
+  seriesId?: unknown;
   seriesName?: unknown;
   value?: unknown;
   data?: unknown;
@@ -280,10 +281,14 @@ export const formatTelemetryTooltip = (
   for (const entry of entries) {
     const value = readTimeValue(entry.value);
     if (!value || typeof entry.seriesName !== "string") continue;
+    const seriesId = typeof entry.seriesId === "string" ? entry.seriesId : "";
+    // The band's two lines only draw the interval, which the forecast's own line names.
+    if (seriesId.startsWith("forecast-band:")) continue;
     const unit = units.get(entry.seriesName);
     const formattedValue = unit ? numberFormatter.format(value[1]) : formatNumber(value[1]);
+    const interval = seriesId.startsWith("forecast:") ? forecastIntervalText(entry.value, formatNumber) : "";
     lines.push(
-      `${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}`,
+      `${entry.seriesName}: ${formattedValue}${unit ? ` ${unit}` : ""}${interval}`,
     );
     const observation = readObservationDetails(entry.data);
     if (observation) {
@@ -474,6 +479,51 @@ export const buildMonitoringChartOption = ({
     animation: false,
     ...(index === 0 && dayBreaks.length ? { markLine: dayBreakLine } : {}),
   }));
+  // What a forecaster step expected of its feature: a dashed line in the feature's colour,
+  // and the interval around it as a band. The band is two stacked lines, the lower bound
+  // and the width above it, so only the space between the bounds is filled.
+  const forecastSeries: LineSeriesOption[] = detectorInputs.flatMap((series, index) => {
+    const forecast = series.forecast;
+    if (!forecast?.length) return [];
+    const key = series.id.slice("input:".length);
+    const color = palette[index % palette.length];
+    const bound = {
+      type: "line" as const,
+      xAxisIndex: inputsPane,
+      yAxisIndex: inputsPane,
+      stack: `forecast-band:${key}`,
+      stackStrategy: "all" as const,
+      showSymbol: false,
+      connectNulls: false,
+      silent: true,
+      lineStyle: { opacity: 0 },
+      emphasis: { disabled: true },
+      animation: false,
+    };
+    return [
+      {
+        id: `forecast:${key}`,
+        name: `${series.name} forecast`,
+        type: "line",
+        xAxisIndex: inputsPane,
+        yAxisIndex: inputsPane,
+        data: forecast,
+        encode: { x: 0, y: 1 },
+        showSymbol: forecast.length === 1,
+        symbolSize: 4,
+        connectNulls: false,
+        lineStyle: { color, width: 1, type: "dashed" },
+        itemStyle: { color },
+        emphasis: { disabled: true },
+        animation: false,
+      },
+      ...(forecast.some(([, , lower]) => lower !== null) ? [
+        { ...bound, id: `forecast-band:${key}:lower`, data: forecast.map(([time, , lower]) => [time, lower]) },
+        { ...bound, id: `forecast-band:${key}:width`, areaStyle: { color, opacity: 0.15 },
+          data: forecast.map(([time, , lower, upper]) => [time, lower === null || upper === null ? null : upper - lower]) },
+      ] : []),
+    ];
+  });
   const inputsLegend: LegendComponentOption | undefined = detectorInputs.length && compact ? {
     id: "detector-inputs-legend",
     type: "scroll",
@@ -679,6 +729,7 @@ export const buildMonitoringChartOption = ({
       ...telemetrySeries,
       ...pendingTelemetrySeries,
       ...inputSeries,
+      ...forecastSeries,
       ...secondarySeries,
     ],
   };

@@ -1,4 +1,5 @@
 import { epochMilliseconds } from "@/lib/timestamps";
+import { forecastIntervalText } from "./detector-inputs";
 import type { MonitoringChartReading } from "./types";
 import type { DetectionObservation } from "./telemetry-detectors";
 
@@ -35,12 +36,15 @@ export function formatMonitoringObservationTooltip(
     lines.push(`${reading.name}: ${point ? `${formatValue(point[1])}${reading.unit ? ` ${reading.unit}` : ""}` : "input not loaded"}`);
     if (inputTime !== undefined && inputTime !== observation.timeMs) lines.push(`  Input time: ${formatTime(inputTime)} (${inputTime - observation.timeMs} ms)`);
   }
-  // The features the detector scored at this observation, such as phase deviations.
+  // The features the detector scored at this observation, such as phase deviations, and
+  // the forecast a forecaster step compared one with.
   for (const entry of entries) {
-    if (typeof entry.seriesId !== "string" || !entry.seriesId.startsWith("input:") || !Array.isArray(entry.value)) continue;
+    if (typeof entry.seriesId !== "string" || !Array.isArray(entry.value)) continue;
+    const forecast = entry.seriesId.startsWith("forecast:");
+    if (!forecast && !entry.seriesId.startsWith("input:")) continue;
     const [time, value] = entry.value as unknown[];
     if (time !== observation.timeMs || typeof value !== "number") continue;
-    lines.push(`${String(entry.seriesName)}: ${formatValue(value)}`);
+    lines.push(`${String(entry.seriesName)}: ${formatValue(value)}${forecast ? forecastIntervalText(entry.value, formatValue) : ""}`);
   }
   for (const entry of evaluated) {
     const result = entry.data!.observation!;

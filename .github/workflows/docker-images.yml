@@ -73,6 +73,14 @@ jobs:
               SERVICE_NAME=off-key-db-sync
               SERVICE_ROOT=services/db/sync
             target: ""
+          - service: forecast
+            image_name: off-key-forecast
+            context: ./backend
+            file: ./backend/Dockerfile
+            build_args: |
+              SERVICE_NAME=off-key-forecast
+              SERVICE_ROOT=services/forecast/service
+            target: ""
 
     steps:
       - name: Checkout

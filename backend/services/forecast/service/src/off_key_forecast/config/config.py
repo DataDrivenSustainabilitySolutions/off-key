@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from off_key_core.config.validation import SECRETS_DIR
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,7 +23,10 @@ class ForecastConfig(BaseModel):
 
 
 class ForecastSettings(BaseSettings):
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    # A deployment hands the tokens over as Docker secrets.
+    model_config = SettingsConfigDict(
+        case_sensitive=True, extra="ignore", secrets_dir=SECRETS_DIR
+    )
 
     FORECAST_API_HOST: str = "0.0.0.0"
     FORECAST_API_PORT: int = Field(default=8020, ge=1, le=65535)
@@ -33,7 +37,9 @@ class ForecastSettings(BaseSettings):
     # Season lengths offered by the built-in seasonal-naive baseline.
     FORECAST_NAIVE_SEASON_LENGTHS: str = "1,24,96,144,168,288"
     # Timestral checkpoints offered when the timestral extra is installed; each
-    # downloads on first use. The revision is a Hub branch, tag or commit.
+    # downloads on first use. The revision is a Hub branch, tag or commit; a
+    # checkpoint named ``repo@revision`` uses its own, which is how a deployment
+    # pins weights (each checkpoint's repository has its own commits).
     FORECAST_TIMESTRAL_MODELS: str = (
         "mistralai/Timestral-5M,mistralai/Timestral-28M,"
         "mistralai/Timestral-123M,mistralai/Timestral-209M"

@@ -85,6 +85,10 @@ class PipelinePreflight:
             "RADAR_PIPELINE_CONFIG": execution.model_dump_json(),
             "RADAR_MEMORY_LIMIT_MB": str(settings.radar_defaults.memory_limit_mb),
         }
+        if settings.forecast_api_url:
+            # A pretrained forecaster step is rejected where no service is named.
+            # Preflight names it without connecting, so it needs no network or token.
+            environment["FORECAST_API_URL"] = settings.forecast_api_url
         command = ["/app/bin/python", "-m", "off_key_mqtt_radar.preflight"]
         return await self.docker.run(
             self.docker.client.services.create,

@@ -31,6 +31,7 @@ BUILDS = {
     "mqtt_proxy": ("off-key-mqtt-proxy", "services/mqtt/proxy"),
     "mqtt_radar": ("off-key-mqtt-radar", "services/mqtt/radar"),
     "db_sync": ("off-key-db-sync", "services/db/sync"),
+    "forecast": ("off-key-forecast", "services/forecast/service"),
     "frontend": ("off-key-frontend", None),
     "docs": ("off-key-docs", "docs"),
 }
@@ -40,6 +41,7 @@ MODEL_SERVICES = {
     "mqtt_proxy": "mqtt-proxy",
     "mqtt_radar": "mqtt-radar",
     "db_sync": "db-sync",
+    "forecast": "forecast",
     "frontend": "frontend",
     "docs": "docs",
 }

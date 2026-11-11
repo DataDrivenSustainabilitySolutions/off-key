@@ -39,6 +39,19 @@ services:
         target: RADAR_MQTT_API_KEY
       - source: radar_checkpoint_secret
         target: RADAR_CHECKPOINT_SECRET
+      # TACTIC copies this reference to each RADAR worker it starts.
+      - source: forecast_api_token
+        target: FORECAST_API_TOKEN
+
+  dojo-worker:
+    secrets:
+      - source: forecast_api_token
+        target: FORECAST_API_TOKEN
+
+  forecast:
+    secrets:
+      - source: forecast_api_token
+        target: FORECAST_API_TOKEN
 
 configs:
   emqx_security_cfg:

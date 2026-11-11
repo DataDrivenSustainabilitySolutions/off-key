@@ -196,6 +196,9 @@ class TacticConfig(BaseModel):
     pipeline_phase_timeout_seconds: float = Field(default=900.0, ge=60.0, le=7200.0)
     pipeline_max_concurrent_preflights: int = Field(default=2, ge=1, le=32)
     pipeline_max_concurrent_transitions: int = Field(default=8, ge=1, le=64)
+    # Where RADAR workers and preflight jobs reach the forecast service that
+    # pretrained forecaster steps need; empty in a deployment without one.
+    forecast_api_url: str = ""
 
     # Logging Configuration
     log_level: LogLevel = "INFO"
@@ -358,6 +361,7 @@ class TacticSettings(BaseSettings):
     TACTIC_PIPELINE_MAX_CONCURRENT_TRANSITIONS: int = Field(
         default=_tactic_default("pipeline_max_concurrent_transitions"), ge=1, le=64
     )
+    TACTIC_FORECAST_API_URL: str = Field(default=_tactic_default("forecast_api_url"))
 
     # Status Reconciliation Configuration
     TACTIC_RECONCILIATION_ENABLED: bool = Field(

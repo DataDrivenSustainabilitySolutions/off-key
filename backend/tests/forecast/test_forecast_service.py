@@ -13,6 +13,7 @@ from off_key_core.schemas.forecast import (
 )
 from off_key_forecast.api import create_app
 from off_key_forecast.config.config import ForecastSettings
+from off_key_forecast.main import require_writable_cache
 from off_key_forecast.providers import naive_providers
 from off_key_forecast.providers.base import ModelSpec
 from off_key_forecast.providers.naive import SeasonalNaive
@@ -242,3 +243,28 @@ def test_settings_parse_season_lengths_and_ignore_an_empty_token(monkeypatch):
     monkeypatch.setenv("FORECAST_NAIVE_SEASON_LENGTHS", "0")
     with pytest.raises(ValueError):
         _ = ForecastSettings().config
+
+
+def test_a_deployment_hands_the_token_over_as_a_secret_file(tmp_path, monkeypatch):
+    """Swarm mounts the token at /run/secrets/FORECAST_API_TOKEN, not in the env."""
+    monkeypatch.delenv("FORECAST_API_TOKEN", raising=False)
+    (tmp_path / "FORECAST_API_TOKEN").write_text("s" * 64 + "\n")
+
+    config = ForecastSettings(_secrets_dir=tmp_path).config
+
+    assert config.api_token.get_secret_value() == "s" * 64
+    client = TestClient(create_app(_naive_registry(tmp_path), config.api_token))
+    assert client.get("/v1/models").status_code == 401
+    headers = {"Authorization": "Bearer " + "s" * 64}
+    assert client.get("/v1/models", headers=headers).status_code == 200
+
+
+def test_the_service_does_not_start_where_weights_cannot_be_kept(tmp_path):
+    """A volume the service cannot write to fails the release, not a first download."""
+    require_writable_cache(tmp_path / "models")
+    assert list((tmp_path / "models").iterdir()) == []
+
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("")
+    with pytest.raises(SystemExit, match=r"FORECAST_CACHE_DIR .* is not writable"):
+        require_writable_cache(blocked / "models")

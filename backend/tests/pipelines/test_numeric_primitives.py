@@ -298,9 +298,21 @@ def test_accumulation_starts_with_the_first_value_and_restores(function, expecte
         assert actual == result and step.accepts(state)
     assert not step.accepts((True, math.inf, 0.0))
     assert not step.accepts((False, 1.0, 0.0))
-    assert not step.accepts((True, 1.0))
+    assert not step.accepts((True,))
     # Only a total carries what addition dropped.
     assert step.accepts((True, 1.0, 0.5)) is (function == "sum")
+
+
+@pytest.mark.parametrize(
+    "function,expected", [("sum", 4.5), ("min", 1.5), ("max", 3.0)]
+)
+def test_accumulation_continues_a_checkpoint_from_before_the_carry(function, expected):
+    step = kernel("prepare.accumulate", {"function": function})
+    assert step.accepts((True, 1.5)) and step.accepts((False, 0.0))
+    assert not step.accepts((True, math.nan)) and not step.accepts((False, 1.0))
+    state, actual = step.advance((True, 1.5), 3.0)
+    assert actual == expected and len(state) == 3 and step.accepts(state)
+    assert step.advance((False, 0.0), 3.0) == ((True, 3.0, 0.0), 3.0)
 
 
 def test_a_long_total_keeps_what_plain_addition_drops():

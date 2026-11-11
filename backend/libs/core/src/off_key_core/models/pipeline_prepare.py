@@ -393,6 +393,11 @@ def _moment_limits(statistic: str, size: int) -> tuple[float, float]:
     return -2.0, max(size - 5 + 1 / (size - 1), 0.0)
 
 
+def _carried(state: State) -> State:
+    """Checkpoints from before totals kept a carry hold (seen, previous)."""
+    return (*state, 0.0) if len(state) == 2 else state
+
+
 class Accumulate(Kernel):
     """A constant-size running total or extreme, committed with the observation.
 
@@ -407,7 +412,7 @@ class Accumulate(Kernel):
         return (False, 0.0, 0.0)
 
     def advance(self, state: State, value: float) -> tuple[State, float | None]:
-        seen, previous, carry = state
+        seen, previous, carry = _carried(state)
         if not seen:
             return (True, value, 0.0), value
         if self.function != "sum":
@@ -422,6 +427,7 @@ class Accumulate(Kernel):
         return (True, total, carry), result
 
     def accepts(self, state: State) -> bool:
+        state = _carried(state)
         return (
             len(state) == 3
             and isinstance(state[0], bool)

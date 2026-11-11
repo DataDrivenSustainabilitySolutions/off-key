@@ -8,15 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = {
     "hero_bridge": ("image/jpeg", ROOT / "assets/landing/hero-bridge-v1.jpg"),
+    "hero_cables": (
+        "image/webp",
+        ROOT / "assets/landing/hero-data-cable-runway-v1.webp",
+    ),
     "hero_pipes": ("image/webp", ROOT / "assets/landing/hero-pipes-v1.webp"),
     "hero_conveyor": ("image/webp", ROOT / "assets/landing/hero-conveyor-v1.webp"),
     "hero_solar": ("image/webp", ROOT / "assets/landing/hero-solar-v2.webp"),
     "hero_cooling": ("image/webp", ROOT / "assets/landing/hero-cooling-bank-v1.webp"),
     "hero_gantry": ("image/webp", ROOT / "assets/landing/hero-robotic-gantry-v1.webp"),
-    "hero_cables": (
-        "image/webp",
-        ROOT / "assets/landing/hero-data-cable-runway-v1.webp",
-    ),
     "hero_irrigation": (
         "image/webp",
         ROOT / "assets/landing/hero-irrigation-span-v2.webp",

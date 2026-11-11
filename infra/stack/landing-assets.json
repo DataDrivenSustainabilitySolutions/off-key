@@ -6,6 +6,12 @@
     "sha256": "45b8ff724b7cea847800e81e4b9765850accd3509b66c084625fc3472de56c70"
   },
   {
+    "name": "hero_cables",
+    "file": "hero-data-cable-runway-v1.webp",
+    "type": "image/webp",
+    "sha256": "290cb7bdcd8937bb627b51cef5d64cb2f75c2721ed0e7d8ef55980e40a0ddd9d"
+  },
+  {
     "name": "hero_pipes",
     "file": "hero-pipes-v1.webp",
     "type": "image/webp",
@@ -34,12 +40,6 @@
     "file": "hero-robotic-gantry-v1.webp",
     "type": "image/webp",
     "sha256": "07e780b9699c9ae6137322c03c80dde5811cc5adc476f56a1cbaff9f51c626b7"
-  },
-  {
-    "name": "hero_cables",
-    "file": "hero-data-cable-runway-v1.webp",
-    "type": "image/webp",
-    "sha256": "290cb7bdcd8937bb627b51cef5d64cb2f75c2721ed0e7d8ef55980e40a0ddd9d"
   },
   {
     "name": "hero_irrigation",

@@ -29,9 +29,27 @@ dependencies = [
     "huggingface-hub>=0.23,<2",
 ]
 
+[project.optional-dependencies]
+# Mistral's Timestral checkpoints (providers/timestral.py). The forecast image
+# installs this extra; the test environment stays without torch.
+timestral = [
+    "timestral",
+    "torch>=2.9",
+]
+
 [build-system]
 requires = ["uv_build>=0.11.32,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
 off-key-core = { workspace = true }
+# Not on PyPI; pinned to the release commit.
+timestral = { git = "https://github.com/mistralai/timestral.git", rev = "a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff" }
+# CPU wheels only: the service forecasts on CPU, and the default index would
+# pull the CUDA libraries on Linux.
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -72,7 +72,7 @@
   vars:
     application_images: >-
       {{ release.images | dict2items
-         | selectattr('key', 'in', ['api', 'frontend', 'docs', 'tactic', 'mqtt_proxy', 'mqtt_radar', 'db_sync'])
+         | selectattr('key', 'in', ['api', 'frontend', 'docs', 'tactic', 'mqtt_proxy', 'mqtt_radar', 'db_sync', 'forecast'])
          | map(attribute='value') | list }}
   tasks:
     - name: Read every image a Swarm service still names

@@ -18,6 +18,7 @@ from off_key_mqtt_radar.config.runtime import (
     RadarDatabaseSettings,
     RadarRuntimeFileSettings,
 )
+from off_key_mqtt_radar.forecasting import ForecastClientSettings
 from off_key_mqtt_radar.preflight import PreflightSettings
 from off_key_tactic_middleware.config.config import RadarDefaultsConfig, TacticSettings
 from off_key_tactic_middleware.services.orchestration.radar_environment import (
@@ -37,6 +38,7 @@ RADAR_SETTINGS = (
     RadarRuntimeFileSettings,
     RadarAdmissionSettings,
     PreflightSettings,
+    ForecastClientSettings,
 )
 # TACTIC-private keys travelling in the same dict, and keys RADAR may stop
 # reading while TACTIC keeps emitting them so fingerprints stay stable.
@@ -108,9 +110,11 @@ CONFIGS = {
 }
 
 
-def _environment(config):
+def _environment(config, forecast_api_url=""):
     settings = SimpleNamespace(
-        config=SimpleNamespace(radar_defaults=RadarDefaultsConfig())
+        config=SimpleNamespace(
+            radar_defaults=RadarDefaultsConfig(), forecast_api_url=forecast_api_url
+        )
     )
     runtime = SimpleNamespace(
         ENVIRONMENT="development",
@@ -128,7 +132,8 @@ def _environment(config):
 
 @pytest.mark.parametrize("name", CONFIGS)
 def test_every_emitted_key_is_read_by_radar(name):
-    environment = _environment(CONFIGS[name]())
+    environment = _environment(CONFIGS[name](), "http://forecast:8020")
+    assert environment["FORECAST_API_URL"] == "http://forecast:8020"
     environment["RADAR_COLLECTION_FINGERPRINT"] = "collection"
     environment["RADAR_LIFECYCLE_VERSION"] = "1"
     radar_fields = set().union(*(model.model_fields for model in RADAR_SETTINGS))
@@ -155,3 +160,16 @@ def test_environment_fingerprint_is_unchanged(name):
         "The RADAR environment changed. Running monitors would look reconfigured: "
         + json.dumps(environment, sort_keys=True, indent=1)
     )
+
+
+@pytest.mark.parametrize("name", CONFIGS)
+def test_the_forecast_service_address_is_not_part_of_the_fingerprint(name):
+    """A deployment that gains a forecast service does not reconfigure monitors."""
+    without = _environment(CONFIGS[name]())
+    served = _environment(CONFIGS[name](), "http://forecast:8020")
+
+    assert "FORECAST_API_URL" not in without
+    assert served == without | {"FORECAST_API_URL": "http://forecast:8020"}
+    assert build_radar_config_fingerprint(served) == GOLDEN_FINGERPRINTS[name]
+    # The token is a Swarm secret of the worker, never part of its environment.
+    assert "FORECAST_API_TOKEN" not in served

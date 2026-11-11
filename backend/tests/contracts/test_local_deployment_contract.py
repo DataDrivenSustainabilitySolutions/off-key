@@ -324,6 +324,31 @@ def test_broker_fixture_is_explicit_and_preserves_existing_allowlist(
     assert launcher.ENV_FILE.read_bytes() == original
 
 
+def test_forecast_service_is_explicit_and_tells_the_workers_where_it_is(
+    launcher, monkeypatch
+):
+    monkeypatch.setenv("FORECAST_API_URL", "http://elsewhere:1")
+    phases = []
+    original = launcher.ENV_FILE.read_bytes()
+    monkeypatch.setattr(
+        launcher,
+        "execute",
+        lambda command, environment: phases.append((command, environment)),
+    )
+    launcher.start_stack(launcher.compose_command(), public_images=False)
+    command, environment = phases[1]
+    assert "--profile" not in command
+    # Without the service a pretrained forecaster step fails preflight.
+    assert "FORECAST_API_URL" not in environment
+    assert launcher.read_environment(launcher.ENV_FILE)["FORECAST_API_URL"] == ""
+
+    launcher.start_stack(launcher.compose_command(), public_images=False, forecast=True)
+    command, environment = phases[3]
+    assert command[command.index("--profile") + 1] == "forecast"
+    assert environment["FORECAST_API_URL"] == "http://forecast:8020"
+    assert launcher.ENV_FILE.read_bytes() == original
+
+
 def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is required for deployment contract checks")
@@ -399,6 +424,19 @@ def test_local_compose_builds_current_artifacts_and_isolates_services(launcher):
         assert services[name].get("ports", []) == []
         assert set(services[name]["networks"]) == {"app-network"}
     assert set(services["broker-fixture-publisher"]["depends_on"]) == fixture_names
+    forecast = services["forecast"]
+    assert forecast["profiles"] == ["forecast"]
+    assert forecast.get("ports", []) == []
+    assert set(forecast["networks"]) == {"app-network"}
+    assert [(mount["source"], mount["target"]) for mount in forecast["volumes"]] == [
+        ("forecast_models", "/models")
+    ]
+    # The address reaches workers only when the launcher starts the service.
+    for service, key in (
+        ("tactic-middleware", "TACTIC_FORECAST_API_URL"),
+        ("dojo-worker", "FORECAST_API_URL"),
+    ):
+        assert services[service]["environment"][key] == ""
 
 
 def test_compose_defaults_follow_the_launcher_and_the_fixture_brokers(launcher):

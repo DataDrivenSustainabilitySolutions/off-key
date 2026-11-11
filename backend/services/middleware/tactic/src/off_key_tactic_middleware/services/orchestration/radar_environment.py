@@ -15,11 +15,14 @@ from ...config.config import (
 )
 from ...models.catalog import validate_model_params
 
+# Where the deployment keeps a service is not RADAR behavior: a monitor started
+# before the forecast service existed keeps its fingerprint when it gets the URL.
 _FINGERPRINT_EXCLUDED_KEYS = {
     "SERVICE_ID",
     "RADAR_DATABASE_URL",
     "RADAR_LIFECYCLE_VERSION",
     "RADAR_CHECKPOINT_SECRET",
+    "FORECAST_API_URL",
 }
 
 
@@ -153,6 +156,11 @@ def build_radar_environment(
         "RADAR_LOG_LEVEL": defaults.log_level,
         "RADAR_RATE_LIMIT_PER_MINUTE": str(defaults.rate_limit_per_minute),
     }
+    forecast_api_url = get_tactic_settings().config.forecast_api_url
+    if forecast_api_url:
+        # Pretrained forecaster steps ask this service for their forecasts. Its
+        # token reaches a production worker as a secret (RadarWorkloadManager).
+        environment["FORECAST_API_URL"] = forecast_api_url
     if runtime.ENVIRONMENT == "production":
         environment["RADAR_MQTT_CA_FILE"] = "/run/secrets/EMQX_CA_CERT"
     else:

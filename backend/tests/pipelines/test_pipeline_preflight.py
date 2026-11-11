@@ -87,6 +87,7 @@ def settings(monkeypatch):
     config = SimpleNamespace(
         radar_image="registry/radar:1",
         pipeline_preflight_timeout_seconds=0.05,
+        forecast_api_url="",
         radar_defaults=SimpleNamespace(memory_limit_mb=384),
         docker=SimpleNamespace(
             resource_budget=SimpleNamespace(
@@ -193,6 +194,29 @@ async def test_a_concurrent_create_adopts_the_job_that_won():
     (spec,) = docker_.created
     assert spec["name"] == "radar-preflight-a1"
     assert spec["command"] == ["/app/bin/python", "-m", "off_key_mqtt_radar.preflight"]
+    assert "FORECAST_API_URL" not in spec["env"]
+
+
+@pytest.mark.asyncio
+async def test_a_job_learns_where_the_forecast_service_is(settings):
+    """Preflight rejects a pretrained forecaster step where no service is named."""
+    settings.forecast_api_url = "http://forecast:8020"
+    docker_ = Docker()
+
+    await PipelinePreflight(Workloads(docker_))._ensure(
+        "a1", SimpleNamespace(model_dump_json=lambda: "{}"), IMAGE
+    )
+
+    (spec,) = docker_.created
+    assert spec["env"]["FORECAST_API_URL"] == "http://forecast:8020"
+    # The job names the service without calling it: no token and no network.
+    assert set(spec["env"]) == {
+        "RADAR_PIPELINE_CONFIG",
+        "RADAR_MEMORY_LIMIT_MB",
+        "FORECAST_API_URL",
+    }
+    assert "secrets" not in spec
+    assert "networks" not in spec
 
 
 def test_report_reading_is_bounded_and_closes_the_stream():

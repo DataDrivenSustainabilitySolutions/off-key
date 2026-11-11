@@ -23,6 +23,7 @@ APPLICATION_IMAGES = {
     "mqtt_proxy",
     "mqtt_radar",
     "db_sync",
+    "forecast",
 }
 REPOSITORY = "DataDrivenSustainabilitySolutions/off-key"
 # CI runs the selected release gates and records tested image digests. Static

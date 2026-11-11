@@ -82,6 +82,7 @@ GOLDEN_OVERRIDES = {
     "TACTIC_RADAR_DEFAULT_RATE_LIMIT_PER_MINUTE": 600,
     "TACTIC_RADAR_IMAGE": "registry.example/radar:golden",
     "TACTIC_PIPELINE_MAX_CONCURRENT_PREFLIGHTS": 3,
+    "TACTIC_FORECAST_API_URL": "http://forecast:8020",
     "TACTIC_RECONCILIATION_INTERVAL": 30,
     "TACTIC_RADAR_WORKLOAD_LIFECYCLE": "Persistent",
 }
@@ -111,6 +112,7 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
         "log_level": "DEBUG",
         "radar_image": "registry.example/radar:golden",
         "pipeline_max_concurrent_preflights": 3,
+        "forecast_api_url": "http://forecast:8020",
         "reconciliation_interval": 30,
         "radar_workload_lifecycle": "persistent",
         "docker.api_url": "unix:///var/run/docker.sock",
@@ -127,6 +129,8 @@ def test_config_is_built_field_for_field_from_settings(monkeypatch):
     }
     assert defaults["docker"]["default_constraints"] == ["node.role == worker"]
     assert defaults["radar_workload_lifecycle"] == "ephemeral"
+    # No forecast service unless the deployment names one.
+    assert defaults["forecast_api_url"] == ""
 
 
 def test_every_tactic_setting_maps_to_one_config_field():

@@ -82,9 +82,9 @@ def fixture_release():
     release = json.loads(
         (ROOT / "ansible/inventories/prod/group_vars/all/release.yml").read_text()
     )["release"]
-    reference = release["images"]["docs"]
-    if "@" not in reference:
-        release["images"]["docs"] = reference + "@sha256:" + "a" * 64
+    for name, reference in release["images"].items():
+        if "@" not in reference:
+            release["images"][name] = reference + "@sha256:" + "a" * 64
     return release
 
 

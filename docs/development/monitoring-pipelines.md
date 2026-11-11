@@ -408,9 +408,14 @@ interquartile range as the spread. `ServiceResidualDetector` is ABERRANT's
 residual detector around it, and `resolve_service_detector()` answers what
 RADAR asks of a resolved ABERRANT detector: configuration, capabilities,
 fingerprint and `build()`. A worker finds the service through
-`FORECAST_API_URL` and `FORECAST_API_TOKEN`. Preflight builds the step without
+`FORECAST_API_URL` and `FORECAST_API_TOKEN`. TACTIC puts the address
+(`TACTIC_FORECAST_API_URL`) into the environment of every RADAR worker and
+preflight job, outside the configuration fingerprint; the token reaches a
+production worker as a Swarm secret. Preflight builds the step without
 calling the service, but a deployment that names no service fails it there,
 on the step, with the issue `forecast_service`.
+[Forecast service](../operations/forecast-service.md) describes the deployment,
+the pinned weights and their sizes.
 
 The first value of a run asks the service to have the checkpoint ready, which
 starts a download if the weights are not there yet. Until a forecast exists

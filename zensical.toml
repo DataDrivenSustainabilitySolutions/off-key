@@ -36,6 +36,7 @@ nav = [
     { "Collection operations" = "operations/system-collection.md" },
     { "RADAR capacity" = "operations/radar-capacity.md" },
     { "RADAR recovery" = "operations/radar-recovery.md" },
+    { "Forecast service" = "operations/forecast-service.md" },
     { "Single organization" = "single-organization.md" },
   ] },
   { "Reference" = [

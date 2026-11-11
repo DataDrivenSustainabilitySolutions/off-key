@@ -168,6 +168,42 @@ services:
       restart_policy:
         condition: any
 
+  # Pretrained forecasting models (Timestral) for forecaster steps. Internal only:
+  # RADAR and Dojo workers reach it on the app network, with a shared token. A
+  # checkpoint's weights download from the Hugging Face Hub on first use into the
+  # volume, so they outlive redeployments; the node needs outbound HTTPS for that.
+  # Resident memory is about 0.3 GB with the smallest checkpoint loaded and 1.7 GB
+  # with all four (2.5 GB while the largest loads); see
+  # docs/operations/forecast-service.md.
+  forecast:
+    image: "${FORECAST_IMAGE:-off-key-forecast:latest}"
+    command: [ "/app/bin/python", "-m", "off_key_forecast" ]
+    networks:
+      - app-network
+    volumes:
+      - forecast_models:/models
+    healthcheck:
+      test: ["CMD", "/app/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8020/health/live', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 1m
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [ node.labels.backend == true ]
+      resources:
+        limits:
+          memory: ${FORECAST_MEMORY_LIMIT:-4G}
+          cpus: "${FORECAST_CPU_LIMIT:-2}"
+        reservations:
+          memory: ${FORECAST_MEMORY_RESERVATION:-512M}
+          cpus: "${FORECAST_CPU_RESERVATION:-0.25}"
+      restart_policy:
+        condition: any
+      update_config:
+        order: stop-first
+
   # Replays Dojo runs from the RADAR image. Each replica runs one run at a
   # time, so the replica count is the number of runs that execute at once.
   dojo-worker:
@@ -224,6 +260,12 @@ services:
         constraints: [ node.labels.backend == true ]
       restart_policy:
         condition: any
+
+# A node-local cache of downloaded weights: a task rescheduled to another backend
+# node downloads what it needs again. Deliberately no driver_opts (see the
+# persistence overlay).
+volumes:
+  forecast_models:
 
 # WARNING: Encrypted overlay is incompatible with Tailscale
 # MTU=1280 for tailscale0 compatibility

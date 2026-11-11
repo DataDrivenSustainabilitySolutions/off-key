@@ -10,7 +10,7 @@ from urllib.request import urlopen
 # us is up to that broker, so a release reports these instead of failing: it cannot
 # fix a broker, and holding the release open would block every later release.
 BROKER_OUTCOMES = {"connected", "connecting", "waiting", "reconnecting", "error"}
-ENDPOINTS = ("schema", "api", "tactic", "collector")
+ENDPOINTS = ("schema", "api", "tactic", "forecast", "collector")
 WORKERS = ("collection", "ingress")
 # The only readiness output that may reach the public release log: fixed names that
 # say which check failed, never a broker, host or message.
@@ -100,6 +100,8 @@ def probe_endpoints(environ):
         "schema": "http://db-sync:8009/ready/schema",
         "api": "http://api:8000/health",
         "tactic": f"http://tactic:{environ.get('TACTIC_PORT', '8001')}/ready",
+        # Liveness only: weights download on first use, never during a release.
+        "forecast": "http://forecast:8020/health/live",
         "collector": "http://localhost:8010/ready",
     }
 

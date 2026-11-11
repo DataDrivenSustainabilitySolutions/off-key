@@ -33,6 +33,7 @@ PACKAGES = (
     "off-key-mqtt-radar",
     "off-key-mqtt-proxy",
     "off-key-db-sync",
+    "off-key-forecast",
 )
 RELEASE = (
     Path(__file__).resolve().parents[1]

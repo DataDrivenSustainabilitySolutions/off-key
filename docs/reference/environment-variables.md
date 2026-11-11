@@ -187,6 +187,25 @@ The former strategy variables (`RADAR_MONITORING_STRATEGY`, `RADAR_MODEL_TYPE`,
 `RADAR_MODEL_PARAMS`, `RADAR_STATIC_BASELINE_CONFIG` and
 `RADAR_ADAPTIVE_STREAM_CONFIG`) are no longer read.
 
+## Forecast service
+
+Pretrained forecaster steps (Timestral) ask the forecast service for forecasts;
+see [Forecast service](../operations/forecast-service.md). Workers read the first
+three variables; the service reads the rest.
+
+| Variable | Development default | Purpose / validation |
+| --- | --- | --- |
+| `FORECAST_API_URL` | empty (`http://forecast:8020` in production) | Where RADAR workers, preflight jobs and Dojo workers reach the service. Empty: a pretrained forecaster step fails preflight with the issue `forecast_service`. Compose and Ansible give it to TACTIC as `TACTIC_FORECAST_API_URL`, which hands it to every worker and preflight job it starts. |
+| `FORECAST_API_TOKEN` | unset; a Swarm secret in production | Bearer token shared by the service and its callers. Unset on both sides only on a development machine. |
+| `FORECAST_API_TIMEOUT` | `10` | Seconds a worker waits for one answer, above 0 and at most 120. |
+| `FORECAST_API_HOST`, `FORECAST_API_PORT` | `0.0.0.0`, `8020` | Bind address and port of the service. |
+| `FORECAST_CACHE_DIR` | `/models` | Where downloaded weights are kept; a volume in every deployment. |
+| `FORECAST_TIMESTRAL_MODELS` | The four Timestral checkpoints | Comma-separated checkpoints the service offers. `repo@revision` pins one to a Hugging Face Hub commit, as production does. A step that names a checkpoint the service does not offer ends its run. |
+| `FORECAST_TIMESTRAL_REVISION` | `main` | Hub branch, tag or commit for checkpoints named without their own revision. |
+| `FORECAST_TORCH_THREADS` | `2` | CPU threads one forecast uses, 1–64. |
+| `FORECAST_NAIVE_SEASON_LENGTHS` | `1,24,96,144,168,288` | Season lengths of the built-in seasonal-naive baseline models. |
+| `HF_TOKEN` | unset | Hugging Face token; only needed for checkpoints that are not public. |
+
 ## Internal services, retention, and logging
 
 | Variable | Development default | Purpose / validation |

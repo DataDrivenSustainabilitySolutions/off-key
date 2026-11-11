@@ -15,3 +15,25 @@ broker_route_require_tls: false
 broker_route_anonymous: false
 broker_route_tailscale_extra_args: ""
 broker_route_state_dir: "{{ stack_dir }}/broker-route-data"
+
+# Forecast service: pretrained forecasting models (Timestral) for forecaster
+# steps; see docs/operations/forecast-service.md. Workers reach it on the app
+# network. Its token is derived from the internal API credential unless the vault
+# sets forecast_api_token.
+forecast_api_url: http://forecast:8020
+forecast_service_token: >-
+  {{ forecast_api_token | default((internal_api_secret ~ ':forecast-api-token') | hash('sha256'), true) }}
+# The checkpoints the composer offers, each pinned to the Hugging Face Hub commit
+# its weights were tested at. A checkpoint downloads on first use.
+forecast_timestral_checkpoints:
+  mistralai/Timestral-5M: bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f
+  mistralai/Timestral-28M: 49b26409ac87b5935539a5d8ffe7f397b720db47
+  mistralai/Timestral-123M: 5a147287addda85f6acd8da3fb8858fe9af7e8f7
+  mistralai/Timestral-209M: 9874d252ab0aae16f7f7c999f98f98d6ad7d8365
+# Sized for all four checkpoints loaded at once: 1.7 GB resident, 2.5 GB while the
+# largest loads (measured with two threads), with room for long contexts.
+forecast_torch_threads: 2
+forecast_memory_limit: 4G
+forecast_cpu_limit: "2"
+forecast_memory_reservation: 512M
+forecast_cpu_reservation: "0.25"

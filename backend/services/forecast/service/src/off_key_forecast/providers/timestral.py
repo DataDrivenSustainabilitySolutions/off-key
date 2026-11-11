@@ -143,16 +143,26 @@ class TimestralProvider:
 
 
 def timestral_providers(
-    repo_ids: Sequence[str],
+    checkpoints: Sequence[str],
     *,
     revision: str = "main",
     token: str | None = None,
     threads: int | None = None,
 ) -> list[TimestralProvider]:
-    unknown = sorted(set(repo_ids) - set(CHECKPOINTS))
+    """One provider per checkpoint, named ``repo`` or ``repo@revision``.
+
+    Every checkpoint is a Hub repository with commits of its own, so a
+    deployment that pins its weights names a commit per checkpoint. A
+    checkpoint without one uses ``revision``.
+    """
+    revisions: dict[str, str] = {}
+    for checkpoint in checkpoints:
+        repo_id, _, own_revision = checkpoint.partition("@")
+        revisions[repo_id] = own_revision or revision
+    unknown = sorted(set(revisions) - set(CHECKPOINTS))
     if unknown:
         raise ValueError(f"Unknown Timestral checkpoints: {', '.join(unknown)}")
     return [
-        TimestralProvider(repo_id, revision=revision, token=token, threads=threads)
-        for repo_id in repo_ids
+        TimestralProvider(repo_id, revision=pinned, token=token, threads=threads)
+        for repo_id, pinned in revisions.items()
     ]

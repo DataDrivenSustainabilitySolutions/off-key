@@ -462,6 +462,7 @@ def test_redeploy_restores_state_rolls_back_compatible_binaries_and_resumes_once
                 "mqtt_proxy",
                 "mqtt_radar",
                 "db_sync",
+                "forecast",
                 "frontend",
             ):
                 assert compatible["images"][name] != current_release["images"][name]

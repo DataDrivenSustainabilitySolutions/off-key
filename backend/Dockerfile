@@ -4,10 +4,11 @@ FROM python:3.14-slim-bookworm AS builder
 
 # Build context MUST be backend/
 
-# Install system dependencies
+# Install system dependencies; uv fetches a Git dependency (Timestral) with git.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
+        git \
         python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,6 +37,8 @@ ARG SERVICE_ROOT
 # This layer is cached until uv.lock or pyproject.toml change, which are
 # only temporarily mounted into the build container since we don't need
 # them in the production one.
+# A service's image carries every optional extra of its own package: the forecast
+# service's Timestral model (CPU torch); no other service declares one.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
@@ -44,6 +47,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --frozen \
         --no-dev \
         --no-install-workspace \
+        --all-extras \
         --package ${SERVICE_NAME}
 
 # Copy source code (will NOT be copied into the runtime container)
@@ -57,6 +61,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --frozen \
         --no-dev \
         --no-editable \
+        --all-extras \
         --package ${SERVICE_NAME}
 
 # Leave out what no service runs; only /app reaches the runtime image.
@@ -81,6 +86,13 @@ RUN --mount=type=bind,source=scripts/check_radar_image.py,target=/tmp/check_rada
         && /app/bin/python /tmp/check_radar_image.py; \
     fi
 
+# The forecast image exists for its pretrained models: fail this build when they
+# are not installed or cannot compute, instead of a service that offers only baselines.
+RUN --mount=type=bind,source=scripts/check_forecast_image.py,target=/tmp/check_forecast_image.py \
+    if [ "$SERVICE_NAME" = "off-key-forecast" ]; then \
+        /app/bin/python /tmp/check_forecast_image.py; \
+    fi
+
 # Partition the already-verified venv, preserving every installed runtime file.
 # Source edits then replace only workspace packages in the final image; the much
 # larger third-party dependency layer keeps its digest and stays on each node.
@@ -100,6 +112,11 @@ useradd -r -d /app -g app -N app
 EOT
 
 ARG SERVICE_NAME
+
+# The forecast service keeps downloaded weights in /models. A volume mounted there
+# takes this directory's owner, so the unprivileged service can write to it.
+RUN if [ "$SERVICE_NAME" = "off-key-forecast" ]; then install -d -o app -g app /models; fi
+
 ARG IMAGE_VERSION=dev
 ARG GIT_COMMIT=unknown
 

@@ -39,6 +39,9 @@ LOCAL_LIVE_HOSTS = [
     *(broker.host for broker in _load_broker_fixture().BROKERS),
 ]
 
+# Where workers find the opt-in forecast service on the app network.
+FORECAST_API_URL = "http://forecast:8020"
+
 PORTS = {
     "LOCAL_FRONTEND_PORT": 5174,
     "LOCAL_API_PORT": 8002,
@@ -123,6 +126,7 @@ def initialize(args: argparse.Namespace) -> None:
         ("DB_SYNC_IMAGE", "db-sync"),
         ("MQTT_RADAR_IMAGE", "mqtt-radar"),
         ("MQTT_PROXY_IMAGE", "mqtt-proxy"),
+        ("FORECAST_IMAGE", "forecast"),
     ):
         values[key] = f"{project}-{service}:dev"
 
@@ -309,8 +313,12 @@ def start_stack(
     *,
     public_images: bool,
     broker_fixture: bool = False,
+    forecast: bool = False,
 ) -> None:
     environment = deployment_environment()
+    if forecast:
+        # Outranks the private dotenv file for this start only.
+        environment["FORECAST_API_URL"] = FORECAST_API_URL
     scope = (
         public_image_environment(environment)
         if public_images
@@ -320,6 +328,8 @@ def start_stack(
         ensure_swarm(scoped)
         execute([*command, "build", "mqtt-radar"], scoped)
         profile = ["--profile", "broker-fixture"] if broker_fixture else []
+        if forecast:
+            profile += ["--profile", "forecast"]
         execute([*command, *profile, "up", "--build", "--detach", "--wait"], scoped)
     if broker_fixture:
         print("Import dev/local/broker-system.json, then choose Connect.")
@@ -392,6 +402,11 @@ def main() -> None:
         help="Run six real MQTT brokers with 39 synthetic entities",
     )
     up.add_argument(
+        "--forecast",
+        action="store_true",
+        help="Run the forecast service for pretrained forecaster steps (CPU torch)",
+    )
+    up.add_argument(
         "--public-images",
         action="store_true",
         help="Pull public images anonymously with a temporary empty Docker config",
@@ -418,6 +433,7 @@ def main() -> None:
             command,
             public_images=args.public_images,
             broker_fixture=args.broker_fixture,
+            forecast=args.forecast,
         )
     elif args.command == "status":
         execute(command + ["ps", "--all"])

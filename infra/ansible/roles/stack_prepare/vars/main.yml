@@ -94,6 +94,8 @@ service_environment:
     TACTIC_PIPELINE_PREFLIGHT_TIMEOUT_SECONDS: "{{ tactic_pipeline_preflight_timeout_seconds | default(90) }}"
     TACTIC_PIPELINE_HEARTBEAT_TIMEOUT_SECONDS: "{{ tactic_pipeline_heartbeat_timeout_seconds | default(120) }}"
     TACTIC_PIPELINE_PHASE_TIMEOUT_SECONDS: "{{ tactic_pipeline_phase_timeout_seconds | default(900) }}"
+    # Handed to every RADAR worker and preflight job; the token is a secret.
+    TACTIC_FORECAST_API_URL: "{{ forecast_api_url }}"
     TACTIC_RADAR_SECRET_SERVICE: "{{ stack_name ~ '_mqtt-radar' }}"
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_HOST: "{{ tactic_radar_default_mqtt_broker_host }}"
     TACTIC_RADAR_DEFAULT_MQTT_BROKER_PORT: "{{ tactic_radar_default_mqtt_broker_port }}"
@@ -153,6 +155,13 @@ service_environment:
     <<: [*common, *database]
     ENVIRONMENT: "{{ app_environment }}"
     DOJO_MEMORY_LIMIT_MB: "{{ dojo_memory_limit_mb | default(1024) }}"
+    FORECAST_API_URL: "{{ forecast_api_url }}"
+  forecast:
+    <<: *common
+    ENVIRONMENT: "{{ app_environment }}"
+    FORECAST_CACHE_DIR: /models
+    FORECAST_TIMESTRAL_MODELS: "{{ forecast_timestral_checkpoints.items() | map('join', '@') | join(',') }}"
+    FORECAST_TORCH_THREADS: "{{ forecast_torch_threads }}"
   emqx-main:
     EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"
     EMQX_DASHBOARD__DEFAULT_USERNAME: "{{ emqx_dashboard_username }}"
@@ -195,6 +204,11 @@ stack_interpolation_environment:
   TACTIC_IMAGE: "{{ tactic_image }}"
   MQTT_RADAR_IMAGE: "{{ mqtt_radar_image }}"
   DB_SYNC_IMAGE: "{{ db_sync_image }}"
+  FORECAST_IMAGE: "{{ forecast_image }}"
+  FORECAST_MEMORY_LIMIT: "{{ forecast_memory_limit }}"
+  FORECAST_CPU_LIMIT: "{{ forecast_cpu_limit }}"
+  FORECAST_MEMORY_RESERVATION: "{{ forecast_memory_reservation }}"
+  FORECAST_CPU_RESERVATION: "{{ forecast_cpu_reservation }}"
   TRAEFIK_DYNAMIC_HASH: "{{ (lookup('template', stack_source_dir ~ '/traefik-dynamic.yml.j2') | hash('sha1'))[:12] }}"
   LANDING_PAGE_HASH: "{{ ((lookup('template', stack_source_dir ~ '/landing.html.j2') ~ lookup('template', stack_source_dir ~ '/landing.md.j2') ~ lookup('template', stack_source_dir ~ '/landing-llms.txt.j2') ~ lookup('file', stack_source_dir ~ '/landing-nginx.conf')) | hash('sha1'))[:12] }}"
   EMQX_SECURITY_CFG_HASH: "{{ (lookup('file', stack_source_dir ~ '/emqx-security.hocon') | hash('sha1'))[:12] }}"

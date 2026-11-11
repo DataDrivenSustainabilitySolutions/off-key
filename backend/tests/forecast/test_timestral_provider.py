@@ -101,6 +101,32 @@ def test_checkpoints_are_offered_by_name_with_their_sizes():
         timestral_providers(["mistralai/Timestral-1B"])
 
 
+def test_a_checkpoint_can_be_pinned_to_its_own_hub_commit(tmp_path):
+    """Each checkpoint's repository has its own commits, so one revision for all
+    cannot pin them: ``repo@revision`` does, and the rest follow the default."""
+    pinned, following = timestral_providers(
+        ["mistralai/Timestral-5M@" + "a" * 40, "mistralai/Timestral-28M"],
+        revision="main",
+    )
+    assert (pinned.repo_id, pinned.revision) == ("mistralai/Timestral-5M", "a" * 40)
+    assert (following.repo_id, following.revision) == (
+        "mistralai/Timestral-28M",
+        "main",
+    )
+    # The model keeps its name: steps and callers never see the pin.
+    assert pinned.spec.id == "mistralai/Timestral-5M"
+    with pytest.raises(ValueError, match="Unknown Timestral"):
+        timestral_providers(["mistralai/Timestral-1B@" + "a" * 40])
+
+    # Weights cached at another commit are not the pinned ones.
+    _hub_snapshot(tmp_path, "mistralai/Timestral-5M", "b" * 40)
+    assert pinned.is_downloaded(tmp_path) is False
+    other = tmp_path / "pinned"
+    _hub_snapshot(other, "mistralai/Timestral-5M", "a" * 40)
+    assert pinned.is_downloaded(other) is True
+    assert ModelRegistry([pinned], other).info(pinned.spec.id).revision == "a" * 40
+
+
 def test_cached_weights_are_ready_offline_and_report_their_commit(tmp_path):
     provider = TimestralProvider("mistralai/Timestral-5M")
     assert provider.is_downloaded(tmp_path) is False

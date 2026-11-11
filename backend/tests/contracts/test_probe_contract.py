@@ -9,9 +9,14 @@ from urllib.parse import urlsplit
 import pytest
 import yaml
 from off_key_db_sync import api as db_sync_api
+from off_key_forecast.api import create_app as create_forecast_app
+from off_key_forecast.config.config import ForecastSettings
+from off_key_forecast.providers import naive_providers
+from off_key_forecast.registry import ModelRegistry
 from off_key_mqtt_proxy.config.config import MQTTSettings
 from off_key_mqtt_proxy.health_api import ProxyHealthApp
 from off_key_tactic_middleware.main import create_app
+from pydantic import SecretStr
 
 from tests.support.env import AUTH_ENVIRONMENT, EMAIL_ENVIRONMENT, set_environment
 from tests.support.http import asgi_client
@@ -25,7 +30,11 @@ SERVICES = {
     "tactic-middleware": "tactic",
     "mqtt-proxy": "localhost",
     "db-sync": "db-sync",
+    "forecast": "forecast",
 }
+# Services with nothing to wait for: the gateway, and the forecast service, whose
+# weights download on first use and never during a release.
+LIVENESS_ONLY = {"api-gateway", "forecast"}
 
 
 # Production service names; their healthchecks are liveness probes only.
@@ -34,6 +43,7 @@ SWARM_SERVICES = {
     "tactic": "tactic-middleware",
     "mqtt-proxy": "mqtt-proxy",
     "db-sync": "db-sync",
+    "forecast": "forecast",
 }
 
 
@@ -108,10 +118,13 @@ def test_production_liveness_probes_use_each_service_port():
     assert (
         ports["mqtt-proxy"] == MQTTSettings.model_fields["MQTT_HEALTH_API_PORT"].default
     )
+    assert (
+        ports["forecast"] == ForecastSettings.model_fields["FORECAST_API_PORT"].default
+    )
 
 
 @pytest.fixture
-def applications(monkeypatch):
+def applications(monkeypatch, tmp_path):
     set_environment(
         monkeypatch,
         {
@@ -142,13 +155,19 @@ def applications(monkeypatch):
         "db-sync": lambda ready: db_sync_api.set_sync_service(
             SimpleNamespace(schema_ready=ready)
         ),
+        "forecast": lambda ready: None,
     }
+    # Its probe needs no token, although every other route does.
+    forecast = create_forecast_app(
+        ModelRegistry(naive_providers((1,)), tmp_path), SecretStr("probe-test-token")
+    )
     yield (
         {
             "api-gateway": gateway,
             "tactic-middleware": tactic,
             "mqtt-proxy": ProxyHealthApp(proxy),
             "db-sync": db_sync_api.app,
+            "forecast": forecast,
         },
         readiness,
     )
@@ -166,8 +185,8 @@ async def test_probe_answers_ready_only_when_service_is_ready(applications, name
         set_ready[name](True)
         ready = await client.get(path)
 
-    # The gateway probe is liveness only; readiness probes must gate on state.
-    expected = 200 if name == "api-gateway" else 503
+    # A liveness-only probe always answers; readiness probes must gate on state.
+    expected = 200 if name in LIVENESS_ONLY else 503
     assert not_ready.status_code == expected, not_ready.text
     assert ready.status_code == 200, ready.text
 

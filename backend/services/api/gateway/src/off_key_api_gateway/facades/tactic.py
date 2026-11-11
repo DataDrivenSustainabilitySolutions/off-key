@@ -123,9 +123,10 @@ class Tactic:
                             if isinstance(parsed_body, dict)
                             else parsed_body
                         ) or f"HTTP {response.status}"
-                        logger.error(
-                            f"TACTIC request failed: {method} {url} - {error_msg}"
-                        )
+                        # A 4xx is TACTIC refusing the caller's request, not
+                        # a fault, so it stays out of the error counts.
+                        log = logger.error if response.status >= 500 else logger.warning
+                        log(f"TACTIC request failed: {method} {url} - {error_msg}")
                         raise TacticError(
                             f"TACTIC service error: {error_msg}",
                             status=response.status,

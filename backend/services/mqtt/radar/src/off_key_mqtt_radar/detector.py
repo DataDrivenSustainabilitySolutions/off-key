@@ -60,7 +60,7 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
         if not isinstance(config.monitoring, StaticBaselineConfig):
             raise ValueError("Static detector requires static_baseline configuration")
         self.static_config = config.monitoring
-        self.start_time = time.time()
+        self._started_monotonic = time.monotonic()
         self.processing_times: deque = deque(maxlen=1000)
         self._training_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._training_future: concurrent.futures.Future | None = None
@@ -849,5 +849,5 @@ class StaticConformalDetectionService(PipelineExecutionMixin):
             "avg_processing_time_ms": sum(self.processing_times)
             / max(len(self.processing_times), 1)
             * 1000,
-            "uptime_seconds": time.time() - self.start_time,
+            "uptime_seconds": time.monotonic() - self._started_monotonic,
         }

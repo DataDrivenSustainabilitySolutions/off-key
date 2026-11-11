@@ -1,0 +1,7 @@
+Approved generated photograph: 01-solar-canopy-v2-supports.png
+Original PNG SHA-256: 5d12fb9894ca6f786a0312b18b0335dec07083e3fa1cd05fa251f66a6bd86a0b
+Web export: original dimensions, WebP quality 72, method 6 via Pillow.
+Uses the approved variant with two nearer pairs of support columns.
+Composition, framing and tone are preserved; no further generative edits.
+Original PNG retained in the local design artifacts.
+The photographs illustrate infrastructure; they are not customer installations.

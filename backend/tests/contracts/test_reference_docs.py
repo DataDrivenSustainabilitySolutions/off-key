@@ -1,4 +1,4 @@
-"""Reference pages name every env key, table and gateway route, and nothing else."""
+"""Reference pages name every env key, table and API route, and nothing else."""
 
 import re
 import subprocess
@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from off_key_api_gateway.api.v1.routes import router
 from off_key_core.db.models import Base
+from off_key_tactic_middleware.main import create_app
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 REFERENCE = REPOSITORY / "docs/reference"
@@ -106,3 +107,20 @@ def test_api_page_documents_every_gateway_route_and_no_other():
     )
     assert sorted(rows - routes) == []
     assert sorted(families - {path for _, path in routes}) == []
+
+
+def test_api_page_documents_every_tactic_route_and_no_other(monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_SECRET", "test-private-api-credential-123456789")
+    routes = {
+        (method.upper(), normalise(path.removeprefix("/api/v1")))
+        for path, operations in create_app().openapi()["paths"].items()
+        for method in operations
+    }
+    section = page("backend-api.md").split("## TACTIC API", 1)[1]
+    section = section.split("## Error model", 1)[0]
+    rows = re.findall(r"^\| `([A-Z]+)` \| `(/[^`]*)` \|", section, re.M)
+    documented = {(method, normalise(path)) for method, path in rows}
+
+    assert len(rows) == len(documented), "a TACTIC route is listed twice"
+    assert sorted(routes - documented) == []
+    assert sorted(documented - routes) == []

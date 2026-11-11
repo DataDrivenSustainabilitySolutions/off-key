@@ -26,7 +26,9 @@ export const STEP_FAMILIES: { id: StepFamily; label: string }[] = [
 // A Gate decides whether an observation goes on, so it sits with the routes.
 const ROUTES = new Set(["features.select", "features.rename", "features.passthrough", "prepare.gate"]);
 /** Steps that compute one feature from the features that arrive. */
-const COMBINE_STEPS = new Set(["prepare.aggregate", "prepare.formula"]);
+const COMBINE_STEPS = new Set([
+  "prepare.aggregate", "prepare.formula", "prepare.constant", "prepare.condition", "prepare.set",
+]);
 
 /** Steps that run once per observation, in arrival order, before anything learns. */
 const isPrepare = (component: string) => component.startsWith("prepare.");
@@ -61,12 +63,16 @@ const DESCRIPTIONS: Record<string, string> = {
   "prepare.smooth": "Average recent values to calm noise.",
   "prepare.despike": "Replace sudden spikes with the recent median.",
   "prepare.change": "Add the change since earlier observations.",
-  "prepare.rolling": "Add a mean, median, extreme or spread of recent values.",
+  "prepare.rolling": "Add a sum, quantile, spread or trend of recent values.",
+  "prepare.accumulate": "Keep a running total, minimum or maximum.",
   "prepare.math": "Take a log, root, absolute value, square or scale.",
   "prepare.range": "Clip values to a range, or skip observations outside it.",
   "prepare.aggregate": "Combine features into their mean, sum, extreme, spread or range.",
   "prepare.formula": "Compute a feature from others, such as dc_voltage * dc_current.",
   "prepare.gate": "Learn and score only while a condition holds.",
+  "prepare.constant": "Add a named constant to use in later steps.",
+  "prepare.condition": "Turn a comparison or Boolean condition into a 1 or 0 feature.",
+  "prepare.set": "Calculate or replace one feature, keeping the others.",
   "static.standard_scaler": "Center and scale with training statistics.",
   "adaptive.standard_scaler": "Center and scale with running statistics.",
   "static.min_max_scaler": "Scale to 0 to 1 with training bounds.",
@@ -95,6 +101,8 @@ const OWN_CONTROLS: Record<string, Set<string>> = {
   "prepare.aggregate": new Set(["name"]),
   "prepare.formula": new Set(["expression", "name", "result", "apply_to", "suffix"]),
   "prepare.gate": new Set(["condition"]),
+  "prepare.condition": new Set(["condition", "name"]),
+  "prepare.set": new Set(["expression", "name"]),
 };
 // Combine detectors has its own control, shown once the design has two detectors.
 const CALIBRATION_CONTROLS = new Set(["fusion"]);
@@ -114,6 +122,8 @@ export function stepFields(node: PipelineNode, component: PipelineComponent) {
   const own = node.kind === "calibration" ? CALIBRATION_CONTROLS : OWN_CONTROLS[node.component];
   const fields = component.fields.filter((field) =>
     !(hasScope(component) && SCOPE_FIELDS.has(field.name)) && !own?.has(field.name));
+  if (node.component === "prepare.rolling" && setting(node, component, "statistic") !== "quantile")
+    return fields.filter((field) => field.name !== "quantile");
   if (node.component !== "prepare.math" || setting(node, component, "function") === "linear") return fields;
   return fields.filter((field) => field.name !== "scale" && field.name !== "offset");
 }

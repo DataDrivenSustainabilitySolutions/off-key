@@ -50,6 +50,7 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
     case "prepare.despike": return "despiked";
     case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
     case "prepare.rolling": return `${value("statistic")}${value("window_size")}`;
+    case "prepare.accumulate": return value("function") === "sum" ? "total" : `running_${value("function")}`;
     case "prepare.math": return value("function") === "linear" ? "scaled" : String(value("function"));
     case "prepare.range": return "clipped";
   }
@@ -57,13 +58,15 @@ export function defaultSuffix(node: PipelineNode, component?: PipelineComponent)
   return typeof field?.default === "string" ? field.default : undefined;
 }
 
-/** The feature an Aggregate or Formula computes, named as core names it: the chosen
- * name, "formula", or the Aggregate's function. Other steps compute none. */
+/** A step's single computed feature, using the same default name as core. */
 export function combinedName(node: PipelineNode, component?: PipelineComponent): string | undefined {
   // A Formula for each feature computes one feature per chosen feature, named by its suffix.
   if (formulaEach(node)) return undefined;
   if (typeof node.params.name === "string" && node.params.name) return node.params.name;
   if (node.component === "prepare.formula") return "formula";
+  if (node.component === "prepare.constant") return "constant";
+  if (node.component === "prepare.condition") return "condition";
+  if (node.component === "prepare.set") return "feature";
   if (node.component === "prepare.aggregate") return String(setting(node, component, "function") ?? "mean");
 }
 

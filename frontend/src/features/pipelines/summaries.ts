@@ -68,6 +68,7 @@ function scopeSummary(
 
 const STATISTICS: Record<string, string> = {
   mean: "Mean", median: "Median", min: "Minimum", max: "Maximum", std: "Standard deviation", range: "Range",
+  sum: "Sum", quantile: "Quantile", iqr: "Interquartile range", mad: "Median absolute deviation", slope: "Slope per observation",
 };
 const AGGREGATES: Record<string, string> = { ...STATISTICS, sum: "Sum" };
 const FUNCTIONS: Record<string, string> = {
@@ -103,7 +104,19 @@ function prepareSummary(node: PipelineNode, component: PipelineComponent | undef
       return `${value("mode") === "percent" ? "Percent change" : "Difference"} over ${count(lag, "observation")}`;
     }
     case "prepare.rolling":
-      return `${STATISTICS[String(value("statistic"))] ?? "Mean"} of last ${number(amount("window_size", 60))}`;
+      return `${STATISTICS[String(value("statistic"))] ?? "Mean"}${value("statistic") === "quantile" ? ` ${number(amount("quantile", 0.5))}` : ""} of last ${number(amount("window_size", 60))}`;
+    case "prepare.accumulate":
+      return `Running ${value("function") === "sum" ? "total" : value("function") === "min" ? "minimum" : "maximum"} since the first accepted observation`;
+    case "prepare.constant":
+      return `${combinedName(node, component)} = ${number(amount("value", 0))}`;
+    case "prepare.condition": {
+      const condition = written(value("condition"));
+      return condition ? `${combinedName(node, component)}: 1 when ${condition}, otherwise 0` : "No condition yet";
+    }
+    case "prepare.set": {
+      const formula = written(value("expression"));
+      return formula ? `${combinedName(node, component)} = ${formula}` : "No formula yet";
+    }
     case "prepare.math":
       return value("function") === "linear"
         ? linear(amount("scale", 1), amount("offset", 0))

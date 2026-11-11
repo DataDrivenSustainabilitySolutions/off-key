@@ -101,7 +101,7 @@ def pipeline_components() -> list[PipelineComponent]:
             "prepare.rolling",
             "transform",
             "Rolling statistic",
-            "Mean, median, minimum, maximum, spread or range of recent values.",
+            "Sum, quantile, spread, trend and other statistics of recent values.",
         ),
         (
             "prepare.math",
@@ -132,6 +132,30 @@ def pipeline_components() -> list[PipelineComponent]:
             "transform",
             "Gate",
             "Learn and score only the observations where a condition holds.",
+        ),
+        (
+            "prepare.constant",
+            "transform",
+            "Constant",
+            "Add a named constant for later calculations and conditions.",
+        ),
+        (
+            "prepare.condition",
+            "transform",
+            "Condition",
+            "Add a 1 or 0 feature from a condition, keeping every observation.",
+        ),
+        (
+            "prepare.set",
+            "transform",
+            "Set feature",
+            "Compute or replace one named feature, preserving the others.",
+        ),
+        (
+            "prepare.accumulate",
+            "transform",
+            "Accumulate",
+            "Keep a running total, minimum or maximum of accepted values.",
         ),
         (
             "static.standard_scaler",

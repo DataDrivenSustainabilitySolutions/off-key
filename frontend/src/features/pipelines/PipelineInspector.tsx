@@ -437,7 +437,7 @@ export function PipelineInspector({
             <PipelineScope node={node} component={component} features={features} featureLabels={featureLabels}
               featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams} />
           )}
-          {component && (node.component === "prepare.formula" || node.component === "prepare.gate") && (
+          {component && ["prepare.formula", "prepare.gate", "prepare.condition", "prepare.set"].includes(node.component) && (
             <PipelineFormula node={node} component={component} features={features} featureLabels={featureLabels}
               readings={readings} featureHint={featureHint} issues={fieldIssues} readOnly={readOnly} onChange={changeParams}
               range={computed ? rangeText(computed.minimum, computed.maximum) ?? "any value" : undefined} />

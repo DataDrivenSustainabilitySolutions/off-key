@@ -251,6 +251,23 @@ Rolling statistic default to `result: add`, with suffixes named after their
 settings, such as `diff1` and `mean60`; scope settings at a step's own defaults
 are left out of the normalized parameters.
 
+Rolling statistics also support sum, linearly interpolated quantiles, IQR,
+unscaled MAD and least-squares slope per observation. The `quantile` setting is
+normalized away for every other statistic, preserving existing executable
+fingerprints. MAD's temporary deviations are included in admission estimates.
+`prepare.accumulate` keeps a running sum or extreme in constant-size immutable
+state per selected feature. It emits immediately, shares Prepare's commit and
+rollback behavior, and resumes from the same checkpoint state. Its default is
+to add `<feature>_total`, `<feature>_running_min` or `<feature>_running_max`.
+
+`prepare.constant`, `prepare.condition` and `prepare.set` are stateless row
+operations on the existing numeric feature stream. Constant and Condition append
+a named feature and reject collisions; a condition emits 0.0 or 1.0 without
+withholding the observation. Set replaces exactly its named column in place or
+appends it, preserving all other columns. All expression references contribute
+to lineage; constants have none. These operations retain the existing source,
+feature DAG, detector, policy and evidence contracts.
+
 Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
 state and have output from the first observation. A recursive-descent parser in
 `pipeline_formula.py` reads formulas and conditions, never `eval`. Its tree serves
@@ -268,6 +285,14 @@ Gate will skip: a warning when some are skipped and an error when every
 observation would be, or when a condition is never true. A seeded fuzz test
 checks that any text parses or fails with `FormulaError`, that evaluation fails
 only with `PrepareFailure`, and that every value lies in the inferred range.
+
+The numeric `if(condition, when_true, when_false)` function evaluates only its
+selected branch. Its first argument must be a condition and both remaining
+arguments must be numeric. Compiler analysis visits reachable branches, narrows
+simple guarded feature ranges, and keeps conditional domain failures as warnings
+when another branch can succeed. All referenced feature names are still checked,
+including names in a currently unreachable branch. The same short-circuit rules
+apply to conditions used by Gate and Condition.
 
 A Formula with `apply_to` is a formula for each feature (`FormulaForEach`): it
 evaluates the expression once per chosen feature with `x` bound to that

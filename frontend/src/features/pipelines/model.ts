@@ -85,12 +85,12 @@ function nextNodeId(nodes: PipelineNode[], component: string): string {
   return `${prefix}_${suffix}`;
 }
 
-/** Defaults for a new step. A second Formula or Aggregate that would compute a feature
- * an earlier one already computes gets its own name, such as formula_2 or mean_2. */
+/** Defaults for a new step. Steps that add a named feature get a unique name,
+ * such as formula_2 or condition_2. Set feature may intentionally reuse a name. */
 function newParams(
   nodes: PipelineNode[], component: PipelineComponent, params: PipelineNode["params"] = fieldDefaults(component.fields),
 ): PipelineNode["params"] {
-  if (component.id !== "prepare.formula" && component.id !== "prepare.aggregate") return params;
+  if (!["prepare.formula", "prepare.aggregate", "prepare.constant", "prepare.condition"].includes(component.id)) return params;
   const taken = new Set(nodes.map((node) => combinedName(node, componentFor(node, [component]))).filter(Boolean));
   const base = combinedName({ id: "", kind: component.kind, component: component.id, params }, component)!;
   if (!taken.has(base)) return params;

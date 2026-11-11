@@ -4,6 +4,7 @@
 const FUNCTIONS: Record<string, string> = {
   abs: "abs(x)", sqrt: "sqrt(x)", log: "log(x)", log1p: "log1p(x)", exp: "exp(x)",
   min: "min(a, b, …)", max: "max(a, b, …)", clip: "clip(x, low, high)",
+  if: "if(condition, when_true, when_false)",
 };
 const KEYWORDS: Record<string, string> = { and: "both hold", or: "either holds", not: "the opposite" };
 

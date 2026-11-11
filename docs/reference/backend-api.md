@@ -44,10 +44,8 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 
 | Method | Path | Purpose | Key inputs |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | Retired: always returns 403 | Accounts require an invitation |
 | `POST` | `/auth/accept-invitation` | Activate an invited account | Body: `token`, `password` |
 | `POST` | `/auth/login` | Authenticate and mint a JWT | Body: `email`, `password` |
-| `GET` | `/auth/verify-email` | Retired: always returns 410 | Request a new invitation |
 | `POST` | `/auth/password-reset` | Send reset mail when the account exists; the answer is the same either way | Body: `email` |
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the reset mail | Body: `token`, `new_password` |
 | `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |
@@ -382,6 +380,78 @@ All business routes require `X-Off-Key-Service-Key`; collection, membership and
 role routes additionally validate the end-user bearer token and its permissions. TACTIC is private.
 Health and readiness remain available without this service credential.
 
+The gateway is the only caller. Its routes above forward to these, under the
+names the installation uses internally: a catalogue is the
+`system`, recording is `collection`, a broker is a `connection`, a live view is
+a `lease` and a monitor is a `service`.
+
+### Members, sessions and roles
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/members/me` | Profile of the signed-in member with role and permissions |
+| `GET` | `/members` | List organization members |
+| `POST` | `/members/invitations` | Invite a member or resend the invitation |
+| `PATCH` | `/members/{user_id}` | Change a member's role, active state or both |
+| `DELETE` | `/members/{user_id}` | Permanently remove a disabled member; 204 |
+| `POST` | `/members/accept-invitation` | Activate an invited account with its token and a password |
+| `POST` | `/members/request-password-reset` | Send reset mail when the account exists |
+| `POST` | `/members/reset-password` | Set a new password with the token from the reset mail |
+| `POST` | `/members/sessions` | Create the remembered session behind the gateway's session cookie |
+| `POST` | `/members/sessions/refresh` | Rotate a remembered session's token |
+| `POST` | `/members/sessions/revoke` | Revoke a remembered session |
+| `GET` | `/roles` | Roles with their permissions and member counts |
+| `POST` | `/roles` | Create a role |
+| `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions |
+| `DELETE` | `/roles/{role_id}` | Delete a role no member holds; 204 |
+
+### Catalogue, recording and live views
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/system` | Saved catalogue document, revision and how each reading is recorded |
+| `PUT` | `/system` | Save structural catalogue changes at an expected revision |
+| `GET` | `/system/revisions` | Saved catalogue revisions |
+| `POST` | `/system/connections/check` | One MQTT CONNECT to a saved broker, then disconnect; never subscribes |
+| `POST` | `/system/connections/reconnect` | Retry a recorded broker now instead of waiting for its backoff |
+| `PUT` | `/system/collection` | Apply confirmed recording policies |
+| `POST` | `/system/collection/preview` | Review a recording change and the monitors it affects |
+| `POST` | `/system/collection/status` | Recording state and latest values of the given readings |
+| `GET` | `/system/health` | Recording diagnosis with the raw ingress and collector reports |
+| `GET` | `/system/storage` | Storage size and managed retention status |
+| `GET` | `/system/live` | Open live views: brokers, readings and samples after a sequence number |
+| `POST` | `/system/live/leases` | Open a bounded live view of readings |
+| `PUT` | `/system/live/leases/{lease_id}` | Keep a live view open, optionally with other readings |
+| `DELETE` | `/system/live/leases/{lease_id}` | Close a live view; 204 |
+
+### Pipelines and monitor runs
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/monitors/workspace` | What the Monitoring page loads: every monitor, whether designs may be edited, and the selected monitor's pipeline state |
+| `GET` | `/monitors/{service_id}/pipeline` | The design a monitor runs, its current run, recent history and validation |
+| `GET` | `/monitors/{service_id}/pipeline-history` | Earlier runs the monitor replaced, newest first |
+| `GET` | `/monitors/{service_id}/pipeline-timeline` | The run's lifecycle events, oldest first, and how it ended |
+| `GET` | `/monitors/{service_id}/pipeline-metadata` | Validation with the fields available at a node |
+| `GET` | `/monitors/{service_id}/pipeline-state` | The diagnostic snapshot the running monitor last reported |
+| `PUT` | `/monitors/{service_id}/pipeline-layout` | Store where the nodes sit on the canvas; the graph is unchanged |
+| `GET` | `/monitors/pipelines` | Saved designs, paged |
+| `POST` | `/monitors/pipelines` | Save a new design as a draft |
+| `POST` | `/monitors/pipelines/apply` | Save, publish and activate a design in one step |
+| `POST` | `/monitors/pipelines/validate` | Check an unsaved design without creating a library record |
+| `GET` | `/monitors/pipelines/catalog` | Components a design may use, with parameter schemas, and the starting templates |
+| `GET` | `/monitors/pipelines/{pipeline_id}` | One design with its draft, version and revisions |
+| `PATCH` | `/monitors/pipelines/{pipeline_id}` | Rename, describe or archive a design |
+| `PUT` | `/monitors/pipelines/{pipeline_id}/draft` | Replace a design's draft graph and layout |
+| `POST` | `/monitors/pipelines/{pipeline_id}/validate` | Check a graph against a saved design |
+| `GET` | `/monitors/pipelines/{pipeline_id}/revisions` | Published revisions, newest first |
+| `POST` | `/monitors/pipelines/{pipeline_id}/revisions` | Freeze the draft as a revision monitors can run |
+| `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}` | One revision with its graph and fingerprint |
+| `GET` | `/monitors/pipelines/{pipeline_id}/revisions/{revision_id}/metadata` | Validation of a revision with the fields at a node |
+| `POST` | `/monitors/pipeline-activations` | Run a published revision as a monitor |
+| `GET` | `/monitors/pipeline-activations/{activation_id}` | Progress of an activation: phase, monitor and issues |
+| `DELETE` | `/monitors/pipeline-activations/{activation_id}` | Cancel an activation that has not finished |
+
 ### Data adapter
 
 | Method | Path | Purpose |
@@ -437,6 +507,7 @@ Health and readiness remain available without this service credential.
 | `POST` | `/orchestration/radar/services/start/` | Start a form-configured monitor as a pipeline activation |
 | `GET` | `/orchestration/radar/services/{service_id}` | Get one service with its configuration |
 | `POST` | `/orchestration/radar/services/{service_id}/stop` | Stop a service and remove its workload |
+| `PATCH` | `/orchestration/radar/services/{service_id}/label` | Rename a service |
 | `DELETE` | `/orchestration/radar/services/{service_id}` | Delete by service identifier |
 
 ### Model catalogue

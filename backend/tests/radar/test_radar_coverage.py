@@ -1,5 +1,6 @@
 """Monitoring coverage remains visible independently of traffic and logging."""
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -96,7 +97,7 @@ def test_resumed_traffic_does_not_clear_monitoring_coverage_alert():
     for _ in range(100):
         tracker.record_received()
     monitor = HealthMonitor()
-    monitor.start_time = datetime.now()
+    monitor.started_monotonic = time.monotonic()
     monitor.set_components(
         mqtt_client=SimpleNamespace(
             get_health_status=lambda: {

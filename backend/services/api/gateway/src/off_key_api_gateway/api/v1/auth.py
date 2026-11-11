@@ -144,14 +144,6 @@ def auth_limit_key(request: Request) -> str:
     return hashlib.sha256(request.state.auth_identity.encode()).hexdigest()
 
 
-@router.post("/register")
-async def register():
-    """Retired: accounts are invitation-only, so this always answers 403."""
-    raise HTTPException(
-        403, "Accounts are invitation-only. Ask an administrator for access."
-    )
-
-
 @router.post("/accept-invitation")
 @limiter.limit("10/minute", key_func=auth_limit_key)
 @auth_client_limit
@@ -261,14 +253,6 @@ async def logout(request: Request, response: Response):
         return response
     clear_session_cookie(request, response)
     return {"message": "Signed out"}
-
-
-@router.get("/verify-email")
-async def verify_email():
-    """Retired: email verification links answer 410."""
-    raise HTTPException(
-        410, "This verification link is no longer supported. Request an invitation."
-    )
 
 
 async def deliver_password_reset(email: str, token: str) -> None:

@@ -165,7 +165,7 @@ async def test_blocked_evidence_commit_keeps_reporting_health_on_second_connecti
     tracker.record_input("a", MQTTMessage(topic="telemetry/entity/a", payload=b"{}"))
     tracker.record_result(result)
     health = HealthMonitor(sensor_freshness_seconds=5.0)
-    health.start_time = datetime.now()
+    health.started_monotonic = time.monotonic()
     health.set_components(
         database_writer=writer,
         message_processor=SimpleNamespace(

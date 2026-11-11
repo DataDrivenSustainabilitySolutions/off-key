@@ -3,10 +3,13 @@
 Retry safety for failed connections lives in test_gateway_security_hardening.py.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 import pytest_asyncio
 from aiohttp import web
 from aiohttp.test_utils import TestServer
+from off_key_api_gateway.facades import tactic
 from off_key_api_gateway.facades.tactic import Tactic, TacticError, path_segment
 from off_key_core.config.logs import correlation_id
 from off_key_core.config.service_auth import get_service_auth_settings
@@ -137,6 +140,30 @@ async def test_error_responses_raise_typed_errors_with_downstream_detail(
     assert raised.value.status == status
     assert str(raised.value) == f"TACTIC service error: {message}"
     assert raised.value.body == body
+
+
+@pytest.mark.parametrize(
+    ("status", "level"),
+    [
+        (401, "warning"),
+        (404, "warning"),
+        (409, "warning"),
+        (500, "error"),
+        (503, "error"),
+    ],
+)
+async def test_only_server_failures_are_logged_as_errors(
+    serve, monkeypatch, status, level
+):
+    log = MagicMock()
+    monkeypatch.setattr(tactic, "logger", log)
+    facade, _ = await serve(status, '{"detail": "refused"}')
+
+    with pytest.raises(TacticError):
+        await facade.request("GET", "/api/v1/monitors")
+
+    calls = {name: getattr(log, name).call_count for name in ("warning", "error")}
+    assert calls == {"warning": 0, "error": 0} | {level: 1}
 
 
 async def test_unexpected_client_failures_become_tactic_errors(serve):

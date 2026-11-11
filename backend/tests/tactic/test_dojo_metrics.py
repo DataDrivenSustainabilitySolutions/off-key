@@ -167,7 +167,11 @@ async def finished_run(factory, view, *, alarm_minutes, name="", status="succeed
                 dataset_id=view.id,
                 name=name,
                 status=status,
-                config={"execution": {"definition": {"strategy": "static_baseline"}}},
+                config={
+                    "execution": {
+                        "definition": {"nodes": [{"component": "policy.martingale"}]}
+                    }
+                },
                 cancel_requested=False,
                 points_total=120,
                 points_read=120,

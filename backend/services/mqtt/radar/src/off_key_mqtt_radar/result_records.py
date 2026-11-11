@@ -92,6 +92,45 @@ def _normalize_detector_inputs(value: Any) -> list[dict[str, Any]]:
     return [{"detector_id": None, "inputs": _input_values(value)}]
 
 
+def _normalize_forecasts(value: Any) -> list[dict[str, Any]]:
+    """What each forecaster step expected of the observation, bounded and JSON-safe.
+
+    An entry needs its step, the feature it scores and the expected value. The
+    band is kept only whole: a step without a boundary in its own score units
+    reports none.
+    """
+    if not isinstance(value, list):
+        return []
+    forecasts = []
+    for candidate in value[:MAX_DETECTORS]:
+        if not isinstance(candidate, dict):
+            continue
+        identifier, target = candidate.get("detector_id"), candidate.get("target")
+        expected = _optional_finite_float(candidate.get("expected"))
+        if (
+            not isinstance(identifier, str)
+            or not isinstance(target, str)
+            or expected is None
+        ):
+            continue
+        lower = _optional_finite_float(candidate.get("lower"))
+        upper = _optional_finite_float(candidate.get("upper"))
+        banded = lower is not None and upper is not None and lower <= upper
+        slot = candidate.get("slot")
+        forecasts.append(
+            {
+                "detector_id": identifier[:100],
+                "target": target[:120],
+                "slot": slot[:120] if isinstance(slot, str) else None,
+                "lead": _optional_nonnegative_int(candidate.get("lead")),
+                "expected": expected,
+                "lower": lower if banded else None,
+                "upper": upper if banded else None,
+            }
+        )
+    return forecasts
+
+
 def _normalize_tracker_results(value: Any) -> list[dict[str, Any]]:
     """Return a bounded, JSON-safe projection of runtime tracker evidence."""
     if not isinstance(value, list):
@@ -432,6 +471,7 @@ class ResultProjector:
                     "detector_inputs": _normalize_detector_inputs(
                         result.processed_features
                     ),
+                    "forecasts": _normalize_forecasts(context.get("forecasts")),
                     "threshold": float(threshold),
                     "alarm": bool(context.get("alarm_fired", False)),
                 }

@@ -30,6 +30,7 @@ EXPECTED_MIGRATIONS = (
     "023_device_favorites.sql",
     "024_lifecycle_states.sql",
     "025_evidence_cursor.sql",
+    "026_evidence_forecasts.sql",
 )
 
 

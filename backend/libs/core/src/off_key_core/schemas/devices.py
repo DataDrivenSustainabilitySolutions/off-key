@@ -70,6 +70,12 @@ class ChartEvidence(BaseModel):
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
     detector_results: list[dict[str, object]] = Field(default_factory=list)
     detector_inputs: list[dict[str, object]] = Field(default_factory=list)
+    forecasts: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="What each forecaster step expected of the observation: "
+        "the step, the feature it scores, the expected value and, when the "
+        "boundary is in the step's own score units, the band around it.",
+    )
     threshold: float
     alarm: bool
     created: datetime = Field(description="When it was stored; part of the cursor.")
@@ -100,5 +106,11 @@ class Evidence(BaseModel):
     tracker_results: list[dict[str, object]] = Field(default_factory=list)
     detector_results: list[dict[str, object]] = Field(default_factory=list)
     detector_inputs: list[dict[str, object]] = Field(default_factory=list)
+    forecasts: list[dict[str, object]] = Field(
+        default_factory=list,
+        description="What each forecaster step expected of the observation: "
+        "the step, the feature it scores, the expected value and, when the "
+        "boundary is in the step's own score units, the band around it.",
+    )
     threshold: float
     alarm: bool

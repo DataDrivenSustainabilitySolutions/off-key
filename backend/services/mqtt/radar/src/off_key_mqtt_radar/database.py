@@ -78,6 +78,7 @@ def get_radar_async_session_factory() -> async_sessionmaker[AsyncSession]:
 
         engine = create_async_engine(
             database_url,
+            hide_parameters=True,
             pool_pre_ping=True,
             pool_size=2,
             max_overflow=0,

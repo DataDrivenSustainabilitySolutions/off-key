@@ -48,6 +48,7 @@ TACTIC_ACCESS = {
         "POST /api/v1/members/reset-password",
         "POST /api/v1/members/sessions/refresh",
         "POST /api/v1/members/sessions/revoke",
+        "POST /api/v1/members/sessions/revoke-access",
         "GET /api/v1/models/",
         "GET /api/v1/orchestration/radar/services/",
         "POST /api/v1/orchestration/radar/services/start/",

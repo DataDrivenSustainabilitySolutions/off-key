@@ -20,6 +20,7 @@ from off_key_core.config.logs import (
 from off_key_core.config.logs import (
     logger as core_logger,
 )
+from sqlalchemy.exc import IntegrityError
 
 
 def test_json_formatter_includes_extra_fields():
@@ -44,6 +45,40 @@ def test_json_formatter_includes_extra_fields():
     assert payload["extra"]["component"] == "unit-test"
     assert payload["extra"]["service"] == "core"
     assert "correlation_id" not in payload["extra"]
+
+
+@pytest.mark.parametrize(
+    "formatter", [JsonFormatter(), KeyValueFormatter("%(message)s")]
+)
+def test_database_errors_hide_parameters_and_driver_details_in_chains(formatter):
+    secret = "synthetic-private-database-value"
+    try:
+        try:
+            raise IntegrityError(
+                "INSERT INTO users VALUES (?)",
+                (secret,),
+                ValueError(f"DETAIL: Key (email)=({secret}) already exists"),
+                hide_parameters=True,
+            )
+        except IntegrityError as exc:
+            raise RuntimeError(f"database failed: {exc}") from exc
+    except RuntimeError as exc:
+        record = logging.LogRecord(
+            "test",
+            logging.ERROR,
+            __file__,
+            1,
+            f"event=database.failed error={exc}",
+            (),
+            sys.exc_info(),
+        )
+    record.error = str(record.exc_info[1])
+    record.diagnostics = {"nested": secret}
+    output = formatter.format(record)
+    assert secret not in output
+    assert "event=database.failed" in output
+    assert "IntegrityError" in output
+    assert "redacted" in output
 
 
 def _record(**extra):
@@ -245,3 +280,25 @@ def test_bound_process_context_names_every_record_until_cleared():
     record = _record()
     log_filter.filter(record)
     assert "extra" not in json.loads(formatter.format(record))
+
+
+@pytest.mark.parametrize(
+    "formatter", [JsonFormatter(), KeyValueFormatter("%(message)s")]
+)
+def test_database_errors_inside_nested_task_groups_are_redacted(formatter):
+    secret = "synthetic-private-database-value"
+    error = IntegrityError(
+        "insert", (secret,), ValueError(secret), hide_parameters=True
+    )
+    group = ExceptionGroup("workers", [ExceptionGroup("writer", [error])])
+    record = logging.LogRecord(
+        "test",
+        logging.ERROR,
+        __file__,
+        1,
+        "event=workers.failed",
+        (),
+        (ExceptionGroup, group, None),
+    )
+    assert secret not in formatter.format(record)
+    assert "IntegrityError" in formatter.format(record)

@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from .logging import get_logging_settings
+from .logging_errors import safe_database_record
 
 # Context variable for request correlation IDs
 correlation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -97,6 +98,9 @@ def _record_extras(record: logging.LogRecord) -> dict[str, Any]:
 class KeyValueFormatter(logging.Formatter):
     """Text formatter that appends ``extra=`` context as ``key=value`` pairs."""
 
+    def format(self, record):
+        return super().format(safe_database_record(record))
+
     def formatMessage(self, record):
         # Before any traceback, which Formatter.format appends afterwards.
         formatted = super().formatMessage(record)
@@ -111,6 +115,7 @@ class JsonFormatter(logging.Formatter):
     """JSON formatter for structured logging."""
 
     def format(self, record):
+        record = safe_database_record(record)
         log_data = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
@@ -124,6 +129,8 @@ class JsonFormatter(logging.Formatter):
 
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
+        elif record.exc_text:
+            log_data["exception"] = record.exc_text
 
         extra = _record_extras(record)
         if extra:

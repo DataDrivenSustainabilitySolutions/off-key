@@ -120,6 +120,11 @@ def pending_columns(
             "forecasts",
         } - columns
     retired_columns = dict(RETIRED_COLUMNS)
+    if "dojo_runs" in existing:
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("dojo_runs")
+        }
+        excluded_columns["dojo_runs"] = {"metrics_cache"} - columns
     if "users" in existing and "member_roles" not in existing:
         # Migration 021 turns the former role enum into a member_roles
         # reference, so neither shape of the column is checked before it runs.

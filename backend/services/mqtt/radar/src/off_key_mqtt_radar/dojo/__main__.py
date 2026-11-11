@@ -33,7 +33,9 @@ async def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     engine = create_async_engine(
-        get_radar_database_settings().async_database_url, pool_pre_ping=True
+        get_radar_database_settings().async_database_url,
+        pool_pre_ping=True,
+        hide_parameters=True,
     )
     try:
         await DojoWorker(

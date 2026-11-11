@@ -49,7 +49,7 @@ in `backend/tests/contracts/test_gateway_openapi.py` keep it that way.
 | `POST` | `/auth/password-reset` | Send reset mail when the account exists; the answer is the same either way | Body: `email` |
 | `POST` | `/auth/password-reset/confirm` | Set a new password with the token from the reset mail | Body: `token`, `new_password` |
 | `POST` | `/auth/refresh` | Rotate the remembered session cookie and mint a new JWT; 401 clears the cookie | Session cookie |
-| `POST` | `/auth/logout` | Revoke the remembered session and clear its cookie | Session cookie |
+| `POST` | `/auth/logout` | Revoke the supplied bearer token and remembered session, then clear its cookie | Current bearer token and session cookie, when present |
 
 ```http
 POST /v1/auth/login
@@ -391,6 +391,20 @@ series copied from recorded history, `reading_id` is the catalogue reading it
 came from, the live input to bind when the template starts a monitor; an
 uploaded series has none. The template has no published revision yet.
 
+#### Import and metrics bounds
+
+CSV imports accept up to 65 columns per record (a timestamp and 64 series),
+64 Ki characters per logical record, and 256 characters per series name. These
+limits also apply to quoted multiline records and unused columns in long CSVs.
+Ordinary wide and long CSV uploads retain their existing overall upload limits.
+
+Run, run-comparison, and calibration-comparison metrics cache their bounded
+aggregates until label intervals change. An uncached calculation uses a shared
+database slot and returns a retryable conflict when another calculation holds
+it. Calculations have a 30-second request deadline and a 25-second database
+statement deadline. These protections use built-in defaults and need no new
+environment variables.
+
 ### Gateway health
 
 | Method | Path | Purpose |
@@ -423,6 +437,7 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/members/sessions` | Create the remembered session behind the gateway's session cookie |
 | `POST` | `/members/sessions/refresh` | Rotate a remembered session's token |
 | `POST` | `/members/sessions/revoke` | Revoke a remembered session |
+| `POST` | `/members/sessions/revoke-access` | Revoke the supplied bearer token |
 | `GET` | `/roles` | Roles with their permissions and member counts |
 | `POST` | `/roles` | Create a role |
 | `PATCH` | `/roles/{role_id}` | Rename a role or replace its permissions |

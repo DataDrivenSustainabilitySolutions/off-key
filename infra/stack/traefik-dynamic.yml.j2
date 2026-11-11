@@ -23,6 +23,7 @@ http:
     docs:
       rule: "Host(`{{ docs_hostname }}`)"
       entryPoints: [web]
+      middlewares: [public-content]
       service: docs
 
     landing:
@@ -44,6 +45,7 @@ http:
       rule: "Host(`{{ frontend_hostname }}`)"
       entryPoints: [web]
       priority: 1          # keep the Host-only fallback below the API route
+      middlewares: [public-content]
       service: frontend
 
     api:
@@ -116,6 +118,13 @@ http:
 {% endif %}
 
   middlewares:
+    public-content:
+      headers:
+        # Static services must never receive the parent-domain admin SSO cookie.
+        customRequestHeaders:
+          Cookie: ""
+          Authorization: ""
+
     dashboard-redirect:
       redirectRegex:
         regex: '^https?://[^/]+/(.*)'

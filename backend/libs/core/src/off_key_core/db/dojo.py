@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -159,6 +160,9 @@ class DojoRun(Base):
     alarm_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     # Why observations produced no result, by reason, as the live monitor counts.
     stats: Mapped[Any] = mapped_column(document(), nullable=False, default=dict)
+    metrics_cache: Mapped[Any] = mapped_column(
+        document(), nullable=False, default=dict, server_default=text("'{}'")
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     worker: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(

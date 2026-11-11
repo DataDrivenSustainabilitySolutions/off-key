@@ -399,4 +399,15 @@ describe("authenticated API renewal", () => {
     await Promise.all([logout, nextLogin]);
     expect(ready).toHaveBeenCalledOnce();
   });
+
+  it.each([false, true])("sends the bearer for revocation before clearing remembered=%s", async (remembered) => {
+    const bearer = token();
+    tokenManager.setToken(bearer, remembered);
+    fetchMock.mockResolvedValueOnce(new Response("", { status: 200 }));
+    await endSession();
+    expect(tokenManager.getToken()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/logout"), expect.objectContaining({
+      headers: { "X-Off-Key-Session": "1", Authorization: `Bearer ${bearer}` },
+    }));
+  });
 });

@@ -47,6 +47,7 @@ def access_token_response(authenticated_user: dict) -> dict:
                 sub=authenticated_user["email"],
                 user_id=user_id,
                 session_version=version,
+                session_family=authenticated_user.get("session_family"),
             )
         ),
         "token_type": "bearer",
@@ -196,6 +197,9 @@ async def login(
         set_session_cookie(
             request, response, session["token"], REMEMBERED_SESSION_SECONDS
         )
+        result = access_token_response(
+            authenticated_user | {"session_family": session.get("session_family")}
+        )
     else:
         clear_session_cookie(request, response)
 
@@ -237,13 +241,20 @@ async def refresh_session(request: Request, response: Response):
 
 
 @router.post("/logout", dependencies=[Depends(session_request)])
+@limiter.limit("60/minute")
 async def logout(request: Request, response: Response):
-    """Browser only: revoke the remembered-session cookie.
+    """Revoke the supplied bearer token and the browser's remembered session.
 
     Needs the header `X-Off-Key-Session: 1`.
     """
     try:
         await revoke_remembered_cookie(request)
+        if authorization := request.headers.get("Authorization"):
+            await tactic.request(
+                "POST",
+                "/api/v1/members/sessions/revoke-access",
+                headers={"Authorization": authorization},
+            )
     except TacticError:
         # Still remove the browser credential during a temporary service outage.
         response = JSONResponse(

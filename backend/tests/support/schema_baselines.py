@@ -32,6 +32,8 @@ EXPECTED_MIGRATIONS = (
     "025_evidence_cursor.sql",
     "026_evidence_forecasts.sql",
     "027_dojo_method_alarms.sql",
+    "028_access_token_revocation.sql",
+    "029_dojo_metrics_cache.sql",
 )
 
 

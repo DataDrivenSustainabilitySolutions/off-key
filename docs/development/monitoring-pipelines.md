@@ -384,6 +384,16 @@ it (`_expect`), because a pretrained step fetches a forecast its service missed
 while it scores. The key is absent before a forecast exists and outside the
 operational phase.
 
+Evidence stores the entries as `forecasts` (migration 026;
+`_normalize_forecasts` in `result_records.py` keeps an interval only whole), and
+the catalogue API returns them with each evidence row. In the charts,
+`buildDetectorInputSeries` puts each forecast on the line of the feature it was
+made for, which it finds by `detector_id` and `target` among the row's
+`detector_inputs`. The feature's pane then shows the forecast dashed in the
+feature's colour and the interval as a band: two stacked lines, the lower bound
+and the width above it, so only the space between the bounds is filled. A Dojo
+replay does not store forecasts yet.
+
 A pretrained forecaster is a `forecast.` component with learning `pretrained`.
 Its weights live in the forecast service (`off-key-forecast`), never in a RADAR
 worker, so it is not an ABERRANT component and not in `adaptive_catalog.json`:

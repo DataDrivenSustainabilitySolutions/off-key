@@ -111,7 +111,12 @@ than four decades above the threshold is marked at the top edge instead of
 stretching the axis. The line joins consecutive evaluations and breaks only
 across a pause, such as one a Gate holds back. A **Detector inputs** pane under
 the readings plots the scored features, so derived values such as phase
-deviations sit beside the raw readings. Telemetry and evidence use the same payload
+deviations sit beside the raw readings. A feature that a forecaster step scores
+also shows what the step expected: the forecast as a dashed line, and around it
+a band of the values that raise no alarm. A value outside the band is one the
+step scored above its boundary. The band is missing while the boundary is still
+being learned and when the design combines several detectors, because then no
+single step has a boundary of its own. Telemetry and evidence use the same payload
 event timestamp and share zoom and crosshair, so observations from one inference
 stay vertically aligned; receive time is used only when a publisher omits its
 event timestamp.

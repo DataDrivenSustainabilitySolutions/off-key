@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -199,13 +200,18 @@ describe("simple monitoring setup", () => {
     expect(pipelinesApi.save).not.toHaveBeenCalled();
   });
 
-  it("opens a new service at its readings and reaches each panel from the header", () => {
+  it("opens a new service at its readings and reaches each panel from the header", async () => {
     render(<MemoryRouter><PipelineCreate {...props()} catalog={standardCatalog} targets={[phases]} /></MemoryRouter>);
     expect(screen.getByRole("heading", { name: "Create monitoring service" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Input" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Validate" })).toBeNull();
-    // The header says how the detectors learn; a design has no strategy to switch.
-    fireEvent.click(screen.getByRole("button", { name: "Learning: Learns continuously" }));
+    // A new service leaves the detector to choose; the place kept for it offers the starter's own first.
+    fireEvent.click(await screen.findByRole("button", { name: "Choose a detector" }));
+    fireEvent.click(within(screen.getByRole("menu", { name: "Choose a detector" })).getByRole("menuitem", { name: /Suggested$/ }));
+    expect(screen.queryByRole("button", { name: "Choose a detector" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Step settings" })).toBeTruthy();
+    // A design has no strategy to switch; the service's settings say how its detectors learn.
+    fireEvent.click(screen.getByRole("button", { name: "Service settings" }));
     expect(screen.getByRole("heading", { name: "Service settings" })).toBeTruthy();
     expect(screen.getByText(/The detectors take in every observation and keep adapting/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Static baseline" })).toBeNull();
@@ -338,7 +344,10 @@ describe("simple monitoring setup", () => {
   it("blocks an invalid processing graph before reserving a start", async () => {
     vi.mocked(pipelinesApi.validate).mockImplementation(async (definition) => ({ valid: false, definition: normalizeDefinition(definition), issues: [{ code: "disconnected", message: "Connect the detector" }], features: {}, provenance_complete: true }));
     mount(); fireEvent.click(await screen.findByRole("button", { name: "Start monitoring" }));
-    await screen.findByText("Resolve the highlighted processing issues before applying.");
+    // What stops the start opens as a list beside the status, without a banner that moves the page.
+    await screen.findByRole("heading", { name: "Needs attention" });
+    expect(screen.getByText("Connect the detector")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(pipelinesApi.apply).not.toHaveBeenCalled();
   });
   it("opens runtime preflight errors beside the affected parameter before correction", async () => {

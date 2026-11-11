@@ -260,7 +260,7 @@ describe("warnings", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("calls a graph with only warnings valid and names them in the status chip", async () => {
+  it("calls a design with only warnings complete and names them in the status chip", async () => {
     const { PipelineWorkbench } = await import("@/features/pipelines/PipelineWorkbench");
     const catalog: PipelineCatalog = { catalog_id: "scope", authoring_enabled: true, templates: [],
       components: [source, robust] };
@@ -268,10 +268,10 @@ describe("warnings", () => {
       onAdd={() => {}} validation={{ valid: true, definition: document().definition, issues: [warning], features: {},
         provenance_complete: true }} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Graph is valid, 1 warning" }));
+    fireEvent.click(screen.getByRole("button", { name: "Design is complete, 1 warning" }));
 
-    expect(screen.getByRole("heading", { name: "Valid processing graph" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Design is complete" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Warning: dc_current is not used after this step." })).toBeTruthy();
-    expect(screen.queryByText("The compiler accepts this graph.")).toBeNull();
+    expect(screen.queryByText("Every step is connected and set up.")).toBeNull();
   });
 });

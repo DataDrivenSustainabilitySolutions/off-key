@@ -30,6 +30,8 @@ type CanvasData = {
   issueCount: number;
   /** Warnings never block applying the design. */
   warningCount?: number;
+  /** What the step still lacks while the design is built, such as "Not connected yet". */
+  open?: string;
   /** One line about the settings, or the features a selection keeps. */
   summary?: string;
   chips?: string[];

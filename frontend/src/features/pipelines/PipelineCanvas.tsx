@@ -18,6 +18,8 @@ import {
   type GraphDocument, type Link,
 } from "./model";
 import { PipelineContextMenu } from "./PipelineContextMenu";
+import { PipelineDetectorSlot } from "./PipelineDetectorSlot";
+import { detectorSlot } from "./detectorSlot";
 import { stepMenu, type Menu } from "./contextMenu";
 import { edgeId, NODE_SIZE, nodePosition, SNAP_GRID } from "./semantics";
 import { presentGraph } from "./graphPresentation";
@@ -70,10 +72,12 @@ type Props = {
   onChange: (document: GraphDocument, history?: HistoryMode) => void;
   onAdd: (componentId: string, position?: { x: number; y: number }) => void;
   onBeginMove?: () => void;
-  /** Edges that floating controls cover; fitting and revealing keep cards out from under them. */
+  /** Edges that the settings cover; fitting and revealing keep cards out from under them. */
   insets?: CoveredEdges;
   /** A card's menu asks for that step's settings. */
   onConfigure?: (id: string) => void;
+  /** Offers the place a design without a detector keeps for one; called with the element to open a choice at. */
+  onChooseDetector?: (anchor: Element) => void;
 };
 
 /** What a right-click, long-press or the menu key was aimed at. */
@@ -103,6 +107,7 @@ export default function PipelineCanvas({
   onBeginMove,
   insets,
   onConfigure,
+  onChooseDetector,
 }: Props) {
   const { resolvedTheme } = useTheme();
   const [feedback, setFeedback] = useState("");
@@ -213,6 +218,10 @@ export default function PipelineCanvas({
   const routes = useMemo(() => routeConnections(routingBoxes, document.definition.edges, dragged),
     [routingBoxes, document.definition.edges, dragged]);
   const blocked = [...routes.values()].some((route) => route.blocked);
+  // A design that can be edited keeps a place for the detector it does not have yet.
+  const slot = useMemo(() => (readOnly || !onChooseDetector ? undefined : detectorSlot(document, components)),
+    [readOnly, onChooseDetector, document, components]);
+  const corner = (id?: string) => routingBoxes.find((box) => box.id === id);
   const handles = useMemo(() => routeHandles(routes), [routes]);
   // A wire offers "+" only where some step fits; the menu lists exactly those.
   const insertable = useMemo(() => new Set(readOnly ? [] : document.definition.edges
@@ -599,6 +608,9 @@ export default function PipelineCanvas({
             return false;
           }}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
+          // One step is selected at a time, so a selection box would promise more than it does.
+          selectionKeyCode={null}
+          multiSelectionKeyCode={null}
           ariaLabelConfig={{
             "controls.fitView.ariaLabel": "Fit entire graph",
             "node.a11yDescription.default":
@@ -606,6 +618,8 @@ export default function PipelineCanvas({
           }}
         >
           <PipelineGrid />
+          {slot && onChooseDetector && <PipelineDetectorSlot slot={slot} after={corner(slot.after)} before={corner(slot.before)}
+            onChoose={onChooseDetector} />}
           <Controls showInteractive={false} orientation="horizontal" fitViewOptions={{ padding: fitPadding(insets, 48, 0.15) }}>
             <ControlButton
               className="pl-canvas-scale"

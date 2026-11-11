@@ -25,7 +25,10 @@ function visibleArea(surface: HTMLElement, covered?: CoveredEdges) {
   return { top, width: width - right, height: height - top - bottom, empty: !width || !height };
 }
 
-/** Fit small graphs; start larger ones at the input without shrinking the type. */
+/** The smallest a fitted graph is shown: seeing a whole flow is worth a little type size, not more. */
+export const READABLE_ZOOM = 0.8;
+
+/** Show a whole graph while its type stays readable; start a larger one at the input at full size. */
 export async function fitReadableView(
   flow: ReactFlowInstance<CanvasNode>,
   surface: HTMLElement,
@@ -37,10 +40,15 @@ export async function fitReadableView(
   const bounds = flow.getNodesBounds(nodes);
   const { top, width, height, empty } = visibleArea(surface, covered);
   if (empty) return;
-  if (bounds.width + 48 <= width && bounds.height + 48 <= height) {
+  const zoom = Math.min(1, (width - 48) / bounds.width, (height - 48) / bounds.height);
+  if (zoom >= READABLE_ZOOM) {
     // A graph that fits is centred in the part of the canvas left uncovered.
-    if (top || covered?.right || covered?.bottom) await flow.setViewport({
-      x: width / 2 - bounds.x - bounds.width / 2, y: top + height / 2 - bounds.y - bounds.height / 2, zoom: 1 });
+    if (zoom === 1 && !top && !covered?.right && !covered?.bottom) return;
+    await flow.setViewport({
+      x: width / 2 - (bounds.x + bounds.width / 2) * zoom,
+      y: top + height / 2 - (bounds.y + bounds.height / 2) * zoom,
+      zoom,
+    });
     return;
   }
   const anchor = nodes.find((node) => node.id === selected)

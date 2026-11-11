@@ -29,7 +29,8 @@ import { PipelineApplyStatus } from "./PipelineApplyStatus";
 import { usePipelineApply } from "./applySession";
 import { bindingsReady, predecessorTarget, previousBindings, readingOwnedElsewhere, suggestBindings, suggestedTarget } from "./bindings";
 import { selectReadings, targetInputs } from "./slots";
-import { hasFittedDetector, hasStreamingDetector, learningSummary } from "./learning";
+import { hasStreamingDetector } from "./learning";
+import { starterTemplate, withoutDetector } from "./detectorSlot";
 import { startupEstimate } from "./startup";
 
 export type PipelineSetupProps = {
@@ -67,8 +68,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
   const location = useLocation();
   const replaceId = props.sourceService?.replace ? props.sourceService.id : replaceService?.id;
   const sourceId = props.sourceService?.id ?? replaceId;
-  // A new service starts from the flow that learns from the stream.
-  const startingId = catalog.templates.find((item) => !hasFittedDetector(item.definition, catalog.components))?.id ?? catalog.templates[0]?.id;
+  // A new service starts from the flow that learns from the stream, with its detector left to choose.
+  const startingId = starterTemplate(catalog)?.id;
   const initial = useCallback((): CreationDraft => {
     const suggested = { ...initialBindings, ...previousBindings(predecessor) };
     const targetId = initialTarget ?? predecessorTarget(targets, predecessor) ?? suggestedTarget(targets, suggested);
@@ -76,7 +77,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
     const starting = startingSetup(catalog, startingId, target, initialReading);
     const document = initialDocument ?? (initialDesign
       ? { definition: initialDesign.draft, layout: initialDesign.layout }
-      : starting.document);
+      : withoutDetector(starting.document));
     return { name: replaceService?.display_name ?? initialDesign?.name ?? "", description: initialDesign?.description ?? "",
       targetId, startingId: initialDesign || initialDocument ? undefined : startingId, document,
       bindings: initialDesign || initialDocument ? suggestBindings(document.definition.input_slots, target,
@@ -178,7 +179,8 @@ export function PipelineCreate(props: PipelineSetupProps) {
     setChecking(true);
     try {
       const result = await validateGraph();
-      if (!result?.valid) { setIssuesRequest((value) => value + 1); setError("Resolve the highlighted processing issues before applying."); return; }
+      // What is left to do opens as a list beside the status, where each entry leads to its step.
+      if (!result?.valid) { setIssuesRequest((value) => value + 1); return; }
       await apply.session.submit({ definition: draft.document.definition, layout: draft.document.layout,
         bindings, display_name: draft.name.trim(), idempotency_key: crypto.randomUUID(), replace_monitor_id: replaceId ?? null });
     } catch (reason) { setError(getErrorMessage(reason)); }
@@ -219,6 +221,7 @@ export function PipelineCreate(props: PipelineSetupProps) {
       {target && props.collectionReady && !unrecorded.length && <Link to={recordingHref}>Review recording in Sources</Link>}
     </div>
   </div>;
+  // One line names the service: where it sits, its name and what it monitors.
   const header = <>
     <header className="pl-header pl-setup-header">
       <div className="pl-setup-identity">
@@ -228,17 +231,11 @@ export function PipelineCreate(props: PipelineSetupProps) {
         <input ref={nameInput} className="pl-name-input" aria-label="Service name" maxLength={120} placeholder="Name this service"
           disabled={!canAuthor || locked || checking} aria-invalid={attempted && !draft.name.trim()} aria-describedby={attempted && !draft.name.trim() ? "pl-name-error" : undefined}
           value={draft.name} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
+        <button type="button" className="pl-setup-input" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
+          title="Choose readings" onClick={openInput}>
+          {target ? `${target.label} · ${readingCount}` : "Choose readings"}
+        </button>
         {attempted && !draft.name.trim() && <small className="pl-field-error" id="pl-name-error">Enter a service name.</small>}
-        <div className="pl-setup-meta">
-          <button type="button" aria-label={target ? `Input: ${target.label}, ${readingCount}` : "Input: choose readings"}
-            title="Choose readings" onClick={openInput}>
-            {target ? `${target.label} · ${readingCount}` : "Choose readings"}
-          </button>
-          <button type="button" aria-label={`Learning: ${learningSummary(draft.document.definition, catalog.components)}`}
-            title="Learning and calibration windows" onClick={() => setInspectorPanel("service")}>
-            {learningSummary(draft.document.definition, catalog.components)}
-          </button>
-        </div>
       </div>
       {(canAuthor || props.menu) && <div className="pl-actions pl-setup-actions">
         {canAuthor && <>

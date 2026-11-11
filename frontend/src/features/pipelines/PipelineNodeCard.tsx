@@ -153,6 +153,11 @@ export function PipelineNodeCard({
             {data.warningCount} {data.warningCount === 1 ? "warning" : "warnings"}
           </span>
         )}
+        {data.open && (
+          <span className="pl-node-issue is-open" title="This step is not finished yet. Select it for details.">
+            {data.open}
+          </span>
+        )}
         {status && (
           <span
             className={`pl-node-sample pl-node-sample--${status.tone}`}

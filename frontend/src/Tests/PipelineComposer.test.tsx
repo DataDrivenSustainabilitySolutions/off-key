@@ -147,11 +147,11 @@ describe("graph editing", () => {
     const props = { catalog, document: pipeline(), onSelect: () => {}, onChange: () => {}, onAdd: () => {}, startup,
       onRetryValidation: () => { retried++; } };
     const view = render(<PipelineWorkbench {...props} validation={valid} />);
-    const chip = screen.getByRole("button", { name: "Graph is valid, first alarm after about 26 min" });
+    const chip = screen.getByRole("button", { name: "Design is complete, first alarm after about 26 min" });
     fireEvent.click(chip);
     expect(screen.getByText(/1,200 to learn and 360 to calibrate\. At one observation every 1 s, that is about 26 min\./)).toBeTruthy();
     view.rerender(<PipelineWorkbench {...props} validationError="Validation service unavailable" />);
-    expect(screen.getByRole("button", { name: "Graph not checked" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Design not checked" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Validation service unavailable");
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(retried).toBe(1);

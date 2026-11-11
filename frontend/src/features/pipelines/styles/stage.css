@@ -26,7 +26,7 @@
 
 .pl-stage {
   --pl-stage-gap: 12px;
-  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 94%, transparent);
+  --pl-float-bg: color-mix(in srgb, hsl(var(--card)) 94%, transparent);
   --pl-float-shadow: 0 1px 2px #0000000d, 0 6px 20px -6px #00000024;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -189,7 +189,7 @@
   padding: 2px;
 }
 .pl-stage .pl-canvas-toolbar .pl-segmented button[aria-pressed="true"] {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
 }
 
@@ -202,7 +202,7 @@
   max-height: 100%;
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   box-shadow: var(--pl-float-shadow);
   overflow: hidden;
 }

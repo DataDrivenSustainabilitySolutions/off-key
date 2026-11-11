@@ -3,7 +3,7 @@
   border-radius: 10px;
   padding: 20px;
   margin: 24px 0;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   max-width: 760px;
 }
 

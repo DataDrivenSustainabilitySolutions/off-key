@@ -684,4 +684,4 @@ export type StandardScalerParameters = {
   with_std?: boolean;
 };
 
-export const PIPELINE_LIMITS = { nodes: 64, edges: 128, slots: 100, detectors: 4 } as const;
+export const PIPELINE_LIMITS = { nodes: 65, edges: 129, slots: 100, detectors: 4 } as const;

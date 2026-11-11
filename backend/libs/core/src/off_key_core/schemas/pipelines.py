@@ -94,15 +94,21 @@ class PipelineDefinition(PipelineModel):
     schema_version: Literal[1, 2] = 1
     strategy: PipelineStrategy | None = None
     input_slots: list[InputSlot] = Field(default_factory=list, max_length=100)
-    # Drafts intentionally allow incomplete/disconnected graphs.
-    nodes: list[PipelineNode] = Field(default_factory=list, max_length=64)
-    edges: list[PipelineEdge] = Field(default_factory=list, max_length=128)
+    # Drafts intentionally allow incomplete/disconnected graphs. The limits
+    # count the calibration step and its connection into the policy, which
+    # schema 1 designs did not have: 64 nodes and 128 edges of their own.
+    nodes: list[PipelineNode] = Field(default_factory=list, max_length=65)
+    edges: list[PipelineEdge] = Field(default_factory=list, max_length=129)
     settings: PipelineSettings = Field(default_factory=PipelineSettings)
 
     @model_validator(mode="after")
     def upgrade_schema_1(self) -> "PipelineDefinition":
         """Read a schema 1 design as schema 2, after its own limits held."""
         if self.schema_version == 1:
+            if len(self.nodes) > 64:
+                raise ValueError("A schema 1 design has at most 64 nodes")
+            if len(self.edges) > 128:
+                raise ValueError("A schema 1 design has at most 128 edges")
             data = upgrade(
                 {"schema_version": 1, "nodes": self.nodes, "edges": self.edges}
             )

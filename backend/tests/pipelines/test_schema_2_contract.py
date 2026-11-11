@@ -4,9 +4,12 @@ Schema 1 designs are read as schema 2 and written back unchanged, so stored
 designs, the editor's wire format and fingerprints stay as they were.
 """
 
+from itertools import pairwise
+
 import pytest
 from off_key_core.models.pipeline_catalog import pipeline_catalog
 from off_key_core.models.pipelines import pipeline_components, validate_pipeline
+from off_key_core.schemas.pipeline_versions import editor_form
 from off_key_core.schemas.pipelines import PipelineDefinition
 
 from tests.support.fused_pipeline import fused_definition
@@ -208,3 +211,42 @@ def test_the_editor_reads_schema_2_templates_with_their_calibration_step():
             item["layout"]["nodes"][identifier]["x"] for identifier in identifiers
         ]
         assert columns == sorted(set(columns))
+
+
+def _largest(steps: int) -> dict:
+    """The adaptive template with a chain of ``steps`` pass-through steps."""
+    data = template("adaptive_stream").model_dump(mode="json")
+    chain = [f"step_{index}" for index in range(steps)]
+    data["nodes"] += [
+        {"id": identifier, "kind": "transform", "component": "features.passthrough"}
+        for identifier in chain
+    ]
+    path = ["input", *chain, "detector"]
+    data["edges"] = [edge for edge in data["edges"] if edge["target"] != "detector"] + [
+        {"source": source, "target": target} for source, target in pairwise(path)
+    ]
+    return data
+
+
+def test_the_largest_stored_design_comes_back_from_the_editor():
+    stored = _largest(60)
+    assert stored["schema_version"] == 1 and len(stored["nodes"]) == 64
+    read = PipelineDefinition.model_validate(stored)
+    edited = editor_form(read.model_dump(mode="json"))
+
+    # The editor's form counts the calibration step, which the stored form leaves out.
+    assert len(edited["nodes"]) == 65 and "strategy" not in edited
+    saved = PipelineDefinition.model_validate(edited)
+    assert saved.model_dump(mode="json") == read.model_dump(mode="json")
+    assert validate_pipeline(saved).fingerprint == validate_pipeline(read).fingerprint
+
+
+def test_a_design_holds_64_steps_besides_its_calibration_step():
+    with pytest.raises(ValueError, match="at most 64 nodes"):
+        PipelineDefinition.model_validate(_largest(61))
+    larger = editor_form(_largest(60))
+    larger["nodes"].append(
+        {"id": "extra", "kind": "transform", "component": "features.passthrough"}
+    )
+    with pytest.raises(ValueError, match="at most 65"):
+        PipelineDefinition.model_validate(larger)

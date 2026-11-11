@@ -319,45 +319,6 @@
 @layer utilities {
   .app-canvas { background: hsl(var(--background)); }
 
-  .auth-backdrop {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    background: hsl(var(--background));
-  }
-
-  .auth-monogram-pattern {
-    --auth-pattern-cell: calc(clamp(72px,7.2vw,128px) + clamp(1rem,2.6vw,2.4rem));
-    position: absolute;
-    inset: -22vmax -20vmax;
-    z-index: 0;
-    transform: rotate(-13deg) scale(1.03);
-    transform-origin: center;
-    pointer-events: none;
-    user-select: none;
-  }
-
-  .auth-monogram-pattern::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: hsl(var(--foreground));
-    mask-image: url("/brand/auth-pattern.svg");
-    mask-repeat: repeat;
-    mask-size: var(--auth-pattern-cell);
-    opacity: .08;
-  }
-
-  .dark .auth-monogram-pattern::before { opacity: .055; }
-
-  @media (max-width: 640px) {
-    .auth-monogram-pattern {
-      --auth-pattern-cell: calc(68px + .9rem);
-      inset: -24vmax -28vmax;
-    }
-
-  }
-
   @keyframes live-pulse-ring {
     0% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.3); }
     100% { box-shadow: 0 0 0 6px hsl(var(--primary) / 0); }

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import { AxiosError } from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
@@ -42,6 +42,19 @@ const StatefulWorkspace = () => {
 const renderWorkspace = () => render(<AuthProvider><MemoryRouter><ProtectedRoute><StatefulWorkspace /></ProtectedRoute></MemoryRouter></AuthProvider>);
 
 describe("remembered session recovery", () => {
+  it("preserves the requested page when an unauthenticated visitor needs to sign in", async () => {
+    const destination = "/sources?reading=air-temperature#history";
+    const router = createMemoryRouter([
+      { path: "/login", element: <p>Sign in first</p> },
+      { path: "*", element: <ProtectedRoute><p>Private workspace</p></ProtectedRoute> },
+    ], { initialEntries: [destination] });
+    render(<AuthProvider><RouterProvider router={router} /></AuthProvider>);
+    await screen.findByText("Sign in first");
+    expect(router.state.location.pathname).toBe("/login");
+    expect(new URLSearchParams(router.state.location.search).get("returnTo")).toBe(destination);
+    expect(screen.queryByText("Private workspace")).toBeNull();
+  });
+
   it("retires an in-flight renewal when another tab changes the remembered member", async () => {
     tokenManager.setToken(token(), true);
     let finishOld!: (value: Response) => void;

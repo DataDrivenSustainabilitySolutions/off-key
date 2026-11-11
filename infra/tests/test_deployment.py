@@ -482,6 +482,12 @@ class DeploymentTests(unittest.TestCase):
                 "mqtt_radar_password",
             ),
             ({"radar_checkpoint_secret": "short-secret"}, "radar_checkpoint_secret"),
+            ({"forecast_api_token": "short-token"}, "forecast_api_token"),
+            (
+                # Workers hold this token; it must not be the internal credential.
+                {"forecast_api_token": "validation-internal-service-secret-123456789"},
+                "forecast_api_token",
+            ),
         ):
             with (
                 self.subTest(overrides=overrides),
@@ -686,7 +692,10 @@ class DeploymentTests(unittest.TestCase):
                 "emqx_ca_cert": "EMQX_CA_CERT",
                 "mqtt_radar_password": "RADAR_MQTT_API_KEY",
                 "radar_checkpoint_secret": "RADAR_CHECKPOINT_SECRET",
+                "forecast_api_token": "FORECAST_API_TOKEN",
             },
+            "dojo-worker": {"forecast_api_token": "FORECAST_API_TOKEN"},
+            "forecast": {"forecast_api_token": "FORECAST_API_TOKEN"},
             "tactic": {
                 "emqx_ca_cert": "EMQX_CA_CERT",
                 "mqtt_proxy_password": "SYSTEM_COLLECTION_MQTT_API_KEY",
@@ -705,6 +714,82 @@ class DeploymentTests(unittest.TestCase):
                         for secret in definition.get("secrets", [])
                     }
                     self.assertEqual(actual, expected.get(service, {}))
+
+    def test_forecast_service_is_internal_pinned_and_reached_with_a_secret_token(
+        self,
+    ):
+        result = self.results["prod"]
+        for model in ("config", "swarm_config"):
+            services = result[model]["services"]
+            forecast = services["forecast"]
+            with self.subTest(model=model):
+                # Workers reach it on the app network; nothing publishes it.
+                self.assertEqual(set(forecast["networks"]), {"app-network"})
+                self.assertNotIn("ports", forecast)
+                self.assertNotIn("forecast", json.dumps(result["routes"]))
+                # Downloaded weights outlive the task.
+                self.assertEqual(
+                    [
+                        (mount["type"], mount["source"], mount["target"])
+                        for mount in forecast["volumes"]
+                    ],
+                    [("volume", "forecast_models", "/models")],
+                )
+                environment = forecast["environment"]
+                self.assertEqual(environment["FORECAST_CACHE_DIR"], "/models")
+                # Every checkpoint the composer offers, each at one Hub commit.
+                pins = dict(
+                    item.split("@")
+                    for item in environment["FORECAST_TIMESTRAL_MODELS"].split(",")
+                )
+                self.assertEqual(
+                    set(pins),
+                    {
+                        f"mistralai/Timestral-{size}"
+                        for size in ("5M", "28M", "123M", "209M")
+                    },
+                )
+                for pin in pins.values():
+                    self.assertRegex(pin, r"^[0-9a-f]{40}$")
+                self.assertEqual(len(set(pins.values())), len(pins))
+                limits = forecast["deploy"]["resources"]["limits"]
+                self.assertEqual(int(limits["memory"]), 4 * 2**30)
+                self.assertEqual(float(limits["cpus"]), 2.0)
+                self.assertEqual(forecast["deploy"]["replicas"], 1)
+                self.assertIn("/health/live", " ".join(forecast["healthcheck"]["test"]))
+                # TACTIC hands the address to RADAR workers and preflight jobs.
+                self.assertEqual(
+                    services["tactic"]["environment"]["TACTIC_FORECAST_API_URL"],
+                    "http://forecast:8020",
+                )
+                self.assertEqual(
+                    services["dojo-worker"]["environment"]["FORECAST_API_URL"],
+                    "http://forecast:8020",
+                )
+                # The token is only ever a mounted secret.
+                for name, service in services.items():
+                    self.assertNotIn(
+                        "FORECAST_API_TOKEN", service.get("environment", {}), name
+                    )
+        # Without a vault entry the token is derived from the internal credential,
+        # one way, so a release needs no new secret.
+        internal = result["inputs"]["internal_api_secret"]
+        token = result["deployment_secret_material"]["forecast_api_token"]
+        self.assertEqual(
+            token,
+            hashlib.sha256(f"{internal}:forecast-api-token".encode()).hexdigest(),
+        )
+        self.assertNotIn(token, json.dumps(result["config"]))
+        with tempfile.TemporaryDirectory() as directory:
+            own = "forecast-" + "f" * 40
+            rendered, _ = render(Path(directory), "prod", forecast_api_token=own)
+            self.assertEqual(rendered.returncode, 0, rendered.stdout)
+            manifest = json.loads(
+                (Path(directory) / "stack/validation.json").read_text()
+            )
+            self.assertEqual(
+                manifest["deployment_secret_material"]["forecast_api_token"], own
+            )
 
     def test_public_site_and_dashboard_are_separate(self):
         result = self.results["prod"]
@@ -895,7 +980,12 @@ class DeploymentTests(unittest.TestCase):
         )
         self.assertEqual(
             {secret["target"] for secret in radar["secrets"]},
-            {"EMQX_CA_CERT", "RADAR_MQTT_API_KEY", "RADAR_CHECKPOINT_SECRET"},
+            {
+                "EMQX_CA_CERT",
+                "RADAR_MQTT_API_KEY",
+                "RADAR_CHECKPOINT_SECRET",
+                "FORECAST_API_TOKEN",
+            },
         )
         self.assertEqual(
             {secret["target"] for secret in broker["secrets"]},
@@ -983,6 +1073,7 @@ class DeploymentTests(unittest.TestCase):
             "tactic": [backend / "services/middleware/tactic/src"],
             "db-sync": [backend / "services/db/sync/src"],
             "dojo-worker": [backend / "services/mqtt/radar/src"],
+            "forecast": [backend / "services/forecast/service/src"],
             # The deploy readiness probe runs inside the proxy container.
             "mqtt-proxy": [
                 backend / "services/mqtt/proxy/src",

@@ -21,6 +21,9 @@ contracts are described in [Monitoring pipelines](monitoring-pipelines.md).
 - `mqtt-radar`: anomaly workload image; TACTIC launches one workload per monitor.
 - `dojo-worker`: replays Dojo runs from the RADAR image; each replica runs one
   run at a time.
+- `forecast`: pretrained forecasting models for forecaster steps; RADAR and Dojo
+  workers ask it for forecasts. Opt-in locally (the `forecast` Compose profile);
+  see [Forecast service](../operations/forecast-service.md).
 - `timescaledb` (PostgreSQL + TimescaleDB): operational persistence.
 - `emqx-main`, plus optional `emqx-worker`: internal broker.
 - `source-broker`: deterministic local source telemetry broker.

@@ -248,6 +248,21 @@ catalog matches using `--check-catalog`. `make local-stop` also stops the option
 profile without deleting application state. Omitting `--broker-fixture` on later
 starts does not stop a previously running profile; use `local-stop` when done.
 
+## Pretrained forecaster steps
+
+```sh
+make local-up LOCAL_ARGS=--forecast
+```
+
+This opt-in profile builds and starts the
+[forecast service](../operations/forecast-service.md) and gives TACTIC and the
+Dojo workers its address for this start. Without it, a design with a Timestral
+step fails preflight (`forecast_service`). The image carries CPU PyTorch, so its
+first build takes longer than the others. Weights download from the Hugging Face
+Hub on first use into the project's `forecast_models` volume. As with the broker
+fixture, a later start without `--forecast` leaves the service running but stops
+telling new workers where it is; `local-stop` stops it.
+
 ## Iterate and restart
 
 ```sh

@@ -20,6 +20,7 @@ INPUTS = {
     "mqtt_proxy": ("backend",),
     "mqtt_radar": ("backend",),
     "db_sync": ("backend",),
+    "forecast": ("backend",),
     "frontend": ("frontend",),
     "docs": ("docs", "dev/docs", "requirements-docs.txt", "zensical.toml"),
 }

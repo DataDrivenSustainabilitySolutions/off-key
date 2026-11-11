@@ -51,9 +51,9 @@
   assert:
     that:
       - release.application_revision is match('^[0-9a-f]{40}$')
-      - release.images.keys() | sort == ['alloy', 'api', 'cloudflared', 'db_sync', 'docs', 'emqx', 'frontend', 'gost', 'grafana', 'landing', 'loki', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
+      - release.images.keys() | sort == ['alloy', 'api', 'cloudflared', 'db_sync', 'docs', 'emqx', 'forecast', 'frontend', 'gost', 'grafana', 'landing', 'loki', 'mqtt_proxy', 'mqtt_radar', 'oauth2', 'postgres', 'socket_proxy', 'tailscale', 'tactic', 'traefik'] | sort
       - release.images.values() | reject('match', '^.+@sha256:[0-9a-f]{64}$') | list | length == 0
-      - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image] | difference(release.images.values()) | length == 0'
+      - '[api_image, frontend_image, mqtt_proxy_image, tactic_image, mqtt_radar_image, db_sync_image, forecast_image] | difference(release.images.values()) | length == 0'
     fail_msg: The resolved production release must contain the complete set of immutable image references.
 
 - name: Require the existing Cloudflare Tunnel token in production (vault cloudflare_tunnel_token)
@@ -116,6 +116,20 @@
       A-Z, a-z, 0-9, _ and -, for example from openssl rand -hex 32.
   no_log: true
 
+# The forecast service is reachable only on the app network. Its token defaults to
+# one derived from the internal API credential, so a release needs no new vault
+# entry; the hash does not reveal that credential.
+- name: Require a forecast service token of at least 32 characters that differs from internal_api_secret (vault forecast_api_token, optional)
+  assert:
+    that:
+      - forecast_service_token | length >= 32
+      - forecast_service_token != internal_api_secret
+      - "'CHANGE_ME' not in forecast_service_token"
+    fail_msg: >-
+      Remove forecast_api_token from the environment vault to derive it, or set it
+      to a new random secret of at least 32 characters.
+  no_log: true
+
 - name: Define production deployment secret material
   set_fact:
     deployment_secret_material:
@@ -125,6 +139,7 @@
       mqtt_proxy_password: "{{ mqtt_proxy_password }}"
       mqtt_radar_password: "{{ mqtt_radar_password }}"
       radar_checkpoint_secret: "{{ radar_checkpoint_secret }}"
+      forecast_api_token: "{{ forecast_service_token }}"
       emqx_auth_users: >-
         {{ [
           {'user_id': mqtt_local_proxy_username, 'password': mqtt_proxy_password, 'is_superuser': false},

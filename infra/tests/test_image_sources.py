@@ -58,7 +58,8 @@ class ImageSourceTests(unittest.TestCase):
         backend = self.commit("backend")
         expected.update(
             dict.fromkeys(
-                {"api", "tactic", "mqtt_proxy", "mqtt_radar", "db_sync"}, backend
+                {"api", "tactic", "mqtt_proxy", "mqtt_radar", "db_sync", "forecast"},
+                backend,
             )
         )
         self.assertEqual(sources.revisions(backend, self.project), expected)

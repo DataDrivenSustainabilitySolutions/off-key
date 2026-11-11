@@ -156,6 +156,8 @@ services:
       TACTIC_DOCKER_DEFAULT_CPU_RESERVATION: "${TACTIC_DOCKER_DEFAULT_CPU_RESERVATION:-}"
       TACTIC_DOCKER_DEFAULT_NETWORK: "${COMPOSE_PROJECT_NAME:-off-key}_app-network"
       TACTIC_RADAR_IMAGE: "${MQTT_RADAR_IMAGE:-off-key-mqtt-radar:latest}"
+      # Handed to RADAR workers and preflight jobs; empty without the forecast profile.
+      TACTIC_FORECAST_API_URL: "${FORECAST_API_URL:-}"
       RADAR_CHECKPOINT_SECRET: "${RADAR_CHECKPOINT_SECRET:-off-key-development-checkpoints-change-before-production}"
     restart: always
     healthcheck:
@@ -189,6 +191,7 @@ services:
     environment:
       <<: [*runtime-env, *logging-env, *database-env]
       DOJO_MEMORY_LIMIT_MB: "${DOJO_MEMORY_LIMIT_MB:-1024}"
+      FORECAST_API_URL: "${FORECAST_API_URL:-}"
     command: [ "/app/bin/python", "-m", "off_key_mqtt_radar.dojo" ]
     depends_on:
       db-sync:
@@ -200,6 +203,35 @@ services:
     restart: always
     deploy:
       replicas: ${DOJO_WORKER_REPLICAS:-2}
+
+  forecast:
+    # Pretrained forecasting models (Timestral) for forecaster steps. Opt-in,
+    # because its image carries CPU torch: start the `forecast` profile and set
+    # FORECAST_API_URL=http://forecast:8020. No token on a development machine.
+    build:
+      context: ./backend/
+      args:
+        SERVICE_NAME: off-key-forecast
+        SERVICE_ROOT: services/forecast/service
+    image: "${FORECAST_IMAGE:-off-key-forecast:latest}"
+    environment:
+      <<: [*runtime-env, *logging-env]
+    command: [ "/app/bin/python", "-m", "off_key_forecast" ]
+    volumes:
+      # Downloaded weights outlive the container.
+      - forecast_models:/models
+    networks:
+      - app-network
+    restart: always
+    healthcheck:
+      <<: *backend-healthcheck
+      test:
+        - "CMD"
+        - "/app/bin/python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8020/health/live', timeout=2)"
+    profiles:
+      - forecast
 
   mqtt-proxy:
     build:
@@ -394,3 +426,4 @@ networks:
 
 volumes:
   postgres_data:
+  forecast_models:

@@ -6,6 +6,7 @@ mqtt_proxy_image: "{{ release.images.mqtt_proxy }}"
 tactic_image: "{{ release.images.tactic }}"
 mqtt_radar_image: "{{ release.images.mqtt_radar }}"
 db_sync_image: "{{ release.images.db_sync }}"
+forecast_image: "{{ release.images.forecast }}"
 
 # ── Environment identity ──────────────────────────────────────────────────────
 

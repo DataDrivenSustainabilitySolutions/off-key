@@ -180,9 +180,6 @@ test.describe("Details telemetry ECharts", () => {
     expect(chartBox?.width).toBeLessThanOrEqual(358);
     expect(chartBox?.height).toBeGreaterThanOrEqual(516);
     expect(chartBox?.height).toBeLessThanOrEqual(524);
-    await page.locator("header").evaluate((header) => {
-      header.style.visibility = "hidden";
-    });
     await expect(chart.locator("canvas")).toBeVisible();
   });
 

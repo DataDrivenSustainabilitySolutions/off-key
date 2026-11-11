@@ -77,6 +77,16 @@ describe("Prepare steps in the composer", () => {
     ]);
   });
 
+  it("name a rolling quantile after its quantile, as the compiler does", () => {
+    const quantile = (value?: number) =>
+      defaultSuffix(node(rolling, { statistic: "quantile", ...(value === undefined ? {} : { quantile: value }) }), rolling);
+    expect([0.9, 0.1, 0.999, 0.125, 0.3, 0, 1].map(quantile))
+      .toEqual(["q90_60", "q10_60", "q99p9_60", "q12p5_60", "q30_60", "q0_60", "q100_60"]);
+    // A draft without the setting uses the median, the catalog's default.
+    expect(quantile()).toBe("q50_60");
+    expect(defaultSuffix(node(rolling, { statistic: "iqr", quantile: 0.9 }), rolling)).toBe("iqr60");
+  });
+
   it("read Change and Rolling statistic as adding by default", () => {
     expect(stepScope(node(change), change)).toEqual({ applyTo: undefined, add: true, suffix: "diff1", elementwise: true });
     expect(stepScope(node(change, { result: "replace" }), change)?.add).toBe(false);

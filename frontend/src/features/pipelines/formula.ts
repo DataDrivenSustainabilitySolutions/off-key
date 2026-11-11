@@ -10,6 +10,25 @@ const KEYWORDS: Record<string, string> = { and: "both hold", or: "either holds",
 
 export type Suggestion = { kind: "feature" | "function" | "keyword"; value: string; detail?: string };
 
+/** Whether and, or and not fit at the caret: in a condition, or in the condition of an
+ * if(…), but not among the numbers another function takes. Plain parentheses only group. */
+export function inCondition(text: string, caret: number, condition: boolean) {
+  const calls: { name?: string; commas: number }[] = [];
+  let quoted = false;
+  for (let index = 0; index < caret; index++) {
+    const character = text[index];
+    if (character === "`") quoted = !quoted;
+    if (quoted) continue;
+    if (character === "(") {
+      const name = /([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(text.slice(0, index))?.[1];
+      calls.push({ name: name !== undefined && name in KEYWORDS ? undefined : name, commas: 0 });
+    } else if (character === ")") calls.pop();
+    else if (character === "," && calls.length) calls[calls.length - 1]!.commas += 1;
+  }
+  const call = calls.reverse().find((item) => item.name !== undefined);
+  return call ? call.name === "if" && call.commas === 0 : condition;
+}
+
 /** The word being typed just before the caret: a bare name, or a name in an open backtick. */
 export function typedWord(text: string, caret: number) {
   const before = text.slice(0, caret);

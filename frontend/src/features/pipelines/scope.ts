@@ -41,15 +41,22 @@ export function setting(node: PipelineNode, component: PipelineComponent | undef
 
 const CHANGE_SUFFIXES: Record<string, string> = { difference: "diff", percent: "pct", lag: "lag" };
 
+/** A quantile as a percentage in suffix characters, as core writes it: 0.9 is 90, 0.999 is 99p9. */
+const quantileLabel = (quantile: number) =>
+  (quantile * 100).toFixed(6).replace(/\.?0+$/, "").replace(".", "p");
+
 /** The short name a Prepare step gives added features, following its settings, as core
- * names them: smooth10, diff1, mean60, log. Other steps carry theirs in the catalog. */
+ * names them: smooth10, diff1, mean60, q90_60, log. Other steps carry theirs in the catalog. */
 export function defaultSuffix(node: PipelineNode, component?: PipelineComponent): string | undefined {
   const value = (name: string) => setting(node, component, name);
   switch (node.component) {
     case "prepare.smooth": return `smooth${value("window_size")}`;
     case "prepare.despike": return "despiked";
     case "prepare.change": return `${CHANGE_SUFFIXES[String(value("mode"))] ?? "diff"}${value("lag")}`;
-    case "prepare.rolling": return `${value("statistic")}${value("window_size")}`;
+    case "prepare.rolling": return value("statistic") === "quantile"
+      // Two quantiles of one window keep apart: q10_60 and q90_60.
+      ? `q${quantileLabel(Number(value("quantile") ?? 0.5))}_${value("window_size")}`
+      : `${value("statistic")}${value("window_size")}`;
     case "prepare.accumulate": return value("function") === "sum" ? "total" : `running_${value("function")}`;
     case "prepare.math": return value("function") === "linear" ? "scaled" : String(value("function"));
     case "prepare.range": return "clipped";

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { JsonValue } from "@/types/monitoring";
 import type { PipelineComponent, PipelineNode } from "./contracts";
-import { suggestions, typedWord, type Suggestion } from "./formula";
+import { inCondition, suggestions, typedWord, type Suggestion } from "./formula";
 import { addedName, addsByDefault, combinedName, EACH_VARIABLE, eachSuffix, formulaEach, formulaName, listed } from "./scope";
 
 type Fix = { start: number; end: number; text: string };
@@ -31,10 +31,12 @@ function setter(node: PipelineNode, onChange: Change) {
   };
 }
 
-/** The name of the feature an Aggregate or Formula computes. */
-export function CombinedName({ node, component, issues, readOnly, onChange }: {
+/** The name of the feature an Aggregate or Formula computes, or the one a Set feature writes. */
+export function CombinedName({ node, component, features, issues, readOnly, onChange }: {
   node: PipelineNode;
   component: PipelineComponent;
+  /** The features that arrive; Set feature offers them, since it may replace one. */
+  features?: string[];
   issues: Issue[];
   readOnly?: boolean;
   onChange: Change;
@@ -43,12 +45,18 @@ export function CombinedName({ node, component, issues, readOnly, onChange }: {
   const errors = errorsOf(issues, "name");
   const set = setter(node, onChange);
   const fallback = combinedName({ ...node, params: { ...node.params, name: null } }, component);
+  const replaceable = node.component === "prepare.set" && features?.length ? features : undefined;
   return <div className="pl-field">
     <label htmlFor={`${id}-name`}>Name</label>
     <input id={`${id}-name`} value={typeof node.params.name === "string" ? node.params.name : ""}
-      placeholder={fallback} maxLength={120} spellCheck={false} autoComplete="off" disabled={readOnly}
+      placeholder={fallback} maxLength={120} spellCheck={false} disabled={readOnly}
+      // Some browsers hide a list of suggestions from a field with autocomplete off.
+      autoComplete={replaceable ? undefined : "off"} list={replaceable && `${id}-name-features`}
       aria-invalid={errors.length > 0} aria-describedby={`${id}-name-help ${id}-name-errors`}
       onChange={(event) => set("name", event.target.value || undefined)} />
+    {replaceable && <datalist id={`${id}-name-features`}>
+      {replaceable.map((feature) => <option key={feature} value={feature} />)}
+    </datalist>}
     <small className="pl-help" id={`${id}-name-help`}>
       {node.component === "prepare.set"
         ? `The feature to add or replace. Other features stay unchanged. Leave empty for ${fallback}.`
@@ -96,7 +104,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
   const [dismissed, setDismissed] = useState<string>();
   const word = caret === undefined || readOnly ? undefined : typedWord(text, caret);
   const key = word && `${word.start}:${word.prefix}`;
-  const options = word && key !== dismissed ? suggestions(word, names, labels, condition || /\bif\s*\(/.test(text)) : [];
+  const options = word && key !== dismissed ? suggestions(word, names, labels, inCondition(text, word.start, condition)) : [];
   const open = options.length > 0;
   const current = Math.min(active, Math.max(options.length - 1, 0));
   // The chosen suggestion stays in view, in the list and in a panel that scrolls.
@@ -269,7 +277,7 @@ export function PipelineFormula({ node, component, features, featureLabels, read
           <small className="pl-help" id={`${id}-suffix-help`}>Added features are named feature_{suffix}.</small>
           <Errors id={`${id}-suffix-errors`} issues={errorsOf(issues, "suffix")} />
         </div>
-        : <CombinedName node={node} component={component} issues={issues} readOnly={readOnly} onChange={onChange} />}
+        : <CombinedName node={node} component={component} features={features} issues={issues} readOnly={readOnly} onChange={onChange} />}
       {range && <p className="pl-help pl-formula-range"><span>Range</span> {range}</p>}
     </>}
   </div>;

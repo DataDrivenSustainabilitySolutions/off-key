@@ -249,14 +249,22 @@ updated by bisection; an even window's median averages the middle pair. Despike
 compares against 1.4826 × MAD and leaves a flat window unchanged. Change and
 Rolling statistic default to `result: add`, with suffixes named after their
 settings, such as `diff1` and `mean60`; scope settings at a step's own defaults
-are left out of the normalized parameters.
+are left out of the normalized parameters. A rolling quantile's suffix holds
+the quantile as a percentage, `q90_60` for 0.9 over 60 values and `q99p9_60`
+for 0.999, rounded to six decimals of a percent; `defaultSuffix` in
+`scope.ts` derives the same name.
 
 Rolling statistics also support sum, linearly interpolated quantiles, IQR,
 unscaled MAD and least-squares slope per observation. The `quantile` setting is
 normalized away for every other statistic, preserving existing executable
-fingerprints. MAD's temporary deviations are included in admission estimates.
+fingerprints. MAD and Despike find the median distance by binary search in the
+sorted window, since the values nearest the median lie side by side there, so
+neither sorts deviations. Slope multiplies the window with positions centred
+on it, computed once per step and counted in admission estimates.
 `prepare.accumulate` keeps a running sum or extreme in constant-size immutable
-state per selected feature. It emits immediately, shares Prepare's commit and
+state per selected feature. A sum keeps the rounding error of its additions in
+a second number (Neumaier) and emits total plus error, so a long total does
+not drift. It emits immediately, shares Prepare's commit and
 rollback behavior, and resumes from the same checkpoint state. Its default is
 to add `<feature>_total`, `<feature>_running_min` or `<feature>_running_max`.
 
@@ -265,7 +273,10 @@ operations on the existing numeric feature stream. Constant and Condition append
 a named feature and reject collisions; a condition emits 0.0 or 1.0 without
 withholding the observation. Set replaces exactly its named column in place or
 appends it, preserving all other columns. All expression references contribute
-to lineage; constants have none. These operations retain the existing source,
+to lineage; constants have none. A Set whose expression reads the column it
+replaces keeps that column's `previous` and extends its `steps`; otherwise the
+column starts at the Set. A name Set adds must match the pattern of computed
+names (`scope` issue on `name`). These operations retain the existing source,
 feature DAG, detector, policy and evidence contracts.
 
 Aggregate, Formula and Gate (`pipeline_combine.py`) work on the whole row, keep no
@@ -282,9 +293,14 @@ Prepare rejection; `and` and `or` short-circuit, so a guard such as
 `x > 0 and log(x) > 1` holds. The compiler's `values` check derives, from the
 ranges of their inputs, the values a Math step, a percent Change, a Formula or a
 Gate will skip: a warning when some are skipped and an error when every
-observation would be, or when a condition is never true. A seeded fuzz test
-checks that any text parses or fails with `FormulaError`, that evaluation fails
-only with `PrepareFailure`, and that every value lies in the inferred range.
+observation would be, or when a condition is never true. It also warns about a
+Condition whose flag never changes and a Set that reads no feature, and
+`constant_feature` warns where a feature whose minimum equals its maximum
+reaches a detector or a learned step that uses it. Seeded fuzz tests
+check that any text parses or fails with `FormulaError`, that evaluation fails
+only with `PrepareFailure`, that every value lies in the inferred range, also
+behind guards of the shape the analysis narrows on, and that a value outside a
+function's domain is never skipped without a warning.
 
 The numeric `if(condition, when_true, when_false)` function evaluates only its
 selected branch. Its first argument must be a condition and both remaining

@@ -274,6 +274,9 @@ their windows never restart.
 - **Accumulate** adds a running total, minimum or maximum. It starts with the
   first observation reaching the step, continues across checkpoint recovery,
   and starts over in a new run. A total of a 0/1 feature counts its true values.
+  A total keeps growing, so a detector that learned its early values soon sees
+  only values it never met. Before a total reaches a detector, take its
+  **Change** or a **Rolling statistic**, or compare it in a Condition.
 - **Math** takes a logarithm, square root, absolute value or square, or computes
   scale × x + offset.
 - **Range check** clips values to **Low** and **High**, or skips observations
@@ -281,7 +284,10 @@ their windows never restart.
 
 Prepare steps use **Applies to**, **Result** and **Suffix** like scaling steps.
 **Change**, **Rolling statistic** and **Accumulate** add features by default, such as
-`dc_voltage_diff1`, `dc_voltage_mean60` and `dc_voltage_total`; the others replace values. A step
+`dc_voltage_diff1`, `dc_voltage_mean60` and `dc_voltage_total`; the others replace values.
+A rolling quantile is named after its quantile as a percentage, so the 0.1 and
+0.9 quantiles of 60 values sit side by side as `dc_voltage_q10_60` and
+`dc_voltage_q90_60`. A step
 with a window has its first value once the window is full, and steps in a chain
 add up: **Smooth** over 10 followed by **Change** over 1 has its first value at
 the 11th observation, and its settings say **Ready after 11 observations**.
@@ -315,7 +321,11 @@ value from the first observation.
 `if(condition, when_true, when_false)` chooses a numeric value. Only the selected
 branch is evaluated, so `if(dc_current != 0, power / dc_current, 0)` can handle
 zero current without skipping the observation. Conditions use comparisons and
-`and`, `or`, `not`; conditional formulas can be nested.
+`and`, `or`, `not`; conditional formulas can be nested. Guard a division, a
+logarithm or a square root on the feature itself, as above: the check follows a
+comparison of the feature with a number, not a flag computed from it, so
+`if(running == 1, power / dc_current, 0)` still warns that a current of 0 is
+skipped.
 
 Both keep the features they use and add the result, named by **Name**, or
 `formula` and the function's name, such as `mean`, when it is empty. A second
@@ -326,7 +336,10 @@ features** removes the features they use instead.
 Three more Combine steps provide small building blocks for later calculations:
 
 - **Constant** adds a named value to every observation, such as `limit = 80`.
-  Downstream formulas and conditions can reuse that feature.
+  Downstream formulas and conditions can reuse that feature. A detector learns
+  nothing from a value that never changes, so the check warns when one reaches
+  a detector or a scaling step; leave it out with **Select features** once the
+  formulas have used it.
 - **Condition** adds a numeric flag: 1 when its condition holds, 0 otherwise.
   It keeps every observation. For example, `temperature > limit` can feed a
   three-observation rolling sum, then another Condition checking whether that
@@ -338,7 +351,12 @@ Three more Combine steps provide small building blocks for later calculations:
   feature, even when the expression reads several inputs.
 
 Constant and Condition require a free output name. Set feature explicitly allows
-replacement. These steps run before learned scaling and projection, like Formula.
+replacement, and a name it adds uses letters, digits and underscores like any
+computed name. A Set feature that reads the feature it replaces continues it:
+**Features** keeps the reading and the earlier steps on its trail. The check
+warns about a Condition that is always or never true, and about a Set feature
+that reads no feature. These steps run before learned scaling and projection,
+like Formula.
 
 **For each feature** runs one Formula once per feature chosen under **For
 each**, with `x` standing for that feature, so `x / i_mean - 1` on `L1`, `L2`

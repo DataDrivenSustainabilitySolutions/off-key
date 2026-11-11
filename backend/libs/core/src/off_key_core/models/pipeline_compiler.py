@@ -41,7 +41,7 @@ from .pipeline_prepare import (
     PREPARE_COMPONENTS,
     kernel,
 )
-from .pipeline_scope import LEARNED_COMPONENTS, ScopeError
+from .pipeline_scope import LEARNED_COMPONENTS, ScopeError, step_scope
 
 
 @dataclass
@@ -414,6 +414,41 @@ def _validate_values(compilation: _Compilation) -> None:
             )
 
 
+def _validate_constants(compilation: _Compilation) -> None:
+    """A feature that never changes gives a step that learns nothing to learn."""
+    for identifier in compilation.order:
+        node = compilation.nodes[identifier]
+        edges = compilation.incoming[identifier]
+        learned = node.component in LEARNED_COMPONENTS
+        if (
+            not (learned or node.kind == "detector")
+            or identifier not in compilation.features
+            or len(edges) != 1
+        ):
+            continue
+        columns = compilation.features[edges[0].source]
+        names = [item.name for item in columns]
+        used = set(
+            step_scope(node.component, node.params, names).selected
+            if learned
+            else names
+        )
+        for item in columns:
+            if (
+                item.name in used
+                and item.minimum is not None
+                and item.minimum == item.maximum
+            ):
+                compilation.warning(
+                    "constant_feature",
+                    f"{item.name} is always {item.minimum:g}, so "
+                    f"{_label(compilation, identifier)} learns nothing from it. "
+                    "Use it in a formula or condition, then leave it out with "
+                    "Select features.",
+                    identifier,
+                )
+
+
 def _online(compilation: _Compilation, node: PipelineNode) -> bool:
     """Whether a detector runs on the stream: it learns there or is pretrained."""
     return component_learning(node.component) in ("online", "pretrained")
@@ -632,6 +667,7 @@ def validate_pipeline(definition: PipelineDefinition) -> PipelineValidation:
     _validate_stages(compilation)
     _validate_windows(compilation)
     _validate_values(compilation)
+    _validate_constants(compilation)
     _validate_model(compilation)
     _validate_learning(compilation)
     if not fits_json_budget(normalized, MAX_PIPELINE_EXECUTION_BYTES):

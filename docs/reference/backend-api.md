@@ -319,12 +319,13 @@ change it. A run replays one design over one dataset. Every route needs
 | `DELETE` | `/dojo/datasets/{dataset_id}/labels/{label_id}` | Delete a label; 204 | Path: `dataset_id`, `label_id` |
 | `GET` | `/dojo/datasets/{dataset_id}/comparison` | Up to six finished runs of the dataset, scored against its labels | `run_ids`, repeated once per run |
 | `GET` | `/dojo/runs` | List runs, newest first | Optional `dataset_id`, `status`; `limit`, `offset` |
-| `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment` |
+| `POST` | `/dojo/runs` | Queue a replay of one design over one dataset | Body: `dataset_id`, `definition`, `bindings` (slot id to series id), optional `name`, `alignment`, `compare_calibration` |
 | `GET` | `/dojo/runs/{run_id}` | One run with its design, progress and counts | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/cancel` | Cancel a waiting or running run | Path: `run_id` |
 | `POST` | `/dojo/runs/{run_id}/promote` | Save the run's design as a library template; 201. Also needs `manage_monitors` | Body: `name`, optional `description` |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run and its results; 204 | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/metrics` | Event metrics of a finished run against the dataset's labels | Path: `run_id` |
+| `GET` | `/dojo/runs/{run_id}/calibration` | The calibration methods a finished run also tried on its scores, each scored against the labels; 409 for a run started without `compare_calibration` | Path: `run_id` |
 | `GET` | `/dojo/runs/{run_id}/results` | Detector results in order | `after`, `limit` (at most 10,000), optional `alarm`; continue with `next_after` |
 
 A wide CSV has one timestamp column (the first unless `timestamp_column`
@@ -359,6 +360,23 @@ is one false alarm, so an alarm held over many results counts once, and one
 that starts inside a label and outlasts it does not count.
 `false_alarms_per_day` divides them by `evaluated_seconds`, the scored time
 outside the labels. Only runs with status `succeeded` have metrics.
+
+A run created with `compare_calibration` also tries the other calibration
+methods on its own detector scores: the fixed split and the 15 methods that
+adapt, without the run's own. Each gets the calibration window and then every
+scored observation, as the run's own calibration step does, and nothing a
+method decides reaches the run. All aim at one alarm rate, `alpha`, and alarm
+after `consecutive` scores in a row above their boundary. A run whose step
+adapts gives its own `alpha` and the `consecutive` of its detection rule; a
+fixed split gives the share its quantile leaves above the threshold, at least
+one in n + 1 for a calibration window of n, and `consecutive` 1. The other
+methods run with their default settings. A design that alarms on a conformal
+martingale has no boundary on scores and is refused with 422.
+`GET /dojo/runs/{run_id}/calibration` lists the run's own step first
+(`own`), then the others, each with the event metrics above counted from the
+first result the methods judged, and `alarm_share`, the share of judged
+results it would have alarmed on. A method that raised an error on the scores
+stops there and says why in `failed`; the run itself carries on.
 
 Promoting a run copies its compiled design into the pipeline library as a new
 template, the same as `POST /pipelines`, so pipeline authoring must
@@ -497,6 +515,7 @@ a `lease` and a monitor is a `service`.
 | `POST` | `/dojo/runs/{run_id}/promote` | Save a run's design as a template |
 | `DELETE` | `/dojo/runs/{run_id}` | Delete a finished run |
 | `GET` | `/dojo/runs/{run_id}/metrics` | Score a finished run against the labels |
+| `GET` | `/dojo/runs/{run_id}/calibration` | Score the calibration methods a run also tried |
 | `GET` | `/dojo/runs/{run_id}/results` | Page through a run's results |
 
 ### RADAR orchestration

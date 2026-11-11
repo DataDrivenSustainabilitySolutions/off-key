@@ -64,7 +64,7 @@ Use this page when mapping API behaviour to persisted entities and relationships
 | `dojo_dataset_points` | `(series_id, timestamp)` | The values; independent of `telemetry`, so retention never removes them |
 | `dojo_dataset_labels` | `id` | A known problem on a dataset: an interval with a note; labels of one dataset never overlap |
 | `dojo_runs` | `id` | One design replayed over one dataset: the bound configuration, status, progress, worker heartbeat and counts |
-| `dojo_run_results` | `(run_id, sequence)` | One detector result of a run: time, phase, score, threshold and alarm |
+| `dojo_run_results` | `(run_id, sequence)` | One detector result of a run: time, phase, score, threshold and alarm; for a run that compares calibration methods, `method_alarms` has one bit per method that would have alarmed |
 
 ## Relationship highlights
 

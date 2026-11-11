@@ -27,6 +27,7 @@ from off_key_core.schemas.dojo import (
     LabelSuggestionList,
     LabelSuggestionQuery,
     LabelView,
+    MethodComparison,
     RunCreate,
     RunListPage,
     RunListQuery,
@@ -405,6 +406,10 @@ async def create_dojo_run(
     and `points_read` of `points_total`. Points are replayed in time order
     through the same alignment and detector code as a live monitor, with the
     data's own timestamps as the clock. At most 20 runs wait or run at once.
+
+    With `compare_calibration` the replay also gives the run's detector scores
+    to every other calibration method, which takes longer; read the result
+    with `GET /v1/dojo/runs/{run_id}/calibration`.
     """
     return await tactic.request(
         "POST",
@@ -513,6 +518,35 @@ async def get_dojo_run_metrics(
     return await tactic.request(
         "GET",
         f"/api/v1/dojo/runs/{path_segment(run_id)}/metrics",
+        headers={"Authorization": authorization},
+    )
+
+
+@router.get("/runs/{run_id}/calibration", response_model=MethodComparison)
+@read_limit
+async def compare_dojo_run_calibration(
+    request: Request,
+    run_id: str,
+    authorization: str = Depends(member_authorization),
+):
+    """Calibration methods side by side on the scores of one finished run.
+
+    A run started with `compare_calibration` gave its detector scores to every
+    other calibration method as well: the calibration window first, then each
+    scored observation, as its own calibration step saw them. All methods aim
+    at the alarm rate `alpha` and alarm after `consecutive` scores in a row
+    above their boundary; the others run with their default settings.
+    `methods` lists the run's own step first, then the fixed split and the
+    methods that adapt. Each has the numbers of
+    `GET /v1/dojo/runs/{run_id}/metrics` against the dataset's current labels,
+    counted from the first result the methods judged, and `alarm_share`, the
+    share of judged results it alarmed on. A method that stopped on these
+    scores says why in `failed`. A run started without the comparison answers
+    409.
+    """
+    return await tactic.request(
+        "GET",
+        f"/api/v1/dojo/runs/{path_segment(run_id)}/calibration",
         headers={"Authorization": authorization},
     )
 

@@ -12,7 +12,12 @@ from uuid import uuid4
 from off_key_core.db.locks import DOJO_QUEUE_LOCK
 from off_key_core.db.maintenance import require_application_writes
 from off_key_core.db.models import DojoDataset, DojoRun, DojoRunResult, DojoSeries
-from off_key_core.models.dojo_runs import BoundSeries, bind_dataset, result_kind
+from off_key_core.models.dojo_runs import (
+    BoundSeries,
+    bind_dataset,
+    calibration_comparison,
+    result_kind,
+)
 from off_key_core.models.pipelines import compile_pipeline
 from off_key_core.schemas.dojo import (
     MAX_ACTIVE_RUNS,
@@ -54,6 +59,16 @@ class DojoRuns:
             compiled = compile_pipeline(request.definition)
         except ValueError as exc:
             raise ValidationError(bounded_utf8_text(str(exc), 4096)) from exc
+        comparison = None
+        if request.compare_calibration:
+            comparison = calibration_comparison(compiled)
+            if comparison is None:
+                raise ValidationError(
+                    "Calibration methods are compared on a boundary over the "
+                    "detector scores. This design alarms on a conformal "
+                    "martingale, which has none; give it a detector that learns "
+                    "continuously or a calibration method that adapts"
+                )
         series = {
             item.id: item
             for item in (
@@ -116,6 +131,7 @@ class DojoRuns:
                     }
                     for item, binding in zip(bound, execution.bindings, strict=True)
                 ],
+                **({"calibration_comparison": comparison} if comparison else {}),
             },
             cancel_requested=False,
             points_total=sum(item.point_count for item in bound),
@@ -289,4 +305,5 @@ class DojoRuns:
             created_at=row.created_at,
             started_at=row.started_at,
             finished_at=row.finished_at,
+            compares_calibration="calibration_comparison" in row.config,
         )

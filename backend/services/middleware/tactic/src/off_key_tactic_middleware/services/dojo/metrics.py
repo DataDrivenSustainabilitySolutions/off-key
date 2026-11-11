@@ -4,6 +4,9 @@ Metrics are computed when they are read, from the stored results and the
 current labels, so a corrected label re-scores every run without a replay.
 Only alarm rows leave the database: one ordered pass marks where each alarm
 begins, and everything else is arithmetic over the labels.
+
+A run that tried other calibration methods kept, for each result, which of
+them would have alarmed. Each method is scored like a run of its own.
 """
 
 from bisect import bisect_right
@@ -13,14 +16,17 @@ from datetime import datetime
 from statistics import median
 
 from off_key_core.db.models import DojoDataset, DojoLabel, DojoRun, DojoRunResult
-from off_key_core.models.dojo_runs import result_kind
+from off_key_core.models.dojo_runs import FIXED_METHOD, result_kind
+from off_key_core.models.pipeline_calibration import CALIBRATORS
 from off_key_core.schemas.dojo import (
     Comparison,
     ComparisonQuery,
     LabelOutcome,
+    MethodComparison,
+    MethodMetrics,
     RunMetrics,
 )
-from sqlalchemy import false, func, select
+from sqlalchemy import false, func, or_, select
 
 from ...domain import ConflictError, NotFoundError, ValidationError
 from .labels import dataset_labels, label_view
@@ -130,6 +136,16 @@ def _overlap(label: Interval, start: datetime | None, end: datetime | None) -> f
     return max((upper - lower).total_seconds(), 0.0)
 
 
+def _rate(part: int, whole: int) -> float | None:
+    return part / whole if whole else None
+
+
+def _per_day(evaluation: Evaluation) -> float | None:
+    if evaluation.evaluated_seconds <= 0:
+        return None
+    return evaluation.false_alarms * DAY_SECONDS / evaluation.evaluated_seconds
+
+
 class DojoMetrics:
     def __init__(self, session):
         self.session = session
@@ -156,6 +172,134 @@ class DojoMetrics:
             labels=[label_view(label) for label in labels],
             runs=[await self._metrics(run, labels) for run in runs],
         )
+
+    async def calibration(self, run_id: str) -> MethodComparison:
+        """The run's own calibration step beside every method it also tried."""
+        run = await self._run(run_id)
+        plan = run.config.get("calibration_comparison")
+        if plan is None:
+            raise ConflictError(
+                "The run compared no calibration methods; start a run that does"
+            )
+        labels = await dataset_labels(self.session, run.dataset_id)
+        intervals = [
+            Interval(label.id, label.start_at, label.end_at) for label in labels
+        ]
+        judged = DojoRunResult.method_alarms.is_not(None)
+        scored_from, scored_to, results = (
+            await self.session.execute(
+                select(
+                    func.min(DojoRunResult.timestamp),
+                    func.max(DojoRunResult.timestamp),
+                    func.count(),
+                ).where(DojoRunResult.run_id == run.id, judged)
+            )
+        ).one()
+        rows = await self._method_alarms(run.id)
+        failed = plan.get("failed", {})
+        methods = []
+        evaluated = 0.0
+        for position, method in enumerate([plan["own"], *plan["methods"]]):
+            if position == 0:
+                alarms = [
+                    Alarm(timestamp, not before)
+                    for timestamp, alarm, _, before, _ in rows
+                    if alarm
+                ]
+            else:
+                bit = 1 << (position - 1)
+                alarms = [
+                    Alarm(timestamp, not before & bit)
+                    for timestamp, _, mask, _, before in rows
+                    if mask & bit
+                ]
+            evaluation = evaluate(intervals, alarms, scored_from, scored_to)
+            evaluated = evaluation.evaluated_seconds
+            delays = [
+                item.delay_seconds
+                for item in evaluation.labels
+                if item.delay_seconds is not None
+            ]
+            methods.append(
+                MethodMetrics(
+                    method=method,
+                    name=(
+                        "Fixed split"
+                        if method == FIXED_METHOD
+                        else CALIBRATORS[method]["name"]
+                    ),
+                    family=(
+                        "fixed"
+                        if method == FIXED_METHOD
+                        else CALIBRATORS[method]["family"]
+                    ),
+                    own=position == 0,
+                    failed=failed.get(method),
+                    alarm_count=len(alarms),
+                    alarm_share=len(alarms) / results if results else None,
+                    labels_scored=evaluation.labels_scored,
+                    labels_detected=evaluation.labels_detected,
+                    detection_rate=_rate(
+                        evaluation.labels_detected, evaluation.labels_scored
+                    ),
+                    median_delay_seconds=median(delays) if delays else None,
+                    false_alarms=evaluation.false_alarms,
+                    false_alarms_per_day=_per_day(evaluation),
+                )
+            )
+        return MethodComparison(
+            run_id=run.id,
+            run_name=run.name,
+            alpha=plan["alpha"],
+            consecutive=plan["consecutive"],
+            results=results,
+            scored_from=scored_from,
+            scored_to=scored_to,
+            labels_total=len(labels),
+            evaluated_seconds=evaluated,
+            methods=methods,
+        )
+
+    async def _method_alarms(self, run_id: str) -> list[tuple]:
+        """The judged results on which the run or any method alarmed, each with
+        what the result before it did: time, alarm, methods, and both before."""
+        order = DojoRunResult.sequence
+        ordered = (
+            select(
+                DojoRunResult.sequence,
+                DojoRunResult.timestamp,
+                DojoRunResult.alarm,
+                DojoRunResult.method_alarms,
+                func.coalesce(
+                    func.lag(DojoRunResult.alarm).over(order_by=order), false()
+                ).label("alarm_before"),
+                func.coalesce(
+                    func.lag(DojoRunResult.method_alarms).over(order_by=order), 0
+                ).label("methods_before"),
+            )
+            .where(DojoRunResult.run_id == run_id)
+            .subquery()
+        )
+        columns = ordered.c
+        return [
+            tuple(row)
+            for row in (
+                await self.session.execute(
+                    select(
+                        columns.timestamp,
+                        columns.alarm,
+                        columns.method_alarms,
+                        columns.alarm_before,
+                        columns.methods_before,
+                    )
+                    .where(
+                        columns.method_alarms.is_not(None),
+                        or_(columns.alarm, columns.method_alarms != 0),
+                    )
+                    .order_by(columns.sequence)
+                )
+            ).all()
+        ]
 
     async def _run(self, run_id: str) -> DojoRun:
         run = await self.session.get(DojoRun, run_id)
@@ -198,21 +342,13 @@ class DojoMetrics:
             labels_total=len(labels),
             labels_scored=evaluation.labels_scored,
             labels_detected=evaluation.labels_detected,
-            detection_rate=(
-                evaluation.labels_detected / evaluation.labels_scored
-                if evaluation.labels_scored
-                else None
-            ),
+            detection_rate=_rate(evaluation.labels_detected, evaluation.labels_scored),
             median_delay_seconds=median(delays) if delays else None,
             max_delay_seconds=max(delays) if delays else None,
             alarm_count=run.alarm_count,
             false_alarms=evaluation.false_alarms,
             evaluated_seconds=evaluation.evaluated_seconds,
-            false_alarms_per_day=(
-                evaluation.false_alarms * DAY_SECONDS / evaluation.evaluated_seconds
-                if evaluation.evaluated_seconds > 0
-                else None
-            ),
+            false_alarms_per_day=_per_day(evaluation),
             labels=evaluation.labels,
         )
 

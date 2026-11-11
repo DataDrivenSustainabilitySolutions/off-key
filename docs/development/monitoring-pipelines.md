@@ -519,6 +519,32 @@ score seen. Several detectors need that for any method, and
 of its window about once in n scores. The compiler warns below that
 (`minimum_window`).
 
+#### Comparing calibration methods in the Dojo
+
+A Dojo run can try the other calibration methods beside its own
+(`compare_calibration`). TACTIC stores the plan with the run
+(`calibration_comparison` in `dojo_runs.config`, from
+`models/dojo_runs.py`): the run's own method, the methods to try in order, and
+the `alpha` and `consecutive` they share. The replay installs a
+`CalibrationComparison` (`calibration_comparison.py`) on the detector service.
+The service hands it the calibration window where its own step starts, and then
+the detector scores of every operational observation after the detectors took
+it in, so each method sees exactly what a run with that calibration step would.
+Several detectors meet as in a run: against their latest scores for a method
+that adapts (`RollingRanks`), against their calibration scores for the fixed
+split (`RankFusion`). `tests/radar/test_calibration_comparison.py` holds each
+compared method to the alarms of a replay whose design has that step.
+
+A monitor never has a comparison; only `Replay` sets one. Each result carries
+`method_alarms`, one bit per method in the plan's order, stored in
+`dojo_run_results.method_alarms` (migration 027) and null before the run is
+operational. A method that raises leaves the comparison and the worker writes
+the reason to `calibration_comparison.failed` when the run ends. TACTIC scores
+each method on read like a run of its own (`DojoMetrics.calibration`), so a
+moved label re-scores the methods too. All 15 adapting methods together cost
+about 2 ms per observation, mostly the Bayesian ones, which is why the
+comparison is asked for per run.
+
 #### The editor without a lane
 
 The composer has no strategy switch and no `strategy.ts`. `learning.ts` holds

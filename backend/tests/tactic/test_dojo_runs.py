@@ -10,12 +10,14 @@ from off_key_core.db.base import get_db_async
 from off_key_core.db.models import (
     DeploymentMaintenance,
     DojoDataset,
+    DojoLabel,
     DojoPoint,
     DojoRun,
     DojoRunResult,
     DojoSeries,
     User,
 )
+from off_key_core.models.pipeline_calibration import CALIBRATORS
 from off_key_core.schemas.dojo import (
     CsvImportQuery,
     RunAlignment,
@@ -32,6 +34,7 @@ from off_key_tactic_middleware.domain import (
 )
 from off_key_tactic_middleware.services.dojo import runs as runs_module
 from off_key_tactic_middleware.services.dojo.datasets import DojoDatasets
+from off_key_tactic_middleware.services.dojo.metrics import DojoMetrics
 from off_key_tactic_middleware.services.dojo.runs import DojoRuns
 from sqlalchemy import func, select
 
@@ -55,6 +58,7 @@ async def sessions(member_database, monkeypatch):
             DojoDataset,
             DojoSeries,
             DojoPoint,
+            DojoLabel,
             DojoRun,
             DojoRunResult,
         ):
@@ -78,9 +82,9 @@ async def dataset(factory, minutes=200):
 
 
 def request(view, **fields):
+    fields.setdefault("definition", quick())
     return RunCreate(
         dataset_id=view.id,
-        definition=quick(),
         bindings={
             slot: series.id for slot, series in zip(SLOTS, view.series, strict=True)
         },
@@ -129,6 +133,55 @@ async def test_a_run_is_bound_queued_replayed_and_read_back(sessions):
     assert rest.items[-1].phase == "operational"
     assert rest.items[-1].timestamp == T0 + timedelta(minutes=199)
     assert [item.id for item in listed.items] == [run.id]
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_compares_calibration_methods_is_scored_per_method(sessions):
+    """Queued through the service, replayed by the worker, read as metrics."""
+    engine, factory = sessions
+    creator, view = await dataset(factory)
+    async with factory() as session:
+        runs = DojoRuns(session)
+        run = await runs.create(
+            request(view, compare_calibration=True), created_by=creator
+        )
+        plain = await runs.create(request(view), created_by=creator)
+        with pytest.raises(ValidationError, match="conformal martingale"):
+            await runs.create(
+                request(
+                    view,
+                    definition=quick("static_baseline"),
+                    compare_calibration=True,
+                ),
+                created_by=creator,
+            )
+    assert run.compares_calibration and not plain.compares_calibration
+
+    worker = DojoWorker(engine, WorkerOptions(worker_id="w", write_batch=40))
+    assert await worker.run_once() and await worker.run_once()
+
+    async with factory() as session:
+        metrics = DojoMetrics(session)
+        comparison = await metrics.calibration(run.id)
+        own = await metrics.run(run.id)
+        with pytest.raises(ConflictError, match="compared no calibration methods"):
+            await metrics.calibration(plain.id)
+    methods = comparison.methods
+    assert [item.method for item in methods] == ["fixed_split", *CALIBRATORS]
+    assert [item.own for item in methods] == [True] + [False] * 15
+    assert (methods[0].name, methods[0].family) == ("Fixed split", "fixed")
+    assert (methods[2].name, methods[2].family) == ("ACI", "conformal")
+    assert all(item.failed is None for item in methods)
+    # The design's quantile of 1.0 is the largest of the 40 calibration scores.
+    assert comparison.alpha == pytest.approx(1 / 41)
+    assert comparison.consecutive == 1
+    assert 0 < comparison.results < 200
+    assert comparison.scored_to == T0 + timedelta(minutes=199)
+    # The run's own row counts the alarms the run raised.
+    assert methods[0].alarm_count == own.alarm_count
+    assert all(
+        item.alarm_share == item.alarm_count / comparison.results for item in methods
+    )
 
 
 @pytest.mark.asyncio

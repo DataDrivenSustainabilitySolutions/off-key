@@ -240,12 +240,22 @@ live. Nothing in it claims readings, starts monitors or writes to Reporting.
 3. **Runs** starts a run: choose a template or a design from the library, check
    which series feeds each input, and start it. The run replays the dataset in
    time order through the same alignment, learning and scoring as a live
-   monitor; its progress updates while it runs.
+   monitor; its progress updates while it runs. Tick **Compare calibration
+   methods** to have the run also try the fixed split and every calibration
+   method that adapts on its own detector scores. The run takes longer. A
+   design that alarms on a conformal martingale has no boundary on its scores,
+   so the option is off for it.
 4. **Compare** puts up to six finished runs side by side (the three newest are
    ticked when it opens): their alarms under
    the values, how many labels each detected and how soon, and how many false
    alarms each raised per day outside the labels. The best value of a metric is
-   bold. Editing a label re-scores every run at once.
+   bold. Editing a label re-scores every run at once. Below, **Calibration
+   methods** ranks what a run that compared them found: for each method, how
+   many labels it would have detected and how soon, its false alarms per day
+   and the share of results it would have alarmed on. Every method saw the
+   same scores at the same alarm rate; the row marked **This run** is the
+   design's own calibration step with its settings, the others run with their
+   defaults. To use a better method, change the design's calibration step.
 5. **Use as template**, on a finished run, saves its design to the template
    library; it needs the permission to manage monitors. **Start a monitor**
    then opens the template in Monitoring with each input set to the recorded

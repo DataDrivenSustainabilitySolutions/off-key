@@ -41,7 +41,7 @@ export function RunsPanel({ dataset, runs, onRunsChange }: {
         <tbody>{runs.map(run => {
           const state = runState(run);
           return <tr key={run.id}>
-            <td>{runName(run)}<small>{resultKindLabel(run.strategy)}</small></td>
+            <td>{runName(run)}<small>{resultKindLabel(run.strategy)}{run.compares_calibration && " · compares calibration methods"}</small></td>
             <td><span className={`mn-state mn-state--${state.tone}`}>{state.label}</span>
               {run.error && <small title={run.error}>{run.error}</small>}</td>
             <td>{run.result_count.toLocaleString()}<small>{run.points_read.toLocaleString()} of {run.points_total.toLocaleString()} values</small></td>

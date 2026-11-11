@@ -230,6 +230,99 @@
         "type": "object"
       }
     },
+    "aberrant_holt_winters_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": null,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "alpha": 0.2,
+        "beta": 0.05,
+        "gamma": 0.1,
+        "lead": 1,
+        "min_scale": 1e-06,
+        "residual_alpha": 0.05,
+        "score": "scaled"
+      },
+      "forecaster_id": "holt_winters",
+      "import_path": "aberrant.forecast.HoltWinters",
+      "name": "Aberrant HoltWinters forecaster",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "alpha": {
+            "default": 0.2,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "beta": {
+            "default": 0.05,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "gamma": {
+            "default": 0.1,
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "maximum": 500000,
+            "minimum": 2,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_length"
+        ],
+        "type": "object"
+      }
+    },
     "aberrant_incremental_one_class_svm_adaptive_kernel": {
       "algorithm_family": "svm",
       "available": true,
@@ -1552,6 +1645,77 @@
         "required": [
           "subsequence_length"
         ],
+        "type": "object"
+      }
+    },
+    "aberrant_seasonal_naive_forecaster": {
+      "algorithm_family": "forecast",
+      "available": true,
+      "bound_parameters": [
+        "target"
+      ],
+      "catalog_id": "residual_detector",
+      "default_capabilities": {
+        "event_kind": "univariate",
+        "feature_count": {
+          "maximum": 1,
+          "minimum": 1
+        },
+        "feature_schema": "fixed",
+        "higher_is_more_anomalous": true,
+        "requires_unit_interval": false,
+        "resettable": false,
+        "score_kind": "non_negative",
+        "state": "bounded",
+        "warmup": {
+          "minimum": 2,
+          "unit": "events"
+        }
+      },
+      "default_parameters": {
+        "lead": 1,
+        "min_scale": 1e-06,
+        "residual_alpha": 0.05,
+        "score": "scaled",
+        "season_length": 1
+      },
+      "forecaster_id": "seasonal_naive",
+      "import_path": "aberrant.forecast.SeasonalNaive",
+      "name": "Aberrant SeasonalNaive forecaster",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "lead": {
+            "default": 1,
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_scale": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "residual_alpha": {
+            "default": 0.05,
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "score": {
+            "default": "scaled",
+            "enum": [
+              "absolute",
+              "scaled"
+            ]
+          },
+          "season_length": {
+            "default": 1,
+            "maximum": 500000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
         "type": "object"
       }
     },

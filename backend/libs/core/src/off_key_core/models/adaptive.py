@@ -51,6 +51,17 @@ MODEL_IDS = {
     },
 }
 
+# A forecaster step scores one feature against the forecast made for it: each is
+# Aberrant's residual detector around one forecaster. The step's settings are the
+# forecaster's own, plus how far ahead it forecasts and how the miss is scored.
+RESIDUAL_DETECTOR = "residual_detector"
+FORECASTER_IDS = {
+    "aberrant_seasonal_naive_forecaster": "seasonal_naive",
+    "aberrant_holt_winters_forecaster": "holt_winters",
+}
+# Settings of the residual detector itself; the others belong to its forecaster.
+_RESIDUAL_SETTINGS = ("target", "lead", "score")
+
 # Application presets deliberately preserve the previous monitoring defaults.
 MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     **{
@@ -121,6 +132,13 @@ PARAMETER_LIMITS = {
     "gamma": {"minimum": 0, "maximum": 1},
     "residual_alpha": {"exclusiveMinimum": 0, "maximum": 1},
     "min_scale": {"exclusiveMinimum": 0},
+    # A forecast is compared with the value that arrives this many updates later.
+    "lead": {"minimum": 1, "maximum": 1024},
+}
+
+# Limits that differ for one forecaster. Season length 1 repeats the last value.
+FORECASTER_LIMITS: dict[str, dict[str, dict[str, Any]]] = {
+    "seasonal_naive": {"season_length": {"minimum": 1, "maximum": 500_000}},
 }
 
 CATALOG = json.loads(files(__package__).joinpath("adaptive_catalog.json").read_text())
@@ -129,7 +147,7 @@ ADAPTIVE_MODELS_BY_TYPE: dict[str, dict[str, Any]] = CATALOG["models"]
 
 
 # Detector parameters bound from the feature schema, never from user input.
-BOUND_PARAMETER_NAMES = ("abs_diff", "key", "keys")
+BOUND_PARAMETER_NAMES = ("abs_diff", "key", "keys", "target")
 
 
 def bind_detector_parameters(
@@ -142,11 +160,34 @@ def bind_detector_parameters(
     for name in bound_parameters:
         if name == "abs_diff":
             result[name] = True
-        elif name == "key":
+        elif name in ("key", "target"):
             result[name] = feature_names[0] if feature_names else None
         else:
             result[name] = feature_names
     return result
+
+
+def forecaster_parameters(forecaster_id: str, params: Mapping[str, Any]) -> dict:
+    """A forecaster step's settings as Aberrant's residual detector parameters.
+
+    The forecaster forecasts exactly as far ahead as the lead that is scored.
+    """
+    outer = {name: params[name] for name in _RESIDUAL_SETTINGS if name in params}
+    inner = {name: value for name, value in params.items() if name not in outer}
+    if outer.get("lead") is not None:
+        inner["horizon"] = outer["lead"]
+    return {**outer, "model": {"id": forecaster_id, "params": inner}}
+
+
+def aberrant_model(definition: Mapping[str, Any], params: Mapping[str, Any]) -> dict:
+    """The Aberrant model configuration for a detector's bound parameters."""
+    forecaster_id = definition.get("forecaster_id")
+    return {
+        "id": definition["catalog_id"],
+        "params": forecaster_parameters(forecaster_id, params)
+        if forecaster_id
+        else dict(params),
+    }
 
 
 def validate_adaptive_model_params(
@@ -208,16 +249,22 @@ def validate_adaptive_model_params(
             ],
         )
     if (
-        model_type == "aberrant_seasonal_residual_detector"
+        model_type
+        in ("aberrant_seasonal_residual_detector", "aberrant_holt_winters_forecaster")
         and merged["gamma"] > 1 - merged["alpha"]
     ):
+        name = (
+            "Seasonal residual detector"
+            if model_type == "aberrant_seasonal_residual_detector"
+            else "Holt-Winters forecaster"
+        )
         raise parameter_error(
             model_type,
             [
                 ParameterIssue(
                     code="invalid_value",
                     loc=("gamma",),
-                    message="Seasonal residual detector requires gamma <= 1 - alpha",
+                    message=f"{name} requires gamma <= 1 - alpha",
                 )
             ],
         )

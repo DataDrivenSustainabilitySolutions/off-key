@@ -333,7 +333,11 @@ def pipeline_components() -> list[PipelineComponent]:
                 id=f"detector:{identifier}",
                 kind="detector",
                 label=model["name"],
-                description="Adaptive score-before-learn anomaly detector.",
+                description=(
+                    "Scores a feature by how far it misses its forecast."
+                    if "forecaster_id" in model
+                    else "Adaptive score-before-learn anomaly detector."
+                ),
                 strategies=["adaptive_stream"],
                 learning="online",
                 parameter_schema=schema,

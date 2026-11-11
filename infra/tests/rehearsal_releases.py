@@ -1,7 +1,7 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference is the commit that pins RADAR to Aberrant's main branch for the
-score calibrators, carrying migration 025 and Aberrant 1.5.0 numerics. It is not
+The reference is the commit that adds the forecaster steps to the catalog,
+carrying migration 025 and Aberrant 1.5.0 numerics. It is not
 an eligible production release and proves no pre-feature compatibility.
 """
 
@@ -21,7 +21,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "7194e94fa5a052e8cbed08dbee5030e747f1c82f"
+COMPATIBLE_REVISION = "386eb796a735aa60dae48cd41788b0e950a2099d"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

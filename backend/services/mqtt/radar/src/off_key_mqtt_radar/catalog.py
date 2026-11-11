@@ -12,14 +12,19 @@ from itertools import product
 from aberrant import __version__
 from aberrant.catalog import (
     TRANSFORMER_CATALOG,
+    get_forecaster_spec,
     get_model_spec,
     get_similarity_engine_spec,
 )
 from off_key_core.models.adaptive import (
     BOUND_PARAMETER_NAMES,
+    FORECASTER_IDS,
+    FORECASTER_LIMITS,
     MODEL_DEFAULTS,
     MODEL_IDS,
     PARAMETER_LIMITS,
+    RESIDUAL_DETECTOR,
+    forecaster_parameters,
 )
 
 
@@ -67,6 +72,74 @@ def constrain_retained_readiness(schema, spec, defaults):
             )
 
 
+def _bind(properties: dict) -> list[str]:
+    """Remove the parameters RADAR binds from the features a detector reads."""
+    bound_parameters = sorted(set(properties) & set(BOUND_PARAMETER_NAMES))
+    for name in bound_parameters:
+        del properties[name]
+    return bound_parameters
+
+
+def _limit(properties: dict, defaults: dict, limits: dict) -> None:
+    for name, field in properties.items():
+        field.update(limits.get(name, {}))
+        if name in defaults:
+            field["default"] = defaults[name]
+
+
+def _supported(catalog_id: str, spec, capabilities: dict) -> None:
+    if capabilities["warmup"]["unit"] not in {"events", "retained_values"}:
+        raise ValueError(f"RADAR does not support {catalog_id}'s warm-up unit")
+    if capabilities["higher_is_more_anomalous"] is not True or not spec.declarative:
+        raise ValueError(f"RADAR requires a declarative anomaly score: {catalog_id}")
+
+
+def _forecaster_entry(forecaster_id: str) -> dict:
+    """A forecaster step: the forecaster's settings, a lead and a score.
+
+    Its horizon is not a setting: the forecaster forecasts as far as the lead.
+    """
+    spec = get_model_spec(RESIDUAL_DETECTOR)
+    forecaster = get_forecaster_spec(forecaster_id)
+    detector = spec.parameter_schema()["properties"]
+    schema = forecaster.parameter_schema()
+    properties = schema["properties"]
+    del properties["horizon"]
+    properties["lead"] = {"type": "integer", "default": 1}
+    properties["score"] = detector["score"]
+    bound_parameters = _bind(detector)
+    if set(detector) != {"model", "lead", "score"}:
+        raise ValueError("The residual detector has settings RADAR does not map")
+    defaults = {
+        name: field["default"]
+        for name, field in properties.items()
+        if "default" in field
+    }
+    _limit(
+        properties,
+        defaults,
+        PARAMETER_LIMITS | FORECASTER_LIMITS.get(forecaster_id, {}),
+    )
+    capabilities = spec.capabilities(
+        forecaster_parameters(forecaster_id, defaults)
+    ).as_dict()
+    _supported(RESIDUAL_DETECTOR, spec, capabilities)
+    if capabilities["warmup"]["unit"] != "events":
+        raise ValueError(f"RADAR needs {forecaster_id} to warm up in events")
+    return {
+        "catalog_id": RESIDUAL_DETECTOR,
+        "forecaster_id": forecaster_id,
+        "name": f"Aberrant {forecaster.display_name} forecaster",
+        "import_path": forecaster.import_path,
+        "algorithm_family": spec.family,
+        "available": spec.available and forecaster.available,
+        "parameter_schema": schema,
+        "default_parameters": defaults,
+        "default_capabilities": capabilities,
+        "bound_parameters": bound_parameters,
+    }
+
+
 def generate_catalog() -> dict:
     models = {}
     engine_spec = get_similarity_engine_spec("faiss")
@@ -78,19 +151,14 @@ def generate_catalog() -> dict:
         spec = get_model_spec(catalog_id)
         schema = spec.parameter_schema()
         properties = schema["properties"]
-        bound_parameters = sorted(set(properties) & set(BOUND_PARAMETER_NAMES))
-        for name in bound_parameters:
-            del properties[name]
+        bound_parameters = _bind(properties)
         defaults = {
             name: field["default"]
             for name, field in properties.items()
             if "default" in field
         }
         defaults.update(MODEL_DEFAULTS.get(catalog_id, {}))
-        for name, field in properties.items():
-            field.update(PARAMETER_LIMITS.get(name, {}))
-            if name in defaults:
-                field["default"] = defaults[name]
+        _limit(properties, defaults, PARAMETER_LIMITS)
         available = spec.available
         if "similarity_engine" in properties:
             engine = properties["similarity_engine"]
@@ -100,12 +168,7 @@ def generate_catalog() -> dict:
             available = available and engine_spec.available
         capabilities = spec.capabilities(defaults).as_dict()
         constrain_retained_readiness(schema, spec, defaults)
-        if capabilities["warmup"]["unit"] not in {"events", "retained_values"}:
-            raise ValueError(f"RADAR does not support {catalog_id}'s warm-up unit")
-        if capabilities["higher_is_more_anomalous"] is not True or not spec.declarative:
-            raise ValueError(
-                f"RADAR requires a declarative anomaly score: {catalog_id}"
-            )
+        _supported(catalog_id, spec, capabilities)
         models[model_type] = {
             "catalog_id": catalog_id,
             "name": f"Aberrant {spec.display_name}",
@@ -117,6 +180,8 @@ def generate_catalog() -> dict:
             "default_capabilities": capabilities,
             "bound_parameters": bound_parameters,
         }
+    for model_type, forecaster_id in FORECASTER_IDS.items():
+        models[model_type] = _forecaster_entry(forecaster_id)
     return json.loads(
         json.dumps(
             {

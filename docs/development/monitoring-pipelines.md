@@ -355,6 +355,19 @@ the policy keeps its own parameters, including the quantile. Every other
 calibration step keeps adapting (see below). A `forecasts` port type is reserved
 for forecasters.
 
+A forecaster step is a detector that scores one feature by how far it misses the
+forecast made for it. `FORECASTER_IDS` in `models/adaptive.py` lists them; each
+is ABERRANT's `residual_detector` around one forecaster (`seasonal_naive`,
+`holt_winters`). A step's settings are the forecaster's own plus `lead`, how
+many updates ahead it forecasts, and `score`. `aberrant_model()` nests them into
+the residual detector's configuration, binds the step's single feature as the
+target and sets the forecaster's horizon to the lead. Warm-up is two seasons plus
+`lead - 1` updates and must fit the training window. Forecaster steps give
+`scores` today, so they work in front of `calibrate.fixed_split`; they move to
+the `forecasts` port once a calibration step reads forecasts. The composer lists
+them under Forecaster (`stepFamily`), where pretrained forecasters (`forecast.`
+components) will join them.
+
 Schema 1 designs are read as schema 2: `upgrade()` moves the policy's inputs onto
 a synthetic `calibrate.fixed_split` step and its `fusion` onto that step. Node
 and edge limits are checked on the stored form before the step is added. The
@@ -723,8 +736,8 @@ pipeline-compatible build, then returns to the current build. Each cutover check
 the actual application and worker image digests, fresh graph scoring, bindings,
 layout, retained run history and single-worker ownership with authoring disabled.
 The test-only reference is immutable commit
-`7194e94fa5a052e8cbed08dbee5030e747f1c82f`, the commit that pins RADAR to
-ABERRANT's main branch for the score calibrators, on top of migration 025
+`386eb796a735aa60dae48cd41788b0e950a2099d`, the commit that adds the forecaster
+steps to the catalog, on top of migration 025
 (`evidence_cursor`). It shares the current
 migration ledger, the ABERRANT 1.5.0 pin, frozen lock, generated catalog
 and field discovery metadata, so an already-open new browser keeps its controls
@@ -733,9 +746,9 @@ names, so the rehearsal calls and reads both releases the same way.
 The test uses the current API directly, without compatibility adapters or
 response rewriting.
 Monitors are started on the current release, by reading id.
-The previous reference, `b03157ec`, has the same schema but locks ABERRANT
-1.4.0, so the rehearsal no longer accepts it; the one before, `9311f993`, has a
-catalog without the seasonal forecast detector, and releases before
+The previous reference, `7194e94f`, has a catalog without the forecaster steps;
+`b03157ec` before it locks ABERRANT 1.4.0, so the rehearsal accepts neither.
+Releases before
 migration 025 refuse a database that has applied it. Rolling back past migration 025 means restoring a verified
 backup, as
 [recovery](../operations/recovery.md) describes.

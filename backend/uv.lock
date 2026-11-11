@@ -25,14 +25,14 @@ members = [
 [[package]]
 name = "aberrant"
 version = "1.5.0"
-source = { url = "https://github.com/OliverHennhoefer/aberrant/archive/fb461979ddd689cf32b04472b5779f5df97efbac.tar.gz" }
+source = { url = "https://github.com/OliverHennhoefer/aberrant/archive/8cadb7e83cebfa433382b4772004be5d38b6f384.tar.gz" }
 dependencies = [
     { name = "filelock" },
     { name = "numpy" },
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { hash = "sha256:8adfb81f5cf13bdfaf1708475e2d6a4248ac52a6f25b73bd9501fa674f6268cd" }
+sdist = { hash = "sha256:bd442f6ed91abf5ec187eee6a2366cc5c96b7b7101bf022ea3bc987aaeb88aa6" }
 
 [package.optional-dependencies]
 faiss = [
@@ -2139,7 +2139,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aberrant", extras = ["faiss"], url = "https://github.com/OliverHennhoefer/aberrant/archive/fb461979ddd689cf32b04472b5779f5df97efbac.tar.gz" },
+    { name = "aberrant", extras = ["faiss"], url = "https://github.com/OliverHennhoefer/aberrant/archive/8cadb7e83cebfa433382b4772004be5d38b6f384.tar.gz" },
     { name = "janus", specifier = ">=2,<3" },
     { name = "nonconform", extras = ["pyod"], specifier = ">=1.0.0,<3" },
     { name = "numpy", specifier = ">=1.24.0" },

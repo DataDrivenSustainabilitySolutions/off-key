@@ -12,6 +12,7 @@ from off_key_core.models import (
     ADAPTIVE_MODELS_BY_TYPE,
     validate_adaptive_model_params,
 )
+from off_key_core.models.adaptive import aberrant_model
 from off_key_core.schemas.radar import AdaptiveStreamConfig
 from off_key_mqtt_radar.adaptive_detector import (
     AdaptiveStreamDetectionService,
@@ -58,6 +59,8 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
     "aberrant_knn": {"k": 1, "window_size": 8, "warm_up": 1},
     "aberrant_local_outlier_factor": {"k": 1, "window_size": 8},
     "aberrant_seasonal_residual_detector": {"season_length": 4},
+    "aberrant_holt_winters_forecaster": {"season_length": 4, "lead": 2},
+    "aberrant_seasonal_naive_forecaster": {"season_length": 4},
 }
 
 
@@ -96,7 +99,11 @@ def _runtime_config(
     minimum = max(
         2,
         get_model_spec(ADAPTIVE_MODELS_BY_TYPE[model_type]["catalog_id"])
-        .capabilities(validated_params)
+        .capabilities(
+            aberrant_model(ADAPTIVE_MODELS_BY_TYPE[model_type], validated_params)[
+                "params"
+            ]
+        )
         .warmup.minimum
         or 0,
     )
@@ -150,7 +157,7 @@ def _record(detector, scores: list[float]) -> list[float]:
 
 
 def test_catalog_contains_only_supported_numeric_detectors() -> None:
-    assert len(ADAPTIVE_MODELS_BY_TYPE) == 27
+    assert len(ADAPTIVE_MODELS_BY_TYPE) == 29
     for definition in ADAPTIVE_MODELS_BY_TYPE.values():
         spec = get_model_spec(definition["catalog_id"])
         assert spec.load()
@@ -231,6 +238,8 @@ def test_score_then_learn_quantile_max_and_strict_comparison(
         "aberrant_rolling_matrix_profile",
         "aberrant_multivariate_rolling_matrix_profile",
         "aberrant_seasonal_residual_detector",
+        "aberrant_holt_winters_forecaster",
+        "aberrant_seasonal_naive_forecaster",
     ],
 )
 def test_native_pipeline_checkpoint_preserves_future_scores(model_type: str) -> None:
@@ -315,6 +324,71 @@ def test_seasonal_residual_scores_a_break_in_the_cycle_above_the_cycle():
     assert detector.state is AdaptiveStreamState.OPERATIONAL
     assert max(scores[12:]) < 0.5
     assert spike.anomaly_score > 10 * max(scores[12:], default=0.0) + 1
+
+
+def test_forecaster_warmup_of_two_seasons_and_its_lead_must_fit_training():
+    with pytest.raises(ValueError, match="at least 53 updates"):
+        AdaptiveStreamDetectionService(
+            _config(
+                AdaptiveStreamConfig(
+                    model_type="aberrant_holt_winters_forecaster",
+                    model_params={"season_length": 24, "lead": 6},
+                    training_window_size=52,
+                ),
+                _features(1),
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("model_type", "lead"),
+    [
+        ("aberrant_holt_winters_forecaster", 1),
+        ("aberrant_holt_winters_forecaster", 3),
+        ("aberrant_seasonal_naive_forecaster", 1),
+        ("aberrant_seasonal_naive_forecaster", 2),
+    ],
+)
+def test_forecaster_scores_a_break_in_the_cycle_above_the_cycle(model_type, lead):
+    pattern = [0.0, 10.0, 0.0, -10.0]
+    adaptive = AdaptiveStreamConfig(
+        model_type=model_type,
+        model_params={"season_length": 4, "lead": lead},
+        training_window_size=12,
+        calibration_window_size=4,
+    )
+    detector = AdaptiveStreamDetectionService(_config(adaptive, _features(1)))
+    scores = [
+        detector.process_data_point({"x0": 100.0 + pattern[index % 4]}).anomaly_score
+        for index in range(40)
+    ]
+    # The reading arrives where the cycle expects its trough.
+    spike = detector.process_data_point({"x0": 110.0})
+
+    assert detector.state is AdaptiveStreamState.OPERATIONAL
+    assert max(scores[16:]) < 0.5
+    assert spike.anomaly_score > 10 * max(scores[16:], default=0.0) + 1
+
+
+def test_holt_winters_forecaster_at_lead_one_is_the_seasonal_residual_detector():
+    cycle = [0.0, 10.0, 0.0, -10.0]
+    values = [100.0 + cycle[index % 4] + index for index in range(40)]
+
+    def scores(model_type: str) -> list[float]:
+        adaptive = AdaptiveStreamConfig(
+            model_type=model_type,
+            model_params={"season_length": 4},
+            training_window_size=8,
+            calibration_window_size=4,
+        )
+        detector = AdaptiveStreamDetectionService(_config(adaptive, _features(1)))
+        return [
+            detector.process_data_point({"x0": value}).anomaly_score for value in values
+        ]
+
+    assert scores("aberrant_holt_winters_forecaster") == pytest.approx(
+        scores("aberrant_seasonal_residual_detector")
+    )
 
 
 def test_pca_initialization_cannot_be_shortened_by_model_warmup():

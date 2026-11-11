@@ -150,10 +150,8 @@ See [Deployment modes](../operations/deployment-modes.md) for operational comman
 
 ## Aberrant catalog integration
 
-RADAR pins `aberrant[faiss]` in
-`backend/services/mqtt/radar/pyproject.toml`. Until the next Aberrant release is
-published, the pin is a commit of Aberrant's main branch, installed from its
-source archive: the score calibrators RADAR builds on are not on PyPI yet. Shared configuration, Gateway, and TACTIC
+RADAR pins the `aberrant[faiss]` release in
+`backend/services/mqtt/radar/pyproject.toml`. Shared configuration, Gateway, and TACTIC
 read `off_key_core/models/adaptive_catalog.json`; they do not import NumPy,
 SciPy, FAISS, or Aberrant. The snapshot is generated from the same installed
 library and optional dependencies as RADAR. `models/adaptive.py` owns only the

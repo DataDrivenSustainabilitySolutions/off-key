@@ -220,13 +220,6 @@ const readCanvas = (chart: Locator): Promise<CanvasReadout> => chart.evaluate((c
     orange: normalize(orange), topRed: normalize(topRed), overflowPixels };
 });
 
-const screenshotCard = async (page: Page, card: Locator, path: string) => {
-  await page.locator("header").evaluateAll((headers) => {
-    headers.forEach((header) => { header.style.visibility = "hidden"; });
-  });
-  await card.screenshot({ path });
-};
-
 test.use({ video: "off", trace: "off" });
 
 test.describe("Tandem anomaly chart regression", () => {
@@ -274,7 +267,7 @@ test.describe("Tandem anomaly chart regression", () => {
           expect(box!.width).toBeGreaterThan(width === 320 ? 200 : 250);
           expect(await card.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
           const screenshotPath = testInfo.outputPath(`${mode}-${theme}-${width}.png`);
-          await screenshotCard(page, card, screenshotPath);
+          await card.screenshot({ path: screenshotPath });
           await testInfo.attach(`${mode} ${theme} ${width}px`, { path: screenshotPath, contentType: "image/png" });
         }
       });
@@ -395,7 +388,7 @@ test.describe("Tandem anomaly chart regression", () => {
     expect(pixels.orange.right - pixels.orange.left).toBeGreaterThan(3);
     expect(pixels.orange.bottom - pixels.orange.top).toBeGreaterThan(3);
     const screenshotPath = testInfo.outputPath("range-boundary-context.png");
-    await screenshotCard(page, card, screenshotPath);
+    await card.screenshot({ path: screenshotPath });
     await testInfo.attach("range boundary context", { path: screenshotPath, contentType: "image/png" });
   });
 });

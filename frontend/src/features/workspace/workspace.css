@@ -8,15 +8,13 @@
 .ex-shell.is-resizing { transition: none; }
 .app-sidebar-dock { grid-column: 1; grid-row: 1; height: 100%; }
 .app-shell.is-sidebar-hidden .app-sidebar-dock { overflow: hidden; }
-.app-main-column { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.app-main-column { position: relative; grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .app-main { flex: 1; }
 .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 48px; }
-.app-topbar {
-  flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 12px;
-  border-bottom: 1px solid var(--ex-line); background: var(--ex-bg);
-}
-.app-topbar .brand-home { width: 32px; height: 32px; }
-.app-topbar .brand-mark { width: 26px; height: 26px; }
+/* The reopen control sits in the page's top inset without adding a layout row. */
+.app-sidebar-reopen { position: absolute; top: 0; left: 4px; z-index: 40; }
+.app-sidebar-reopen .app-sidebar-toggle { background: var(--ex-bg); }
+.app-sidebar-reopen .app-sidebar-toggle:hover { background: var(--ex-hover); }
 
 /* Sidebar */
 .app-sidebar {
@@ -25,9 +23,6 @@
   background: var(--app-sidebar-bg); border-right: 1px solid var(--ex-line);
   font-size: var(--text-body); color: var(--ex-ink);
 }
-.app-sidebar-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 52px; padding: 0 8px 0 12px; }
-.app-sidebar .brand-home-wordmark { width: auto; min-height: 32px; height: 32px; padding: 0 6px; }
-.app-sidebar .brand-wordmark { width: auto; height: 18px; }
 .app-sidebar-toggle {
   flex-shrink: 0; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   border-radius: 6px; color: var(--ex-muted);
@@ -41,7 +36,6 @@
 .app-sidebar-heading-row { display: flex; align-items: center; gap: 2px; min-height: 28px; padding: 0 8px 0 16px; }
 .app-sidebar-heading-row > .app-sidebar-heading { flex: 1; }
 .app-sidebar-workspaces { flex-shrink: 0; padding: 4px 0 12px; }
-.app-sidebar-workspaces > .app-sidebar-heading { padding: 6px 16px 6px; }
 .app-sidebar-items { margin: 0; padding: 0 8px; list-style: none; display: grid; gap: 1px; }
 .app-sidebar-items[hidden] { display: none; }
 .app-sidebar-item {
@@ -100,16 +94,16 @@
 @media (max-width: 760px) {
   .app-shell, .app-shell.is-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
   .app-main-column { grid-column: 1; }
-  .app-topbar { height: 52px; padding: 0 8px; }
-  .app-sidebar-toggle, .app-topbar .brand-home { width: 44px; height: 44px; }
+  .app-sidebar-toggle { width: 44px; height: 44px; }
   .app-sidebar-item, .app-sidebar-category-toggle { min-height: 44px; }
   .app-sidebar-tool { width: 44px; height: 44px; }
   /* In the drawer the whole middle scrolls, so the catalogue keeps a usable height below saved items. */
   .app-sidebar-category { max-height: none; flex-shrink: 0; }
   .app-sidebar-catalogue { flex: 1 0 max(320px, 60dvh); }
-  .app-main :is(.ex-main-content, .app-page-content) { padding-inline: 20px; }
+  .app-main :is(.ex-main-content, .app-page-content) { padding: 56px 20px 28px; }
+  .app-main > .ex-banner:first-child { margin-top: 56px; }
   .workspace-source-scope { margin: 18px 0; }
-  .workspace-loading { padding: 28px 20px; }
+  .workspace-loading { padding: 56px 20px 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

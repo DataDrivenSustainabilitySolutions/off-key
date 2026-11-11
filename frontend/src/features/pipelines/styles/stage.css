@@ -99,6 +99,8 @@
   margin: 0;
   pointer-events: none;
 }
+/* Keep the page-level reopen control clear of this canvas's floating heading. */
+.app-sidebar-reopen + .app-main .pl-stage .pl-setup-header { padding-inline-start: 40px; }
 .pl-stage .pl-setup-identity,
 .pl-stage .pl-setup-actions,
 .pl-stage .pl-canvas-toolbar > .pl-actions {
@@ -241,6 +243,10 @@
 @media (max-width: 1050px) {
   .pl-stage { --pl-stage-gap: 10px; }
   .pl-stage .pl-settings-panel { width: 300px; }
+}
+
+@media (max-width: 760px) {
+  .app-sidebar-reopen + .app-main .pl-stage .pl-setup-header { padding-inline-start: 52px; }
 }
 
 /* On a phone the header stacks above the canvas and settings open as a bottom sheet. */

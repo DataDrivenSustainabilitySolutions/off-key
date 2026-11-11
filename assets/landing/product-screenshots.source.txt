@@ -1,0 +1,126 @@
+Product screenshots and catalogue counts, captured 2026-11-11.
+
+Source: the real frontend at f880ab082e30a942af1bb86870bfd8524ec6136b.
+Captured at the browser default 1280 x 720 viewport, dark theme.
+No UI markup, application styles or screenshot pixels were altered.
+Browser captures were converted to WebP, quality 92.
+
+product-composer-v1.webp:
+The actual Monitoring visual composer, with a configuration accepted by
+off_key_core.models.pipeline_compiler.compile_pipeline. Three inputs feed
+standard scaling, parallel PyOD Isolation Forest / Local Outlier Factor
+detectors, fixed-split calibration, the conformal alarm policy and evidence.
+The current UI groups the calibration step into the detection-rule card.
+
+product-evidence-v2.webp:
+The actual Reporting reading-detail view, scrolled to its complete chart.
+Illustrative cooling-circuit pressure, flow and temperature were supplied
+through a local, unauthenticated preview fixture; no live systems or customer
+telemetry were accessed. The example has 360 observations at 10-second
+intervals, measurement noise, operating cycles, a brief pressure transient
+and a developing restriction followed by recovery. The displayed evidence is
+illustrative: Isolation Forest scores on synthetic inputs, ranked against
+a separate reference window, with a restarting power-betting statistic.
+It is not a runtime benchmark or a claim about detection accuracy.
+The composer configuration and Reporting telemetry are separate examples.
+
+Counts come directly from pipeline_catalog(authoring_enabled=True),
+backend/libs/core/src/off_key_core/models/pipeline_catalog.py.
+Catalogue ID: dac168dbf5be242252f722f2dbf27cfedaecedb2d3ac8ec310675ced301e44a2
+36 detection components: 6 batch, 27 adaptive and 3 forecast-residual models.
+The Timestral forecast component requires downloaded weights and its service;
+its four checkpoint sizes are not counted as four separate detectors.
+26 transform components: preparation, feature selection/renaming/passthrough,
+batch and online scaling/projection. Different implementations count as
+different components, not necessarily different mathematical algorithms.
+16 calibration components, including fixed split and online calibration.
+These are catalogue choices, not throughput, usage or performance figures.
+
+Recheck counts from the repository backend environment:
+PYTHONPATH=backend/libs/core/src python -c "from collections import Counter; from off_key_core.models.pipeline_catalog import pipeline_catalog; print(Counter(c.kind for c in pipeline_catalog(True).components))"
+
+Component inventory at capture:
+
+detector:
+- detector:pyod_iforest — PyOD Isolation Forest
+- detector:pyod_knn — PyOD KNN
+- detector:pyod_lof — PyOD Local Outlier Factor
+- detector:pyod_ocsvm — PyOD One-Class SVM
+- detector:pyod_hbos — PyOD HBOS
+- detector:pyod_pca — PyOD PCA
+- detector:aberrant_asd_isolation_forest — Aberrant ASDIsolationForest
+- detector:aberrant_gadget_svm — Aberrant GraphGatedOneClassSVM
+- detector:aberrant_half_space_trees — Aberrant HalfSpaceTrees
+- detector:aberrant_holt_winters_forecaster — Aberrant HoltWinters forecaster
+- detector:aberrant_incremental_one_class_svm_adaptive_kernel — Aberrant IncrementalOneClassSVMAdaptiveKernel
+- detector:aberrant_knn — Aberrant KNN
+- detector:aberrant_local_outlier_factor — Aberrant LocalOutlierFactor
+- detector:aberrant_mondrian_forest — Aberrant MondrianIsolationForest
+- detector:aberrant_moving_average — Aberrant MovingAverage
+- detector:aberrant_moving_average_absolute_deviation — Aberrant MovingAverageAbsoluteDeviation
+- detector:aberrant_moving_correlation_coefficient — Aberrant MovingCorrelationCoefficient
+- detector:aberrant_moving_covariance — Aberrant MovingCovariance
+- detector:aberrant_moving_geometric_average — Aberrant MovingGeometricAverage
+- detector:aberrant_moving_harmonic_average — Aberrant MovingHarmonicAverage
+- detector:aberrant_moving_interquartile_range — Aberrant MovingInterquartileRange
+- detector:aberrant_moving_kurtosis — Aberrant MovingKurtosis
+- detector:aberrant_moving_mahalanobis_distance — Aberrant MovingMahalanobisDistance
+- detector:aberrant_moving_median — Aberrant MovingMedian
+- detector:aberrant_moving_quantile — Aberrant MovingQuantile
+- detector:aberrant_moving_skewness — Aberrant MovingSkewness
+- detector:aberrant_moving_variance — Aberrant MovingVariance
+- detector:aberrant_multivariate_rolling_matrix_profile — Aberrant MultivariateRollingMatrixProfile
+- detector:aberrant_online_isolation_forest — Aberrant OnlineIsolationForest
+- detector:aberrant_random_cut_forest — Aberrant RandomCutForest
+- detector:aberrant_rolling_matrix_profile — Aberrant RollingMatrixProfile
+- detector:aberrant_seasonal_naive_forecaster — Aberrant SeasonalNaive forecaster
+- detector:aberrant_seasonal_residual_detector — Aberrant SeasonalResidualDetector
+- detector:aberrant_stream_random_histogram_forest — Aberrant StreamRandomHistogramForest
+- detector:aberrant_x_stream — Aberrant XStream
+- forecast.timestral — Timestral forecaster
+
+transform:
+- features.select — Select features
+- features.rename — Rename features
+- features.passthrough — Pass through
+- prepare.smooth — Smooth
+- prepare.despike — Despike
+- prepare.change — Change
+- prepare.rolling — Rolling statistic
+- prepare.math — Math
+- prepare.range — Range check
+- prepare.aggregate — Aggregate
+- prepare.formula — Formula
+- prepare.gate — Gate
+- prepare.constant — Constant
+- prepare.condition — Condition
+- prepare.set — Set feature
+- prepare.accumulate — Accumulate
+- static.standard_scaler — Standard scaling
+- static.min_max_scaler — Min-max scaling
+- static.robust_scaler — Robust scaling
+- static.pca — Centered PCA
+- static.random_projection — Random projection
+- adaptive.standard_scaler — Online standard scaling
+- adaptive.min_max_scaler — Online min-max scaling
+- adaptive.robust_scaler — Online robust scaling
+- adaptive.uncentered_pca — Online uncentered PCA
+- adaptive.random_projection — Random projection
+
+calibration:
+- calibrate.fixed_split — Fixed split
+- calibrate.split — Rolling split CP
+- calibrate.aci — ACI
+- calibrate.dtaci — DtACI
+- calibrate.agaci — AgACI
+- calibrate.qt — Quantile tracker
+- calibrate.pid — Conformal PID
+- calibrate.nexcp — NexCP
+- calibrate.eci — ECI
+- calibrate.sfogd — SF-OGD
+- calibrate.saocp — SAOCP
+- calibrate.belief — Bayesian belief CP
+- calibrate.bocpd_aci — BOCPD + ACI
+- calibrate.cpcp — Changepoint CP
+- calibrate.bocpd — BOCPD
+- calibrate.nig — Discounted Bayes

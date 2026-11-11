@@ -1,4 +1,4 @@
-"""Fingerprint hero photographs and embed the landing page's product screenshot."""
+"""Fingerprint hero photographs and embed the landing page's product screenshots."""
 
 import argparse
 import base64
@@ -25,37 +25,54 @@ SOURCES = {
     ),
 }
 DESTINATION = ROOT / "infra/stack/landing-assets.json"
-PRODUCT_IMAGE = ROOT / "assets/landing/product-evidence-v1.webp"
+PRODUCT_IMAGES = {
+    "COMPOSER": (
+        "product-composer-v1.webp",
+        (
+            "Aberration visual composer: pressure, flow and temperature inputs pass "
+            "through scaling and two parallel detectors into a detection rule "
+            "and evidence output."
+        ),
+    ),
+    "EVIDENCE": (
+        "product-evidence-v2.webp",
+        (
+            "Aberration Reporting: an example cooling-circuit pressure reading, "
+            "flagged events and sequential evidence on a shared timeline."
+        ),
+    ),
+}
 LANDING_HTML = ROOT / "infra/stack/landing.html.j2"
 
 
-def product_screenshot(parser, check):
-    """Keep the small screenshot inside the existing versioned HTML config."""
-    data = PRODUCT_IMAGE.read_bytes()
-    if data[:4] != b"RIFF" or data[8:12] != b"WEBP" or len(data) >= 200_000:
-        parser.exit(1, "Invalid or oversized product screenshot.\n")
-    image = base64.b64encode(data).decode("ascii")
-    markup = (
-        "<!-- BEGIN PRODUCT SCREENSHOT -->\n"
-        f'<img class="product-screenshot" src="data:image/webp;base64,{image}" '
-        'width="1440" height="1000" loading="lazy" decoding="async" '
-        'alt="Aberration Reporting: outlet pressure and its detection evidence '
-        'on a shared timeline, with an example change marked in the reading.">\n'
-        "<!-- END PRODUCT SCREENSHOT -->"
-    )
+def product_screenshots(parser, check):
+    """Keep the small captures inside the existing versioned HTML config."""
     original = LANDING_HTML.read_text()
-    updated, count = re.subn(
-        r"<!-- BEGIN PRODUCT SCREENSHOT -->.*?<!-- END PRODUCT SCREENSHOT -->",
-        lambda _: markup,
-        original,
-        flags=re.DOTALL,
-    )
-    if count != 1:
-        parser.exit(1, "Expected one product screenshot slot in the landing page.\n")
+    updated = original
+    for name, (filename, description) in PRODUCT_IMAGES.items():
+        data = (ROOT / "assets/landing" / filename).read_bytes()
+        if data[:4] != b"RIFF" or data[8:12] != b"WEBP" or len(data) >= 150_000:
+            parser.exit(1, f"Invalid or oversized product screenshot: {filename}\n")
+        image = base64.b64encode(data).decode("ascii")
+        markup = (
+            f"<!-- BEGIN PRODUCT {name} -->\n"
+            f'<img class="product-screenshot" src="data:image/webp;base64,{image}" '
+            'width="1280" height="720" loading="lazy" decoding="async" '
+            f'alt="{description}">\n'
+            f"<!-- END PRODUCT {name} -->"
+        )
+        updated, count = re.subn(
+            rf"<!-- BEGIN PRODUCT {name} -->.*?<!-- END PRODUCT {name} -->",
+            lambda _, replacement=markup: replacement,
+            updated,
+            flags=re.DOTALL,
+        )
+        if count != 1:
+            parser.exit(1, f"Expected one product {name.lower()} screenshot slot.\n")
     if check:
         if original != updated:
             parser.exit(
-                1, "Run python3 assets/landing/export.py to refresh the screenshot.\n"
+                1, "Run python3 assets/landing/export.py to refresh the screenshots.\n"
             )
     else:
         LANDING_HTML.write_text(updated, encoding="utf-8")
@@ -65,7 +82,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    product_screenshot(parser, args.check)
+    product_screenshots(parser, args.check)
     assets = []
     for name, (mime_type, source) in SOURCES.items():
         data = source.read_bytes()

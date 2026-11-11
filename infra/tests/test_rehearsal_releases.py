@@ -1,6 +1,7 @@
 """Guard the two-release rehearsal's schema floor and coupled image selection."""
 
 import json
+import subprocess
 import tempfile
 import unittest
 from copy import deepcopy
@@ -484,3 +485,75 @@ class CiImageTests(unittest.TestCase):
         ):
             swarm_smoke.images(release, REVISION)
         built.assert_not_called()
+
+
+class PublishedImageTests(unittest.TestCase):
+    def setUp(self):
+        import swarm_smoke
+
+        self.smoke = swarm_smoke
+        self.reference = "ghcr.io/example/frontend:latest"
+        self.release = {"images": {"frontend": self.reference}}
+        self.source = "b" * 40
+        self.elapsed = 0
+        self.enterContext(patch.object(swarm_smoke, "APPLICATION_IMAGES", {"frontend"}))
+        self.enterContext(
+            patch.object(
+                swarm_smoke, "revisions", return_value={"frontend": self.source}
+            )
+        )
+        self.enterContext(
+            patch.dict(
+                swarm_smoke.os.environ,
+                {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main"},
+            )
+        )
+        self.enterContext(
+            patch.object(
+                swarm_smoke.time, "monotonic", side_effect=lambda: self.elapsed
+            )
+        )
+        self.enterContext(
+            patch.object(swarm_smoke.time, "sleep", side_effect=self.advance)
+        )
+
+    def advance(self, seconds):
+        self.elapsed += seconds
+
+    def test_published_image_lookup_retries_after_a_request_timeout(self):
+        pinned = self.reference + "@sha256:" + "c" * 64
+
+        def lookup(*args):
+            if self.elapsed == 0:
+                self.advance(60)
+                raise subprocess.TimeoutExpired(["docker", "buildx"], 60)
+            return pinned
+
+        with patch.object(self.smoke, "pin", side_effect=lookup) as pin:
+            self.smoke.images(self.release, REVISION)
+        self.assertEqual(pin.call_count, 2)
+        for call in pin.call_args_list:
+            self.assertEqual(call.args, (self.reference, REVISION, self.source))
+        self.assertEqual(self.release["images"]["frontend"], pinned)
+
+    def test_persistent_lookup_failure_never_accepts_an_unverified_image(self):
+        for failure in (
+            subprocess.TimeoutExpired(["docker", "buildx"], 60),
+            ValueError("Image belongs to another revision"),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+                self.elapsed = 0
+
+                def lookup(*args, failure=failure):
+                    self.advance(60)
+                    raise failure
+
+                with (
+                    patch.object(self.smoke, "pin", side_effect=lookup),
+                    self.assertRaisesRegex(
+                        AssertionError, "Timed out waiting for published frontend image"
+                    ),
+                ):
+                    self.smoke.images(self.release, REVISION)
+                self.assertLess(self.elapsed, 400)
+                self.assertEqual(self.release["images"]["frontend"], self.reference)

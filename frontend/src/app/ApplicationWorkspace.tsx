@@ -2,7 +2,6 @@ import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSPr
 import * as Dialog from "@radix-ui/react-dialog";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
-import { BrandHome } from "@/components/BrandHome";
 import { CatalogueProvider } from "@/features/workspace/CatalogueProvider";
 import { CatalogueDialogs } from "@/features/workspace/CatalogueDialogs";
 import { useCatalogue } from "@/features/workspace/catalogue-context";
@@ -67,10 +66,9 @@ function WorkspaceFrame() {
         onCommit={sidebarWidth => setPreferences(previous => ({ ...previous, sidebarWidth }))} />}
     </aside>}
     <div className="app-main-column">
-      {(mobile || !preferences.sidebarOpen) && <header className="app-topbar" data-testid="application-topbar">
+      {(mobile || !preferences.sidebarOpen) && <div className="app-sidebar-reopen">
         <SidebarToggle ref={show} open={false} onClick={() => mobile ? setDrawerOpen(true) : setDesktopOpen(true)} />
-        <BrandHome />
-      </header>}
+      </div>}
       <div ref={main} className="ex-main app-main">
         {!stored && <p className="ex-banner" role="status">Browser storage is unavailable. Your navigation will last for this session.</p>}
         {favouritesError && <p className="ex-banner" role="status">{favouritesError}</p>}

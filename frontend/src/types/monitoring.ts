@@ -257,6 +257,8 @@ interface MonitoringEvidence {
   detector_results?: MonitoringDetectorResult[];
   /** The features each detector scored, after every step before it; empty in older rows. */
   detector_inputs?: MonitoringDetectorInputs[];
+  /** What each forecaster step expected of the observation; empty without one and in older rows. */
+  forecasts?: MonitoringForecast[];
   threshold: number;
   alarm: boolean;
 }
@@ -265,6 +267,23 @@ interface MonitoringEvidence {
 export interface MonitoringDetectorInputs {
   detector_id: string | null;
   inputs: Record<string, number | null>;
+}
+
+/**
+ * The forecast one forecaster step compared an observation with. The interval is the
+ * calibrated one around the forecast and is null when the step has no boundary of its own.
+ */
+export interface MonitoringForecast {
+  detector_id: string;
+  /** The feature the step forecasts, named as in the detector's inputs. */
+  target: string;
+  /** The input slot when the target is a raw reading, otherwise null. */
+  slot: string | null;
+  /** How many updates ahead the forecast was made. */
+  lead: number | null;
+  expected: number;
+  lower: number | null;
+  upper: number | null;
 }
 
 /** One detector's score, and its surprise against its own calibration scores. */
@@ -315,6 +334,7 @@ export type MonitoringChartEvidence = Pick<
   | 'tracker_results'
   | 'detector_results'
   | 'detector_inputs'
+  | 'forecasts'
   | 'threshold'
   | 'alarm'
 > & {

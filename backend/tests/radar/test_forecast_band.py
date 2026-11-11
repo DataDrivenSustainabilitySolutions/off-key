@@ -5,12 +5,15 @@ boundary applies to the step's own score, it also carries the calibrated
 interval: a value outside it is above the boundary.
 """
 
+from dataclasses import replace
+
 import pytest
 from off_key_core.models.pipeline_catalog import pipeline_catalog
 from off_key_core.models.pipelines import validate_pipeline
 from off_key_core.schemas.pipelines import PipelineDefinition
 from off_key_mqtt_radar.boundary_detector import BoundaryDetectionService
 from off_key_mqtt_radar.detector_services import detector_service_class
+from off_key_mqtt_radar.result_records import ResultProjector
 
 from tests.support.fused_pipeline import KEYS, bound, reading
 
@@ -214,3 +217,67 @@ def test_a_design_without_a_forecaster_reports_no_forecasts():
     _, results, spike = run(PipelineDefinition.model_validate(definition))
 
     assert all(forecasts(item) is None for item in [*results, spike])
+
+
+def evidence(result):
+    """The evidence row of a result, which a chart reads the forecast from."""
+    monitored = replace(
+        result,
+        topic="charger/CP-7/live-telemetry/a",
+        charger_id="CP-7",
+        context={
+            **result.context,
+            "alignment": {
+                "aligned_vector": True,
+                "required_sensors": list(KEYS.values()),
+                "input_timestamps": dict.fromkeys(
+                    KEYS.values(), "2026-11-10T10:00:00Z"
+                ),
+            },
+        },
+    )
+    (record,) = ResultProjector("forecasts")._build_evidence_records([monitored])
+    return record
+
+
+def inputs_of(record, detector_id):
+    """The inputs a row stores for a detector; one detector is stored unnamed."""
+    stored = {item["detector_id"]: item["inputs"] for item in record["detector_inputs"]}
+    return stored.get(detector_id, stored.get(None))
+
+
+@pytest.mark.parametrize("calibration", ["calibrate.aci", "calibrate.fixed_split"])
+def test_the_evidence_of_a_run_keeps_the_forecast_and_its_band(calibration):
+    _, results, spike = run(design(calibration=calibration))
+
+    for result in (results[-1], spike):
+        record = evidence(result)
+        (stored,) = record["forecasts"]
+        assert stored == result.context["adaptive_stream"]["forecasts"][0]
+        assert stored["lower"] <= stored["expected"] <= stored["upper"]
+        # The forecast is of a feature the row stores for the same detector.
+        value = inputs_of(record, stored["detector_id"])[stored["target"]]
+        assert (value > stored["upper"]) == record["alarm"]
+    assert evidence(spike)["alarm"]
+
+
+def test_combined_detectors_store_the_forecast_without_a_band():
+    _, results, _ = run(design(beside=True))
+
+    record = evidence(results[-1])
+    (stored,) = record["forecasts"]
+    assert stored["detector_id"] == "forecaster"
+    assert stored["lower"] is None and stored["upper"] is None
+    assert stored["target"] in inputs_of(record, "forecaster")
+
+
+def test_a_forecast_of_a_changed_feature_is_stored_in_the_feature_s_units():
+    _, results, _ = run(design(scaled=True))
+
+    record = evidence(results[-1])
+    (stored,) = record["forecasts"]
+    scaled = inputs_of(record, stored["detector_id"])[stored["target"]]
+    assert stored["slot"] is None
+    # The band is around the scaled value the step scored, not the raw reading.
+    assert stored["lower"] <= scaled <= stored["upper"]
+    assert scaled != results[-1].raw_data[KEYS["a"]]

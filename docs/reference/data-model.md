@@ -116,6 +116,15 @@ Use this page when mapping API behaviour to persisted entities and relationships
   and at most 64 features per detector are kept. Charts show them as **Detector
   inputs**. Migration `017_detector_inputs.sql` adds the column with an empty
   default, so earlier rows have none.
+- `forecasts` lists what each forecaster step expected of the observation, as
+  `{"detector_id", "target", "slot", "lead", "expected", "lower", "upper"}`.
+  `target` names the feature as in `detector_inputs`, and `slot` is the reading
+  it is when no step changed its values. `lower` and `upper` are the calibrated
+  interval around the forecast, in the feature's units; both are `null` when the
+  step has no boundary of its own. Charts draw the forecast and the interval
+  around the feature in **Detector inputs**. Migration
+  `026_evidence_forecasts.sql` adds the column with an empty default, so
+  earlier rows and designs without a forecaster step have none.
 
 ### Monitoring workload intent
 

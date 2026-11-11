@@ -55,7 +55,7 @@
 }
 
 .pl-inspector .pl-segmented button[aria-pressed="true"] {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
   font-weight: 500;
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
@@ -203,7 +203,7 @@
 
 .pl-error {
   color: #dc2626;
-  background: color-mix(in srgb, #ef4444 5%, hsl(var(--background)));
+  background: color-mix(in srgb, #ef4444 5%, hsl(var(--card)));
   border-color: color-mix(in srgb, #ef4444 25%, hsl(var(--border)));
 }
 
@@ -213,7 +213,7 @@
 
 .pl-warning {
   color: #a16207;
-  background: color-mix(in srgb, #f59e0b 7%, hsl(var(--background)));
+  background: color-mix(in srgb, #f59e0b 7%, hsl(var(--card)));
   border-color: color-mix(in srgb, #f59e0b 30%, hsl(var(--border)));
 }
 
@@ -223,7 +223,7 @@
 
 .pl-notice {
   color: #15803d;
-  background: color-mix(in srgb, #22c55e 5%, hsl(var(--background)));
+  background: color-mix(in srgb, #22c55e 5%, hsl(var(--card)));
 }
 
 .dark .pl-notice {

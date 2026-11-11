@@ -54,7 +54,6 @@
   height: 48px;
   padding-inline: 13px;
   border-radius: var(--radius-control);
-  background: transparent;
   font-size: 15px;
 }
 .auth-backdrop [data-slot="input"]::placeholder { color: hsl(var(--muted-foreground)); opacity: 1; }

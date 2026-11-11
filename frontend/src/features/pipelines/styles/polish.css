@@ -4,7 +4,7 @@
    where they are defined. */
 
 .pl-canvas-wrap {
-  --pl-canvas-bg: hsl(220 24% 97.6%);
+  --pl-canvas-bg: hsl(var(--background));
   --pl-grid-dot: hsl(220 16% 62% / 0.75);
   --pl-card-shadow: 0 1px 2px hsl(220 30% 20% / 0.05), 0 4px 14px -4px hsl(220 30% 20% / 0.08);
   --pl-card-shadow-hover: 0 2px 4px hsl(220 30% 20% / 0.06), 0 12px 28px -8px hsl(220 30% 20% / 0.16);
@@ -96,7 +96,7 @@
   padding: 4px;
   border: 1px solid hsl(var(--border) / 0.8);
   border-radius: 12px;
-  background: color-mix(in srgb, hsl(var(--background)) 86%, transparent);
+  background: color-mix(in srgb, hsl(var(--card)) 86%, transparent);
   backdrop-filter: blur(12px) saturate(1.4);
   box-shadow: var(--pl-float-shadow, var(--pl-card-shadow));
 }
@@ -128,7 +128,7 @@
 
 /* Floating bars: frosted glass with a hairline edge and a soft, wide shadow. */
 .pl-stage {
-  --pl-float-bg: color-mix(in srgb, hsl(var(--background)) 80%, transparent);
+  --pl-float-bg: color-mix(in srgb, hsl(var(--card)) 80%, transparent);
   --pl-float-border: hsl(var(--border) / 0.85);
   --pl-float-shadow: 0 1px 1px hsl(220 30% 20% / 0.04), 0 10px 30px -10px hsl(220 30% 20% / 0.18);
 }
@@ -175,7 +175,7 @@
 
 /* Settings: the heading stays put above content that scrolls under it. */
 .pl-stage .pl-settings-panel {
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading {
   position: sticky;
@@ -185,7 +185,7 @@
   margin: -16px -16px 12px;
   padding: 12px 12px 10px 16px;
   border-bottom: 1px solid hsl(var(--border) / 0.7);
-  background: color-mix(in srgb, hsl(var(--background)) 88%, transparent);
+  background: color-mix(in srgb, hsl(var(--card)) 88%, transparent);
   backdrop-filter: blur(10px);
 }
 .pl-stage .pl-settings-panel .pl-inspector-heading button {

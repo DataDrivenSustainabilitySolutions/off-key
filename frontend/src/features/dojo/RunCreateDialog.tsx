@@ -7,7 +7,7 @@ import type { DatasetView, RunView } from "@/types/dojo.generated";
 import { pipelinesApi } from "../pipelines/api";
 import type { PipelineDefinition } from "../pipelines/contracts";
 import { dojoApi } from "./api";
-import { suggestBindings } from "./model";
+import { comparesCalibration, suggestBindings } from "./model";
 
 type Choice = { key: string; name: string; group: "template" | "design"; definition?: PipelineDefinition };
 
@@ -23,6 +23,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   const [name, setName] = useState("");
   const [freshness, setFreshness] = useState("30");
   const [skew, setSkew] = useState("5");
+  const [compare, setCompare] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const selection = useRef<AbortController | null>(null);
@@ -72,7 +73,7 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   const close = (next: boolean) => {
     if (!next) {
       selection.current?.abort();
-      setKey(""); setDefinition(null); setError("");
+      setKey(""); setDefinition(null); setError(""); setCompare(false);
       setLoadingDesigns(true); setLoadError("");
     }
     onOpenChange(next);
@@ -86,12 +87,14 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
   }, [slots, bindings]);
   const alignment = { freshness_seconds: Number(freshness), max_skew_seconds: Number(skew) };
   const alignmentValid = alignment.freshness_seconds > 0 && alignment.max_skew_seconds >= 0;
+  const comparable = !!definition && comparesCalibration(definition);
   const submit = async () => {
     if (!definition) return;
     setBusy(true); setError("");
     try {
       const run = await dojoApi.createRun({ dataset_id: dataset.id, name: name.trim(), definition, alignment,
-        bindings: Object.fromEntries(slots.map(slot => [slot.id, bindings[slot.id]!])) });
+        bindings: Object.fromEntries(slots.map(slot => [slot.id, bindings[slot.id]!])),
+        ...(compare && comparable ? { compare_calibration: true } : {}) });
       close(false);
       onCreated(run);
     } catch (reason) {
@@ -144,6 +147,12 @@ export function RunCreateDialog({ open, dataset, onOpenChange, onCreated }: {
               <label className="dj-field"><span>Readings combine within <small>(seconds)</small></span><input type="number" min={0} step="any"
                 value={skew} disabled={busy} onChange={event => setSkew(event.target.value)} /></label>
             </div>
+            <label className="dj-check"><input type="checkbox" checked={compare && comparable} disabled={busy || !comparable}
+              aria-describedby="dj-compare-help" onChange={event => setCompare(event.target.checked)} />
+              Compare calibration methods</label>
+            <p className="dj-help" id="dj-compare-help">{comparable
+              ? "Also tries the fixed split and every method that adapts on this run's scores, at the same alarm rate. The run takes longer."
+              : "This design alarms on a conformal martingale, which has no boundary on scores to try other methods on."}</p>
           </>}
           {error && <p className="dj-error" role="alert">{error}</p>}
           <div className="ex-dialog-actions">

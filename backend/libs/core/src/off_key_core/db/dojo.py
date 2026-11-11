@@ -137,6 +137,8 @@ class DojoRun(Base):
     ``config`` holds everything the worker needs: the compiled design, its
     bindings to synthetic per-series topics and the alignment settings, so a
     later edit to the dataset's names or the design library cannot change it.
+    A run that compares calibration methods also names them there, with the
+    alarm rate they share; the worker adds which of them failed.
     """
 
     __tablename__ = "dojo_runs"
@@ -197,6 +199,10 @@ class DojoRunResult(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
     alarm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # One bit per calibration method the run compares, in the order of its
+    # ``calibration_comparison``, set where that method would have alarmed.
+    # Null where no method was asked or the run was still learning.
+    method_alarms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     __table_args__ = (
         PrimaryKeyConstraint("run_id", "sequence", name="pk_dojo_run_result"),
     )

@@ -157,8 +157,20 @@ async def dataset(factory, minutes=120):
     return creator, view
 
 
-async def finished_run(factory, view, *, alarm_minutes, name="", status="succeeded"):
-    """A run as the worker leaves it: learning for 10 minutes, then scoring."""
+async def finished_run(
+    factory,
+    view,
+    *,
+    alarm_minutes,
+    name="",
+    status="succeeded",
+    comparison=None,
+    method_minutes=(),
+):
+    """A run as the worker leaves it: learning for 10 minutes, then scoring.
+
+    `method_minutes` are the minutes on which each compared method alarmed.
+    """
     run_id = f"run-{name or 'x'}"
     async with factory() as session:
         session.add(
@@ -170,7 +182,8 @@ async def finished_run(factory, view, *, alarm_minutes, name="", status="succeed
                 config={
                     "execution": {
                         "definition": {"nodes": [{"component": "policy.martingale"}]}
-                    }
+                    },
+                    **({"calibration_comparison": comparison} if comparison else {}),
                 },
                 cancel_requested=False,
                 points_total=120,
@@ -189,6 +202,15 @@ async def finished_run(factory, view, *, alarm_minutes, name="", status="succeed
                 score=None if minute < 10 else 0.5,
                 threshold=None,
                 alarm=minute in alarm_minutes,
+                method_alarms=(
+                    sum(
+                        1 << position
+                        for position, minutes in enumerate(method_minutes)
+                        if minute in minutes
+                    )
+                    if comparison and minute >= 10
+                    else None
+                ),
             )
             for minute in range(120)
         )
@@ -288,6 +310,70 @@ async def test_metrics_score_a_finished_run_against_the_current_labels(sessions)
     assert metrics.strategy == "static_baseline"
     # Moving a label re-scores the run: the alarm at 80 now detects it.
     assert rescored.false_alarms == 0 and rescored.labels_detected == 3
+
+
+@pytest.mark.asyncio
+async def test_each_compared_calibration_method_is_scored_like_a_run(sessions):
+    _, factory = sessions
+    creator, view = await dataset(factory)
+    run_id = await finished_run(
+        factory,
+        view,
+        alarm_minutes={33, 34, 80},
+        comparison={
+            "own": "aci",
+            "methods": ["fixed_split", "pid", "nig"],
+            "alpha": 0.05,
+            "consecutive": 2,
+            "failed": {"nig": "ArithmeticError: no boundary"},
+        },
+        # The fixed split holds one alarm from the label into quiet time and
+        # alarms twice more; PID is late in the label and quiet elsewhere; NIG
+        # alarmed once in the label before it stopped.
+        method_minutes=({39, 40, 41, 60, 61, 90}, {38}, {35}),
+    )
+    plain = await finished_run(factory, view, alarm_minutes={33}, name="plain")
+    async with factory() as session:
+        await DojoLabels(session).create(view.id, label(30, 40), created_by=creator)
+        await DojoLabels(session).create(view.id, label(0, 8), created_by=creator)
+        metrics = DojoMetrics(session)
+        comparison = await metrics.calibration(run_id)
+        with pytest.raises(ConflictError, match="compared no calibration methods"):
+            await metrics.calibration(plain)
+        with pytest.raises(NotFoundError, match="Run not found"):
+            await metrics.calibration("missing")
+
+    assert (comparison.alpha, comparison.consecutive) == (0.05, 2)
+    # The methods judged from minute 10, after the learning label.
+    assert (comparison.scored_from, comparison.scored_to) == (at(10), at(119))
+    assert (comparison.results, comparison.labels_total) == (110, 2)
+    assert comparison.evaluated_seconds == (109 - 10) * 60.0
+    own, fixed, pid, nig = comparison.methods
+    assert [(item.method, item.name, item.family, item.own) for item in (own, pid)] == [
+        ("aci", "ACI", "conformal", True),
+        ("pid", "Conformal PID", "conformal", False),
+    ]
+    assert (fixed.name, fixed.family) == ("Fixed split", "fixed")
+    assert (own.alarm_count, own.labels_scored, own.labels_detected) == (3, 1, 1)
+    assert (own.median_delay_seconds, own.false_alarms) == (180.0, 1)
+    assert own.alarm_share == pytest.approx(3 / 110)
+    assert own.false_alarms_per_day == pytest.approx(86_400 / (99 * 60))
+    # Held from 39 past the label's end at 40: detected late, and only the
+    # onsets at 60 and 90 are false alarms.
+    assert (fixed.alarm_count, fixed.labels_detected, fixed.false_alarms) == (6, 1, 2)
+    assert fixed.median_delay_seconds == 540.0
+    assert (pid.alarm_count, pid.detection_rate, pid.false_alarms) == (1, 1.0, 0)
+    assert pid.false_alarms_per_day == 0.0
+    # A method that stopped keeps what it found, but has no share or rate:
+    # those would be over results it never judged.
+    assert nig.failed == "ArithmeticError: no boundary" and own.failed is None
+    assert (nig.alarm_count, nig.labels_detected, nig.false_alarms) == (1, 1, 0)
+    assert nig.median_delay_seconds == 300.0
+    assert (nig.alarm_share, nig.detection_rate, nig.false_alarms_per_day) == (
+        None,
+        None,
+        None,
+    )
 
 
 @pytest.mark.asyncio

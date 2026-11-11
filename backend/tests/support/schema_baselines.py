@@ -31,6 +31,7 @@ EXPECTED_MIGRATIONS = (
     "024_lifecycle_states.sql",
     "025_evidence_cursor.sql",
     "026_evidence_forecasts.sql",
+    "027_dojo_method_alarms.sql",
 )
 
 

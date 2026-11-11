@@ -16,6 +16,7 @@ import type {
   LabelSuggestionList,
   LabelSuggestionQuery,
   LabelView,
+  MethodComparison,
   RunCreate,
   RunListPage,
   RunListQuery,
@@ -77,6 +78,8 @@ export const dojoApi = {
   results: (id: string, query: RunResultsQuery, signal?: AbortSignal) =>
     apiUtils.get<RunResultsPage>(`${run(id)}/results`, { ...read, signal, params: query }),
   metrics: (id: string, signal?: AbortSignal) => apiUtils.get<RunMetrics>(`${run(id)}/metrics`, { ...read, signal }),
+  calibration: (id: string, signal?: AbortSignal) =>
+    apiUtils.get<MethodComparison>(`${run(id)}/calibration`, { ...read, signal }),
   // The server reads `run_ids` once per run, which axios would write as run_ids[].
   compare: (datasetId: string, runIds: string[], signal?: AbortSignal) =>
     apiUtils.get<Comparison>(`${dataset(datasetId)}/comparison?${

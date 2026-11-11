@@ -80,6 +80,7 @@ class BoundaryDetectionService(MixedDetectionService):
 
     def _freeze_fusion(self) -> None:
         """Seed the boundary with the calibration window; no threshold freezes."""
+        self._start_comparison(self.calibration_scores)
         self.boundary.start(self.calibration_scores)
         # The boundary keeps what it needs of them.
         self.calibration_scores = []
@@ -93,6 +94,7 @@ class BoundaryDetectionService(MixedDetectionService):
         self._learn(data)
         # Only an observation every detector took in moves the boundary.
         self.boundary.learn(judgement)
+        self._compare(list(judgement.scores))
         self.threshold = judgement.threshold
         self.operational_count += 1
         self.processed_count += 1

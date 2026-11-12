@@ -1,7 +1,7 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference includes the Mute alarms step and the evidence's muted column,
-carrying migrations through 030 and Aberrant 1.5.0 numerics. It is not an
+The reference includes the composer's saved blocks and their table,
+carrying migrations through 031 and Aberrant 1.5.0 numerics. It is not an
 eligible production release and proves no compatibility with earlier schemas.
 """
 
@@ -21,7 +21,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "efe30f4aefd5aba13eecb298d3201370ede11699"
+COMPATIBLE_REVISION = "197cc239119b8bfb7df1b6921828dbb690adcd7f"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

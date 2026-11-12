@@ -167,7 +167,14 @@ export function routeConnections(
           options: { nodePadding: CLEARANCE, gridRatio: ratio, generatePath: pathfindingJumpPointNoDiagonal },
         });
         if (result instanceof Error) continue;
-        const candidate = compact([source, ...result.points.map(([x, y]) => ({ x: x!, y: y! })), target]);
+        const cells = result.points.map(([x, y]) => ({ x: x!, y: y! }));
+        // Ports within one routing cell of each other in height come back as a single
+        // row at the source's height, which would slant into the target. Step at the
+        // first cell instead, as a route across two rows does.
+        const level = cells.every((cell) => cell.y === source.y) && source.y !== target.y;
+        const candidate = compact(level
+          ? [source, cells[0]!, ...cells.map((cell) => ({ x: cell.x, y: target.y })), target]
+          : [source, ...cells, target]);
         if (clearPath(candidate, boxes, edge)) { points = candidate; break; }
       }
     }

@@ -63,6 +63,16 @@ describe("pipeline obstacle routing", () => {
     expectClear(route(boxes), boxes);
   });
 
+  it("steps between ports that sit less than a routing cell apart in height", () => {
+    // Dropped without snapping, a card rarely lands on its neighbour's exact height.
+    for (let offset = -12; offset <= 12; offset += 0.17) {
+      const boxes = [box("source", 0, 100), box("target", 359.933, 100 + offset)];
+      const result = route(boxes);
+      expect(result.blocked, `offset ${offset.toFixed(2)}`).toBe(false);
+      expectClear(result, boxes);
+    }
+  });
+
   it("identifies a blocked port instead of drawing through an overlapping box", () => {
     const result = route([box("source", 0, 0), box("target", 100, 0)]);
     expect(result.blocked).toBe(true);

@@ -1,7 +1,7 @@
 """Build and select two real, schema-compatible rehearsal releases.
 
-The reference includes bearer-token revocation and the Dojo metrics cache,
-carrying migrations through 029 and Aberrant 1.5.0 numerics. It is not an
+The reference includes the Mute alarms step and the evidence's muted column,
+carrying migrations through 030 and Aberrant 1.5.0 numerics. It is not an
 eligible production release and proves no compatibility with earlier schemas.
 """
 
@@ -21,7 +21,7 @@ from support import ROOT, load_script, run
 
 image_sources = load_script("image_sources")
 
-COMPATIBLE_REVISION = "f02a9201a4aad4bdeacd196062246cc48f883505"
+COMPATIBLE_REVISION = "efe30f4aefd5aba13eecb298d3201370ede11699"
 REGISTRY = "offkey-smoke-registry"
 # Detector numerics; other locked packages may differ as in a real rollback.
 NUMERICAL_LIBRARIES = ("aberrant",)

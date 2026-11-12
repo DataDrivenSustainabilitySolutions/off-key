@@ -38,7 +38,9 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 0 0% 100%;
+    /* #F8F9F9 canvas; also used by the light/system appearance previews. */
+    --background-light: 180 8% 97.5%;
+    --background: var(--background-light);
     --foreground: 210 22% 19%;
     --card: 0 0% 100%;
     --card-foreground: 210 22% 19%;

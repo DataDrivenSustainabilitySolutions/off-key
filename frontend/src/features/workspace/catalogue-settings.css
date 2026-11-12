@@ -17,7 +17,7 @@
 .catalogue-settings .catalogue-settings-create {
   display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 80px;
   padding: 14px; text-align: left; border: 1px solid var(--ex-line); border-radius: var(--radius);
-  background: var(--ex-bg); transition: background 140ms,border-color 140ms;
+  background: hsl(var(--card)); transition: background 140ms,border-color 140ms;
 }
 .catalogue-settings .catalogue-settings-create:not(:disabled):hover { background: var(--ex-hover); border-color: hsl(var(--input)); }
 .catalogue-settings-action-icon { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 34px; color: var(--ex-muted); }
@@ -31,7 +31,7 @@
 .catalogue-settings-select select {
   display: block; width: 100%; min-width: 0; min-height: 40px; appearance: none;
   padding: 9px 38px 9px 12px; border: 1px solid hsl(var(--input)); border-radius: var(--radius-control);
-  background: var(--ex-bg); color: var(--ex-ink); font: inherit; font-size: var(--text-body);
+  background: hsl(var(--card)); color: var(--ex-ink); font: inherit; font-size: var(--text-body);
 }
 .catalogue-settings-select select:disabled { opacity: .5; }
 .catalogue-settings-select > svg { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--ex-muted); }

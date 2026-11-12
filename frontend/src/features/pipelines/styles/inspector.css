@@ -7,7 +7,7 @@
   max-height: min(600px, var(--radix-popover-content-available-height));
   overflow: auto;
   padding: 14px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
   box-shadow: 0 10px 30px #0002;
@@ -63,7 +63,7 @@
   margin: 0;
   font-size: var(--text-body);
   padding: 10px;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 
 .pl-toolbox-item small {
@@ -424,7 +424,7 @@
   padding: 4px;
   overflow-y: auto;
   list-style: none;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   box-shadow: 0 10px 30px #0002;

@@ -197,6 +197,17 @@ describe("detectorMenu", () => {
     expect(menu.search!.results("no such model")).toEqual([]);
   });
 
+  it("lists a detector that learns nothing under what it is called, after those that learn", () => {
+    const rule = { ...find("detector:pyod_iforest"), id: "rule.score", label: "Rule detector", learning: "none" as const };
+    const menu = detectorMenu([...components, rule], undefined, vi.fn());
+    expect(menu.items.map((item) => [item.key, item.label, item.detail])).toEqual([
+      ["online", "Learns continuously", "2"], ["batch", "Fitted once", "1"], ["pretrained", "Pretrained", "1"],
+      ["none", "No training", "1"],
+    ]);
+    expect(menu.search!.results("no training").map((item) => [item.label, item.detail]))
+      .toEqual([["Rule detector", "No training"]]);
+  });
+
   it("keeps a detector this deployment cannot run in its group, blocked, and never suggests it", () => {
     const offered = components.map((item) => item.id === "forecast.timestral" ? { ...item, unavailable: "No forecast service." } : item);
     const menu = detectorMenu(offered, offered.find((item) => item.id === "forecast.timestral"), vi.fn());

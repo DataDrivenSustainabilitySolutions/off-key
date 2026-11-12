@@ -129,7 +129,7 @@ export function detectorMenu(
   });
   const groups = GROUPS.map((mode) => ({
     mode,
-    label: learningLabel({ learning: mode }) ?? "Other",
+    label: learningLabel({ learning: mode, kind: "detector" }) ?? "Other",
     items: detectors.filter((component) => (component.learning ?? "none") === mode),
   })).filter((group) => group.items.length);
   const offered = suggested && detectors.includes(suggested) && !suggested.unavailable ? suggested : undefined;

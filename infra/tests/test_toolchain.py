@@ -15,6 +15,38 @@ REPOSITORY = ROOT.parent
 
 
 class ToolchainTests(unittest.TestCase):
+    def test_ci_version_selection_consumes_the_full_package_catalogue(self):
+        action = yaml.safe_load(
+            (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()
+        )
+        selection = next(
+            line
+            for line in action["runs"]["steps"][0]["run"].splitlines()
+            if line.startswith("package=")
+        )
+        # Enough output to fill a pipe: stopping after the first match breaks
+        # the producer and fails setup before any Docker package is installed.
+        catalogue = r"""
+set -euo pipefail
+version=29.0.0
+apt-cache() {
+    printf 'docker-ce | 5:29.0.0-2 | fixture\n'
+    printf 'docker-ce | 5:29.0.0-1 | fixture\n'
+    for ((i=0; i<10000; i++)); do
+        printf 'docker-ce | 5:28.0.0-1 | fixture\n'
+    done
+}
+"""
+        result = subprocess.run(
+            ["bash", "-c", catalogue + selection + '\nprintf "%s\\n" "$package"'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "5:29.0.0-2\n")
+
     def test_ci_image_store_preserves_existing_daemon_configuration(self):
         action = yaml.safe_load(
             (REPOSITORY / ".github/actions/setup-docker-engine/action.yml").read_text()

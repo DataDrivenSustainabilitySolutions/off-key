@@ -11,7 +11,11 @@ const data: TelemetryHistory = { representation: "raw", points: [{ timestamp: ne
   interval_ms: 0, sample_count: 1, extent: [new Date(NOW - 1000).toISOString(), new Date(NOW - 1000).toISOString()], truncated: false };
 
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(NOW); vi.mocked(getTelemetryHistory).mockResolvedValue(data); });
-afterEach(() => { vi.restoreAllMocks(); vi.mocked(getTelemetryHistory).mockReset(); vi.useRealTimers(); });
+const setHidden = (hidden: boolean) => {
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event("visibilitychange"));
+};
+afterEach(() => { setHidden(false); vi.restoreAllMocks(); vi.mocked(getTelemetryHistory).mockReset(); vi.useRealTimers(); });
 
 describe("stored telemetry ranges", () => {
   it("requests true statistics for the selected range and original samples on demand", async () => {
@@ -78,6 +82,20 @@ describe("stored telemetry ranges", () => {
     // The window is fixed, so its history is too: nothing asks for it again.
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
     expect(getTelemetryHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed window again once a hidden page is shown", async () => {
+    vi.useFakeTimers();
+    vi.mocked(getTelemetryHistory).mockRejectedValueOnce(new Error("offline"));
+    const hook = renderHook(() => useStoredRange(binding, 3_600_000, { startMs: NOW - 2600, endMs: NOW - 1400 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(hook.result.current.error).toMatch(/could not be loaded/);
+    // The retry falls due while nobody is looking, so it waits.
+    await act(async () => { setHidden(true); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(getTelemetryHistory).toHaveBeenCalledTimes(1);
+    await act(async () => { setHidden(false); await vi.advanceTimersByTimeAsync(0); });
+    expect(getTelemetryHistory).toHaveBeenCalledTimes(2);
+    expect(hook.result.current).toMatchObject({ history: data, error: "" });
   });
 
   it("does not fetch for a reading that is not recorded", () => {

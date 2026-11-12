@@ -135,6 +135,17 @@ describe("a summarised chart", () => {
     expect(seriesOf(option({ readings: [reading({ data: [[START, 400]] })] }), "history-dot:reading:voltage")).toBeUndefined();
   });
 
+  it("keeps a burst of results visible when it falls into one interval", () => {
+    // A score line draws no symbols, so the one result a burst is summarised to needs a dot.
+    const burst = score(Array.from({ length: 50 }, (_, index) => observed(index * 10, 0.3 + index / 1000)));
+    const { secondarySeries: [summary] } = summarizeDetection({ secondarySeries: [burst] }, 1000, 10);
+    expect(summary!.data).toHaveLength(1);
+    expect(seriesOf(option({ secondarySeries: [summary!] }), "history-dot:adaptive-score:svc")).toMatchObject({
+      type: "scatter", data: [[START + 490, 0.349]] });
+    // A result with no value has nothing to mark.
+    expect(seriesOf(option({ secondarySeries: [score([observed(0, null)])] }), "history-dot:adaptive-score:svc")).toBeUndefined();
+  });
+
   it("never invents a negative scale under non-negative values, and names the time once", () => {
     const built = option({ readings: [reading(), reading({ id: "reading:power", name: "Power" })] }, "monitoring");
     const axes = built.yAxis as Array<{ min: (extent: { min: number; max: number }) => number | null }>;

@@ -365,11 +365,12 @@ const labelWithin = (bounds: DetectionValueBounds | undefined, format: (value: n
 type Plotted = readonly [time: number, value: number | null, ...rest: unknown[]];
 /**
  * Values with no line to either side, such as one sample between two pauses. A line
- * draws nothing for one, so it gets a dot. A series of a single value needs none: the
- * line shows that one itself.
+ * draws nothing for one, so it gets a dot. A reading or input line shows a single value
+ * itself; a score line never draws a symbol, so `single` gives its only result a dot too.
  */
-const loneDots = (id: string, name: string, points: readonly Plotted[], color: string, axis: number, size: number): ScatterSeriesOption[] => {
-  const data = points.length < 2 ? [] : points.flatMap(([time, value], index) =>
+const loneDots = (id: string, name: string, points: readonly Plotted[], color: string, axis: number, size: number,
+  single = false): ScatterSeriesOption[] => {
+  const data = points.length < 2 && !single ? [] : points.flatMap(([time, value], index) =>
     value !== null && (points[index - 1]?.[1] ?? null) === null && (points[index + 1]?.[1] ?? null) === null ? [[time, value]] : []);
   return data.length ? [{ id: `history-dot:${id}`, name, type: "scatter", xAxisIndex: axis, yAxisIndex: axis, data,
     symbolSize: size, itemStyle: { color }, silent: true, emphasis: { disabled: true }, tooltip: { show: false },
@@ -661,7 +662,7 @@ export const buildMonitoringChartOption = ({
       formatNumber,
     );
     reach.set(series.id, getPauseLimit(series.data.flatMap(point => point.observation ? [point.value[0]] : [])));
-    dots.push(...loneDots(series.id, series.name, series.data.map(point => point.value), colors.primary, paneIndex, 5));
+    dots.push(...loneDots(series.id, series.name, series.data.map(point => point.value), colors.primary, paneIndex, 5, true));
     if (dayBreaks.length && !ruledPanes.has(paneIndex)) {
       ruledPanes.add(paneIndex);
       line.markLine = dayBreakLine;
